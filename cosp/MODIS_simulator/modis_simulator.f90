@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: modis_simulator.f90,v 1.1.2.1.2.1.6.4 2010/06/03 18:39:51 wfc Exp $
-! $Name: riga_201006 $
+! $Name: riga_201012 $
 
 
 ! (c) 2009-2010, Regents of the Unversity of Colorado

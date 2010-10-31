@@ -15,7 +15,7 @@
 ! </DESCRIPTION>
 
 !   shared modules:
-
+use mpp_mod,                only: input_nml_file
 use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   mpp_root_pe, stdlog,  fms_init, &
                                   write_version_number, file_exist, &
@@ -48,8 +48,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 17.0 2009/07/21 02:57:52 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: zetac_clouds_W.F90,v 17.0.4.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -144,6 +144,10 @@ subroutine zetac_clouds_W_init
 !---------------------------------------------------------------------
 !    read namelist.         
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=zetac_clouds_W_nml, iostat=io)
+      ierr = check_nml_error(io,"zetac_clouds_W_nml")
+#else
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -152,7 +156,8 @@ subroutine zetac_clouds_W_init
         enddo                       
 10      call close_file (unit)      
       endif                         
-                                    
+#endif
+
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------

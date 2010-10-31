@@ -18,7 +18,8 @@
 !
 
 use time_manager_mod,       only: time_type
-use       fms_mod,          only: open_namelist_file, file_exist,   &
+use mpp_mod,                only: input_nml_file
+use fms_mod,                only: open_namelist_file, file_exist,   &
                                   check_nml_error, error_mesg,   &
                                   close_file, FATAL,  &
                                   mpp_pe, mpp_root_pe, &
@@ -40,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 18.0 2010/03/02 23:31:52 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: riga_201006 $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 18.0.4.2 2010/09/07 16:17:19 wfc Exp $'
+   character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 
@@ -94,7 +95,7 @@ contains
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call donner_deep_clouds_W_init  (pref, lonb, latb, axes, Time)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="pref" TYPE="real">
 ! 
@@ -126,6 +127,10 @@ type(time_type),       intent(in)      :: Time
 !---------------------------------------------------------------------
 !-----  read namelist  ------
   
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=donner_deep_clouds_W_nml, iostat=io)
+      ierr = check_nml_error(io,"donner_deep_clouds_W_nml")
+#else
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -134,6 +139,7 @@ type(time_type),       intent(in)      :: Time
         enddo
 10      call close_file (unit)
       endif
+#endif
 
       if ( mpp_pe() == mpp_root_pe() ) then
          call write_version_number(version, tagname)
@@ -205,8 +211,8 @@ end subroutine donner_deep_clouds_W_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call donner_deep_clouds_amt (is, ie, js, je, Cell_microphys,  &
-!		Meso_microphys)
-!		
+!                Meso_microphys)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 ! 

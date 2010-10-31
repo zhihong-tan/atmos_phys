@@ -29,6 +29,7 @@ use time_manager_mod,    only: time_manager_init, time_type, set_date, &
                                set_time, operator(+), print_date,  &
                                days_in_year, get_time, length_of_year
 use diag_manager_mod,    only: diag_manager_init, get_base_time
+use mpp_mod,             only: input_nml_file
 use fms_mod,             only: open_namelist_file, fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
@@ -70,8 +71,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 18.0 2010/03/02 23:32:36 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+'$Id: radiative_gases.F90,v 17.0.2.1.2.1.4.2.2.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -518,6 +519,10 @@ real, dimension(:,:), intent(in) :: latb, lonb
 !-----------------------------------------------------------------------
 !    read namelist.              
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=radiative_gases_nml, iostat=io)
+      ierr = check_nml_error(io,'radiative_gases_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -526,6 +531,7 @@ real, dimension(:,:), intent(in) :: latb, lonb
         end do                   
 10      call close_file (unit)   
       endif                      
+#endif
       call get_restart_io_mode(do_netcdf_restart)
 
                                   
@@ -625,20 +631,20 @@ real, dimension(:,:), intent(in) :: latb, lonb
 !---------------------------------------------------------------------
      restart_file = 'radiative_gases.res.nc'
       if(do_netcdf_restart) then
-         id_restart = register_restart_field(Rad_restart, restart_file, 'vers', vers)
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rco2', rco2)          
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf11', rf11)
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf12', rf12) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf113', rf113) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf22', rf22) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rch4', rch4) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rn2o', rn2o) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'vers', vers, no_domain = .true. )
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rco2', rco2, no_domain = .true. )          
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf11', rf11, no_domain = .true. )
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf12', rf12, no_domain = .true. ) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf113', rf113, no_domain = .true. ) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rf22', rf22, no_domain = .true. ) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rch4', rch4, no_domain = .true. ) 
+         id_restart = register_restart_field(Rad_restart, restart_file, 'rn2o', rn2o, no_domain = .true. ) 
          id_restart = register_restart_field(Rad_restart, restart_file, 'co2_for_last_tf_calc', &
-                                             co2_for_last_tf_calc, mandatory=.false.) 
+                                             co2_for_last_tf_calc, mandatory=.false., no_domain = .true. ) 
          id_restart = register_restart_field(Rad_restart, restart_file, 'ch4_for_last_tf_calc', &
-                                             ch4_for_last_tf_calc, mandatory=.false.) 
+                                             ch4_for_last_tf_calc, mandatory=.false., no_domain = .true. ) 
          id_restart = register_restart_field(Rad_restart, restart_file, 'n2o_for_last_tf_calc', &
-                                             n2o_for_last_tf_calc, mandatory=.false.)     
+                                             n2o_for_last_tf_calc, mandatory=.false., no_domain = .true. )     
       endif
 
       restart_present = .false.

@@ -16,6 +16,7 @@ MODULE DIAG_CLOUD_MOD
 !  omega and stability 
 !-------------------------------------------------------------------
 
+use mpp_mod, only: input_nml_file
  use       fms_mod, only: error_mesg, FATAL, NOTE, file_exist,    &
                           check_nml_error, open_namelist_file,       &
                           mpp_pe, mpp_root_pe,  close_file, &
@@ -43,8 +44,8 @@ MODULE DIAG_CLOUD_MOD
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 17.0 2009/07/21 02:54:07 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: diag_cloud.F90,v 17.0.4.1 2010/08/30 20:33:34 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
@@ -3120,18 +3121,22 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 ! --- Read namelist
 !---------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=diag_cloud_nml, iostat=io)
+   ierr = check_nml_error(io,"diag_cloud_nml")
+#else
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
     unit = open_namelist_file ('input.nml')
-        
     ierrnml = 1
     do while( ierrnml .ne. 0 )
       READ ( unit,  nml = diag_cloud_nml, iostat = io, end = 10 ) 
-      ierrnml = check_nml_error(io,'diag_cloud _nml')
+      ierrnml = check_nml_error(io,'diag_cloud_nml')
     end do
 10  call close_file (unit)
 ! -------------------------------------
   end if
+#endif
 
 !---------------------------------------------------------------------
 ! --- Output namelist

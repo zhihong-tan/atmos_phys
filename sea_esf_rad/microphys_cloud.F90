@@ -19,10 +19,11 @@ module microphys_cloud_mod
 ! module information
 !-----------------------------------------------------------------------
 
-use fms_mod,                only: open_namelist_file, mpp_pe,          &
-                                  mpp_root_pe, stdlog, fms_init,       &
-                                  write_version_number, file_exist,    &
-                                  check_nml_error, close_file
+use mpp_mod, only: input_nml_file
+use fms_mod, only: open_namelist_file, mpp_pe,          &
+                   mpp_root_pe, stdlog, fms_init,       &
+                   write_version_number, file_exist,    &
+                   check_nml_error, close_file
 
 !-----------------------------------------------------------------------
 ! public interfaces
@@ -45,8 +46,8 @@ namelist /microphys_cloud_nml/  diam_liq
 ! version control information
 !-----------------------------------------------------------------------
 
-character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 18.0 2010/03/02 23:32:18 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 18.0.4.2 2010/09/07 16:17:19 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 logical ::   module_is_initialized = .false.
 contains 
@@ -62,7 +63,7 @@ contains
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call microphys_cloud ( zhalf, zfull, diam_liq_out, diam_ice)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="zhalf" TYPE="real">
 ! 
@@ -121,7 +122,7 @@ end subroutine microphys_cloud
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call get_diam ( zhalf, zfull, diam )
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="zhalf" TYPE="real">
 ! 
@@ -220,6 +221,10 @@ integer :: unit, ierr, io, logunit
 ! read namelist       
 !-----------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+  read (input_nml_file, nml=microphys_cloud_nml, iostat=io)
+  ierr = check_nml_error(io,"microphys_cloud_nml")
+#else
   if (file_exist('input.nml')) then
      unit =  open_namelist_file ( )
      ierr=1; do while (ierr /= 0)
@@ -228,6 +233,7 @@ integer :: unit, ierr, io, logunit
      enddo                       
 10   call close_file (unit)      
   endif                         
+#endif
                                     
 !------------------------------------------------------------------------
 !  write version number and namelist to logfile.

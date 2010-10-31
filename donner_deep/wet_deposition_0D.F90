@@ -1,7 +1,7 @@
  
 !VERSION NUMBER:
-!  $Name: riga_201006 $
-!  $Id: wet_deposition_0D.F90,v 18.0 2010/03/02 23:30:22 fms Exp $
+!  $Name: riga_201012 $
+!  $Id: wet_deposition_0D.F90,v 17.0.2.1.4.1 2010/03/17 20:27:08 wfc Exp $
 
 !<SUBROUTINE NAME = "wet_deposition_0D">
 !<TEMPLATE>
@@ -113,9 +113,6 @@ real, parameter :: &
       cm3_2_m3 = 1.e-6             ! m3/cm3
 real, parameter :: mw_air = 28.96440E-03 ! molar mass of air (kg/mole)
 real, parameter :: mw_h2o = 18.0E-03  ! molar mass of H2O (kg/mole)
-
-logical :: &
-      used, flag
 
 !-----------------------------------------------------------------------
 

@@ -20,6 +20,7 @@
 
 !  shared modules:
 
+use mpp_mod,              only: input_nml_file
 use fms_mod,              only: open_namelist_file, fms_init, &
                                 mpp_pe, mpp_root_pe, stdlog, &
                                 file_exist, write_version_number, &
@@ -73,8 +74,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 18.0 2010/03/02 23:32:40 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 
 !--------------------------------------------------------------------
@@ -180,7 +181,6 @@ real, dimension(:,:),    intent(in)  :: pref_r
 !  local variables
 
       integer                           :: unit, io, ierr, logunit
-      logical                           :: end
       type(lw_table_type)               :: Lw_tables
 
 !---------------------------------------------------------------------
@@ -210,6 +210,10 @@ real, dimension(:,:),    intent(in)  :: pref_r
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=sea_esf_rad_nml, iostat=io)
+      ierr = check_nml_error(io,'sea_esf_rad_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -218,6 +222,7 @@ real, dimension(:,:),    intent(in)  :: pref_r
         end do
 10      call close_file (unit)
       endif
+#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

@@ -18,30 +18,31 @@
 ! </DESCRIPTION>
 !   shared modules:
 
-use fms_mod,             only:  open_namelist_file, file_exist,    &
-                                check_nml_error, error_mesg,  &
-                                fms_init, stdlog, &
-                                write_version_number, FATAL, NOTE, &
-                                WARNING, mpp_pe, mpp_root_pe, close_file
-use fms_io_mod,          only:  read_data, open_restart_file
-use time_manager_mod,    only:  time_type,  &
-                                time_manager_init, operator(+), &
-                                set_date, operator(-), print_date, &
-                                set_time, operator(>), get_date, days_in_month
-use diag_manager_mod,    only:  diag_manager_init, get_base_time
-use time_interp_mod,     only:  fraction_of_year, &
-                                time_interp_init  
-use constants_mod,       only:  constants_init, radian
-use interpolator_mod,    only:  interpolate_type, interpolator_init, &
-                                obtain_interpolator_time_slices, &
-                                unset_interpolator_time_flag, &
-                                interpolator, interpolator_end, &
-                                CONSTANT, INTERP_WEIGHTED_P
+use mpp_mod,             only: input_nml_file
+use fms_mod,             only: open_namelist_file, file_exist,    &
+                               check_nml_error, error_mesg,  &
+                               fms_init, stdlog, &
+                               write_version_number, FATAL, NOTE, &
+                               WARNING, mpp_pe, mpp_root_pe, close_file
+use fms_io_mod,          only: read_data, open_restart_file
+use time_manager_mod,    only: time_type,  &
+                               time_manager_init, operator(+), &
+                               set_date, operator(-), print_date, &
+                               set_time, operator(>), get_date, days_in_month
+use diag_manager_mod,    only: diag_manager_init, get_base_time
+use time_interp_mod,     only: fraction_of_year, &
+                               time_interp_init  
+use constants_mod,       only: constants_init, radian
+use interpolator_mod,    only: interpolate_type, interpolator_init, &
+                               obtain_interpolator_time_slices, &
+                               unset_interpolator_time_flag, &
+                               interpolator, interpolator_end, &
+                               CONSTANT, INTERP_WEIGHTED_P
 
 !-------------------------------
 
-use   tracer_manager_mod, only : get_tracer_index, NO_TRACER
-use    field_manager_mod, only : MODEL_ATMOS
+use tracer_manager_mod,  only: get_tracer_index, NO_TRACER
+use field_manager_mod,   only: MODEL_ATMOS
 
 !---------------------------------
 
@@ -65,8 +66,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 18.0 2010/03/02 23:32:26 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 18.0.2.2 2010/09/07 16:17:19 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -96,7 +97,7 @@ end interface
 
 character(len=24)  ::   basic_ozone_type = 'clim_zonal'     
                       ! label for ozone type, currently unused      
-		      ! 'clim_zonal' or 'time_varying' or 'fixed_year'
+                      ! 'clim_zonal' or 'time_varying' or 'fixed_year'
 character(len=32)  :: filename = 'o3.trend.nc'
                       ! name of file which contains the ozone data 
 integer, parameter :: MAX_DATA_FIELDS = 1
@@ -106,14 +107,14 @@ character(len=24)  ::   ozone_data_source = 'fortuin_kelder'
                       ! source for the ozone data being used, either 
                       ! 'input', 'gfdl_zonal_ozone', 'calculate_column'
                       ! for the date and location specified,
-		      ! or externally-derived datasets:
-		      ! 'fortuin_kelder', 'mozart_moztop_fk',
-		      ! 'mozart_trop_fk'
+                      ! or externally-derived datasets:
+                      ! 'fortuin_kelder', 'mozart_moztop_fk',
+                      ! 'mozart_trop_fk'
 character(len=24)  ::   clim_base_year = '1990'
                       ! year with which the ozone data set is assoc-
                       ! iated, used with fortuin_kelder( either '1979',
                       ! '1990' or '1997'), or mozart datasets
-		      ! (presently either '1850' or '1860' or '1990')
+                      ! (presently either '1850' or '1860' or '1990')
 character(len=24)  ::   trans_data_type = 'linear'
                       ! time interpolation method to be used if trans-
                       ! ient ozone is activated, not yet available
@@ -314,6 +315,10 @@ real, dimension(:,:),   intent(in) :: latb, lonb
       call time_interp_init   
       call constants_init
  
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=ozone_nml, iostat=io)
+      ierr = check_nml_error(io,"ozone_nml")
+#else
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
@@ -325,6 +330,7 @@ real, dimension(:,:),   intent(in) :: latb, lonb
         end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -553,7 +559,6 @@ type(time_type),    intent(in)   :: model_time
  
       integer         :: yr, mo, dy, hr, mn, sc, dum
       integer         :: dayspmn, mo_yr
-      integer         :: i, j, k
 
       if (do_clim_zonal_ozone) then
 
@@ -1721,9 +1726,7 @@ real, dimension(:,:,:), intent(out)     :: model_data
  
       real, dimension(1,1, size(p_half,3)-1) :: ozone_data
       real, dimension(1,1, size(p_half,3)) :: p_half_col
-      integer         :: yr, mo, dy, hr, mn, sc, dum
-      integer         :: dayspmn, mo_yr
-      integer         :: i, j, k
+      integer         :: i, j
 
 !--------------------------------------------------------------------
 !    if 'calculate_column' is being used, obtain the ozone values for

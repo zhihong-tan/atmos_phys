@@ -16,6 +16,7 @@
 
 !   shared modules:
 
+use mpp_mod,           only: input_nml_file
 use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
                              file_exist, write_version_number, &
@@ -58,8 +59,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 18.0 2010/03/02 23:32:29 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+'$Id: rad_output_file.F90,v 18.0.2.1.2.4 2010/09/20 17:54:12 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -114,6 +115,7 @@ integer, dimension(:), allocatable :: id_aerosol, id_aerosol_column
 integer, dimension(:,:), allocatable :: id_absopdep,  &
                                         id_absopdep_column, &
                                       id_extopdep, id_extopdep_column
+integer, dimension(:,:), allocatable :: id_asymdep, id_asymdep_column
 integer, dimension(2)              :: id_lw_absopdep_vlcno_column, &
                                       id_lw_extopdep_vlcno_column, &
                                       id_lwext_vlcno, id_lwssa_vlcno, &
@@ -133,6 +135,8 @@ integer, dimension(:,:), allocatable :: id_absopdep_fam,  &
                                         id_absopdep_fam_column, &
                                         id_extopdep_fam,  &
                                         id_extopdep_fam_column
+integer, dimension(:,:), allocatable :: id_asymdep_fam,  &
+                                        id_asymdep_fam_column
 integer                            :: id_radswp, id_radp, id_temp, &
                                       id_rh2o, id_qo3, id_qo3_col,  &
                                       id_qo3v, &
@@ -160,10 +164,27 @@ integer                            :: id_radswp, id_radp, id_temp, &
 integer :: nso4 
 integer :: naerosol=0                      ! number of active aerosols
 logical :: module_is_initialized= .false.  ! module initialized ?
-integer, parameter              :: N_DIAG_BANDS = 6
+integer, parameter              :: N_DIAG_BANDS = 10
 character(len=16), dimension(N_DIAG_BANDS) ::   &
                      band_suffix = (/ '_vis', '_nir', '_con',  &
-                                      '_bd5', '_bd6', '_870' /)
+                                      '_bd5', '_bd6', '_870', &
+! +++ pag 11/13/2009
+                                      '_340','_380','_440','_670' /)
+! Properties at specific wavelength are in fact averaged over a band which
+! are defined in the input file:
+! /home/pag/fms/radiation/esf_sw_input_data_n38b18_1992_version_ckd2.1.lean.nov89.ref
+!
+! 309 < 340 < 364
+! 364 < 380 < 406
+! 406 < 440 < 448
+! 500 < vis < 600
+! 600 < 670 < 685
+! 685 < 870 < 870
+! 870 < nir < 1219
+! In the file, each band is defined by its end wavelength in wavenumber.
+! For 340nm, the endband is 1.e4/0.309=32400 (11th wavenumber among the 18
+! specified in the input file)
+! +++ pag 11/13/2009
 
 
 !---------------------------------------------------------------------
@@ -264,6 +285,10 @@ character(len=*), dimension(:), intent(in)    :: family_names
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=rad_output_file_nml, iostat=io)
+      ierr = check_nml_error(io,'rad_output_file_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -272,6 +297,7 @@ character(len=*), dimension(:), intent(in)    :: family_names
         end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -473,8 +499,13 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
       real, dimension(:,:,:,:,:), allocatable :: absopdep_fam
       real, dimension(:,:,:,:,:), allocatable :: extopdep_fam
       real, dimension(:,:,:,:), allocatable :: aerosol_fam
+      real, dimension(:,:,:,:),   allocatable :: asymdep_col
+      real, dimension(:,:,:,:,:), allocatable :: asymdep_fam
+      real, dimension(:,:,:,:),   allocatable :: asymdep_fam_col
+      real, dimension(:,:,:,:), allocatable :: sum1
+      real, dimension(:,:,:), allocatable :: sum2
 
-      logical   :: used  
+      logical   :: used, Lasymdep
       integer   :: kerad ! number of model layers
       integer   :: n, k, na, nfamilies, nl
       integer   :: nv, vis_indx, nir_indx
@@ -533,6 +564,10 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
 !--------------------------------------------------------------------
       if (write_data_file) then
 
+        Lasymdep = .false.
+        if (any(id_asymdep_fam(:,:)  > 0) .or. &
+            any(id_asymdep_fam_column(:,:)  > 0 )) Lasymdep = .true.
+            
 !--------------------------------------------------------------------
 !    define the number of zenith angles that the sw was calculated 
 !    for on this step.
@@ -649,6 +684,18 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                                    N_DIAG_BANDS) )
             absopdep_col(:,:,:,:) =    &
                            SUM (Aerosol_diags%absopdep  (:,:,:,:,:), 3)
+            if ( Lasymdep ) then 
+              allocate ( asymdep_col(size(Aerosol_diags%asymdep  , 1), &
+                                 size(Aerosol_diags%asymdep  ,     2), &
+                                 size(Aerosol_diags%asymdep  ,     4), &
+                                      N_DIAG_BANDS) )
+              asymdep_col(:,:,:,:) =  SUM ( &
+                            Aerosol_diags%asymdep(:,:,:,:,:) &
+                                *(Aerosol_diags%extopdep(:,:,:,:,:)-  &
+                                    Aerosol_diags%absopdep(:,:,:,:,:)), 3) &
+                             /(1.e-30+SUM(Aerosol_diags%extopdep(:,:,:,:,:)&
+                                     -Aerosol_diags%absopdep(:,:,:,:,:), 3))
+            endif
             if (Rad_control%volcanic_sw_aerosols) then
               allocate ( extopdep_vlcno_col(   &
                            size(Aerosol_diags%extopdep_vlcno  , 1), &
@@ -715,6 +762,26 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
             absopdep_fam = 0.
             extopdep_fam_col = 0.
             absopdep_fam_col = 0.
+
+            if ( Lasymdep ) then
+              allocate (asymdep_fam ( size(Aerosol%aerosol,1), &
+                                      size(Aerosol%aerosol,2), &
+                                      size(Aerosol%aerosol,3), &
+                                      nfamilies, N_DIAG_BANDS))
+              allocate (asymdep_fam_col ( size(Aerosol%aerosol,1), &
+                                          size(Aerosol%aerosol,2), &
+                                          nfamilies, N_DIAG_BANDS))
+              allocate (sum1 (       size(Aerosol%aerosol,1), &
+                                     size(Aerosol%aerosol,2), &
+                                     size(Aerosol%aerosol,3), &
+                                     N_DIAG_BANDS))
+              allocate (sum2 (       size(Aerosol%aerosol,1), &
+                                     size(Aerosol%aerosol,2), &
+                                     N_DIAG_BANDS))
+              asymdep_fam = 0.
+              asymdep_fam_col = 0.
+            endif
+
             do n = 1, nfamilies                      
               do na = 1, naerosol                
                 if (Aerosol%family_members(na,n)) then
@@ -723,45 +790,76 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                   aerosol_fam_col(:,:,n) = aerosol_fam_col(:,:,n) +  &
                                          aerosol_col(:,:,na)
                   do nl = 1,N_DIAG_BANDS
-                extopdep_fam(:,:,:,n,nl) = extopdep_fam(:,:,:,n,nl) +  &
-                                    Aerosol_diags%extopdep(:,:,:,na,nl)
-            extopdep_fam_col(:,:,n,nl) = extopdep_fam_col(:,:,n,nl) +  &
+                    extopdep_fam(:,:,:,n,nl) = extopdep_fam(:,:,:,n,nl) +  &
+                                      Aerosol_diags%extopdep(:,:,:,na,nl)
+                    extopdep_fam_col(:,:,n,nl) = extopdep_fam_col(:,:,n,nl) +  &
                                       extopdep_col(:,:,na,nl)
-            absopdep_fam(:,:,:,n,nl) = absopdep_fam(:,:,:,n,nl) +  &
-                                    Aerosol_diags%absopdep(:,:,:,na,nl)
-            absopdep_fam_col(:,:,n,nl) = absopdep_fam_col(:,:,n,nl) +  &
+                    absopdep_fam(:,:,:,n,nl) = absopdep_fam(:,:,:,n,nl) +  &
+                                      Aerosol_diags%absopdep(:,:,:,na,nl)
+                    absopdep_fam_col(:,:,n,nl) = absopdep_fam_col(:,:,n,nl) +  &
                                       absopdep_col(:,:,na,nl)
                   end do ! (nl)
                 endif
-              end do
+              end do ! (na)
+              if ( Lasymdep ) then
+                sum1(:,:,:,:)=1.e-30
+                sum2(:,:,:)=1.e-30
+                do na = 1, naerosol                
+                  if (Aerosol%family_members(na,n)) then
+                    do nl = 1,N_DIAG_BANDS
+                      asymdep_fam(:,:,:,n,nl) = asymdep_fam(:,:,:,n,nl) &
+                          + Aerosol_diags%asymdep(:,:,:,na,nl) &
+                          *( Aerosol_diags%extopdep(:,:,:,na,nl) &
+                          -Aerosol_diags%absopdep(:,:,:,na,nl))
+                      sum1(:,:,:,nl) = sum1(:,:,:,nl) &
+                          + Aerosol_diags%extopdep(:,:,:,na,nl) &
+                          - Aerosol_diags%absopdep(:,:,:,na,nl)
+                      asymdep_fam_col(:,:,n,nl) = asymdep_fam_col(:,:,n,nl) &
+                          + asymdep_col(:,:,na,nl)&
+                          *(extopdep_col(:,:,na,nl)-absopdep_col(:,:,na,nl))
+                      sum2(:,:,nl) = sum2(:,:,nl)&
+                          + extopdep_col(:,:,na,nl) - absopdep_col(:,:,na,nl)
+                    end do ! (nl)
+                  endif
+                end do ! (na)
+
+                asymdep_fam = max (0., min(1., asymdep_fam))
+                sum1 = max(1.e-30,min(1.,sum1))
+                asymdep_fam_col = max (0., min(1., asymdep_fam_col))
+                sum2 = max (1.e-30, min(1.,sum2))
+                do nl = 1,N_DIAG_BANDS
+                  asymdep_fam(:,:,:,n,nl) = asymdep_fam(:,:,:,n,nl)/sum1(:,:,:,nl)
+                  asymdep_fam_col(:,:,n,nl)=asymdep_fam_col(:,:,n,nl)/sum2(:,:,nl)
+                enddo
+              endif
 
               if (Aerosol%family_members(naerosol+1,n)) then
-             if (Rad_control%volcanic_sw_aerosols) then
-             extopdep_fam_col(:,:,n,1) = extopdep_fam_col(:,:,n,1) +  &
-                                       extopdep_vlcno_col(:,:,1)
-             absopdep_fam_col(:,:,n,1) = absopdep_fam_col(:,:,n,1) +  &
-                                       absopdep_vlcno_col(:,:,1)
-             extopdep_fam_col(:,:,n,2) = extopdep_fam_col(:,:,n,2) +  &
-                                       extopdep_vlcno_col(:,:,2)
-             absopdep_fam_col(:,:,n,2) = absopdep_fam_col(:,:,n,2) +  &
-                                       absopdep_vlcno_col(:,:,2)
-             extopdep_fam_col(:,:,n,6) = extopdep_fam_col(:,:,n,6) +  &
-                                       extopdep_vlcno_col(:,:,3)
-             absopdep_fam_col(:,:,n,6) = absopdep_fam_col(:,:,n,6) +  &
-                                       absopdep_vlcno_col(:,:,3)
-           endif
-            if (Rad_control%volcanic_lw_aerosols) then
-             extopdep_fam_col(:,:,n,4) = extopdep_fam_col(:,:,n,4) +  &
-                                    lw_extopdep_vlcno_col(:,:,1)
-             absopdep_fam_col(:,:,n,4) = absopdep_fam_col(:,:,n,4) +  &
-                                    lw_absopdep_vlcno_col(:,:,1)
-             extopdep_fam_col(:,:,n,5) = extopdep_fam_col(:,:,n,5) +  &
-                                    lw_extopdep_vlcno_col(:,:,2)
-             absopdep_fam_col(:,:,n,5) = absopdep_fam_col(:,:,n,5) +  &
-                                    lw_absopdep_vlcno_col(:,:,2)
-            endif
-           endif
-           end do
+                if (Rad_control%volcanic_sw_aerosols) then
+                  extopdep_fam_col(:,:,n,1) = extopdep_fam_col(:,:,n,1) +  &
+                                              extopdep_vlcno_col(:,:,1)
+                  absopdep_fam_col(:,:,n,1) = absopdep_fam_col(:,:,n,1) +  &
+                                              absopdep_vlcno_col(:,:,1)
+                  extopdep_fam_col(:,:,n,2) = extopdep_fam_col(:,:,n,2) +  &
+                                              extopdep_vlcno_col(:,:,2)
+                  absopdep_fam_col(:,:,n,2) = absopdep_fam_col(:,:,n,2) +  &
+                                              absopdep_vlcno_col(:,:,2)
+                  extopdep_fam_col(:,:,n,6) = extopdep_fam_col(:,:,n,6) +  &
+                                              extopdep_vlcno_col(:,:,3)
+                  absopdep_fam_col(:,:,n,6) = absopdep_fam_col(:,:,n,6) +  &
+                                              absopdep_vlcno_col(:,:,3)
+                endif
+                if (Rad_control%volcanic_lw_aerosols) then
+                  extopdep_fam_col(:,:,n,4) = extopdep_fam_col(:,:,n,4) +  &
+                                              lw_extopdep_vlcno_col(:,:,1)
+                  absopdep_fam_col(:,:,n,4) = absopdep_fam_col(:,:,n,4) +  &
+                                              lw_absopdep_vlcno_col(:,:,1)
+                  extopdep_fam_col(:,:,n,5) = extopdep_fam_col(:,:,n,5) +  &
+                                              lw_extopdep_vlcno_col(:,:,2)
+                  absopdep_fam_col(:,:,n,5) = absopdep_fam_col(:,:,n,5) +  &
+                                              lw_absopdep_vlcno_col(:,:,2)
+                endif
+              endif
+            enddo ! (n)
 
           do n = 1,nfamilies
             if (id_aerosol_fam(n)  > 0 ) then
@@ -790,16 +888,31 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
               endif
               if (id_absopdep_fam_column(n,nl)  > 0 ) then
                 used = send_data (id_absopdep_fam_column(n,nl),     &
-                                 absopdep_fam_col(:,:,n,nl), Time_diag, is, js)
+                             absopdep_fam_col(:,:,n,nl), Time_diag, is, js)
+              endif
+              if (id_asymdep_fam(n,nl)  > 0 ) then
+                used = send_data (id_asymdep_fam(n,nl),    &
+                                  asymdep_fam  (:,:,:,n,nl), &
+                                  Time_diag, is, js, 1)
+              endif
+              if (id_asymdep_fam_column(n,nl)  > 0 ) then
+                used = send_data (id_asymdep_fam_column(n,nl),     &
+                             asymdep_fam_col(:,:,n,nl), Time_diag, is, js)
               endif
             end do  
         end do
           deallocate (aerosol_fam)
           deallocate (aerosol_fam_col)
-            deallocate (extopdep_fam)
-            deallocate (absopdep_fam)
-            deallocate (extopdep_fam_col)
-            deallocate (absopdep_fam_col)
+          deallocate (extopdep_fam)
+          deallocate (absopdep_fam)
+          deallocate (extopdep_fam_col)
+          deallocate (absopdep_fam_col)
+          if ( Lasymdep ) then
+            deallocate (asymdep_fam)
+            deallocate (asymdep_fam_col)
+            deallocate (sum1)
+            deallocate (sum2)
+          endif
       endif
     endif
         
@@ -912,6 +1025,15 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
               if (id_absopdep_column(n,nl)  > 0 ) then
                 used = send_data (id_absopdep_column(n,nl),     &
                                  absopdep_col(:,:,n,nl), Time_diag, is, js)
+              endif
+              if (id_asymdep(n,nl)  > 0 ) then
+                used = send_data (id_asymdep(n,nl),    &
+                                  Aerosol_diags%asymdep  (:,:,:,n,nl), &
+                                  Time_diag, is, js, 1)
+              endif
+              if (id_asymdep_column(n,nl)  > 0 ) then
+                used = send_data (id_asymdep_column(n,nl),     &
+                                 asymdep_col(:,:,n,nl), Time_diag, is, js)
               endif
 !           endif
             end do
@@ -1051,10 +1173,11 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
             deallocate (absopdep_vlcno_col, extopdep_vlcno_col)
           endif
           deallocate (aerosol_col)
-          if (Sw_control%do_swaerosol) then
+!         if (Sw_control%do_swaerosol) then
             deallocate (extopdep_col)
             deallocate (absopdep_col)
-          endif
+            if (allocated (asymdep_col)) deallocate (asymdep_col)
+!         endif
         endif
 
         if (id_cmxolw > 0 ) then
@@ -1271,6 +1394,10 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                                               absopdep_column_names, &
                                                  extopdep_names, &
                                                  absopdep_names, &
+                                             asymdep_column_names, &
+                                             asymdep_names, &
+                                             asymdep_fam_column_names, &
+                                             asymdep_fam_names, &
                                           aerosol_fam_column_names, &
                                          extopdep_fam_column_names, &
                                         absopdep_fam_column_names, &
@@ -1431,6 +1558,10 @@ character(len=*), dimension(:), intent(in) :: names, family_names
         allocate (id_extopdep_column(naerosol, N_DIAG_BANDS))
         allocate (id_absopdep(naerosol, N_DIAG_BANDS))
         allocate (id_absopdep_column(naerosol, N_DIAG_BANDS))
+        allocate (id_asymdep(naerosol, N_DIAG_BANDS))
+        allocate (id_asymdep_column(naerosol, N_DIAG_BANDS))
+        allocate (asymdep_names(naerosol))
+        allocate (asymdep_column_names(naerosol))
      do nl=1,N_DIAG_BANDS
         do n = 1,naerosol                           
           extopdep_names(n) =   &
@@ -1441,6 +1572,10 @@ character(len=*), dimension(:), intent(in) :: names, family_names
              TRIM(names(n) ) // "_abopdep" // TRIM(band_suffix(nl))
           absopdep_column_names(n) =   &
              TRIM(names(n) ) // "_abopdep_col" // TRIM(band_suffix(nl))
+          asymdep_names(n) =   &
+             TRIM(names(n) ) // "_asymdep" // TRIM(band_suffix(nl))
+          asymdep_column_names(n) =   &
+             TRIM(names(n) ) // "_asymdep_col" // TRIM(band_suffix(nl))
         end do
         do n = 1,naerosol
           id_extopdep(n,nl)    = &
@@ -1461,12 +1596,23 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                       TRIM(absopdep_column_names(n)), axes(1:2), Time, &
                       TRIM(absopdep_column_names(n)), &
                       'dimensionless', missing_value=missing_value)
+          id_asymdep(n,nl)    = &
+             register_diag_field (mod_name, TRIM(asymdep_names(n)), axes(1:3),&
+                                  Time, TRIM(asymdep_names(n)),&
+                                  'dimensionless', missing_value=missing_value)
+          id_asymdep_column(n,nl)    = &
+             register_diag_field (mod_name,   &
+                      TRIM(asymdep_column_names(n)), axes(1:2), Time, &
+                      TRIM(asymdep_column_names(n)), &
+                      'dimensionless', missing_value=missing_value)
         end do
       end do
         deallocate (extopdep_names)
         deallocate (extopdep_column_names)
         deallocate (absopdep_names)
         deallocate (absopdep_column_names)
+        deallocate (asymdep_names)
+        deallocate (asymdep_column_names)
       endif
 
       if (size(family_names(:)) /= 0) then
@@ -1499,6 +1645,10 @@ character(len=*), dimension(:), intent(in) :: names, family_names
         allocate (extopdep_fam_column_names(naerosol))
         allocate (absopdep_fam_names(naerosol))
         allocate (absopdep_fam_column_names(naerosol))
+        allocate (id_asymdep_fam(nfamilies, N_DIAG_BANDS))
+        allocate (id_asymdep_fam_column(nfamilies, N_DIAG_BANDS))
+        allocate (asymdep_fam_names(naerosol))
+        allocate (asymdep_fam_column_names(naerosol))
    do nl=1,N_DIAG_BANDS
         do n=1,nfamilies      
           extopdep_fam_names(n) =   &
@@ -1509,6 +1659,10 @@ character(len=*), dimension(:), intent(in) :: names, family_names
           TRIM(family_names(n) ) // "_abopdep" // TRIM(band_suffix(nl))
           absopdep_fam_column_names(n) =  &
        TRIM(family_names(n) ) // "_abopdep_col" // TRIM(band_suffix(nl))
+          asymdep_fam_names(n) =   &
+          TRIM(family_names(n) ) // "_asymdep" // TRIM(band_suffix(nl))
+          asymdep_fam_column_names(n) =  &
+       TRIM(family_names(n) ) // "_asymdep_col" // TRIM(band_suffix(nl))
         end do
         do n = 1,nfamilies
           id_extopdep_fam(n,nl)    = &
@@ -1529,12 +1683,23 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                       TRIM(absopdep_fam_column_names(n)), axes(1:2), Time, &
                       TRIM(absopdep_fam_column_names(n)), &
                       'dimensionless', missing_value=missing_value)
+          id_asymdep_fam(n,nl)    = &
+             register_diag_field(mod_name,TRIM(asymdep_fam_names(n)),axes(1:3),&
+                      Time, TRIM(asymdep_fam_names(n)),&
+                     'dimensionless', missing_value=missing_value)
+          id_asymdep_fam_column(n,nl)    = &
+             register_diag_field (mod_name,   &
+                      TRIM(asymdep_fam_column_names(n)), axes(1:2), Time, &
+                      TRIM(asymdep_fam_column_names(n)), &
+                      'dimensionless', missing_value=missing_value)
         end do
    end do
         deallocate (extopdep_fam_names)
         deallocate (extopdep_fam_column_names)
         deallocate (absopdep_fam_names)
         deallocate (absopdep_fam_column_names)
+        deallocate (asymdep_fam_names)
+        deallocate (asymdep_fam_column_names)
       endif
       
       if (Rad_control%volcanic_lw_aerosols_iz) then

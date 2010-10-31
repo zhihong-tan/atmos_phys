@@ -32,6 +32,7 @@
 !PROGRAM COSPTEST
 module cosp_driver_mod
 
+use mpp_mod,        only: input_nml_file
 use fms_mod,            only: open_namelist_file, open_file,  &
                               close_file, error_mesg, FATAL, &
                               file_exist, mpp_pe, mpp_root_pe,   &
@@ -112,8 +113,8 @@ IMPLICIT NONE
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cosp_driver.F90,v 1.1.2.1.4.1.4.1.2.1.2.1.2.1.2.2.8.2 2010/06/03 16:40:06 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: cosp_driver.F90,v 1.1.2.1.4.1.4.1.2.1.2.1.2.1.2.2.8.2.2.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
  
 
 
@@ -259,6 +260,10 @@ subroutine cosp_driver_init (lonb, latb, Time_diag, axes,kd_in, ncol_in)
 
    integer :: io, unit, ierr
 
+#ifdef INTERNAL_FILE_NML
+    read (input_nml_file, nml=cosp_input, iostat=io)
+    ierr = check_nml_error(io,"cosp_input")
+#else
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
@@ -270,6 +275,7 @@ subroutine cosp_driver_init (lonb, latb, Time_diag, axes,kd_in, ncol_in)
       enddo
 10      call close_file (unit)
     endif
+#endif
         
 !---------------------------------------------------------------------
 !    write namelist to logfile.

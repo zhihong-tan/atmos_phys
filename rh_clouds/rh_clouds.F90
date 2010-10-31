@@ -7,11 +7,12 @@ module rh_clouds_mod
 !
 !=======================================================================
 
-use       fms_mod, only:  error_mesg, FATAL, file_exist,    &
-                          check_nml_error, open_namelist_file,       &
-                          close_file, open_restart_file, &
-                          read_data, write_data, mpp_pe, mpp_root_pe, &
-                          write_version_number, stdlog
+use mpp_mod, only : input_nml_file
+use fms_mod, only : error_mesg, FATAL, file_exist,    &
+                    check_nml_error, open_namelist_file,       &
+                    close_file, open_restart_file, &
+                    read_data, write_data, mpp_pe, mpp_root_pe, &
+                    write_version_number, stdlog
 
 !=======================================================================
 
@@ -83,8 +84,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: rh_clouds.F90,v 17.0 2009/07/21 02:55:56 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 17.0.4.1 2010/08/30 20:33:31 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !=======================================================================
 
@@ -157,6 +158,10 @@ integer :: unit, ierr, io, logunit
 
 !------------------- read namelist input -------------------------------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=rh_clouds_nml, iostat=io)
+      ierr = check_nml_error(io,'rh_clouds_nml')
+#else   
       if (file_exist('input.nml')) then
          unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
@@ -165,6 +170,7 @@ integer :: unit, ierr, io, logunit
          enddo
   10     call close_file (unit)
       endif
+#endif
 
 !---------- output namelist to log-------------------------------------
 

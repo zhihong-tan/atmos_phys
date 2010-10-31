@@ -23,6 +23,7 @@
 
 !    shared modules:
 
+use mpp_mod,              only:  input_nml_file
 use fms_mod,              only:  open_namelist_file, fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
                                  file_exist, write_version_number, &
@@ -63,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 18.0 2010/03/02 23:31:55 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:32 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -199,6 +200,10 @@ integer :: nbands, tot_wvnums, nfrqpts, nh2obands, nstreams
 logical :: nstr4 = .false.
 real    :: vis_wvnum = 1.0E+04/0.55
 real    :: wvnum_870 = 1.0E+04/0.87
+real    :: wvnum_340 = 1.0E+04/0.34
+real    :: wvnum_380 = 1.0E+04/0.38
+real    :: wvnum_440 = 1.0E+04/0.44
+real    :: wvnum_670 = 1.0E+04/0.67
 real    :: one_micron_wvnum = 1.0E+04/1.00
 real    :: onepsix_micron_wvnum = 1.0E+04/1.61
 integer :: onepsix_band_indx
@@ -395,6 +400,10 @@ subroutine esfsw_driver_init
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+       read (input_nml_file, nml=esfsw_driver_nml, iostat=io)
+       ierr = check_nml_error(io,'esfsw_driver_nml')
+#else   
        if ( file_exist('input.nml')) then
          unit =  open_namelist_file ( )
          ierr=1; do while (ierr /= 0)
@@ -403,6 +412,7 @@ subroutine esfsw_driver_init
          end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -582,6 +592,50 @@ subroutine esfsw_driver_init
                                                            FATAL)
       endif
 
+!---------------------------------------------------------------------
+!    define the band index corresponding to near ultraviolet light
+!    (0.34 microns). note that endwvnbands is in units of (cm**-1).
+!---------------------------------------------------------------------
+      do ni=1,nbands
+        if (endwvnbands(ni) > wvnum_340) then
+          Solar_spect%w340_band_indx = ni
+          Solar_spect%w340_band_iz = .true.
+          exit
+        endif
+      end do
+!---------------------------------------------------------------------
+!    define the band index corresponding to near ultraviolet light
+!    (0.38 microns). note that endwvnbands is in units of (cm**-1).
+!---------------------------------------------------------------------
+      do ni=1,nbands
+        if (endwvnbands(ni) > wvnum_380) then
+          Solar_spect%w380_band_indx = ni
+          Solar_spect%w380_band_iz = .true.
+          exit
+        endif
+      end do
+!---------------------------------------------------------------------
+!    define the band index corresponding to blue light
+!    (0.44 microns). note that endwvnbands is in units of (cm**-1).
+!---------------------------------------------------------------------
+      do ni=1,nbands
+        if (endwvnbands(ni) > wvnum_440) then
+          Solar_spect%w440_band_indx = ni
+          Solar_spect%w440_band_iz = .true.
+          exit
+        endif
+      end do
+!---------------------------------------------------------------------
+!    define the band index corresponding to red light
+!    (0.67 microns). note that endwvnbands is in units of (cm**-1).
+!---------------------------------------------------------------------
+      do ni=1,nbands
+        if (endwvnbands(ni) > wvnum_670) then
+          Solar_spect%w670_band_indx = ni
+          Solar_spect%w670_band_iz = .true.
+          exit
+        endif
+      end do
 !---------------------------------------------------------------------
 !    define the band index corresponding to visible light
 !    (0.55 microns). note that endwvnbands is in units of (cm**-1).
@@ -1094,7 +1148,7 @@ integer,                       intent(in)    :: naerosol_optical
                        size(Atmos_input%temp,2), &
                        size(Atmos_input%temp,3))  :: &
             press,           pflux,            pflux_mks, &
-            temp,            z,                           &
+            temp,                                       &
             reflectanceclr,  transmittanceclr, tr_dirclr
 
       real, dimension (size(Atmos_input%temp,1), &
@@ -1113,7 +1167,7 @@ integer,                       intent(in)    :: naerosol_optical
                                          NSOLWG) ::         &
                  cosangsolar_p
 
-      integer :: j, i, k, ng, np, nband, nf, ns, nz, kq
+      integer :: j, i, k, ng, np, nband, nf, ns, nz
       integer :: nzens
 
       integer :: nprofile, nprofiles
@@ -1121,6 +1175,7 @@ integer,                       intent(in)    :: naerosol_optical
 
       integer :: ix, jx, kx, israd, jsrad, ierad, jerad, ksrad, kerad
       real    :: ssolar  
+      real    :: solflxtotal_local
 
 
 
@@ -1148,14 +1203,14 @@ integer,                       intent(in)    :: naerosol_optical
 !    define the solar_constant appropriate at Rad_time when solar
 !    input is varying with time.
 !---------------------------------------------------------------------
+!-- The following fix is for openmp
       if (Rad_control%using_solar_timeseries_data) then
-!$OMP MASTER
-        solflxtotal = 0.0
+        solflxtotal_local = 0.0
         do nband = 1,NBANDS
-          solflxtotal = solflxtotal + Solar_spect%solflxband(nband)
+          solflxtotal_local = solflxtotal_local + Solar_spect%solflxband(nband)
         end do
-!$OMP END MASTER
-!$OMP BARRIER
+      else
+        solflxtotal_local = solflxtotal
       endif
 
 !---------------------------------------------------------------------
@@ -1765,7 +1820,7 @@ integer,                       intent(in)    :: naerosol_optical
             endif
             solarflux_p(:,:) = fracday_p(:,:)*  &
                                    Solar_spect%solflxband(nband)*  &
-                                                      ssolar/solflxtotal
+                                                      ssolar/solflxtotal_local
  
             if (nband == Solar_spect%visible_band_indx) then
               Sw_output%bdy_flx(:,:,1,nz) =   &
@@ -2236,7 +2291,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
 !     local variables:
  
       real, dimension (size(Atmos_input%temp,3)-1)  :: &
-                      arprod,          arprod2,      deltaz, &     
+                      arprod, asymm,   arprod2,      deltaz, &     
                       sum_g_omega_tau, sum_ext,      sum_sct
 
       integer, dimension (size (Atmos_input%press, 3)-1 ) ::   &
@@ -2337,6 +2392,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) =    &
                             aerext_i*(1.e3*Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb_i*arprod(k)
+                      asymm(k)   = aerasymm_i
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) + aerssalb_i*arprod(k)
                       sum_g_omega_tau(k) = sum_g_omega_tau(k) +     &
@@ -2348,6 +2404,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v3(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v3(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v3(k))
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) +    &
                                     aerssalb(opt_index_v3(k))*arprod(k)
@@ -2361,6 +2418,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v3(k)) *    &
                                     (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v3(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v3(k))
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) +       &
                                     aerssalb(opt_index_v3(k))*arprod(k)
@@ -2374,6 +2432,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v4(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v4(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v4(k))
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) + &
                                      aerssalb(opt_index_v4(k))*arprod(k)
@@ -2388,6 +2447,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                         arprod(k) = aerext(opt_index_v3(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                         arprod2(k) = aerssalb(opt_index_v3(k))*arprod(k)
+                        asymm(k)   = aerasymm(opt_index_v3(k))
                         sum_ext(k) = sum_ext(k) + arprod(k)
                         sum_sct(k) = sum_sct(k) + &
                                      aerssalb(opt_index_v3(k))*arprod(k)
@@ -2400,6 +2460,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                         arprod(k) = aerext(opt_index_v5(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                         arprod2(k) = aerssalb(opt_index_v5(k))*arprod(k)
+                        asymm(k)   = aerasymm(opt_index_v5(k))
                         sum_ext(k) = sum_ext(k) + arprod(k)
                         sum_sct(k) = sum_sct(k) + &
                                      aerssalb(opt_index_v5(k))*arprod(k)
@@ -2414,6 +2475,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v6(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v6(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v6(k))
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) + &
                                      aerssalb(opt_index_v6(k))*arprod(k)
@@ -2427,6 +2489,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v7(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v7(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v7(k))
                       sum_ext(k) = sum_ext(k) +  arprod(k)
                       sum_sct(k) = sum_sct(k) + &
                                      aerssalb(opt_index_v7(k))*arprod(k)
@@ -2440,6 +2503,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v8(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v8(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v8(k))
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) + &
                                      aerssalb(opt_index_v8(k))*arprod(k)
@@ -2453,6 +2517,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v9(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v9(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v9(k))
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) + &
                                      aerssalb(opt_index_v9(k))*arprod(k)
@@ -2466,6 +2531,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       arprod(k) = aerext(opt_index_v10(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
                       arprod2(k) = aerssalb(opt_index_v10(k))*arprod(k)
+                      asymm(k)   = aerasymm(opt_index_v10(k))
                       sum_ext(k) = sum_ext(k) + arprod(k)
                       sum_sct(k) = sum_sct(k) + &
                                     aerssalb(opt_index_v10(k))*arprod(k)
@@ -2480,16 +2546,43 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       Aerosol_diags%extopdep(i,j,:,nsc,1) = arprod(:)
                       Aerosol_diags%absopdep(i,j,:,nsc,1) =    &
                                             arprod(:) - arprod2(:)
+                      Aerosol_diags%asymdep(i,j,:,nsc,1) = asymm(:)
                     endif
                     if (nband == Solar_spect%eight70_band_indx) then
                       Aerosol_diags%extopdep(i,j,:,nsc,6) = arprod(:)
                       Aerosol_diags%absopdep(i,j,:,nsc,6) =    &
                                             arprod(:) - arprod2(:)
+                      Aerosol_diags%asymdep(i,j,:,nsc,6) = asymm(:)
                     endif
                     if (nband == Solar_spect%one_micron_indx) then
                       Aerosol_diags%extopdep(i,j,:,nsc,2) = arprod(:)
                       Aerosol_diags%absopdep(i,j,:,nsc,2) =    &
                                                arprod(:) - arprod2(:)
+                      Aerosol_diags%asymdep(i,j,:,nsc,2) = asymm(:)
+                    endif
+                    if (nband == Solar_spect%w340_band_indx) then
+                      Aerosol_diags%extopdep(i,j,:,nsc,7) = arprod(:)
+                      Aerosol_diags%absopdep(i,j,:,nsc,7) =    &
+                                                arprod(:) - arprod2(:)
+                      Aerosol_diags%asymdep(i,j,:,nsc,7) = asymm(:)
+                    endif
+                    if (nband == Solar_spect%w380_band_indx) then
+                      Aerosol_diags%extopdep(i,j,:,nsc,8) = arprod(:)
+                      Aerosol_diags%absopdep(i,j,:,nsc,8) =    &
+                                                arprod(:) - arprod2(:)
+                      Aerosol_diags%asymdep(i,j,:,nsc,8) = asymm(:)
+                    endif
+                    if (nband == Solar_spect%w440_band_indx) then
+                      Aerosol_diags%extopdep(i,j,:,nsc,9) = arprod(:)
+                      Aerosol_diags%absopdep(i,j,:,nsc,9) =    &
+                                               arprod(:) - arprod2(:)
+                      Aerosol_diags%asymdep(i,j,:,nsc,9) = asymm(:)
+                    endif
+                    if (nband == Solar_spect%w670_band_indx) then
+                      Aerosol_diags%extopdep(i,j,:,nsc,10) = arprod(:)
+                      Aerosol_diags%absopdep(i,j,:,nsc,10) =    &
+                                                arprod(:) - arprod2(:)
+                      Aerosol_diags%asymdep(i,j,:,nsc,10) = asymm(:)
                     endif
                   endif
                 end do
@@ -3158,13 +3251,10 @@ real, dimension(:,:,:),   intent(out)  :: reflectance, transmittance, &
 !   local variables:
  
       real, dimension (lbound(rlayerdir,3):ubound(rlayerdir,3)+1) ::  &
-                            raddupdif2, raddupdir2,  tlevel2
+                            raddupdif2, raddupdir2
 
       real, dimension (lbound(rlayerdir,3):ubound(rlayerdir,3)  ) ::  &
-                                      radddowndif2,  tadddowndir2, &
-                                      tlayerdif2, tlayerdir2, &
-                                      rlayerdif2, rlayerdir2, &
-                                      tlayerde2
+                                      radddowndif2,  tadddowndir2
 
       real :: dm1tl2, dm2tl2, rdm2tl2, dm32, dm3r2, dm3r1p2, alpp2, &
               raddupdif2p, raddupdir2p, tlevel2p, radddowndifm, &
@@ -3436,7 +3526,7 @@ logical, dimension(:,:,:), intent(in), optional    :: cloud
 !  local variables:
 
       real        :: qq(7), rr(5), ss(8), tt(8), ww(4)
-      real        :: rsum, tsum, alpha
+      real        :: rsum, tsum
       real        :: onedi3 = 1.0/3.0           
       real        :: twodi3 = 2.0/3.0             
       integer     :: k, i, ns, j, nn, ntot

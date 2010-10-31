@@ -16,18 +16,19 @@
 ! </DESCRIPTION>
 !
 
-use time_manager_mod,   only:  time_type
-use cloud_zonal_mod,    only:  getcld
-use cloud_obs_mod,       only: cloud_obs, cloud_obs_init
-use       fms_mod,      only:  open_namelist_file, file_exist,   &
-                               check_nml_error,   &
+use  time_manager_mod,  only:  time_type
+use   cloud_zonal_mod,  only:  getcld
+use     cloud_obs_mod,  only:  cloud_obs, cloud_obs_init
+use           mpp_mod,  only:  input_nml_file
+use           fms_mod,  only:  open_namelist_file, file_exist, &
+                               check_nml_error, &
                                close_file, &
                                mpp_pe, mpp_root_pe, &
                                write_version_number, stdlog
 use rad_utilities_mod,  only:  cldrad_properties_type, &
                                Cldrad_control, &
                                cld_specification_type
-use constants_mod,      only:  pstd_mks
+use     constants_mod,  only:  pstd_mks
 
 !--------------------------------------------------------------------
 
@@ -45,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 17.0 2009/07/21 02:57:41 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: riga_201006 $'
+  character(len=128)  :: version =  '$Id: specified_clouds_W.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
+  character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 
@@ -132,7 +133,7 @@ contains
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call specified_clouds_W_init (lonb, latb)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="lonb" TYPE="real">
 ! 
@@ -153,6 +154,10 @@ real, dimension(:,:), intent(in) :: lonb, latb
 !---------------------------------------------------------------------
 !-----  read namelist  ------
   
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=specified_clouds_W_nml, iostat=io)
+      ierr = check_nml_error(io,'specified_clouds_W_nml')
+#else   
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -161,6 +166,7 @@ real, dimension(:,:), intent(in) :: lonb, latb
         enddo
 10      call close_file (unit)
       endif
+#endif
 
 !------- write version number and namelist ---------
 
@@ -225,8 +231,8 @@ end subroutine specified_clouds_W_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call specified_clouds_amt (is, ie, js, je, Rad_time, lat, pflux, &
-!		Cld_spec)
-!		
+!                Cld_spec)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -478,8 +484,8 @@ end subroutine specified_clouds_amt
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_lw_specified (is, ie, js, je, Cld_spec,   &
-!		Cldrad_props)
-!		
+!                Cldrad_props)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -613,8 +619,8 @@ end subroutine obtain_bulk_lw_specified
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_sw_specified (is, ie, js, je, Cld_spec, &
-!		Cldrad_props)                     
-!		
+!                Cldrad_props)                     
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in

@@ -4,10 +4,11 @@
 !          DRY ADIABATIC ADJUSTMENT       
 !=======================================================================
 
+ use       mpp_mod, only: input_nml_file
  use       Fms_Mod, ONLY: FILE_EXIST, ERROR_MESG, OPEN_NAMELIST_FILE, &
                           CHECK_NML_ERROR,                   &
                           mpp_pe, mpp_root_pe, FATAL, WARNING, CLOSE_FILE, &
-                                   stdlog, write_version_number
+                          stdlog, write_version_number
  use Constants_Mod, ONLY: Grav, Kappa
 !---------------------------------------------------------------------
  implicit none
@@ -17,8 +18,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: dry_adj.F90,v 17.0 2009/07/21 02:54:56 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: dry_adj.F90,v 17.0.4.1 2010/08/30 20:33:34 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
  logical            :: module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -201,6 +202,10 @@
 ! --- READ NAMELIST
 !---------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+  read (input_nml_file, nml=dry_adj_nml, iostat=io)
+  ierr = check_nml_error(io,"dry_adj_nml")
+#else
   if( FILE_EXIST( 'input.nml' ) ) then
       unit = OPEN_NAMELIST_FILE ()
       ierr = 1
@@ -210,6 +215,7 @@
   end do
   10  CALL CLOSE_FILE ( unit )
   end if
+#endif
 
 !------- write version number and namelist ---------
 

@@ -2,6 +2,7 @@
 module bm_omp_mod
 
 !----------------------------------------------------------------------
+use             mpp_mod, only: input_nml_file
 use             fms_mod, only: file_exist, open_namelist_file, check_nml_error, &
                                error_mesg, FATAL, mpp_pe, mpp_root_pe, &
                                close_file, write_version_number, stdlog
@@ -20,8 +21,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: bm_omp.F90,v 18.0 2010/03/02 23:28:38 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: bm_omp.F90,v 18.0.2.1 2010/08/30 20:39:42 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----
@@ -111,22 +112,18 @@ contains
 !-----------------------------------------------------------------------
 !---------------------- local data -------------------------------------
 
-logical,dimension(size(tin,1),size(tin,2),size(tin,3)) :: do_adjust
 logical :: avgbl
-   real,dimension(size(tin,1),size(tin,2),size(tin,3)) ::  &
-             rin, esat, qsat, desat, dqsat, pmes, pmass
+   real,dimension(size(tin,1),size(tin,2),size(tin,3)) ::  rin
    real,dimension(size(tin,1),size(tin,2))             ::  &
                      hlcp, precip, cape, cin
-   real,dimension(size(tin,3))                         :: eref, rpc, tpc
+   real,dimension(size(tin,3))                         :: rpc, tpc
    real                                                ::  & 
        cape1, cin1, tot, deltak, deltaq, qrefint, deltaqfrac, deltaqfrac2, &
        ptopfrac, revap_eff
-integer  i, j, k, ix, jx, kx, klzb, ktop, klcl, k_950
+integer  i, j, k, ix, jx, kx, klzb, ktop, klcl
 
 !modif omp:
-real :: q_src_up, ratio, q_src, ratio_q, ratio_T, en_acc, m_en, ratio_ml
-real :: rs, es
-   real,dimension(size(tin,3))                         :: gz, q_sat, q_adj
+real :: q_src_up, ratio, q_src, ratio_q, ratio_T, en_acc, ratio_ml
 !-----------------------------------------------------------------------
 !     computation of precipitation with a betts-miller-like scheme
 !
@@ -920,7 +917,7 @@ if (k .eq. nlev) go to 11
       logical            :: nocape
       real, dimension(kx)   :: theta
       real                  :: t0, r0, es, rs, theta0, pstar, value, tlcl, &
-                               a, b, dtdlnp, d2tdlnp2, thetam, rm, tlcl2, &
+                               a, b, dtdlnp, thetam, rm, tlcl2, &
                                plcl2, plcl, plzb
 
       pstar = 1.e5
@@ -1001,7 +998,7 @@ if (k .eq. nlev) go to 11
          end do
 ! first level where you¹re saturated at the level
          klcl = k
-	 if (klcl.eq.1) klcl = 2
+         if (klcl.eq.1) klcl = 2
 ! do a saturated ascent to get the parcel temp at the LCL.  
 ! use your 2nd order equation up to the pressure above.  
 ! moist adaibat derivatives: (use the lcl values for temp, humid, and 
@@ -1099,7 +1096,7 @@ if (k .eq. nlev) go to 11
             end do
 ! first level where you're saturated at the level
             klcl2 = k
-	    if (klcl2.eq.1) klcl2 = 2
+            if (klcl2.eq.1) klcl2 = 2
 ! do a saturated ascent to get the parcel temp at the LCL.  
 ! use your 2nd order equation up to the pressure above.  
 ! moist adaibat derivatives: (use the lcl values for temp, humid, and 
@@ -1362,7 +1359,7 @@ if (k .eq. nlev) go to 11
 
      integer :: it
      real, dimension(161) :: table
-     real :: ft, t2, r1, r2, rat, tp1, es1
+     real :: ft, t2, tp1
 
 !      DIMENSION TABLE(161)
 
@@ -1476,6 +1473,10 @@ if (k .eq. nlev) go to 11
 
 !----------- read namelist ---------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=bm_omp_nml, iostat=io)
+      ierr = check_nml_error(io,"bm_omp_nml")
+#else
       if (file_exist('input.nml')) then
          unit = open_namelist_file ( )
          ierr=1; do while (ierr /= 0)
@@ -1484,6 +1485,7 @@ if (k .eq. nlev) go to 11
          enddo
   10     call close_file (unit)
       endif
+#endif
 
 !---------- output namelist --------------------------------------------
 

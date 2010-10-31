@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: icarus.f90,v 1.1.2.2 2010/05/24 18:59:16 wfc Exp $
-! $Name: riga_201006 $
+! $Name: riga_201012 $
 
       SUBROUTINE ICARUS(          &
      &     debug,                 &

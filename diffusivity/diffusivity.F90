@@ -13,6 +13,7 @@ module diffusivity_mod
 
 use     constants_mod, only : grav, vonkarm, cp_air, rdgas, rvgas
 
+use           mpp_mod, only : input_nml_file
 use           fms_mod, only : error_mesg, FATAL, file_exist,   &
                               check_nml_error, open_namelist_file,      &
                               mpp_pe, mpp_root_pe, close_file, &
@@ -94,8 +95,8 @@ private
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: diffusivity.F90,v 17.0 2009/07/21 02:54:19 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: diffusivity.F90,v 17.0.6.1 2010/08/30 20:39:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !=======================================================================
 
@@ -156,12 +157,17 @@ integer :: unit, ierr, io, logunit
 !------------------- read namelist input -------------------------------
 
       if (file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+         read (input_nml_file, nml=diffusivity_nml, iostat=io)
+         ierr = check_nml_error(io,"diffusivity_nml")
+#else
          unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
             read  (unit, nml=diffusivity_nml, iostat=io, end=10)
             ierr = check_nml_error(io,'diffusivity_nml')
          enddo
   10     call close_file (unit)
+#endif
 
 !------------------- dummy checks --------------------------------------
          if (frac_inner .le. 0. .or. frac_inner .ge. 1.) &
@@ -427,7 +433,7 @@ real, dimension(size(t,1),size(t,2))              :: h_inner, k_m_ref,&
                                                      k_t_ref, factor
 real, dimension(size(t,1),size(t,2),size(t,3)+1)  :: zm
 real                                              :: h_inner_max
-integer                                           :: i,j, k, kk, nlev
+integer                                           :: k, kk, nlev
 
 
 nlev = size(t,3)
@@ -482,7 +488,6 @@ real, intent(in)  , dimension(:,:)   :: h
 real, intent(inout) , dimension(:,:,:) :: k_m, k_t
 
 integer                                        :: k, nlev
-real, dimension(size(z_full,1),size(z_full,2)) :: elmix, htcrit
 real, dimension(size(z_full,1),size(z_full,2)) :: delta_u, delta_v, delta_z
 
 real :: htcrit_ss

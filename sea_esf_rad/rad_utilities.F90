@@ -19,14 +19,15 @@
 !  routines.
 ! </DESCRIPTION>
 !
-use fms_mod,               only: open_namelist_file, fms_init, &
-                                 mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, write_version_number, &
-                                 check_nml_error, error_mesg, &
-                                 FATAL, close_file, lowercase
-use  field_manager_mod, only :  parse
+use mpp_mod,            only : input_nml_file
+use fms_mod,            only : open_namelist_file, fms_init, &
+                               mpp_pe, mpp_root_pe, stdlog, &
+                               file_exist, write_version_number, &
+                               check_nml_error, error_mesg, &
+                               FATAL, close_file, lowercase
+use  field_manager_mod, only : parse
 
-use time_manager_mod,      only: time_type
+use time_manager_mod,   only : time_type
 
 !--------------------------------------------------------------------
 
@@ -43,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 18.0 2010/03/02 23:32:32 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -109,6 +110,8 @@ type aerosol_diagnostics_type
      real, dimension(:,:,:,:),   pointer  :: sw_heating_vlcno=>NULL()
      real, dimension(:,:,:,:,:), pointer  :: extopdep=>NULL(), &
                                              absopdep=>NULL()
+     real, dimension(:,:,:,:,:), pointer  :: asymdep=>NULL()
+
      real, dimension(:,:,:,:), pointer  :: extopdep_vlcno=>NULL(), &
                                            absopdep_vlcno=>NULL(), &
                                            lw_extopdep_vlcno=>NULL(), &
@@ -391,6 +394,7 @@ type cloudrad_control_type
     logical :: do_random_overlap
     logical :: do_max_random_overlap
     logical :: do_stochastic_clouds
+    logical :: use_temp_for_seed
     logical :: do_specified_strat_clouds
     logical :: do_ica_calcs
     logical :: do_liq_num
@@ -422,6 +426,7 @@ type cloudrad_control_type
     logical :: do_random_overlap_iz
     logical :: do_max_random_overlap_iz
     logical :: do_stochastic_clouds_iz
+    logical :: use_temp_for_seed_iz
     logical :: do_specified_strat_clouds_iz
     logical :: do_ica_calcs_iz
     logical :: do_liq_num_iz
@@ -1077,6 +1082,10 @@ type solar_spectrum_type
     integer         :: eight70_band_indx
     logical         :: visible_band_indx_iz, one_micron_indx_iz
     logical         :: eight70_band_indx_iz
+    integer         :: w340_band_indx, w380_band_indx,  &
+                       w440_band_indx, w670_band_indx
+    logical         :: w340_band_iz, w380_band_iz, &
+                       w440_band_iz, w670_band_iz
 end type solar_spectrum_type
 
 !---------------------------------------------------------------------
@@ -1230,7 +1239,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false.,          &
+                                         .false., .false., .false., &
                                          0,0,0,0,0,0 , &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1239,7 +1248,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false.            )
+                                         .false., .false., .false.   )
 
 
 type (longwave_parameter_type), public  ::   &
@@ -1323,6 +1332,10 @@ subroutine rad_utilities_init
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=rad_utilities_nml, iostat=io)
+      ierr = check_nml_error(io,'rad_utilities_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -1331,6 +1344,7 @@ subroutine rad_utilities_init
         end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -1474,6 +1488,7 @@ subroutine check_derived_types
           Cldrad_control%do_donner_deep_clouds_iz .and. &
           Cldrad_control%do_uw_clouds_iz .and. &
           Cldrad_control%do_stochastic_clouds_iz .and. &
+          Cldrad_control%use_temp_for_seed_iz .and. &
           Cldrad_control%do_random_overlap_iz .and. &
           Cldrad_control%do_ica_calcs_iz .and. &
           CLdrad_control%using_fu2007_iz .and.  &
@@ -1591,8 +1606,7 @@ integer, dimension(:,:,:), intent(out) :: ix
 !  local variables:
 
       real, dimension (size(x,1), size(x,2), size(x,3))  ::  fx
-      real        ::  table_min,  table_inc
-      integer     ::  k, table_col
+      integer     ::  k
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -2574,7 +2588,7 @@ real, dimension(:),       intent(out)      :: extband, ssalbband, &
                                            sumomegak, sumomegakg, &
                                            sumrefthick
       integer  :: nband 
-      integer  :: i, j, k, ni
+      integer  :: ni
  
  
 !--------------------------------------------------------------------

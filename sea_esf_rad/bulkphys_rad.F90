@@ -19,6 +19,7 @@
  
 !    shared modules:
 
+use mpp_mod,                only: input_nml_file
 use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   fms_init, mpp_root_pe, stdlog,  &
                                   write_version_number, file_exist, & 
@@ -62,8 +63,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 17.0 2009/07/21 02:56:05 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 
@@ -181,7 +182,7 @@ logical  :: module_is_initialized = .false.
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call bulkphys_rad_init (pref, lonb, latb)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="pref" TYPE="real">
 !       pref      array containing two reference pressure profiles
@@ -261,6 +262,10 @@ real, dimension(:,:), intent(in) :: lonb, latb
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=bulkphys_rad_nml, iostat=io)
+      ierr = check_nml_error(io,'bulkphys_rad_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -269,6 +274,7 @@ real, dimension(:,:), intent(in) :: lonb, latb
         enddo
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write namelist to logfile.
@@ -360,8 +366,8 @@ end subroutine bulkphys_rad_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call bulkphys_sw_driver (is, ie, js, je, cosz, Cld_spec,   &
-!		Cldrad_props)
-!		
+!                Cldrad_props)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -543,7 +549,7 @@ end subroutine bulkphys_sw_driver
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call bulkphys_lw_driver (is, ie, js, je, Cld_spec, Cldrad_props)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in

@@ -23,11 +23,12 @@
 
 use time_manager_mod,         only: time_type, time_manager_init, &
                                     set_time, operator (+)
+use mpp_mod,                  only: input_nml_file
 use fms_mod,                  only: open_namelist_file, mpp_pe, &
                                     mpp_root_pe, stdlog,  fms_init, &
                                     write_version_number, file_exist, & 
                                     check_nml_error, error_mesg,   &
-                                    FATAL, close_file
+                                    FATAL, NOTE, close_file
 use tracer_manager_mod,       only:         &
 !                                   tracer_manager_init,  &
                                     get_tracer_index, NO_TRACER
@@ -103,8 +104,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0 2009/07/21 02:56:14 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0.8.1.2.1.2.1 2010/08/30 20:33:31 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -148,11 +149,19 @@ logical :: do_fu2007 = .false.
 logical :: do_rain   = .false. !sjl
 logical :: do_snow   = .false. !miz
 logical :: do_graupel  = .false. !sjl
+logical :: force_use_of_temp_for_seed = .false.  
+                                        ! if true, when using stochastic 
+                                        ! clouds, force the seed to use 
+                                        ! top-model-level temps as input to
+                                        ! random number generator
+                                        ! (needed for some 
+                                        ! specialized applications)
 
 namelist /cloud_spec_nml / cloud_type_form, wtr_cld_reff,   &
                            ice_cld_reff, rain_reff, overlap_type, &
                            doing_data_override, do_fu2007,    &
-                           do_rain, do_snow, do_graupel
+                           do_rain, do_snow, do_graupel, &
+                           force_use_of_temp_for_seed
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -280,7 +289,8 @@ type(time_type),          intent(in)   ::  Time
 !   local variables:
  
       integer   ::   unit, ierr, io, logunit
-      integer   ::   ndum
+      integer   ::   ndum, i, j, ii, jj
+      
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -311,6 +321,10 @@ type(time_type),          intent(in)   ::  Time
  
 !---------------------------------------------------------------------
 !    read namelist.
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=cloud_spec_nml, iostat=io)
+      ierr = check_nml_error(io,"cloud_spec_nml")
+#else
 !---------------------------------------------------------------------
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ( )
@@ -320,6 +334,7 @@ type(time_type),          intent(in)   ::  Time
         enddo
 10      call close_file (unit)
       endif
+#endif
 
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -617,6 +632,47 @@ type(time_type),          intent(in)   ::  Time
           lats(:,:) = latb(:,:)*radian
           lons(:,:) = lonb(:,:)*radian
           call cloud_generator_init
+
+!---------------------------------------------------------------------
+!     if it is desired to force the use of the temperature-based
+!     random number seed (as is used when time is not always advancing
+!     as seen by the radiation package, or when model resolution is
+!     less than 1 degree), set the logical control variable in 
+!     Cldrad_control to so indicate. 
+!---------------------------------------------------------------------
+          if ( force_use_of_temp_for_seed) then
+            Cldrad_control%use_temp_for_seed = .true.
+            Cldrad_control%use_temp_for_seed_iz = .true.
+            call error_mesg ('cloud_spec_init', &
+                 'Will use temp as basis for stochastic cloud seed; &
+                    &force_use_of_temp_for_seed is set true', NOTE)
+          endif
+
+!---------------------------------------------------------------------
+!     if model resolution is less than 1 degree, set the logical control 
+!     variable in Cldrad_control to use the model temperature at top 
+!     level as the random number seed to provide spacial uniqueness.
+!---------------------------------------------------------------------
+          if (.not. Cldrad_control%use_temp_for_seed) then
+  jLoop:    do j=1,jd
+              do i=1,id
+                do jj=j+1,jd+1
+                  do ii=i+1,id+1
+                    if (NINT(lats(ii,jj)) == NINT(lats(i,j))) then
+                      if (NINT(lons(ii,jj)) == NINT(lons(i,j))) then      
+                        Cldrad_control%use_temp_for_seed = .true.
+                        Cldrad_control%use_temp_for_seed_iz = .true.
+                        call error_mesg ('cloud_spec_init', &
+                       'Will use temp as basis for stochastic cloud seed; &
+                              &resolution higher than 1 degree', NOTE)
+                        exit jLoop
+                      endif
+                    endif
+                  end do
+                end do
+              end do
+            end do jLoop
+          endif
         endif
       else
         call error_mesg ('microphys_rad_mod', &
@@ -1186,7 +1242,9 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
             if (Cldrad_control%do_strat_clouds .or.    &
                 Cldrad_control%do_uw_clouds .or.    &
                 Cldrad_control%do_donner_deep_clouds) then
-              call combine_cloud_properties ( is, js, Rad_time, &
+              call combine_cloud_properties ( is, js,  &
+                                             Atmos_input%temp(:,:,1), &
+                                             Rad_time, &
                                              Lsc_microphys,    &
                                              Meso_microphys,   &
                                              Cell_microphys,   &
@@ -1278,7 +1336,6 @@ type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
                                                Cell_microphys, &
                                                Shallow_microphys
 
-integer :: ier
 
 !----------------------------------------------------------------------
 !    deallocate the array elements of Cld_spec.
@@ -1701,7 +1758,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
 !
 !---------------------------------------------------------------------
 
-      integer  :: k, n
+      integer  :: n
 
 !---------------------------------------------------------------------
 !    allocate the arrays defining the microphysical parameters of the 
@@ -2025,7 +2082,7 @@ end subroutine initialize_cldamts
 !  </IN>
 ! </SUBROUTINE>
 ! 
-subroutine combine_cloud_properties (is, js, Rad_time, &
+subroutine combine_cloud_properties (is, js, temp, Rad_time, &
                                      Lsc_microphys, Meso_microphys,  &
                                      Cell_microphys, Shallow_microphys,&
                                      Cld_spec)
@@ -2038,6 +2095,7 @@ subroutine combine_cloud_properties (is, js, Rad_time, &
 !----------------------------------------------------------------------
 
 integer, intent(in)  :: is, js
+real, dimension(:,:), intent(in) :: temp
 type(time_type), intent(in) :: Rad_time
 type(microphysics_type),        intent(in)    :: Lsc_microphys, &
                                                  Meso_microphys, &
@@ -2074,7 +2132,6 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
 !
 !---------------------------------------------------------------------
 
-      integer   :: nb
 !-----------------------------------------------------------------------
 !    variables for folding Donner cloud properties into stochastic
 !    cloud arrays
@@ -2088,6 +2145,7 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
                               size(Lsc_microphys%cldamt,3),   &       
                               size(Lsc_microphys%stoch_cldamt, 4))  :: &
                                                      randomNumbers
+      real    :: seedwts(8) = (/3000.,1000.,300.,100.,30.,10.,3.,1./)
       integer :: nn, nsubcols
 
       integer :: i, j, k, n
@@ -2216,15 +2274,25 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
 !    anvils, then large-scale clouds and clear sky.
 !------------------------------------------------------------
         if (Cldrad_control%do_donner_deep_clouds) then     
-          do j=1,size(Lsc_microphys%cldamt,2)
-            do i=1,size(Lsc_microphys%cldamt,1)
-              streams(i,j) = &
-                initializeRandomNumberStream (                      &
+          if (Cldrad_control%use_temp_for_seed) then
+            do j=1,size(Lsc_microphys%cldamt,2)
+              do i=1,size(Lsc_microphys%cldamt,1)
+                streams(i,j) = &
+                  initializeRandomNumberStream (                      &
+                    ishftc(nint(temp(i,j)*seedwts),1))
+              end do
+            end do
+          else
+            do j=1,size(Lsc_microphys%cldamt,2)
+              do i=1,size(Lsc_microphys%cldamt,1)
+                streams(i,j) = &
+                  initializeRandomNumberStream (                      &
                     constructSeed(nint(lons(is+i-1,js+j-1)),           &
                                   nint(lats(is+i-1,js+j-1)), Rad_time, &
                                   perm = 1))
+              end do
             end do
-          end do
+          endif
  
 !----------------------------------------------------------------------
 !    get the random numbers to do both sw and lw at oncer.
@@ -2283,15 +2351,25 @@ type(cld_specification_type), intent(inout)   :: Cld_spec
 !    PDF, then large-scale clouds and clear sky.
 !------------------------------------------------------------
         if (Cldrad_control%do_uw_clouds) then     
-          do j=1,size(Lsc_microphys%cldamt,2)
-            do i=1,size(Lsc_microphys%cldamt,1)
-              streams(i,j) = &
-                initializeRandomNumberStream (                      &
+          if (Cldrad_control%use_temp_for_seed) then
+            do j=1,size(Lsc_microphys%cldamt,2)
+              do i=1,size(Lsc_microphys%cldamt,1)
+                streams(i,j) = &
+                  initializeRandomNumberStream (                      &
+                    ishftc(nint(temp(i,j)*seedwts),2))
+              end do
+            end do
+          else
+            do j=1,size(Lsc_microphys%cldamt,2)
+              do i=1,size(Lsc_microphys%cldamt,1)
+                streams(i,j) = &
+                  initializeRandomNumberStream (                      &
                     constructSeed(nint(lons(is+i-1,js+j-1)),           &
                                   nint(lats(is+i-1,js+j-1)), Rad_time, &
                                   perm = 2))
+              end do
             end do
-          end do
+          endif
  
 !----------------------------------------------------------------------
 !    get the random numbers to do both sw and lw at oncer.

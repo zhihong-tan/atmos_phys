@@ -18,16 +18,17 @@
 ! </DESCRIPTION>
 !
 
-use fms_mod,                only: fms_init, open_namelist_file, mpp_pe, &
-                                  mpp_root_pe, stdlog,  &
-                                  write_version_number, file_exist, & 
-                                  check_nml_error, error_mesg,   &
-                                  FATAL, close_file
-use rh_clouds_mod,          only: rh_clouds_avg      
-use rad_utilities_mod,      only: rad_utilities_init, &
-                                  cldrad_properties_type, &
-                                  cld_specification_type
-use constants_mod,           only: radian
+use mpp_mod,           only: input_nml_file
+use fms_mod,           only: fms_init, open_namelist_file, mpp_pe, &
+                             mpp_root_pe, stdlog,  &
+                             write_version_number, file_exist, & 
+                             check_nml_error, error_mesg,   &
+                             FATAL, close_file
+use rh_clouds_mod,     only: rh_clouds_avg      
+use rad_utilities_mod, only: rad_utilities_init, &
+                             cldrad_properties_type, &
+                             cld_specification_type
+use constants_mod,     only: radian
                                  
 
 !--------------------------------------------------------------------
@@ -46,8 +47,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 17.0 2009/07/21 02:57:29 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: riga_201006 $'
+  character(len=128)  :: version =  '$Id: rh_based_clouds.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
+  character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 
@@ -222,7 +223,7 @@ subroutine rh_based_clouds_init
 
 
 !--------------------------------------------------------------------
-     integer                           :: unit, ierr, io, logunit
+     integer :: unit, ierr, io, logunit
 
 
       if (module_is_initialized) return
@@ -232,6 +233,10 @@ subroutine rh_based_clouds_init
 !    read namelist.
 !---------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=rh_based_clouds_nml, iostat=io)
+      ierr = check_nml_error(io,"rh_based_clouds_nml")
+#else
       if (file_exist('input.nml')) then
         unit =  open_namelist_file (                          )
         ierr=1; do while (ierr /= 0)
@@ -240,6 +245,7 @@ subroutine rh_based_clouds_init
         enddo
 10      call close_file (unit)
       endif
+#endif
 
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -316,7 +322,7 @@ end subroutine rh_based_clouds_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call rh_clouds_amt (is, ie, js, je, press, lat, Cld_spec)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !   is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -662,7 +668,7 @@ end subroutine rh_clouds_amt
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_lw_rh (is, ie, js, je, Cld_spec, Cldrad_props)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -776,8 +782,8 @@ end subroutine obtain_bulk_lw_rh
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_sw_rh (is, ie, js, je, cosz, Cld_spec,   &
-!		Cldrad_props)
-!		
+!                Cldrad_props)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -928,7 +934,7 @@ type(cldrad_properties_type), intent(inout) :: Cldrad_props
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cldalb (zenith)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="zenith" TYPE="real">
 !   zenith angle
@@ -1012,8 +1018,8 @@ end subroutine cldalb
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call albcld_lw(hi_cloud, mid_cloud, low_cloud,       &
-!		cmxolw, crndlw, emmxolw, emrndlw)
-!		
+!                cmxolw, crndlw, emmxolw, emrndlw)
+!
 !  </TEMPLATE>
 !  <IN NAME="hi_cloud" TYPE="logical">
 ! 
@@ -1163,8 +1169,8 @@ end subroutine albcld_lw
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call albcld_sw(i,j, hi_cloud, mid_cloud, low_cloud,         &
-!		camtsw, cmxolw, crndlw, cvisrfsw, cirrfsw, cirabsw)
-!		
+!                camtsw, cmxolw, crndlw, cvisrfsw, cirrfsw, cirabsw)
+!
 !  </TEMPLATE>
 !  <INOUT NAME="i" TYPE="real">
 ! 

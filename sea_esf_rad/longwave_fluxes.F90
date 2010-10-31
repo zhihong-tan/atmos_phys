@@ -16,16 +16,17 @@
 !
 !  shared modules:
 
-use fms_mod,               only: open_namelist_file, fms_init, &
-                                 mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, write_version_number, &
-                                 check_nml_error, error_mesg, &
-                                 FATAL, close_file
+use mpp_mod,            only: input_nml_file
+use fms_mod,            only: open_namelist_file, fms_init, &
+                              mpp_pe, mpp_root_pe, stdlog, &
+                              file_exist, write_version_number, &
+                              check_nml_error, error_mesg, &
+                              FATAL, close_file
 
 !  shared radiation package modules:
 
-use rad_utilities_mod,    only:  Rad_control, &
-                                 rad_utilities_init, lw_diagnostics_type
+use rad_utilities_mod, only:  Rad_control, &
+                              rad_utilities_init, lw_diagnostics_type
 
 !---------------------------------------------------------------------
 
@@ -42,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 17.0 2009/07/21 02:56:44 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -124,6 +125,10 @@ subroutine longwave_fluxes_init
       call fms_init
       call rad_utilities_init
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=longwave_fluxes_nml, iostat=io)
+      ierr = check_nml_error(io,"longwave_fluxes_nml")
+#else
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
@@ -135,6 +140,7 @@ subroutine longwave_fluxes_init
         end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -165,7 +171,7 @@ end subroutine longwave_fluxes_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call longwave_fluxes_ks ( source, trans, source2, trans2,  &
-!     		              cld_trans, cld_ind, Lw_diagnostics)
+!                             cld_trans, cld_ind, Lw_diagnostics)
 !  </TEMPLATE>
 !  <IN NAME="source" TYPE="real">
 !   source is longwave source function.
@@ -333,7 +339,7 @@ end subroutine longwave_fluxes_ks
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call longwave_fluxes_k_down (klevel, source, trans, trans2,   &
-!			        cld_trans, cld_ind,   Lw_diagnostics)
+!                                cld_trans, cld_ind,   Lw_diagnostics)
 !  </TEMPLATE>
 !  <IN NAME="klevel" TYPE="integer">
 !   klevel is the starting vertical level to calculate longwave fluxes
@@ -393,7 +399,7 @@ integer, dimension(:),        intent(in)     ::  cld_ind
       real, dimension (size(source,1), size(source,2)) :: flux4, flux4a
 
       real    ::  flux_tmp, flux_tmp2
-      integer ::  kp, p, i, j, k,   israd, ierad, jsrad, jerad
+      integer ::  kp, i, j, israd, ierad, jsrad, jerad
       integer :: ke
       integer :: m, nbands
 
@@ -511,7 +517,7 @@ end subroutine longwave_fluxes_k_down
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call longwave_fluxes_KE_KEp1 (source, trans, trans2,   &
-!			        cld_trans, cld_ind,   Lw_diagnostics)
+!                                cld_trans, cld_ind,   Lw_diagnostics)
 !  </TEMPLATE>
 !  <IN NAME="source" TYPE="real">
 !   source is longwave flux source function
@@ -635,7 +641,7 @@ end subroutine longwave_fluxes_KE_KEp1
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call longwave_fluxes_diag (source, trans,  &
-!			       cld_trans, cld_ind,   Lw_diagnostics)
+!                               cld_trans, cld_ind,   Lw_diagnostics)
 !  </TEMPLATE>
 !  <IN NAME="source" TYPE="real">
 !   source is longwave flux source function

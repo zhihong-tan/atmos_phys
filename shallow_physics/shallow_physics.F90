@@ -1,4 +1,5 @@
 module shallow_physics_mod
+use mpp_mod, only: input_nml_file
 
 use  fms_mod, only: open_namelist_file, file_exist,   &
                     close_file, check_nml_error,      &
@@ -22,8 +23,8 @@ interface shallow_physics_init
 end interface
 !========================================================================
 ! version information 
-character(len=128) :: version = '$Id: shallow_physics.F90,v 17.0 2009/07/21 02:58:12 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: shallow_physics.F90,v 17.0.4.1 2010/08/30 20:33:35 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 !========================================================================
 
 real, allocatable, dimension(:,:) :: h_eq
@@ -71,7 +72,10 @@ real    :: lon_m, lat_m, width_m, width_i, deg2rad
   endif
 
 ! read the namelist
-
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=shallow_physics_nml, iostat=io)
+   ierr = check_nml_error(io,"shallow_physics_nml")
+#else
   if (file_exist('input.nml')) then
     unit = open_namelist_file ()
     ierr=1
@@ -81,6 +85,7 @@ real    :: lon_m, lat_m, width_m, width_i, deg2rad
     enddo
     10 call close_file (unit)
   endif
+#endif
 
 ! write version info and namelist to logfile
 

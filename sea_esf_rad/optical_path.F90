@@ -16,37 +16,38 @@
 
 !   shared modules:
 
-use fms_mod,               only: open_namelist_file, fms_init, &
-                                 mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, write_version_number, &
-                                 check_nml_error, error_mesg, &
-                                 FATAL, close_file
-use constants_mod,         only: RDGAS, RVGAS, GRAV, wtmair, &
-                                 avogno, pstd, diffac, tfreeze, &
-                                 constants_init
+use mpp_mod,             only: input_nml_file
+use fms_mod,             only: open_namelist_file, fms_init, &
+                               mpp_pe, mpp_root_pe, stdlog, &
+                               file_exist, write_version_number, &
+                               check_nml_error, error_mesg, &
+                               FATAL, close_file
+use constants_mod,       only: RDGAS, RVGAS, GRAV, wtmair, &
+                               avogno, pstd, diffac, tfreeze, &
+                               constants_init
 
 !   shared radiation package modules:
 
-use rad_utilities_mod,     only: looktab, longwave_tables3_type, &
-                                 rad_utilities_init,  &
-                                 radiative_gases_type, &
-                                 aerosol_type,  &
-                                 aerosol_diagnostics_type,&
-                                 aerosol_properties_type, &
-                                 atmos_input_type, &
-                                 Lw_parameters,  Lw_control, &
-                                 Rad_control, &
-                                 optical_path_type, &
-                                 gas_tf_type, &
-                                 table_alloc
-use longwave_params_mod,   only: longwave_params_init, NBCO215,&
-                                 NBLY_RSB
+use rad_utilities_mod,   only: looktab, longwave_tables3_type, &
+                               rad_utilities_init,  &
+                               radiative_gases_type, &
+                               aerosol_type,  &
+                               aerosol_diagnostics_type,&
+                               aerosol_properties_type, &
+                               atmos_input_type, &
+                               Lw_parameters,  Lw_control, &
+                               Rad_control, &
+                               optical_path_type, &
+                               gas_tf_type, &
+                               table_alloc
+use longwave_params_mod, only: longwave_params_init, NBCO215,&
+                               NBLY_RSB
 
 !   radiation package modules:
 
-use lw_gases_stdtf_mod,    only: lw_gases_stdtf_init, cfc_exact,&
-                                 cfc_overod, cfc_overod_part,   &
-                                 cfc_exact_part
+use lw_gases_stdtf_mod,  only: lw_gases_stdtf_init, cfc_exact,&
+                               cfc_overod, cfc_overod_part,   &
+                               cfc_exact_part
 
 !--------------------------------------------------------------------
 
@@ -64,8 +65,8 @@ private
 !----------- version number for this module -------------------
 
    character(len=128)  :: &
-   version =  '$Id: optical_path.F90,v 18.0 2010/03/02 23:32:22 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: riga_201006 $'
+   version =  '$Id: optical_path.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
+   character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -351,6 +352,10 @@ subroutine optical_path_init(pref)
       call longwave_params_init
       call lw_gases_stdtf_init(pref)
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=optical_path_nml, iostat=io)
+      ierr = check_nml_error(io,"optical_path_nml")
+#else
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
@@ -362,6 +367,7 @@ subroutine optical_path_init(pref)
         end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -1530,7 +1536,7 @@ logical,                   intent(in)            :: including_aerosols
 
       real, dimension (size(to3cnt,1), size(to3cnt,2), &
                        size(to3cnt,3)-1) ::    &
-                                             cfc_tf, aer_tmp
+                                             cfc_tf
 
       real, dimension (size(to3cnt,1), size(to3cnt,2)) :: &
                                              aerooptdep_KE_15
@@ -2935,7 +2941,7 @@ type(optical_path_type), intent(inout) :: Optical
 
       real, dimension(size(temp,1), size(temp,2), &
                                      size(temp,3)) :: texpsl
-      integer     :: k, i
+      integer     :: k
       integer      :: israd, ierad, jsrad, jerad
 
 !--------------------------------------------------------------------
@@ -3490,7 +3496,6 @@ type(optical_path_type),       intent(inout) :: Optical
       integer   ::  N_AEROSOL_BANDS 
       integer   :: i,j,k
       integer   :: ix, jx, kx
-      integer   :: na, nw, ni
       integer   :: nsc, opt_index
 !--------------------------------------------------------------------
 !  local variables:

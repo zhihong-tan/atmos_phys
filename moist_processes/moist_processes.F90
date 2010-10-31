@@ -21,6 +21,7 @@
 use sat_vapor_pres_mod,    only: compute_qs, lookup_es
 use time_manager_mod,      only: time_type, get_time
 use diag_manager_mod,      only: register_diag_field, send_data
+use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
                                  file_exist, check_nml_error,    &
                                  open_namelist_file, close_file, &
@@ -96,8 +97,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 18.0.4.2 2010/05/24 18:23:49 wfc Exp $'
-   character(len=128) :: tagname = '$Name: riga_201006 $'
+   version = '$Id: moist_processes.F90,v 18.0.4.3.2.1.2.1 2010/09/05 12:51:18 pjp Exp $'
+   character(len=128) :: tagname = '$Name: riga_201012 $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -788,7 +789,7 @@ logical, intent(out), dimension(:,:)     :: convect
    real :: temp
    logical, dimension(size(t,1),size(t,2)) :: ltemp
    real, dimension(size(t,1),size(t,2)) :: temp_2d
-   real, dimension(size(t,1),size(t,2)) :: cldarea, tca2
+   real, dimension(size(t,1),size(t,2)) :: tca2
    real, dimension(size(t,1),size(t,2),size(t,3)) :: total_cloud_area
    real, dimension(size(t,1),size(t,2),size(t,3)) :: temp_3d1, temp_3d2, temp_3d3
        
@@ -996,7 +997,8 @@ logical, intent(out), dimension(:,:)     :: convect
             &output are present', FATAL)
       endif
 
-      call moistproc_uw_conv(Time, is, ie, js, je, dt, tin(is:ie,js:je,:), qin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:),    &
+      call moistproc_uw_conv(Time, is, ie, js, je, dt, tin(is:ie,js:je,:), qin(is:ie,js:je,:), &
+                             uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:),    &
                              pfull, phalf, zfull, zhalf, omega, pblht,        &
                              ustar, bstar, qstar, land, coldT, Aerosol,       &
                              cush, cbmf, cmf(is:ie,js:je,:), conv_calc_completed,            &
@@ -1239,8 +1241,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !    total water specific humidities
 !---------------------------------------------------------------------
     if (do_strat .and. do_limit_donner) then
-      call moistproc_scale_donner(is,ie,js,je,qin(is:ie,js:je,:), delta_temp(is:ie,js:je,:), delta_q(is:ie,js:je,:), precip_returned,    &
-                                  total_precip, lheat_precip, liquid_precip(is:ie,js:je,:),    &
+      call moistproc_scale_donner(is,ie,js,je,qin(is:ie,js:je,:), delta_temp(is:ie,js:je,:), delta_q(is:ie,js:je,:), &
+                                  precip_returned, total_precip, lheat_precip, liquid_precip(is:ie,js:je,:),    &
                                   frozen_precip(is:ie,js:je,:), num_tracers, tracers_in_donner,&
                                   qtr(is:ie,js:je,:,:), scale)
       used = send_data (id_scale_donner, scale, Time, is, js )
@@ -1426,7 +1428,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !--------------------------------------------------------------------
       tin(is:ie,js:je,:) = tin(is:ie,js:je,:)+delta_temp(is:ie,js:je,:)
       qin(is:ie,js:je,:) = qin(is:ie,js:je,:)+delta_q(is:ie,js:je,:)
-      call moist_conv (tin(is:ie,js:je,:), qin(is:ie,js:je,:), pfull, phalf, coldT, ttnd_don(is:ie,js:je,:), qtnd_don(is:ie,js:je,:), &
+      call moist_conv (tin(is:ie,js:je,:), qin(is:ie,js:je,:), pfull, phalf, coldT, &
+                       ttnd_don(is:ie,js:je,:), qtnd_don(is:ie,js:je,:), &
                        rain_donmca, snow_donmca, dtinv, Time, is, js,     &
                        donner_tracer(is:ie,js:je,:,:), qtr(is:ie,js:je,:,:), Lbot=kbot, mask=mask)           
 
@@ -1612,7 +1615,8 @@ logical, intent(out), dimension(:,:)     :: convect
             endif
           endif
         end do
-        call moistproc_uw_conv(Time, is, ie, js, je, dt, tin(is:ie,js:je,:), qin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:),    &
+        call moistproc_uw_conv(Time, is, ie, js, je, dt, tin(is:ie,js:je,:), qin(is:ie,js:je,:), &
+                               uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:),    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
                                ustar, bstar, qstar, land, coldT, Aerosol,       &
                                cush, cbmf, cmf(is:ie,js:je,:), conv_calc_completed,            &
@@ -1624,7 +1628,8 @@ logical, intent(out), dimension(:,:)     :: convect
                                tracers_in_uw, num_uw_tracers, shallow_cloud_area,&
                                shallow_liquid, shallow_ice, shallow_droplet_number, uw_wetdep)
       else ! (.not. use_updated_profiles_for_uw)
-        call moistproc_uw_conv(Time, is, ie, js, je, dt, tin_orig(is:ie,js:je,:), qin_orig(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer_orig(is:ie,js:je,:,:),    &
+        call moistproc_uw_conv(Time, is, ie, js, je, dt, tin_orig(is:ie,js:je,:), qin_orig(is:ie,js:je,:), &
+                               uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer_orig(is:ie,js:je,:,:),    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
                                ustar, bstar, qstar, land, coldT, Aerosol,       &
                                cush, cbmf, cmf(is:ie,js:je,:), conv_calc_completed,            &
@@ -1664,18 +1669,21 @@ logical, intent(out), dimension(:,:)     :: convect
      call mpp_clock_begin (bm_clock)
 
      if (do_bm) then ! betts-miller cumulus param scheme
-       call betts_miller (dt,tin(is:ie,js:je,:),qin(is:ie,js:je,:),pfull,phalf,coldT,rain,snow,ttnd(is:ie,js:je,:),qtnd(is:ie,js:je,:), &
+       call betts_miller (dt,tin(is:ie,js:je,:),qin(is:ie,js:je,:),pfull,phalf,coldT,rain,snow,&
+                         ttnd(is:ie,js:je,:),qtnd(is:ie,js:je,:), &
                          q_ref(is:ie,js:je,:),bmflag,klzbs,cape,cin,t_ref(is:ie,js:je,:),invtaubmt,       &
                          invtaubmq, mask=mask)
      endif
 
      if (do_bmmass) then ! betts-miller-style massflux cumulus param scheme
-       call bm_massflux (dt,tin(is:ie,js:je,:),qin(is:ie,js:je,:),pfull,phalf,coldT,rain,snow,ttnd(is:ie,js:je,:),qtnd(is:ie,js:je,:),  &
+       call bm_massflux (dt,tin(is:ie,js:je,:),qin(is:ie,js:je,:),pfull,phalf,coldT,rain,snow,&
+                         ttnd(is:ie,js:je,:),qtnd(is:ie,js:je,:),  &
                          q_ref(is:ie,js:je,:),bmflag,klzbs,t_ref(is:ie,js:je,:),massflux(is:ie,js:je,:), mask=mask)
      endif
 
      if (do_bmomp) then ! olivier's betts-miller cumulus param scheme
-       call bm_omp (dt,tin(is:ie,js:je,:),qin(is:ie,js:je,:),pfull,phalf,coldT,rain,snow,ttnd(is:ie,js:je,:),qtnd(is:ie,js:je,:),       &
+       call bm_omp (dt,tin(is:ie,js:je,:),qin(is:ie,js:je,:),pfull,phalf,coldT,rain,snow,&
+                    ttnd(is:ie,js:je,:),qtnd(is:ie,js:je,:),       &
                     q_ref(is:ie,js:je,:),bmflag,klzbs,t_ref(is:ie,js:je,:), mask=mask)
      endif
 
@@ -1729,9 +1737,10 @@ logical, intent(out), dimension(:,:)     :: convect
 !-----------------------------------------------------------------------
    if (do_ras) then
      call mpp_clock_begin (ras_clock)
-     call moistproc_ras(Time, is, js, dt, coldT, tin(is:ie,js:je,:), qin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:),&
-                        pfull, phalf, zhalf, tdt, qdt, udt, vdt, rdt,       &
-                        q_tnd(is:ie,js:je,:,:), ttnd(is:ie,js:je,:), qtnd(is:ie,js:je,:), ttnd_conv(is:ie,js:je,:), qtnd_conv(is:ie,js:je,:), mc, det0(is:ie,js:je,:),  &
+     call moistproc_ras(Time, is, js, dt, coldT, tin(is:ie,js:je,:), qin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), &
+                        tracer(is:ie,js:je,:,:), pfull, phalf, zhalf, tdt, qdt, udt, vdt, rdt,       &
+                        q_tnd(is:ie,js:je,:,:), ttnd(is:ie,js:je,:), qtnd(is:ie,js:je,:), &
+                        ttnd_conv(is:ie,js:je,:), qtnd_conv(is:ie,js:je,:), mc, det0(is:ie,js:je,:),  &
                         lprec, fprec, rain_ras, snow_ras, rain3d, snow3d,   &
                         Aerosol, do_strat, do_liq_num, num_tracers,         &
                         tracers_in_ras, num_ras_tracers, kbot, mask)
@@ -1760,7 +1769,8 @@ logical, intent(out), dimension(:,:)     :: convect
        if (cmt_uses_ras) then
 !        mc_cmt = mc
 !        det_cmt = det0
-         call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:), pfull, phalf, &
+         call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), &
+                              tracer(is:ie,js:je,:,:), pfull, phalf, &
                               zfull, zhalf, pmass(is:ie,js:je,:), tdt, udt, vdt, rdt,           &
                               ttnd_conv(is:ie,js:je,:), dt, mc, det0(is:ie,js:je,:), diff_cu_mo,               &
                               num_tracers)
@@ -1769,7 +1779,8 @@ logical, intent(out), dimension(:,:)     :: convect
        if (cmt_uses_donner) then
 !        mc_cmt = m_cellup 
 !        det_cmt = m_cdet_donner 
-         call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:), pfull, phalf, &
+         call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), &
+                              tracer(is:ie,js:je,:,:), pfull, phalf, &
                               zfull, zhalf, pmass(is:ie,js:je,:), tdt, udt, vdt, rdt,           &
                               ttnd_conv(is:ie,js:je,:), dt, m_cellup, M_cdet_donner(is:ie,js:je,:), diff_cu_mo,&
                               num_tracers)
@@ -1785,7 +1796,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !   use with 'diffusive' cmt scheme, not the non-local. (attempt to
 !   use non-local will cause FATAL in _init routine.)
          det_cmt(is:ie,js:je,:) = 0.0   
-         call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:), pfull, phalf, &
+         call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), &
+                              tracer(is:ie,js:je,:,:), pfull, phalf, &
                               zfull, zhalf, pmass(is:ie,js:je,:), tdt, udt, vdt, rdt,           &
                               ttnd_conv(is:ie,js:je,:), dt, mc_cmt, det_cmt(is:ie,js:je,:), diff_cu_mo,        &
                               num_tracers)
@@ -1808,7 +1820,8 @@ logical, intent(out), dimension(:,:)     :: convect
            mc_cmt(:,:,k) = mc_cmt(:,:,k) + cmf(is:ie,js:je,k-1)
          end do
        endif
-       call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), tracer(is:ie,js:je,:,:), pfull, phalf, &
+       call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), &
+                            tracer(is:ie,js:je,:,:), pfull, phalf, &
                             zfull, zhalf, pmass(is:ie,js:je,:), tdt, udt, vdt, rdt,           &
                             ttnd_conv(is:ie,js:je,:), dt, mc_cmt, det_cmt(is:ie,js:je,:), diff_cu_mo,        &
                             num_tracers)
@@ -2013,7 +2026,9 @@ logical, intent(out), dimension(:,:)     :: convect
    used = send_data (id_don_precip, rain_don+snow_don+rain_donmca+snow_donmca, &
                      Time, is, js)
 ! uw_conv diags
-   used = send_data (id_uw_precip, rain_uw(is:ie,js:je) + snow_uw(is:ie,js:je), Time, is, js)
+   if ( id_uw_precip > 0 ) then
+     used = send_data (id_uw_precip, rain_uw(is:ie,js:je) + snow_uw(is:ie,js:je), Time, is, js)
+   endif
    used = send_data (id_uw_snow, snow_uw, Time, is, js)
    used = send_data (id_tdt_uw, ttnd_uw(is:ie,js:je,:), Time, is, js, 1, rmask=mask)
    used = send_data (id_qdt_uw, qtnd_uw(is:ie,js:je,:), Time, is, js, 1, rmask=mask)
@@ -2052,12 +2067,14 @@ logical, intent(out), dimension(:,:)     :: convect
 
    if (id_enth_uw_col > 0) then
      temp_2d = -HLV*rain_uw(is:ie,js:je) -HLS*snow_uw(is:ie,js:je)
-     call column_diag(id_enth_uw_col, is, js, Time, ttnd_uw(is:ie,js:je,:), CP_AIR, qltnd_uw(is:ie,js:je,:), -HLV, qitnd_uw(is:ie,js:je,:), -HLS, temp_2d)
+     call column_diag(id_enth_uw_col, is, js, Time, ttnd_uw(is:ie,js:je,:), CP_AIR, qltnd_uw(is:ie,js:je,:), -HLV, &
+                      qitnd_uw(is:ie,js:je,:), -HLS, temp_2d)
    endif
 
    if (id_wat_uw_col > 0) then
      temp_2d = rain_uw(is:ie,js:je) + snow_uw(is:ie,js:je)
-     call column_diag(id_wat_uw_col, is, js, Time, qtnd_uw(is:ie,js:je,:), 1.0, qltnd_uw(is:ie,js:je,:), 1.0, qitnd_uw(is:ie,js:je,:), 1.0, temp_2d)
+     call column_diag(id_wat_uw_col, is, js, Time, qtnd_uw(is:ie,js:je,:), 1.0, qltnd_uw(is:ie,js:je,:), 1.0, &
+                      qitnd_uw(is:ie,js:je,:), 1.0, temp_2d)
    endif
         
 !---------------------------------------------------------------------
@@ -2294,8 +2311,8 @@ logical, intent(out), dimension(:,:)     :: convect
 
     else if (do_strat) then
       call mpp_clock_begin (stratcloud_clock)
-      call moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, tin(is:ie,js:je,:), qin(is:ie,js:je,:), tracer(is:ie,js:je,:,:),  &
-                                 pfull, phalf, zhalf, omega, radturbten, mc_full(is:ie,js:je,:), &
+      call moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, tin(is:ie,js:je,:), qin(is:ie,js:je,:), &
+                                 tracer(is:ie,js:je,:,:), pfull, phalf, zhalf, omega, radturbten, mc_full(is:ie,js:je,:), &
                                  diff_t, land, area, tdt, qdt, rdt, q_tnd(is:ie,js:je,:,:), ttnd(is:ie,js:je,:),  &
                                  qtnd(is:ie,js:je,:), lprec, fprec, rain, snow, rain3d, snow3d,  &
                                   snowclr3d, &
@@ -2416,7 +2433,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    parameterization:
 !---------------------------------------------------------------------
       used = send_data (id_qldt_ls, q_tnd(is:ie,js:je,:,nql), Time, is, js, 1, rmask=mask)
-      used = send_data (id_qndt_ls, q_tnd(is:ie,js:je,:,nqn), Time, is, js, 1, rmask=mask)
+      if (do_liq_num) used = send_data (id_qndt_ls, q_tnd(is:ie,js:je,:,nqn), Time, is, js, 1, rmask=mask)
       used = send_data (id_qidt_ls, q_tnd(is:ie,js:je,:,nqi), Time, is, js, 1, rmask=mask)
       used = send_data (id_qadt_ls, q_tnd(is:ie,js:je,:,nqa), Time, is, js, 1, rmask=mask)
 
@@ -3182,6 +3199,10 @@ integer            :: k
        endif
 
        if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+         read (input_nml_file, nml=moist_processes_nml, iostat=io)
+         ierr = check_nml_error(io,'moist_processes_nml')
+#else   
 
          unit = open_namelist_file ( )
          ierr=1; do while (ierr /= 0)
@@ -3189,6 +3210,7 @@ integer            :: k
             ierr = check_nml_error(io,'moist_processes_nml')
          enddo
   10     call close_file (unit)
+#endif
 
 !--------- write version and namelist to standard log ------------
 

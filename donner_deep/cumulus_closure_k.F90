@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: cumulus_closure_k.F90,v 18.0 2010/03/02 23:29:59 fms Exp $
+!  $Id: cumulus_closure_k.F90,v 17.0.2.1.4.1 2010/03/17 20:27:07 wfc Exp $
 
 
 !module cumulus_closure_inter_mod
@@ -86,13 +86,12 @@ integer,                        intent(out) :: error
 !----------------------------------------------------------------------
 !   local variables:
 
-      real, dimension (nlev_hires)  :: rt, ta, ra, tden, tdena,  &
+      real, dimension (nlev_hires)  :: rt, tden, tdena,  &
                                        dtpdta, pert_env_t, pert_env_r, &
                                        pert_parcel_t, pert_parcel_r, &
                                        parcel_r_clo, parcel_t_clo
 
       real     :: tau, cape_c
-      real     :: rhavg, dpsum
       logical  :: ctrig
       real     :: tdens, tdensa, ri1, ri2, rild, rile, rilf, ri2b,  &
                   sum2, rilak, rilbk, rilck, rilakm, rilbkm, rilckm, &

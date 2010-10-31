@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 17.0 2009/07/21 02:54:27 fms Exp $
+!  $Id: donner_cloud_model_k.F90,v 17.0.4.2 2010/09/08 21:25:48 wfc Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -467,13 +467,13 @@ integer,                            intent(out)   :: error
       real,   dimension(nlev_lsm)         :: sig
       real,   dimension(nlev_hires)       :: dis, rsc
       real,   dimension (nlev_hires,ntr)  ::   clsou
-      real     :: qlw, qcw, qrw, es, dtfr, dtupa, dfrac, rmu,  &
+      real     :: qlw, qcw, qrw, dtfr, dtupa, dfrac, rmu,  &
                   rhodt_inv, psfc, actot, dt_micro,          dcw1,  &
                   dqrw3, rbar, rmub, density, densityp, d1, d2, dztr, &
                   entrain, dt_inv
       logical  :: flag
-      integer  :: max_cloud_level,indx, ktr
-      integer  :: k, kcont, kc, nbad
+      integer  :: max_cloud_level, ktr
+      integer  :: k, nbad
 !++lwh
       real, parameter :: g_2_kg = 1.e-3 ! kg/g
       real :: qlw_save, t_avg
@@ -814,8 +814,7 @@ integer,                            intent(out)   :: error
           do n = 1,size(xclo,2)
              if (Initialized%wetdep(n)%Lwetdep) then
                 call wet_deposition_0D   &
-                           (Initialized%wetdep(n)%scheme, &
-                            Initialized%wetdep(n)%Henry_constant, &
+                           (Initialized%wetdep(n)%Henry_constant, &
                             Initialized%wetdep(n)%Henry_variable, &
                             Initialized%wetdep(n)%frac_in_cloud, &
                             Initialized%wetdep(n)%alpha_r, &
@@ -1012,7 +1011,7 @@ character(len=*),        intent(out)   :: ermesg
 integer,                 intent(out)   :: error
 
 !----------------------------------------------------------------------
-      real    ::  es, dtdp, drdp, dwdp, tcest, west, &
+      real    ::  dtdp, drdp, dwdp, tcest, west, &
                   rest, qcwest,  qlwest, dtdp2, drdp2, dwdp2, qrwest
       integer :: nbad
 
@@ -1397,7 +1396,7 @@ integer,                 intent(out)  :: error
 !---------------------------------------------------------------------
 !   local variables:
 
-      real    ::  t_parcel, p_start, p_end, gamma, es, rs, kappa_moist
+      real    ::  t_parcel, p_start, p_end, gamma, rs, kappa_moist
       integer ::  max_levels
       integer ::  k, nbad
 
@@ -2118,7 +2117,7 @@ integer,                            intent(out)    :: error
       real, dimension(nlev_hires,ntr) ::  etf                      
       real, dimension(ntr)      ::  sumetf
       real                        ::  p, pl, ph, dpp, ptt, exf, &
-                                      thetf, esat, tv_env, tv_cld,  &
+                                      thetf, tv_env, tv_cld,  &
                                       dpdz_cb, sumemf, sumefc, sumthet
       integer                     ::  kcl, kch
       integer                     ::  kc, kcont, nbad
@@ -3511,8 +3510,8 @@ integer,                 intent(out)   :: error
 !--------------------------------------------------------------------
 !   local variables:
 
-      real      ::   pr, te, es, mre
-      integer   ::   k,nbad
+      real      ::   pr, te, mre
+      integer   ::   nbad
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -3654,9 +3653,8 @@ integer,                  intent(out)   :: error
 !--------------------------------------------------------------------
 !   local variables:
   
-      real :: cond, d1, d2, dcw2, dqcw3, dt_micro, dz, ent, es1, es2, &
-              pav, rb, qcwa, qeb, qrwa, red, rho, rs1, rs2, tcb,   &
-              teb, wav
+      real :: cond, d1, d2, dcw2, dqcw3, dt_micro, dz, ent, pav,  &
+              rb, qcwa, qeb, qrwa, red, rho, rs1, rs2, tcb, wav
       integer :: nbad
 
 !--------------------------------------------------------------------

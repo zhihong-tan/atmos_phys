@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 17.0.2.1 2009/11/28 17:41:23 rsh Exp $
+!  $Id: donner_lscloud_k.F90,v 17.0.2.1.2.1 2010/03/17 20:27:07 wfc Exp $
 
 !module donner_lscloud_inter_mod
 
@@ -364,10 +364,8 @@ integer,                     intent(out)    :: error
 !--------------------------------------------------------------------
 !   local variables:
  
-     real, dimension(nlev_lsm)  :: qrf
-     real                       :: acell, pzm, rfun, qsat, esat
-     integer                    :: numeq
-     integer                    :: i, j, k, n, nbad
+     real                       :: acell, pzm, rfun
+     integer                    :: i, j, k, n
 
 !--------------------------------------------------------------------
 !   local variables:

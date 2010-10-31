@@ -32,6 +32,7 @@ use tracer_manager_mod,only: get_tracer_index,   &
                              get_number_tracers, &
                              MAX_TRACER_FIELDS,  &
                              query_method
+use mpp_mod,           only: input_nml_file
 use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
                              file_exist, write_version_number, &
@@ -76,8 +77,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 18.0 2010/03/02 23:31:36 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: aerosol.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 
 !-----------------------------------------------------------------------
@@ -361,6 +362,10 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=aerosol_nml, iostat=io)
+      ierr = check_nml_error(io,'aerosol_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -370,6 +375,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
         end do
 10      call close_file (unit)   
       endif                      
+#endif
                                   
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -720,7 +726,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
           if (any(time_varying_species(1:nfields))) then
               call error_mesg ('aerosol_mod', &
                    'aerosol values must be fixed in time when &
-	                     	   &calculate_column is .true.', FATAL)
+                                   &calculate_column is .true.', FATAL)
           endif 
 
 
@@ -1084,9 +1090,8 @@ type(aerosol_type),       intent(inout)  :: Aerosol
       real, dimension(1,1, size(p_half,3)-1,    &
                                                nfields) :: aerosol_data
       real, dimension(1,1, size(p_half,3))   :: p_half_col
-      logical         :: flag, rad_forc_online
       integer         :: n, k, j, i, na            ! do-loop index
-      integer         :: nn, kd
+      integer         :: nn
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.

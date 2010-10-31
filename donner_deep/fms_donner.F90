@@ -27,6 +27,7 @@ use fms_mod,                only: mpp_pe, mpp_root_pe,  &
                                   open_restart_file
 use fms_io_mod,             only: register_restart_field, restart_file_type, &
                                   save_restart, get_mosaic_tile_file
+use mpp_mod,                only: input_nml_file
 use mpp_io_mod,             only: mpp_open, mpp_close, fieldtype,  &
                                   mpp_read_meta, mpp_get_info, &
                                   mpp_get_fields, mpp_read, &
@@ -65,8 +66,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: fms_donner.F90,v 18.0 2010/03/02 23:30:18 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: fms_donner.F90,v 17.0.2.1.2.1.2.1.4.2.2.1 2010/08/30 20:33:34 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !--------------------------------------------------------------------
@@ -292,6 +293,10 @@ integer,               intent(in)       :: kpar
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=donner_deep_nml, iostat=io)
+      ierr = check_nml_error(io,'donner_deep_nml')
+#else   
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -300,6 +305,7 @@ integer,               intent(in)       :: kpar
         enddo
 10      call close_file (unit)
       endif
+#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -899,17 +905,6 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
 !---------------------------------------------------------------------
 !   local variables:
 
-      real, dimension (ie-is+1, je-js+1)  :: tempdiag, tempdiag2, tempdiag3  
-                           ! array used to hold various data fields being
-                           ! sent to diag_manager_mod
-      logical :: used      ! logical indicating data has been received 
-                           ! by diag_manager_mod 
-      integer :: nlev      ! number of large-scale model layers
-      integer :: ntr       ! number of tracers transported by the
-                           ! donner deep convection parameterization
-      integer :: k, n, nn  ! do-loop indices
-      integer :: ncem      ! number of cumulus ensemble members in the
-                           ! donner deep convection parameterization
       type(time_type)  :: Time
 
       Time = set_time (secs, days)
@@ -2308,7 +2303,7 @@ type(donner_nml_type), intent(inout) :: Nml
       character(len=8)              :: chvers
       character(len=32)             :: tracername_in
       integer                       :: ntracers_in
-      integer                       :: n, nn, k
+      integer                       :: n, nn
 
 !-----------------------------------------------------------------------
 !   local variables:
@@ -2595,8 +2590,8 @@ subroutine fms_donner_register_restart(fname, Initialized, ntracers, Don_save, N
       allocate(Til_restart)
    endif
 
-   id_restart = register_restart_field(Don_restart, fname, 'conv_alarm', Initialized%conv_alarm)
-   id_restart = register_restart_field(Don_restart, fname, 'donner_deep_freq', Nml%donner_deep_freq)
+   id_restart = register_restart_field(Don_restart, fname, 'conv_alarm', Initialized%conv_alarm, no_domain = .true.)
+   id_restart = register_restart_field(Don_restart, fname, 'donner_deep_freq', Nml%donner_deep_freq, no_domain = .true.)
 
    if (.not. (write_reduced_restart_file) .or. &
         Initialized%conv_alarm >  Initialized%physics_dt)  then
@@ -2675,10 +2670,10 @@ type(donner_nml_type), intent(inout) :: Nml
       character(len=128)    :: tname
       integer               :: ndim, natt, nvar, ntime
       integer               :: old_freq
-      integer               :: n_alltracers, iuic, n
+      integer               :: n_alltracers, iuic
       logical               :: is_tracer_in_restart_file
       integer, dimension(4) :: siz
-      logical               :: field_found, field_found2, field_found3,&
+      logical               :: field_found, field_found2, &
                                field_found4
       integer               :: it, jn, nn
 
@@ -2991,7 +2986,7 @@ type(donner_save_type), intent(inout) :: Don_save
 !-------------------------------------------------------------------
 !  local variables:
 
-      integer             :: k, n, nn, nx, nc
+      integer             :: n, nx, nc
       logical             :: flag, success
       integer             :: nfields, model, num_methods
       character(len=200)  :: method_name, field_type, method_control,&

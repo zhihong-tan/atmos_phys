@@ -61,7 +61,8 @@ module strat_cloud_mod
 !   <REFERENCE>           
 !The form of most of the microphysics follows:
 !
-!Rotstayn, L., 1997: A physically based scheme for the treatment of stratiform clouds and precipitation in large-scale models. I: Description and evaluation of microphysical processes. Quart. J. Roy. Met. Soc. 123, 1227-1282. 
+!Rotstayn, L., 1997: A physically based scheme for the treatment of stratiform clouds and precipitation in large-scale models. 
+!I: Description and evaluation of microphysical processes. Quart. J. Roy. Met. Soc. 123, 1227-1282. 
 ! </REFERENCE>
 !   <COMPILER NAME="">     </COMPILER>
 !   <PRECOMP FLAG="">      </PRECOMP>
@@ -69,7 +70,8 @@ module strat_cloud_mod
 !   <TESTPROGRAM NAME="">  </TESTPROGRAM>
 !   <BUG>                  </BUG>
 !   <NOTE> 
-!1. qmin should be chosen such that the range of {qmin, max(qa,ql,qi)} is resolved by the precision of the numbers used. (default = 1.E-10)
+!1. qmin should be chosen such that the range of {qmin, max(qa,ql,qi)} is resolved by the precision of the numbers used.
+!   (default = 1.E-10)
 !   </NOTE>
 
 !   <NOTE> 
@@ -89,27 +91,28 @@ module strat_cloud_mod
 
 ! </INFO>
 
-  use  sat_vapor_pres_mod, only :  compute_qs
-  use             fms_mod, only :  file_exist, open_namelist_file,  &
-       error_mesg, FATAL, NOTE,         &
-       mpp_pe, mpp_root_pe, close_file, &
-       read_data, write_data,           &
-       check_nml_error, &
-       write_version_number, stdlog, &
-       open_restart_file, open_ieee32_file, &
-       mpp_error
-  use  fms_io_mod,         only :  get_restart_io_mode, &
-                                   register_restart_field, restart_file_type, &
-                                   save_restart, restore_state, get_mosaic_tile_file
-  use  constants_mod,      only :  rdgas,rvgas,hlv,hlf,hls,      &
-       cp_air,grav,tfreeze,dens_h2o
-  use  cloud_rad_mod,      only :  cloud_rad_init
-  use  diag_manager_mod,   only :  register_diag_field, send_data
-  use  time_manager_mod,   only :  time_type, get_date
-  use cloud_generator_mod, only :  do_cloud_generator,  &
-                                   cloud_generator_init,         &
-                                   compute_overlap_weighting
-  use beta_dist_mod,        only: beta_dist_init, beta_dist_end, &
+  use  sat_vapor_pres_mod, only : compute_qs
+  use             mpp_mod, only : input_nml_file
+  use             fms_mod, only : file_exist, open_namelist_file,  &
+                                  error_mesg, FATAL, NOTE,         &
+                                  mpp_pe, mpp_root_pe, close_file, &
+                                  read_data, write_data,           &
+                                  check_nml_error, &
+                                  write_version_number, stdlog, &
+                                  open_restart_file, open_ieee32_file, &
+                                  mpp_error
+  use  fms_io_mod,         only : get_restart_io_mode, &
+                                  register_restart_field, restart_file_type, &
+                                  save_restart, restore_state, get_mosaic_tile_file
+  use  constants_mod,      only : rdgas,rvgas,hlv,hlf,hls,      &
+                                  cp_air,grav,tfreeze,dens_h2o
+  use  cloud_rad_mod,      only : cloud_rad_init
+  use  diag_manager_mod,   only : register_diag_field, send_data
+  use  time_manager_mod,   only : time_type, get_date
+  use cloud_generator_mod, only : do_cloud_generator,  &
+                                  cloud_generator_init,         &
+                                  compute_overlap_weighting
+  use beta_dist_mod,       only : beta_dist_init, beta_dist_end, &
                                   incomplete_beta
   use  rad_utilities_mod,  only : aerosol_type
   use  aer_ccn_act_mod,    only : aer_ccn_act_wpdf, aer_ccn_act_init
@@ -493,7 +496,8 @@ module strat_cloud_mod
 !  Diffusion coefficient threshold for enhanced erosion to turn on. (default = 1.0) 
 !  </DATA>
 !  <DATA NAME="super_choice" UNITS="" TYPE="logical" DIM="" DEFAULT="">
-! Should should excess vapor in supersaturated conditions be put into cloud water (true) or precipitation fluxes (false)? (default = .false.) 
+! Should should excess vapor in supersaturated conditions be put into cloud water (true) or precipitation fluxes (false)?
+! (default = .false.) 
 !  </DATA>
 !  <DATA NAME="tracer_advec" UNITS="" TYPE="logical" DIM="" DEFAULT="">
 ! Are cloud liquid,ice and fraction advected by the grid resolved motion? (default = .false.) 
@@ -501,10 +505,12 @@ module strat_cloud_mod
 !  <DATA NAME="qmin" UNITS="kg condensate/kg air" TYPE="real" DIM="" DEFAULT="">
 !  Minimum permissible value of cloud liquid, cloud ice, saturated volume fraction, or rain and snow areas.
 
-! NOTE: qmin should be chosen such that the range of {qmin, max(qa,ql,qi)} is resolved by the precision of the numbers used. (default = 1.E-10) 
+! NOTE: qmin should be chosen such that the range of {qmin, max(qa,ql,qi)} is resolved by the precision of the numbers used.
+! (default = 1.E-10) 
 !  </DATA>
 !  <DATA NAME="Dmin" UNITS="Dimensionless" TYPE="real" DIM="" DEFAULT="">
-! Minimum permissible dissipation in analytic integration of qa, ql, qi equations. This constant only affects the method by which the prognostic equations are integrated.
+! Minimum permissible dissipation in analytic integration of qa, ql, qi equations. This constant only affects the method 
+! by which the prognostic equations are integrated.
 
 !NOTE: Dmin will be MACHINE DEPENDENT and occur when
 
@@ -584,8 +590,8 @@ module strat_cloud_mod
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 17.0.2.1.2.1.2.1.2.1 2009/11/28 18:00:04 rsh Exp $'
-  Character(len=128) :: Tagname = '$Name: riga_201006 $'
+  Character(len=128) :: Version = '$Id: strat_cloud.F90,v 17.0.2.1.2.1.2.1.2.1.6.1.2.2 2010/09/07 14:45:41 wfc Exp $'
+  Character(len=128) :: Tagname = '$Name: riga_201012 $'
   logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers
@@ -735,9 +741,7 @@ CONTAINS
     integer                                :: unit,io,ierr, logunit
     integer                                :: vers2
     character(len=4)                       :: chvers
-    character(len=5)                       :: chio
     character(len=64)                      :: restart_file, fname
-    integer, dimension(4)                  :: siz
     !-----------------------------------------------------------------------
     !       
     !
@@ -751,16 +755,20 @@ CONTAINS
     !       Namelist functions
 
     !       ----- read namelist -----
-
+#ifdef INTERNAL_FILE_NML
+    read (input_nml_file, nml=strat_cloud_nml, iostat=io)
+    ierr = check_nml_error(io,"strat_cloud_nml")
+#else
     if ( file_exist('input.nml')) then
        unit = open_namelist_file ()
        ierr=1; do while (ierr /= 0)
        read  (unit, nml=strat_cloud_nml, iostat=io, end=10)
        ierr = check_nml_error(io,'strat_cloud_nml')
-    enddo
-10  call close_file (unit)
- endif
- call get_restart_io_mode(do_netcdf_restart)
+       enddo
+10     call close_file (unit)
+    endif
+#endif
+    call get_restart_io_mode(do_netcdf_restart)
 
  !write namelist variables to logfile
  if ( mpp_pe() == mpp_root_pe() ) then
@@ -838,7 +846,7 @@ CONTAINS
          in_different_file = .true.
          allocate(Til_restart)
       endif
-      id_restart = register_restart_field(Str_restart, restart_file, 'vers', vers)
+      id_restart = register_restart_field(Str_restart, restart_file, 'vers', vers, no_domain=.true.)
       id_restart = register_restart_field(Til_restart, restart_file, 'nsum', nsum)
       id_restart = register_restart_field(Til_restart, restart_file, 'qlsum', qlsum)
       id_restart = register_restart_field(Til_restart, restart_file, 'qisum', qisum)
@@ -2101,9 +2109,6 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
         integer                                        :: id,jd,ns
         integer                                        :: j,ipt,jpt
         integer                                        :: i,unit,nn        
-!ljd
-        integer                                        :: itest,jtest
-!ljd
         real                                           :: inv_dtcloud, Si0
         real                                           :: icbp, icbp1, pnorm
         real, dimension(size(T,1),size(T,2),size(T,3)) :: airdens
@@ -2162,14 +2167,11 @@ subroutine strat_cloud(Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
              areaice, areaautocv, rvolume, vfalldiag
         logical :: used
 
-        integer :: year, month, day, hour, minute, second
-
-        integer            :: k,s,ix,jx,kx,sx,naer,na
-        real               :: thickness, up_strat, drop, wp2 ! cjg
-        real, dimension(3) :: totalmass, mass_ratio
+        integer            :: k
+        real               :: thickness, up_strat, wp2 ! cjg
         real, dimension(size(T,1),size(T,2),size(T,3),4) :: totalmass1
 !rab - variables necessary to clean up strat_cloud....
-        real               :: freeze_pt, mult, tmp1s, tmp2s, tmp3s, snow_fact
+        real               :: freeze_pt, tmp1s, tmp2s, tmp3s, snow_fact
         real               :: qc0s, qc1s, qceqs, qcbars, C_dts, D_dts
         real               :: qagtmps,qcgtmps,qvgtmps
 

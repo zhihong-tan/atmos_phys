@@ -4,14 +4,15 @@
 !   MELLOR-YAMADA LEVEL 2.5 TURBULENCE CLOSURE SCHEME - GFDL VERSION   !
 !=======================================================================
 
- use       Fms_Mod,   ONLY: FILE_EXIST, OPEN_NAMELIST_FILE, ERROR_MESG, FATAL, &
-                            CLOSE_FILE, NOTE, READ_DATA,          &
-                            check_nml_error, mpp_pe, mpp_root_pe, &
-                            write_version_number, stdlog, open_restart_file
- use     fms_io_mod,  only: register_restart_field, restart_file_type
- use     fms_io_mod,  only: save_restart, restore_state
- use Tridiagonal_Mod, ONLY: TRI_INVERT, CLOSE_TRIDIAGONAL
- use constants_mod,   only: grav, vonkarm
+ use mpp_mod,           only : input_nml_file
+ use fms_mod,           only : file_exist, open_namelist_file, error_mesg, &
+                               FATAL, close_file, note, read_data,          &
+                               check_nml_error, mpp_pe, mpp_root_pe, &
+                               write_version_number, stdlog, open_restart_file
+ use fms_io_mod,        only : register_restart_field, restart_file_type, &
+                               save_restart, restore_state
+ use tridiagonal_mod,   only : tri_invert, close_tridiagonal
+ use constants_mod,     only : grav, vonkarm
  use monin_obukhov_mod, only : mo_diff
 
 !---------------------------------------------------------------------
@@ -30,8 +31,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: my25_turb.F90,v 18.0 2010/03/02 23:31:19 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: my25_turb.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
  logical            :: module_is_initialized = .false.
  
  logical :: init_tke
@@ -611,6 +612,10 @@ end subroutine get_tke
 ! --- Read namelist
 !---------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=my25_turb_nml, iostat=io)
+   ierr = check_nml_error(io,'my25_turb_nml')
+#else   
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
    unit = OPEN_NAMELIST_FILE ( )
@@ -623,6 +628,7 @@ end subroutine get_tke
    CALL CLOSE_FILE( unit )
 ! -------------------------------------
   end if
+#endif
 
 !---------------------------------------------------------------------
 ! --- Output version
@@ -718,18 +724,12 @@ end subroutine get_tke
 
   SUBROUTINE MY25_TURB_END
 !=======================================================================
- integer :: unit
 !=======================================================================
 !--------------------------------------------------------------------
 !  local variables:
 
       call my25_turb_restart
       module_is_initialized = .false.
-!---------------------------------------------------------------------
-!      unit = OPEN_RESTART_FILE ( file = 'RESTART/my25_turb.res', action = 'write' )
-!      call write_data ( unit, TKE )
-!      CALL CLOSE_FILE ( unit )
-
  
 !=====================================================================
 

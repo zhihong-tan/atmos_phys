@@ -30,6 +30,7 @@ use           clouds_mod, only: clouds, clouds_init, clouds_end
 
 use     time_manager_mod, only: time_type
 
+use              mpp_mod, only: input_nml_file
 use              fms_mod, only: fms_init, FATAL, &
                                 close_file, &
                                 open_namelist_file,    &
@@ -58,8 +59,8 @@ public    original_fms_rad_init, original_fms_rad_end, original_fms_rad
 
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
-character(len=128) :: version = '$Id: original_fms_rad.F90,v 15.0 2007/08/14 03:55:22 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: original_fms_rad.F90,v 15.0.10.2 2010/09/07 16:17:19 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !   ---- list of restart versions readable by this module ----
 !   (sorry, but restart version 1 will not be readable by this module)
@@ -306,6 +307,10 @@ type(time_type), intent(in)                 :: Time
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=original_fms_rad_nml, iostat=io)
+      ierr = check_nml_error(io,'original_fms_rad_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit = open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -314,6 +319,7 @@ type(time_type), intent(in)                 :: Time
         enddo
   10    call close_file (unit)
       endif
+#endif
 
 !---------------------------------------------------------------------
 !    write namelist to logfile.
@@ -437,12 +443,12 @@ end subroutine original_fms_rad_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call original_fms_rad (is, ie, js, je, phalf, lat_in, lon_in, &
-!		do_clear_sky_pass, &
-!		Rad_time, Time_diag, Atmos_input, &
-!		Surface, &
-!		Astro, Rad_gases, Cldrad_props, Cld_spec, &
-!		Fsrad_output, mask, kbot) 
-!		
+!                do_clear_sky_pass, &
+!                Rad_time, Time_diag, Atmos_input, &
+!                Surface, &
+!                Astro, Rad_gases, Cldrad_props, Cld_spec, &
+!                Fsrad_output, mask, kbot) 
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 ! 
@@ -792,8 +798,8 @@ end subroutine original_fms_rad
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call define_diag_column (is, ie, js, je,             lat,  &
-!		lon, ip, jp) 
-!		
+!                lon, ip, jp) 
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 ! 

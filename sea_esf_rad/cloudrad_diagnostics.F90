@@ -16,6 +16,7 @@
 
 ! shared modules:
 
+use mpp_mod,                 only: input_nml_file
 use fms_mod,                 only: fms_init, open_namelist_file, &
                                    write_version_number, mpp_pe, &
                                    mpp_root_pe, stdlog, file_exist,  &
@@ -64,8 +65,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 18.0 2010/03/02 23:31:45 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -403,6 +404,10 @@ type(time_type),         intent(in)    ::   Time
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=cloudrad_diagnostics_nml, iostat=io)
+      ierr = check_nml_error(io,'cloudrad_diagnostics_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -411,6 +416,7 @@ type(time_type),         intent(in)    ::   Time
         enddo
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write namelist to logfile.
@@ -1132,7 +1138,6 @@ real, dimension(:,:,:),         intent(in),  &
       logical    :: used
       integer    :: ix, jx, kx
       integer    :: i, j, k, n
-      integer    :: ier
       integer    :: nn
 
 
@@ -3343,7 +3348,6 @@ subroutine model_micro_dealloc (Model_microphys)
  
 type(microphysics_type), intent(inout) :: Model_microphys
 
-    integer :: ier
 
 !--------------------------------------------------------------------
 !    deallocate the components of the microphysics_type derived type

@@ -54,10 +54,11 @@ module edt_mod
 use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
                               tfreeze,radian
 
+use            mpp_mod, only: input_nml_file
 use            fms_mod, only: file_exist, open_namelist_file, error_mesg, FATAL,&
                               NOTE, mpp_pe, mpp_root_pe, close_file, read_data, &
                               write_data, write_version_number, stdlog, &
-                              open_restart_file, open_file
+                              open_restart_file, open_file, check_nml_error
 
 use   diag_manager_mod, only: register_diag_field, send_data
         
@@ -260,8 +261,8 @@ real, parameter :: tkemin  =   1.e-6  ! tke minimum (m2/s2)
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: edt.F90,v 17.0 2009/07/21 02:55:00 fms Exp $'
-character(len=128) :: Tagname = '$Name: riga_201006 $'
+character(len=128) :: Version = '$Id: edt.F90,v 17.0.6.2 2010/09/07 14:16:07 wfc Exp $'
+character(len=128) :: Tagname = '$Name: riga_201012 $'
 logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !
@@ -328,7 +329,7 @@ integer,         intent(in) :: idim,jdim,kdim,axes(4)
 type(time_type), intent(in) :: time
 real, dimension(:,:),intent(in) :: lonb, latb
 
-integer                     :: unit,io, logunit
+integer                     :: unit,io, logunit, ierr
 integer :: vers, vers2
 character(len=4) :: chvers
 integer, dimension(3)       :: full = (/1,2,3/), half = (/1,2,4/)
@@ -339,14 +340,19 @@ real         :: dellat, dellon
 !
 !      namelist functions
 
-       If (File_Exist('input.nml')) Then
-            unit = Open_namelist_File ()
-            io=1
-            Do While (io .ne. 0)
-                 Read  (unit, nml=edt_nml, iostat=io, End=10)
-            EndDo
-  10        Call Close_File (unit)
-       EndIf
+#ifdef INTERNAL_FILE_NML
+       read (input_nml_file, nml=edt_nml, iostat=io)
+       ierr = check_nml_error(io,'edt_nml')
+#else   
+       if (file_exist('input.nml')) then
+          unit = open_namelist_file ()
+          ierr=1 ; Do While (ierr .ne. 0)
+            Read  (unit, nml=edt_nml, iostat=io, End=10)
+            ierr = check_nml_error(io,'edt_nml')
+          enddo
+10        Call Close_File (unit)
+       endif
+#endif
 
 !------- write version number and namelist ---------
 
@@ -3438,7 +3444,7 @@ real, dimension(size(sl,1)+1) :: rcap          ! e/<e>
                 cmu(kk),cms(kk),n2(kk)*sqrt(abs(n2(kk)))*3600./&
 max(small,abs(n2(kk))),sqrt(s2(kk))*3600.,ri(kk)
        enddo
-26     format(1X,i2,1X,f7.2,1X,f7.1,1X,2(f6.4,1X),2(f6.3,1X),3(f9.3,1X))
+26     format(1X,i2,1X,f7.2,1X,f7.1,1X,2(f7.4,1X),2(f6.3,1X),3(f9.3,1X))
        write (dpu,'(a)')  ' '
        write (dpu,'(a)')  '-----------------------------------------'//&
             '-------------------------------------'

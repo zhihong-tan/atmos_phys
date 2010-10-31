@@ -19,6 +19,7 @@ use time_manager_mod, only:  time_type, get_time, set_time,  &
                              operator(+),  operator(-),      &
                              operator(==), operator(>=),     &
                              operator(/=)
+use mpp_mod,          only:  input_nml_file
 use fms_mod,          only:  open_file, file_exist, error_mesg, &
                              open_namelist_file, check_nml_error, &
                              fms_init, &
@@ -41,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 17.0.8.1 2010/05/19 16:29:00 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 17.0.8.1.2.1.2.1 2010/08/30 20:33:34 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -287,12 +288,17 @@ real,dimension(:,:), intent(in), optional :: blon, blat, area_in
 !    read namelist.
 !-----------------------------------------------------------------------
       if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=diag_integral_nml, iostat=io)
+        ierr = check_nml_error(io,'diag_integral_nml')
+#else   
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
         read  (unit, nml=diag_integral_nml, iostat=io, end=10)
         ierr = check_nml_error(io,'diag_integral_nml')
         end do
 10      call close_file (unit)
+#endif
       endif
  
 !---------------------------------------------------------------------
@@ -567,11 +573,13 @@ integer, optional, intent(in) :: is, js
 !    increment the count of points toward this integral and add the 
 !    values at this set of grid points to the accumulation array.
 !---------------------------------------------------------------------
+!$OMP CRITICAL
       field_count (field) = field_count(field) +   &
                             size(data,1)*size(data,2)
       field_sum   (field) = field_sum   (field) +  &
                             sum (data * area(i1:i2,j1:j2))
 
+!$OMP END CRITICAL
 !--------------------------------------------------------------------
 
  end subroutine sum_field_2d
@@ -656,12 +664,14 @@ integer, optional, intent(in) :: is, js
 !    in the vertical and then add the values at this set of grid points 
 !    to the accumulation array.
 !---------------------------------------------------------------------
+!$OMP CRITICAL
       field_count (field) = field_count (field) +   &
                             size(data,1)*size(data,2)
       data2 = sum(data,3)
       field_sum   (field) = field_sum   (field) +  &
                             sum (data2 * area(i1:i2,j1:j2))
 
+!$OMP END CRITICAL
 !---------------------------------------------------------------------
 
 end subroutine sum_field_3d
@@ -747,12 +757,14 @@ integer, optional, intent(in) :: is, js
 !    add the values at this set of grid points to the accumulation 
 !    array.
 !---------------------------------------------------------------------
+!$OMP CRITICAL
       field_count (field) = field_count (field) +   &
                             size(data,1)*size(data,2)
       data2 = vert_diag_integral (data, wt) 
       field_sum(field) = field_sum   (field) +  &
                          sum (data2 * area(i1:i2,j1:j2))
 
+!$OMP END CRITICAL
 !----------------------------------------------------------------------
 
 
@@ -838,10 +850,12 @@ integer,           intent(in) :: is, js, ie, je
 !    spheric factor of 2 in field_count. add the data values at this 
 !    set of grid points to the accumulation array.
 !----------------------------------------------------------------------
+!$OMP CRITICAL
       field_count (field) = field_count (field) + 2* (i2-i1+1)*(j2-j1+1)
       field_sum   (field) = field_sum   (field) +  &
                             sum (data(i1:i2,j1:j2)*area(is:ie,js:je))
 
+!$OMP END CRITICAL
 !---------------------------------------------------------------------
 
 

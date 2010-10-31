@@ -19,17 +19,18 @@
 ! </DESCRIPTION>
 !
 
-use fms_mod,                only: fms_init, file_exist, &
-                                  open_namelist_file,  &
-                                  check_nml_error, close_file,   &
-                                  write_version_number, &
-                                  mpp_pe, mpp_root_pe, stdlog, &
-                                  error_mesg, FATAL
+use mpp_mod,           only: input_nml_file
+use fms_mod,           only: fms_init, file_exist, &
+                             open_namelist_file,  &
+                             check_nml_error, close_file,   &
+                             write_version_number, &
+                             mpp_pe, mpp_root_pe, stdlog, &
+                             error_mesg, FATAL
 
-use constants_mod,          only: radian
-use rad_utilities_mod,      only: rad_utilities_init, &
-                                  cldrad_properties_type, &
-                                  cld_specification_type
+use constants_mod,     only: radian
+use rad_utilities_mod, only: rad_utilities_init, &
+                             cldrad_properties_type, &
+                             cld_specification_type
 
 
 !--------------------------------------------------------------------
@@ -49,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 17.0 2009/07/21 02:56:56 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: riga_201006 $'
+  character(len=128)  :: version =  '$Id: mgrp_prscr_clds.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
+  character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 
@@ -184,7 +185,7 @@ logical :: module_is_initialized = .false.
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call mgrp_prscr_clds_init (    pref, latb      )
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="pref" TYPE="">
 ! 
@@ -218,6 +219,10 @@ real, dimension(:,:), intent(in)             :: pref
 !---------------------------------------------------------------------
 !-----  read namelist  ------
   
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=mgrp_prscr_clds_nml, iostat=io)
+      ierr = check_nml_error(io,"mgrp_prscr_clds_nml")
+#else
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -226,6 +231,7 @@ real, dimension(:,:), intent(in)             :: pref
         enddo
 10      call close_file (unit)
       endif
+#endif
 
       call write_version_number (version, tagname)
       logunit = stdlog()
@@ -349,7 +355,7 @@ end subroutine mgrp_prscr_clds_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call find_nearest_index (latb, jindx2)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
 ! 
@@ -413,7 +419,7 @@ end subroutine find_nearest_index
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call prscr_clds_amt (is, ie, js, je, Cld_spec)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 ! 
@@ -551,7 +557,7 @@ end subroutine prscr_clds_amt
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_lw_prscr (is, ie, js, je, Cld_spec, Cldrad_props)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -684,7 +690,7 @@ end subroutine obtain_bulk_lw_prscr
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_sw_prscr (is, ie, js, je, Cld_spec, Cldrad_props)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -853,7 +859,7 @@ end subroutine obtain_bulk_sw_prscr
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cldht (plevel, kkbh, kkth)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="plevel" TYPE="real">
 ! 
@@ -1032,7 +1038,7 @@ end subroutine cldht
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cldint(plevel, cldobs, kindex, nl)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="plevel" TYPE="real">
 ! 

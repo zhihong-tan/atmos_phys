@@ -27,14 +27,14 @@ MODULE DIAG_CLOUD_RAD_MOD
 
 !-------------------------------------------------------------------
 
-use       fms_mod, only:  error_mesg, FATAL, file_exist,    &
-                          check_nml_error, open_namelist_file,       &
-                          mpp_pe, mpp_root_pe, close_file, &
-                          write_version_number, stdlog, open_restart_file
+use       mpp_mod, only: input_nml_file
+use       fms_mod, only: error_mesg, FATAL, file_exist,    &
+                         check_nml_error, open_namelist_file,       &
+                         mpp_pe, mpp_root_pe, close_file, &
+                         write_version_number, stdlog, open_restart_file
 
 ! Steve Klein's Cloud_Rad module
-  use Cloud_Rad_Mod, ONLY: CLOUD_RAD, CLOUD_RAD_INIT,              &
-                          cloud_rad_k_diag
+use Cloud_Rad_Mod, ONLY: CLOUD_RAD, CLOUD_RAD_INIT, cloud_rad_k_diag
 
 
 !-------------------------------------------------------------------
@@ -157,8 +157,8 @@ use       fms_mod, only:  error_mesg, FATAL, file_exist,    &
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 17.0 2009/07/21 02:54:12 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 17.0.4.2 2010/08/30 20:39:46 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 
@@ -3189,7 +3189,7 @@ end subroutine CLOUD_OPT_PROP_tg2
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer             :: unit, io, logunit
+ integer             :: unit, io, logunit, ierr
 
 !=====================================================================
 
@@ -3197,17 +3197,23 @@ end subroutine CLOUD_OPT_PROP_tg2
 ! --- Read namelist
 !---------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+  read (input_nml_file, nml=diag_cloud_rad_nml, iostat=io)
+  ierr = check_nml_error(io,"diag_cloud_rad_nml")
+#else
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
          unit = open_namelist_file ()
    io = 1
    do while( io .ne. 0 )
-   READ ( unit,  nml = diag_cloud_rad_nml, iostat = io, end = 10 ) 
+      READ ( unit,  nml = diag_cloud_rad_nml, iostat = io, end = 10 ) 
+      ierr = check_nml_error(io,'diag_cloud_rad_nml')
    end do
 10 continue
    call close_file (unit)
 ! -------------------------------------
   end if
+#endif
 
 !   **** call cloud_rad_init to read namelist containing L2STREM  ****
        call cloud_rad_init()

@@ -14,20 +14,20 @@
 
 !  shared modules:
 
-use fms_mod,               only: open_namelist_file, fms_init, &
-                                  mpp_pe, mpp_root_pe, stdlog, &
-                                  file_exist, write_version_number, &
-                                  check_nml_error, error_mesg, &
-                                  FATAL, close_file, &
-                                  open_restart_file
-use constants_mod,         only : constants_init, RDGAS, GRAV, pstd
+use mpp_mod,             only : input_nml_file
+use fms_mod,             only : open_namelist_file, fms_init, &
+                                mpp_pe, mpp_root_pe, stdlog, &
+                                file_exist, write_version_number, &
+                                check_nml_error, error_mesg, &
+                                FATAL, close_file, &
+                                open_restart_file
+use constants_mod,       only : constants_init, RDGAS, GRAV, pstd
 
 !   shared radiation package modules:
 
-use rad_utilities_mod,     only : rad_utilities_init,  &
-                                  Lw_control,&
-                                  atmos_input_type, gas_tf_type
-use longwave_params_mod,   only : longwave_params_init, NBCO215
+use rad_utilities_mod,   only : rad_utilities_init, Lw_control, &
+                                atmos_input_type, gas_tf_type
+use longwave_params_mod, only : longwave_params_init, NBCO215
 
 !---------------------------------------------------------------------
 
@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: gas_tf.F90,v 18.0 2010/03/02 23:32:01 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: gas_tf.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -423,6 +423,10 @@ real, dimension(:,:), intent(in) :: pref
        call rad_utilities_init
        call longwave_params_init
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=gas_tf_nml, iostat=io)
+      ierr = check_nml_error(io,"gas_tf_nml")
+#else
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
@@ -434,6 +438,7 @@ real, dimension(:,:), intent(in) :: pref
         end do
 10      call close_file (unit)
       endif
+#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -1109,8 +1114,7 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
       real, dimension (size(Gas_tf%tdav,1),  &
                        size(Gas_tf%tdav,2), &
                        size(Gas_tf%tdav,3)  ) ::   &  
-                                           ch41r, n2o1r, n2o17r,   &
-                                           n2o9r, ch41c, n2o1c, n2o17c,&
+                                           ch41c, n2o1c, n2o17c,&
                                            co2p, dift, d2cdt2, dco2dt,&
                                            ch4p, d2ch4dt2, dch4dt, &
                                            d2n2odt2, dn2odt,    &
@@ -1851,7 +1855,10 @@ end subroutine put_co2_stdtf_for_gas_tf
 !  <IN NAME="nf" TYPE="integer">
 !   index variable
 !  </IN>
-!  <IN NAME="co2m51_o, cdtm51_o, c2dm51_o, co2m58_o, cdtm58_o, c2dm58_o, co215nbps1_o, co215nbps8_o, co2dt15nbps1_o, co2dt15nbps8_o, co2d2t15nbps1_o, co2d2t15nbps8_o" TYPE="real">
+!  <IN NAME="co2m51_o, cdtm51_o, c2dm51_o, co2m58_o, cdtm58_o, c2dm58_o, co215nbps1_o, co215nbps8_o" TYPE="real">
+!   CO2 transmission functions
+!  </IN>
+!  <IN NAME="co2dt15nbps1_o, co2dt15nbps8_o, co2d2t15nbps1_o, co2d2t15nbps8_o" TYPE="real">
 !   CO2 transmission functions
 !  </IN>
 ! </SUBROUTINE>

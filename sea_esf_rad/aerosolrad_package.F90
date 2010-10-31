@@ -13,6 +13,7 @@
 ! </DESCRIPTION>
 !    shared modules:
 
+use mpp_mod,               only: input_nml_file
 use fms_mod,               only: open_namelist_file, fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
                                  file_exist, write_version_number, &
@@ -57,8 +58,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 18.0 2010/03/02 23:31:39 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:31 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -592,7 +593,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
 !  local variables:
 
       integer        :: unit, ierr, io, logunit
-      integer        :: n, m
+      integer        :: n
       character(len=16) :: chvers
       character(len=4)  :: chyr  
 
@@ -628,6 +629,10 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=aerosolrad_package_nml, iostat=io)
+      ierr = check_nml_error(io,'aerosolrad_package_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -636,6 +641,7 @@ real, dimension(:,:),           intent(in)  :: lonb,latb
         end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -1389,9 +1395,7 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props
 !----------------------------------------------------------------------
 ! local variables:                                                     
 
-      integer  :: na, nw, ni, nmodel       ! do-loop indices
-      integer  :: n
-      integer  :: yr, mo, dy, hr, mn, sc
+      integer  :: na, nw, ni       ! do-loop indices
       integer  :: iaer, i, j, k
       real, dimension (size(Aerosol%aerosol,1),  &
                        size(Aerosol%aerosol,2),  &
@@ -1411,13 +1415,18 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props
       allocate (Aerosol_diags%extopdep (size(Aerosol%aerosol,1), &
                                         size(Aerosol%aerosol,2), &
                                         size(Aerosol%aerosol,3), &
-                                        size(Aerosol%aerosol,4), 6 ))
+                                        size(Aerosol%aerosol,4), 10 ))
       Aerosol_diags%extopdep = 0.0
       allocate (Aerosol_diags%absopdep (size(Aerosol%aerosol,1), &
                                         size(Aerosol%aerosol,2), &
                                         size(Aerosol%aerosol,3), &
-                                        size(Aerosol%aerosol,4), 6 ))
+                                        size(Aerosol%aerosol,4), 10 ))
       Aerosol_diags%absopdep = 0.0
+      allocate (Aerosol_diags%asymdep (size(Aerosol%aerosol,1), &
+                                       size(Aerosol%aerosol,2), &
+                                       size(Aerosol%aerosol,3), &
+                                       size(Aerosol%aerosol,4), 10 ))
+      Aerosol_diags%asymdep = 0.0
       allocate (Aerosol_diags%extopdep_vlcno    &
                                         (size(Aerosol%aerosol,1), &
                                          size(Aerosol%aerosol,2), &
@@ -1745,7 +1754,6 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props
             endif
           endif
 !$OMP END MASTER
-!$OMP BARRIER
           Aerosol_props%aerextbandlw = aerextbandlw_MOD
           Aerosol_props%aerssalbbandlw = aerssalbbandlw_MOD
           Aerosol_props%aerextbandlw_cn = aerextbandlw_cn_MOD
@@ -2968,16 +2976,9 @@ subroutine sw_aerosol_interaction
 !-----------------------------------------------------------------------
 !    local variables:
 
-      real,    dimension(:), allocatable    :: aeroext_in,   &
-                                               aerossalb_in,   &
-                                               aeroasymm_in
-      logical, dimension(:), allocatable    :: found
-
-      integer           :: unit, num_input_categories
-      character(len=64) :: name_in
       integer           :: nbands, nband, nivl3
       real              :: sumsol3
-      integer           :: n, nw, noptical
+      integer           :: nw
       integer           :: nmodel
 
 !---------------------------------------------------------------------
@@ -3194,11 +3195,6 @@ subroutine lw_aerosol_interaction
 
       integer, dimension (N_AEROSOL_BANDS_CO)  :: iendaerband_co =  &
       (/ 80  /)
-      real, dimension (N_AEROSOL_BANDS_CN)     :: aerbandlo_cn =  &
-      (/ 800.0 /)
-
-      real, dimension (N_AEROSOL_BANDS_CN)     :: aerbandhi_cn =  &
-      (/ 1200.0 /)
 
       integer, dimension (N_AEROSOL_BANDS_CN)  :: istartaerband_cn =  &
       (/ 81  /)
@@ -3243,7 +3239,6 @@ subroutine lw_aerosol_interaction
                                                   nivl2aer_co
       integer, dimension (N_AEROSOL_BANDS_CN)  :: nivl1aer_cn,   &
                                                   nivl2aer_cn
-      integer, dimension (N_AEROSOL_BANDS)     :: nivl1aer, nivl2aer
       real,    dimension (N_AEROSOL_BANDS)     :: planckaerband
       real,    dimension (N_AEROSOL_BANDS_CN)  :: planckaerband_cn
 
@@ -3288,12 +3283,6 @@ subroutine lw_aerosol_interaction
 !                               parameterization band ni
 !
 !----------------------------------------------------------------------
-      real,    dimension (N_AEROSOL_BANDS_FR, naermodels) ::   &
-                                                  aerextbandlw_fr, &
-                                                  aerssalbbandlw_fr
-      real,    dimension (N_AEROSOL_BANDS_CO, naermodels) ::   &
-                                                  aerextbandlw_co, &
-                                                  aerssalbbandlw_co
       real,    dimension (N_AEROSOL_BANDS_FR, num_wavenumbers) :: &
                                                   planckivlaer_fr, &
                                                   sflwwts_fr
@@ -3302,8 +3291,6 @@ subroutine lw_aerosol_interaction
                                                   sflwwts_co
       real,    dimension (N_AEROSOL_BANDS_CN, num_wavenumbers) :: &
                                                   planckivlaer_cn   
-      real,    dimension (N_AEROSOL_BANDS, num_wavenumbers)  ::    &
-                                                  planckivlaer
       integer, dimension (num_wavenumbers)    ::  iendsfbands
 
 !---------------------------------------------------------------------

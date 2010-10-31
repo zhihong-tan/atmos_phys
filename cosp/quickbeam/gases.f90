@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
          
 ! $Id: gases.f90,v 1.1.2.1.2.1 2009/08/10 10:48:14 rsh Exp $
-! $Name: riga_201006 $
+! $Name: riga_201012 $
 
   function gases(PRES_mb,T,RH,f)
   implicit none

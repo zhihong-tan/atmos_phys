@@ -28,8 +28,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 18.0 2010/03/02 23:30:20 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: nonfms_donner.F90,v 18.0.2.1 2010/08/30 20:33:34 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !--------------------------------------------------------------------

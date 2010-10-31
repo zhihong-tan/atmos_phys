@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: cosp_simulator.F90,v 1.1.2.1.8.1 2010/05/26 17:18:32 wfc Exp $
-! $Name: riga_201006 $
+! $Id: cosp_simulator.F90,v 1.1.2.1.8.2 2010/09/08 21:21:34 wfc Exp $
+! $Name: riga_201012 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -63,7 +63,7 @@ SUBROUTINE COSP_SIMULATOR(me,gbx,sgx,sghydro,cfg,vgrid,sgradar,sglidar,isccp,mis
 
   ! Arguments
   integer, intent(in) :: me
-  type(cosp_gridbox),intent(in) :: gbx      ! Grid-box inputs
+  type(cosp_gridbox),intent(inout) :: gbx      ! Grid-box inputs
   type(cosp_subgrid),intent(in) :: sgx      ! Subgrid inputs
   type(cosp_sghydro),intent(in) :: sghydro  ! Subgrid info for hydrometeors
   type(cosp_config),intent(in)  :: cfg      ! Configuration options

@@ -5,7 +5,8 @@
 !=======================================================================
 
  use  Sat_Vapor_Pres_Mod, ONLY: compute_qs, lookup_es_des
- use       Fms_Mod,       ONLY: FILE_EXIST, ERROR_MESG, FATAL,   &
+ use  mpp_mod,            only: input_nml_file
+ use  Fms_Mod,            ONLY: FILE_EXIST, ERROR_MESG, FATAL,   &
                                 CHECK_NML_ERROR, OPEN_NAMELIST_FILE,      &
                                 CLOSE_FILE, mpp_pe, mpp_root_pe, &
                                 write_version_number, stdlog
@@ -22,8 +23,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 17.0 2009/07/21 02:57:55 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 17.0.4.1 2010/08/30 20:33:35 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
 
  logical :: module_is_initialized = .false.
 
@@ -86,6 +87,10 @@
 ! --- Read namelist
 !---------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+  read (input_nml_file, nml=shallow_conv_nml, iostat=io)
+  ierr = check_nml_error(io,"shallow_conv_nml")
+#else
   if( FILE_EXIST( 'input.nml' ) ) then
 ! -------------------------------------
    unit = OPEN_NAMELIST_FILE ( )
@@ -98,6 +103,7 @@
    CALL CLOSE_FILE ( unit )
 ! -------------------------------------
   end if
+#endif
 
 !------- write version number and namelist ---------
 

@@ -17,6 +17,7 @@
 
 ! shared modules:
 
+use mpp_mod,                 only: input_nml_file
 use fms_mod,                 only: fms_init, open_namelist_file, &
                                    write_version_number, mpp_pe, &
                                    mpp_root_pe, stdlog, file_exist,  &
@@ -41,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 17.0 2009/07/21 02:56:32 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 17.0.8.2 2010/08/30 20:39:46 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -291,6 +292,10 @@ type(time_type),         intent(in)              :: Time
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=isccp_clouds_nml, iostat=io)
+      ierr = check_nml_error(io,'isccp_clouds_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -299,6 +304,7 @@ type(time_type),         intent(in)              :: Time
         enddo
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write namelist to logfile.
@@ -405,7 +411,6 @@ type(time_type),              intent(in)   :: Time
      
      real, dimension(size(npoints,1),size(npoints,2)) :: tmpmat
      
-     integer :: itau,ipc !  temporary integers
      logical :: used     !  flag returned from send_data indicating
                          !  whether diag_manager_mod has received 
                          !  data that was sent
@@ -1591,7 +1596,7 @@ end function ran0
 !     -----
     integer :: nPoints, nCol, nLev
 !     -----
-    integer :: i, j, ilev, ilev2, ibox
+    integer :: ilev, ibox
     real, dimension(size(frac_out, 1), &
                   0:size(frac_out, 3)) :: tca ! total cloud cover in each model level (fraction)
                                               ! with extra layer of zeroes on top
@@ -1696,10 +1701,10 @@ end function ran0
         end do
         threshold(:, :) = &
             !if max overlapped conv cloud     
-            (    maxocc(:, :)) * ( boxpos(:, :)                                                ) +   & 
+            (    maxocc(:, :)) * ( boxpos(:, :)                                                ) +   &
             ! else
                 !if max overlapped strat cloud; threshold=boxpos                       
-            (1 - maxocc(:, :)) * ( (    maxosc(:, :)) * (threshold(:, :)                       ) +   &                                       
+            (1 - maxocc(:, :)) * ( (    maxosc(:, :)) * (threshold(:, :)                       ) +   &
                 !else threshold_min=random[thrmin,1] 
                                    (1 - maxosc(:, :)) * (threshold_min(:, :) + &
                                                         (1 - threshold_min(:, :)) * ran(:, :) )    &
@@ -1786,7 +1791,6 @@ end function ran0
     integer, dimension(size(dtau, 1)) :: itrop_local    ! index to tropopause level
     real,    dimension(size(dtau, 1)) :: pTrop, atTrop  ! tropopause pressure, temperature
                                    
-    character(len = 10) :: ftn09
     
     !     ------
     !     Local constants
@@ -2091,7 +2095,7 @@ end function ran0
      
      ! Local variables
      integer :: nPoints, nLev
-     integer :: iLev, j
+     integer :: iLev
      real, dimension(size(dem_wv, 1)) :: press, dpress, atmden, rvh20, wk, rhoave, rh20s, &
                                          rfrgn, tmpexp, tauwv
     
@@ -2241,7 +2245,7 @@ end function ran0
   !     Local variables and parameters
     integer :: nPoints, nLev
     !     ------
-    integer ::  ilev, j
+    integer ::  ilev
     real,    dimension(size(dem, 1)) :: trans_layers_above
     real,    dimension(size(dem, 1)) :: bb
                                                           
@@ -2293,7 +2297,7 @@ end function ran0
   !     Local variables and parameters
     integer :: nPoints, nCol, nLev 
     !     ------
-    integer ::  j, ilev, ibox
+    integer ::  ilev
     real,    dimension(size(dem, 1), &
                        size(dem, 2)) :: trans_layers_above
     real,    dimension(size(dem, 1)) :: bb
@@ -2336,7 +2340,7 @@ end function ran0
   subroutine ran0_vec(idum, ran0)
     integer, dimension(:), intent(inout) :: idum
     real,    dimension(:), intent(  out) :: ran0
-!     $Id: isccp_clouds.F90,v 17.0 2009/07/21 02:56:32 fms Exp $
+!     $Id: isccp_clouds.F90,v 17.0.8.2 2010/08/30 20:39:46 wfc Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

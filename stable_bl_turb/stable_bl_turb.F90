@@ -2,6 +2,7 @@
   MODULE STABLE_BL_TURB_MOD
 
 !=======================================================================
+ use           mpp_mod, only: input_nml_file
  use           fms_Mod, ONLY: FILE_EXIST, OPEN_NAMELIST_FILE,          &
                               ERROR_MESG, FATAL, mpp_pe, mpp_root_pe,  &
                               CLOSE_FILE,                              &
@@ -19,8 +20,8 @@
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 18.0 2010/03/02 23:33:18 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201006 $'
+  character(len=128) :: version = '$Id: stable_bl_turb.F90,v 18.0.4.2 2010/09/07 16:17:19 wfc Exp $'
+  character(len=128) :: tagname = '$Name: riga_201012 $'
   logical            :: module_is_initialized = .false.
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -77,9 +78,9 @@ real :: missing_value = -999.
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call  STABLE_BL_TURB(is, js, Time, temp, qv,  ql,  qi,  um,  vm,
-!		zhalf, zfull, u_star, b_star, lat, 
-!		akm, akh, vspblcap, kbot )
-!		
+!                zhalf, zfull, u_star, b_star, lat, 
+!                akm, akh, vspblcap, kbot )
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !       Starting integer for longitude window (used for diagnostics)
@@ -456,7 +457,7 @@ real :: missing_value = -999.
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call  STABLE_BL_TURB_INIT ( axes, Time )
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME=" axes" TYPE="integer">
 !   Vector of axes integers
@@ -480,8 +481,12 @@ real :: missing_value = -999.
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-  if( FILE_EXIST( 'input.nml' ) ) then
+#ifdef INTERNAL_FILE_NML
+  read (input_nml_file, nml=stable_bl_turb_nml, iostat=io)
+  ierr = check_nml_error(io,'stable_bl_turb_nml')
+#else   
 ! -------------------------------------
+  if( FILE_EXIST( 'input.nml' ) ) then
    unit = OPEN_NAMELIST_FILE ( file = 'input.nml')
    ierr = 1
    do while( ierr .ne. 0 )
@@ -492,6 +497,7 @@ real :: missing_value = -999.
    CALL CLOSE_FILE( unit )
 ! -------------------------------------
   end if
+#endif
 
 !---------------------------------------------------------------------
 ! --- Output version

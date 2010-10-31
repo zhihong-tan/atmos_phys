@@ -2,6 +2,7 @@
 module lscale_cond_mod
 
 !-----------------------------------------------------------------------
+use            mpp_mod, only:  input_nml_file
 use            fms_mod, only:  file_exist, error_mesg, open_namelist_file,  &
                                check_nml_error, mpp_pe, mpp_root_pe, FATAL,  &
                                close_file, write_version_number, stdlog
@@ -18,8 +19,8 @@ private
 !-----------------------------------------------------------------------
 !   ---- version number ----
 
- character(len=128) :: version = '$Id: lscale_cond.F90,v 17.0 2009/07/21 02:55:24 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: lscale_cond.F90,v 17.0.6.1 2010/08/30 20:39:47 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
  logical            :: module_is_initialized=.false.
 
 !-----------------------------------------------------------------------
@@ -96,7 +97,7 @@ contains
 
 logical,dimension(size(tin,1),size(tin,2),size(tin,3)) :: do_adjust
    real,dimension(size(tin,1),size(tin,2),size(tin,3)) ::  &
-                             esat, qsat, desat, dqsat, pmes, pmass
+                             qsat, dqsat, pmass
    real,dimension(size(tin,1),size(tin,2))             :: hlcp, precip
 integer  k, kx
 !-----------------------------------------------------------------------
@@ -247,6 +248,10 @@ subroutine precip_evap (pmass, tin, qin, qsat, dqsat, hlcp, &
 
 !----------- read namelist ---------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=lscale_cond_nml, iostat=io)
+      ierr = check_nml_error(io,"lscale_cond_nml")
+#else
       if (file_exist('input.nml')) then
          unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
@@ -255,6 +260,7 @@ subroutine precip_evap (pmass, tin, qin, qsat, dqsat, hlcp, &
          enddo
   10     call close_file (unit)
       endif
+#endif
 
 !---------- output namelist --------------------------------------------
 

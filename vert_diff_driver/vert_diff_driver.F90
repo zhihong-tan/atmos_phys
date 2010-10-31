@@ -16,6 +16,7 @@ use diag_manager_mod, only:  register_diag_field, send_data
 
 use time_manager_mod, only:  time_type
 
+use          mpp_mod, only:  input_nml_file
 use          fms_mod, only:  file_exist, open_namelist_file, error_mesg,  &
                              check_nml_error, FATAL, mpp_pe, mpp_root_pe, &
                              close_file, write_version_number, stdlog
@@ -77,8 +78,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 17.0 2009/07/21 02:58:25 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 17.0.4.1 2010/08/30 20:33:36 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 logical :: module_is_initialized = .false.
 
@@ -385,6 +386,10 @@ integer :: ie, je
 !-----------------------------------------------------------------------
 !------ read namelist ------
 
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=vert_diff_driver_nml, iostat=io)
+   ierr = check_nml_error(io,'vert_diff_driver_nml')
+#else   
    if ( file_exist('input.nml')) then
       unit = open_namelist_file ()
       ierr=1; do while (ierr /= 0)
@@ -393,6 +398,7 @@ integer :: ie, je
       enddo
  10   call close_file (unit)
    endif
+#endif
 
 !--------- write version number and namelist ------------------
 

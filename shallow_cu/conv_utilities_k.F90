@@ -11,8 +11,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 18.0 2010/03/02 23:33:08 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201006 $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 17.0.4.1.4.1 2010/03/17 20:27:10 wfc Exp $'
+  character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -311,7 +311,7 @@ contains
     type(uw_params), intent(inout)    :: Uw_p
 
 !++++yim
-    integer :: k, nk, kmax, m
+    integer :: k, nk, m
     real, parameter :: ptopconv = 3000.
 
     !Pack environmental sounding; layers are numbered from bottom up!=
@@ -360,10 +360,10 @@ contains
     logical, intent(in)           :: doice
     type(uw_params), intent(inout)    :: Uw_p
 
-    integer :: k, kl, ktoppbl, id_check
+    integer :: k, kl, ktoppbl
     real    :: sshl0a, sshl0b, ssthc0a, ssthc0b, ssqct0a, ssqct0b
     real    :: hl0bot, thc0bot, qct0bot, hl0top, thc0top, qct0top
-    real    :: thj, qvj, qlj, qij, qse, thvj, dpsum
+    real    :: thj, qvj, qlj, qij, qse, dpsum
     real, dimension(size(sd%tr,2)) :: sstr0a, sstr0b
 
     sd % exners(0) = exn_k(sd%ps(0),Uw_p);
@@ -490,8 +490,8 @@ contains
     type(adicloud), intent(inout) :: ac
     real, intent(in), optional :: rmuz
     
-    integer :: k, kl, klcl, klfc, klnb, id_check
-    real    :: esrc,qs,tdsrc,temsrc,zlcl,tlcl
+    integer :: k, kl, klcl
+    real    :: qs
     real    :: hl0lcl, thc0lcl, qct0lcl, thv0lcl, rho0lcl
     real    :: cin, cinlcl, plfc, thvubot, thvutop
     real    :: thj, qvj, qlj, qij, qse, thvj
@@ -645,7 +645,7 @@ contains
    real, intent(in)    :: temp, p
    type(uw_params), intent(inout) :: Uw_p
    real, intent(in), optional :: qv
-   real :: qsat_k, es, t
+   real :: qsat_k, t
    integer :: ier
  
    t = min(max(temp,Uw_p%tkmin),Uw_p%tkmax)
@@ -1578,7 +1578,7 @@ end subroutine pack_sd_lsm_k
       type(uw_params), intent(inout) :: Uw_p
 
       integer ier
-      real es, qs, leff, nu
+      real qs, leff, nu
       real t
 
 !     In-line qses computation here for better performance
@@ -1612,7 +1612,7 @@ end subroutine pack_sd_lsm_k
       type(uw_params), intent(inout) :: Uw_p
 
       integer ier
-      real es, qs, leff, nu
+      real qs, leff, nu
       real t
 
 !     In-line qses computation here for better performance
@@ -1652,7 +1652,6 @@ end subroutine pack_sd_lsm_k
       real x1,x2,xacc
       real ya,yb,yc
       integer ld
-      real epsilo,hlv,hls,cp_air, tkmin,tkmax
       
       integer j
       real fh,fl,fm,fnew,s,xh,xl,xm,xnew

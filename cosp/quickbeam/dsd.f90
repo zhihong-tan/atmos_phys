@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
          
 ! $Id: dsd.f90,v 1.1.2.1.2.1.6.1 2010/03/04 08:23:50 rsh Exp $
-! $Name: riga_201006 $
+! $Name: riga_201012 $
 
   subroutine dsd(Q,Re,D,N,nsizes,dtype,rho_a,tc, &
              dmin,dmax,apm,bpm,rho_c,p1,p2,p3,fc,scaled)

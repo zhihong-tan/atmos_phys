@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_io.F90,v 1.1.2.1 2010/03/04 08:04:37 rsh Exp $
-! $Name: riga_201006 $
+! $Id: cosp_io.F90,v 1.1.2.1.8.1 2010/08/30 20:33:33 wfc Exp $
+! $Name: riga_201012 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -46,7 +46,7 @@ MODULE MOD_COSP_IO
 ! USE cmor_users_functions
   USE netcdf
   use MOD_COSP_Modis_Simulator
-
+  use mpp_mod, only: input_nml_file
   use fms_mod, only: open_namelist_file, open_file, close_file,   &
                      file_exist, mpp_pe, mpp_root_pe,   &
                      error_mesg, FATAL, &
@@ -57,8 +57,8 @@ MODULE MOD_COSP_IO
   
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------     
-character(len=128)  :: versiona =  '$Id: cosp_io.F90,v 1.1.2.1 2010/03/04 08:04:37 rsh Exp $'
-character(len=128)  :: tagnamea =  '$Name: riga_201006 $'
+character(len=128)  :: versiona =  '$Id: cosp_io.F90,v 1.1.2.1.8.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagnamea =  '$Name: riga_201012 $'
 
   ! Types to be used as arrays of pointers
   TYPE var1d
@@ -1047,6 +1047,10 @@ CONTAINS
 ! close(10)
 !---------------------------------------------------------------------
 !    read namelist.
+#ifdef INTERNAL_FILE_NML
+    read (input_nml_file, nml=cosp_output, iostat=io)
+    ierr = check_nml_error(io,"cosp_output")
+#else
 !---------------------------------------------------------------------
     if ( file_exist('input.nml')) then
       unit =  open_namelist_file ()
@@ -1056,7 +1060,7 @@ CONTAINS
       enddo
 10      call close_file (unit)
     endif
- 
+#endif
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------

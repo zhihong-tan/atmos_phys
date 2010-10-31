@@ -4,6 +4,7 @@ module cloud_generator_mod
   use sat_vapor_pres_mod, only: compute_qs
   use constants_mod,      only: hlv, hls, cp_air, tfreeze, &
                                 rvgas, rdgas
+  use mpp_mod,            only: input_nml_file
   use fms_mod,            only: open_namelist_file, mpp_pe,       &
                                 mpp_root_pe, stdlog,              &
                                 write_version_number, file_exist, &
@@ -37,8 +38,8 @@ module cloud_generator_mod
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_generator.F90,v 17.0 2009/07/21 02:53:47 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: cloud_generator.F90,v 17.0.6.1 2010/08/30 20:39:45 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -156,6 +157,10 @@ subroutine cloud_generator_init
       if (.not. module_is_initialized) then
 !---------------------------------------------------------------------
 !    read namelist.         
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=cloud_generator_nml, iostat=io)
+        ierr = check_nml_error(io,"cloud_generator_nml")
+#else
 !---------------------------------------------------------------------
         if (file_exist('input.nml')) then
           unit =  open_namelist_file ( )
@@ -165,6 +170,7 @@ subroutine cloud_generator_init
           enddo                       
 10        call close_file (unit)      
         endif                         
+#endif
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
@@ -245,11 +251,6 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa, qn,     &
                      size(ql_stoch, 3), &
                      size(ql_stoch, 4)) :: pdfRank ! continuously from 0 to 1
                                   
-  logical, dimension(size(ql_stoch, 1), &
-                     size(ql_stoch, 2), &
-                     size(ql_stoch, 3), &
-                     size(ql_stoch, 4)) :: isCloudy
-
   ! These arrays could be declared allocatable and used only when 
   !    do_inhomogeneous_clouds OR do_pdf_clouds is true. 
   real,    dimension(size(ql_stoch, 1), &  ! Quantities for estimating condensate variability
@@ -275,7 +276,7 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa, qn,     &
                                    
   real    :: pnorm   !fraction of level- used for ppm interpolation    
   real    :: tmpr  
-  integer :: nLev, nCol, lev
+  integer :: nLev, nCol
   integer :: overlapToUse
   integer :: i, j, k, n, ns
  
@@ -701,7 +702,6 @@ end function compute_overlap_weighting
     real, dimension(:, :, :), intent(out) :: aThermo
     real, dimension(:, :, :), optional, intent(out) :: qs
         
-    integer :: lev, nLev
     real, parameter :: d608 = (rvgas - rdgas)/rdgas, &
                        d622 = rdgas/rvgas,           &
                        d378 = 1. - d622
@@ -713,8 +713,7 @@ end function compute_overlap_weighting
     ! Local variables
     real, dimension(size(temperature, 1), &
                     size(temperature, 2), &
-                    size(temperature, 3)) :: Tl, L, esat, desdT, dqsdT,&
-                                             qsloc
+                    size(temperature, 3)) :: Tl, L, dqsdT,qsloc
     
     !
     ! Ice water temperature - ql and qi are grid cell means
@@ -805,7 +804,7 @@ end function compute_overlap_weighting
                        nSamples)                  :: randomValues
     ! -------------------
     ! Local variables
-    integer :: i, j, nX, nY, nLev, nCol
+    integer :: i, j, nX, nY, nLev
     ! -------------------
     nX   = size(cloudFraction, 1); nY  = size(cloudFraction, 2)
     nLev = size(cloudFraction, 3)
@@ -861,7 +860,7 @@ end function compute_overlap_weighting
                        nSamples)                  :: randomValues
     ! -------------------
     ! Local variables
-    integer :: i, j, level, nX, nY, nLev, nCol
+    integer :: i, j, level, nX, nY, nLev
     ! -------------------
     nX   = size(cloudFraction, 1); nY  = size(cloudFraction, 2)
     nLev = size(cloudFraction, 3)

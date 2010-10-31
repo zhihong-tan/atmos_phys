@@ -61,8 +61,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 17.0.2.1.2.1.2.1 2009/11/28 17:41:22 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 17.0.2.1.2.1.2.1.2.1 2010/03/17 20:27:07 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !--------------------------------------------------------------------
@@ -1313,8 +1313,7 @@ real, dimension(:,:,:),       intent(out),               &
       integer                           :: ntr, me, root_pe
       logical                           :: cloud_tracers_present
       integer                           :: num_cld_tracers
-      integer                           :: i, j, k, n   
-      logical                           :: used
+      integer                           :: k, n   
 
 !--------------------------------------------------------------------
 !   local variables:

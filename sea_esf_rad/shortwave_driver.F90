@@ -21,31 +21,32 @@
 
 !   shared modules:
 
-use fms_mod,              only:  open_namelist_file, fms_init, &
-                                 mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, write_version_number, &
-                                 check_nml_error, error_mesg, &
-                                 FATAL, close_file
+use mpp_mod,              only: input_nml_file
+use fms_mod,              only: open_namelist_file, fms_init, &
+                                mpp_pe, mpp_root_pe, stdlog, &
+                                file_exist, write_version_number, &
+                                check_nml_error, error_mesg, &
+                                FATAL, close_file
 
 !   shared radiation package modules:
  
-use rad_utilities_mod,    only:  rad_utilities_init, Rad_control,  &
-                                 cldrad_properties_type, &
-                                 cld_specification_type, Sw_control, &
-                                 Cldrad_control, &
-                                 radiative_gases_type,   &
-                                 aerosol_diagnostics_type, &
-                                 aerosol_type, aerosol_properties_type,&
-                                 atmos_input_type, surface_type, &
-                                 astronomy_type, sw_output_type, &
-                                 assignment(=), cld_space_properties_type
-use esfsw_parameters_mod, only:  esfsw_parameters_init
+use rad_utilities_mod,    only: rad_utilities_init, Rad_control,  &
+                                cldrad_properties_type, &
+                                cld_specification_type, Sw_control, &
+                                Cldrad_control, &
+                                radiative_gases_type,   &
+                                aerosol_diagnostics_type, &
+                                aerosol_type, aerosol_properties_type,&
+                                atmos_input_type, surface_type, &
+                                astronomy_type, sw_output_type, &
+                                assignment(=), cld_space_properties_type
+use esfsw_parameters_mod, only: esfsw_parameters_init
 
 !  radiation package modules:
 
-use lhsw_driver_mod,      only:  lhsw_driver_init, swrad
-use esfsw_driver_mod,     only:  esfsw_driver_init, swresf,   &
-                                 esfsw_driver_end
+use lhsw_driver_mod,      only: lhsw_driver_init, swrad
+use esfsw_driver_mod,     only: esfsw_driver_init, swresf,   &
+                                esfsw_driver_end
 
 !-------------------------------------------------------------------
 
@@ -61,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 17.0 2009/07/21 02:57:38 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 17.0.4.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -187,6 +188,10 @@ real, dimension(:,:), intent(in) :: pref
       call fms_init
       call rad_utilities_init
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=shortwave_driver_nml, iostat=io)
+      ierr = check_nml_error(io,"shortwave_driver_nml")
+#else
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
@@ -198,6 +203,7 @@ real, dimension(:,:), intent(in) :: pref
         end do
 10      call close_file (unit)
       endif
+#endif
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

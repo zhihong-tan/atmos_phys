@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_utilities_k.F90,v 17.0 2009/07/21 02:54:45 fms Exp $
+!  $Id: donner_utilities_k.F90,v 17.0.4.1 2010/03/17 20:27:08 wfc Exp $
 
 !module donner_utilities_inter_mod
 
@@ -957,7 +957,7 @@ integer,                  intent(out)   :: error
 
       integer :: kkstart            !  k index at which to start search
                                     !  for input field value
-      integer :: j, i, k, kk, nc    !  do-loop indices
+      integer :: k, kk              !  do-loop indices
 
 !----------------------------------------------------------------------
 !    initialize the error message character string.
@@ -1325,6 +1325,7 @@ real, intent(in) :: erat0, erat_min, erat_max
 real, dimension(kpar), intent(out) :: erat, arat
 
      integer :: i
+     real    :: x 
      real, dimension(kpar) :: eratb_loc
 
      if (option == 1) then

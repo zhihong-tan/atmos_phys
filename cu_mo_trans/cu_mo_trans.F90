@@ -36,10 +36,10 @@ module cu_mo_trans_mod
 !
 !=======================================================================
 
-! use   constants_mod, only:  GRAV, RDGAS, RVGAS
   use   constants_mod, only:  GRAV, RDGAS, RVGAS, CP_AIR
  
 
+  use         mpp_mod, only: input_nml_file
   use         fms_mod, only: file_exist, check_nml_error,    &
                              open_namelist_file, close_file, &
                              write_version_number,           &
@@ -101,8 +101,8 @@ namelist/cu_mo_trans_nml/ diff_norm, &
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: cu_mo_trans.F90,v 17.0 2009/07/21 02:54:01 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: cu_mo_trans.F90,v 17.0.6.2 2010/09/07 16:17:10 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 contains
 
@@ -118,7 +118,7 @@ contains
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cu_mo_trans_init( axes, Time )
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME=" axes" TYPE="integer">
 !    axes identifier needed by diag manager
@@ -140,12 +140,17 @@ integer, dimension(3)  :: half =  (/1,2,4/)
 !------ read namelist ------
 
    if ( file_exist('input.nml')) then
-         unit = open_namelist_file ( )
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=cu_mo_trans_nml, iostat=io)
+      ierr = check_nml_error(io,'cu_mo_trans_nml')
+#else   
+      unit = open_namelist_file ( )
       ierr=1; do while (ierr /= 0)
          read  (unit, nml=cu_mo_trans_nml, iostat=io, end=10)
          ierr = check_nml_error(io,'cu_mo_trans_nml')
       enddo
  10   call close_file (unit)
+#endif
    endif
 
 !--------- write version number and namelist ------------------
@@ -245,8 +250,8 @@ end subroutine cu_mo_trans_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call cu_mo_trans (is, js, Time, mass_flux, t,           &
-!		p_half, p_full, z_half, z_full, diff)
-!		
+!                p_half, p_full, z_half, z_full, diff)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 ! 
@@ -378,8 +383,8 @@ end subroutine cu_mo_trans
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call diffusive_cu_mo_trans (is, js, Time, mass_flux, t,      &
-!		p_half, p_full, z_half, z_full, diff)
-!		
+!                p_half, p_full, z_half, z_full, diff)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 ! 

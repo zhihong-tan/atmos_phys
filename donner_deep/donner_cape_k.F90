@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 17.0 2009/07/21 02:54:25 fms Exp $
+!  $Id: donner_cape_k.F90,v 17.0.4.1 2010/03/17 20:27:07 wfc Exp $
 
 !module donner_cape_inter_mod
 
@@ -538,7 +538,7 @@ integer,                       intent(out) :: error
       integer ::  klcl, klfc, klzb
       real    ::  tlcl, rlcl
       logical ::  cape_exit
-      integer  :: n, k
+      integer  :: k
 
       ermesg = ' ' ; error = 0
 
@@ -788,7 +788,7 @@ integer,                      intent(out)   :: error
       real     :: hlvls
       logical  :: capepos_s 
       integer  :: ieqv_s
-      integer  :: k, n, nbad
+      integer  :: k, nbad
       logical  :: not_all_frozen    
       real     :: cumulative_freezing, prev_cufr
       real     :: available_cd, r_at_cb, condensate_to_freeze
@@ -1032,7 +1032,7 @@ integer,                     intent(out) :: error
 
       real      ::   rbc, rbe, qc, qe, tvc_v_s, tve_v_s, delt
       integer   ::   ieqv_s
-      integer   ::   k, n
+      integer   ::   k
 
 !----------------------------------------------------------------------
       ermesg = ' ' ; error = 0
@@ -1142,7 +1142,7 @@ integer,                     intent(out) :: error
 
       real    :: rbc, rbe, qc, qe, tvc_v_s, tve_v_s
       integer :: ieqv_s
-      integer :: k, n
+      integer :: k
 
       ermesg = ' ' ; error = 0
 
@@ -1279,7 +1279,7 @@ integer,                     intent(out) :: error
 
       real     :: dp     ! pressure difference between levels in 
                          ! high-resolution model [ Pa ]
-      integer  :: n, k   ! do-loop indices
+      integer  :: k      ! do-loop indices
 
 
       ermesg = ' ' ; error = 0
@@ -1500,7 +1500,7 @@ logical,                     intent(out)   :: cape_exit
 character(len=*),            intent(out)   :: ermesg
 integer,                     intent(out)   :: error
 
-      real     :: es_v_s, qs_v_s, dtdp_v_s, dt_v_s, cp_v_s, q_ve_s, tp_s
+      real     :: qs_v_s, dtdp_v_s, dt_v_s, cp_v_s, q_ve_s, tp_s
       integer  :: ieqv_s       
       integer  :: k, nbad
       

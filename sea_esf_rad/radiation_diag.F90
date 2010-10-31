@@ -17,6 +17,7 @@
 
 !  shared modules:
 
+use mpp_mod,            only: input_nml_file
 use fms_mod,            only: open_namelist_file, fms_init, &
                               mpp_pe, mpp_root_pe, stdlog, &
                               file_exist, write_version_number, &
@@ -52,8 +53,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: radiation_diag.F90,v 17.0 2009/07/21 02:57:17 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: radiation_diag.F90,v 17.0.4.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -235,6 +236,10 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
 !-----------------------------------------------------------------------
 !    read namelist.              
 !-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=radiation_diag_nml, iostat=io)
+      ierr = check_nml_error(io,'radiation_diag_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -243,6 +248,7 @@ type(lw_table_type),  intent(in)  ::  Lw_tables
         end do                   
 10      call close_file (unit)   
       endif                      
+#endif
                                   
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

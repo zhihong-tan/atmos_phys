@@ -9,6 +9,7 @@
 
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp, horiz_interp_del
+use          mpp_mod, only: input_nml_file
 use          fms_mod, only: file_exist, error_mesg, FATAL, NOTE,     &
                             open_namelist_file, close_file,          &
                             check_nml_error, mpp_pe, mpp_root_pe,    &
@@ -27,8 +28,8 @@ public  cloud_obs, cloud_obs_init, cloud_obs_end
 !-----------------------------------------------------------------------
 !   ---------- private data ------------
 
-   character(len=128) :: version = '$Id: cloud_obs.F90,v 18.0 2010/03/02 23:28:48 fms Exp $'
-   character(len=128) :: tagname = '$Name: riga_201006 $'
+   character(len=128) :: version = '$Id: cloud_obs.F90,v 18.0.2.1 2010/08/30 20:33:31 wfc Exp $'
+   character(len=128) :: tagname = '$Name: riga_201012 $'
 
       real, allocatable, dimension(:,:,:) :: clda,cldb
       real, allocatable, dimension(:)     :: londat,latdat
@@ -261,6 +262,10 @@ type(time_type), intent(in)                    :: Time
 
 !------- read namelist --------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=cloud_obs_nml, iostat=io)
+      ierr = check_nml_error(io,"cloud_obs_nml")
+#else
       if (file_exist('input.nml')) then
           unit = open_namelist_file ()
           ierr=1; do while (ierr /= 0)
@@ -269,6 +274,7 @@ type(time_type), intent(in)                    :: Time
           enddo
   10      call close_file (unit)
       endif
+#endif
 
 !------- write version number and namelist ---------
 

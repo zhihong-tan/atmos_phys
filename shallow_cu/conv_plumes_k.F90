@@ -12,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 18.0 2010/03/02 23:33:05 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201006 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 17.0.2.1.2.1.4.1 2010/03/17 20:27:10 wfc Exp $'
+  character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -286,8 +286,7 @@ contains
     real,           intent(in)    :: umfkm1, dp, dt
     real,           intent(inout) :: rei, fer, fdr, fdrsat, rho0j
     
-    integer :: id_check
-    real    :: excessu, excess0, hlfs, thlfs, qtfs, thvfs,  &
+    real    :: excessu, excess0, hlfs, qtfs, thvfs,  &
                xbuo0, xsat, xs, xs1, xs2
     real    :: thj, qvj, qlj, qij, qse, thvj, thv0j
     real    :: aquad, bquad, cquad, ee2, ud2
@@ -389,25 +388,20 @@ contains
     integer,            intent(out)   :: ier
     character(len=*),   intent(out)   :: ermesg
 
-
-    real, dimension(1:size(sd%p)) :: p0, dp
-    real, dimension(0:size(sd%p)) :: ps0
-
     real, dimension(4)            :: totalmass
     integer                       :: tym
-    real                          :: thickness, drop
+    real                          :: drop
    
-    integer :: k, klm, km1, krel, let, ltop, id_check
-    real    :: thv0rel, thv0t1, wexp, wtw, wtwtop
-    real    :: thj, qvj, qlj, qij, qse, thvj, thv0j, rhos0j, rho0j
-    real    :: aquad, bquad, cquad, xs1, xs2, ppen
+    integer :: k, klm, km1, krel, let, ltop
+    real    :: thv0rel, wtw, wtwtop
+    real    :: thj, qvj, qlj, qij, qse, rhos0j, rho0j
     real    :: bogtop, bogbot, delbog, drage, expfac
-    real    :: zrel, prel, exnj, nu, leff, qrj, qsj, tmp, temp
+    real    :: zrel, prel, nu, leff, qrj, qsj, temp
     real    :: qctu_new, hlu_new, qlu_new, qiu_new, clu_new, ciu_new
-    real    :: auto_th, scaleh1
+    real    :: scaleh1
     real    :: qct_env_k, hl_env_k
     real    :: t_mid, tv_mid, air_density, total_condensate,   &
-               total_rain, total_snow, delta_tracer, delta_qn, cons_up, wrel2, gamma
+               total_rain, total_snow, delta_tracer, delta_qn, wrel2, gamma
     real    :: cflim
     integer :: n
     logical :: kbelowlet
@@ -755,7 +749,7 @@ contains
                                      ciu_new, temp
     logical,        intent(in)    :: doice, kbelowlet
 
-    real    :: thj, qvj, qlj, qij, qse, thvj, thv0j, nu, exnj,  &
+    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
                auto_th, leff, pcp, qctmp, deltaqc, auto_th2
 
     !Precip at the flux level
@@ -854,8 +848,8 @@ contains
                                      ciu_new, temp
     logical,        intent(in)    :: doice, kbelowlet
 
-    real    :: thj, qvj, qlj, qij, qse, thvj, thv0j, nu, exnj,  &
-               auto_th, leff, pcp, qctmp, deltaqc, auto_th2
+    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
+               auto_th, leff, pcp, qctmp, deltaqc
 
     !Precip at the flux level
     call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
@@ -928,8 +922,8 @@ contains
                                      ciu_new, temp
     logical,        intent(in)    :: doice, kbelowlet
 
-    real    :: thj, qvj, qlj, qij, qse, thvj, thv0j, nu, exnj,  &
-               auto_th, leff, pcp, qctmp, deltaqc, auto_th2
+    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
+               auto_th, leff, pcp, qctmp
     real    :: Nl, fliq, ql0, qi0
 
     !Precip at the flux level
@@ -1016,7 +1010,7 @@ contains
                                      ciu_new, hlu_new, qctu_new, temp
     logical,        intent(in)    :: doice
 
-    real    :: thj, qvj, qlj, qij, qse, thvj, thv0j, exnj, nu, leff
+    real    :: thj, qvj, qlj, qij, qse, thvj, nu, leff
     real    :: dt_micro, rw1, cw1, drwa, drwb, flw, rw2, cw2, pw2, dcw
 
     call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
@@ -1555,7 +1549,7 @@ contains
     real, parameter :: d378   = 1.0-d622
 
     real, dimension(size(sd%t)) :: mass, temp_new, qvap_new, pptp, pflx, pflx_evap
-    real    :: prec, def, evef, prec_mmph, pfac, emx, dpcu, HL, es, des, dqs, qs
+    real    :: prec, def, evef, prec_mmph, pfac, emx, dpcu, HL, dqs, qs
     real    :: hcevap, cfrac
 
     integer :: k, ier

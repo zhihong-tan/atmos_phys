@@ -22,8 +22,9 @@ use time_manager_mod,       only: time_type
 use diag_cloud_mod,         only: diag_cloud_avg2, diag_cloud_driver2
 use diag_cloud_rad_mod,     only: cloud_opt_prop_tg_lw,  &
                                   cloud_opt_prop_tg_sw
-use       fms_mod,          only: open_namelist_file, file_exist,   &
-                                  check_nml_error,    &
+use mpp_mod,                only: input_nml_file
+use fms_mod,                only: open_namelist_file, file_exist, &
+                                  check_nml_error, &
                                   write_version_number, &
                                   mpp_pe, mpp_root_pe, &
                                   close_file, stdlog
@@ -49,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 17.0 2009/07/21 02:56:17 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: riga_201006 $'
+   character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
+   character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 
@@ -108,7 +109,7 @@ contains
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call diag_clouds_W_init  (num_slingo_bands_out)
-!		
+!
 !  </TEMPLATE>
 !  <OUT NAME="num_slingo_bands_out" TYPE="integer">
 ! 
@@ -127,6 +128,10 @@ integer, intent(out) :: num_slingo_bands_out
 !---------------------------------------------------------------------
 !-----  read namelist  ------
   
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=diag_clouds_W_nml, iostat=io)
+      ierr = check_nml_error(io,'diag_clouds_W_nml')
+#else   
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -135,6 +140,7 @@ integer, intent(out) :: num_slingo_bands_out
         enddo
 10      call close_file (unit)
       endif
+#endif
 
       if ( mpp_pe() == mpp_root_pe() ) then
            call write_version_number(version, tagname)
@@ -198,8 +204,8 @@ end subroutine diag_clouds_W_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call diag_clouds_amt (is, ie, js, je, lat, pflux, press,   &
-!		Rad_time, Cld_spec, Lsc_microphys) 
-!		
+!                Rad_time, Cld_spec, Lsc_microphys) 
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -472,7 +478,7 @@ end subroutine diag_clouds_amt
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_lw_diag (is, ie, js, je, Cld_spec, Cldrad_props)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in
@@ -636,8 +642,8 @@ end subroutine obtain_bulk_lw_diag
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call obtain_bulk_sw_diag (is, ie, js, je, cosz, Cld_spec,  &   
-!		Cldrad_props)
-!		
+!                Cldrad_props)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      is,ie,js,je  starting/ending subdomain i,j indices of data in

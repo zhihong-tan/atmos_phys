@@ -35,8 +35,8 @@ public  moistproc_init, moistproc_end, moistproc_mca, moistproc_ras, &
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
-version = '$Id: moistproc_kernels.F90,v 18.0 2010/03/02 23:31:13 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+version = '$Id: moistproc_kernels.F90,v 18.0.4.2 2010/09/07 14:33:37 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !-----------------------------------------------------------------------
 real, public, allocatable, dimension(:,:)     :: rain_uw, snow_uw
@@ -61,24 +61,24 @@ subroutine moistproc_init(ix, jx, kx, num_uw_tracers, do_strat)
 
       if (moistproc_initialized) return
 
-      allocate( rain_uw  (ix,jx) )
-      allocate( snow_uw  (ix,jx) )
-      allocate( ttnd_uw  (ix,jx,kx) )
-      allocate( qtnd_uw  (ix,jx,kx) )
-      allocate( utnd_uw  (ix,jx,kx) )
-      allocate( vtnd_uw  (ix,jx,kx) )
-      allocate( qltnd_uw (ix,jx,kx) )
-      allocate( qitnd_uw (ix,jx,kx) )
-      allocate( qatnd_uw (ix,jx,kx) )
-      allocate( qntnd_uw (ix,jx,kx) )
-      allocate( qtruw    (ix,jx,kx,num_uw_tracers) )
+      allocate( rain_uw  (ix,jx) )                   ; rain_uw  = 0.0
+      allocate( snow_uw  (ix,jx) )                   ; snow_uw  = 0.0
+      allocate( ttnd_uw  (ix,jx,kx) )                ; ttnd_uw  = 0.0
+      allocate( qtnd_uw  (ix,jx,kx) )                ; qtnd_uw  = 0.0
+      allocate( utnd_uw  (ix,jx,kx) )                ; utnd_uw  = 0.0
+      allocate( vtnd_uw  (ix,jx,kx) )                ; vtnd_uw  = 0.0
+      allocate( qltnd_uw (ix,jx,kx) )                ; qltnd_uw = 0.0
+      allocate( qitnd_uw (ix,jx,kx) )                ; qitnd_uw = 0.0
+      allocate( qatnd_uw (ix,jx,kx) )                ; qatnd_uw = 0.0
+      allocate( qntnd_uw (ix,jx,kx) )                ; qntnd_uw = 0.0
+      allocate( qtruw    (ix,jx,kx,num_uw_tracers) ) ; qtruw    = 0.0
       if (do_strat) then
-        allocate( delta_ql (ix,jx,kx) )
-        allocate( delta_qi (ix,jx,kx) )
-        allocate( delta_qa (ix,jx,kx) )
-        allocate( qlin     (ix,jx,kx) )
-        allocate( qiin     (ix,jx,kx) )
-        allocate( qain     (ix,jx,kx) )
+        allocate( delta_ql (ix,jx,kx) )              ; delta_ql = 0.0
+        allocate( delta_qi (ix,jx,kx) )              ; delta_qi = 0.0
+        allocate( delta_qa (ix,jx,kx) )              ; delta_qa = 0.0
+        allocate( qlin     (ix,jx,kx) )              ; qlin     = 0.0
+        allocate( qiin     (ix,jx,kx) )              ; qiin     = 0.0 
+        allocate( qain     (ix,jx,kx) )              ; qain     = 0.0
       endif
 
       moistproc_initialized = .true.
@@ -784,12 +784,16 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
       call uw_conv (is, js, Time, t, q, u, v, pfull, phalf, zfull, zhalf, &
                     tracer, omega, dt, pblht, ustar, bstar, qstar, land,  &
                     coldT, Aerosol, cush, do_strat,  conv_calc_completed, &
-                    available_cf_for_uw, ttnd_uw(is:ie,js:je,:), qtnd_uw(is:ie,js:je,:), qltnd_uw(is:ie,js:je,:),      &
-                    qitnd_uw(is:ie,js:je,:), qatnd_uw(is:ie,js:je,:), qntnd_uw(is:ie,js:je,:), utnd_uw(is:ie,js:je,:), vtnd_uw(is:ie,js:je,:),       &
-                    rain_uw(is:ie,js:je), snow_uw(is:ie,js:je), cmf, thlflx, qtflx, precflx,        &
-                    liq_precflx, ice_precflx,  &
+                    available_cf_for_uw, ttnd_uw(is:ie,js:je,:),          &
+                    qtnd_uw(is:ie,js:je,:), qltnd_uw(is:ie,js:je,:),      &
+                    qitnd_uw(is:ie,js:je,:), qatnd_uw(is:ie,js:je,:),     &
+                    qntnd_uw(is:ie,js:je,:),                              &
+                    utnd_uw(is:ie,js:je,:), vtnd_uw(is:ie,js:je,:),       &
+                    rain_uw(is:ie,js:je), snow_uw(is:ie,js:je), cmf,      &
+                    thlflx, qtflx, precflx, liq_precflx, ice_precflx,     &
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
-                    shallow_droplet_number, cbmf, trcr, qtruw(is:ie,js:je,:,:), uw_wetdep)             
+                    shallow_droplet_number, cbmf, trcr,                   &
+                    qtruw(is:ie,js:je,:,:), uw_wetdep)
 
       if (.not. do_limit_uw) then
         tdt=tdt+ttnd_uw(is:ie,js:je,:) 

@@ -37,7 +37,8 @@ use   time_manager_mod, only: time_type, get_time, operator(-)
 
 use      constants_mod, only: rdgas, rvgas, kappa
  
-use       fms_mod,      only: mpp_pe, mpp_root_pe, stdlog, &
+use            mpp_mod, only: input_nml_file
+use            fms_mod, only: mpp_pe, mpp_root_pe, stdlog, &
                               error_mesg, open_namelist_file, file_exist, &
                               check_nml_error, close_file, FATAL, &
                               write_version_number
@@ -59,8 +60,8 @@ public   vert_turb_driver_restart
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 17.0 2009/07/21 02:58:31 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 17.0.4.1 2010/08/30 20:33:36 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -561,6 +562,10 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
 !-----------------------------------------------------------------------
 !--------------- read namelist ------------------
 
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=vert_turb_driver_nml, iostat=io)
+   ierr = check_nml_error(io,'vert_turb_driver_nml')
+#else   
       if (file_exist('input.nml')) then
          unit = open_namelist_file (file='input.nml')
          ierr=1; do while (ierr /= 0)
@@ -569,6 +574,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
          enddo
   10     call close_file (unit)
       endif
+#endif
 
 !---------- output namelist --------------------------------------------
 

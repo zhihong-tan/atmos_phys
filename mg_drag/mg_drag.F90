@@ -11,6 +11,7 @@ module mg_drag_mod
 
  use  topography_mod, only: get_topog_stdev
 
+ use         mpp_mod, only: input_nml_file
  use         fms_mod, only: mpp_npes, field_size, file_exist, write_version_number, stdlog, &
                             mpp_pe, mpp_root_pe, error_mesg, FATAL, NOTE, read_data, write_data,  &
                             open_namelist_file, close_file, check_nml_error, open_restart_file, mpp_error
@@ -25,8 +26,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 18.0 2010/03/02 23:31:01 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 18.0.4.2 2010/09/07 16:17:18 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
 
  real, parameter :: p00 = 1.e5
 
@@ -270,8 +271,8 @@ real,    dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) :: sigma, del_sigma
 !              SIGTOP = HIGHEST LEVEL TO WHICH GRAVITY WAVE
 !                         MOMENTUM FLUX WILL BE DISTRIBUTED.
 !              G = GMAX*FR**2/(FR**2+A**2)
-!              	  GMAX = 1.0
-!              	  A = 1.0
+!                 GMAX = 1.0
+!                 A = 1.0
 !=======================================================================
 
 if ( .not.do_mcm_mg_drag ) then
@@ -984,7 +985,12 @@ if(module_is_initialized) return
 ! --- Read namelist
 !---------------------------------------------------------------------
   if( file_exist( 'input.nml' ) ) then
-! -------------------------------------
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=mg_drag_nml, iostat=io)
+   ierr = check_nml_error(io,'mg_drag_nml')
+#else   
+! -------------------------------------mg_drag_nml')
+ 
    unit = open_namelist_file()
    ierr = 1
    do while( ierr .ne. 0 )
@@ -993,8 +999,9 @@ if(module_is_initialized) return
    end do
 10 continue
    call close_file ( unit )
-   call get_restart_io_mode(do_netcdf_restart)
+#endif
 
+   call get_restart_io_mode(do_netcdf_restart)
 ! -------------------------------------
   end if
 

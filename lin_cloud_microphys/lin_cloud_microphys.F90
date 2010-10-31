@@ -6,7 +6,8 @@
 !
 module lin_cld_microphys_mod
  use mpp_mod,           only: stdlog, mpp_pe, mpp_root_pe, mpp_clock_id, &
-                              mpp_clock_begin, mpp_clock_end, CLOCK_ROUTINE
+                              mpp_clock_begin, mpp_clock_end, CLOCK_ROUTINE, &
+                              input_nml_file
  use diag_manager_mod,  only: register_diag_field, send_data
  use time_manager_mod,  only: time_type, get_date, get_time
  use constants_mod,     only: grav, rdgas, rvgas, cp_air, hlv, hlf, kappa
@@ -17,8 +18,8 @@ module lin_cld_microphys_mod
  implicit none
  private
 
- character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 17.0.4.3.2.1.4.1 2010/01/07 18:31:16 z1l Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 17.0.4.3.2.1.4.4.2.2 2010/09/03 22:17:11 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
 
  public  lin_cld_microphys_driver, lin_cld_microphys_init, lin_cld_microphys_end, sg_conv
  public  qsmith_init, qsmith, es2_table1d, es3_table1d, esw_table1d
@@ -203,6 +204,7 @@ module lin_cld_microphys_mod
   integer :: is,ie, js,je  ! physics window
   integer :: ks,ke         ! vertical dimension
   integer :: seconds, days, ntimes
+  integer :: ioff, joff
 
   is = 1
   js = 1
@@ -210,6 +212,8 @@ module lin_cld_microphys_mod
   ie = iie-iis+1
   je = jje-jjs+1
   ke = kke-kks+1
+  ioff = iis - is
+  joff = jjs - js
 
   call mpp_clock_begin (lin_cld_mp_clock)
 
@@ -236,14 +240,15 @@ module lin_cld_microphys_mod
            rain(i,j) = 0.
            snow(i,j) = 0.
             ice(i,j) = 0.
-           cond(i,j) = 0.
      enddo
   enddo
+  cond(iis:iie, jjs: jje) = 0
+
   do j=js,je
      call mpdrv( delp, pt, qv, ql, qr, qi, qs, qg, qa, dz,  &
                  is, ie, js, je, ks, ke, ktop, kbot, j, dt_in,  & 
                  ntimes, rain(:,j), snow(:,j), graupel(:,j), &
-                 ice(:,j), cond(:,j), land(:,j),  &
+                 ice(:,j), cond(iis:iie,j+joff), land(:,j),  &
                  pt_dt, qv_dt, ql_dt, qr_dt, qi_dt,    &
                  qs_dt, qg_dt, qa_dt )
   enddo
@@ -266,10 +271,10 @@ module lin_cld_microphys_mod
    if ( id_vtg> 0 ) used=send_data(id_vtg, vt_g, time)
    if ( id_vts> 0 ) used=send_data(id_vti, vt_i, time)
 #else
-   if ( id_vtr> 0 ) used=send_data(id_vtr, vt_r, time, is, js)
-   if ( id_vts> 0 ) used=send_data(id_vts, vt_s, time, is, js)
-   if ( id_vtg> 0 ) used=send_data(id_vtg, vt_g, time, is, js)
-   if ( id_vts> 0 ) used=send_data(id_vti, vt_i, time, is, js)
+   if ( id_vtr> 0 ) used=send_data(id_vtr, vt_r(iis:iie,jjs:jje,:), time, iis, jjs)
+   if ( id_vts> 0 ) used=send_data(id_vts, vt_s(iis:iie,jjs:jje,:), time, iis, jjs)
+   if ( id_vtg> 0 ) used=send_data(id_vtg, vt_g(iis:iie,jjs:jje,:), time, iis, jjs)
+   if ( id_vts> 0 ) used=send_data(id_vti, vt_i(iis:iie,jjs:jje,:), time, iis, jjs)
 #endif
 
 ! Convert to mm/day
@@ -283,17 +288,20 @@ module lin_cld_microphys_mod
          prec_mp(i,j) =    rain(i,j) + snow(i,j) + ice(i,j) + graupel(i,j)
       enddo
    enddo
+   prec_mp(iis:iie,jjs:jje) = rain(is:ie,js:je) + snow(is:ie,js:je) + &
+                              ice(is:ie,js:je) + graupel(is:ie,js:je)
 
    if ( id_cond>0 ) then
-        do j=js,je
-           do i=is,ie
+        
+        do j=jjs,jje
+           do i=iis,iie
               cond(i,j) = cond(i,j)*rgrav
            enddo
         enddo
 #ifdef SIM_PHYS
         used=send_data(id_cond, cond, time)
 #else
-        used=send_data(id_cond, cond, time, is, js)
+        used=send_data(id_cond, cond(iis:iie,jjs:jje), time, iis, jjs)
 #endif
    endif
 
@@ -301,11 +309,12 @@ module lin_cld_microphys_mod
 #ifdef SIM_PHYS
         used=send_data(id_snow,    snow,    time)
 #else
-        used=send_data(id_snow,    snow,    time, is, js)
+        used=send_data(id_snow,    snow,    time, iis, jjs)
 #endif
-        if ( seconds==0 ) then
+        if ( seconds==0 .and. mp_print ) then
              tot_prec = g_sum(snow, is, ie, js, je, ng, area, 1) 
              if(master) write(*,*) 'mean snow=', tot_prec
+
         endif
         snow0(:,:) = snow0(:,:) + snow(:,:)
    endif
@@ -314,9 +323,9 @@ module lin_cld_microphys_mod
 #ifdef SIM_PHYS
         used=send_data(id_graupel, graupel, time)
 #else
-        used=send_data(id_graupel, graupel, time, is, js)
+        used=send_data(id_graupel, graupel, time, iis, jjs)
 #endif
-        if ( seconds==0 ) then
+        if ( seconds==0 .and. mp_print ) then
              tot_prec = g_sum(graupel, is, ie, js, je, ng, area, 1) 
              if(master) write(*,*) 'mean graupel=', tot_prec
         endif
@@ -327,9 +336,9 @@ module lin_cld_microphys_mod
 #ifdef SIM_PHYS
         used=send_data(id_ice, ice, time)
 #else
-        used=send_data(id_ice, ice, time, is, js)
+        used=send_data(id_ice, ice, time, iis, jjs)
 #endif
-        if ( seconds==0 ) then
+        if ( seconds==0 .and. mp_print ) then
              tot_prec = g_sum(ice, is, ie, js, je, ng, area, 1) 
              if(master) write(*,*) 'mean ice_mp=', tot_prec
         endif
@@ -340,11 +349,11 @@ module lin_cld_microphys_mod
 #ifdef SIM_PHYS
         used=send_data(id_rain,    rain,    time)
 #else
-        used=send_data(id_rain,    rain,    time, is, js)
+        used=send_data(id_rain,    rain,    time, iis, jjs)
 #endif
-        if ( seconds==0 ) then
-!            tot_prec = g_sum(rain, is, ie, js, je, ng, area, 1) 
-!            if(master) write(*,*) 'mean rain=', tot_prec
+        if ( seconds==0 .and. mp_print ) then
+             tot_prec = g_sum(rain, is, ie, js, je, ng, area, 1) 
+             if(master) write(*,*) 'mean rain=', tot_prec
         endif
         rain0(:,:) = rain0(:,:) + rain(:,:)
    endif
@@ -354,14 +363,17 @@ module lin_cld_microphys_mod
 #ifdef SIM_PHYS
         used=send_data(id_prec, prec_mp, time)
 #else
-        used=send_data(id_prec, prec_mp, time,is, js)
+        used=send_data(id_prec, prec_mp(iis:iie,jjs:jje), time, iis, jjs)        ! kerr
 #endif
    endif
 
 !----------------------------------------------------------------------------
-
-        prec0(:,:) = prec0(:,:) + prec_mp(:,:)
-        prec1(:,:) = prec1(:,:) + prec_mp(:,:)
+        do j=jjs,jje
+           do i=iis,iie        
+              prec0(i,j) = prec0(i,j) + prec_mp(i,j)
+              prec1(i,j) = prec1(i,j) + prec_mp(i,j)
+           enddo
+        enddo
         mp_count = mp_count + 1.
 
         if ( seconds==0 .and. mp_print ) then
@@ -906,20 +918,20 @@ module lin_cld_microphys_mod
  real, intent(in) :: h_var
 ! local:
  real, parameter:: rhos = 0.1e3    ! snow density (1/10 of water)
- real, dimension(2*(kbot-ktop-1)):: p2, den2, tz2, qv2, ql2, qr2, qs2, qi2, qg2, qa2 
+ real, dimension(2*(kbot-ktop-1)):: p2, den2, tz2, qv2, ql2, qs2, qi2, qa2 
  real, dimension(ktop:kbot) :: lcpk, icpk, tcpk, di, melt
  real :: tz, qv, ql, qr, qi, qs, qg
- real :: praut, pracw, pracs, psacw, pgacw, pgmlt,   &
-         psmlt, prevp, psacr, pgacr, pgfr,  pgacs,   &
-         pgaut, pgaci, praci, psaut, psaci, pssub,   &
+ real :: pracs, psacw, pgacw, pgmlt,   &
+         psmlt, psacr, pgacr, pgfr,    &
+         pgaci, praci, psaut, psaci, pssub,   &
          pgsub, piacr
  real :: tc, tsq, dqs0, qden, qim, qsm
  real :: factor, sink, fac_gra
  real :: tmp1, qsi, dqsdt, dq
  real :: n0s, lamda
- real :: qc, q_plus, q_minus
+ real :: q_plus
  integer :: km, kn
- integer :: i, j, k, k1
+ integer :: k, k1
 ! Taylor series expansion of A**B
 !------------------------------------------------------------------------
 !  A**B = 1 +  x + (1/2!)*x**2 + (1/3!)*x**3 + (1/4!)*x**4 + (1/5!)*x**5
@@ -1436,7 +1448,6 @@ endif   ! end ice-physics
  real, intent(out):: q2(km)
 ! local
  real:: a4(4,ktop:kbot)
- real:: tmp
  integer:: k, k1
 
   q2(1) = q1(ktop  )
@@ -1482,9 +1493,9 @@ endif   ! end ice-physics
  real:: qc_crt = 5.0e-8  ! minimum condensate mixing ratio to allow partial cloudiness
                          ! must not be too large to allow PSC
  real:: denf, rh, clouds, tmp1, rqi, tin, qsw, qsi, qpz, qstar
- real:: dqsdt, dwsdt, dq, qimin, pidep, f_evap, factor
- real:: q_plus, q_minus, dqh, dq_evap, dq_cond, qi_crt
- real:: pcond, sink, qden, tc, tsq, pssub, fac_l2v, fac_v2l, fac_ice,  iwt
+ real:: dqsdt, dwsdt, dq, pidep, factor
+ real:: q_plus, q_minus, qi_crt
+ real:: pcond, sink, qden, tsq, pssub, fac_l2v, fac_v2l, fac_ice,  iwt
  integer :: k
 
   fac_l2v = 1. - exp( -dts/tau_l2v )        ! exact-in-time integration
@@ -1721,9 +1732,8 @@ endif   ! end ice-physics
  real,    intent(out):: r1, g1, s1, i1
 ! local:
  real, dimension(ktop:kbot+1):: ze, zt
- real:: qsat, dqsdt, dt5, melt, evap, dtime
- real:: factor, frac
- real:: accr, tsq, tmp1, qim, precip
+ real:: dt5, melt, dtime
+ real:: tmp1, qim
  real, dimension(ktop:kbot):: lcpk, icpk
  real:: zs = 0.
  integer k, k0, m
@@ -2088,7 +2098,7 @@ endif   ! end ice-physics
 !-----------------------------------------------------------------------
  real  gam(km)
  real  q(km+1)
- real   d4, bet, a_bot, grat, pmp, lac
+ real   d4, bet, a_bot, grat
  real   pmp_1, lac_1, pmp_2, lac_2
  real  da1, da2, a6da
  integer k
@@ -2276,7 +2286,7 @@ endif   ! end ice-physics
  real :: vcons = 6.6280504, vcong = 87.2382675, vconi = 3.29
  real :: norms = 942477796.076938, &
          normg =  5026548245.74367
- real, dimension(ktop:kbot) :: ri, qden, tc
+ real, dimension(ktop:kbot) :: qden, tc
 !real :: aa = -1.70704e-5, bb = -0.00319109, cc = -0.0169876, dd = 0.00410839, ee = 1.93644
  real :: aa = -4.14122e-5, bb = -0.00538922, cc = -0.0516344, dd = 0.00216078, ee = 1.9714 
 
@@ -2349,7 +2359,7 @@ endif   ! end ice-physics
 
  subroutine setupm
 
- real :: gcon, cd, scm3, pisq, act(8), acc(3)
+ real :: gcon, scm3, pisq, act(8), acc(3)
  real :: vdifu, tcond
  real :: visk
  real :: ch2o, hltf
@@ -2499,20 +2509,24 @@ endif   ! end ice-physics
     
     integer   :: unit, io, ierr, k, logunit
     integer   :: is, ie, js, je, ks, ke
-    logical   :: flag
     real :: tmp, q1, q2
 
     master = (mpp_pe().eq.mpp_root_pe())
 
+#ifdef INTERNAL_FILE_NML
+    read (input_nml_file, nml=lin_cld_microphys_nml, iostat=io)
+    ierr = check_nml_error(io,'lin_cld_microphys_nml')
+#else   
     if( file_exist( 'input.nml' ) ) then
        unit = open_namelist_file ()
        io = 1
        do while ( io .ne. 0 )
           read( unit, nml = lin_cld_microphys_nml, iostat = io, end = 10 )
-          ierr = check_nml_error(io,'lin_cloud_microphys_nml')
+          ierr = check_nml_error(io,'lin_cld_microphys_nml')
        end do
 10     call close_file ( unit )
     end if
+#endif
     call write_version_number (version, tagname)
     logunit = stdlog()
     
@@ -3209,7 +3223,7 @@ endif   ! end ice-physics
                                 pt, qv, ql, qr, qi, qs, qg
 ! local:
  real lcpk(ktop:kbot), icpk(ktop:kbot)
- real dq, tmp1
+ real dq
  integer k
 
  do k=ktop,kbot
@@ -3316,12 +3330,12 @@ endif   ! end ice-physics
       real, dimension(is:ie,km+1):: pk, peln
       real q0(is:ie,km,nq) 
       real gzh(is:ie)
-      real pbot, ri, pt1, pt2, lf, ratio
-      real rdt, dh, dh0, dhs, dq, tv, h0, mc, mx,  fra, rk, rz, rcp
-      real qs1, detn
+      real ri, pt1, pt2, lf, ratio
+      real rdt, dh, dh0, dhs, tv, h0, mc, fra, rk, rz, rcp
+      real qs1
       real clouds, rqi
       integer kcond
-      integer i, j, k, n, m, iq, kk, ik
+      integer i, j, k, n, m, iq, kk
       real, parameter:: ustar2 = 1.E-8
       real, parameter:: dh_min = 1.E-4
 

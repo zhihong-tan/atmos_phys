@@ -5,8 +5,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: scops.f,v 1.1.2.1.2.1 2009/08/10 10:45:52 rsh Exp $
-! $Name: riga_201006 $
+! $Id: scops.f,v 18.0.2.1 2010/03/25 00:31:40 pjp Exp $
+! $Name: riga_201012 $
  
 
 
@@ -256,23 +256,23 @@
           do j=1,npoints
             threshold(j,ibox)=
               !if max overlapped conv cloud
-     &        maxocc(j,ibox) * (                                       
-     &            boxpos(j,ibox)                                               
-     &        ) +                                                      
+     &        maxocc(j,ibox) * (
+     &            boxpos(j,ibox)
+     &        ) +
               !else
      &        (1-maxocc(j,ibox)) * (                                   
                   !if max overlapped strat cloud
      &            (maxosc(j,ibox)) * (                                 
                       !threshold=boxpos
-     &                threshold(j,ibox)                                        
-     &            ) +                                                  
+     &                threshold(j,ibox)
+     &            ) +
                   !else
      &            (1-maxosc(j,ibox)) * (                               
                       !threshold_min=random[thrmin,1]
      &                threshold_min(j,ibox)+
-     &                  (1-threshold_min(j,ibox))*ran(j)  
-     &           ) 
+     &                  (1-threshold_min(j,ibox))*ran(j)
      &        )
+     &           )
           enddo
 
         ENDDO ! ibox
@@ -331,7 +331,7 @@
             write (6,'(8f5.2)') (threshold(j,ibox),ibox=1,ncolprint)
     
             write (6,'(a)') 'frac_out_pp_rev:'
-            write (6,'(8f5.2)') 
+            write (6,'(8f5.2)')
      &       ((frac_out(j,ibox,ilev2),ibox=1,ncolprint),ilev2=1,nlev)
           enddo
           endif

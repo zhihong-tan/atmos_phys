@@ -5,6 +5,7 @@ MODULE UW_CONV_MOD
   use      Constants_Mod, ONLY: tfreeze,HLv,HLf,HLs,CP_AIR,GRAV,Kappa,rdgas,rvgas
   use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
   use   Time_Manager_Mod, ONLY: time_type, get_time 
+  use           mpp_mod, only : input_nml_file
   use           fms_mod, only : write_version_number, open_namelist_file, check_nml_error,&
                                 FILE_EXIST, ERROR_MESG,  &
                                 lowercase, &
@@ -46,8 +47,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 18.0 2010/03/02 23:33:12 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201006 $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
+  character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -258,6 +259,16 @@ contains
     call exn_init_k (Uw_p)
     call findt_init_k (Uw_p)
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=uw_closure_nml, iostat=io)
+      ierr = check_nml_error(io,'uw_closure_nml')
+      read (input_nml_file, nml=uw_conv_nml, iostat=io)
+      ierr = check_nml_error(io,'uw_conv_nml')
+      read (input_nml_file, nml=uw_plume_nml, iostat=io)
+      ierr = check_nml_error(io,'uw_plume_nml')
+      read (input_nml_file, nml=deep_conv_nml, iostat=io)
+      ierr = check_nml_error(io,'deep_conv_nml')
+#else   
     if( FILE_EXIST( 'input.nml' ) ) then
        unit = OPEN_NAMELIST_FILE ()
        io = 1
@@ -293,6 +304,7 @@ contains
 40     call close_file ( unit )
 !========Option for deep convection=======================================
     end if
+#endif
     call write_version_number (version, tagname)
     WRITE( stdlog(), nml = uw_closure_nml )
     WRITE( stdlog(), nml = uw_conv_nml )
@@ -623,10 +635,10 @@ contains
     real, intent(out), dimension(:,:,:,:)  :: trtend          ! calculated tracer tendencies
     real, intent(out), dimension(:,:,:)  :: uw_wetdep       ! calculated wet depostion for tracers
 
-    integer i, j, k, kl, klm, km1, nk, ks, m, naer, na, n
+    integer i, j, k, kl, klm, nk, naer, na, n
 
-    real rhos0j, thj, qvj, qlj, qij, qse, thvj
-    real thvuinv, hlsrc, thcsrc, qctsrc, plcltmp, tmp, lofactor
+    real rhos0j
+    real hlsrc, thcsrc, qctsrc, tmp, lofactor
     real zsrc, psrc, cbmf_shallow, cbmf_old, cbmf_deep, rkm_sh1, omeg_avg, dpsum
     real, dimension(size(tb,1),size(tb,2)) :: &
          plcl,       &     ! pressure of lifting condensation level (Pa)
@@ -667,7 +679,8 @@ contains
     
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: pmass    ! layer mass (kg/m2)
     real, dimension(size(tb,1),size(tb,2))            :: tempdiag ! temporary diagnostic variable
-    real, dimension(size(tracers,1),size(tracers,2),size(tracers,3),size(tracers,4))  :: trwet          ! calculated tracer wet deposition tendencies
+    real, dimension(size(tracers,1),size(tracers,2),size(tracers,3),size(tracers,4))  :: trwet 
+    ! calculated tracer wet deposition tendencies
 
     integer imax, jmax, kmax
     integer kd, ntracers

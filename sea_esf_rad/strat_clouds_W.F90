@@ -18,6 +18,7 @@
 
 use constants_mod,          only: radian
 use time_manager_mod,       only: time_type, time_manager_init
+use mpp_mod,                only: input_nml_file
 use fms_mod,                only: open_namelist_file, mpp_pe, &
                                   mpp_root_pe, stdlog,  fms_init, &
                                   write_version_number, file_exist, &
@@ -60,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 17.0 2009/07/21 02:57:47 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 17.0.8.1.2.1.2.1 2010/08/30 20:33:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -169,6 +170,10 @@ subroutine strat_clouds_W_init(latb, lonb)
 !---------------------------------------------------------------------
 !    read namelist.         
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=strat_clouds_W_nml, iostat=io)
+   ierr = check_nml_error(io,'strat_clouds_W_nml')
+#else   
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -177,6 +182,7 @@ subroutine strat_clouds_W_init(latb, lonb)
         enddo                       
 10      call close_file (unit)      
       endif                         
+#endif
                                     
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -365,8 +371,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !    local variables
 
       real, dimension (size(pflux,1), size(pflux,2),  &
-                       size(pflux,3)-1) ::      cldamt, lwp, iwp,  &
-                                                reff_liq, reff_ice
+                       size(pflux,3)-1) ::      cldamt
 
       real, dimension (size(pflux,1), size(pflux,2),  &
                        size(pflux,3)-1, Cldrad_control%nlwcldb) :: &
@@ -403,6 +408,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 dimension(size(pflux,1), size(pflux,2)) :: streams
       integer     ::    kx 
       integer     ::    i, j, k, kc, nb
+      real        ::   seedwts(8) = (/3000.,1000.,300.,100.,30.,10.,3.,1./)
 
 !-------------------------------------------------------------------
 !    local variables:
@@ -490,15 +496,26 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 !       on grid location and model date/time
 !---------------------------------------------------------------------
           if (do_stochastic_clouds) then
-            do j = 1, size(Cld_spec%cloud_water, 2)
-              do i = 1, size(Cld_spec%cloud_water, 1)
-                streams(i, j) =   &
-                         initializeRandomNumberStream(  &
-                            constructSeed(nint(lons(is + i - 1, js + j - 1)), &
-                                          nint(lats(is + i - 1, js + j - 1)), &
-                                                    Rad_time, seedperm))
+            if (Cldrad_control%use_temp_for_seed) then
+              do j = 1, size(Cld_spec%cloud_water, 2)
+                do i = 1, size(Cld_spec%cloud_water, 1)
+                  streams(i, j) =   &
+                           initializeRandomNumberStream(  &
+                               ishftc(nint(temp(i,j,1)*seedwts),seedperm))
+
+                end do
               end do
-            end do
+            else
+              do j = 1, size(Cld_spec%cloud_water, 2)
+                do i = 1, size(Cld_spec%cloud_water, 1)
+                  streams(i, j) =   &
+                     initializeRandomNumberStream(  &
+                        constructSeed(nint(lons(is + i - 1, js + j - 1)), &
+                                      nint(lats(is + i - 1, js + j - 1)), &
+                                                      Rad_time, seedperm))
+                end do
+              end do
+            endif
 
             if (one_generator_call) then
 !---------------------------------------------------------------------

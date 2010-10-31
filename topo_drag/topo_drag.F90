@@ -8,6 +8,7 @@ module topo_drag_mod
 !  Calculates horizontal velocity tendency due to topographic drag
 !-----------------------------------------------------------------------
 
+use          mpp_mod, only: input_nml_file
 use          fms_mod, only: file_exist, open_namelist_file,            &
                             close_file, error_mesg, FATAL, NOTE,       &
                             mpp_pe, mpp_root_pe, stdout, stdlog,       &
@@ -23,8 +24,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 17.0 2009/07/21 02:58:23 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 17.0.6.1 2010/08/30 20:39:47 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 logical :: module_is_initialized = .false.
 
@@ -124,8 +125,8 @@ real,    dimension(size(zhalf,1),size(zhalf,2),size(zhalf,3)) :: tausat
 real, dimension(size(zfull,1),size(zfull,2)) :: taub, taul, taup, taun
 real, dimension(size(zfull,1),size(zfull,2)) :: frulo, fruhi, frunl, rnorm
 
-integer :: i, idim
-integer :: j, jdim
+integer :: idim
+integer :: jdim
 integer :: k, kdim
 
   idim = size(uwnd,1)
@@ -195,10 +196,10 @@ integer, intent(in), dimension(:,:) :: ktop
 
 integer :: i, idim, id
 integer :: j, jdim, jd
-integer :: k, kdim, kt
+integer :: k, kdim
 
-real :: usat, bfreq2, bfreq, dphdz, vtau, d2udz2, d2vdz2
-real :: dzfull, dzhalf, dzhalf1, dzhalf2, density
+real :: usat, bfreq2, bfreq, dphdz, vtau
+real :: dzhalf, density
 real :: frmin, frmax, frumin, frumax, fruclp, fru0, frusat
 real :: rnormal, gterm
 
@@ -312,7 +313,7 @@ integer, intent(in), dimension (:,:) :: ktop, kcut
 real, dimension(size(zfull,1),size(zfull,2)) :: usat
 
 real :: dzhalf, gterm, gterm0, density
-real :: bfreq2, bfreq, vtau, d2vtau, dphdz
+real :: bfreq2, bfreq, vtau, dphdz
 real :: frumin, frumax, fruclp, frusat, frusat0, fruclp0
 
 integer :: i, idim
@@ -421,7 +422,6 @@ real, parameter :: bfmin=0.7e-2, bfmax=1.7e-2  ! min/max buoyancy freq [1/s]
 real, parameter :: vvmin=1.0                   ! minimum surface wind [m/s]
 
 integer,dimension(size(zfull,1),size(zfull,2)) :: kref
-real,   dimension(size(zfull,1),size(zfull,2)) :: delp
 real :: dzhalf, zlast, rscale, phase, bfreq, bfreq2, vtau
 real :: gfac, gfac1, dp, weight, wtsum
 
@@ -559,7 +559,6 @@ subroutine topo_drag_init (lonb, latb)
 real, intent(in), dimension(:,:) :: lonb, latb
 
 character(len=128) :: msg
-character(len=16)  :: name
 character(len=64)  :: restart_file='topo_drag.res.nc'
 character(len=64)  :: topography_file='INPUT/postopog_2min_hp150km.nc'
 character(len=64)  :: dragtensor_file='INPUT/dragelements_2min_hp150km.nc'
@@ -572,7 +571,7 @@ real, allocatable, dimension(:,:) :: zdat, zout
 type (horiz_interp_type) :: Interp
 real :: exponent
 
-integer :: unit, ndim, nvar, natt, nt, namelen, n
+integer :: n
 integer :: io, ierr, unit_nml, logunit
 integer :: i, j
 integer :: siz(4)
@@ -585,6 +584,10 @@ integer :: id_restart
 
 ! read namelist
 
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=topo_drag_nml, iostat=io)
+   ierr = check_nml_error(io,'topo_drag_nml')
+#else   
   if( file_exist( 'input.nml' ) ) then
      unit_nml = open_namelist_file ( )
      ierr = 1
@@ -594,6 +597,7 @@ integer :: id_restart
      end do
  10  call close_file ( unit_nml )
   endif
+#endif
 
 ! write version number and namelist to logfile
 
@@ -722,8 +726,6 @@ end subroutine topo_drag_init
 subroutine topo_drag_end
 
 ! writes static arrays to restart file
-
-character(len=64) :: restart_file='RESTART/topo_drag.res.nc'
 
   if (mpp_pe() == mpp_root_pe() ) then
      call error_mesg('topo_drag_mod', 'Writing netCDF formatted restart file: RESTART/topo_drag.res.nc', NOTE)

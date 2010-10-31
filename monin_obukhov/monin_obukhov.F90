@@ -15,11 +15,12 @@ module monin_obukhov_mod
 !=======================================================================
 
 
-use constants_mod, only : grav, vonkarm
-use       fms_mod, only:  error_mesg, FATAL, file_exist,   &
-                          check_nml_error, open_namelist_file,      &
-                          mpp_pe, mpp_root_pe, close_file, stdlog, &
-                          write_version_number
+use constants_mod, only: grav, vonkarm
+use mpp_mod,       only: input_nml_file
+use fms_mod,       only: error_mesg, FATAL, file_exist,   &
+                         check_nml_error, open_namelist_file,      &
+                         mpp_pe, mpp_root_pe, close_file, stdlog, &
+                         write_version_number
 
 implicit none
 private
@@ -57,8 +58,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 17.0 2009/07/21 02:55:38 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: monin_obukhov.F90,v 17.0.6.1 2010/08/30 20:33:35 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !=======================================================================
 
@@ -93,6 +94,10 @@ integer :: unit, ierr, io, logunit
 
 !------------------- read namelist input -------------------------------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=monin_obukhov_nml, iostat=io)
+      ierr = check_nml_error(io,"monin_obukhov_nml")
+#else
       if (file_exist('input.nml')) then
          unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
@@ -101,6 +106,7 @@ integer :: unit, ierr, io, logunit
          enddo
   10     call close_file (unit)
       endif
+#endif
 
 !---------- output namelist to log-------------------------------------
 

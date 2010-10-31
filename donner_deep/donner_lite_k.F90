@@ -1,5 +1,5 @@
 !VERSION NUMBER:
-!   $Id: donner_lite_k.F90,v 18.0.4.2 2010/05/26 19:45:44 wfc Exp $
+!   $Id: donner_lite_k.F90,v 18.0.4.4 2010/09/03 22:17:08 wfc Exp $
 
 !######################################################################
 !######################################################################
@@ -50,9 +50,9 @@ type(uw_params),                           intent(inout) :: Uw_p
 
       real, dimension (nlev_lsm) :: mid_cape_temp, mid_cape_vapor
       real, dimension (isize,jsize,nlev_lsm, ntr) :: xgcm_v
-      real         :: dz, zsrc, psrc, hlsrc, thcsrc, qctsrc, tvtmp, &
+      real         :: zsrc, psrc, hlsrc, thcsrc, qctsrc, &
                       lofactor
-      integer      :: i, j, k, n, kmax
+      integer      :: i, j, k, n
 
       do n=1,ntr
       do k=1,nlev_lsm
@@ -685,46 +685,36 @@ integer,                           intent(out)   :: error
 !   local variables:
 
       real,    dimension (nlev_hires)     ::                &
-              efchr, emfhr, te, mre, rcl, dpf, qlw, dfr, cfracice, alp,&
-              cld_evap, flux, ucemh, cuql, cuqli, detmfh, tcc, wv, rmu 
+              alp, ucemh, cuql, cuqli, detmfh, tcc
 
       real,    dimension (nlev_lsm)       ::           &
-              q1, pi, em,      cmf, cell_freeze, cell_melt, disf,  &
-              h1_liq, h1_ice, meso_melt, meso_freeze, h1_2, out,  &
-              evap_rate, ecd, ecd_liq, ecd_ice, ece, ece_liq, ece_ice, &
-              disl, thlr, qlr, sfcq, sfch
+              q1, cmf, cell_freeze, cell_melt, &
+              h1_liq, h1_ice, meso_melt, meso_freeze, h1_2, &
+              evap_rate, ecd, ecd_liq, ecd_ice, ece, ece_liq, ece_ice
       real,   dimension (nlev_lsm) :: rcl_miz, dpf_miz, qlw_miz,  &
                                       dfr_miz, flux_miz, efchr_miz, &
                                       emfhr_miz, cfracice_miz, alp_miz,&
-                                      cuql_miz, cld_evap_miz,  &
+                                      cuql_miz, &
                                       cuqli_miz, ucemh_miz, detmfh_miz,&
                                       rlsm_miz, emsm_miz, qvfm_miz,&
                                       qvfm_tot
       real,   dimension (nlev_lsm,ntr) :: etsm_miz, etfhr_miz, dpftr_miz
 
       real    :: dint_miz, cu_miz, cell_precip_miz,              &
-                 apt_miz, cell_melt_miz
+                 apt_miz
       real    :: wt_factor
-      integer :: krel, ktr, ncc_kou_miz
+      integer :: krel, ncc_kou_miz
       real,    dimension (nlev_lsm,ntr)   :: qtr
-      real,    dimension (Param%kpar)     :: cuto, preto, ptma, ptma_miz
+      real,    dimension (Param%kpar)     :: ptma_miz
       integer, dimension (Param%kpar)     :: ncca
 
       logical ::   lcl_reached                  
-      integer ::   ncc_kou, ncc_ens
+      integer ::   ncc_ens
       integer ::   k,    kou, n
-      integer ::   kc, kcl, kch
       integer   :: kk
-      real    ::   al,        disga, dp, mrb, pmel, p, sumehf, sumhlr, &
-                   summel, pl, dpp, ph, esh, esl, rh, rl, pkc, tveh,   &
-                   tvch, dpdzh, ehfh, tvel, tvcl, dpdzl, ehfl, ptt,   &
-                   ehf, tve, tvc, dpdz, exf, emfh, emfl, thetf, emff, &
-                   sbl, p1, dmela, psmx, esumc, sumf, summ, sumqme,   &
-                   sumg, sumn, sumelt, sumfre, summes, esum, sumev,   &
-                   esuma, es, etfh, etfl, dint, cu, cell_precip,&
-                   precip, conint, ca_liq, ca_ice, apt, qtrsum,  &
-                   qtmesum, rintsum, rintsum2, intgl_in, intgl_out, &
-                   alphaw, tb, alpp, pcsave, rsc, ensmbl_cld_top_area  
+      real    ::   al, dp, mrb, summel, &
+                   dmela, ca_liq, ca_ice, &
+                   tb, alpp, pcsave, ensmbl_cld_top_area
 
       real    :: qs, tp, qp, pp, chi, rhtmp, frac0, lofactor !miz
       real    ::   meso_frac, precip_frac
@@ -737,7 +727,7 @@ integer,                           intent(out)   :: error
       real   :: ci_liq_cond, ci_ice_cond
      real :: local_frz_frac
 
-      real            :: dz, zsrc, psrc, hlsrc, thcsrc, qctsrc, tvtmp
+      real            :: zsrc, psrc, hlsrc, thcsrc, qctsrc
       real            :: rkm, cbmf, wrel, scaleh
       real, dimension (nlev_lsm  ) ::  dpf_warm, dpf_cold
       type(cpnlist)   :: cpn
@@ -1450,14 +1440,16 @@ integer,                           intent(out)   :: error
         emsm_miz(k)   = emsm_miz(k)   + Param%arat(kou)*emfhr_miz(k)
         qvfm_miz(k)   = Param%arat(kou)*(dpf_miz (k) + emfhr_miz(k))
         qvfm_tot(k)   = qvfm_tot(k) + qvfm_miz(k)
-     end do
+
+        etsm_miz(k,:) = etsm_miz(k,:) + Param%arat(kou)*etfhr_miz(k,:)
+     enddo
 
      do n=1,ntr
      do k=1,ncc_kou_miz
-        etsm_miz(k,n) = etsm_miz(k,n) + Param%arat(kou)*etfhr_miz(k,n)
-        qtren(k,n)    = qtren(k,n) + Param%arat(kou)*etfhr_miz(k,n)
+!        etsm_miz(k,n) = etsm_miz(k,n) + (Param%arat(kou)*etfhr_miz(k,n))
+        qtren(k,n)    = qtren(k,n) + (Param%arat(kou)*etfhr_miz(k,n))
         ensmbl_wetc(k,n) = ensmbl_wetc(k,n) +  &
-                                   Param%arat(kou)*dpftr_miz(k,n)
+                                   (Param%arat(kou)*dpftr_miz(k,n))
      end do
      end do
 
@@ -2253,7 +2245,7 @@ integer,                        intent(out) :: error
 !----------------------------------------------------------------------
 !   local variables:
 
-      real, dimension (nlev_parcel)  :: rt, ta, ra, tden, tdena,  &
+      real, dimension (nlev_parcel)  :: rt, tden, tdena,  &
                                      dtpdta, pert_env_t, pert_env_r, &
                                      pert_parcel_t, pert_parcel_r,  &
                                      parcel_r_clo, parcel_t_clo, &
@@ -2773,7 +2765,7 @@ integer,                       intent(out)   :: error
 !---------------------------------------------------------------------
 !   local variables:
  
-      integer ::     k, kk
+      integer ::     k
       real    ::  avail_meso_cd     ! fraction of column integrated
                                     ! condensation available to meso-
                                     ! scale circulation (1. - gnu)
@@ -2781,7 +2773,6 @@ integer,                       intent(out)   :: error
       real    ::  caa               ! amount of condensate which must
                                     ! be frozen when it enters the anvil
                                     ! [ g(h2o) / kg(air) / day ]
-      real :: caa_liq, caa_ice
       real    ::  dint2             ! amount of condensate which has
                                     ! been frozen in the cumulus updraft
                                     ! before entering the anvil
@@ -2819,7 +2810,6 @@ integer,                       intent(out)   :: error
       real    ::  p2                ! upper pressure limit for the layer
                                     ! in which one of the physical
                                     ! processes is occurring [ Pa ]
-      real  :: dp
       integer  :: itrop
       real :: ptrop
 
@@ -3747,14 +3737,14 @@ integer,                         intent(out) :: error
       real, dimension(ntr)               :: q1t
 
 
-      real      ::  cmfhr, pc1, pc2, omer, pctm, q1, q4, es, mrsat, &
+      real      ::  cmfhr, pc1, pc2, omer, pctm, q1, q4, mrsat, &
                     q3, anv, qref, pp, pm, qprip, qprim, eqfp, eqfm, &
                     qmu, hflux, pfmin, owms, wpc, wmc, ta, te, tep, tmu,&
-                    qtprip, qtprim, eqtfp, eqtfm, rintsum, rintsum2
+                    qtprip, qtprim, eqtfp, eqtfm
       logical   :: do_donner_tracer
-      integer   :: ncc, ncztm
+      integer   :: ncc
       integer   :: kcont, kk
-      integer   :: jk, i, jj, jsave, jkm, jkp, jksave, j, k, nbad
+      integer   :: jk, jsave, jkm, jkp, k, nbad
 
 !-----------------------------------------------------------------------
       ermesg = ' ' ; error = 0
@@ -4706,10 +4696,9 @@ integer,                       intent(out)  :: error
       real, dimension(nlev_lsm+1)     :: emt, emq
 
      real    ::  es, mrsat, c2, c3, c1, fjk, fjkm, qb, fjkb, qbm, qmd, &
-                  qsmd, fjkmd, qmmd, pi, psa, owms, a, b, p1,         &
+                  qsmd, fjkmd, qmmd, pi, psa,  &
                         targ, tprimd, tb, qten, tten, omd, mrsb, wa,   &
-                  wb, tmd, rin, rintsum, rintsum2
-      integer :: ncmd
+                  wb, tmd, rin
       integer :: jksave, k, nbad
 
 !----------------------------------------------------------------------
@@ -5668,9 +5657,9 @@ character(len=*),               intent(out) :: ermesg
 integer,                        intent(out) :: error
 
 real, dimension (nlev_lsm)  :: ttt, rrr
-real    :: zsrc, psrc, hlsrc, thcsrc, qctsrc, cape_c, lofactor, tau
-integer :: k, kl, kmax
-real    :: sigmaw, wcrit, erfarg, cbmf1, ufrc, rbuoy, rkfre, wcrit_min, rmaxfrac
+real    :: zsrc, psrc, hlsrc, thcsrc, qctsrc, cape_c, lofactor
+integer :: k
+real    :: sigmaw, wcrit, cbmf1, rbuoy, rkfre, wcrit_min, rmaxfrac
 
    ermesg = ' '; error = 0
 
@@ -5858,10 +5847,6 @@ real, dimension(nlev_model)  :: tmp_t, tmp_r
 real, dimension(nlev_parcel) :: updated_t, updated_r
 
 real                         :: lofactor
-
-!--> For debugging only
-integer                      :: debug_unit
-! <--
 
     ermesg = ' '; error = 0
 

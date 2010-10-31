@@ -14,15 +14,16 @@
 !  FUNCTION   RAN0            - RANDOM NUMBER GENERATOR
 !=======================================================================
 
- use           mpp_mod, only : mpp_pe,             &
+ use            mpp_mod, only: mpp_pe,             &
                                mpp_root_pe,        &
                                stdlog
  use Sat_Vapor_Pres_Mod, ONLY: compute_qs
  use      Constants_Mod, ONLY:  HLv, HLs, Cp_Air, Grav, Kappa, rdgas, rvgas
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
  use   Time_Manager_Mod, ONLY: time_type
- use           fms_mod, only : write_version_number, open_namelist_file, &
-                               FILE_EXIST, ERROR_MESG,  &
+ use            mpp_mod, only: input_nml_file
+ use            fms_mod, only: write_version_number, open_namelist_file, &
+                               FILE_EXIST, ERROR_MESG, check_nml_error, &
                                CLOSE_FILE, FATAL
  use  field_manager_mod, only: MODEL_ATMOS
  use tracer_manager_mod, only: get_tracer_index,   &
@@ -40,8 +41,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 18.0 2010/03/02 23:31:30 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: ras.F90,v 17.0.2.1.4.1.2.1.2.1.2.2 2010/09/13 16:04:08 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -218,7 +219,7 @@ logical  :: do_ras_tracer = .false.
 !  (Intent local)
 !---------------------------------------------------------------------
 
- integer             :: unit, io
+ integer             :: unit, io, ierr
  real                :: actp, facm 
  real, dimension(15) :: au,   tem
  integer, dimension(3) :: half = (/1,2,4/)
@@ -232,14 +233,19 @@ logical  :: do_ras_tracer = .false.
 ! --- Read namelist
 !---------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+  read (input_nml_file, nml=ras_nml, iostat=io)
+  ierr = check_nml_error(io,"ras_nml")
+#else
   if( FILE_EXIST( 'input.nml' ) ) then
       unit = OPEN_NAMELIST_FILE ()
-      io = 1
-  do while ( io .ne. 0 )
-      READ( unit, nml = ras_nml, iostat = io, end = 10 )
-  end do
-  10  CALL CLOSE_FILE ( unit )
+      ierr = 1 ; do while ( ierr .ne. 0 )
+        READ( unit, nml = ras_nml, iostat = io, end = 10 )
+        ierr = check_nml_error (io, 'ras_nml')
+      end do
+10  CALL CLOSE_FILE ( unit )
   end if
+#endif
 
 !---------------------------------------------------------------------
 ! --- Write namelist
@@ -421,7 +427,11 @@ logical  :: do_ras_tracer = .false.
 !----------------------------------------------------------------------
 !    determine how many tracers are to be transported by ras_mod.
 !----------------------------------------------------------------------
-      num_ras_tracers = count(tracers_in_ras)
+      if (present(tracers_in_ras)) then
+        num_ras_tracers = count(tracers_in_ras)
+      else
+        num_ras_tracers = 0
+      endif
       if (num_ras_tracers > 0) then
         do_ras_tracer = .true.
       else
@@ -574,9 +584,6 @@ end subroutine ras_end
 ! precipitation flux and evaporation profiles [kg/m2/sec]
  real, dimension(SIZE(temp0,3)) :: flxprec,flxprec_evap       ! sum of all clouds
  real, dimension(SIZE(temp0,3)) :: flxprec_ib,flxprec_ib_evap ! for each cloud
- logical :: found
- integer :: istop
- character(len=32) :: tracer_units, tracer_name
 
  real, parameter :: p00 = 1000.0E2
 
@@ -620,7 +627,7 @@ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)+1) :: mc0_local
  real    :: dpfac, dtcu_pbl, dqcu_pbl, ducu_pbl, dvcu_pbl, dtracercu_pbl(num_ras_tracers)
  
  real, dimension(size(temp0,1),size(temp0,2),size(temp0,3),3) :: totalmass1
- real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)) :: airdens, debug1
+ real, dimension(size(temp0,1),size(temp0,2),size(temp0,3)) :: airdens
  real, dimension(size(temp0,3),3) :: aerosolmass
 
  real :: thickness
@@ -1505,8 +1512,9 @@ endif
 !qc in-cloud vapor mixing ratio (kg water/kg air)
 !qt in-cloud qc + ql (kg water/kg air)
  real, dimension(size(theta,1)) :: thetac, qc, qt
- real     :: tc, te, Nc, qlc, up_conv, drop
+ real     :: tc, te, Nc, up_conv, drop
  real, dimension(3) :: totalmass
+ integer :: tr
 
 !=====================================================================
 
@@ -1533,7 +1541,9 @@ endif
   mccu = 0.0
   end if
   if ( LRcu ) then
-  dtracercu = 0.0
+  do tr = 1,num_ras_tracers
+    dtracercu(:,tr) = 0.0
+  enddo
   end if
 
 ! Initialize
@@ -1823,13 +1833,17 @@ if ( LRcu ) then
      wli = qi(k)
      if ( do_liq_num ) &
        wlN = qn(k)
-     wlR = tracer(k,:)
+ do tr=1,num_ras_tracers
+     wlR(tr) = tracer(k,tr)
+ enddo
 
  do l = km1,ic,-1
      xx1 = eta(l) - eta(l+1)
      wll = wll + xx1 * ql(l)
      wli = wli + xx1 * qi(l)
-     wlR = wlR + xx1 * tracer(l,:)
+     do tr=1,num_ras_tracers
+       wlR(tr) = wlR(tr) + xx1 * tracer(l,tr)
+     enddo
  end do
 
 
@@ -1848,7 +1862,9 @@ if ( LRcu ) then
      if ( do_liq_num ) &
        Dncu(k) = ( qn(km1) - qn(k) ) * xx1
      mccu(k) = eta(k)
-     dtracercu(k,:) = ( tracer(km1,:) - tracer(k,:) ) * xx1
+     do tr = 1,num_ras_tracers
+       dtracercu(k,tr) = ( tracer(km1,tr) - tracer(k,tr) ) * xx1
+     enddo
 
  if ( ic1 <= km1 ) then
    do l = km1,ic1,-1
@@ -1860,8 +1876,10 @@ if ( LRcu ) then
      Dacu(l) = ( eta(l+1) * ( qa(l  ) - qa(l+1) ) + &
                  eta(l  ) * ( qa(l-1) - qa(l  ) ) ) * xx1
      mccu(l) = eta(l)
-     dtracercu(l,:) = ( eta(l+1) * ( tracer(l  ,:) - tracer(l+1,:) ) + &
-                   eta(l  ) * ( tracer(l-1,:) - tracer(l  ,:) ) ) * xx1
+     do tr = 1,num_ras_tracers
+       dtracercu(l,tr) = ( eta(l+1) * ( tracer(l  ,tr) - tracer(l+1,tr) ) + &
+                     eta(l  ) * ( tracer(l-1,tr) - tracer(l  ,tr) ) ) * xx1
+     enddo
    end do
 
    if ( do_liq_num ) then
@@ -1886,8 +1904,10 @@ if ( LRcu ) then
      if ( do_liq_num ) &
        Dncu(ic) = ( eta(ic1) * ( qn(ic) - qn(ic1) ) * xx2 ) + &
                   ( wlN       - eta(ic) * qn(ic)  ) * xx1
-     dtracercu(ic,:) = ( eta(ic1) * ( tracer(ic,:) - tracer(ic1,:) ) * xx2 ) + &
-                  ( wlR      - eta(ic) * tracer(ic,:)  ) * xx1
+     do tr = 1,num_ras_tracers
+       dtracercu(ic,tr) = ( eta(ic1) * ( tracer(ic,tr) - tracer(ic1,tr) ) * xx2 ) + &
+                    ( wlR(tr)      - eta(ic) * tracer(ic,tr)  ) * xx1
+     enddo
 
  end if
 
@@ -2108,7 +2128,9 @@ if ( LRcu ) then
  if ( LRcu ) then
       xx1 = wfn * onebg
      do l = ic,k
-          dtracercu(l,:) = dtracercu(l,:) * xx1
+       do tr = 1,num_ras_tracers
+          dtracercu(l,tr) = dtracercu(l,tr) * xx1
+       end do
      end do
  end if
 
@@ -2201,7 +2223,7 @@ if ( LRcu ) then
 !---------------------------------------------------------------------
 
   real, dimension(size(t_parc,1),size(t_parc,2)) :: &
-        esat, qsat, rhum, chi, p_lcl
+        qsat, rhum, chi, p_lcl
 
   integer :: k, kmax, k_lcl_min
 
@@ -2247,7 +2269,7 @@ if ( LRcu ) then
  SUBROUTINE RAS_CEVAP ( type,     temp,      qvap,   pres,   mass,  &
                         qvap_sat, dqvap_sat, psfc,   hl,     dtime, &
                         ksfc,     dpcu,      dtevap, dqevap, dpevap, &
-			flxprec_ib, flxprec_ib_evap )
+                        flxprec_ib, flxprec_ib_evap )
 
 !=======================================================================
 ! EVAPORATION OF CONVECTIVE SCALE PRECIP         
@@ -2286,8 +2308,8 @@ if ( LRcu ) then
   real, intent(out)               :: dpevap
   real, intent(out), dimension(:) ::  &
                 flxprec_ib,    & ! precipation flux profile for cloud ib
-		flxprec_ib_evap  ! evaporaton of precip profile for cloud id
-		                 ! [kg/m2/s]
+                flxprec_ib_evap  ! evaporaton of precip profile for cloud id
+                                 ! [kg/m2/s]
 
 !---------------------------------------------------------------------
 !  (Intent local)
@@ -2586,7 +2608,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 18.0 2010/03/02 23:31:30 fms Exp $
+!     $Id: ras.F90,v 17.0.2.1.4.1.2.1.2.1.2.2 2010/09/13 16:04:08 wfc Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

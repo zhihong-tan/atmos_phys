@@ -23,6 +23,7 @@ module damping_driver_mod
                               cg_drag_restart
  use    topo_drag_mod, only:  topo_drag_init, topo_drag, topo_drag_end, &
                               topo_drag_restart
+ use          mpp_mod, only:  input_nml_file
  use          fms_mod, only:  file_exist, mpp_pe, mpp_root_pe, stdlog, &
                               write_version_number, &
                               open_namelist_file, error_mesg, &
@@ -98,8 +99,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 18.0 2010/03/02 23:29:45 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 18.0.2.1 2010/08/30 20:33:33 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !-----------------------------------------------------------------------
 
@@ -333,6 +334,10 @@ contains
 !-----------------------------------------------------------------------
 !----------------- namelist (read & write) -----------------------------
 
+#ifdef INTERNAL_FILE_NML
+   read (input_nml_file, nml=damping_driver_nml, iostat=io)
+   ierr = check_nml_error(io,"damping_driver_nml")
+#else
    if (file_exist('input.nml')) then
       unit = open_namelist_file ()
       ierr=1; do while (ierr /= 0)
@@ -341,6 +346,7 @@ contains
       enddo
  10   call close_file (unit)
    endif
+#endif
 
    call write_version_number(version, tagname)
    logunit = stdlog()

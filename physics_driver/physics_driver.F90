@@ -63,6 +63,7 @@ use atmos_tracer_driver_mod, only: atmos_tracer_driver_init,    &
                                    atmos_tracer_driver_endts, &
                                    atmos_tracer_driver,  &
                                    atmos_tracer_driver_end
+use mpp_mod,                 only: input_nml_file
 use fms_mod,                 only: mpp_clock_id, mpp_clock_begin,   &
                                    mpp_clock_end, CLOCK_MODULE_DRIVER, &
                                    fms_init,  &
@@ -176,8 +177,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 17.0.2.1.6.1.2.1.2.1.2.2.2.1.2.1.4.1.2.1 2010/04/09 08:00:15 rsh Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 17.0.2.1.6.1.2.1.2.1.2.2.2.1.2.1.4.1.2.1.2.1.2.1.2.2 2010/09/03 22:17:12 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -616,6 +617,10 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
  
 !--------------------------------------------------------------------
 !    read namelist.
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=physics_driver_nml, iostat=io)
+      ierr = check_nml_error(io,"physics_driver_nml")
+#else
 !--------------------------------------------------------------------
       if ( file_exist('input.nml')) then
         unit = open_namelist_file ()
@@ -625,6 +630,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
         enddo
 10      call close_file (unit)
       endif
+#endif
 
       if(do_radiation .and. do_grey_radiation) & 
         call error_mesg('physics_driver_init','do_radiation and do_grey_radiation cannot both be .true.',FATAL)
@@ -3235,7 +3241,6 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !
 subroutine physics_driver_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
-  integer                                :: unit
 
 
   if(do_netcdf_restart) then
@@ -3448,10 +3453,10 @@ subroutine physics_driver_register_restart
      allocate(Til_restart)
   endif
 
-  id_restart = register_restart_field(Phy_restart, fname, 'vers', vers)
-  id_restart = register_restart_field(Phy_restart, fname, 'doing_strat', now_doing_strat)
-  id_restart = register_restart_field(Phy_restart, fname, 'doing_edt', now_doing_edt)
-  id_restart = register_restart_field(Phy_restart, fname, 'doing_entrain', now_doing_entrain)
+  id_restart = register_restart_field(Phy_restart, fname, 'vers', vers, no_domain=.true.)
+  id_restart = register_restart_field(Phy_restart, fname, 'doing_strat', now_doing_strat, no_domain=.true.)
+  id_restart = register_restart_field(Phy_restart, fname, 'doing_edt', now_doing_edt, no_domain=.true.)
+  id_restart = register_restart_field(Phy_restart, fname, 'doing_entrain', now_doing_entrain, no_domain=.true.)
 
   id_restart = register_restart_field(Til_restart, fname, 'diff_cu_mo', diff_cu_mo)
   id_restart = register_restart_field(Til_restart, fname, 'pbltop', pbltop)

@@ -92,6 +92,7 @@ module entrain_mod
 use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
                               tfreeze, radian 
 
+use            mpp_mod, only: input_nml_file
 use            fms_mod, only: open_file, file_exist, open_namelist_file, &
                               error_mesg, FATAL, check_nml_error, &
                               mpp_pe, mpp_root_pe, close_file,           &
@@ -246,8 +247,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 18.0 2010/03/02 23:30:32 fms Exp $'
-character(len=128) :: Tagname = '$Name: riga_201006 $'
+character(len=128) :: Version = '$Id: entrain.F90,v 18.0.2.2 2010/09/07 14:23:51 wfc Exp $'
+character(len=128) :: Tagname = '$Name: riga_201012 $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
@@ -291,7 +292,7 @@ contains
 !  <TEMPLATE>
 !
 !   call entrain_init(lonb, latb, axes,time,idim,jdim,kdim)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="lonb" TYPE="real">
 !       2D array of model longitudes at cell corners (radians) 
@@ -355,6 +356,10 @@ real                           :: dellat, dellon
 !
 !      namelist functions
 
+#ifdef INTERNAL_FILE_NML
+       read (input_nml_file, nml=entrain_nml, iostat=io)
+       ierr = check_nml_error(io,"entrain_nml")
+#else
        If (File_Exist('input.nml')) Then
             unit = Open_namelist_File ()
             ierr=1
@@ -364,6 +369,7 @@ real                           :: dellat, dellon
             EndDo
   10        Call Close_File (unit)
        EndIf
+#endif
 
        if ( mpp_pe() == mpp_root_pe() ) then
             call write_version_number(Version, Tagname)
@@ -652,10 +658,10 @@ end subroutine entrain_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call entrain(is,ie,js,je,time, tdtlw_in, convect,u_star,b_star,             &
-!		t,qv,ql,qi,qa,u,v,zfull,pfull,zhalf,phalf,          
-!		diff_m,diff_t,k_m_entr,k_t_entr,use_entr,zsml,      
-!		vspblcap,kbot)
-!		
+!               t,qv,ql,qi,qa,u,v,zfull,pfull,zhalf,phalf,          
+!               diff_m,diff_t,k_m_entr,k_t_entr,use_entr,zsml,      
+!               vspblcap,kbot)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 !      Indice of starting point in the longitude direction of the slab being passed to entrain
@@ -1632,7 +1638,7 @@ character(len=16) :: mon
              write(dpu,947) kk,use_entr(i,j,kk), diff_t(i,j,kk),       &
                       diff_m(i,j,kk), k_t_entr(i,j,kk), k_m_entr(i,j,kk)
             end do
-947         format(1X,i2,3X,f3.1,4X,4(f9.4,1X))
+947         format(1X,i2,3X,f4.1,4X,4(f9.4,1X))
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' '
             write (dpu,'(a)')  ' k   pblfq  radfq     '//&
@@ -1646,7 +1652,7 @@ character(len=16) :: mon
                  write(dpu,949) kk,pblfq(i,j,kk),radfq(i,j,kk),        &
                        k_t_troen(i,j,kk),k_m_troen(i,j,kk),k_rad(i,j,kk)
             end do
-949         format(1X,i2,3X,2(f3.1,4X),3(f9.4,1X))
+949         format(1X,i2,3X,2(f4.1,4X),3(f9.4,1X))
 
       end if
 
@@ -1845,7 +1851,7 @@ end subroutine entrain
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call pbl_depth(t, z, u_star, b_star, ipbl, h, parcelkick)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="t" TYPE="real">
 !       Liquid water virtual static energy divided by cp (K)
@@ -1956,7 +1962,7 @@ end subroutine pbl_depth
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call prof_recon(rho,t,pf,ph,zt,dt)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="rho" TYPE="real">
 !       Air density (kg/m3)
@@ -2104,7 +2110,7 @@ end subroutine prof_recon
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call radml_depth(svp, zt, t, zf, zh, zb, zml)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="svp" TYPE="real">
 !       Cloud top value of the liquid water virtual static energy divided by cp (K)
@@ -2210,7 +2216,7 @@ end subroutine radml_depth
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call diffusivity_pbl(h, u_star, b_star, t, zm, k_m, k_t)
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="h" TYPE="real">
 !      Depth of surface driven mixed layer (m) 

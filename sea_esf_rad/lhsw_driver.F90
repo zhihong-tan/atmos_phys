@@ -25,7 +25,8 @@ use rad_utilities_mod,     only: astronomy_type, &
                                  radiative_gases_type, &
                                  cld_specification_type, &
                                  cldrad_properties_type
-use constants_mod,         only: GRAV, diffac, radcon, alogmin, wtmair
+use  constants_mod,        only: GRAV, diffac, radcon, alogmin, wtmair
+use        mpp_mod,        only: input_nml_file
 use        fms_mod,        only: fms_init, open_namelist_file, file_exist, &
                                  check_nml_error, error_mesg, &  
                                  FATAL, close_file, mpp_pe, mpp_root_pe, &
@@ -46,8 +47,8 @@ private
 !--------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 17.0 2009/07/21 02:56:35 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: riga_201006 $'
+    character(len=128)  :: version =  '$Id: lhsw_driver.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
+    character(len=128)  :: tagname =  '$Name: riga_201012 $'
     logical             :: module_is_initialized = .false.
 
 
@@ -174,7 +175,7 @@ contains
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call lhsw_driver_init ( pref )
-!		
+!
 !  </TEMPLATE>
 !  <IN NAME="pref" TYPE="">
 ! 
@@ -195,6 +196,10 @@ real, dimension(:,:), intent(in) :: pref
 !---------------------------------------------------------------------
 !-----  read namelist  ------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=lhsw_driver_nml, iostat=io)
+      ierr = check_nml_error(io,'lhsw_driver_nml')
+#else   
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -203,6 +208,7 @@ real, dimension(:,:), intent(in) :: pref
         enddo
 10      call close_file (unit)
       endif
+#endif
 
       if ( mpp_pe() == mpp_root_pe() ) then
         call write_version_number(version, tagname)
@@ -313,11 +319,11 @@ end subroutine lhsw_driver_end
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call swrad ( is, ie, js, je,   &
-!		Astro,                with_clouds,    Atmos_input,   &
-!		Surface,  &
-!		Rad_gases,                                   &
-!		Cldrad_props, Cld_spec, Sw_output, Cldspace_rad, gwt)
-!		
+!                Astro,                with_clouds,    Atmos_input,   &
+!                Surface,  &
+!                Rad_gases,                                   &
+!                Cldrad_props, Cld_spec, Sw_output, Cldspace_rad, gwt)
+!
 !  </TEMPLATE>
 !  <IN NAME=" is" TYPE="integer">
 ! 
@@ -1383,11 +1389,11 @@ else
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call convert_to_cloud_space (is, ie, js, je,  Cldrad_props, &
-!		Cld_spec,  &
-!		cirabswkc, cirrfswkc,  &
-!		cvisrfswkc, ktopswkc, kbtmswkc,  &
-!		camtswkc, Cldspace_rad)
-!		
+!                Cld_spec,  &
+!                cirabswkc, cirrfswkc,  &
+!                cvisrfswkc, ktopswkc, kbtmswkc,  &
+!                camtswkc, Cldspace_rad)
+!
 !  </TEMPLATE>
 !  <IN NAME="is" TYPE="integer">
 ! 

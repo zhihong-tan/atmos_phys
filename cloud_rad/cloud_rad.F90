@@ -217,6 +217,7 @@
 
 !   shared modules:
 
+use  mpp_mod,             only:  input_nml_file
 use  fms_mod,             only:  file_exist, fms_init,       &
                                  stdlog, mpp_pe, mpp_root_pe, &
                                  open_namelist_file, &
@@ -252,8 +253,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 17.0 2009/07/21 02:53:53 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 17.0.6.1 2010/08/30 20:39:46 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------- 
@@ -643,6 +644,10 @@ INTEGER                                  :: unit,io,ierr, logunit
 !--------------------------------------------------------------------
 !    read namelist.
 !--------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=cloud_rad_nml, iostat=io)
+      ierr = check_nml_error(io,'cloud_rad_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit = open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -651,6 +656,7 @@ INTEGER                                  :: unit,io,ierr, logunit
         enddo
 10      call close_file (unit)
       endif
+#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -810,7 +816,6 @@ real, dimension(:,:,:),  intent(out)  ::  em_lw
 
       real, dimension (size(em_lw,1), size(em_lw,2),                 &
                                       size(em_lw,3)) ::  k_liq, k_ice
-      integer        ::   i, j, k 
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1021,7 +1026,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
                                                 qi_local, N_drop3D
 
       real,dimension (size(ql,1),size(ql,2)) :: N_drop2D, k_ratio
-      integer  :: ix, jx, kx, sx, i, j, k, s
+      integer  :: i, j, k
 
 !--------------------------------------------------------------------
 !    local variables:
@@ -2318,14 +2323,9 @@ logical,  INTENT (IN   ),DIMENSION(:,:,:):: direct
 !  Internal variables
 !  ------------------
 
-INTEGER                                  :: I,iband,J,K, kk
-REAL,    DIMENSION(SIZE(tau,1),SIZE(tau,2)) :: taucum
-LOGICAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) ::         &
-                                                         direct_k
-LOGICAL, DIMENSION(SIZE(tau,1),SIZE(tau,2)            ) :: set_direct
+INTEGER                                  :: I,iband
 REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: coszen_3d
-REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_local, &
-                                                        tau_test
+REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_local
 REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: w0_local,g_local
 REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: g_prime,w0_prime
 REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: tau_prime,crit,AL
@@ -2721,7 +2721,7 @@ real, dimension(:,:,:),   intent(inout),optional :: ab_uv_out
       real, dimension (size(tau,1), size(tau,2),                    &
                        size(tau,3), size(tau,4)) :: r, ab
 
-      integer   :: i, iband, j, k
+      integer   :: iband, k
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -3096,7 +3096,7 @@ REAL,     INTENT (INOUT),DIMENSION(:,:,:):: r_uv,r_nir,ab_uv,ab_nir
 !  Internal variables
 !  ------------------
 
-INTEGER                                  :: I,iband,J,K
+INTEGER                                  :: I,iband
 REAL,    DIMENSION(SIZE(tau,1),SIZE(tau,2)) :: taucum
 LOGICAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: direct
 REAL, DIMENSION(SIZE(tau,1),SIZE(tau,2),SIZE(tau,3)) :: coszen_3d
@@ -3860,22 +3860,18 @@ REAL,     INTENT (INOUT),OPTIONAL,DIMENSION(:,:,:):: size_drop,size_ice
 !  Internal variables
 !  ------------------
 
-INTEGER                                           :: i,j,k,IDIM,JDIM,KDIM,max_cld
+INTEGER                                           :: i,j,IDIM,JDIM,KDIM,max_cld
 LOGICAL                                           :: rad_prop, wat_prop
 REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2),SIZE(ql,3)) :: qa_local,ql_local,qi_local
 REAL, DIMENSION(SIZE(ql,1),SIZE(ql,2))            :: N_drop, k_ratio
 REAL, DIMENSION(:,:,:), allocatable               :: r_uv_local, r_nir_local
 REAL, DIMENSION(:,:,:), allocatable               :: ab_uv_local, ab_nir_local
 REAL, DIMENSION(:,:,:), allocatable               :: em_lw_local
-REAL, DIMENSION(:,:,:), allocatable               :: cldamt_diag 
 REAL, DIMENSION(:,:,:), allocatable               :: conc_drop_local,conc_ice_local
 REAL, DIMENSION(:,:,:), allocatable               :: size_drop_local,size_ice_local
 REAL, DIMENSION(:,:,:), allocatable               :: LWP,IWP,Reff_liq,Reff_ice
-REAL, DIMENSION(:,:,:,:), allocatable             :: tau,tau_ice,w0,gg
-REAL, DIMENSION(:), allocatable                   :: tau_local,em_local,cldamt_local
-LOGICAL                                           :: used
+REAL, DIMENSION(:,:,:,:), allocatable             :: tau,w0,gg
 
-integer :: n
 
 !
 ! Code

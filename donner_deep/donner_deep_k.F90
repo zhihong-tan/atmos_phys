@@ -1,6 +1,6 @@
 !#VERSION NUMBER:
-!  $Name: riga_201006 $
-!  $Id: donner_deep_k.F90,v 18.0.2.1.2.1 2010/04/26 21:53:05 wfc Exp $
+!  $Name: riga_201012 $
+!  $Id: donner_deep_k.F90,v 17.0.2.1.2.1.2.1.2.1.2.2 2010/09/08 21:29:57 wfc Exp $
 
 !module donner_deep_inter_mod
 
@@ -57,7 +57,7 @@ logical,                 intent(in)     :: cloud_tracers_present
 real, dimension(isize,jsize),    intent(inout)     :: cbmf
 real,                    intent(in)     :: dt
 type(donner_param_type), intent(in)     :: Param
-type(donner_nml_type),   intent(in)     :: Nml
+type(donner_nml_type),   intent(inout)     :: Nml
 real, dimension(isize,jsize,nlev_lsm),                                  &
                          intent(in)     :: temp, mixing_ratio, pfull,   zfull, &
                                            omega, qlin, qiin, qain, &
@@ -1349,8 +1349,8 @@ integer,                         intent(in) :: isize, jsize, nlev_lsm,  &
 logical,                         intent(in) :: cloud_tracers_present
 real, dimension(isize,jsize),    intent(inout) :: cbmf
 real,                            intent(in) :: dt 
-type(donner_nml_type),           intent(in) :: Nml
-type(donner_initialized_type),   intent(in) :: Initialized
+type(donner_nml_type),           intent(inout) :: Nml
+type(donner_initialized_type),   intent(inout) :: Initialized
 type(donner_param_type),         intent(in) :: Param
 type(donner_column_diag_type),   intent(in) :: Col_diag
 real,    dimension(isize,jsize,nlev_lsm),              &
@@ -1807,7 +1807,7 @@ real,                              intent(in)    :: dt
 type(donner_column_diag_type),     intent(in)    :: Col_diag
 type(donner_param_type),           intent(in)    :: Param
 type(donner_nml_type),             intent(in)    :: Nml
-type(donner_initialized_type),     intent(in)    :: Initialized
+type(donner_initialized_type),     intent(inout) :: Initialized
 type(sounding),                    intent(inout) :: sd
 type(uw_params),                   intent(inout) :: Uw_p
 type(adicloud),                    intent(inout) :: ac
@@ -1983,10 +1983,8 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !    define an inverted tracer profile (index 1 nearest ground) for use
 !    in the cloud and convection routines.
 !------------------------------------------------------------------
-        do n=1,ntr
         do k=1,nlev_lsm
-          xgcm_v(:,:,k,n) = tracers(:,:,nlev_lsm-k+1,n)
-        end do
+          xgcm_v(:,:,k,:) = tracers(:,:,nlev_lsm-k+1,:)
         end do
 
 !--------------------------------------------------------------------
@@ -2851,7 +2849,7 @@ integer,                      intent(out)    ::  error
               disn, enctf, encmf, disg_liq, disg_ice, &
               enev, ensmbl_melt, ensmbl_melt_meso, anvil_precip_melt, &
               ensmbl_freeze, ensmbl_freeze_meso, temp_tend_melt,  &
-              liq_prcp, frz_prcp, sfcq, sfch
+              liq_prcp, frz_prcp
 
       real, dimension(isize, jsize, nlev_lsm) :: disa_v, dise_v
       real, dimension (nlev_lsm)              :: rlsm_miz, emsm_miz, &
@@ -2867,7 +2865,7 @@ integer,                      intent(out)    ::  error
       real, dimension (nlev_hires)     :: env_r, env_t, cape_p, &
                                           parcel_r, parcel_t
       real         ::  lofactor
-      real         ::  al, ampta1, ensmbl_cond, pb, ensmbl_precip,  &
+      real         ::  ampta1, ensmbl_cond, pb, ensmbl_precip,  &
                        pt_ens, max_depletion_rate, dqls_v,  &
                        ensmbl_anvil_cond_liq, ensmbl_anvil_cond_ice, &
                        ensmbl_anvil_cond_liq_frz, &
@@ -3945,17 +3943,17 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !   local variables:
 
       real,    dimension (nlev_hires)     ::                &
-              efchr, emfhr, te, mre, rcl, dpf, qlw, dfr, cfracice, &
+              efchr, emfhr, rcl, dpf, qlw, dfr, cfracice, &
               alp, cld_evap, flux, ucemh, cuql, cuqli, detmfh, tcc, wv
 
       real,    dimension (nlev_lsm)       ::           &
-                  q1, pi, em,      cmf, cell_freeze, cell_melt, disf,  &
-              h1_liq, h1_ice, meso_melt, meso_freeze, h1_2, out, &
+                  q1, cell_freeze, cell_melt,   &
+              h1_liq, h1_ice, meso_melt, meso_freeze, h1_2, &
               evap_rate, ecd, ecd_liq, ecd_ice, &
-              ece, ece_liq, ece_ice, disl, thlr, qlr, sfcq, sfch
+              ece, ece_liq, ece_ice, sfcq, sfch
       real, dimension (nlev_lsm,ntr)  :: wetdepl
 
-      real,    dimension (nlev_hires,ntr) :: xclo, xtrae, etfhr, dpftr
+      real,    dimension (nlev_hires,ntr) :: etfhr, dpftr
       real,    dimension (nlev_lsm,ntr)   :: qtr
       real,    dimension (Param%kpar)     :: cuto, preto, ptma
       integer, dimension (Param%kpar)     :: ncca
@@ -3963,20 +3961,14 @@ type(donner_cem_type),             intent(inout) :: Don_cem
       logical ::   lcl_reached                  
       integer ::   ncc_kou, ncc_ens
       integer ::   k,    kou
-      integer ::   kc, kcl, kch
       integer ::   kk
       logical ::   meso_frz_intg                 
-      real    ::   al,        disga, dp, mrb, pmel, p, sumehf, sumhlr, &
-                   summel, pl, dpp, ph, esh, esl, rh, rl, pkc, tveh,   &
-                   tvch, dpdzh, ehfh, tvel, tvcl, dpdzl, ehfl, ptt,   &
-                   ehf, tve, tvc, dpdz, exf, emfh, emfl, thetf, emff, &
-                   sbl, p1,        psmx, esumc, sumf, summ, sumqme,   &
-                   sumg, sumn, sumelt, sumfre, summes, esum, sumev,   &
-                   esuma,    es, etfh, etfl, dint, cu, cell_precip,&
-                   precip, conint,     ca_liq, ca_ice, apt, qtrsum, &
-                   qtmesum, rintsum, &
-                   rintsum2, intgl_in, intgl_out, alphaw, tb, alpp,   &
-                   pcsave, rsc, ensmbl_cld_top_area  
+      real    ::   al, dp, mrb,  &
+                   summel, ptt,   &
+                   sbl, psmx, dint, cu, cell_precip,&
+                   ca_liq, ca_ice, apt, &
+                   tb, alpp,   &
+                   pcsave, ensmbl_cld_top_area  
       real     ::  meso_frac, precip_frac, frz_frac_non_precip,  &
                    bak, meso_frz_frac, pmelt_lsm, precip_melt_frac, &
                    ecei_liq,  ci_liq_cond, ci_ice_cond
@@ -6444,17 +6436,13 @@ real   , intent(in) ::            precip_melt_frac
      real     :: convrat   !  latent heat factor, appropriate for the 
                            !  temperature at a given model level 
                            !  ( = L / cp ) [ deg K ]
-     real     :: wt_factor !  factor used to normalize each ensemble 
-                           !  member's contribution to the ensemble sum, 
-                           !  based on the cloud area  [ dimensionless ]
      real     :: qtrsum    !  sum of tracer flux convergence over all 
                            !  tracers and all levels and all ensemble 
                            !  members up to the current. used as a diag-
                            !  nostic; sum should be 0.0, if no boundary 
                            !  source term.
                            !  [ kg(tracer) / ( kg(dry air) sec ) ]
-     integer  :: k, kcont, kk  !  do-loop indices
-     real   ::      dp
+     integer  :: k, kcont  !  do-loop indices
 
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
@@ -7433,7 +7421,7 @@ logical,                      intent( in) :: melting_in_cloud
 !--------------------------------------------------------------------
 !   local variables:
 
-      real,    dimension(nlev_lsm) :: disl, disga, disl_liq, &
+      real,    dimension(nlev_lsm) :: disl_liq, &
                                       disl_ice, disl_ice_melted, &
                                       disl_liq_depo, disl_liq_cd, &
                                       disl_ice_depo, disl_ice_cd, &
@@ -7453,7 +7441,7 @@ logical,                      intent( in) :: melting_in_cloud
       real    ::   tsumaice, tsumcice, tsumdice, tsumeice,  &
                    tsumfice, tsumg1ice, tsumg2ice
       real    ::   liq_ice
-      real    ::   esumc, sumf, summ, sumn, summes
+      real    ::   esumc, sumf, summ, sumn
       real    ::   dp
       real    ::                   x7, x8
       real    ::       x8a, x5a, x5b, x5c, x5d, x6a, x6b, x6c, x6d
@@ -8521,7 +8509,7 @@ integer,                          intent(out)   :: error
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer  :: k, kinv, n    ! do-loop indices
+      integer  :: k, kinv    ! do-loop indices
 
 !-----------------------------------------------------------------------
 !    initialize the error message character string.
@@ -8582,17 +8570,11 @@ integer,                          intent(out)   :: error
         Don_conv%umeml (i,j,kinv)   = umeml(k)
         Don_conv%cuqi  (i,j,kinv)   = cuq(k)
         Don_conv%cuql  (i,j,kinv)   = cuql_v(k)
-        enddo
-
-      do n=1,ntr
-      do k=1,nlev_lsm            
-        kinv = nlev_lsm + 1 - k
-        Don_conv%qtren1(i,j,kinv,n) = qtren(k,n)
-        Don_conv%qtmes1(i,j,kinv,n) = qtmes(k,n)
-        Don_conv%temptr(i,j,kinv,n) = temptr(k,n)
-        Don_conv%wtp1  (i,j,kinv,n) = wtp(k,n)
-        Don_conv%wetdepc(i,j,kinv,n)= ensmbl_wetc(k,n)
-      end do
+        Don_conv%qtren1(i,j,kinv,:) = qtren(k,:)
+        Don_conv%qtmes1(i,j,kinv,:) = qtmes(k,:)
+        Don_conv%temptr(i,j,kinv,:) = temptr(k,:)
+        Don_conv%wtp1  (i,j,kinv,:) = wtp(k,:)
+        Don_conv%wetdepc(i,j,kinv,:)= ensmbl_wetc(k,:)
       end do
         
 
@@ -9540,7 +9522,6 @@ type(donner_conv_type),  intent(inout)  :: Don_conv
 !---------------------------------------------------------------------
 
    integer :: i,j,n,k
-   logical :: flag
    real, dimension(nlev_lsm) :: tracer0, trtend, trtendw, tracer1,  &
                                 tracer1w
    real :: ratio, tracer_max, tracer_min

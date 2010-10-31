@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 17.0 2009/07/21 02:54:38 fms Exp $
+!  $Id: donner_meso_k.F90,v 17.0.4.1 2010/03/17 20:27:07 wfc Exp $
 
 !module donner_meso_inter_mod
 
@@ -549,14 +549,14 @@ integer,                         intent(out) :: error
       real, dimension(ntr)               :: q1t
 
 
-      real      ::  cmfhr, pc1, pc2, omer, pctm, q1, q4, es, mrsat, &
+      real      ::  cmfhr, pc1, pc2, omer, pctm, q1, q4, mrsat, &
                     q3, anv, qref, pp, pm, qprip, qprim, eqfp, eqfm, &
                     qmu, hflux, pfmin, owms, wpc, wmc, ta, te, tep, tmu,&
                     qtprip, qtprim, eqtfp, eqtfm, rintsum, rintsum2
       logical   :: do_donner_tracer
       integer   :: ncc, ncztm
       integer   :: kcont, kk
-      integer   :: jk, i, jj, jsave, jkm, jkp, jksave, j, k, nbad
+      integer   :: jk, i, jsave, jkm, jkp, k, nbad
 
 !-----------------------------------------------------------------------
       ermesg = ' ' ; error = 0
@@ -1558,9 +1558,8 @@ integer,                       intent(out)  :: error
 
 !     real :: qlo
       real    ::  es, mrsat, c2, c3, c1, fjk, fjkm, qb, fjkb, qbm, qmd, &
-                  qsmd, fjkmd, qmmd, pi, psa, owms, a, b, p1,         &
-                        targ, tprimd, tb, qten, tten, omd, mrsb, wa,   &
-                  wb, tmd, rin, rintsum, rintsum2
+                  qsmd, fjkmd, qmmd, pi, psa, targ, tprimd, tb, qten, tten, &
+                  omd, mrsb, wa, wb, tmd, rin, rintsum, rintsum2
       integer :: ncmd
       integer :: jksave, k, nbad
 

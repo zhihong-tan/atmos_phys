@@ -27,8 +27,8 @@ MODULE DEEP_CONV_MOD
   private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: deep_conv.F90,v 18.0 2010/03/02 23:33:10 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201006 $'
+  character(len=128) :: version = '$Id: deep_conv.F90,v 17.0.2.1.4.1 2010/03/17 20:27:10 wfc Exp $'
+  character(len=128) :: tagname = '$Name: riga_201012 $'
 
 !-------  interfaces --------
 
@@ -160,7 +160,7 @@ contains
     integer,            intent(out)   :: ier
     character(len=256), intent(out)   :: ermesg
 
-    integer :: k, i, ksrc
+    integer :: i, ksrc
     real    :: cbmf0, cbmfs, cbmf_max, dcape, scaleh, wrel, tmp, cbmf, rkm
     real    :: zsrc, psrc, thcsrc, hlsrc, qctsrc, pdeet1, pdeet2
 
@@ -344,9 +344,9 @@ contains
     integer,            intent(out)   :: ier
     character(len=256), intent(out)   :: ermesg
 
-    integer :: k, i, ksrc, n
-    real    :: cbmf0, cbmfs, cbmf_max, dcape, scaleh, wrel, tmp, cbmf, rkm, rkm0
-    real    :: zsrc, psrc, thcsrc, hlsrc, qctsrc, cwfn_d, dcwfn, rat, ratsum, zcldtop
+    integer :: k, ksrc, n
+    real    :: cbmf0, cbmfs, cbmf_max, dcape, scaleh, wrel, tmp, rkm
+    real    :: cwfn_d, dcwfn, rat, ratsum, zcldtop
     type(cpnlist) :: dpn
 
     call cpn_copy(cpn, dpn)

@@ -12,6 +12,7 @@ use    cloud_rad_mod, only:  cloud_rad_init, cloud_summary
 use  cloud_zonal_mod, only:  cloud_zonal
 use    cloud_obs_mod, only:  cloud_obs, cloud_obs_init
 use time_manager_mod, only:  time_type
+use          mpp_mod, only:  input_nml_file
 use          fms_mod, only:  error_mesg, FATAL, file_exist,   &
                              check_nml_error, open_namelist_file,      &
                              mpp_pe, mpp_root_pe, close_file, &
@@ -31,8 +32,8 @@ public   clouds, clouds_init, clouds_end
 
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: clouds.F90,v 17.0 2009/07/21 02:53:56 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: clouds.F90,v 17.0.4.1 2010/08/30 20:33:31 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral
@@ -705,6 +706,10 @@ type(time_type), intent(in)               :: Time
 
 !-------------- read namelist --------------
 
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=clouds_nml, iostat=io)
+      ierr = check_nml_error(io,"clouds_nml")
+#else
       if ( file_exist('input.nml')) then
          unit = open_namelist_file ()
          ierr=1; do while (ierr /= 0)
@@ -713,6 +718,7 @@ type(time_type), intent(in)               :: Time
          enddo
   10     call close_file (unit)
       endif
+#endif
 
 !      ----- write namelist -----
 

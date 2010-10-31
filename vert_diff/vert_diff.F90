@@ -73,8 +73,8 @@ integer :: sphum, mix_rat
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 17.0 2009/07/21 02:58:28 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 17.0.4.1 2010/03/17 20:27:10 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -394,7 +394,7 @@ real,    intent(out),   dimension(:,:,:,:) :: dt_tr
 integer, intent(in),    dimension(:,:), optional :: kbot
 
  ! ---- local vars
- integer :: ie, je, n, outunit
+ integer :: ie, je, n
  real    :: surf_delta_q(size(dt_t,1),size(dt_t,2))
 
  ie = is + size(dt_t,1) -1

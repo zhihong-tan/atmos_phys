@@ -17,6 +17,7 @@
 !
 !  shared modules:
 
+use mpp_mod,             only: input_nml_file
 use fms_mod,             only: open_namelist_file, fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
@@ -93,8 +94,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 18.0 2010/03/02 23:32:43 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: riga_201006 $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:33 wfc Exp $'
+    character(len=128)  :: tagname =  '$Name: riga_201012 $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -470,6 +471,10 @@ type(lw_table_type), intent(inout) :: Lw_tables
 
 !-----------------------------------------------------------------------
 !    read namelist.
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=sealw99_nml, iostat=io)
+      ierr = check_nml_error(io,"sealw99_nml")
+#else
 !-----------------------------------------------------------------------
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
@@ -479,7 +484,8 @@ type(lw_table_type), intent(inout) :: Lw_tables
         end do
 10      call close_file (unit)
       endif
- 
+#endif
+
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
@@ -1308,10 +1314,8 @@ logical,                   intent(in)            :: including_aerosols
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2),    &
                        size(Atmos_input%press,3)) ::    &
-           cnttaub1, cnttaub2, cnttaub3, co21c, co21diag, &
-           co21r, dsorc15, dsorc93, dsorcb1, dsorcb2, dsorcb3, &
-           dt4, emiss, heatem, overod, sorc15, t4, tmp1, tmp2, &
-           to3cnt, ch41c, n2o1c, n2o17c
+           cnttaub1, cnttaub2, cnttaub3, co21c, &
+           co21r, heatem, overod, tmp1, to3cnt
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2), 2)  ::    &
@@ -1319,7 +1323,7 @@ logical,                   intent(in)            :: including_aerosols
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2))   ::  &
-           s1a, flxge1, co21c_KEp1, co21r_KEp1   
+           co21c_KEp1, co21r_KEp1   
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2),    &
@@ -1329,19 +1333,18 @@ logical,                   intent(in)            :: including_aerosols
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2),    &
                        size(Atmos_input%press,3) -1) ::    &
-           cfc_tf, pdflux
+           pdflux
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2))   ::  &
-           flx1e1cf, flxge1cf, gxctscf
+           flx1e1cf, gxctscf
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2),    &
                        size(Atmos_input%press,3)) ::    &
-           emissb, e1cts1, e1cts2, e1ctw1, e1ctw2,        &
-           soe2, soe3, soe4, soe5, emisdg, flxcf, &
-           heatemcf, flx, to3dg, taero8, taero8kp,   &
-           totaer_tmp, tcfc8
+           e1ctw1, e1ctw2,        &
+           emisdg, flxcf, &
+           heatemcf, flx, to3dg, tcfc8
                        
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2),    &
@@ -1351,11 +1354,7 @@ logical,                   intent(in)            :: including_aerosols
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2),    &
                        size(Atmos_input%press,3), NBTRGE) ::    &
-           emissbf, e1cts1f, e1cts2f, emisdgf, emissf, tch4n2oe
-
-      real, dimension (size(Atmos_input%press,1),    &
-                       size(Atmos_input%press,2), NBTRGE) ::    &
-           flx1e1fcf,  flxge1f, flxge1fcf        
+           emisdgf, tch4n2oe
 
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2), &
@@ -1395,15 +1394,11 @@ logical,                   intent(in)            :: including_aerosols
       type(lw_clouds_type)       :: Lw_clouds
       type(optical_path_type)    :: Optical
       type(gas_tf_type)          :: Gas_tf   
-      logical                    :: calc_co2, calc_n2o, calc_ch4
 
       integer                    :: ix, jx, kx
       integer                    ::  k, kp, m, j
       integer                    :: kk, i, l
       integer                    :: nprofiles, nnn
-      character(len=4)           :: gas_name
-      integer                    :: year, month, day, hour, minute, &
-                                    second
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -1530,7 +1525,22 @@ logical,                   intent(in)            :: including_aerosols
 !    call sealw99_alloc to allocate component arrays of 
 !    lw_diagnostics_type variables.
 !----------------------------------------------------------------------
-      call sealw99_alloc (ix, jx, kx, Lw_diagnostics)
+      if ( .not. associated (Lw_diagnostics%flx1e1)) then
+        call sealw99_alloc (ix, jx, kx, Lw_diagnostics)
+      else
+        Lw_diagnostics%flx1e1   = 0.
+        Lw_diagnostics%cts_out    = 0.
+        Lw_diagnostics%cts_outcf = 0.
+        Lw_diagnostics%gxcts    = 0.
+        Lw_diagnostics%excts  = 0.
+        Lw_diagnostics%exctsn   = 0.
+        Lw_diagnostics%fctsg   = 0.
+        Lw_diagnostics%fluxn  = 0.
+        if (Rad_control%do_totcld_forcing) then
+          Lw_diagnostics%fluxncf = 0.
+        endif
+        Lw_diagnostics%flx1e1f  = 0.
+      endif
 
 !----------------------------------------------------------------------
 !
@@ -6183,7 +6193,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
                        size(Atmos_input%temp,2), &
                        size(Atmos_input%temp,3)) :: &
                              temp, tflux, tpl1, tpl2, &
-                             dxsp, ylog, dysp, dysp1, emiss, emd1, emd2
+                             dxsp, ylog, dysp, dysp1, emd1, emd2
 
       integer, dimension (size(Atmos_input%temp,1),   &
                           size(Atmos_input%temp,2), &
@@ -6193,7 +6203,7 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
       real, dimension (size(Atmos_input%temp,1),   &
                        size(Atmos_input%temp,2), &
                          size(Atmos_input%temp,3), NBTRGE) ::    &
-                            emissf, emd2f,  emd1f
+                            emd2f,  emd1f
 
 !--------------------------------------------------------------------
 !   local variables:

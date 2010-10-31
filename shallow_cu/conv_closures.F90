@@ -16,8 +16,8 @@ MODULE CONV_CLOSURES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_closures.F90,v 18.0 2010/03/02 23:33:02 fms Exp $'
-  character(len=128) :: tagname = '$Name: riga_201006 $'
+  character(len=128) :: version = '$Id: conv_closures.F90,v 17.0.2.1.4.1 2010/03/17 20:27:10 wfc Exp $'
+  character(len=128) :: tagname = '$Name: riga_201012 $'
   logical            :: module_is_initialized=.false.  ! module initialized ?
 
 !---------------------------------------------------------------------
@@ -108,8 +108,7 @@ contains
     type(cclosure), intent(inout) :: cc
     real,   intent(out), optional :: cbmf_unmod
     
-    integer :: k, kl, kmax, id_check
-    real    :: sigmaw, rho0lcl, wcrit, erfarg, cbmf, wexp, ufrc, wtw
+    real    :: sigmaw, wcrit, erfarg, cbmf, wexp, ufrc, wtw
     real    :: rmfk1=0.3, rmfk2=5.0, rmfk3=3.0
 
     cc%cbmf=0.; cc%wrel=0.; cc%ufrc=0.;
@@ -201,7 +200,7 @@ contains
 
     logical :: dofast=.false., doice=.true.
 
-    real :: cbmf0=0.001, dcin, alpha, beta, phi
+    real :: cbmf0=0.001, alpha, beta, phi
 
     call cclosure_bretherton(tkeavg, cpn, sd, Uw_p, ac, cc)
     if(cc%cbmf.eq.0.) then
@@ -259,9 +258,8 @@ contains
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc
     
-    integer :: k, kl, kmax
-    real    :: sigmaw, rho0lcl, wcrit, erfarg, cbmf, wexp, wtw
-    real    :: cbmfs, ufrc=0.01, tmp
+    real    :: sigmaw, wcrit, erfarg, wexp, wtw
+    real    :: cbmfs, tmp
     
     cc%wrel=0.; cc%ufrc=0.;   
 
@@ -312,7 +310,7 @@ contains
     type(adicloud), intent(in)    :: ac
     type(cclosure), intent(inout) :: cc
     
-    integer :: k, kl, kmax
+    integer :: k
     real    :: ufrc=0.01
     real    :: dtmin, dpsum, dtpbl, damps
     real    :: cbmf

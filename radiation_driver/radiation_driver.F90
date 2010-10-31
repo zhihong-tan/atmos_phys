@@ -119,6 +119,7 @@
 ! </INFO>
 !   shared modules:
 
+use mpp_mod,               only: input_nml_file
 use fms_mod,               only: fms_init, mpp_clock_id, &
                                  mpp_clock_begin, mpp_clock_end, &
                                  CLOCK_MODULE,  field_exist, &
@@ -225,8 +226,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 18.0 2010/03/02 23:31:27 fms Exp $'
-character(len=128) :: tagname = '$Name: riga_201006 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 18.0.2.1.2.2.2.1 2010/08/30 20:33:35 wfc Exp $'
+character(len=128) :: tagname = '$Name: riga_201012 $'
 
 
 !---------------------------------------------------------------------
@@ -1154,6 +1155,10 @@ integer,                         intent(out) :: ncol
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=radiation_driver_nml, iostat=io)
+      ierr = check_nml_error(io,'radiation_driver_nml')
+#else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -1162,6 +1167,7 @@ integer,                         intent(out) :: ncol
         enddo
 10      call close_file (unit)
       endif
+#endif
       call get_restart_io_mode(do_netcdf_restart)
 
 !--------------------------------------------------------------------
@@ -2008,6 +2014,20 @@ integer,                         intent(out) :: ncol
       calc_clock =    &
             mpp_clock_id ('   Physics_down: Radiation: calc', &
                 grain = CLOCK_MODULE)
+
+!---------------------------------------------------------------------
+!     if Rad_time is unchanging between timesteps, or the same day is being
+!     repeated, switch to the alternative seed generation procedure to
+!     assure unique temporal and spatial seeds for the stochastic cloud
+!     parameterization.
+!---------------------------------------------------------------------
+      if ( (rsd .or. use_rad_date)) then  
+        Cldrad_control%use_temp_for_seed = .true.
+        call error_mesg ('cloud_spec_init', &
+             'Will use temp as basis for stochastic cloud seed; &
+                                &Rad_time is not monotonic', NOTE)
+      endif
+      Cldrad_control%use_temp_for_seed_iz = .true.
 
 !---------------------------------------------------------------------
 !    call check_derived_types to verify that all logical elements of
@@ -3172,7 +3192,6 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
  
       integer :: i, j, k, kb
       integer :: kmax
-      integer  :: d1, d2, d3, d4, d5, d6
       logical :: override
       type(time_type)  :: Data_time
       real, dimension (size(q,1), size(q,2), size(q,3)) :: q2
@@ -3654,13 +3673,11 @@ type(surface_type),      intent(inout)           :: Surface
 
      logical :: override
      type(time_type)  :: Data_time
-     real, dimension (size(albedo,1), size(albedo,2)) :: albedo2, &
-                                                    albedo_vis_dir2,   &
-                                                    albedo_nir_dir2, &
-                                                    albedo_vis_dif2,  &
-                                                    albedo_nir_dif2
-     real, dimension (id,jd) :: albedo_proc, &
-                                albedo_vis_dir_proc, &
+     real, dimension (size(albedo,1), size(albedo,2)) :: albedo_vis_dir2,   &
+                                                         albedo_nir_dir2, &
+                                                         albedo_vis_dif2,  &
+                                                         albedo_nir_dif2
+     real, dimension (id,jd) :: albedo_vis_dir_proc, &
                                 albedo_nir_dir_proc, &
                                 albedo_vis_dif_proc,  &
                                 albedo_nir_dif_proc
@@ -4157,9 +4174,6 @@ real, dimension(:,:,:,:), intent(inout)  ::    &
 !-------------------------------------------------------------------
 !   local variables
 !-------------------------------------------------------------------
-      integer :: nswbands, isccpSwBand, isccpLwBand, ncol
-      real    :: isccp_scale_factor
-      integer :: n
 
 !-------------------------------------------------------------------
       call obtain_cloud_tau_and_em (is, js, Model_microphys, &
@@ -4362,8 +4376,6 @@ subroutine write_restart_nc(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
 
-  character(len=65)        :: fname='RESTART/radiation_driver.res.nc'
-  real                     :: flag1=0., flag2=0.
 
 !---------------------------------------------------------------------
 !    only the root pe will write control information -- the last value 
@@ -4433,16 +4445,12 @@ subroutine read_restart_file
 !   local variables
 
       integer               :: unit
-      logical               :: end
       logical               :: avg_present, renorm_present,  &
                                cldfree_present
       character(len=4)      :: chvers
-      logical               :: avg_gases, avg_clouds
       integer, dimension(5) :: dummy
-      integer               :: kmax
-      integer               :: new_rad_time, lw_old_time_step, &
-                               sw_old_time_step, old_time_step
-      integer               :: rad_alarm, rad_time_step
+      integer               :: new_rad_time, old_time_step
+      integer               :: rad_alarm
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -4977,10 +4985,8 @@ subroutine read_restart_nc
   character(len=64) :: fname='INPUT/radiation_driver.res.nc'
   real              :: flag1, flag2
   logical           :: renorm_present, cldfree_present
-  integer           :: new_rad_time, old_time_step
+  integer           :: new_rad_time
   integer           :: lw_old_time_step, sw_old_time_step
-  logical           :: field_found
-  integer, dimension(4)  :: siz
 !----------------------------------------------------------------------
 !    when running in gcm, read a restart file. this is not done in the
 !    standalone case.
@@ -4988,29 +4994,29 @@ subroutine read_restart_nc
   if (mpp_pe() == mpp_root_pe() ) then
     call error_mesg('radiation_driver_mod', 'Reading netCDF formatted restart file: INPUT/radiation_driver.res.nc', NOTE)
   endif
-  call read_data(fname, 'vers', vers, no_domain=.true.)
+  call read_data(fname, 'vers', vers)
 
 !--------------------------------------------------------------------
   if (field_exist (fname, 'rad_alarm')) then
-    call read_data(fname, 'rad_alarm', lwrad_alarm, no_domain=.true.)
-    call read_data(fname, 'rad_alarm', swrad_alarm, no_domain=.true.)
+    call read_data(fname, 'rad_alarm', lwrad_alarm)
+    call read_data(fname, 'rad_alarm', swrad_alarm)
   else
-    call read_data(fname, 'lwrad_alarm', lwrad_alarm, no_domain=.true.)
-    call read_data(fname, 'swrad_alarm', swrad_alarm, no_domain=.true.)
+    call read_data(fname, 'lwrad_alarm', lwrad_alarm)
+    call read_data(fname, 'swrad_alarm', swrad_alarm)
   endif
 
 !--------------------------------------------------------------------
   if (field_exist (fname, 'rad_time_step')) then
-    call read_data(fname, 'rad_time_step', lw_old_time_step, no_domain=.true.)
-    call read_data(fname, 'rad_time_step', sw_old_time_step, no_domain=.true.)
+    call read_data(fname, 'rad_time_step', lw_old_time_step)
+    call read_data(fname, 'rad_time_step', sw_old_time_step)
   else
-  call read_data(fname, 'sw_rad_time_step', sw_old_time_step, no_domain=.true.)
-  call read_data(fname, 'lw_rad_time_step', lw_old_time_step, no_domain=.true.)
+  call read_data(fname, 'sw_rad_time_step', sw_old_time_step)
+  call read_data(fname, 'lw_rad_time_step', lw_old_time_step)
   endif
 
 
-  call read_data(fname, 'renormalize_sw_fluxes', flag1, no_domain=.true.)
-  call read_data(fname, 'do_clear_sky_pass', flag2, no_domain=.true.)
+  call read_data(fname, 'renormalize_sw_fluxes', flag1)
+  call read_data(fname, 'do_clear_sky_pass', flag2)
   renorm_present = .false.
   cldfree_present = .false.
   if (flag1 ==   1.0)  then
@@ -5874,7 +5880,7 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
       real, dimension(ie-is+1, je-js+1) ::                            &
                                            cosz_r, solar_r, fracday_r, &
                                            cosz_p, solar_p, fracday_p, &
-                                           cosz_a, solar_a, fracday_a
+                                           cosz_a, fracday_a
       real                              :: rrsun_r, rrsun_p, rrsun_a
       integer                           :: nz
       
@@ -6325,7 +6331,6 @@ integer, dimension(:,:),      intent(in),   optional :: kbot
 !
 !----------------------------------------------------------------------
 
-      real, dimension (size(r,1), size(r,2), size(r,3)) :: tmp1
       integer :: kmax, nz
 
 !---------------------------------------------------------------------
@@ -7349,10 +7354,6 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
 !  local variables
 
       real, dimension (ie-is+1,je-js+1) ::           & 
-                                                asfc, asfc_vis_dir,  &
-                                                asfc_nir_dir,   &
-                                                asfc_vis_dif,  &
-                                                asfc_nir_dif, &
                                                 swin, swout, olr, &
                                                 swups, swdns, lwups, &
                                                 lwdns, swin_clr,   &
@@ -8732,6 +8733,7 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
       if (do_rad .and. Rad_control%do_aerosol) then
         deallocate (Aerosol_diags%extopdep)
         deallocate (Aerosol_diags%absopdep)
+        deallocate (Aerosol_diags%asymdep)
         deallocate (Aerosol_diags%extopdep_vlcno)
         deallocate (Aerosol_diags%absopdep_vlcno)
         deallocate (Aerosol_diags%sw_heating_vlcno)
@@ -8796,7 +8798,7 @@ type(atmos_input_type), intent(inout)  :: Atmos_input
       real, dimension (size(Atmos_input%temp, 1), &
                        size(Atmos_input%temp, 2), &
                        size(Atmos_input%temp, 3) - 1) :: &
-                                                     esat, qsat, qv, tv
+                                                     qsat, qv, tv
       integer   ::  k
       integer   ::  kmax
 

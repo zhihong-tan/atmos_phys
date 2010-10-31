@@ -10,9 +10,10 @@ module grey_radiation_mod
 !                                   check_system_clock, NOTE, &
 !                                   get_domain_decomp, check_system_clock
 
+   use             mpp_mod,   only: input_nml_file
    use             fms_mod,   only: open_namelist_file, check_nml_error,  &
                                     mpp_pe, mpp_root_pe, close_file, &
-                                    write_version_number, stdlog
+                                    write_version_number, stdlog, file_exist
 
    use       constants_mod,   only: stefan, cp_air, grav
 
@@ -32,9 +33,9 @@ private
 ! version information 
 
 character(len=128), parameter :: version = &
-'$Id: grey_radiation.F90,v 18.0 2010/03/02 23:30:53 fms Exp $'
+'$Id: grey_radiation.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
 
-character(len=128), parameter :: tagname = '$Name: riga_201006 $'
+character(len=128), parameter :: tagname = '$Name: riga_201012 $'
 
 logical                       :: module_is_initialized = .false.
 
@@ -125,13 +126,20 @@ integer :: ierr, io, unit, logunit
 !-----------------------------------------------------------------------------------------
 ! read namelist and copy to logfile
 
-unit = open_namelist_file ( )
-ierr=1
-do while (ierr /= 0)
-   read  (unit, nml=grey_radiation_nml, iostat=io, end=10)
-   ierr = check_nml_error (io, 'grey_radiation_nml')
-enddo
-10 call close_file (unit)
+#ifdef INTERNAL_FILE_NML
+    read (input_nml_file, nml=grey_radiation_nml, iostat=io)
+    ierr = check_nml_error(io,'grey_radiation_nml')
+#else   
+    if ( file_exist('input.nml')) then
+      unit = open_namelist_file ( )
+      ierr=1
+      do while (ierr /= 0)
+        read  (unit, nml=grey_radiation_nml, iostat=io, end=10)
+        ierr = check_nml_error (io, 'grey_radiation_nml')
+      enddo
+10    call close_file (unit)
+    endif
+#endif
 
 call write_version_number ( version, tagname )
 if ( mpp_pe() == mpp_root_pe() ) then
@@ -233,19 +241,19 @@ real, intent(in) , dimension(:,:,:) :: phalfgrey
 real, intent(inout), dimension(:,:,:) :: tdt
 real, intent(out), dimension(:,:)   :: net_surf_sw_down, surf_lw_down
 
-real, dimension(size(t,2)) :: ss, ss2, ss4, ss6, ss8, solar, tau_0, solar_tau_0, p2
+real, dimension(size(t,2)) :: ss, ss2, solar, tau_0, solar_tau_0, p2
 real, dimension(size(t,1), size(t,2))              :: b_surf
 real, dimension(size(t,1), size(t,2), size(t,3))   :: b, tdt_rad, entrop_rad
 real, dimension(size(t,1), size(t,2), size(t,3)+1) :: up, down, net, solar_down, flux_rad, flux_sw
 real, dimension(size(t,2), size(t,3)  )   :: dtrans
 real, dimension(size(t,2), size(t,3)+1)   :: tau, solar_tau
-real, dimension(size(t,1), size(t,2))   :: long_forcing, olr, swin
+real, dimension(size(t,1), size(t,2))     :: long_forcing, olr, swin
 
-real, dimension(size(t,1), size(t,2))              :: walker_forcing, wave_forc
+real, dimension(size(t,1), size(t,2))     :: walker_forcing
 
 integer :: i, j, k, n
 
-real :: surf_albedo, cosz1, fracday1, rrsun1
+real :: cosz1, fracday1, rrsun1
 real :: dist
 logical :: used
 

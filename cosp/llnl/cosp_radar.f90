@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_radar.f90,v 1.1.2.1.4.1.6.1 2010/03/04 08:23:49 rsh Exp $
-! $Name: riga_201006 $
+! $Id: cosp_radar.f90,v 1.1.2.1.4.1.6.1.2.1 2010/09/08 21:23:39 wfc Exp $
+! $Name: riga_201012 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -82,7 +82,7 @@ SUBROUTINE COSP_RADAR(me, gbx,sgx,sghydro,z)
 
   ! Arguments
   integer, intent(in) :: me
-  type(cosp_gridbox),intent(in) :: gbx  ! Gridbox info
+  type(cosp_gridbox),intent(inout) :: gbx  ! Gridbox info
   type(cosp_subgrid),intent(in) :: sgx  ! Subgrid info
   type(cosp_sghydro),intent(in) :: sghydro  ! Subgrid info for hydrometeors
   type(cosp_sgradar),intent(inout) :: z ! Output from simulator, subgrid

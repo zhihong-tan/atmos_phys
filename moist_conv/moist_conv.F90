@@ -9,6 +9,7 @@ module moist_conv_mod
 use   time_manager_mod, only : time_type
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
 use  sat_vapor_pres_mod, ONLY: lookup_es_des, compute_qs, descomp
+use mpp_mod,             only: input_nml_file
 use             fms_mod, ONLY:  error_mesg, file_exist, open_namelist_file,  &
                                 check_nml_error, close_file,        &
                                 FATAL, WARNING, NOTE, mpp_pe, mpp_root_pe, &
@@ -48,8 +49,8 @@ public :: moist_conv, moist_conv_Init, moist_conv_end
 !-----------------------------------------------------------------------
 !---- VERSION NUMBER -----
 
- character(len=128) :: version = '$Id: moist_conv.F90,v 18.0 2010/03/02 23:31:04 fms Exp $'
- character(len=128) :: tagname = '$Name: riga_201006 $'
+ character(len=128) :: version = '$Id: moist_conv.F90,v 18.0.2.1 2010/08/30 20:33:34 wfc Exp $'
+ character(len=128) :: tagname = '$Name: riga_201012 $'
  logical            :: module_is_initialized = .false.
 
 !---------- initialize constants used by this module -------------------
@@ -812,6 +813,10 @@ subroutine moist_conv_init (axes, Time, tracers_in_mca)
 
 !-----------------------------------------------------------------------
 
+#ifdef INTERNAL_FILE_NML
+    read (input_nml_file, nml=moist_conv_nml, iostat=io)
+    ierr = check_nml_error(io,"moist_conv_nml")
+#else
     if (file_exist('input.nml')) then
         unit = open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -820,6 +825,7 @@ subroutine moist_conv_init (axes, Time, tracers_in_mca)
         enddo
  10     call close_file (unit)
     endif
+#endif
 
 !---------- output namelist --------------------------------------------
 

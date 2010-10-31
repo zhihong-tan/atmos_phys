@@ -1,5 +1,6 @@
 module cg_drag_mod
 
+use mpp_mod,                only:  input_nml_file
 use fms_mod,                only:  fms_init, mpp_pe, mpp_root_pe,  &
                                    file_exist, check_nml_error,  &
                                    error_mesg,  FATAL, WARNING, NOTE, &
@@ -38,8 +39,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 18.0 2010/03/02 23:28:40 fms Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201006 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 17.0.2.1.2.1.4.2.2.1 2010/08/30 20:33:27 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201012 $'
 
 
 
@@ -323,6 +324,10 @@ type(time_type),         intent(in)      :: Time
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=cg_drag_nml, iostat=io)
+      ierr = check_nml_error(io,"cg_drag_nml")
+#else
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -331,6 +336,7 @@ type(time_type),         intent(in)      :: Time
         enddo
 10      call close_file (unit)
       endif
+#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -606,9 +612,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
       real              :: bflim = 2.5E-5
       integer           :: ie, je
       integer           :: imax, jmax, kmax
-      integer           :: i, j, k, nn
-      real              :: pif = 3.14159265358979/180.
-!      real              :: pif = PI/180.
+      integer           :: i, j, k
 
 !-------------------------------------------------------------------
 !    local variables:
@@ -773,7 +777,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
                                               '  source_level  =', iz0
                   write (diag_units(nn),'(a)')     &
                          '   k         u           z        density&
-		         &         bf      gwforcing'
+                         &         bf      gwforcing'
                   do k=0,iz0 
                     write (diag_units(nn), '(i5, 2x, 5e12.5)')   &
                                        k,                         &
@@ -1047,8 +1051,6 @@ subroutine read_nc_restart_file
 
       character(len=64)     :: fname='INPUT/cg_drag.res.nc'
       character(len=8)      :: chvers
-      integer, dimension(5) :: dummy
-      real                  :: secs_per_day = SECONDS_PER_DAY
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1129,9 +1131,9 @@ subroutine cg_drag_register_restart
      allocate(Til_restart)
   endif
 
-  id_restart = register_restart_field(Cg_restart, fname, 'restart_version', vers)
-  id_restart = register_restart_field(Cg_restart, fname, 'cgdrag_alarm', cgdrag_alarm)
-  id_restart = register_restart_field(Cg_restart, fname, 'cg_drag_freq', old_time_step)
+  id_restart = register_restart_field(Cg_restart, fname, 'restart_version', vers, no_domain = .true. )
+  id_restart = register_restart_field(Cg_restart, fname, 'cgdrag_alarm', cgdrag_alarm, no_domain = .true. )
+  id_restart = register_restart_field(Cg_restart, fname, 'cg_drag_freq', old_time_step, no_domain = .true. )
   id_restart = register_restart_field(Til_restart, fname, 'gwd_u', gwd_u)
   id_restart = register_restart_field(Til_restart, fname, 'gwd_v', gwd_v)
 
