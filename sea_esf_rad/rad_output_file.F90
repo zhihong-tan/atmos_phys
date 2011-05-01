@@ -60,7 +60,7 @@ private
 
 character(len=128)  :: version = &
 '$Id: rad_output_file.F90,v 18.0.2.1.2.4 2010/09/20 17:54:12 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------

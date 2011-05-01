@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
         
 ! $Id: optics_lib.f90,v 18.0.2.1 2010/03/25 00:31:40 pjp Exp $
-! $Name: riga_201012 $
+! $Name: riga_201104 $
  
 ! OPTICS_LIB: Optical proecures for for F90
 ! Compiled/Modified:

@@ -65,8 +65,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 18.0.2.1.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------
@@ -214,6 +214,22 @@ integer::  id_strat_area_liq, id_strat_conc_drop, id_strat_size_drop,&
            id_ra_strat_size_drop, id_strat_area_ice, &
            id_strat_conc_ice, id_strat_size_ice, &
            id_strat_droplet_number, id_gb_strat_conc_ice,   &
+           id_strat_ice_number, &
+!
+           id_strat_ice_number_l, &
+           id_strat_droplet_number_l, &
+           id_strat_size_ice_l,         &
+           id_strat_size_drop_l,       &
+           id_drop_size_ave_l, &
+           id_ice_size_ave_l, &
+           id_droplet_number_ave_l, &
+           id_ice_number_ave_l, &
+!
+           id_lsc_cld_col, &
+           id_shallow_cld_col, &
+           id_meso_cld_col, &
+           id_cell_cld_col, &
+           id_conv_cld_col,  &
            id_gb_strat_conc_drop, id_lsc_cld_amt,  id_lsc_lwp, &
            id_gb_lsc_lwp, id_lsc_iwp, id_gb_lsc_iwp
 
@@ -407,7 +423,7 @@ type(time_type),         intent(in)    ::   Time
 #ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cloudrad_diagnostics_nml, iostat=io)
       ierr = check_nml_error(io,'cloudrad_diagnostics_nml')
-#else   
+#else
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -1106,7 +1122,8 @@ real, dimension(:,:,:),         intent(in),  &
       logical, dimension(size(Atmos_input%rh2o,1),                    &
                          size(Atmos_input%rh2o,2),                  &
                          size(Atmos_input%rh2o,3))  :: tmplmask, &
-                                                       tmplmaska
+                                                       tmplmaska, &
+                                                       tmplmaskl
 
       logical, dimension(size(Atmos_input%rh2o,1),                    &
                          size(Atmos_input%rh2o,2),                  &
@@ -1115,7 +1132,8 @@ real, dimension(:,:,:),         intent(in),  &
                                                     tmplmask4
 
       real, dimension(size(Atmos_input%rh2o,1),                       &
-                      size(Atmos_input%rh2o,2))   :: tca, cloud2d, tca2 
+                      size(Atmos_input%rh2o,2))   :: tca, cloud2d,  &
+                                                     tca2, tca3 
 
       real, dimension(size(Atmos_input%rh2o,1),                       &
                       size(Atmos_input%rh2o,2),    &
@@ -1221,6 +1239,7 @@ real, dimension(:,:,:),         intent(in),  &
       allocate (Model_microphys%size_snow  (ix, jx, kx) )
       allocate (Model_microphys%cldamt     (ix, jx, kx) )
       allocate (Model_microphys%droplet_number  (ix, jx, kx) )
+      allocate (Model_microphys%ice_number (ix, jx, kx) )
       Model_microphys%conc_drop = 0.
       Model_microphys%conc_ice  = 0.
       Model_microphys%conc_rain = 0.
@@ -1231,6 +1250,7 @@ real, dimension(:,:,:),         intent(in),  &
       Model_microphys%size_snow = 1.0e-20
       Model_microphys%cldamt     = 0.
       Model_microphys%droplet_number = 0.              
+      Model_microphys%ice_number = 0.
 
       if (Cldrad_control%do_stochastic_clouds) then
         allocate (Model_microphys%stoch_conc_ice (ix, jx, kx, nCol) )
@@ -1240,6 +1260,8 @@ real, dimension(:,:,:),         intent(in),  &
         allocate (Model_microphys%stoch_cldamt   (ix, jx, kx, nCol) )
         allocate (Model_microphys%stoch_cloud_type (ix, jx, kx, nCol) )
         allocate (Model_microphys%stoch_droplet_number   &
+                                                 (ix, jx, kx, nCol) )
+        allocate (Model_microphys%stoch_ice_number   &
                                                  (ix, jx, kx, nCol) )
 
         Model_microphys%lw_stoch_conc_drop =>    &
@@ -1276,6 +1298,7 @@ real, dimension(:,:,:),         intent(in),  &
         Model_microphys%stoch_size_ice  = 1.0e-20
         Model_microphys%stoch_cldamt = 0.0
         Model_microphys%stoch_droplet_number = 0.0
+        Model_microphys%stoch_ice_number = 0.0
 
 !---------------------------------------------------------------------
 !    since the sw bands come first in Cld_spec and the lw bands come 
@@ -1317,6 +1340,8 @@ real, dimension(:,:,:),         intent(in),  &
                     Model_microphys%stoch_cldamt(i,j,k,n) =    1.0 
                     Model_microphys%stoch_droplet_number(i,j,k,n) =   &
                             Lsc_microphys%stoch_droplet_number(i,j,k,n)
+                    Model_microphys%stoch_ice_number(i,j,k,n) =   &
+                            Lsc_microphys%stoch_ice_number(i,j,k,n)
                   else if (Model_microphys%stoch_cloud_type(i,j,k,n) &
                                                              == 2) then
                     Model_microphys%stoch_conc_drop(i,j,k,n) =    &
@@ -1330,6 +1355,10 @@ real, dimension(:,:,:),         intent(in),  &
                     Model_microphys%stoch_cldamt(i,j,k,n) =   1.0
                     Model_microphys%stoch_droplet_number(i,j,k,n) =   &
                            Meso_microphys%droplet_number(i,j,k) 
+!cms++
+!!                    Model_microphys%stoch_ice_number(i,j,k,n) =   &
+!!                           Meso_microphys%ice_number(i,j,k) 
+!cms--
                   else if (Model_microphys%stoch_cloud_type(i,j,k,n)   &
                                                              == 3) then
                     Model_microphys%stoch_conc_drop(i,j,k,n) =    &
@@ -1343,6 +1372,10 @@ real, dimension(:,:,:),         intent(in),  &
                     Model_microphys%stoch_cldamt(i,j,k,n) =  1.0    
                     Model_microphys%stoch_droplet_number(i,j,k,n) =   &
                            Cell_microphys%droplet_number(i,j,k) 
+!cms++
+!!                    Model_microphys%stoch_ice_number(i,j,k,n) =   &
+!!                           Cell_microphys%ice_number(i,j,k)
+!cms--
                   else if (Model_microphys%stoch_cloud_type(i,j,k,n)  &
                                                              == 4) then
                     Model_microphys%stoch_conc_drop(i,j,k,n) =    &
@@ -1356,6 +1389,10 @@ real, dimension(:,:,:),         intent(in),  &
                     Model_microphys%stoch_cldamt(i,j,k,n) =  1.0
                     Model_microphys%stoch_droplet_number(i,j,k,n) =   &
                               Shallow_microphys%droplet_number(i,j,k) 
+!cms++
+!!                    Model_microphys%stoch_ice_number(i,j,k,n) =   &
+!!                         Shallow_microphys%ice_number(i,j,k)
+!cms--
                   endif
                 end do
               end do
@@ -1379,6 +1416,8 @@ real, dimension(:,:,:),         intent(in),  &
                                     Lsc_microphys%stoch_cldamt 
           Model_microphys%stoch_droplet_number =     &
                             Lsc_microphys%stoch_droplet_number 
+          Model_microphys%stoch_ice_number =     &
+                            Lsc_microphys%stoch_ice_number
         endif ! (do_donner_deep_clouds)
 
 !---------------------------------------------------------------------
@@ -1520,6 +1559,98 @@ real, dimension(:,:,:),         intent(in),  &
           used = send_data (id_tot_cld_amt, tca2, Time_diag, is, js)
         endif 
 
+!cms++
+!---------------------------------------------------------------------
+! fraction of stochastic columns containing lsc clouds at any model level 
+!---------------------------------------------------------------------
+        if ( id_lsc_cld_col > 0) then
+
+          cloud(:,:,:) = REAL (COUNT(    &
+                  Model_microphys%stoch_cloud_type(:,:,:,:) == 1,    &
+                                                   dim = 4))/REAL(ncol)
+
+          tca3(:,:) =  SUM (cloud, dim = 3)
+          tca3(:,:) =  MIN (tca3(:,:), 1.0)
+
+
+          used = send_data (id_lsc_cld_col, tca3, Time_diag, is, js)
+
+        endif 
+
+!---------------------------------------------------------------------
+! stochastic columns containing anvils assuming maximum overlap
+!---------------------------------------------------------------------
+
+        if ( id_meso_cld_col > 0) then
+
+          cloud(:,:,:) = REAL (COUNT(    &
+                  Model_microphys%stoch_cloud_type(:,:,:,:) == 2,    &
+                                                   dim = 4))/REAL(ncol)
+
+          tca3(:,:) =  MAXVAL (cloud, dim = 3)
+          
+
+
+          used = send_data (id_meso_cld_col, tca3, Time_diag, is, js)
+
+        endif 
+
+
+
+        if ( id_cell_cld_col > 0) then
+
+          cloud(:,:,:) = REAL (COUNT(    &
+                  Model_microphys%stoch_cloud_type(:,:,:,:) == 3,    &
+                                                   dim = 4))/REAL(ncol)
+
+          tca3(:,:) =  MAXVAL (cloud, dim = 3)
+          
+
+          used = send_data (id_cell_cld_col, tca3, Time_diag, is, js)
+
+        endif 
+
+
+        if ( id_shallow_cld_col > 0) then
+
+          cloud(:,:,:) = REAL (COUNT(    &
+                  Model_microphys%stoch_cloud_type(:,:,:,:) == 4,    &
+                                                   dim = 4))/REAL(ncol)
+
+          tca3(:,:) =  MAXVAL (cloud, dim = 3)
+    
+
+          used = send_data (id_shallow_cld_col, tca3, Time_diag, is, js)
+
+        endif 
+
+
+
+        if ( id_conv_cld_col > 0) then
+
+          cloud(:,:,:) = REAL (   &
+                  COUNT( Model_microphys%stoch_cloud_type(:,:,:,:) == 2,  &
+                                                  dim = 4)   +     &
+                  COUNT( Model_microphys%stoch_cloud_type(:,:,:,:) == 3, &
+                                                  dim = 4))/REAL(ncol)
+
+
+          tca3(:,:) =  MAXVAL (cloud, dim = 3)
+
+          cloud(:,:,:) =  REAL (   &
+                  COUNT( Model_microphys%stoch_cloud_type(:,:,:,:) == 4, &
+                                                dim = 4))/REAL(ncol)
+
+          tca3(:,:) =  tca3(:,:) + MAXVAL (cloud,  dim = 3)
+
+          tca3(:,:) = MIN(tca3(:,:), 1.)
+
+          used = send_data (id_conv_cld_col, tca3, Time_diag, is, js)
+
+        endif 
+
+
+!cms--
 !---------------------------------------------------------------------
 !    define the high cloud region for each grid column. for each 
 !    stochastic band, determine if any levels in the high cloud region 
@@ -2106,8 +2237,52 @@ real, dimension(:,:,:),         intent(in),  &
 !    ice cloud properties: fractional area, particle size, 
 !    cloud amount and path
 !---------------------------------------------------------------------
+!cms++
+
+
+          if (id_strat_size_ice_l > 0) then
+
+            tmplmaskl  =  Lsc_microphys%conc_ice > 1.e-3 != 1mg/m3 in-cloud
+
+            used = send_data (id_strat_size_ice_l,   &
+                              Lsc_microphys%size_ice, Time_diag,  &
+                              is, js, 1, mask=tmplmaskl)
+          endif
+
+
+
+
+
+          if (id_strat_ice_number_l > 0) then
+
+         tmplmaskl  =  Lsc_microphys%conc_ice > 1.e-3 != 1mg/m3 in-cloud
+
+            if (Cldrad_control%do_ice_num) then
+              where (Lsc_microphys%cldamt > 0.0)
+                cloud = Lsc_microphys%ice_number/   &
+                                                   Lsc_microphys%cldamt
+!!                 cloud = Lsc_microphys%ice_number
+              elsewhere
+                cloud = 0.0
+              end where
+            else
+              where (Lsc_microphys%cldamt > 0.0)
+                cloud = Lsc_microphys%ice_number
+              elsewhere
+                cloud = 0.0
+              end where
+            endif
+
+
+            used = send_data (id_strat_ice_number_l, cloud, &
+                              Time_diag, is, js, 1, mask=tmplmaskl)
+          endif
+
+
+!cms--
         if (max(id_strat_area_ice, id_strat_conc_ice,   &
-                id_strat_size_ice, id_lsc_iwp) > 0) then
+                id_strat_size_ice, id_lsc_iwp,   &
+                                     id_strat_ice_number) > 0) then
           tmplmask = Lsc_microphys%conc_ice > 0.0
           if (id_strat_area_ice > 0) then
             cloud   = 0.
@@ -2133,6 +2308,32 @@ real, dimension(:,:,:),         intent(in),  &
             used = send_data (id_lsc_iwp, cloud2d, Time_diag,   &
                               is, js, mask=tmplmask2)
           endif
+
+          
+!cms++
+
+          if (id_strat_ice_number > 0) then
+            if (Cldrad_control%do_ice_num) then
+              where (Lsc_microphys%cldamt > 0.0)
+                cloud = Lsc_microphys%ice_number/   &
+                                                   Lsc_microphys%cldamt
+!!                 cloud = Lsc_microphys%ice_number
+              elsewhere
+                cloud = 0.0
+              end where
+            else
+              where (Lsc_microphys%cldamt > 0.0)
+                cloud = Lsc_microphys%ice_number
+              elsewhere
+                cloud = 0.0
+              end where
+            endif
+            used = send_data (id_strat_ice_number, cloud, &
+                              Time_diag, is, js, 1, mask=tmplmask)
+          endif
+
+
+!cms--
         endif
 
         if (id_gb_strat_conc_ice > 0) then
@@ -2151,6 +2352,43 @@ real, dimension(:,:,:),         intent(in),  &
 !    water cloud properties:  fractional area, particle size, 
 !    cloud amount, path and droplet number
 !---------------------------------------------------------------------
+!cms++
+          if (id_strat_size_drop_l > 0) then
+
+            tmplmaskl = Lsc_microphys%conc_drop > 1.e-3 != 1mg/m3 in-cloud
+
+            used = send_data (id_strat_size_drop_l,   &
+                              Lsc_microphys%size_drop, Time_diag,  &
+                              is, js, 1, mask=tmplmaskl)
+          endif
+
+
+
+
+          if (id_strat_droplet_number_l > 0) then
+
+            tmplmaskl = Lsc_microphys%conc_drop > 1.e-3 != 1mg/m3 in-cloud
+
+            if (Cldrad_control%do_liq_num) then
+              cloud = 0.0
+              where (Lsc_microphys%cldamt > 0.0)
+                cloud = Lsc_microphys%droplet_number/   &
+                                                   Lsc_microphys%cldamt
+              end where
+            else
+              cloud = 0.0
+              where (Lsc_microphys%cldamt > 0.0)
+                cloud = Lsc_microphys%droplet_number
+              end where
+            endif
+            used = send_data (id_strat_droplet_number_l, cloud, &
+                              Time_diag, is, js, 1, mask=tmplmaskl)
+          endif
+
+
+
+!cms--
+
         if (max(id_strat_area_liq,       id_strat_size_drop,  &
                 id_ra_strat_size_drop,   id_strat_conc_drop,  &
                 id_strat_droplet_number, id_lsc_lwp) > 0) then
@@ -3067,6 +3305,85 @@ real, dimension(:,:,:),         intent(in),  &
           endif
         endif 
 
+!cms++
+
+
+
+    if (id_drop_size_ave_l > 0 .or. id_droplet_number_ave_l > 0) then
+
+         tmplmask4(:,:,:,:) =    &
+                        Model_microphys%stoch_conc_drop(:,:,:,:) >  1.e-3 
+                
+          cloud2(:,:,:) = COUNT (tmplmask4(:,:,:,:), dim = 4)
+          tmplmaskl = cloud2 > 0.0
+
+         if (id_drop_size_ave_l > 0) then
+            cloud(:,:,:) = 0.0
+            where (tmplmaskl)   
+              cloud(:,:,:) =    &
+                SUM (Model_microphys%stoch_size_drop(:,:,:,:),   &
+                    mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + 1.0E-40)
+            end where
+            used = send_data (id_drop_size_ave_l, cloud, Time_diag, &
+                              is, js, 1, mask=tmplmaskl)
+          endif
+
+
+          if (id_droplet_number_ave_l > 0) then
+            cloud(:,:,:) = 0.0
+            where (tmplmaskl)   
+              cloud(:,:,:) = SUM (    &
+                   Model_microphys%stoch_droplet_number(:,:,:,:),   &
+                    mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + 1.0E-40)
+            end where
+            used = send_data (id_droplet_number_ave_l, cloud, Time_diag,&
+                              is, js, 1, mask=tmplmaskl)
+          endif
+
+
+       end if
+
+
+
+     if (id_ice_size_ave_l > 0 .or.  id_ice_number_ave_l > 0 ) then
+
+                tmplmask4(:,:,:,:) =     &
+                   Model_microphys%stoch_conc_ice(:,:,:,:)  > 1.e-3 
+
+          cloud2(:,:,:) = COUNT (tmplmask4(:,:,:,:), dim = 4)
+          tmplmaskl = cloud2 > 0.0  
+
+        if (id_ice_size_ave_l > 0 ) then
+            cloud(:,:,:) = 0.
+            where (tmplmaskl) 
+              cloud(:,:,:) =   &    
+                 SUM (Model_microphys%stoch_size_ice(:,:,:,:), &
+                    mask =tmplmask4, dim = 4)/(cloud2(:,:,:) + 1.0E-40)
+            end where
+            used = send_data (id_ice_size_ave_l, cloud, Time_diag, &
+                              is, js, 1, mask=tmplmaskl)
+          endif
+
+
+
+
+          if (id_ice_number_ave_l > 0) then
+            cloud(:,:,:) = 0.0
+            where (tmplmaskl)   
+              cloud(:,:,:) = SUM (    &
+                   Model_microphys%stoch_ice_number(:,:,:,:),   &
+                    mask = tmplmask4, dim = 4)/(cloud2(:,:,:) + 1.0E-40)
+            end where
+            used = send_data (id_ice_number_ave_l, cloud, Time_diag,&
+                              is, js, 1, mask=tmplmaskl)
+          endif
+
+
+
+    end if
+
+!cms--
+
 !--------------------------------------------------------------------
 !    special diagnostic : lwp / drop size in sw band 7 (visible band)
 !--------------------------------------------------------------------
@@ -3373,6 +3690,7 @@ type(microphysics_type), intent(inout) :: Model_microphys
         deallocate (Model_microphys%stoch_cldamt)  
         deallocate (Model_microphys%stoch_cloud_type)
         deallocate (Model_microphys%stoch_droplet_number)
+        deallocate (Model_microphys%stoch_ice_number)
       endif ! (do_stochastic_clouds)
 
       deallocate (Model_microphys%conc_drop   )
@@ -3385,6 +3703,7 @@ type(microphysics_type), intent(inout) :: Model_microphys
       deallocate (Model_microphys%size_snow  )
       deallocate (Model_microphys%cldamt      )
       deallocate (Model_microphys%droplet_number  )
+      deallocate (Model_microphys%ice_number  )
        
 !------------------------------------------------------------------
 
@@ -3566,6 +3885,33 @@ integer        , intent(in) :: axes(4)
 
       endif
 
+
+!cms++
+
+      id_lsc_cld_col = register_diag_field    &
+                         (mod_name, 'lsc_cld_col', axes(1:2), Time, &
+                          'lsc_cld_col', 'fraction')
+
+      id_shallow_cld_col = register_diag_field    &
+                         (mod_name, 'shallow_cld_col', axes(1:2), Time, &
+                          'shallow_cld_col', 'fraction')
+
+      id_meso_cld_col = register_diag_field    &
+                         (mod_name, 'meso_cld_col', axes(1:2), Time, &
+                          'meso_cld_col', 'fraction')
+
+
+      id_cell_cld_col = register_diag_field    &
+                         (mod_name, 'cell_cld_col', axes(1:2), Time, &
+                          'cell_cld_col', 'fraction')
+
+
+      id_conv_cld_col = register_diag_field    &
+                         (mod_name, 'conv_cld_col', axes(1:2), Time, &
+                          'conv_cld_col', 'fraction')
+
+
+!cms--
 !---------------------------------------------------------------------
 !    register lw cloud radiative properties diagnostics - all active
 !    clouds, as seen by radiation package.
@@ -3995,6 +4341,12 @@ integer        , intent(in) :: axes(4)
                'microns', missing_value=missing_value,   &
                mask_variant = .true.)
 
+          id_strat_size_drop_l = register_diag_field     &
+              (mod_name, 'strat_size_drop_l', axes(1:3), Time, &
+               'lim Effective diameter for stratiform liquid clouds', &
+               'microns', missing_value=missing_value,   &
+               mask_variant = .true.)
+
           id_ra_strat_size_drop = register_diag_field     &
               (mod_name, 'ra_strat_size_drop', axes(1:3), Time, &
                'Adjusted effective diameter for strat liquid clouds', &
@@ -4023,12 +4375,38 @@ integer        , intent(in) :: axes(4)
                'microns', missing_value=missing_value,   &
                mask_variant = .true.)
 
+          id_strat_size_ice_l = register_diag_field     &
+              (mod_name, 'strat_size_ice_l', axes(1:3), Time, &
+               'lim Effective diameter for stratiform ice clouds', &
+               'microns', missing_value=missing_value,   &
+               mask_variant = .true.)
+
           id_strat_droplet_number = register_diag_field     &
               (mod_name, 'strat_droplet_number', axes(1:3), Time, &
                'cloud droplet number for stratiform clouds', &
                '# per kg of air', missing_value=missing_value, &
                mask_variant = .true.)
      
+          id_strat_droplet_number_l = register_diag_field     &
+              (mod_name, 'strat_droplet_number_l', axes(1:3), Time, &
+               'lim cloud droplet number for stratiform clouds', &
+               '# per kg of air', missing_value=missing_value, &
+               mask_variant = .true.)
+
+
+          id_strat_ice_number = register_diag_field     &
+              (mod_name, 'strat_ice_number', axes(1:3), Time, &
+              'In-cloud Cloud ice crystal number for stratiform clouds', &
+               '# per kg of air',    &
+               missing_value=missing_value, mask_variant = .true.  )
+ 
+
+          id_strat_ice_number_l = register_diag_field     &
+             (mod_name, 'strat_ice_number_l', axes(1:3), Time, &
+             'lim In-cloud Cloud ice crystal number for stratiform clouds' , &
+            '# per kg of air',    &
+            missing_value=missing_value, mask_variant = .true.  )
+
           id_lsc_lwp = register_diag_field     &
               (mod_name, 'strat_lwp', axes(1:2), Time, &
                'In-cloud liquid water path of stratiform clouds', &
@@ -4440,6 +4818,32 @@ integer        , intent(in) :: axes(4)
             (mod_name, 'ra_stoch_drop_size_ave', axes(1:3), Time, &
              'adjustd cloudy column avg drop diam - stochastic clouds',&
              'microns', missing_value=missing_value,  &
+             mask_variant = .true. )
+
+          id_ice_size_ave_l = register_diag_field  &
+            (mod_name, 'stoch_ice_size_ave_l', axes(1:3), Time, &
+             'lim cloudy column avg ice eff diam - stochastic clouds', &
+             'microns', missing_value=missing_value, &
+             mask_variant = .true.)
+
+          id_drop_size_ave_l = register_diag_field  &
+            (mod_name, 'stoch_drop_size_ave_l', axes(1:3), Time, &
+             'lim cloudy column avg droplet diam - stochastic clouds', &
+             'microns', missing_value=missing_value,  &
+             mask_variant = .true.)
+
+
+
+          id_droplet_number_ave_l = register_diag_field  &
+            (mod_name, 'stoch_droplet_number_ave_l', axes(1:3), Time, &
+            'lim cloudy column avg droplet number - stochastic clouds', &
+            '#/kg(air)', missing_value=missing_value,  &
+            mask_variant = .true. )
+
+          id_ice_number_ave_l = register_diag_field  &
+            (mod_name, 'stoch_ice_number_ave_l', axes(1:3), Time, &
+              'lim cloudy column avg ice number - stochastic clouds', &
+             '#/kg(air)', missing_value=missing_value,  &
              mask_variant = .true. )
 
           id_droplet_number_ave = register_diag_field  &

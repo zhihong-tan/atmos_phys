@@ -38,8 +38,8 @@ module cloud_generator_mod
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_generator.F90,v 17.0.6.1 2010/08/30 20:39:45 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: cloud_generator.F90,v 17.0.6.1.2.1 2011/03/02 07:00:39 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -157,11 +157,11 @@ subroutine cloud_generator_init
       if (.not. module_is_initialized) then
 !---------------------------------------------------------------------
 !    read namelist.         
+!---------------------------------------------------------------------
 #ifdef INTERNAL_FILE_NML
         read (input_nml_file, nml=cloud_generator_nml, iostat=io)
         ierr = check_nml_error(io,"cloud_generator_nml")
 #else
-!---------------------------------------------------------------------
         if (file_exist('input.nml')) then
           unit =  open_namelist_file ( )
           ierr=1; do while (ierr /= 0)
@@ -212,19 +212,19 @@ subroutine cloud_generator_init
 end subroutine cloud_generator_init
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
-subroutine generate_stochastic_clouds(streams, ql, qi, qa, qn,     &
+subroutine generate_stochastic_clouds(streams, ql, qi, qa, qn, qni,    &
                                       overlap, pFull, pHalf, & 
                                       temperature, qv,&
                                       cld_thickness, &
                                       ql_stoch, qi_stoch, qa_stoch, &
-                                      qn_stoch)
+                                      qn_stoch, qni_stoch)
 !--------------------------------------------------------------------
 !   intent(in) variables:
 !
   type(randomNumberStream), &
            dimension(:, :),     intent(inout) :: streams
   ! Dimension nx, ny, nz
-  real,    dimension(:, :, :),    intent( in) :: ql, qi, qa, qn
+  real,    dimension(:, :, :),    intent( in) :: ql, qi, qa, qn, qni
   integer,                     optional, &
                                   intent( in) :: overlap
   real,    dimension(:, :, :), optional, &
@@ -235,7 +235,8 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa, qn,     &
   ! Dimension nx, ny, nz, nCol = nBands
   integer, dimension(:, :, :, :), intent(out) :: cld_thickness 
   real,    dimension(:, :, :, :), intent(out) :: ql_stoch, qi_stoch, &
-                                                 qa_stoch, qn_stoch
+                                                 qa_stoch, qn_stoch, &
+                                                 qni_stoch
   ! ---------------------------------------------------------
   ! Local variables
   real,    dimension(size(ql_stoch, 1), &
@@ -652,6 +653,28 @@ subroutine generate_stochastic_clouds(streams, ql, qi, qa, qn,     &
   end do
   end do
 
+
+!cms++
+  ! Create qni_stoch - the stochastic cloud ice number
+  ! 
+  do n=1,nCol
+  do k=1,nLev
+  do j=1, size(qa_stoch,2)
+  do i=1, size(qa_stoch,1)
+    if (qi_stoch(i,j,k,n)>qcmin .and. qa_stoch(i,j,k,n)>qcmin) then
+      qni_stoch(i,j,k,n) = qa_stoch(i,j,k,n)* &
+                          max(0.,qni(i,j,k)/max(qcmin,qa(i,j,k)))
+      !note that qa is compared to qcmin to minimize the impact of the
+      !limiters on calculating the in-cloud cloud ice number
+    else
+      qni_stoch(i,j,k,n) = 0.                           
+    endif
+  end do
+  end do
+  end do
+  end do
+!cms--
+
 end subroutine generate_stochastic_clouds
 
   ! ---------------------------------------------------------
@@ -689,6 +712,8 @@ function compute_overlap_weighting(qaPlus, qaMinus, pPlus, pMinus) result(weight
     end select
       
 end function compute_overlap_weighting
+
+
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !

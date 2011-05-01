@@ -72,7 +72,7 @@ private
 
 character(len=128)  :: version =  &
 '$Id: radiative_gases.F90,v 17.0.2.1.2.1.4.2.2.1 2010/08/30 20:33:33 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

@@ -1,6 +1,6 @@
  
 !VERSION NUMBER:
-!  $Name: riga_201012 $
+!  $Name: riga_201104 $
 !  $Id: wet_deposition_0D.F90,v 17.0.2.1.4.1 2010/03/17 20:27:08 wfc Exp $
 
 !<SUBROUTINE NAME = "wet_deposition_0D">

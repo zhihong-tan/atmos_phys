@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: cosp_lidar.f90,v 1.1.2.1.4.1.6.1 2010/03/04 08:23:34 rsh Exp $
-! $Name: riga_201012 $
+! $Name: riga_201104 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.

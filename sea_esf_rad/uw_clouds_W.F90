@@ -24,7 +24,7 @@ use           fms_mod, only: open_namelist_file, file_exist,   &
                              close_file, FATAL, NOTE, &
                              WARNING, mpp_pe, mpp_root_pe, &
                              write_version_number, stdlog
-use     constants_mod, only: DENS_H2O, RDGAS, TFREEZE
+use     constants_mod, only: DENS_H2O, RDGAS, TFREEZE, pi
 use rad_utilities_mod, only: longwave_control_type, Lw_control, &
                              shortwave_control_type, Sw_control,&
                              microphysics_type,  &
@@ -47,8 +47,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
-   character(len=128)  :: tagname =  '$Name: riga_201012 $'
+   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 17.0.6.2.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
+   character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 
@@ -239,8 +239,8 @@ end subroutine uw_clouds_W_end
 !
 subroutine uw_clouds_amt (is, ie, js, je,   &
                    shallow_cloud_area, shallow_liquid, shallow_ice, &
-                   shallow_droplet_number, land, pfull, tkel, &
-                   Shallow_microphys)
+                   shallow_droplet_number, shallow_ice_number, land,  &
+                   pfull, tkel, Shallow_microphys)
 
 !---------------------------------------------------------------------
 !    uw_clouds_amt defines the distribution of cloud water and cloud ice 
@@ -253,7 +253,8 @@ subroutine uw_clouds_amt (is, ie, js, je,   &
 integer,                 intent(in)    :: is,ie,js,je
 real, dimension(:,:,:),  intent(in)    :: shallow_cloud_area,  &
                                           shallow_liquid, shallow_ice, &
-                                          shallow_droplet_number
+                                          shallow_droplet_number, &
+                                          shallow_ice_number
 real, dimension(:,:),    intent(in)    :: land
 real, dimension(:,:,:),  intent(in)    :: pfull, tkel
 type(microphysics_type), intent(inout) :: Shallow_microphys
@@ -270,6 +271,13 @@ type(microphysics_type), intent(inout) :: Shallow_microphys
       integer     :: ix, jx, kx
       integer     :: i, j, k
 
+!cms++
+!should better also pre-calc some const. in initialization ...
+!    REAL :: dumc, dumnc, rho1, pgam, lamc, lammax, lammin, &
+!           dumi, dumni, lami
+ 
+!cms--
+      
 !----------------------------------------------------------------------
 !    define vertical index.
 !----------------------------------------------------------------------
@@ -310,6 +318,11 @@ type(microphysics_type), intent(inout) :: Shallow_microphys
         end do
       end do
           
+!!$!cms++
+!!$   ice_num_if: if ( .NOT. Cldrad_control%do_ice_num) then
+!!$!cms--
+
+
 !----------------------------------------------------------------------
 !    define droplet diameter based on cloud amount and droplet number. 
 !    use formula as in cloud_rad_mod.
@@ -374,46 +387,159 @@ type(microphysics_type), intent(inout) :: Shallow_microphys
 !                   T <= Tfreeze-55.        20.2        
 !
 !--------------------------------------------------------------------
-      do k=1,kx
-        do j=1,jx
-          do i=1,ix
       if (Cldrad_control%using_fu2007) then
+        do k=1,kx
+          do j=1,jx
+            do i=1,ix
 !+yim Fu's parameterization of dge
-        Shallow_microphys%size_ice(i,j,k) =   &
+              Shallow_microphys%size_ice(i,j,k) =   &
                             47.05 + 0.6624*(tkel(i,j,k) - TFREEZE) +  &
                             0.001741*(tkel(i,j,k)-TFREEZE)**2 
-      else ! (using_fu2007)
-            if (ice_local(i,j,k) > QMIN) then
-              if (tkel(i,j,k) > TFREEZE - 25. ) then
-                Shallow_microphys%size_ice(i,j,k) = 100.6    
-              else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
-                       tkel(i,j,k) <= TFREEZE - 25.) then
-                Shallow_microphys%size_ice(i,j,k) = 80.8       
-              else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
-                       tkel(i,j,k) <= TFREEZE - 30.) then
-                Shallow_microphys%size_ice(i,j,k)  = 93.5     
-              else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
-                       tkel(i,j,k) <= TFREEZE - 35.) then
-                Shallow_microphys%size_ice(i,j,k) = 63.9      
-              else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
-                       tkel(i,j,k) <= TFREEZE - 40.) then
-                Shallow_microphys%size_ice(i,j,k) = 42.5    
-              else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
-                       tkel(i,j,k) <= TFREEZE - 45.) then
-                Shallow_microphys%size_ice(i,j,k) = 39.9       
-              else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
-                       tkel(i,j,k) <= TFREEZE - 50.) then
-                Shallow_microphys%size_ice(i,j,k) = 21.6        
-              else
-                Shallow_microphys%size_ice(i,j,k) = 20.2        
-              end if
-            else
-              Shallow_microphys%size_ice(i,j,k) = 0.0
-            endif
-      endif  ! (using_fu2007)
+            end do
           end do
         end do
-      end do
+      else ! (using_fu2007)
+        do k=1,kx
+          do j=1,jx
+            do i=1,ix
+              if (ice_local(i,j,k) > QMIN) then
+                if (tkel(i,j,k) > TFREEZE - 25. ) then
+                  Shallow_microphys%size_ice(i,j,k) = 100.6    
+                else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
+                       tkel(i,j,k) <= TFREEZE - 25.) then
+                  Shallow_microphys%size_ice(i,j,k) = 80.8       
+                else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
+                         tkel(i,j,k) <= TFREEZE - 30.) then
+                  Shallow_microphys%size_ice(i,j,k)  = 93.5     
+                else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
+                         tkel(i,j,k) <= TFREEZE - 35.) then
+                  Shallow_microphys%size_ice(i,j,k) = 63.9      
+                else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
+                         tkel(i,j,k) <= TFREEZE - 40.) then
+                  Shallow_microphys%size_ice(i,j,k) = 42.5    
+                else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
+                         tkel(i,j,k) <= TFREEZE - 45.) then
+                  Shallow_microphys%size_ice(i,j,k) = 39.9       
+                else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
+                         tkel(i,j,k) <= TFREEZE - 50.) then
+                  Shallow_microphys%size_ice(i,j,k) = 21.6        
+                else
+                  Shallow_microphys%size_ice(i,j,k) = 20.2        
+                end if
+              else
+                Shallow_microphys%size_ice(i,j,k) = 0.0
+              endif
+            end do
+          end do
+        end do
+      endif  ! (using_fu2007)
+
+
+!------------------------------------------------------------------------
+!!$else  ! ice_num_if
+!!$
+!!$!also cal. liq. as in Morrison scheme
+!!$ 
+!!$      do k=1,kx
+!!$        do j=1,jx
+!!$          do i=1,ix
+!!$
+!!$
+!!$! calc. based on Morrison Gettelman code
+!!$!     
+!!$          qamin_if: IF ( shallow_cloud_area(i,j,k) .GT. qamin ) THEN 
+!!$
+!!$! in-cloud mixing ratio and number conc
+!!$         dumi = ice_local(i,j,k)/area_local(i,j,k)
+!!$         dumni =  shallow_ice_number(i,j,k)/area_local(i,j,k)
+!!$
+!!$
+!!$! limit in-cloud mixing ratio to reasonable value of 5 g kg-1
+!!$         dumi =min(dumi ,5.e-3)
+!!$
+!!$!...................
+!!$! cloud ice effective radius
+!!$      if ( dumi > qmin ) then
+!!$
+!!$! add upper limit to in-cloud number concentration to prevent numerical error
+!!$     dumni=min(dumni,dumi*1.e20)
+!!$     lami = (gamma_mg(1.+di_mg)*ci_mg* &
+!!$              dumni/dumi)**(1./di_mg)
+!!$     lammax = 1./10.e-6
+!!$     lammin = 1./(2.*dcs_mg)
+!!$
+!!$     if (lami.lt.lammin) then
+!!$     lami = lammin
+!!$     else if (lami.gt.lammax) then
+!!$     lami = lammax
+!!$     end if
+!!$        Shallow_microphys%size_ice(i,j,k)  = 1.5/lami*1.e6
+!!$        else
+!!$        Shallow_microphys%size_ice(i,j,k)  =  0.
+!!$        end if
+!!$
+!!$
+!!$   must mult by 2 
+!!$
+!!$!-----------------------------------------------------------
+!!$!
+!!$! cloud droplet effective radius
+!!$!
+!!$
+!!$! in-cloud mixing ratio and number conc
+!!$         dumc = liq_local(i,j,k)/area_local(i,j,k)
+!!$         dumnc = shallow_droplet_number(i,j,k)/area_local(i,j,k)
+!!$! limit in-cloud mixing ratio to reasonable value of 5 g kg-1
+!!$
+!!$      dumc =min(dumc,5.e-3)
+!!$
+!!$
+!!$      if ( dumc > qmin ) then
+!!$
+!!$
+!!$! add upper limit to in-cloud number concentration to prevent numerical error
+!!$       dumnc = min(dumnc,dumc*1.e20)
+!!$
+!!$         rho1=pfull(i,j,k)/(RDGAS*tkel(i,j,k))
+!!$
+!!$         pgam=0.0005714*(dumnc/1.e6/rho1)+0.2714
+!!$         pgam=1./(pgam**2)-1.
+!!$         pgam=max(pgam,2.)
+!!$         pgam=min(pgam,15.)
+!!$
+!!$       lamc = (pi/6.*rhow*dumnc*gamma_mg(pgam+4.)/ &
+!!$                 (dumc*gamma_mg(pgam+1.)))**(1./3.)
+!!$       lammin = (pgam+1.)/50.e-6
+!!$       lammax = (pgam+1.)/2.e-6
+!!$       if (lamc.lt.lammin) then
+!!$         lamc = lammin
+!!$        else if (lamc.gt.lammax) then
+!!$       lamc = lammax
+!!$       end if
+!!$       Shallow_microphys%size_drop(i,j,k)  =  gamma_mg(qcvar+1./3.)/(gamma_mg(qcvar)*qcvar**(1./3.))* &
+!!$             gamma_mg(pgam+4.)/ &
+!!$             gamma_mg(pgam+3.)/lamc/2.*1.e6
+!!$        else
+!!$        Shallow_microphys%size_drop(i,j,k)  = 0.
+!!$        end if
+!!$
+!!$
+!!$
+!!$
+!!$           END IF qamin_if
+!!$          end do
+!!$        end do
+!!$      end do
+!!$
+!!$
+!!$
+!!$
+!!$      Shallow_microphys%ice_number = shallow_ice_number
+!!$      Shallow_microphys%droplet_number = shallow_droplet_number
+!!$
+!!$  
+!!$
+!!$    end if ice_num_if
 
 !---------------------------------------------------------------------
 !    convert the cloud and ice amounts from kg(h2o) / kg(air) to 

@@ -35,7 +35,7 @@ private
 character(len=128), parameter :: version = &
 '$Id: grey_radiation.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
 
-character(len=128), parameter :: tagname = '$Name: riga_201012 $'
+character(len=128), parameter :: tagname = '$Name: riga_201104 $'
 
 logical                       :: module_is_initialized = .false.
 

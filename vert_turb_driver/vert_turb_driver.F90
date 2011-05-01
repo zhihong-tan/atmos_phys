@@ -61,7 +61,7 @@ public   vert_turb_driver_restart
 !--------------------- version number ----------------------------------
 
 character(len=128) :: version = '$Id: vert_turb_driver.F90,v 17.0.4.1 2010/08/30 20:33:36 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

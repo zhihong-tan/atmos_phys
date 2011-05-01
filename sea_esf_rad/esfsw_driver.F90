@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:32 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 18.0.2.1.2.1.2.1.2.1 2011/01/25 10:28:27 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------
@@ -1146,6 +1146,10 @@ integer,                       intent(in)    :: naerosol_optical
 
       real, dimension (size(Atmos_input%temp,1), &
                        size(Atmos_input%temp,2), &
+                       Rad_control%nzens)  :: sumtr_dir_up
+
+      real, dimension (size(Atmos_input%temp,1), &
+                       size(Atmos_input%temp,2), &
                        size(Atmos_input%temp,3))  :: &
             press,           pflux,            pflux_mks, &
             temp,                                       &
@@ -1370,6 +1374,7 @@ integer,                       intent(in)    :: naerosol_optical
           do nz=1,nzens
             sumtr(:,:,:,nz) = 0.0
             sumtr_dir(:,:,:,nz) = 0.0
+            sumtr_dir_up(:,:,nz) = 0.0
             sumre(:,:,:,nz) = 0.0
             if (Rad_control%do_totcld_forcing) then
               sumtrclr(:,:,:,nz) = 0.0
@@ -1774,6 +1779,14 @@ integer,                       intent(in)    :: naerosol_optical
                     end do
                   end do
                 end do
+                  do j=JSRAD,JERAD
+                    do i=ISRAD,IERAD
+                      if (daylight(i,j) ) then
+                        sumtr_dir_up(i,j,nz) = sumtr_dir_up(i,j,nz) + &
+                          tr_dir(i,j,KERAD+1)*sfcalb_dir(i,j)*wtfac_p(i,j)
+                      endif
+                    end do
+                  end do
 
 !---------------------------------------------------------------------
 !
@@ -1890,6 +1903,9 @@ integer,                       intent(in)    :: naerosol_optical
                   Sw_output%dfsw_dir_sfc(i,j,nz) =   &
                             Sw_output%dfsw_dir_sfc(i,j,nz) +   &
                               sumtr_dir(i,j,KERAD+1,nz)*solarflux_p(i,j)
+                  Sw_output%ufsw_dir_sfc(i,j,nz) =   &
+                            Sw_output%ufsw_dir_sfc(i,j,nz) +   &
+                              sumtr_dir_up(i,j,nz)*solarflux_p(i,j)
                   Sw_output%ufsw_dif_sfc(i,j,nz) =   &
                              Sw_output%ufsw_dif_sfc(i,j,nz) +   &
                                  sumre(i,j,KERAD+1,nz)*solarflux_p(i,j)
@@ -1910,6 +1926,9 @@ integer,                       intent(in)    :: naerosol_optical
                     Sw_output%dfsw_vis_sfc_dir(i,j,nz) =   &
                             Sw_output%dfsw_vis_sfc_dir(i,j,nz) +   &
                               sumtr_dir(i,j,KERAD+1,nz)*solarflux_p(i,j)
+                    Sw_output%ufsw_vis_sfc_dir(i,j,nz) =   &
+                            Sw_output%ufsw_vis_sfc_dir(i,j,nz) +   &
+                              sumtr_dir_up(i,j,nz)*solarflux_p(i,j)
                     Sw_output%ufsw_vis_sfc_dif(i,j,nz) =   &
                              Sw_output%ufsw_vis_sfc_dif(i,j,nz) +   &
                                  sumre(i,j,KERAD+1,nz)*solarflux_p(i,j)

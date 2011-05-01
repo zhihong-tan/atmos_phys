@@ -19,7 +19,7 @@ module lin_cld_microphys_mod
  private
 
  character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 17.0.4.3.2.1.4.4.2.2 2010/09/03 22:17:11 wfc Exp $'
- character(len=128) :: tagname = '$Name: riga_201012 $'
+ character(len=128) :: tagname = '$Name: riga_201104 $'
 
  public  lin_cld_microphys_driver, lin_cld_microphys_init, lin_cld_microphys_end, sg_conv
  public  qsmith_init, qsmith, es2_table1d, es3_table1d, esw_table1d

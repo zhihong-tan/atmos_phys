@@ -33,7 +33,7 @@ public   clouds, clouds_init, clouds_end
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
  character(len=128) :: version = '$Id: clouds.F90,v 17.0.4.1 2010/08/30 20:33:31 wfc Exp $'
- character(len=128) :: tagname = '$Name: riga_201012 $'
+ character(len=128) :: tagname = '$Name: riga_201104 $'
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !   note:  the fels-schwarzkopf radiation code permits bi-spectral

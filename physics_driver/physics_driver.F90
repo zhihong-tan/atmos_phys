@@ -177,8 +177,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 17.0.2.1.6.1.2.1.2.1.2.2.2.1.2.1.4.1.2.1.2.1.2.1.2.2 2010/09/03 22:17:12 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 17.0.2.1.6.1.2.1.2.1.2.2.2.1.2.1.4.1.2.1.2.1.2.1.2.2.2.1 2011/03/02 07:05:50 Richard.Hemler Exp $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------
@@ -380,8 +380,15 @@ real,    dimension(:,:,:), allocatable ::       &
                            meso_droplet_number, &
                            lsc_cloud_area, lsc_liquid, &
                            lsc_ice, lsc_droplet_number, &
+                           lsc_ice_number, &
+             !snow, rain in radiation
+                           lsc_rain, lsc_snow,              &
+                           lsc_rain_size, lsc_snow_size,              &
                            shallow_cloud_area, shallow_liquid, &
                            shallow_ice, shallow_droplet_number, &
+!cms++ not yet activated, but may be needed ...
+                           shallow_ice_number, &
+!cms--
                            temp_last, q_last
 real,    dimension(:,:,:,:), allocatable ::  tau_stoch, lwem_stoch, &
                            stoch_cloud_type, stoch_conc_drop, &
@@ -617,11 +624,11 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
  
 !--------------------------------------------------------------------
 !    read namelist.
+!--------------------------------------------------------------------
 #ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=physics_driver_nml, iostat=io)
       ierr = check_nml_error(io,"physics_driver_nml")
 #else
-!--------------------------------------------------------------------
       if ( file_exist('input.nml')) then
         unit = open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -909,10 +916,22 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
        allocate (lsc_liquid         (id, jd, kd) )
        allocate (lsc_ice            (id, jd, kd) )
        allocate (lsc_droplet_number (id, jd, kd) )
+       allocate (lsc_ice_number     (id, jd, kd) )
+  ! snow, rain
+       allocate (lsc_rain           (id, jd, kd) )
+       allocate (lsc_snow           (id, jd, kd) )
+       allocate (lsc_rain_size      (id, jd, kd) )
+       allocate (lsc_snow_size      (id, jd, kd) )
        lsc_cloud_area      = 0.
        lsc_liquid          = 0.
        lsc_ice             = 0.
        lsc_droplet_number  = 0.
+       lsc_ice_number  = 0.
+   ! snow, rain
+       lsc_rain = 0.
+       lsc_snow = 0.
+       lsc_rain_size = 0.
+       lsc_snow_size = 0.
 
        if (doing_uw_conv) then
  
@@ -920,10 +939,12 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
          allocate (shallow_liquid         (id, jd, kd) )
          allocate (shallow_ice            (id, jd, kd) )
          allocate (shallow_droplet_number (id, jd, kd) )
+         allocate (shallow_ice_number     (id, jd, kd) )
          shallow_cloud_area      = 0.
          shallow_liquid          = 0.
          shallow_ice             = 0.
          shallow_droplet_number  = 0.
+         shallow_ice_number      = 0.
        endif
 
 !--------------------------------------------------------------------
@@ -1730,6 +1751,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
              shallow_liquid = shallow_liquid(is:ie,js:je,:), &
              shallow_ice = shallow_ice(is:ie,js:je,:), &
              shallow_droplet_number = shallow_droplet_number(is:ie,js:je,:), &
+             shallow_ice_number = shallow_ice_number(is:ie,js:je,:), &
              cell_cld_frac= cell_cld_frac(is:ie,js:je,:),  &
              cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
              cell_liq_size=cell_liq_size(is:ie,js:je,:), &
@@ -1779,7 +1801,9 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
              shallow_cloud_area = shallow_cloud_area(is:ie,js:je,:), &
              shallow_liquid = shallow_liquid(is:ie,js:je,:), &
              shallow_ice = shallow_ice(is:ie,js:je,:), &
-             shallow_droplet_number = shallow_droplet_number(is:ie,js:je,:))
+             shallow_droplet_number =   &
+                                shallow_droplet_number(is:ie,js:je,:), &
+             shallow_ice_number = shallow_ice_number(is:ie,js:je,:) )
       else
           call cloud_spec (is, ie, js, je, lat,              &
                            z_half, z_full, Rad_time,   &
@@ -1802,11 +1826,18 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
               lsc_liquid_in=lsc_liquid(is:ie,js:je,:),  &
               lsc_ice_in=lsc_ice(is:ie,js:je,:),  &
                lsc_droplet_number_in=lsc_droplet_number(is:ie,js:je,:),&
+              lsc_ice_number_in=lsc_ice_number(is:ie,js:je,:),&
+     !snow, rain
+              lsc_snow_in =  lsc_snow(is:ie,js:je,:) , &
+              lsc_rain_in = lsc_rain(is:ie,js:je,:), &
+              lsc_snow_size_in =  lsc_snow_size(is:ie,js:je,:),  &
+              lsc_rain_size_in = lsc_rain_size(is:ie,js:je,:), &
                             r=r(:,:,:,1:ntp), &
              shallow_cloud_area = shallow_cloud_area(is:ie,js:je,:), &
              shallow_liquid = shallow_liquid(is:ie,js:je,:), &
              shallow_ice = shallow_ice(is:ie,js:je,:), &
              shallow_droplet_number = shallow_droplet_number(is:ie,js:je,:), &
+             shallow_ice_number= shallow_ice_number(is:ie,js:je,:), &
              cell_cld_frac= cell_cld_frac(is:ie,js:je,:),  &
              cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
              cell_liq_size=cell_liq_size(is:ie,js:je,:), &
@@ -1830,6 +1861,12 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                 lsc_liquid_in=lsc_liquid(is:ie,js:je,:), &
                 lsc_ice_in=lsc_ice(is:ie,js:je,:),  &
                lsc_droplet_number_in=lsc_droplet_number(is:ie,js:je,:),&
+               lsc_ice_number_in=lsc_ice_number(is:ie,js:je,:),&
+      ! snow, rain
+               lsc_snow_in =  lsc_snow(is:ie,js:je,:) , &
+               lsc_rain_in = lsc_rain(is:ie,js:je,:), &
+               lsc_snow_size_in =  lsc_snow_size(is:ie,js:je,:),  &
+               lsc_rain_size_in = lsc_rain_size(is:ie,js:je,:), &
                            r=r(:,:,:,1:ntp), &
              cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
              cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
@@ -1854,11 +1891,19 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
               lsc_liquid_in=lsc_liquid(is:ie,js:je,:),  &
               lsc_ice_in=lsc_ice(is:ie,js:je,:),  &
               lsc_droplet_number_in=lsc_droplet_number(is:ie,js:je,:),&
+              lsc_ice_number_in=lsc_ice_number(is:ie,js:je,:),&
+      ! snow, rain
+              lsc_snow_in =  lsc_snow(is:ie,js:je,:) , &
+              lsc_rain_in = lsc_rain(is:ie,js:je,:), &
+              lsc_snow_size_in =  lsc_snow_size(is:ie,js:je,:),  &
+             lsc_rain_size_in = lsc_rain_size(is:ie,js:je,:), &
                            r=r(:,:,:,1:ntp), &
              shallow_cloud_area = shallow_cloud_area(is:ie,js:je,:), &
              shallow_liquid = shallow_liquid(is:ie,js:je,:), &
              shallow_ice = shallow_ice(is:ie,js:je,:), &
-             shallow_droplet_number = shallow_droplet_number(is:ie,js:je,:))
+             shallow_droplet_number =   &
+                                   shallow_droplet_number(is:ie,js:je,:), &
+             shallow_ice_number= shallow_ice_number(is:ie,js:je,:) )
       else
           call cloud_spec (is, ie, js, je, lat,              &
                            z_half, z_full, Rad_time,   &
@@ -1869,6 +1914,12 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                      lsc_liquid_in=lsc_liquid(is:ie,js:je,:),  &
                      lsc_ice_in=lsc_ice(is:ie,js:je,:),  &
               lsc_droplet_number_in=lsc_droplet_number(is:ie,js:je,:),&
+              lsc_ice_number_in=lsc_ice_number(is:ie,js:je,:),&
+        ! snow, rain
+              lsc_snow_in =  lsc_snow(is:ie,js:je,:) , &
+              lsc_rain_in = lsc_rain(is:ie,js:je,:), &
+              lsc_snow_size_in =  lsc_snow_size(is:ie,js:je,:),  &
+              lsc_rain_size_in = lsc_rain_size(is:ie,js:je,:), &
                            r=r(:,:,:,1:ntp))
       endif ! (doing_donner)
       endif ! (use_cloud_tracers_in_radiation)
@@ -2678,11 +2729,19 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
            fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
            gust_cv, area, lat, lsc_cloud_area(is:ie,js:je,:),  &
            lsc_liquid(is:ie,js:je,:), lsc_ice(is:ie,js:je,:), &
-           lsc_droplet_number(is:ie,js:je,:), Aerosol, mask=mask,  &
+           lsc_droplet_number(is:ie,js:je,:),   &
+           lsc_ice_number(is:ie,js:je,:), &
+      ! snow, rain
+           lsc_snow(is:ie,js:je,:) , &
+           lsc_rain(is:ie,js:je,:), &
+           lsc_snow_size(is:ie,js:je,:),  &
+           lsc_rain_size(is:ie,js:je,:), &
+           Aerosol, mask=mask,  &
            kbot=kbot, shallow_cloud_area=shallow_cloud_area(is:ie,js:je,:), &
            shallow_liquid=shallow_liquid(is:ie,js:je,:), &
            shallow_ice= shallow_ice(is:ie,js:je,:),   &
            shallow_droplet_number= shallow_droplet_number(is:ie,js:je,:), &
+           shallow_ice_number= shallow_ice_number(is:ie,js:je,:), &
            cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
            cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
            cell_liq_size=cell_liq_size(is:ie,js:je,:), &
@@ -2711,12 +2770,19 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            convect(is:ie,js:je), lprec, fprec,       &
             fl_lsrain(is:ie,js:je,:), fl_lssnow(is:ie,js:je,:),  &
             fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
-           fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
+            fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
                            gust_cv, area, lat,  &
                            lsc_cloud_area(is:ie,js:je,:), &
                            lsc_liquid(is:ie,js:je,:), &
                            lsc_ice(is:ie,js:je,:), &
                            lsc_droplet_number(is:ie,js:je,:), &
+                           lsc_ice_number(is:ie,js:je,:), &
+                 ! snow, rain
+                           lsc_snow(is:ie,js:je,:) , &
+                           lsc_rain(is:ie,js:je,:), &
+                           lsc_snow_size(is:ie,js:je,:),  &
+                           lsc_rain_size(is:ie,js:je,:), &
+
                            Aerosol, mask=mask, kbot=kbot, &
                            cell_cld_frac= cell_cld_frac(is:ie,js:je,:), &
                            cell_liq_amt=cell_liq_amt(is:ie,js:je,:), &
@@ -2753,11 +2819,19 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            lsc_liquid(is:ie,js:je,:),  &
                            lsc_ice(is:ie,js:je,:), &
                            lsc_droplet_number(is:ie,js:je,:), &
-                             Aerosol, mask=mask, kbot=        kbot,  &
-                           shallow_cloud_area= shallow_cloud_area(is:ie,js:je,:), &
-                       shallow_liquid=shallow_liquid(is:ie,js:je,:),  &
-                           shallow_ice= shallow_ice(is:ie,js:je,:),   &
-                       shallow_droplet_number= shallow_droplet_number(is:ie,js:je,:),    &
+                           lsc_ice_number(is:ie,js:je,:), &
+                 ! snow, rain
+                           lsc_snow(is:ie,js:je,:) , &
+                           lsc_rain(is:ie,js:je,:), &
+                           lsc_snow_size(is:ie,js:je,:),  &
+                           lsc_rain_size(is:ie,js:je,:), &
+                           Aerosol, mask=mask, kbot=        kbot,  &
+                  shallow_cloud_area= shallow_cloud_area(is:ie,js:je,:), &
+                  shallow_liquid=shallow_liquid(is:ie,js:je,:),  &
+                  shallow_ice= shallow_ice(is:ie,js:je,:),   &
+                  shallow_droplet_number=    &
+                                shallow_droplet_number(is:ie,js:je,:),    &
+                  shallow_ice_number = shallow_ice_number(is:ie,js:je,:), &
                            hydrostatic=hydrostatic, phys_hydrostatic=phys_hydrostatic  )
        else
         call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
@@ -2779,6 +2853,13 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            lsc_liquid(is:ie,js:je,:),  &
                            lsc_ice(is:ie,js:je,:), &
                            lsc_droplet_number(is:ie,js:je,:), &
+                           lsc_ice_number(is:ie,js:je,:), &
+             ! snow, rain
+                           lsc_snow(is:ie,js:je,:) , &
+                           lsc_rain(is:ie,js:je,:), &
+                           lsc_snow_size(is:ie,js:je,:),  &
+                           lsc_rain_size(is:ie,js:je,:), &
+
                            Aerosol, mask=mask, kbot=kbot,    &
                            hydrostatic=hydrostatic, phys_hydrostatic=phys_hydrostatic  )
         endif
@@ -3193,8 +3274,14 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !---------------------------------------------------------------------
 !    deallocate the module variables.
 !---------------------------------------------------------------------
-      deallocate (diff_cu_mo, diff_t, diff_m, pbltop, cush, cbmf, convect,   &
-                  radturbten, lw_tendency)
+      deallocate (diff_cu_mo, diff_t, diff_m, pbltop, cush, cbmf,  &
+                  convect, radturbten, lw_tendency, r_convect)
+      deallocate (fl_lsrain, fl_lssnow, fl_lsgrpl, fl_ccrain, fl_ccsnow, &
+                  fl_donmca_snow, fl_donmca_rain, mr_ozone, daytime, &
+                  temp_last, q_last)
+      deallocate (lsc_cloud_area, lsc_liquid, lsc_ice, &
+                  lsc_droplet_number, lsc_ice_number)
+      deallocate (lsc_snow, lsc_rain, lsc_snow_size, lsc_rain_size)
       if (doing_donner) then
         deallocate (cell_cld_frac, cell_liq_amt, cell_liq_size, &
                     cell_ice_amt, cell_ice_size, cell_droplet_number, &
@@ -3205,6 +3292,7 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
       if (doing_uw_conv) then
         deallocate (shallow_cloud_area, shallow_liquid, shallow_ice, &
                     shallow_droplet_number)
+        deallocate ( shallow_ice_number)
 
       endif
  
@@ -3489,12 +3577,19 @@ subroutine physics_driver_register_restart
      id_restart = register_restart_field(Til_restart, fname, 'shallow_liquid', shallow_liquid)
      id_restart = register_restart_field(Til_restart, fname, 'shallow_ice', shallow_ice)
      id_restart = register_restart_field(Til_restart, fname, 'shallow_droplet_number', shallow_droplet_number)
+     id_restart = register_restart_field(Til_restart, fname, 'shallow_ice_number', shallow_ice_number)
   endif
   id_restart = register_restart_field(Til_restart, fname, 'lsc_cloud_area', lsc_cloud_area)
   id_restart = register_restart_field(Til_restart, fname, 'lsc_liquid', lsc_liquid )
   id_restart = register_restart_field(Til_restart, fname, 'lsc_ice', lsc_ice )
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number',   &
-                                                                          lsc_droplet_number)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number', lsc_droplet_number)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice_number',        lsc_ice_number)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow', lsc_snow)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_rain', lsc_rain)
+ 
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow_size',  lsc_snow_size)
+
+ id_restart = register_restart_field(Til_restart, fname, 'lsc_rain_size', lsc_rain_size)
 
 end subroutine physics_driver_register_restart
 ! </SUBROUTINE>    
@@ -3754,17 +3849,20 @@ subroutine read_restart_file
           call read_data (unit ,  shallow_liquid )
           call read_data (unit ,  shallow_ice )
           call read_data (unit ,  shallow_droplet_number)
+          shallow_ice_number = 0.
       else  ! (was_doing_uw_conv)
          shallow_cloud_area = 0.
          shallow_liquid  = 0.
          shallow_ice  = 0.
          shallow_droplet_number = 0.
+         shallow_ice_number = 0.
        endif ! (was_doing_uw_conv)
      else  ! (vers >= 7)
        shallow_cloud_area = 0.
        shallow_liquid  = 0.
        shallow_ice  = 0.
        shallow_droplet_number = 0.
+       shallow_ice_number = 0.
      endif ! (vers >= 7)
   
     endif  ! (doing_uw_conv)
@@ -3799,6 +3897,7 @@ subroutine read_restart_file
         shallow_liquid  = 0.
         shallow_ice  = 0.
         shallow_droplet_number = 0.
+        shallow_ice_number = 0.
       endif ! (doing_uw_conv)
       endif  ! present(.res)
 
@@ -4088,10 +4187,53 @@ subroutine read_restart_nc
         lsc_ice  = -99.
         lsc_droplet_number = -99.
         call error_mesg ('physics_driver_mod', &
-             ' initial radiation call will use lsc tracer fields; &
+             ' initial radiation call will use lsc tracer (l,i,a,n) &
+               &fields; thus the lsc cloud area field may not be compat-&
+               &ible  with the areas assigned to convective clouds', NOTE)
+      endif  ! (field_found)       
+                                  
+      call field_size (fname, 'lsc_ice_number', siz, &
+                                           field_found = field_found)
+      if (field_found) then
+        call read_data (fname, 'lsc_ice_number', lsc_ice_number)
+      else
+        lsc_ice_number = -99.
+        call error_mesg ('physics_driver_mod', &
+             ' initial radiation call will use lsc tracer ice # field; &
                &thus the lsc cloud area field may not be compatible &
                &with the areas assigned to convective clouds', NOTE)
       endif  ! (field_found)       
+
+! snow, rain
+      call field_size (fname, 'lsc_snow', siz, field_found = field_found)
+      if (field_found) then
+        call read_data (fname, 'lsc_snow', lsc_snow)
+      else
+        lsc_snow(:,:,:) = 0.
+      end if
+
+      call field_size (fname, 'lsc_rain', siz, field_found = field_found)
+      if (field_found) then
+        call read_data (fname, 'lsc_rain', lsc_rain)
+      else
+        lsc_rain(:,:,:) = 0.
+      end if
+
+      call field_size (fname, 'lsc_snow_size', siz, &
+                                             field_found = field_found)
+      if (field_found) then
+        call read_data (fname, 'lsc_snow_size', lsc_snow_size)
+      else
+        lsc_snow_size(:,:,:) = 0.
+      end if
+
+      call field_size (fname, 'lsc_rain_size', siz, &
+                                               field_found = field_found)
+      if (field_found) then
+        call read_data (fname, 'lsc_rain_size', lsc_rain_size)
+      else
+        lsc_rain_size(:,:,:) = 0.
+      end if
                                   
 !---------------------------------------------------------------------
 !    uw_conv cloud variables may be present in 
@@ -4117,11 +4259,32 @@ subroutine read_restart_nc
          shallow_cloud_area = 0.
          shallow_liquid  = 0.
          shallow_ice  = 0.
-        shallow_droplet_number = 0.
-        call error_mesg ('physics_driver_mod', &
+         shallow_droplet_number = 0.
+         call error_mesg ('physics_driver_mod', &
              ' initializing uw_conv cloud  variables, since they are not present'//&
                             ' in physics_driver.res.nc file', NOTE)
        endif  ! (field_found)       
+
+!-------------------------------------------------------------------------
+!    check for shallow ice number.
+!-------------------------------------------------------------------------
+       call field_size (fname, 'shallow_ice_number', siz, &
+                             field_found = field_found)
+
+       if (field_found) then
+         call read_data (fname, 'shallow_ice_number', shallow_ice_number)
+       else
+!!cms 2009-2-24          shallow_ice_number = 0.
+                 !rho_ice = 500
+             !initially assume 25 micron mean volume radius for ice
+!!             shallow_ice_number(:,:,:) = shallow_ice(:,:,:)/500. * 3./(4.*3.14*1.563e-14)
+         shallow_ice_number = 0.
+         call error_mesg ('physics_driver_mod', &
+           ' initializing uw_conv shallow_ice_number, since not present'//&
+                            ' in physics_driver.res.nc file', NOTE)
+       endif 
+
+
      endif  ! (doing_uw_conv)
 
 !---------------------------------------------------------------------

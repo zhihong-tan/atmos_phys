@@ -102,7 +102,7 @@ namelist/cu_mo_trans_nml/ diff_norm, &
 !--------------------- version number ---------------------------------
 
 character(len=128) :: version = '$Id: cu_mo_trans.F90,v 17.0.6.2 2010/09/07 16:17:10 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 
 contains
 

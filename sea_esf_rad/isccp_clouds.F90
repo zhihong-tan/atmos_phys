@@ -43,7 +43,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: isccp_clouds.F90,v 17.0.8.2 2010/08/30 20:39:46 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------

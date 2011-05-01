@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: modis_simulator.f90,v 1.1.2.1.2.1.6.4 2010/06/03 18:39:51 wfc Exp $
-! $Name: riga_201012 $
+! $Id: modis_simulator.f90,v 1.1.2.1.2.1.6.4.2.1 2011/03/30 22:09:53 William.Cooke Exp $
+! $Name: riga_201104 $
 
 
 ! (c) 2009-2010, Regents of the Unversity of Colorado
@@ -106,7 +106,7 @@ module mod_modis_sim
   real, dimension(numTauHistogramBins + 1),      parameter :: &
     tauHistogramBoundaries = (/ min_OpticalThickness, 1.3, 3.6, 9.4, 23., 60., huge(dummy_real) /) 
   real, dimension(numPressureHistogramBins + 1), parameter :: & ! Units Pa 
-    pressureHistogramBoundaries = (/ 0., 180., 310., 440., 560., 680., 800., huge(dummy_real) /) * 100. 
+    pressureHistogramBoundaries = (/ 0., 18000., 31000., 44000., 56000., 68000., 80000., huge(dummy_real) /)
   real, parameter :: highCloudPressureLimit = 440. * 100., lowCloudPressureLimit = 680.  * 100.
 
   !

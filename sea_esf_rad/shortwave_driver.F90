@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 17.0.4.1 2010/08/30 20:33:33 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 17.0.4.1.2.1 2011/01/25 10:28:27 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------
@@ -540,11 +540,13 @@ real, dimension(:,:,:,:),        intent(inout) :: r
           Sw_output_std%ufsw  (:,:,:,:) = 0.0
           Sw_output_std%hsw   (:,:,:,:) = 0.0
           Sw_output_std%dfsw_dir_sfc = 0.0
+          Sw_output_std%ufsw_dir_sfc = 0.0
           Sw_output_std%dfsw_dif_sfc  = 0.0
           Sw_output_std%ufsw_dif_sfc = 0.0
           Sw_output_std%dfsw_vis_sfc = 0.
           Sw_output_std%ufsw_vis_sfc = 0.
           Sw_output_std%dfsw_vis_sfc_dir = 0.
+          Sw_output_std%ufsw_vis_sfc_dir = 0.
           Sw_output_std%dfsw_vis_sfc_dif = 0.
           Sw_output_std%ufsw_vis_sfc_dif = 0.
           Sw_output_std%swdn_special  (:,:,:,:) = 0.0
@@ -801,11 +803,13 @@ type(sw_output_type), intent(inout)  ::  Sw_output
       allocate (Sw_output%dfsw (ix, jx, kx+1, nzens) )
       allocate (Sw_output%hsw  (ix, jx, kx  , nzens) )
       allocate (Sw_output%dfsw_dir_sfc (ix, jx, nzens) )
+      allocate (Sw_output%ufsw_dir_sfc (ix, jx, nzens) )
       allocate (Sw_output%ufsw_dif_sfc (ix, jx, nzens) )
       allocate (Sw_output%dfsw_dif_sfc (ix, jx, nzens) )
       allocate (Sw_output%dfsw_vis_sfc (ix, jx, nzens  ) )
       allocate (Sw_output%ufsw_vis_sfc (ix, jx, nzens  ) )
       allocate (Sw_output%dfsw_vis_sfc_dir (ix, jx, nzens  ) )
+      allocate (Sw_output%ufsw_vis_sfc_dir (ix, jx, nzens  ) )
       allocate (Sw_output%dfsw_vis_sfc_dif (ix, jx, nzens  ) )
       allocate (Sw_output%ufsw_vis_sfc_dif (ix, jx, nzens  ) )
       allocate (Sw_output%swdn_special   &
@@ -820,11 +824,13 @@ type(sw_output_type), intent(inout)  ::  Sw_output
       Sw_output%ufsw  (:,:,:,:) = 0.0
       Sw_output%hsw   (:,:,:,:) = 0.0
       Sw_output%dfsw_dir_sfc = 0.0
+      Sw_output%ufsw_dir_sfc = 0.0
       Sw_output%dfsw_dif_sfc  = 0.0
       Sw_output%ufsw_dif_sfc = 0.0
       Sw_output%dfsw_vis_sfc = 0.
       Sw_output%ufsw_vis_sfc = 0.
       Sw_output%dfsw_vis_sfc_dir = 0.
+      Sw_output%ufsw_vis_sfc_dir = 0.
       Sw_output%dfsw_vis_sfc_dif = 0.
       Sw_output%ufsw_vis_sfc_dif = 0.
       Sw_output%swdn_special  (:,:,:,:) = 0.0
@@ -922,11 +928,13 @@ type(sw_output_type), intent(inout)  ::  Sw_output
       deallocate (Sw_output%dfsw)
       deallocate (Sw_output%hsw)
       deallocate (Sw_output%dfsw_dir_sfc)
+      deallocate (Sw_output%ufsw_dir_sfc)
       deallocate (Sw_output%ufsw_dif_sfc)
       deallocate (Sw_output%dfsw_dif_sfc)
       deallocate (Sw_output%dfsw_vis_sfc)
       deallocate (Sw_output%ufsw_vis_sfc)
       deallocate (Sw_output%dfsw_vis_sfc_dir)
+      deallocate (Sw_output%ufsw_vis_sfc_dir)
       deallocate (Sw_output%dfsw_vis_sfc_dif)
       deallocate (Sw_output%ufsw_vis_sfc_dif)
       deallocate (Sw_output%swdn_special)

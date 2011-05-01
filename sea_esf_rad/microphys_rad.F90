@@ -56,8 +56,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: microphys_rad.F90,v 17.0.4.2 2010/09/07 14:03:35 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: microphys_rad.F90,v 17.0.4.2.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------
@@ -528,7 +528,7 @@ real, dimension(:,:),    intent(in)    ::  lonb, latb
 #ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=microphys_rad_nml, iostat=io)
       ierr = check_nml_error(io,'microphys_rad_nml')
-#else   
+#else
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ()
         ierr=1; do while (ierr /= 0)
@@ -2152,10 +2152,6 @@ type(microrad_properties_type), intent(in), optional :: Lscrad_props, &
       real :: cltau,cldextdu
       integer :: i, j, k, n
      
-!-----------------------------------------------------------------------
-!    variables for folding Donner cloud properties into stochastic 
-!    cloud arrays
-!------------------------------------------------------------------
       integer :: nn
   
 !------------------------------------------------------------------
@@ -3787,7 +3783,7 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                             cldssalbivlrain, cldasymmivlrain, &
                             maskr,  &
                             starting_band = nivl1raincld(nb), &
-                            ending_band = nivl1raincld(nb)) 
+                            ending_band = nivl2raincld(nb)) 
 
 !---------------------------------------------------------------------
 !    on calls from the isccp simulator with stochastic clouds, call all 
@@ -3870,7 +3866,7 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
                          cldasymmivlsnow, &
                            masks, &
                          starting_band = nivl1snowcld(nb), &
-                         ending_band = nivl1snowcld(nb)) 
+                         ending_band = nivl2snowcld(nb)) 
           
 !----------------------------------------------------------------------
 !    call thickavg to map the single-scattering properties for cloud
@@ -5396,7 +5392,7 @@ integer,  intent(in), optional            ::   starting_band, &
 !    if no snow is present in the box, set the scattering parameters
 !    to so indicate.
 !-----------------------------------------------------------------
-            if (conc_snow(i,j,k) == 0.0) then
+            if (conc_snow(i,j,k) .le. 1.e-5) then
               mask(i,j,k) = .false.
 
 !---------------------------------------------------------------------
@@ -6020,8 +6016,10 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
       integer     :: n
       integer     :: i, j,k
       real  ::          cldextivlice, cldssalbivlice
+!     real  ::          cldasymmivlice
 
       real     ::               sumext, sumssalb
+!     real     ::               sumasymm
 
       real, dimension (NBFL)  ::   a0, a1, a2
  
@@ -6054,6 +6052,24 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
           0.0000E+00,  0.0000E+00,  0.0000E+00,  0.0000E+00,         &
           0.0000E+00,  0.0000E+00,  0.0000E+00,  0.0000E+00/
 
+!     real, dimension (1:NBFL,0:NBC)     ::   cpr
+
+!     data (cpr(n,0),n=1,NBFL) /                                   &
+!         0.2292,   0.7024,   0.7290,   0.7678,   0.8454,   0.9092,  &
+!         0.9167,   0.8815,   0.8765,   0.8915,   0.8601,   0.7955/
+!     data (cpr(n,1),n=1,NBFL) /                                   &
+!          1.724E-02,   4.581E-03,   2.132E-03,   2.571E-03,         &
+!          1.429E-03,   9.295E-04,   5.499E-04,   9.858E-04,         &
+!          1.198E-03,   1.060E-03,   1.599E-03,   2.524E-03/
+!     data (cpr(n,2),n=1,NBFL) /                                   &
+!         -1.573E-04,  -3.054E-05,  -5.584E-06,  -1.041E-05,         &
+!         -5.859E-06,  -3.877E-06,  -1.507E-06,  -3.116E-06,         &
+!         -4.485E-06,  -4.171E-06,  -6.465E-06,  -1.022E-05/
+!     data (cpr(n,3),n=1,NBFL) /                                   &
+!          4.995E-07,   6.684E-08,   0.000E+00,   0.000E+00,         &
+!          0.000E+00,   0.000E+00,   0.000E+00,   0.000E+00,         &
+!          0.000E+00,   0.000E+00,   0.000E+00,   0.000E+00/
+
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -6076,10 +6092,15 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !      sumssalb         sum of single scattering albedo over fu bands 
 !                       to produce value for lw radiation bands 
 !                       [ dimensionless ]
+!      sumasymm         sum of asymmetry factor over fu bands 
+!                       to produce value for lw radiation bands 
+!                       [ dimensionless ]
 !      a0,a1,a2         empirical coefficients for extinction 
 !                       coefficient parameterization
 !      b                empirical coefficients for single scattering 
 !                       albedo parameterization
+!      cpr              empirical coefficients for asymmetry parameter
+!                       parameterization
 !      n,ni             do-loop indices
 !
 !---------------------------------------------------------------------
@@ -6127,6 +6148,11 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
                                    b(n,1)*size_i(i,j,k) +           &
                                    b(n,2)*size_i(i,j,k)**2 +        &
                                    b(n,3)*size_i(i,j,k)**3)
+!               cldasymmivlice  =                            &
+!                                  cpr(n,0) +                         &
+!                                  cpr(n,1)*size_i(:,:,:) +         &
+!                                  cpr(n,2)*size_i(:,:,:)**2 +      &
+!                                  cpr(n,3)*size_i(:,:,:)**3
  
 !-----------------------------------------------------------------------
 !    use the band weighting factors computed in microphys_rad_init
@@ -6134,18 +6160,22 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !-----------------------------------------------------------------------
                 sumext    = sumext + cldextivlice*fulwwts(nb,n )
                 sumssalb  = sumssalb + cldssalbivlice*fulwwts(nb,n )
+!               sumasymm  = sumasymm + cldasymmivlice*fulwwts(nb,n )
               end do
             else 
               mask(i,j,k) = .false.
         cldextbndicelw(i,j,k) = 0.0        
         cldssalbbndicelw(i,j,k) = 0.0          
+!       cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
             endif
             cldextbndicelw(i,j,k)   = sumext       
             cldssalbbndicelw(i,j,k) = sumssalb       
+!           cldasymmbndicelw(i,j,k,n) = sumasymm        
              else
                 mask(i,j,k) = .false.
             cldextbndicelw(i,j,k)   = 0.0          
             cldssalbbndicelw(i,j,k) = 0.0            
+!           cldasymmbndicelw(i,j,k,n) = sumasymm        
              endif
           end do
         end do
@@ -6250,9 +6280,11 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
       integer     :: i,j,k
  
       real                        ::    cldextivlice, cldabsivlice, &
-                                        cldssalbivlice
+                                        cldssalbivlice 
+!     real                        ::    cldasymmivlice 
 
       real    ::        sumext, sumssalb
+!     real    ::        sumasymm
       real    ::        fw1,fw2,fw3,fw4
 
       real, dimension (NBFL)  ::   a0, a1, a2
@@ -6287,10 +6319,29 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
           1.193649E-07,  2.233377E-07,  7.364680E-07,  7.510080E-07, &
           7.078738E-07,  6.000892E-07,  5.180104E-07,  5.561523E-07/
 
+!     real, dimension (1:NBFL,0:NBC)     ::   cpr
+!     data (cpr(n,0),n=1,NBFL) /                                   &
+!         4.949276E-01,  6.891414E-01,  7.260484E-01,  7.363466E-01, &
+!         7.984021E-01,  8.663385E-01,  8.906280E-01,  8.609604E-01, &
+!         8.522816E-01,  8.714665E-01,  8.472918E-01,  7.962716E-01/
+!     data (cpr(n,1),n=1,NBFL) /                                   &
+!         1.186174E-02,  6.192281E-03,  2.664334E-03,  4.798266E-03, &
+!         3.977117E-03,  2.797934E-03,  1.903269E-03,  2.200445E-03, &
+!         2.523627E-03,  2.455409E-03,  2.559953E-03,  3.003488E-03/
+!     data (cpr(n,2),n=1,NBFL) /                                   &
+!        -1.267629E-04, -6.459514E-05, -1.251136E-05, -4.513292E-05, &
+!        -4.471984E-05, -3.187011E-05, -1.733552E-05, -1.748105E-05, &
+!        -2.149196E-05, -2.456935E-05, -2.182660E-05, -2.082376E-05/
+!     data (cpr(n,3),n=1,NBFL) /                                   &
+!         4.603574E-07,  2.436963E-07,  2.243377E-08,  1.525774E-07, &
+!         1.694919E-07,  1.217209E-07,  5.855071E-08,  5.176616E-08, &
+!         6.685067E-08,  8.641223E-08,  6.879977E-08,  5.366545E-08/
+
 
 !+yim small dge
       real, dimension (NBA2,NBFL)     ::   aa
       real, dimension (NBB2,NBFL)     ::   bb
+!     real, dimension (NBC2,NBFL)     ::   cc
  
         data aa / &
       -2.005187e+00, 1.887870e+00, -2.394987e-01, 1.226004e-02, &
@@ -6342,6 +6393,31 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
        1.687872e-06, &
        9.549627e-03, 1.140347e-01, 1.223725e-03, -4.282989e-04, &
        1.343652e-05 /
+!       data cc / &
+!     -1.592086e-01, 5.165795e-01, -8.889665e-02, 6.133364e-03, &
+!     -1.466832e-04, &
+!     -2.780309e-01, 5.589181e-01, -9.294043e-02, 6.316572e-03, &
+!     -1.501642e-04, &
+!     -4.146218e-01, 6.015844e-01, -9.714942e-02, 6.513667e-03, &
+!     -1.539503e-04, &
+!     -4.644106e-01, 5.861063e-01, -9.087172e-02, 5.917403e-03, &
+!     -1.371181e-04, &
+!     -4.848736e-01, 5.552414e-01, -8.183047e-02, 5.147920e-03, &
+!     -1.164374e-04, &
+!     -5.056360e-01, 5.240870e-01, -7.278649e-02, 4.395703e-03, &
+!     -9.639759e-05, &
+!     -4.991806e-01, 4.601579e-01, -5.805338e-02, 3.236112e-03, &
+!     -6.615910e-05, &
+!     -4.382576e-01, 3.812485e-01, -4.268756e-02, 2.088357e-03, &
+!     -3.689533e-05, &
+!     -3.094784e-01, 2.406058e-01, -1.477957e-02, 2.970087e-05, &
+!      1.421683e-05, &
+!     -9.731071e-02, 4.088258e-02, 2.106015e-02, -2.364895e-03, &
+!      6.892137e-05, &
+!      7.192725e-02, -8.649291e-02, 3.621089e-02, -2.888238e-03, &
+!      7.087982e-05, &
+!      6.792641e-02, -5.575384e-02, 1.319878e-02, -4.919461e-04, &
+!      8.543384e-07 /
 
 
 
@@ -6370,10 +6446,15 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !      sumssalb         sum of single scattering albedo over fu bands 
 !                       to produce value for lw radiation bands 
 !                       [ dimensionless ]
+!      sumasymm         sum of asymmetry factor over fu bands 
+!                       to produce value for lw radiation bands 
+!                       [ dimensionless ]
 !      a0,a1,a2         empirical coefficients for extinction coef-
 !                       ficient parameterization
 !      b                empirical coefficients for single scattering 
 !                       albedo parameterization
+!      cpr              empirical coefficients for asymmetry parameter
+!                       parameterization
 !      n,ni             do-loop indices
 ! 
 !----------------------------------------------------------------------
@@ -6439,15 +6520,25 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
                       cldssalbivlice = 0.0
                     endif 
  
+!                   do n=1,NBFL                                        
+!                     cldasymmivlice(:,:,:,n) = cpr(n,0) +        &
+!                                 cpr(n,1)*size_i(:,:,:) +        &
+!                                 cpr(n,2)*size_i(:,:,:)**2 +     &
+!                                 cpr(n,3)*size_i(:,:,:)**3
+!                   end do
+ 
 !-----------------------------------------------------------------------
 !    use the band weighting factors computed in microphys_rad_init
 !    to define the values of these parameters for each lw radiation
 !    band.
 !-----------------------------------------------------------------------
+!!                  sumasymm(:,:,:) = 0.
                     sumext        = sumext +         &
                           cldextivlice*fulwwts(nb,n)
                     sumssalb = sumssalb +     &
                             cldssalbivlice*fulwwts(nb,n)
+!!                  sumasymm(:,:,:) = sumasymm(:,:,:) +     &
+!!                          cldasymmivlice(:,:,:,ni)*fulwwts(n,ni)
                   end do
                 else ! ( using_fu2007 .and. size_i > 15.0 .or. not
                      !   using_fu2007)
@@ -6510,23 +6601,30 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !    to define the values of these parameters for each lw radiation
 !    band.
 !-----------------------------------------------------------------------
+!!                  sumasymm(:,:,:) = 0.
                     sumext  = sumext + cldextivlice*fulwwts(nb,n)
                     sumssalb = sumssalb + cldssalbivlice*fulwwts(nb,n)
+!!                  sumasymm(:,:,:) = sumasymm(:,:,:) +     &
+!!                               cldasymmivlice(:,:,:,ni)*fulwwts(n,ni)
                   end do
                 endif ! (size > 15)    
                 cldextbndicelw(i,j,k) = sumext
                 cldssalbbndicelw(i,j,k) = sumssalb
+!               cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
               else  ! (conc_ice > 0)
                 mask(i,j,k) = .false.
                 cldextbndicelw(i,j,k) = 0.0        
                 cldssalbbndicelw(i,j,k) = 0.0          
+!               cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
               endif ! (convc_ice > 0)
               cldextbndicelw(i,j,k) = sumext
               cldssalbbndicelw(i,j,k) = sumssalb
+!             cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
             else  ! (dge_column)
               mask(i,j,k) = .false.
               cldextbndicelw(i,j,k) = 0.0        
               cldssalbbndicelw(i,j,k) = 0.0          
+!             cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
             endif !(dge_column)
           end do
         end do
@@ -6696,11 +6794,11 @@ real, dimension (:,:,:  ), intent(out)   ::   cldextbndrainlw,    &
 !----------------------------------------------------------------------
 !  local variables:                                                  
 
-      real ::          cldextivlrain, cldssalbivlrain
+      real ::          cldextivlrain, cldssalbivlrain, cldasymmivlrain
  
-      real ::          sumext, sumssalb
+      real ::          sumext, sumssalb, sumasymm
 
-      real, dimension (NBFL)    :: brn, wrnf
+      real, dimension (NBFL)    :: brn, wrnf, grn
 
       data brn /                                                     &
              1.6765,  1.6149,  1.5993,  1.5862,  1.5741,  1.5647,    &
@@ -6708,6 +6806,9 @@ real, dimension (:,:,:  ), intent(out)   ::   cldextbndrainlw,    &
       data wrnf /                                                    &
               .55218,  .55334,  .55488,  .55169,  .53859,  .51904,   &
               .52321,  .52716,  .52969,  .53192,  .52884,  .53233/
+      data grn /                                                     &
+              .90729,  .92990,  .93266,  .94218,  .96374,  .98584,   &
+              .98156,  .97745,  .97467,  .97216,  .97663,  .97226/
 
       real      :: rwc0 = 0.5
       integer   :: n
@@ -6731,10 +6832,16 @@ real, dimension (:,:,:  ), intent(out)   ::   cldextbndrainlw,    &
 !       sumssalb          sum of single scattering albedo over fu bands 
 !                         to produce value for lw radiation bands 
 !                         [ dimensionless ]
+!       sumasymm          sum of asymmetry factor over fu bands 
+!                         to produce value for lw radiation bands 
+!                         [ dimensionless ]
 !        brn              empirical coefficients for extinction 
 !                         coefficient parameterization [ (km**-1) ]
 !        wrnf             empirical coefficients for single scattering 
 !                         albedo parameterization
+!                         [ dimensionless ]
+!        grn              empirical coefficients for asymmetry parameter
+!                         parameterization
 !                         [ dimensionless ]
 !        rwc0             rain water content used to obtain above
 !                         empirical coefficients.  [ g / m**3 ] 
@@ -6746,6 +6853,7 @@ real, dimension (:,:,:  ), intent(out)   ::   cldextbndrainlw,    &
           do i=1, size(conc_rain,1)
             sumext = 0.
             sumssalb = 0.
+            sumasymm = 0.
             if (conc_rain(i,j,k) /= 0.0) then
  
 !-----------------------------------------------------------------------
@@ -6758,6 +6866,7 @@ real, dimension (:,:,:  ), intent(out)   ::   cldextbndrainlw,    &
               do n=1,NBFL
                 cldextivlrain   = brn(n)*conc_rain(i,j,k)/rwc0
                 cldssalbivlrain = wrnf(n)
+                cldasymmivlrain = grn(n)
  
 !-----------------------------------------------------------------------
 !    use the band weighting factors computed in microphys_rad_init
@@ -6766,10 +6875,12 @@ real, dimension (:,:,:  ), intent(out)   ::   cldextbndrainlw,    &
 !-----------------------------------------------------------------------
                 sumext   = sumext + cldextivlrain*fulwwts(nb,n )
                 sumssalb = sumssalb + cldssalbivlrain*fulwwts(nb,n )
+                sumasymm = sumasymm + cldasymmivlrain*fulwwts(nb,n)
               end do
             endif
             cldextbndrainlw  (i,j,k  ) = sumext
             cldssalbbndrainlw(i,j,k  ) = sumssalb
+            cldasymmbndrainlw(i,j,k  ) = sumasymm
           end do
         end do
       end do
@@ -6838,7 +6949,7 @@ subroutine fusnowlw (nb, conc_snow, cldextbndsnowlw, cldssalbbndsnowlw,&
                                                                     
 integer,                   intent(in)     ::   nb
 real, dimension (:,:,:),   intent(in)     ::   conc_snow
-real, dimension (:,:,:  ), intent(out)    ::   cldextbndsnowlw,    &
+real, dimension (:,:,:),   intent(out)    ::   cldextbndsnowlw,    &
                                                cldssalbbndsnowlw,  &
                                                cldasymmbndsnowlw
 
@@ -6864,17 +6975,20 @@ real, dimension (:,:,:  ), intent(out)    ::   cldextbndsnowlw,    &
 !----------------------------------------------------------------------
 !  local variables:                                                  
 
-     real  ::          cldextivlsnow, cldssalbivlsnow
+     real  ::          cldextivlsnow, cldssalbivlsnow, cldasymmivlsnow
 
-      real ::          sumext, sumssalb
+      real ::          sumext, sumssalb, sumasymm
 
-      real, dimension (NBFL)     :: brn, wrnf
+      real, dimension (NBFL)     :: brn, wrnf, grn
       data brn /                                                     &
               .87477,  .85421,  .84825,  .84418,  .84286,  .84143,   &
               .84097,  .84058,  .84029,  .83995,  .83979,  .83967/
       data wrnf /                                                    &
               .55474,  .53160,  .54307,  .55258,  .54914,  .52342,   &
               .52446,  .52959,  .53180,  .53182,  .53017,  .53296/
+      data grn /                                                     &
+              .93183,  .97097,  .95539,  .94213,  .94673,  .98396,   &
+              .98274,  .97626,  .97327,  .97330,  .97559,  .97173/
                                                                     
       real      :: swc0 = 0.5
       integer   :: n
@@ -6898,10 +7012,15 @@ real, dimension (:,:,:  ), intent(out)    ::   cldextbndsnowlw,    &
 !       sumssalb          sum of single scattering albedo over fu bands 
 !                         to produce value for lw radiation bands 
 !                         [ dimensionless ]
+!       sumasymm          sum of asymmetry factor over fu bands 
+!                         to produce value for lw radiation bands 
+!                         [ dimensionless ]
 !       brn               empirical coefficients for extinction 
 !                         coefficient parameterization (km**-1)
 !       wrnf              empirical coefficients for single scattering 
 !                         albedo parameterization [ dimensionless ]
+!       grn               empirical coefficients for asymmetry factor   
+!                         parameterization [ dimensionless ]
 !       swc0              snow water content used to obtain above
 !                         empirical coefficients  [ g / m**3 ]
 !       n,ni              do-loop indices
@@ -6913,7 +7032,8 @@ real, dimension (:,:,:  ), intent(out)    ::   cldextbndsnowlw,    &
           do i=1, size(conc_snow,1)
             sumext = 0.
             sumssalb = 0.
-            if (conc_snow(i,j,k) /= 0.0) then
+            sumasymm = 0.
+            if (conc_snow(i,j,k) >= 1.e-5) then
 
 !-----------------------------------------------------------------------
 !    calculate the extinction coefficient over the wavenumber bands of 
@@ -6925,6 +7045,7 @@ real, dimension (:,:,:  ), intent(out)    ::   cldextbndsnowlw,    &
               do n=1,NBFL
                 cldextivlsnow   = brn(n)*conc_snow(i,j,k)/swc0
                 cldssalbivlsnow = wrnf(n)
+!               cldasymmivlsnow = grn(n)
  
 !-----------------------------------------------------------------------
 !    use the band weighting factors computed in microphys_rad_init     
@@ -6933,10 +7054,12 @@ real, dimension (:,:,:  ), intent(out)    ::   cldextbndsnowlw,    &
 !-----------------------------------------------------------------------
                 sumext     = sumext + cldextivlsnow*fulwwts(nb,n )
                 sumssalb   = sumssalb + cldssalbivlsnow*fulwwts(nb,n )
+!               sumasymm   = sumasymm + cldasymmivlsnow*fulwwts(nb,n)
               end do
             endif
             cldextbndsnowlw(i,j,k)   = sumext
             cldssalbbndsnowlw(i,j,k) = sumssalb         
+            cldasymmbndsnowlw(i,j,k) = sumasymm
           end do
         end do
       end do

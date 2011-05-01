@@ -44,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:33 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 18.0.2.1.2.1.2.1.2.1.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -349,7 +349,14 @@ type cld_specification_type
                                          cloud_water=>NULL(), &
                                          cloud_ice=>NULL(),  &
                                          cloud_area=>NULL(), &
-					 cloud_droplet=>NULL(), &
+                                         cloud_droplet=>NULL(), &
+                                         cloud_ice_num=>NULL(), &
+  ! snow, rain
+                                         rain =>NULL(), &
+                                         snow =>NULL(), &
+                                         rain_size =>NULL(), &
+                                         snow_size =>NULL(), &
+
                                          reff_liq_micro=>NULL(),   &
                                          reff_ice_micro=>NULL(),&
                                          camtsw=>NULL(),   &
@@ -398,6 +405,7 @@ type cloudrad_control_type
     logical :: do_specified_strat_clouds
     logical :: do_ica_calcs
     logical :: do_liq_num
+    logical :: do_ice_num
     logical :: using_fu2007
     integer :: nlwcldb                   !   number of frequency bands 
                                          !   for which lw cloud emissiv-
@@ -430,6 +438,7 @@ type cloudrad_control_type
     logical :: do_specified_strat_clouds_iz
     logical :: do_ica_calcs_iz
     logical :: do_liq_num_iz
+    logical :: do_ice_num_iz
     logical :: using_fu2007_iz
 end type cloudrad_control_type
 
@@ -722,13 +731,15 @@ type microphysics_type
                                       size_rain=>NULL(),     &
                                       conc_rain=>NULL(),   &
                                       cldamt=>NULL(),      &
-                                      droplet_number=>NULL()
+                                      droplet_number=>NULL(), &
+                                      ice_number=>NULL()
 real, dimension(:,:,:,:), pointer :: stoch_conc_ice=>NULL(),   &
                                      stoch_conc_drop=>NULL(),  &
                                      stoch_size_ice=>NULL(),   &
                                      stoch_size_drop=>NULL(),  &
                                      stoch_cldamt=>NULL(),     &
-                                     stoch_droplet_number=>NULL()
+                                     stoch_droplet_number=>NULL(), &
+                                     stoch_ice_number=>NULL()
 integer, dimension(:,:,:,:), pointer ::  stoch_cloud_type=>NULL()
 !
 ! In practice, we allocate a single set of columns for the stochastic
@@ -742,12 +753,14 @@ real, dimension(:,:,:,:), pointer :: lw_stoch_conc_ice=>NULL(),   &
                                      lw_stoch_size_drop=>NULL(),  &
                                      lw_stoch_cldamt=>NULL(),     &
                                      lw_stoch_droplet_number=>NULL(), &
+                                     lw_stoch_ice_number=>NULL(), &
                                      sw_stoch_conc_ice=>NULL(),   &
                                      sw_stoch_conc_drop=>NULL(),  &
                                      sw_stoch_size_ice=>NULL(),   &
                                      sw_stoch_size_drop=>NULL(),  &
                                      sw_stoch_cldamt=>NULL(),     &
-                                     sw_stoch_droplet_number=>NULL()
+                                     sw_stoch_droplet_number=>NULL(), &
+                                     sw_stoch_ice_number=>NULL()
 end type microphysics_type
 
 !-------------------------------------------------------------------
@@ -998,6 +1011,7 @@ type rad_output_type
      real, dimension(:,:,:), pointer :: flxnetcf=>NULL()
      real, dimension(:,:,:), pointer :: tdtlw_clr=>NULL()
      real, dimension(:,:,:),   pointer :: flux_sw_surf=>NULL(), &
+                                        flux_sw_surf_refl_dir=>NULL(), &
                                         flux_sw_surf_dir=>NULL(), &
                                         flux_sw_surf_dif=>NULL(), &
                                         flux_sw_down_vis_dir=>NULL(), &
@@ -1006,6 +1020,7 @@ type rad_output_type
                                        flux_sw_down_total_dif=>NULL(), &
                                         flux_sw_vis=>NULL(), &
                                         flux_sw_vis_dir=>NULL(), &
+                                        flux_sw_refl_vis_dir=>NULL(), &
                                         flux_sw_vis_dif=>NULL()
      real, dimension(:,:,:),   pointer :: flux_sw_down_vis_clr=>NULL(), &
                                   flux_sw_down_total_dir_clr=>NULL(), &
@@ -1133,11 +1148,13 @@ type sw_output_type
       real, dimension(:,:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
                                        ufsw_vis_sfc=>NULL()
       real, dimension(:,:,:), pointer :: dfsw_dir_sfc=>NULL()
+      real, dimension(:,:,:), pointer :: ufsw_dir_sfc=>NULL()
       real, dimension(:,:,:), pointer :: dfsw_dir_sfc_clr=>NULL()
       real, dimension(:,:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
                                        ufsw_dif_sfc=>NULL()
       real, dimension(:,:,:), pointer :: dfsw_dif_sfc_clr=>NULL()
       real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
+      real, dimension(:,:,:), pointer :: ufsw_vis_sfc_dir=>NULL()
       real, dimension(:,:,:), pointer :: dfsw_vis_sfc_clr=>NULL()
       real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
                                        ufsw_vis_sfc_dif=>NULL()
@@ -1240,6 +1257,7 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
+                                         .false.,                   &
                                          0,0,0,0,0,0 , &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
@@ -1248,7 +1266,8 @@ type (cloudrad_control_type), public    ::   &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
                                          .false., .false., .false., &
-                                         .false., .false., .false.   )
+                                         .false., .false., .false., &
+                                         .false.   )
 
 
 type (longwave_parameter_type), public  ::   &
@@ -1438,6 +1457,10 @@ subroutine check_derived_types
           Rad_control%indx_lwaf_iz .and.   &
           Rad_control%indx_swaf_iz .and.   &
           Rad_control%using_im_bcsul_iz .and. &
+          Rad_control%volcanic_sw_aerosols_iz .and. &
+          Rad_control%volcanic_lw_aerosols_iz .and. &
+          Rad_control%time_varying_solar_constant_iz .and. &
+          Rad_control%using_solar_timeseries_data_iz .and. &
           Rad_control%do_aerosol_iz .and.     &
           Rad_control%mx_spec_levs_iz .and.   &
           Rad_control%use_current_co2_for_tf_iz .and. &
@@ -1487,11 +1510,14 @@ subroutine check_derived_types
           Cldrad_control%do_specified_strat_clouds_iz .and. &
           Cldrad_control%do_donner_deep_clouds_iz .and. &
           Cldrad_control%do_uw_clouds_iz .and. &
+          Cldrad_control%do_zetac_clouds_iz .and. &
           Cldrad_control%do_stochastic_clouds_iz .and. &
           Cldrad_control%use_temp_for_seed_iz .and. &
           Cldrad_control%do_random_overlap_iz .and. &
           Cldrad_control%do_ica_calcs_iz .and. &
-          CLdrad_control%using_fu2007_iz .and.  &
+          Cldrad_control%using_fu2007_iz .and.  &
+          Cldrad_control%do_liq_num_iz .and.  &
+          Cldrad_control%do_ice_num_iz .and.  &
           Cldrad_control%do_max_random_overlap_iz ) then     
       else
         call error_mesg ('rad_utilities_mod', &
@@ -3417,10 +3443,12 @@ subroutine sw_output_type_eq(sw_output_out,sw_output_in)
    sw_output_out%ufsw             = sw_output_in%ufsw
    sw_output_out%hsw              = sw_output_in%hsw
    sw_output_out%dfsw_dir_sfc     = sw_output_in%dfsw_dir_sfc
+   sw_output_out%ufsw_dir_sfc     = sw_output_in%ufsw_dir_sfc
    sw_output_out%dfsw_dif_sfc     = sw_output_in%dfsw_dif_sfc
    sw_output_out%ufsw_dif_sfc     = sw_output_in%ufsw_dif_sfc
    sw_output_out%dfsw_vis_sfc     = sw_output_in%dfsw_vis_sfc
    sw_output_out%ufsw_vis_sfc     = sw_output_in%ufsw_vis_sfc
+   sw_output_out%ufsw_vis_sfc_dir = sw_output_in%ufsw_vis_sfc_dir
    sw_output_out%dfsw_vis_sfc_dir = sw_output_in%dfsw_vis_sfc_dir
    sw_output_out%dfsw_vis_sfc_dif = sw_output_in%dfsw_vis_sfc_dif
    sw_output_out%dfsw_vis_sfc_clr = sw_output_in%dfsw_vis_sfc_clr

@@ -37,7 +37,8 @@ use esfsw_parameters_mod,   only: Solar_spect, esfsw_parameters_init
 !   cloud parameterization module:
 
 use cloud_rad_mod,          only: cloud_rad_init, cloud_summary3, &
-                                  lw_emissivity, sw_optical_properties
+                                  lw_emissivity, sw_optical_properties, &
+                                  snow_and_rain
 
 !    stochastic cloud generator module
 use random_numbers_mod,     only: randomNumberStream,           &
@@ -61,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 17.0.8.1.2.1.2.1 2010/08/30 20:33:33 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 17.0.8.1.2.1.2.1.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------
@@ -173,7 +174,7 @@ subroutine strat_clouds_W_init(latb, lonb)
 #ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=strat_clouds_W_nml, iostat=io)
    ierr = check_nml_error(io,'strat_clouds_W_nml')
-#else   
+#else
       if (file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
@@ -376,20 +377,22 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
       real, dimension (size(pflux,1), size(pflux,2),  &
                        size(pflux,3)-1, Cldrad_control%nlwcldb) :: &
                          ql_stoch_lw2, qi_stoch_lw2, qa_stoch_lw2, &
-                         qn_stoch_lw2
+                         qn_stoch_lw2, qni_stoch_lw2
 
       real, dimension (size(pflux,1), size(pflux,2),  &
                        size(pflux,3)-1, Solar_spect%nbands) :: &
                          ql_stoch_sw2, qi_stoch_sw2, qa_stoch_sw2, &
-                         qn_stoch_sw2
+                         qn_stoch_sw2, qni_stoch_sw2
+
       real, dimension (size(pflux,1), size(pflux,2),                 &
                        size(pflux,3)-1,                              &
                        Cldrad_control%nlwcldb + Solar_spect%nbands), &
-             target :: ql_stoch, qi_stoch, qa_stoch, qn_stoch
+             target :: ql_stoch, qi_stoch, qa_stoch, qn_stoch, qni_stoch
  
       real, dimension(:, :, :, :), pointer :: &
-                  ql_stoch_lw, qi_stoch_lw, qa_stoch_lw,qn_stoch_lw, &
-                  ql_stoch_sw, qi_stoch_sw, qa_stoch_sw, qn_stoch_sw
+                  ql_stoch_lw, qi_stoch_lw, qa_stoch_lw, qn_stoch_lw, &
+                  ql_stoch_sw, qi_stoch_sw, qa_stoch_sw, qn_stoch_sw, &
+                  qni_stoch_lw, qni_stoch_sw
       
 !      integer, dimension(size(Cld_spec%cld_thickness_lw_band, 1), &
 !                         size(Cld_spec%cld_thickness_lw_band, 2), &
@@ -473,6 +476,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &       
+                               Cld_spec%cloud_ice_num, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                cldamt, Cld_spec%lwp, Cld_spec%iwp,   &
                                Cld_spec%reff_liq, Cld_spec%reff_ice, &
@@ -480,8 +484,21 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                conc_ice = Lsc_microphys%conc_ice, &
                                size_drop =Lsc_microphys%size_drop,   &
                                size_ice = Lsc_microphys%size_ice, &
-                         droplet_number = Lsc_microphys%droplet_number)
-           cldamt = MIN (cldamt, 1.0)
+                         droplet_number = Lsc_microphys%droplet_number, &
+                            ice_number = Lsc_microphys%ice_number )
+ 
+
+          call snow_and_rain(Cld_spec%cloud_area, press(:,:,1:kx),  &
+                             pflux, temp,  cldamt, Cld_spec%snow,  &
+                             Cld_spec%rain, Cld_spec%snow_size,  &
+                             Cld_spec%rain_size,   &
+                             Lsc_microphys%conc_rain,   &
+                             Lsc_microphys%conc_snow,   &
+                             Lsc_microphys%size_rain,   &
+                             Lsc_microphys%size_snow )
+
+
+          cldamt = MIN (cldamt, 1.0)
           if (.not. Cldrad_control%do_specified_strat_clouds) then
             Cld_spec%ncldsw        = ncldlvls
             Cld_spec%nrndlw        = ncldlvls         
@@ -505,17 +522,17 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
 
                 end do
               end do
-            else
-              do j = 1, size(Cld_spec%cloud_water, 2)
-                do i = 1, size(Cld_spec%cloud_water, 1)
-                  streams(i, j) =   &
-                     initializeRandomNumberStream(  &
-                        constructSeed(nint(lons(is + i - 1, js + j - 1)), &
-                                      nint(lats(is + i - 1, js + j - 1)), &
-                                                      Rad_time, seedperm))
-                end do
+             else
+            do j = 1, size(Cld_spec%cloud_water, 2)
+              do i = 1, size(Cld_spec%cloud_water, 1)
+                streams(i, j) =   &
+                         initializeRandomNumberStream(  &
+                            constructSeed(nint(lons(is + i - 1, js + j - 1)), &
+                                          nint(lats(is + i - 1, js + j - 1)), &
+                                                    Rad_time, seedperm))
               end do
-            endif
+            end do
+           endif
 
             if (one_generator_call) then
 !---------------------------------------------------------------------
@@ -529,6 +546,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                       Cld_spec%cloud_ice,     &
                       Cld_spec%cloud_area,    &
                       Cld_spec%cloud_droplet, &
+                      Cld_spec%cloud_ice_num, &
                       pFull = press(:, :, :kx),&
                       pHalf = pflux, &
                       temperature = temp(:, :, :kx),        &
@@ -537,12 +555,14 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                       ql_stoch = ql_stoch, &
                       qi_stoch = qi_stoch, &
                       qa_stoch = qa_stoch, &
-                      qn_stoch = qn_stoch )
+                      qn_stoch = qn_stoch, &
+                      qni_stoch = qni_stoch )
 
           ql_stoch_lw => ql_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
           qi_stoch_lw => qi_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
           qa_stoch_lw => qa_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
           qn_stoch_lw => qn_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
+          qni_stoch_lw => qni_stoch(:, :, :, 1:Cldrad_control%nlwcldb)
           Cld_spec%cld_thickness_lw_band = &
                        cld_thickness(:, :, :, 1:Cldrad_control%nlwcldb)
 
@@ -550,6 +570,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
           qi_stoch_sw => qi_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
           qa_stoch_sw => qa_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
           qn_stoch_sw => qn_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
+          qni_stoch_sw => qni_stoch(:, :, :, Cldrad_control%nlwcldb +1:)
           Cld_spec%cld_thickness_sw_band = &
                      cld_thickness(:, :, :, Cldrad_control%nlwcldb +1:)
 
@@ -565,6 +586,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 ql_stoch_lw(:,:,:,nb),&
                 qi_stoch_lw(:,:,:,nb), qa_stoch_lw(:,:,:,nb),&
                 qn_stoch_lw(:,:,:,nb), &
+                qni_stoch_lw(:,:,:,nb),&
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
                 cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
                 Cld_spec%iwp_lw_band(:,:,:,nb),   &
@@ -574,7 +596,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_ice = Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%lw_stoch_size_drop(:,:,:,nb), &
                 size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb), &
-       droplet_number = Lsc_microphys%lw_stoch_droplet_number(:,:,:,nb))
+       droplet_number = Lsc_microphys%lw_stoch_droplet_number(:,:,:,nb), &
+          ice_number =  Lsc_microphys%lw_stoch_ice_number(:,:,:,nb) )
               
               !now that the vertical cloud fraction has been used to
               !properly calculate the in-cloud particle size, rescale
@@ -611,6 +634,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
               ql_stoch_sw(:,:,:,nb), &
               qi_stoch_sw(:,:,:,nb), qa_stoch_sw(:,:,:,nb),&
               qn_stoch_sw(:,:,:,nb), &
+              qni_stoch_sw(:,:,:,nb), &
               press(:,:,1:kx), pflux, temp, ncldlvls, &
               cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
               Cld_spec%iwp_sw_band(:,:,:,nb),   &
@@ -620,7 +644,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
               conc_ice = Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb), &
               size_drop =Lsc_microphys%sw_stoch_size_drop(:,:,:,nb), &
               size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb), &
-       droplet_number = Lsc_microphys%sw_stoch_droplet_number(:,:,:,nb))
+       droplet_number = Lsc_microphys%sw_stoch_droplet_number(:,:,:,nb), &
+         ice_number = Lsc_microphys%sw_stoch_ice_number(:,:,:,nb) )
 
          !now that the vertical cloud fraction has been used to
          !properly calculate the in-cloud particle size, rescale
@@ -655,6 +680,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                      Cld_spec%cloud_ice,     &
                      Cld_spec%cloud_area,    &
                      Cld_spec%cloud_droplet, &
+                     Cld_spec%cloud_ice_num, &
                      pFull    = press(:, :, :kx),     &
                      pHalf    = pflux,&
                      temperature = temp(:, :, :kx),   &
@@ -663,7 +689,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                      ql_stoch = ql_stoch_lw2, &
                      qi_stoch = qi_stoch_lw2, &
                      qa_stoch = qa_stoch_lw2, &
-                     qn_stoch = qn_stoch_lw2 )
+                     qn_stoch = qn_stoch_lw2, &
+                     qni_stoch = qni_stoch_lw2 ) 
 
 !---------------------------------------------------------------------
 !    call routine to obtain sw band-dependent values of ql, qi and qa. 
@@ -674,6 +701,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                      Cld_spec%cloud_ice,     &
                      Cld_spec%cloud_area,    &
                      Cld_spec%cloud_droplet, &
+                     Cld_spec%cloud_ice_num, &
                      pFull    = press(:, :, :kx),     &
                      pHalf    = pflux,&
                      temperature = temp(:, :, :kx),   &
@@ -682,7 +710,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                      ql_stoch = ql_stoch_sw2, &
                      qi_stoch = qi_stoch_sw2, &
                      qa_stoch = qa_stoch_sw2, &
-                     qn_stoch = qn_stoch_sw2 )
+                     qn_stoch = qn_stoch_sw2, &
+                     qni_stoch = qni_stoch_sw2 )
 
 !---------------------------------------------------------------------
 !    call cloud_summary3 for each lw band, using the band-dependent
@@ -696,6 +725,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 ql_stoch_lw2(:,:,:,nb),&
                 qi_stoch_lw2(:,:,:,nb), qa_stoch_lw2(:,:,:,nb),&
                 qn_stoch_lw2(:,:,:,nb), &
+                qni_stoch_lw2(:,:,:,nb), &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
                 cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
                 Cld_spec%iwp_lw_band(:,:,:,nb),   &
@@ -705,7 +735,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_ice = Lsc_microphys%lw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%lw_stoch_size_drop(:,:,:,nb), &
                 size_ice = Lsc_microphys%lw_stoch_size_ice(:,:,:,nb), &
-       droplet_number = Lsc_microphys%lw_stoch_droplet_number(:,:,:,nb))
+       droplet_number = Lsc_microphys%lw_stoch_droplet_number(:,:,:,nb), &
+         ice_number =   Lsc_microphys%lw_stoch_ice_number(:,:,:,nb) )
               
               !now that the vertical cloud fraction has been used to
               !properly calculate the in-cloud particle size, rescale
@@ -742,6 +773,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 ql_stoch_sw2(:,:,:,nb), &
                 qi_stoch_sw2(:,:,:,nb), qa_stoch_sw2(:,:,:,nb),&
                 qn_stoch_sw2(:,:,:,nb), &
+                qni_stoch_sw2(:,:,:,nb), &
                 press(:,:,1:kx), pflux, temp, ncldlvls, &
                 cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
                 Cld_spec%iwp_sw_band(:,:,:,nb),   &
@@ -751,7 +783,8 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 conc_ice = Lsc_microphys%sw_stoch_conc_ice(:,:,:,nb), &
                 size_drop =Lsc_microphys%sw_stoch_size_drop(:,:,:,nb), &
                 size_ice = Lsc_microphys%sw_stoch_size_ice(:,:,:,nb), &
-       droplet_number = Lsc_microphys%sw_stoch_droplet_number(:,:,:,nb))
+       droplet_number = Lsc_microphys%sw_stoch_droplet_number(:,:,:,nb), &
+         ice_number =  Lsc_microphys%sw_stoch_ice_number(:,:,:,nb))
               
               !now that the vertical cloud fraction has been used to
               !properly calculate the in-cloud particle size, rescale
@@ -796,6 +829,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &
+                               Cld_spec%cloud_ice_num, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                cldamt, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
@@ -847,6 +881,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                Cld_spec%cloud_water, &
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &
+                               Cld_spec%cloud_ice_num, &
                                press(:,:,1:kx), pflux, temp, ncldlvls, &
                                Cld_spec%camtsw, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &

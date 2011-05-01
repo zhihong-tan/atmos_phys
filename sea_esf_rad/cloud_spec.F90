@@ -104,8 +104,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0.8.1.2.1.2.1 2010/08/30 20:33:31 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201012 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0.8.1.2.1.2.1.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
+character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 !---------------------------------------------------------------------
@@ -201,6 +201,7 @@ integer :: nql           ! tracer index for liquid water
 integer :: nqi           ! tracer index for ice water
 integer :: nqa           ! tracer index for cloud area
 integer :: nqn           ! tracer index for cloud droplet number
+integer :: nqni          ! tracer index for ice crystal number
 integer :: nqr, nqs, nqg ! tracer index for rainwat, snowwat and graupel           
 
 !----------------------------------------------------------------------
@@ -597,10 +598,19 @@ type(time_type),          intent(in)   ::  Time
           else
             Cldrad_control%do_liq_num = .false.
           endif
+          nqni = get_tracer_index ( MODEL_ATMOS, 'ice_num' )
+          if (nqni /= NO_TRACER)  then
+            Cldrad_control%do_ice_num = .true.
+          else
+            Cldrad_control%do_ice_num = .false.
+          endif
         else
           Cldrad_control%do_liq_num = .false.
+          Cldrad_control%do_ice_num = .false.
         endif
+
         Cldrad_control%do_liq_num_iz = .true.
+        Cldrad_control%do_ice_num_iz = .true.
 
 !---------------------------------------------------------------------
 !    define the variables indicating that the cloud parameterization
@@ -770,9 +780,13 @@ subroutine cloud_spec (is, ie, js, je, lat, z_half, z_full, Rad_time, &
                        Atmos_input, Surface, Cld_spec, Lsc_microphys, &
                        Meso_microphys, Cell_microphys,  &
                        Shallow_microphys, lsc_area_in, lsc_liquid_in, &
-                       lsc_ice_in, lsc_droplet_number_in, r,          &
+                       lsc_ice_in, lsc_droplet_number_in,   &
+                       lsc_ice_number_in,   &
+                       lsc_snow_in, lsc_rain_in,   &
+                       lsc_snow_size_in,  lsc_rain_size_in,  r,  &
                        shallow_cloud_area, shallow_liquid, shallow_ice,&
                        shallow_droplet_number, &
+                       shallow_ice_number, &
                        cell_cld_frac, cell_liq_amt, cell_liq_size, &
                        cell_ice_amt, cell_ice_size, &
                        cell_droplet_number, &
@@ -798,8 +812,12 @@ type(microphysics_type),      intent(inout)          :: Lsc_microphys, &
                                                         Cell_microphys,&
                                                      Shallow_microphys
 real, dimension(:,:,:),       intent(in), optional ::  &
-                                           lsc_liquid_in, lsc_ice_in, &
-                                      lsc_droplet_number_in, lsc_area_in
+                                      lsc_liquid_in, lsc_ice_in, &
+                                      lsc_droplet_number_in, lsc_area_in, &
+                                      lsc_ice_number_in
+real, dimension(:,:,:),       intent(in), optional ::   &
+                                      lsc_snow_in, lsc_rain_in,  &
+                                      lsc_snow_size_in,  lsc_rain_size_in
 real, dimension(:,:,:,:),     intent(in),   optional :: r
 real, dimension(:,:,:),       intent(inout),optional :: &
                       shallow_cloud_area, shallow_liquid, shallow_ice,&
@@ -809,7 +827,8 @@ real, dimension(:,:,:),       intent(inout),optional :: &
                            cell_droplet_number, &
                            meso_cld_frac, meso_liq_amt, meso_liq_size, &
                            meso_ice_amt, meso_ice_size, &
-                           meso_droplet_number
+                           meso_droplet_number,  &
+                           shallow_ice_number
 integer, dimension(:,:),      intent(inout), optional:: nsum_out
 
 !-------------------------------------------------------------------
@@ -945,9 +964,26 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
              Cld_spec%cloud_droplet (:,:,:) = lsc_droplet_number_in
           endif
         endif
+        if (Cldrad_control%do_ice_num) then
+          if (present(lsc_ice_number_in)) then
+            Cld_spec%cloud_ice_num (:,:,:) = lsc_ice_number_in
+          end if
+        endif
       endif
       if (present (lsc_area_in)  )then
         Cld_spec%cloud_area = lsc_area_in
+      endif
+      if (present (lsc_snow_in)  )then
+        Cld_spec%snow = lsc_snow_in
+      endif
+      if (present (lsc_rain_in)  )then
+        Cld_spec%rain = lsc_rain_in
+      endif
+      if (present (lsc_snow_size_in)  )then
+        Cld_spec%snow_size = lsc_snow_size_in
+      endif
+      if (present (lsc_rain_size_in)  )then
+        Cld_spec%rain_size = lsc_rain_size_in
       endif
 
 !----------------------------------------------------------------------
@@ -1071,6 +1107,31 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
                  &has been passed to cloud_spec; cannot proceed', FATAL)
             endif
           endif ! (present(lsc_liquid_in))
+
+          if(present(lsc_ice_number_in)) then
+            if (Cld_spec%cloud_ice_num(1,1,1) == -99.) then
+              if (present (r)) then
+                if (Cldrad_control%do_ice_num) then
+                  Cld_spec%cloud_ice_num (:,:,:) = r(:,:,:,nqni)
+                endif
+              else
+                call error_mesg ('cloud_spec_mod', &
+                   'lsc_ice_number_in not present in restart file (flag &
+                    &has been set), and r array is not passed to &
+                                 &cloud_spec; cannot proceed', FATAL)
+              endif
+            endif
+          else  ! (present (lsc_liquid_in))
+            if (present (r)) then
+              if (Cldrad_control%do_ice_num) then
+                Cld_spec%cloud_ice_num (:,:,:) = r(:,:,:,nqni)
+              endif
+            else
+              call error_mesg ('cloud_spec_mod', &
+                  'neither lsc_ice_number_in nor r array &
+                 &has been passed to cloud_spec; cannot proceed', FATAL)
+            endif
+          endif ! (present(lsc_ice_number_in))
 
           if (present(r)) then
             if (do_rain) then !sjl
@@ -1213,6 +1274,7 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
            call uw_clouds_amt (is, ie, js, je,  &
                             shallow_cloud_area, shallow_liquid, &
                             shallow_ice, shallow_droplet_number, &
+                            shallow_ice_number,  &
                             Surface%land, Atmos_input%press,  &
                             Atmos_input%cloudtemp, Shallow_microphys)
         endif
@@ -1384,6 +1446,11 @@ type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
       deallocate (Cld_spec%cloud_ice      )
       deallocate (Cld_spec%cloud_area     )
       deallocate (Cld_spec%cloud_droplet  )
+      deallocate (Cld_spec%cloud_ice_num  )
+      deallocate (Cld_spec%snow           )
+      deallocate (Cld_spec%rain           )
+      deallocate (Cld_spec%snow_size      )
+      deallocate (Cld_spec%rain_size      )
 
 !--------------------------------------------------------------------
 !    deallocate the elements of Lsc_microphys.
@@ -1398,6 +1465,7 @@ type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
       deallocate (Lsc_microphys%size_snow   )
       deallocate (Lsc_microphys%cldamt      )
       deallocate (Lsc_microphys%droplet_number )
+      deallocate (Lsc_microphys%ice_number  )
       if (Cldrad_control%do_stochastic_clouds) then
         nullify (Lsc_microphys%lw_stoch_conc_drop   )
         nullify (Lsc_microphys%lw_stoch_conc_ice    )
@@ -1405,6 +1473,7 @@ type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
         nullify (Lsc_microphys%lw_stoch_size_ice    )
         nullify (Lsc_microphys%lw_stoch_cldamt      )
         nullify (Lsc_microphys%lw_stoch_droplet_number)
+        nullify (Lsc_microphys%lw_stoch_ice_number  )
 
         nullify (Lsc_microphys%sw_stoch_conc_drop   )
         nullify (Lsc_microphys%sw_stoch_conc_ice    )
@@ -1412,6 +1481,7 @@ type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
         nullify (Lsc_microphys%sw_stoch_size_ice    )
         nullify (Lsc_microphys%sw_stoch_cldamt      )
         nullify (Lsc_microphys%sw_stoch_droplet_number)
+        nullify (Lsc_microphys%sw_stoch_ice_number  )
 
         deallocate (Lsc_microphys%stoch_conc_drop   )
         deallocate (Lsc_microphys%stoch_conc_ice    )
@@ -1419,6 +1489,7 @@ type(microphysics_type),      intent(inout) :: Lsc_microphys,   &
         deallocate (Lsc_microphys%stoch_size_ice    )
         deallocate (Lsc_microphys%stoch_cldamt      )
         deallocate (Lsc_microphys%stoch_droplet_number )
+        deallocate (Lsc_microphys%stoch_ice_number  )
       endif
 
 !--------------------------------------------------------------------
@@ -1777,6 +1848,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       allocate (Lsc_microphys%size_snow  (ix, jx, kx) )
       allocate (Lsc_microphys%cldamt     (ix, jx, kx) )
       allocate (Lsc_microphys%droplet_number (ix, jx, kx) )
+       allocate (Lsc_microphys%ice_number (ix, jx, kx) )
       Lsc_microphys%conc_drop(:,:,:) = 0.
       Lsc_microphys%conc_ice(:,:,:)  = 0.
       Lsc_microphys%conc_rain(:,:,:) = 0.
@@ -1787,6 +1859,7 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       Lsc_microphys%size_snow(:,:,:) = 1.0e-20 
       Lsc_microphys%cldamt(:,:,:)    = 0.0
       Lsc_microphys%droplet_number(:,:,:)    = 0.0
+      Lsc_microphys%ice_number(:,:,:)= 0.0
       if (Cldrad_control%do_stochastic_clouds) then
         allocate (Lsc_microphys%stoch_conc_drop  &
                                   (ix, jx, kx, Cldrad_control%nlwcldb + Solar_spect%nbands) )
@@ -1799,6 +1872,8 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
         allocate (Lsc_microphys%stoch_cldamt  &
                                   (ix, jx, kx, cldrad_control%nlwcldb + Solar_spect%nbands) )
         allocate (Lsc_microphys%stoch_droplet_number  &
+                                  (ix, jx, kx, cldrad_control%nlwcldb + Solar_spect%nbands) )
+        allocate (Lsc_microphys%stoch_ice_number  &
                                   (ix, jx, kx, cldrad_control%nlwcldb + Solar_spect%nbands) )
   
         Lsc_microphys%lw_stoch_conc_drop => Lsc_microphys%stoch_conc_drop(:, :, :, 1:Cldrad_control%nlwcldb)
@@ -1813,6 +1888,8 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
         Lsc_microphys%sw_stoch_cldamt    => Lsc_microphys%stoch_cldamt   (:, :, :, Cldrad_control%nlwcldb+1:)
         Lsc_microphys%lw_stoch_droplet_number    => Lsc_microphys%stoch_droplet_number   (:, :, :, 1:Cldrad_control%nlwcldb)
         Lsc_microphys%sw_stoch_droplet_number    => Lsc_microphys%stoch_droplet_number   (:, :, :, Cldrad_control%nlwcldb+1:)
+        Lsc_microphys%lw_stoch_ice_number    => Lsc_microphys%stoch_ice_number   (:, :, :, 1:Cldrad_control%nlwcldb)
+        Lsc_microphys%sw_stoch_ice_number    => Lsc_microphys%stoch_ice_number   (:, :, :, Cldrad_control%nlwcldb+1:)
 
        do n=1,Cldrad_control%nlwcldb + Solar_spect%nbands
         Lsc_microphys%stoch_conc_drop(:,:,:,n) = 0.
@@ -1820,7 +1897,8 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
         Lsc_microphys%stoch_size_drop(:,:,:,n) = 1.0e-20
         Lsc_microphys%stoch_size_ice(:,:,:,n)  = 1.0e-20
         Lsc_microphys%stoch_cldamt(:,:,:,n)    = 0.0
-        Lsc_microphys%stoch_droplet_number(:,:,:,n)    = 0.0
+        Lsc_microphys%stoch_droplet_number(:,:,:,n) = 0.0
+        Lsc_microphys%stoch_ice_number(:,:,:,n)= 0.0
        end do
       endif
 
@@ -2011,6 +2089,11 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       allocate (Cld_spec%cloud_ice      (ix,jx,kx)   )
       allocate (Cld_spec%cloud_area     (ix,jx,kx)  )
       allocate (Cld_spec%cloud_droplet  (ix,jx,kx)  )
+      allocate (Cld_spec%cloud_ice_num  (ix,jx,kx)  )
+      allocate (Cld_spec%snow           (ix,jx,kx)  )
+      allocate (Cld_spec%rain           (ix,jx,kx)  )
+      allocate (Cld_spec%snow_size      (ix,jx,kx)  )
+      allocate (Cld_spec%rain_size      (ix,jx,kx)  )
 
       Cld_spec%hi_cloud (:,:,:)     = .false.
       Cld_spec%mid_cloud(:,:,:)     = .false.
@@ -2030,6 +2113,11 @@ type(cld_specification_type), intent(inout)  :: Cld_spec
       Cld_spec%cloud_ice(:,:,:)     = 0.
       Cld_spec%cloud_area(:,:,:)    = 0.
       Cld_spec%cloud_droplet(:,:,:)    = 0.
+      Cld_spec%cloud_ice_num(:,:,:) = 0.
+      Cld_spec%snow(:,:,:)          = 0.
+      Cld_spec%rain(:,:,:)          = 0.
+      Cld_spec%snow_size(:,:,:)     = 0.
+      Cld_spec%rain_size(:,:,:)     = 0.
       do n=1, num_slingo_bands
       Cld_spec%tau(:,:,:,n)  = 0.0
       end do

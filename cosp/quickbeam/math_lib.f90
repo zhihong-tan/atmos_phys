@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
         
 ! $Id: math_lib.f90,v 1.1.2.1.2.1 2009/08/10 10:48:14 rsh Exp $
-! $Name: riga_201012 $
+! $Name: riga_201104 $
 
 ! MATH_LIB: Mathematics procedures for F90
 ! Compiled/Modified:

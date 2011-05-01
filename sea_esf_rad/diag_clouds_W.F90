@@ -51,7 +51,7 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
    character(len=128)  :: version =  '$Id: diag_clouds_W.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
-   character(len=128)  :: tagname =  '$Name: riga_201012 $'
+   character(len=128)  :: tagname =  '$Name: riga_201104 $'
 
 
 

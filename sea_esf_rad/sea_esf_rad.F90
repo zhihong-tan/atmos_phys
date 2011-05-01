@@ -75,7 +75,7 @@ private
 !------------ version number for this module ---------------------------
 
 character(len=128) :: version = '$Id: sea_esf_rad.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 
 
 !--------------------------------------------------------------------
