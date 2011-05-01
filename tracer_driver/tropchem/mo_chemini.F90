@@ -5,14 +5,15 @@ implicit none
       private
       public :: chemini
 
-character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 16.0.4.1.2.1 2010/03/25 00:36:29 pjp Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 16.0.4.1.2.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
       subroutine chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
-                          o3_column_top, jno_scale_factor, verbose )
+                          o3_column_top, jno_scale_factor, verbose, &
+                          retain_cm3_bugs )
 !-----------------------------------------------------------------------
 !       ... Chemistry module intialization
 !-----------------------------------------------------------------------
@@ -38,6 +39,7 @@ logical                       :: module_is_initialized = .false.
       real,             intent(in) :: o3_column_top, &
                                       jno_scale_factor
       integer,          intent(in) :: verbose
+      logical,          intent(in) :: retain_cm3_bugs
 
 !-----------------------------------------------------------------------
 !       ... Local variables
@@ -75,7 +77,8 @@ logical                       :: module_is_initialized = .false.
       filename = TRIM(file_jval_lut)
       filename_solarmin = TRIM(file_jval_lut_min)
       call prate_init( filename, filename_solarmin, lpath, mspath, &
-                       use_tdep_jvals, o3_column_top, jno_scale_factor )
+                       use_tdep_jvals, o3_column_top, jno_scale_factor, &
+                       retain_cm3_bugs )
 
 !-----------------------------------------------------------------------
 !       ... Read time-independent airplane emissions
@@ -92,7 +95,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Initialize the chem utils module
 !-----------------------------------------------------------------------
-      call chem_utls_init
+      call chem_utls_init (retain_cm3_bugs)
 
 !-----------------------------------------------------------------------
 !       ... Read time-dependent surface flux dataset
@@ -158,13 +161,13 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Initialize the implicit solver
 !-----------------------------------------------------------------------
-         call imp_slv_init( verbose )
+         call imp_slv_init( verbose, retain_cm3_bugs )
       end if
       if( clscnt5 > 0 ) then
 !-----------------------------------------------------------------------
 !       ... Initialize the implicit solver
 !-----------------------------------------------------------------------
-         call rodas_slv_init
+         call rodas_slv_init (retain_cm3_bugs)
       end if
 
       end subroutine chemini

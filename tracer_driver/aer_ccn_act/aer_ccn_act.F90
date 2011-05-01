@@ -7,19 +7,19 @@ use fms_mod,             only: error_mesg, FATAL, open_namelist_file, &
 use mpp_mod,             only: input_nml_file, get_unit
 use aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act2_k, &
                                aer_ccn_act_wpdf_k, aer_ccn_act_k_init, &
-                               aer_ccn_act_k_end
+                               aer_ccn_act_k_end, aer_ccn_act_wpdf_m_k
 
 implicit none
 private
     private Loading
       
     public aer_ccn_act, aer_ccn_act2, aer_ccn_act_wpdf, &
-           aer_ccn_act_init, aer_ccn_act_end
+           aer_ccn_act_wpdf_m, aer_ccn_act_init, aer_ccn_act_end
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 18.0.2.1.2.1 2011/03/02 06:50:26 Richard.Hemler Exp $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 
 !---------------- private data -------------------
 
@@ -141,6 +141,32 @@ real, intent(out)   :: drop
 
 end subroutine aer_ccn_act_wpdf
 
+!----------------------------------------------------------------------
+
+subroutine aer_ccn_act_wpdf_m(T, p, wm, wp2, offs, totalmass, drop)
+
+
+! Compute CCN activation assuming a normal distribution of w
+! given by its mean (wm) and second moment (wp2)
+
+real, intent(in)    :: T, p, wm, wp2
+integer, intent(in) :: offs
+real, intent(inout) :: totalmass(4)
+real, intent(out)   :: drop
+
+  integer :: tym, ier
+  character(len=256) :: ermesg
+
+  if(.not. module_is_initialized) call aer_ccn_act_init()
+  tym = size (totalmass,1)
+
+  call aer_ccn_act_wpdf_m_k (T, p, wm, wp2, offs, totalmass, tym,       &
+                             drop, ier, ermesg)
+  if (ier /= 0) call error_mesg ('aer_ccn_act_wpdf_m', ermesg, FATAL)
+
+end subroutine aer_ccn_act_wpdf_m
+
+!------------------------------------------------------------------------
 
 subroutine aer_ccn_act_init ()
 

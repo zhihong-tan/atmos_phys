@@ -12,20 +12,28 @@ implicit none
       integer :: ox_ndx, o3_ndx, o1d_ndx, o_ndx
       logical :: do_ox
 
-character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 16.0.4.1.2.1 2010/03/25 00:36:29 pjp Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: mo_chem_utls.F90,v 16.0.4.1.2.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine chem_utls_init
+      subroutine chem_utls_init (retain_cm3_bugs)
 !-----------------------------------------------------------------------
 !     ... Initialize the chem utils module
 !-----------------------------------------------------------------------
 
       implicit none
 
+      logical, intent(in) :: retain_cm3_bugs
+
+!      ox_ndx = get_spc_ndx( 'OX' )
+! for ox budget (jmao,1/7/2011)
+   if (retain_cm3_bugs) then
       ox_ndx = get_spc_ndx( 'OX' )
+   else
+      ox_ndx = get_spc_ndx( 'O3' )
+   endif
       if( ox_ndx > 0 ) then
          o3_ndx  = get_grp_mem_ndx( 'O3' )
          o1d_ndx = get_grp_mem_ndx( 'O1D' )

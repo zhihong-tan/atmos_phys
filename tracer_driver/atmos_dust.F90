@@ -81,7 +81,7 @@ namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_dust.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 !-----------------------------------------------------------------------
 
 contains

@@ -20,7 +20,7 @@
 !     integer, parameter :: cut_limit    = 5
       integer, parameter :: cut_limit    = 8
 
-      integer :: ox_ndx
+      integer :: ox_ndx,o1d_ndx,h2o_ndx
       integer :: oh_ndx, ho2_ndx, ch3o2_ndx, po2_ndx, ch3co3_ndx, &
                  c2h5o2_ndx, isopo2_ndx, macro2_ndx, mco3_ndx, c3h7o2_ndx, &
                  ro2_ndx, xo2_ndx, no_ndx, no2_ndx, no3_ndx, n2o5_ndx, &
@@ -46,13 +46,13 @@
       type(hst_pl), private, allocatable ::   imp_hst_loss(:)
       logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 17.0.4.1.2.1 2010/03/25 00:36:29 pjp Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 17.0.4.1.2.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine imp_slv_init( verbose_in )
+      subroutine imp_slv_init( verbose_in, retain_cm3_bugs )
 !-----------------------------------------------------------------------
 !        ... initialize the implict solver
 !-----------------------------------------------------------------------
@@ -67,6 +67,7 @@ logical                       :: module_is_initialized = .false.
 !       ... Dummy arguments
 !-----------------------------------------------------------------------
       integer,          intent(in) :: verbose_in
+      logical,          intent(in) :: retain_cm3_bugs
 
 !-----------------------------------------------------------------------
 !        ... local variables
@@ -83,7 +84,14 @@ logical                       :: module_is_initialized = .false.
       end if
       factor(:) = .true.
       eps(:)    = rel_err
+
+    if (retain_cm3_bugs) then
       ox_ndx = get_spc_ndx( 'OX' )
+    else
+      ox_ndx = get_spc_ndx ('O3')
+      o1d_ndx = get_spc_ndx('O1D')
+      h2o_ndx = get_spc_ndx('H2O')
+    endif
       if( ox_ndx > 0 ) then
          eps(ox_ndx) = high_rel_err
       else
@@ -330,7 +338,8 @@ logical                       :: module_is_initialized = .false.
                           nstep, delt, &
                           lat, lon, &
                           prod_out, loss_out, non_convergence, &
-                          plonl, plnplv )
+                          plonl, plnplv, &
+                          prod_ox, loss_ox)
 !-----------------------------------------------------------------------
 !              ... imp_sol advances the volumetric mixing ratio
 !           forward one time step via the fully implicit euler scheme.
@@ -365,7 +374,7 @@ logical                       :: module_is_initialized = .false.
       real,    intent(out)   :: non_convergence(plnplv)   ! flag for implicit solver non-convergence (fraction)
       real,    intent(inout) :: base_sol(plnplv,pcnstm1)
       real,    intent(inout) :: prod_out(plnplv,pcnstm1),loss_out(plnplv,pcnstm1)
-
+      real,    intent(inout) :: prod_ox(plnplv),loss_ox(plnplv)
 !-----------------------------------------------------------------------
 !             ... local variables
 !-----------------------------------------------------------------------
@@ -462,7 +471,9 @@ logical                       :: module_is_initialized = .false.
          prod_out(:,j) = 0.
          loss_out(:,j) = 0.
       end do
-
+!for ox budget (jmao, 1/1/2011)
+      prod_ox(:) = 0.
+      loss_ox(:) = 0.
       non_convergence(:) = 0.
 
 
@@ -740,20 +751,20 @@ iter_loop : &
 !-----------------------------------------------------------------------
 !         ... ozone production (only valid for the troposphere!)
 !-----------------------------------------------------------------------
-!                             if( do_ox_pl ) then
-!                                k = indx
-!                                   prod_buff(file)%buff(k,hndx) = &
-!                                    (reaction_rates(k,ox_p1_ndx)*base_sol(k,ho2_ndx) &
-!                                    + reaction_rates(k,ox_p2_ndx) *base_sol(k,ch3o2_ndx) &
-!                                    + reaction_rates(k,ox_p3_ndx) *base_sol(k,po2_ndx) &
-!                                    + reaction_rates(k,ox_p4_ndx) *base_sol(k,ch3co3_ndx) &
-!                                    + reaction_rates(k,ox_p5_ndx) *base_sol(k,c2h5o2_ndx) &
-!                                    + .88*reaction_rates(k,ox_p6_ndx)*base_sol(k,isopo2_ndx) &
-!                                    + .985*reaction_rates(k,ox_p7_ndx)*base_sol(k,macro2_ndx) &
-!                                    + reaction_rates(k,ox_p8_ndx)*base_sol(k,mco3_ndx) &
-!                                    + reaction_rates(k,ox_p9_ndx)*base_sol(k,c3h7o2_ndx) &
-!                                    + reaction_rates(k,ox_p10_ndx)*base_sol(k,ro2_ndx) &
-!                                    + reaction_rates(k,ox_p11_ndx)*base_sol(k,xo2_ndx)) * base_sol(k,no_ndx)
+!                          write(*,*)'do_ox_pl is ', do_ox_pl
+			      if( do_ox_pl ) then
+                                   prod_ox(indx) = &
+                                    (reaction_rates(indx,ox_p1_ndx)*base_sol(indx,ho2_ndx) &
+                                    + reaction_rates(indx,ox_p2_ndx) *base_sol(indx,ch3o2_ndx) &
+                                    + reaction_rates(indx,ox_p3_ndx) *base_sol(indx,po2_ndx) &
+                                    + reaction_rates(indx,ox_p4_ndx) *base_sol(indx,ch3co3_ndx) &
+                                    + reaction_rates(indx,ox_p5_ndx) *base_sol(indx,c2h5o2_ndx) &
+                                    + .88*reaction_rates(indx,ox_p6_ndx)*base_sol(indx,isopo2_ndx) &
+                                    + .985*reaction_rates(indx,ox_p7_ndx)*base_sol(indx,macro2_ndx) &
+                                    + reaction_rates(indx,ox_p8_ndx)*base_sol(indx,mco3_ndx) &
+                                    + reaction_rates(indx,ox_p9_ndx)*base_sol(indx,c3h7o2_ndx) &
+                                    + reaction_rates(indx,ox_p10_ndx)*base_sol(indx,ro2_ndx) &
+                                    + reaction_rates(indx,ox_p11_ndx)*base_sol(indx,xo2_ndx)) * base_sol(indx,no_ndx)
 !                              end if
 !                          else
 !                              j = implicit%permute(cls_ndx)
@@ -788,21 +799,26 @@ iter_loop : &
 !         ... ozone destruction (only valid for the troposphere!)
 !             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
 !-----------------------------------------------------------------------
-!                                k = indx
-!                                   loss_buff(file)%buff(k,hndx) =  reaction_rates(k,ox_l1_ndx) &
-!                                   + reaction_rates(k,ox_l2_ndx) *base_sol(k,oh_ndx) &
-!                                   + reaction_rates(k,ox_l3_ndx) *base_sol(k,ho2_ndx) &
-!                                   + reaction_rates(k,ox_l6_ndx) *base_sol(k,c2h4_ndx) &
-!                                   + reaction_rates(k,ox_l4_ndx) *base_sol(k,c3h6_ndx) &
-!                                   + .9*reaction_rates(k,ox_l5_ndx) *base_sol(k,isop_ndx) &
-!                                   + .8*(reaction_rates(k,ox_l7_ndx)*base_sol(k,mvk_ndx) &
-!                                         + reaction_rates(k,ox_l8_ndx)*base_sol(k,macro2_ndx)) &
-!                                   + .235*reaction_rates(k,ox_l9_ndx)*base_sol(k,c10h16_ndx) &
-!                                   + (reaction_rates(k,usr4_ndx) * base_sol(k,no2_ndx) * base_sol(k,oh_ndx) &
-!                                      + 3. * reaction_rates(k,usr16_ndx) * base_sol(k,n2o5_ndx) &
-!                                      + 2. * reaction_rates(k,usr17_ndx) * base_sol(k,no3_ndx)) &
-!                                     /max( base_sol(k,ox_ndx),1.e-20 )
-!                             end if
+!	                         k = indx
+                                   loss_ox(indx) = reaction_rates(indx,ox_l2_ndx) *base_sol(indx,oh_ndx) &
+                                   + reaction_rates(indx,ox_l3_ndx) *base_sol(indx,ho2_ndx) &
+                                   + reaction_rates(indx,ox_l6_ndx) *base_sol(indx,c2h4_ndx) &
+                                   + reaction_rates(indx,ox_l4_ndx) *base_sol(indx,c3h6_ndx) &
+                                   + .9*reaction_rates(indx,ox_l5_ndx) *base_sol(indx,isop_ndx) &
+                                   + .8*(reaction_rates(indx,ox_l7_ndx)*base_sol(indx,mvk_ndx) &
+                                         + reaction_rates(indx,ox_l8_ndx)*base_sol(indx,macro2_ndx)) &
+                                   + .235*reaction_rates(indx,ox_l9_ndx)*base_sol(indx,c10h16_ndx) &
+                                   + (reaction_rates(indx,usr4_ndx) * base_sol(indx,no2_ndx) * base_sol(indx,oh_ndx) &
+                                      + 3. * reaction_rates(indx,usr16_ndx) * base_sol(indx,n2o5_ndx) &
+                                      + 2. * reaction_rates(indx,usr17_ndx) * base_sol(indx,no3_ndx)) &
+                                     /max( base_sol(indx,ox_ndx),1.e-20 )
+! here I sperate the o1d term because we need ozone implicitly from o1d.
+                                     loss_ox(indx)=loss_ox(indx)*base_sol(indx,ox_ndx)&
+                                   +reaction_rates(indx,ox_l1_ndx)*base_sol(indx,o1d_ndx)*base_sol(indx,h2o_ndx)
+                                   prod_ox(indx)=max(prod_ox(indx),0d0)
+                                   loss_ox(indx)=max(loss_ox(indx),0d0)
+                             end if
+!                             write(*,*)prod_ox(k)
 !                           else
 !                              j = implicit%permute(cls_ndx)
 !                             loss_buff(file)%buff(indx,hndx) = loss(j)

@@ -8,8 +8,8 @@
 
 !     save
 
-character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 17.0.4.1 2010/03/17 20:27:12 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 17.0.4.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -111,6 +111,14 @@ logical                       :: module_is_initialized = .false.
 !   <OUT NAME="imp_slv_nonconv" TYPE="real" DIM="(:,:)">
 !     Flag for implicit solver non-convergence (fraction)
 !   </OUT>
+!   <OUT NAME="prod_ox" TYPE="real" DIM="(:,:)">
+!     output for ox production
+!   </OUT>
+!   <OUT NAME="loss_ox" TYPE="real" DIM="(:,:)">
+!     output for ox loss
+!   </OUT>
+! prod_ox and loss_ox are added to chemdr. (jmao, 1/1/2011)
+! r,phalf, pwt and j_ndx are added for fastjx.(jmao,1/1/2011)
       subroutine chemdr( vmr, &
                          Time, &
                          lat, lon, &
@@ -121,7 +129,7 @@ logical                       :: module_is_initialized = .false.
                          albedo, coszen, esfact, &
                          prod_out, loss_out, jvals_out, rate_const_out, sulfate, psc, &
                          do_interactive_h2o, solar_phase, imp_slv_nonconv, &
-                         plonl )
+                         plonl, prod_ox, loss_ox, retain_cm3_bugs )
 !-----------------------------------------------------------------------
 !     ... Chem_solver advances the volumetric mixing ratio
 !         forward one time step via a combination of explicit,
@@ -186,6 +194,9 @@ logical                       :: module_is_initialized = .false.
       real, dimension(:,:,:), intent(out) :: &
                               prod_out, &             ! chemical production rate
                               loss_out                ! chemical loss rate
+      real, dimension(:,:),   intent(out) :: &        
+                              prod_ox, &              ! chemical production rate, defined as (nlon,nlev)(jmao,1/1/2011)
+                              loss_ox                 ! chemical loss rate(jmao,1/1/2011)      
       real, dimension(:,:,:), intent(out) :: &
                               jvals_out               ! photolysis rates (J-values, s^-1)
       real, dimension(:,:,:), intent(out) :: &
@@ -195,6 +206,7 @@ logical                       :: module_is_initialized = .false.
       real, dimension(:,:), intent(out) :: &
                               imp_slv_nonconv         ! flag for implicit solver non-convergence (fraction)
       logical, intent(in) ::  do_interactive_h2o      ! include h2o sources/sinks
+      logical, intent(in) ::  retain_cm3_bugs        ! retain cm3 bugs ?
 
 !-----------------------------------------------------------------------
 !             ... Local variables
@@ -450,6 +462,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !        ... Solve for "Implicit" species
 !-----------------------------------------------------------------------
+!prod_ox and loss_ox are added to implicit solver. (jmao,1/1/2011)
          call imp_sol( vmr, reaction_rates, &
                        het_rates, extfrc, &
                        nstep, delt, &
@@ -457,7 +470,8 @@ logical                       :: module_is_initialized = .false.
                        lat, lon, &
                        prod_out, loss_out, &
                        imp_slv_nonconv, &
-                       plonl, plnplv )
+                       plonl, plnplv, &
+                       prod_ox, loss_ox)
       end if
       if( clscnt5 > 0 .and. rxntot > 0 ) then
 !-----------------------------------------------------------------------
@@ -478,7 +492,7 @@ logical                       :: module_is_initialized = .false.
          call setsox( pmid, plonl, delt, tfld, sh, &
 !                     nrain, nevapr, cmfdqr, &
                       cwat, invariants(:,:,indexm), &
-                      vmr )
+                      vmr, retain_cm3_bugs )
       end if
 !-----------------------------------------------------------------------      
 !         ... Check for negative values and reset to zero

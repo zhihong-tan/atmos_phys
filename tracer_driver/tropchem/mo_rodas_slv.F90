@@ -17,13 +17,13 @@
       real :: epsilon(max(1,clscnt5))
       real :: err_wghts(max(1,clscnt5))
 
-character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 14.0.10.1 2010/03/17 20:27:12 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 14.0.10.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine rodas_slv_init
+      subroutine rodas_slv_init (retain_cm3_bugs)
 !-----------------------------------------------------------------------      
 !        ... initialize the implict solver
 !-----------------------------------------------------------------------      
@@ -33,6 +33,8 @@ logical                       :: module_is_initialized = .false.
       use mo_chem_utls_mod, only : get_spc_ndx, get_rxt_ndx
 
       implicit none
+      
+      logical :: retain_cm3_bugs
 
 !-----------------------------------------------------------------------      
 !        ... local variables
@@ -44,7 +46,13 @@ logical                       :: module_is_initialized = .false.
       real    :: wghts(pcnstm1)
 
       eps(:) = rel_err
+!      ox_ndx = get_spc_ndx( 'OX' )
+! for ox budget (jmao,1/7/2011)
+   if (retain_cm3_bugs) then
       ox_ndx = get_spc_ndx( 'OX' )
+   else
+      ox_ndx = get_spc_ndx( 'O3' )
+   endif
       if( ox_ndx > 0 ) then
          eps(ox_ndx) = high_rel_err
       else

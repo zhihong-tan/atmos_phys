@@ -100,7 +100,7 @@ interface interp_weighted_scalar
 end interface interp_weighted_scalar
 character(len=128) :: version = &
 '$Id: interpolator.F90,v 17.0.2.1.4.1.6.1.2.1.2.1 2010/09/03 12:59:12 pjp Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 

@@ -1,15 +1,15 @@
       module MO_SETSOX_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 16.0.4.1 2010/03/17 20:27:12 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 16.0.4.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
 
       subroutine setsox( press, plonl, dtime, tfld, qfld, &
                          lwc, xhnm, &
-                         qin )
+                         qin, retain_cm3_bugs )
 
 !-----------------------------------------------------------------------      
 !          ... Compute heterogeneous reactions of SOX
@@ -41,6 +41,7 @@ logical                       :: module_is_initialized = .false.
                                qfld, &               ! specific humidity( kg/kg )
                                lwc,  &               ! cloud liquid water content (kg/kg)
                                press                 ! midpoint pressure ( Pa )
+      logical, intent(in) ::   retain_cm3_bugs       ! retain cm3 bugs ?
 
 !-----------------------------------------------------------------------      
 !      ... Local variables
@@ -105,7 +106,13 @@ logical                       :: module_is_initialized = .false.
       logical :: converged
 
 
+!      ox_ndx = get_spc_ndx( 'OX' )
+! for ox budget (jmao, 1/7/2011)
+    if (retain_cm3_bugs) then
       ox_ndx = get_spc_ndx( 'OX' )
+    else
+      ox_ndx = get_spc_ndx( 'O3' )
+    endif
       hno3_ndx = get_spc_ndx( 'HNO3' )
       h2o2_ndx = get_spc_ndx( 'H2O2' )
       so2_ndx = get_spc_ndx( 'SO2' )

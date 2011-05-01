@@ -5,12 +5,13 @@ private
     private    CalcG,  erff, CalcAlphaGamma, CalcBeta
       
     public aer_ccn_act_k, aer_ccn_act2_k, aer_ccn_act_wpdf_k,  &
-           aer_ccn_act_k_init, aer_ccn_act_k_end
+           aer_ccn_act_k_init, aer_ccn_act_k_end, &
+           dlocate, ghquad, aer_ccn_act_wpdf_m_k
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 17.0.2.1.4.1 2010/03/17 20:27:11 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: version = '$Id: aer_ccn_act_k.F90,v 17.0.2.1.4.1.2.1 2011/03/02 06:50:26 Richard.Hemler Exp $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 
 !---------------- private data -------------------
 
@@ -138,7 +139,6 @@ real tmass, tmass2, tmass3, tmass4, updr
 integer nomass, nomass2, nomass3, nomass4, noup
         
   ier = 0
-  ermesg = '  '
 
   if ( .not. module_is_initialized) then
     ier = 1
@@ -270,7 +270,6 @@ real :: Diam, beta, Le_cpa, Dcut
 integer :: i, j
         
   ier = 0
-  ermesg = '  '
   if ( .not. module_is_initialized) then
     ier = 1
     ermesg = 'aer_ccn_act2_k: module has not been initialized before &
@@ -338,7 +337,7 @@ real,             intent(out)   :: drop
 integer,          intent(out)   :: ier
 character(len=*), intent(out)   :: ermesg
 
-!  Paranmeters
+!  Parameters
 
 real, parameter    :: wp2_eps = 0.0001 ! w variance threshold
 integer, parameter :: npoints = 64     ! # for Gauss-Hermite quadrature
@@ -361,7 +360,6 @@ data init/0/
 
 
   ier = 0
-  ermesg = '  '
   if ( .not. module_is_initialized) then
     ier = 1
     ermesg = 'aer_ccn_act_wpdf _k: module has not been initialized &
@@ -443,6 +441,134 @@ endif
 
 
 end subroutine aer_ccn_act_wpdf_k
+
+!----------------------------------------------------------------------
+subroutine aer_ccn_act_wpdf_m_k (T, p, wm, wp2, offs, totalmass, tym, drop,  &
+!cms                               ier, ermesg)
+                                       ier, ermesg)
+
+! Compute CCN activation assuming a normal distribution of w
+! given by its mean (wm) and second moment (wp2)
+
+integer,          intent(in)    :: tym
+real,             intent(in)    :: T, p, wm, wp2
+integer,          intent(in)    :: offs
+real,             intent(inout) :: totalmass(tym)
+real,             intent(out)   :: drop
+integer,          intent(out)   :: ier
+character(len=*), intent(out)   :: ermesg
+
+!  Parameters
+
+real, parameter    :: wp2_eps = 0.0001 ! w variance threshold
+integer, parameter :: npoints = 64     ! # for Gauss-Hermite quadrature
+real, parameter    :: wmin =  0.0      ! min w for ccn_act
+real, parameter    :: wmax = 10.0      ! max w for ccn_act
+
+!  Internal
+
+real(kind=8), dimension(npoints) :: x, w
+integer init
+
+logical lintegrate
+integer i, ia, ib
+
+real wtmp
+real(kind=8) :: tmp, a, b, sum1, sum2
+
+save init, x, w
+
+data init/0/
+
+
+  ier = 0
+  if ( .not. module_is_initialized) then
+    ier = 1
+    ermesg = 'aer_ccn_act_wpdf _k: module has not been initialized &
+                                             &before first call'
+    return
+  endif
+  if (tym /=  4) then
+    ier = 2
+    ermesg = 'aer_ccn_act_wpdf_k:dimension of TotalMass is incorrect'
+    return
+  endif
+
+! On first call, initialize arrays with abscissas and weights for
+! integration
+
+if ( init .eq. 0 ) then
+  call ghquad( npoints, x, w )
+  init = 1
+endif
+
+! Determine whether integration is needed to compute number
+! of activated drops. lintegrate = .true. indicates that
+! numerical integration is to be performed.
+
+lintegrate = .false.
+if ( wp2 .gt. wp2_eps ) then
+
+  ! Integration bounds: from wmin to wmax (0 to 10 m/s)
+
+  tmp = 1.0d0 / sqrt(2.0 * wp2 ) 
+  a = (wmin - wm ) * tmp
+  b = (wmax - wm ) * tmp
+
+  ! Locate indices within integration bounds
+
+  call dlocate( x, npoints, a, ia )
+  call dlocate( x, npoints, b, ib )
+
+  ! ia (ib) is zero if a (b) is smaller than the lowest abscissa.
+  ! In that case, start the integration with the first abscissa.
+!  ia = max(ia,1)
+!  ib = max(ib,1)
+
+!cms++ 
+  ia = ia + offs
+!cms--
+
+  ia = min(max(ia,1),size(x))
+  ib = min(max(ib,1),size(x))
+
+  if ( ib .gt. ia ) lintegrate = .true.
+
+endif
+
+! Compute number of activated drops.
+
+if (lintegrate) then
+
+  ! Perform integration
+
+  sum1 = 0.0d0
+  sum2 = 0.0d0
+  tmp = sqrt(2.0 * wp2 )
+  do i=ia,ib
+    wtmp = tmp * x(i) + wm
+    call aer_ccn_act_k( T, p, wtmp, totalmass, TYm, drop, ier, ermesg )
+    if (ier /= 0) return
+    sum1 = sum1 + w(i)*drop
+    sum2 = sum2 + w(i)
+  enddo
+
+  ! Normalize
+
+  drop = sum1 / sum2
+
+else
+
+  ! No integration, use single point evaluation
+
+  call aer_ccn_act_k( T, p, wm, totalmass, TYm, drop, ier, ermesg )
+  if (ier /= 0) return
+
+endif
+
+
+end subroutine aer_ccn_act_wpdf_m_k
+
 
 subroutine dlocate(xx,n,x,j)
 

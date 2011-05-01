@@ -11,7 +11,7 @@
       implicit none
 
 character(len=128), parameter :: version     = '$Id: m_tracname.F90,v 13.0.14.1 2010/03/25 00:31:42 pjp Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       save

@@ -85,8 +85,8 @@
       logical :: use_tdep_jvals, use_solar_cycle
       real    :: o3_column_top, jno_scale_factor
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 17.0.2.1.4.1 2010/03/17 20:27:12 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 17.0.2.1.4.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -126,7 +126,8 @@ logical                       :: module_is_initialized = .false.
 !     Scale factor for NO photolysis rate (jNO)
 !   </IN>
       subroutine prate_init( filename, filename_solarmin, lpath, mspath, &
-                             use_tdep_jvals_in, o3_column_top_in, jno_scale_factor_in )
+                             use_tdep_jvals_in, o3_column_top_in,  &
+                             jno_scale_factor_in, retain_cm3_bugs )
 !----------------------------------------------------------------------
 !     ... Read in the photorate tables and arrays
 !         Results are "returned" via the common block photo_tables
@@ -143,6 +144,7 @@ logical                       :: module_is_initialized = .false.
       logical,          intent(in) :: use_tdep_jvals_in
       real,             intent(in) :: o3_column_top_in, &
                                       jno_scale_factor_in
+      logical,          intent(in) :: retain_cm3_bugs
 
 !----------------------------------------------------------------------
 !        ... Local variables
@@ -377,8 +379,15 @@ logical                       :: module_is_initialized = .false.
       jn2o_ndx     = get_rxt_ndx( 'jn2o' )
       jhno3_ndx    = get_rxt_ndx( 'jhno3' )
 
+!      ox_ndx = get_spc_ndx( 'OX' )
+!     for ox budget (jmao,1/7/2011)
+   if (retain_cm3_bugs) then
       ox_ndx = get_spc_ndx( 'OX' )
       o3_ndx = get_spc_ndx( 'O3' )
+   else
+      ox_ndx = get_spc_ndx( 'O3' )
+      o3_ndx = get_spc_ndx( 'O3' )
+   endif
 
       use_tdep_jvals   = use_tdep_jvals_in
       o3_column_top    = o3_column_top_in

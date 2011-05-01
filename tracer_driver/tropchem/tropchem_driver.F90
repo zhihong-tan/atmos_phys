@@ -168,6 +168,7 @@ real               :: Pdaily_clim = 420.                ! climatological PPFD fo
 integer, parameter :: nveg=5, npft=17, nmos=12          ! number of vegetation types, pfts, and months
 !--amf/van
 integer            :: verbose = 3                       ! level of diagnostic output
+logical            :: retain_cm3_bugs = .false.         ! retain bugs present in code used in CM3
  
 namelist /tropchem_driver_nml/    &
                                relaxed_dt, &
@@ -207,7 +208,8 @@ namelist /tropchem_driver_nml/    &
                                cfc_lbc_dataset_entry, &
                                Tdaily_clim, &
                                Pdaily_clim, &
-                               verbose
+                               verbose,   &
+                               retain_cm3_bugs
 
 character(len=7), parameter :: module_name = 'tracers'
 real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
@@ -268,6 +270,7 @@ logical :: newmonth
 logical :: has_ts_avg = .true.   ! currently reading in from monthly mean files.
 integer, dimension(phtcnt)  :: id_jval
 integer, dimension(gascnt)  :: id_rate_const
+integer :: id_prodox, id_lossox ! for production and loss of ox.(jmao,1/1/2011)
 
 type(interpolate_type), save :: conc       ! used to read in the concentration of OH and CH4
 type(interpolate_type), save :: sulfate    ! used to read in the data for sulate
@@ -303,8 +306,8 @@ type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0.2.1.6.1.2.1.2.1.4.1.2.1 2010/09/07 15:09:58 wfc Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201012 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0.2.1.6.1.2.1.2.1.4.1.2.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
+character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -465,6 +468,8 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
    real, dimension(size(r,1),size(r,2)) :: coszen_local, fracday_local
    real :: rrsun_local
    real, dimension(size(r,1),size(r,2),size(r,3),pcnstm1) :: prod, loss
+!  add new arrays for ox budget (jmao,1/1/2011)
+   real, dimension(size(r,1),size(r,2),size(r,3)):: prodox, lossox
    real, dimension(size(r,1),size(r,2),size(r,3),phtcnt) :: jvals
    real, dimension(size(r,1),size(r,2),size(r,3),gascnt) :: rate_constants
    real, dimension(size(r,1),size(r,2),size(r,3)) :: imp_slv_nonconv
@@ -880,8 +885,10 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
                   do_interactive_h2o,          & ! include h2o sources/sinks?
                   solar_phase,                 & ! solar cycle phase (1=max, 0=min)
                   imp_slv_nonconv(:,j,:),      & ! flag for non-convergence of implicit solver
-                  plonl )                        ! number of longitudes
-      
+                  plonl,                       & ! number of longitudes
+                  prodox(:,j,:),               & ! production of ox(jmao,1/1/2011)
+                  lossox(:,j,:),               & ! loss of ox(jmao,1/1/2011)
+                  retain_cm3_bugs)
 
       call strat_chem_destroy_psc( psc )
 
@@ -983,6 +990,15 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
       end if
 
    end do
+!-----------------------------------------------------------------------
+!     ...send ox budget(jmao,1/1/2011)
+!-----------------------------------------------------------------------
+   if(id_prodox>0) then
+      used = send_data(id_prodox, prodox(:,:,:), Time, is_in=is, js_in=js)
+   end if
+   if(id_lossox>0) then
+      used = send_data(id_lossox, lossox(:,:,:), Time, is_in=is, js_in=js)
+   end if
 !-----------------------------------------------------------------------
 !     ... surface concentration diagnostics
 !-----------------------------------------------------------------------
@@ -1389,7 +1405,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !     ... Initialize chemistry driver
 !-----------------------------------------------------------------------
    call chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
-                 o3_column_top, jno_scale_factor, verbose )
+                 o3_column_top, jno_scale_factor, verbose, retain_cm3_bugs)
    
 !-----------------------------------------------------------------------
 !     ... set initial value of indices
@@ -1809,6 +1825,11 @@ function tropchem_driver_init( r, mask, axes, Time, &
    id_nh3_emis_cmip2 =     &
         register_diag_field( module_name, 'nh3_emis_cmip2', axes(1:2), &
                             Time, 'nh3_emis_cmip2', 'kg/m2/s')  
+!--for Ox(jmao,1/1/2011)
+   id_prodox = register_diag_field( module_name, 'Ox_prod', axes(1:3), &
+        Time, 'Ox_prod','VMR/s')
+   id_lossox = register_diag_field( module_name, 'Ox_loss', axes(1:3), &
+        Time, 'Ox_loss','VMR/s')
 
    do i=1,pcnstm1
       id_chem_tend(i) = register_diag_field( module_name, trim(tracnam(i))//'_chem_dt', axes(1:3), &

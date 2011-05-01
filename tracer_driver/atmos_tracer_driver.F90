@@ -296,8 +296,8 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.4.2.2.2 2010/09/07 14:05:09 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201012 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.4.2.2.2.2.1 2011/01/15 01:25:00 jgj Exp $'
+character(len=128) :: tagname = '$Name: riga_201104 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -1102,7 +1102,7 @@ logical :: used
                                    tracer(:,:,:,nsphum), rtndco2_emis, kbot)
          rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2_emis(:,:,:)
 
-         call atmos_co2_sourcesink (Time, dt, pwt, tracer(:,:,:,nco2),     &
+         call atmos_co2_sourcesink (is, ie, js, je, Time, dt, pwt, tracer(:,:,:,nco2),     &
                                     tracer(:,:,:,nsphum), rtndco2)
          rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2(:,:,:)
          call mpp_clock_end (co2_clock)
