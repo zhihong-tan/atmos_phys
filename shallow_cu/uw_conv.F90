@@ -47,8 +47,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
-  character(len=128) :: tagname = '$Name: riga_201104 $'
+  character(len=128) :: version = '$Id: uw_conv.F90,v 19.0 2012/01/06 20:26:04 fms Exp $'
+  character(len=128) :: tagname = '$Name: siena $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -244,10 +244,10 @@ contains
 
     integer   :: unit, io
     
-    integer   :: ntracers, n, nn, ierr
+    integer   :: ntracers, n, nn, ierr, logunit
     logical   :: flag
     character(len=200) :: text_in_scheme, control
-     real :: frac_junk
+     real :: frac_junk, frac_junk2
  
     ntracers = count(tracers_in_uw)
 
@@ -306,10 +306,11 @@ contains
     end if
 #endif
     call write_version_number (version, tagname)
-    WRITE( stdlog(), nml = uw_closure_nml )
-    WRITE( stdlog(), nml = uw_conv_nml )
-    WRITE( stdlog(), nml = uw_plume_nml )
-    WRITE( stdlog(), nml = deep_conv_nml )
+    logunit = stdlog()
+    WRITE( logunit, nml = uw_closure_nml )
+    WRITE( logunit, nml = uw_conv_nml )
+    WRITE( logunit, nml = uw_plume_nml )
+    WRITE( logunit, nml = deep_conv_nml )
 
     if ( use_online_aerosol ) call aer_ccn_act_init
 
@@ -335,7 +336,7 @@ contains
                                     wetdep(nn)%scheme, &
                                     wetdep(nn)%Henry_constant, &
                                     wetdep(nn)%Henry_variable, &
-                                    frac_junk, &
+                                    frac_junk, frac_junk2, &
                                     wetdep(nn)%alpha_r, &
                                     wetdep(nn)%alpha_s, &
                                     wetdep(nn)%Lwetdep, &

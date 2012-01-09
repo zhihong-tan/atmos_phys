@@ -65,8 +65,8 @@ private
 !----------- version number for this module -------------------
 
    character(len=128)  :: &
-   version =  '$Id: optical_path.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
-   character(len=128)  :: tagname =  '$Name: riga_201104 $'
+   version =  '$Id: optical_path.F90,v 19.0 2012/01/06 20:20:47 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -810,6 +810,8 @@ logical,                   intent(in)            :: including_aerosols
         allocate (Optical%aerooptdep_KE_15 (ix, jx ) )
         Optical%totaerooptdep = 0.                              
         Optical%aerooptdep_KE_15 = 0.           
+      else
+        n_aerosol_bands = 0
       endif
 !-------------------------------------------------------------------
 !    for each aerosol frequency band, retrieve aerosol optical proper-

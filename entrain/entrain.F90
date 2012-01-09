@@ -247,8 +247,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 18.0.2.2 2010/09/07 14:23:51 wfc Exp $'
-character(len=128) :: Tagname = '$Name: riga_201104 $'
+character(len=128) :: Version = '$Id: entrain.F90,v 19.0 2012/01/06 20:09:20 fms Exp $'
+character(len=128) :: Tagname = '$Name: siena $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !

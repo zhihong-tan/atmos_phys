@@ -99,8 +99,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 18.0.4.3.2.1.2.1.2.1.2.1 2011/03/30 21:51:58 William.Cooke Exp $'
-   character(len=128) :: tagname = '$Name: riga_201104 $'
+   version = '$Id: moist_processes.F90,v 19.0 2012/01/06 20:10:42 fms Exp $'
+   character(len=128) :: tagname = '$Name: siena $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -336,6 +336,7 @@ integer :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
 integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
            id_wetdep_NH4NO3, id_wetdep_salt, id_wetdep_dust
+integer :: id_f_snow_berg
 
 integer, dimension(:), allocatable :: id_tracerdt_conv,  &
                                       id_tracerdt_conv_col, &
@@ -775,6 +776,7 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(t,1),size(t,2),size(phalf,3)) :: rain3d, snow3d
    real, dimension(size(t,1),size(t,2),size(phalf,3)) :: snowclr3d
    real, dimension(size(t,1),size(t,2),size(t,3)+1) :: mc, m_cellup, mc_cmt
+   real, dimension(size(t,1),size(t,2),size(pfull,3)) :: f_snow_berg
 
 
 !     sfc_sh_flux      sensible heat flux across the surface
@@ -1900,6 +1902,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    resulting from large-scale precip producing the total wet deposition
 !    for the tracer (wet_data).
 !---------------------------------------------------------------------
+   f_snow_berg = 0.
    wet_data = 0.0
    qtnd_wet(is:ie,js:je,:) = qtnd(is:ie,js:je,:)
    if (do_strat) then
@@ -1916,6 +1919,7 @@ logical, intent(out), dimension(:,:)     :: convect
          wetdeptnd(is:ie,js:je,:) = 0.0
          call wet_deposition( n, t, pfull, phalf, zfull, zhalf, rain_ras, snow_ras, &
                               qtnd_wet(is:ie,js:je,:), cloud_wet(is:ie,js:je,:), cloud_frac(is:ie,js:je,:),                      &
+                              f_snow_berg, &
                               rain3d, snow3d, tracer(is:ie,js:je,:,n), wetdeptnd(is:ie,js:je,:),           &
                               Time, 'convect', is, js, dt )
          rdt (:,:,:,n) = rdt(:,:,:,n) - wetdeptnd(is:ie,js:je,:)
@@ -2346,7 +2350,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !    donner meso up
 !---------------------------------------------------------------------
     if (id_mc_conv_up > 0 ) &
-      used = send_data (id_mc_conv_up, cmf(is:ie,js:je,:) + mc_donner_up(is:ie,js:je,:), Time, is, js, 1, rmask=mask )
+      used = send_data (id_mc_conv_up, cmf(is:ie,js:je,:) + &
+                  mc_donner_up(is:ie,js:je,:), Time, is, js, 1, rmask=mask )
 
 !---------------------------------------------------------------------
 !    end the timing of the convection code section.
@@ -2408,7 +2413,8 @@ logical, intent(out), dimension(:,:)     :: convect
       call moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, tin(is:ie,js:je,:), qin(is:ie,js:je,:), &
                                  tracer(is:ie,js:je,:,:), pfull, phalf, zhalf, omega, radturbten, mc_full(is:ie,js:je,:), &
                                  diff_t, land, area, tdt, qdt, rdt, q_tnd(is:ie,js:je,:,:), ttnd(is:ie,js:je,:),  &
-                                 qtnd(is:ie,js:je,:), lprec, fprec, rain, snow, rain3d, snow3d,  &
+                                 qtnd(is:ie,js:je,:), lprec, fprec, &
+                                 f_snow_berg, rain, snow, rain3d, snow3d,  &
                                   snowclr3d, &
                                  Aerosol, lsc_cloud_area, lsc_liquid, lsc_ice,    &
                                  lsc_droplet_number, donner_humidity_area(is:ie,js:je,:),        &
@@ -2442,6 +2448,7 @@ logical, intent(out), dimension(:,:)     :: convect
       endif
       cloud_wet(is:ie,js:je,:) = cloud_wet(is:ie,js:je,:) + tracer(is:ie,js:je,:,nql) + tracer(is:ie,js:je,:,nqi)
       cloud_frac(is:ie,js:je,:) = max( min( tracer(is:ie,js:je,:,nqa), 1. ), 0. )
+      used = send_data( id_f_snow_berg, f_snow_berg(:,:,:), Time,is_in=is,js_in=js )
     else
 !     cloud_wet = qtnd_wet * dt
       cloud_wet(is:ie,js:je,:) = 0.5e-3
@@ -2454,7 +2461,9 @@ logical, intent(out), dimension(:,:)     :: convect
                          n /= nqa .and. n /= nqn  .and. n /= nqni ) ) then
           wetdeptnd(is:ie,js:je,:) = 0.0
           call wet_deposition( n, t, pfull, phalf, zfull, zhalf, rain, snow,   &
-                               qtnd_wet(is:ie,js:je,:), cloud_wet(is:ie,js:je,:), cloud_frac(is:ie,js:je,:),rain3d, snow3d, &
+                               qtnd_wet(is:ie,js:je,:), cloud_wet(is:ie,js:je,:), &
+                               cloud_frac(is:ie,js:je,:), f_snow_berg, &
+                               rain3d, snow3d, &
                                tracer(is:ie,js:je,:,n), wetdeptnd(is:ie,js:je,:), Time, 'lscale',     &
                   is, js, dt, sum_wdep_out=ls_wetdep(:,:,n) )
           rdt (:,:,:,n) = rdt(:,:,:,n) - wetdeptnd(is:ie,js:je,:)
@@ -3740,6 +3749,13 @@ integer            :: k
                tracers_in_ras(n) = .true.
                num_uw_tracers = num_uw_tracers + 1
                tracers_in_uw(n) = .true.
+            case ("all_nodonner")
+               num_mca_tracers = num_mca_tracers + 1
+               tracers_in_mca(n) = .true.
+               num_ras_tracers = num_ras_tracers + 1
+               tracers_in_ras(n) = .true.
+               num_uw_tracers = num_uw_tracers + 1
+               tracers_in_uw(n) = .true.
             case default  ! corresponds to "none"
           end select
         endif
@@ -4770,6 +4786,14 @@ endif
                          axes(1:2), Time,  &
                          'total dust wet deposition', &
                          'kg/m2/s',  &
+                         missing_value=missing_value)
+
+      id_f_snow_berg   =  &
+                         register_diag_field ( mod_name, &
+                         'f_snow_berg',  &
+                         axes(1:3), Time,  &
+                         'fraction of liq to ice by bergeron process', &
+                         'fraction',  &
                          missing_value=missing_value)
 
       do n = 1,num_tracers

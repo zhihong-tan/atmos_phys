@@ -22,7 +22,7 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
                              FATAL, close_file
-use time_manager_mod,  only: time_manager_init, time_type
+use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data
 use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE
@@ -59,8 +59,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 18.0.2.1.2.4 2010/09/20 17:54:12 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+'$Id: rad_output_file.F90,v 19.0 2012/01/06 20:21:53 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -347,7 +347,7 @@ end subroutine rad_output_file_init
 !                                  Rad_output, &
 !                                  Sw_output, Lw_output, Rad_gases, &
 !                                  Cldrad_props, Cld_spec,  &
-!                                  Time_diag, aerosol_in)
+!                                  Time_diag, Time, aerosol_in)
 !  </TEMPLATE>
 !  <IN NAME="is, ie, js, je" TYPE="integer">
 !   starting/ending subdomain i,j indices of data 
@@ -393,6 +393,9 @@ end subroutine rad_output_file_init
 !   time on next timestep, used as stamp for diag-
 !                        nostic output  [ time_type  (days, seconds) ]
 !  </IN>
+!  <IN NAME="Time" TYPE="time_type">
+!   current time [ time_type(days, seconds) ]
+!  </IN>
 !  <IN NAME="aerosol_in" TYPE="real">
 !   optional aerosol data
 !  </IN>
@@ -401,7 +404,7 @@ end subroutine rad_output_file_init
 subroutine write_rad_output_file (is, ie, js, je, Atmos_input, Surface,&
                                   Rad_output, Sw_output, Lw_output,    &
                                   Rad_gases, Cldrad_props, Cld_spec,   &
-                                  Time_diag, Aerosol, Aerosol_props, &
+                                  Time_diag, Time, Aerosol, Aerosol_props,&
                                   Aerosol_diags)
 
 !----------------------------------------------------------------
@@ -418,7 +421,7 @@ type(lw_output_type),         intent(in)            ::  Lw_output
 type(radiative_gases_type),   intent(in)            ::  Rad_gases
 type(cldrad_properties_type), intent(in)            ::  Cldrad_props
 type(cld_specification_type), intent(in)            ::  Cld_spec      
-type(time_type),              intent(in)            ::  Time_diag
+type(time_type),              intent(in)            ::  Time_diag, Time
 type(aerosol_type),           intent(in), optional  ::  Aerosol
 type(aerosol_properties_type), intent(in), optional ::  Aerosol_props
 type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
@@ -452,6 +455,8 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
 !                        radiation package on the model grid
 !      Time_diag         time on next timestep, used as stamp for diag-
 !                        nostic output  [ time_type  (days, seconds) ]  
+!      Time              current time [ time_type(days, seconds) ]
+
 !
 !  intent(in), optional variables:
 !
@@ -563,6 +568,7 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
 !    if the file is not to be written, do nothing.
 !--------------------------------------------------------------------
       if (write_data_file) then
+      if (Time_diag > Time) then
 
         Lasymdep = .false.
         if (any(id_asymdep_fam(:,:)  > 0) .or. &
@@ -1279,7 +1285,9 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
             used = send_data (id_dfswcf , ufswcf-fswcf , Time_diag, is, js, 1)
           endif
         endif
-      endif
+
+      endif    ! (Time_diag > Time)
+      endif    ! (write_data_file)
 
 !------------------------------------------------------------------
 

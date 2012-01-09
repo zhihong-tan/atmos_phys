@@ -37,8 +37,8 @@ public  moistproc_init, moistproc_end, moistproc_mca, moistproc_ras, &
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
-version = '$Id: moistproc_kernels.F90,v 18.0.4.2.2.1.2.1 2011/03/30 21:49:00 William.Cooke Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+version = '$Id: moistproc_kernels.F90,v 19.0 2012/01/06 20:10:46 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 !-----------------------------------------------------------------------
 real, public, allocatable, dimension(:,:)     :: rain_uw, snow_uw
@@ -493,7 +493,8 @@ end subroutine moistproc_ras
 subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, tracer,&
                                  pfull, phalf, zhalf, omega, radturbten, mc_full, &
                                  diff_t, land, area, tdt, qdt, rdt, q_tnd, ttnd,  &
-                                 qtnd, lprec, fprec, rain, snow, rain3d, snow3d,  &
+                                 qtnd, lprec, fprec, f_snow_berg, rain, &
+                                 snow, rain3d, snow3d,  &
                                  snowclr3d, &
                                  Aerosol, lsc_cloud_area, lsc_liquid, lsc_ice,    &
                                  lsc_droplet_number, donner_humidity_area,        &
@@ -524,7 +525,8 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
   real, intent(inout), dimension(:,:,:)   :: t, q, tdt, qdt, ttnd, qtnd
   real, intent(inout), dimension(:,:,:,:) :: rdt, tracer, q_tnd
   real, intent(out),   dimension(:,:)     :: rain, snow
-  real, intent(out),   dimension(:,:,:)   ::    &
+  real, intent(out),   dimension(:,:,:)   :: f_snow_berg
+  real, intent(out),   dimension(:,:,:)   ::                 &
                   rain3d, snow3d, snowclr3d, lsc_cloud_area, lsc_liquid,  &
                   lsc_ice, lsc_droplet_number, lsc_ice_number, lsc_snow,  &
                   lsc_rain, lsc_snow_size, lsc_rain_size
@@ -565,24 +567,20 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
           if (do_uw_conv .and. do_donner_deep) then
             convective_humidity_area(i,j,k) = donner_humidity_area(i,j,k) +  &
                            shallow_cloud_area(i,j,k)
-            env_fraction = 1.0 - (cell_cld_frac(i,j,k) + meso_cld_frac(i,j,k) + &
-                           shallow_cloud_area(i,j,k) )
             env_qv = qrf - qsat(i,j,k)*(cell_cld_frac(i,j,k) +   &
                            donner_humidity_factor(i,j,k) + shallow_cloud_area(i,j,k))
           else if (do_donner_deep) then
             convective_humidity_area(i,j,k) = donner_humidity_area(i,j,k)
-            env_fraction = 1.0 - (cell_cld_frac(i,j,k) + meso_cld_frac(i,j,k))        
             env_qv = qrf - qsat(i,j,k)*(cell_cld_frac(i,j,k) +   &
                            donner_humidity_factor(i,j,k))
           else if (do_uw_conv) then
             convective_humidity_area(i,j,k) = shallow_cloud_area(i,j,k)
-            env_fraction = 1.0 - shallow_cloud_area(i,j,k)
             env_qv = qrf -  shallow_cloud_area(i,j,k)*qsat(i,j,k)
           else
             convective_humidity_area(i,j,k) = 0.0
-            env_fraction = 1.0
             env_qv = qrf
           endif
+          env_fraction = 1.0 - convective_humidity_area(i,j,k)
 
 !---------------------------------------------------------------------
 !    define the ratio of the grid-box relative humidity to the humidity
@@ -635,7 +633,8 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
                             tracer(:,:,:,nqi), tracer(:,:,:,nqa),        &
                             omega, mc_full, diff_t, land, ttnd, qtnd,    &
                             q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi),          &
-                            q_tnd(:,:,:,nqa), rain3d, snow3d, snowclr3d, &
+                            q_tnd(:,:,:,nqa),  f_snow_berg,  &
+                            rain3d, snow3d, snowclr3d, &
                             rain, snow, convective_humidity_ratio,   &
                             convective_humidity_area,     &  
                             limit_conv_cloud_frac, mask=mask,            &
@@ -649,7 +648,8 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
                                   tracer(:,:,:,nqa), omega, mc_full, &
                                   diff_t, land, ttnd, qtnd,           &
                                   q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi),    &
-                                  q_tnd(:,:,:,nqa), rain3d, snow3d,   &
+                                  q_tnd(:,:,:,nqa),  f_snow_berg, &
+                                  rain3d, snow3d,   &
                                   snowclr3d, rain, snow,       &
                                   convective_humidity_ratio,   &
                                   convective_humidity_area,    &
@@ -669,7 +669,8 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
                                   tracer(:,:,:,nqa), omega, mc_full, &
                                   diff_t, land, ttnd, qtnd,    &
                                   q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi),   &
-                                  q_tnd(:,:,:,nqa), rain3d, snow3d,   &
+                                  q_tnd(:,:,:,nqa), f_snow_berg,   &
+                                  rain3d, snow3d,   &
                                   snowclr3d,rain, snow,   &
                                   convective_humidity_ratio,   &
                                   convective_humidity_area,&
@@ -726,7 +727,8 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
                           tracer(:,:,:,nqi), tracer(:,:,:,nqa),      &
                           omega, mc_full, diff_t, land, ttnd, qtnd,    &
                           q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi),   &
-                          q_tnd(:,:,:,nqa), rain3d, snow3d, snowclr3d,  &
+                          q_tnd(:,:,:,nqa), f_snow_berg,  &
+                          rain3d, snow3d, snowclr3d,  &
                           rain, snow, convective_humidity_ratio,  &
                           convective_humidity_area, &
                           limit_conv_cloud_frac, mask=mask)

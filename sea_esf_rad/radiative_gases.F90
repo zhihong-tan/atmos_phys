@@ -71,8 +71,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 17.0.2.1.2.1.4.2.2.1 2010/08/30 20:33:33 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+'$Id: radiative_gases.F90,v 19.0 2012/01/06 20:22:59 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -86,7 +86,6 @@ public     &
 private    &
 ! called from radiative_gases_init:
          validate_time_varying_inputs, &
-         read_restart_radiative_gases, &
          define_ch4, define_n2o, define_f11, &
          define_f12, define_f113, define_f22, &
          define_co2, read_gas_timeseries,  &
@@ -666,10 +665,8 @@ real, dimension(:,:), intent(in) :: latb, lonb
          vers = restart_versions(size(restart_versions(:)))     
       else
          if (file_exist ('INPUT/radiative_gases.res')) then
-            if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
-                 'Reading native formatted restart file.', NOTE)
-            call read_restart_radiative_gases
-            restart_present = .true.
+           call error_mesg ('radiative_gases_mod', &
+                 'Native formatted restart file no longer supported.', FATAL)
          endif
       endif
 
@@ -1873,99 +1870,6 @@ end subroutine validate_time_varying_inputs
 
 
 ! </SUBROUTINE>
-
-!#####################################################################
-! <SUBROUTINE NAME="read_restart_radiative_gases">
-!  <OVERVIEW>
-!   Subroutine to read the radiative_gases.res file
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Subroutine to read the radiative_gases.res file
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call read_restart_radiative_gases
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine read_restart_radiative_gases 
-
-!---------------------------------------------------------------------
-!    read_restart_radiative_gases reads the radiative_gases.res file.
-!---------------------------------------------------------------------
-
-      integer  ::  unit   ! unit number fused for i/o
-
-!--------------------------------------------------------------------
-!    determine if  a radiative_gases.parameters.res file is present.
-!    this file is only present in restart version 1.
-!--------------------------------------------------------------------
-      if (file_exist('INPUT/radiative_gases.parameters.res' ) ) then
-
-!---------------------------------------------------------------------
-!    read radiative gas restart file, version 1.
-!---------------------------------------------------------------------
-        if (file_exist('INPUT/radiative_gases.res' ) ) then
-          unit = open_restart_file     &
-                          ('INPUT/radiative_gases.res', action= 'read')
-          read (unit) rco2
-          read (unit) rf11, rf12, rf113, rf22
-          read (unit) rch4, rn2o
-          call close_file (unit)
-        endif ! (file_exist(.res))
-      else 
-!---------------------------------------------------------------------
-!    read radiative gas restart file. version number will be the first
-!    file record.
-!---------------------------------------------------------------------
-        if (file_exist('INPUT/radiative_gases.res' ) ) then
-          unit = open_restart_file   &
-                          ('INPUT/radiative_gases.res', action= 'read')
-          read (unit) vers
-
-!---------------------------------------------------------------------
-!    verify that this restart file version is readable by the current
-!    code. if not, print a message.
-!---------------------------------------------------------------------
-          if ( .not. any(vers == restart_versions) ) then
-            call error_mesg ('radiative_gases_mod', &
-              'radiative_gases restart problem --  may be '//&
-               'attempting to read version 1 file '//&
-                 'w/o parameters.res file being present.',  FATAL)
-          endif
-
-!--------------------------------------------------------------------
-!    read the gas concentrations from the file.
-!--------------------------------------------------------------------
-          read (unit) rco2
-          read (unit) rf11, rf12, rf113, rf22
-          read (unit) rch4, rn2o
-
-!---------------------------------------------------------------------
-!    for file versions 3 and higher, the gas values used when tfs were
-!    last calculated are present.
-!---------------------------------------------------------------------
-          if (vers >= 3) then
-            read (unit) co2_for_last_tf_calc
-            read (unit) ch4_for_last_tf_calc
-            read (unit) n2o_for_last_tf_calc
-          else
-
-!--------------------------------------------------------------------
-!  set flag to indicate value is needed.
-!--------------------------------------------------------------------
-            define_co2_for_last_tf_calc = .true.
-            define_ch4_for_last_tf_calc = .true.
-            define_n2o_for_last_tf_calc = .true.
-          endif
-          call close_file (unit)
-        endif 
-      endif 
-
-!--------------------------------------------------------------------
-
-
-end subroutine read_restart_radiative_gases
-
 
 !###################################################################
 ! <SUBROUTINE NAME="define_ch4">

@@ -28,10 +28,9 @@ MODULE DIAG_CLOUD_RAD_MOD
 !-------------------------------------------------------------------
 
 use       mpp_mod, only: input_nml_file
-use       fms_mod, only: error_mesg, FATAL, file_exist,    &
-                         check_nml_error, open_namelist_file,       &
+use       fms_mod, only: file_exist, check_nml_error, open_namelist_file, &
                          mpp_pe, mpp_root_pe, close_file, &
-                         write_version_number, stdlog, open_restart_file
+                         write_version_number, stdlog
 
 ! Steve Klein's Cloud_Rad module
 use Cloud_Rad_Mod, ONLY: CLOUD_RAD, CLOUD_RAD_INIT, cloud_rad_k_diag
@@ -47,46 +46,46 @@ use Cloud_Rad_Mod, ONLY: CLOUD_RAD, CLOUD_RAD_INIT, cloud_rad_k_diag
 !
 !SUBROUTINES
 !
-!            CLOUD_TAU_DRIVER
-!                        calls a sequence of suboutines to compute
-! cloud optical and radiative properties, as detailed
-!                        below -->
-!            CLOUD_PRES_THICK_FOR_TAU
-!                        computes cloud-type dependent set of pressure 
-!                        thicknesses for each distinct cloud layer, which are  
-!                        used to parameterize cloud optical depths
-!            CLOUD_OPTICAL_DEPTHS
-! Specify / crudely parameterize cloud optical depths
-! for distinct cloud layers,incorporating a 
-! parameterization scheme for non-anvil cirrus
-!                        proposed by Harshvardhan, based upon observations by
-!                        Platt and Harshvardhan
-!            CLOUD_OPTICAL_PROP_tg
-!                        for each cloud, it first establishes the standard
-!                        values of cloud optical depths (tau) in the 
-!                        vis+nir band for low, middle and high (anvil or non-
-!                        anvil cirrus) clouds. Then, it calculates the 
-!                        effective cloud liquid and cloud ice water paths, from
-!                        the cloud optical depths, mass aborption coefficients
-!                        for cloud water and cloud ice, and the temperature-
-!                        dependent ratio of cloud ice to cloud water path.
-!                        In the vis band, the single scattering albedo (wo), and
-!                        the asymmetry parameter (g) are both specified as 
-!                        constants (wo = 0.99999 and g = 0.85); 
-!                        In the nir band, wo is specified as a constant, 0.9942
-!                        (standard case), but is a function of zonal mean water 
-!                        vapor mixing ratio at the model's lowest vertical level
-!                        (anomalous absorption case). This subroutine also 
-!                        computes the longwave emissivity of each cloud.
-!         CLOUD_RAD   
-! solves for the radiative properties of the
-!                        every cloud.  In particular it uses either the
-!                        two stream approach or the delta-Eddington approach
-!                        to solve for the longwave emmissivity, the 
-!                        ultra-violet - visible reflectivities and absorptions,
-!                        and the near-infrared reflectivities and absorptions.
-!                        ****    Note    ****  This subroutine is from
-!                        the CLOUD_RAD_MOD module of Steve Klein .
+! CLOUD_TAU_DRIVER
+!   calls a sequence of suboutines to compute
+!   cloud optical and radiative properties, as detailed
+!   below -->
+! CLOUD_PRES_THICK_FOR_TAU
+!   computes cloud-type dependent set of pressure 
+!   thicknesses for each distinct cloud layer, which are  
+!   used to parameterize cloud optical depths
+! CLOUD_OPTICAL_DEPTHS
+!   Specify / crudely parameterize cloud optical depths
+!   for distinct cloud layers,incorporating a 
+!   parameterization scheme for non-anvil cirrus
+!   proposed by Harshvardhan, based upon observations by
+!   Platt and Harshvardhan
+! CLOUD_OPTICAL_PROP_tg
+!   for each cloud, it first establishes the standard
+!   values of cloud optical depths (tau) in the 
+!   vis+nir band for low, middle and high (anvil or non-
+!   anvil cirrus) clouds. Then, it calculates the 
+!   effective cloud liquid and cloud ice water paths, from
+!   the cloud optical depths, mass aborption coefficients
+!   for cloud water and cloud ice, and the temperature-
+!   dependent ratio of cloud ice to cloud water path.
+!   In the vis band, the single scattering albedo (wo), and
+!   the asymmetry parameter (g) are both specified as 
+!   constants (wo = 0.99999 and g = 0.85); 
+!   In the nir band, wo is specified as a constant, 0.9942
+!   (standard case), but is a function of zonal mean water 
+!   vapor mixing ratio at the model's lowest vertical level
+!   (anomalous absorption case). This subroutine also 
+!   computes the longwave emissivity of each cloud.
+! CLOUD_RAD   
+!   solves for the radiative properties of the
+!   every cloud.  In particular it uses either the
+!   two stream approach or the delta-Eddington approach
+!   to solve for the longwave emmissivity, the 
+!   ultra-violet - visible reflectivities and absorptions,
+!   and the near-infrared reflectivities and absorptions.
+!   ****    Note    ****  This subroutine is from
+!   the CLOUD_RAD_MOD module of Steve Klein .
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -157,8 +156,8 @@ use Cloud_Rad_Mod, ONLY: CLOUD_RAD, CLOUD_RAD_INIT, cloud_rad_k_diag
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 17.0.4.2 2010/08/30 20:39:46 wfc Exp $'
- character(len=128) :: tagname = '$Name: riga_201104 $'
+ character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 19.0 2012/01/06 20:05:09 fms Exp $'
+ character(len=128) :: tagname = '$Name: siena $'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 

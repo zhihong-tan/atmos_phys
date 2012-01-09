@@ -21,12 +21,11 @@ use fms_mod,                only: mpp_pe, mpp_root_pe,  &
                                   file_exist,  check_nml_error,  &
                                   error_mesg, FATAL, WARNING, NOTE,  &
                                   close_file, open_namelist_file,    &
-                                  stdlog, write_version_number,  &
+                                  stdout, stdlog, write_version_number,  &
                                   field_size, &
-                                  read_data, write_data, lowercase,    &
-                                  open_restart_file
+                                  read_data, write_data, lowercase
 use fms_io_mod,             only: register_restart_field, restart_file_type, &
-                                  save_restart, get_mosaic_tile_file
+                                  save_restart, restore_state, get_mosaic_tile_file
 use mpp_mod,                only: input_nml_file
 use mpp_io_mod,             only: mpp_open, mpp_close, fieldtype,  &
                                   mpp_read_meta, mpp_get_info, &
@@ -66,8 +65,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: fms_donner.F90,v 17.0.2.1.2.1.2.1.4.2.2.1 2010/08/30 20:33:34 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: fms_donner.F90,v 19.0 2012/01/06 20:08:38 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !--------------------------------------------------------------------
@@ -87,7 +86,7 @@ public   &
 
 private   &
 !  module subroutines called by donner_deep_init:
-        register_fields, read_restart, read_restart_nc,  &
+        register_fields, read_restart_nc,  &
         process_coldstart,&
 !  module subroutines called by donner_deep:
         donner_deep_netcdf, donner_column_control,     &
@@ -426,7 +425,7 @@ type(donner_save_type), intent(inout)      :: Don_save
         integer :: nn, n
       logical                             :: flag
       character(len=200)                  :: method_name, method_control
-      real                                :: frac_junk
+      real                                :: frac_junk, frac_junk2
 
         Initialized%do_donner_tracer = .true.
         nn = 1
@@ -443,7 +442,7 @@ type(donner_save_type), intent(inout)      :: Don_save
                                    Initialized%wetdep(nn)%scheme, &
                                    Initialized%wetdep(nn)%Henry_constant, &
                                    Initialized%wetdep(nn)%Henry_variable, &
-                                   frac_junk, &
+                                   frac_junk, frac_junk2, &
                                    Initialized%wetdep(nn)%alpha_r, &
                                    Initialized%wetdep(nn)%alpha_s , &
                                    Initialized%wetdep(nn)%Lwetdep, &
@@ -510,6 +509,7 @@ type(donner_nml_type), intent(inout) :: Nml
 integer, intent(in) :: secs, days, ntracers
 
       type(time_type) :: Time
+integer :: outunit
 
      Time = set_time (secs, days)
 
@@ -523,9 +523,14 @@ integer, intent(in) :: secs, days, ntracers
 !    if a netcdf restart file is present, call read_restart_nc to read 
 !    it.
 !--------------------------------------------------------------------
+      !--- register restart field to be ready to be written out.
+      call fms_donner_register_restart('donner_deep.res.nc', Initialized, ntracers, Don_save, Nml)
+
       if (file_exist ('INPUT/donner_deep.res.nc') ) then
-        Initialized%coldstart= .false.
-        call read_restart_nc (ntracers, Initialized,Nml, Don_save)
+       Initialized%coldstart= .false.
+!        call read_restart_nc (ntracers, Initialized,Nml, Don_save)
+       call restore_state(Don_restart)
+       if (in_different_file) call restore_state(Til_restart)
 
 !--------------------------------------------------------------------
 !    if a native mode restart file is present, call read_restart 
@@ -533,8 +538,8 @@ integer, intent(in) :: secs, days, ntracers
 !--------------------------------------------------------------------
       else if (file_exist ('INPUT/donner_deep.res') ) then
         Initialized%coldstart= .false.
-        call read_restart (ntracers, Time, Initialized, Nml, Don_save)
-
+        call error_mesg ( 'fms_donner_mod', 'Native restart capability has been removed.', &
+                                         FATAL)
 !--------------------------------------------------------------------
 !    if no restart file is present, call subroutine process_coldstart
 !    to define the needed variables.
@@ -543,8 +548,6 @@ integer, intent(in) :: secs, days, ntracers
         call process_coldstart (Time, Initialized, Nml, Don_save)
       endif
 
-      !--- register restart field to be ready to be written out.
-      call fms_donner_register_restart('donner_deep.res.nc', Initialized, ntracers, Don_save, Nml)
 
 end subroutine fms_donner_read_restart 
 
@@ -713,13 +716,6 @@ subroutine fms_donner_write_restart (Initialized, timestamp)
 !    call subroutine to write restart file. NOTE: only the netcdf 
 !    restart file is currently supported.
 !-------------------------------------------------------------------
-      if (.NOT. do_netcdf_restart) then
-          call error_mesg ('fms_donner_mod', 'fms_donner_write_restart: &
-          &writing a netcdf restart despite request for native &
-           &format (not currently supported); if you must have native &
-           &mode, then you must update the source code and remove &
-                                               &this if loop.', NOTE)
-      endif
       if (mpp_pe() == mpp_root_pe() ) then
         if (.not. (write_reduced_restart_file) ) then
           call error_mesg ('donner_deep_mod', 'write_restart_nc: &
@@ -2263,245 +2259,6 @@ type(donner_nml_type), intent(inout) :: Nml
     endif ! (do_ensemble_diagnostics)
 
 end subroutine register_fields 
-
-
-
-!####################################################################
-
-subroutine read_restart (ntracers, Time, Initialized, Nml, Don_save)
-
-!---------------------------------------------------------------------
-!    subroutine read_restart reads a native mode restart file, which are
-!    not written by this code version. currently only restart version #8 
-!    may be read to provide initial conditions for an experiment run with
-!    this code version. this routine remains as a template for any user 
-!    who is unable to process the current standard netcdf restart file, 
-!    and must modify the current code to write a native mode file. 
-!---------------------------------------------------------------------
-
-integer, intent(in)         :: ntracers
-type(time_type), intent(in) :: Time
-type(donner_initialized_type), intent(inout) :: Initialized
-type(donner_save_type), intent(inout) :: Don_save
-type(donner_nml_type), intent(inout) :: Nml     
-
-!----------------------------------------------------------------------
-!   intent(in) variables:
-!
-!     ntracers               number of tracers to be transported by
-!                            the donner deep convection parameterization
-!     Time                   current time [ time_type ]
-!
-!---------------------------------------------------------------------
-
-!-----------------------------------------------------------------------
-!   local variables:
-
-      logical, dimension(ntracers)  :: success
-      integer                       :: old_freq
-      integer                       :: unit, vers
-      character(len=8)              :: chvers
-      character(len=32)             :: tracername_in
-      integer                       :: ntracers_in
-      integer                       :: n, nn
-
-!-----------------------------------------------------------------------
-!   local variables:
-!
-!     success      logical array indicating whether data for each trans-
-!                  ported tracer is present in restart file
-!     old_freq     donner_Deep_freq used in job which wrote the restart
-!                  file, used in versions 5 and higher [ seconds ]
-!     unit         io unit number assigned to restart file
-!     vers         restart version number of file being read
-!     chvers       character representation of restart version of file
-!                  being read
-!     tracername_in
-!                  tracer name read from restart file, used in versions
-!                  6, 7 and 8
-!     ntracers_in  number of tracers contained in restart file, used in
-!                  versions 6, 7 and 8.
-!     n, nn, k     do-loop indices
-!
-!--------------------------------------------------------------------
-
-
-!-------------------------------------------------------------------- 
-!    open the restart file.
-!--------------------------------------------------------------------- 
-      unit = open_restart_file ('INPUT/donner_deep.res', 'read')
-
-!--------------------------------------------------------------------- 
-!    read and check restart version number. 
-!-------------------------------------------------------------------- 
-      read (unit) vers 
-      if ( .not. any(vers == restart_versions) ) then 
-        write (chvers,'(i4)') vers 
-        call error_mesg ('donner_deep_mod', 'read_restart: &  
-            &restart version '//chvers//' cannot be used'//& 
-            'as a restart file for the current code release; &
-            & a COLDSTART will be initiated', NOTE)
-         call process_coldstart (Time, Initialized, Nml, Don_save)
-         return
-      endif 
-      if (vers >= 9) then 
-        call error_mesg ('donner_deep_mod', 'read_restart: & 
-         &native mode restart versions above #8 are totally the &
-         &responsibility of the user; be sure you process it properly!',&
-                                                                   NOTE) 
-      endif 
-
-!-------------------------------------------------------------------- 
-!    read the time remaining before the next calculation call ( which
-!    becomes Initialized%conv_alarm, in seconds) and the donner deep 
-!    frequency used in the job writing the file, also in seconds 
-!    (old_freq).
-!---------------------------------------------------------------------
-      read (unit) Initialized%conv_alarm, old_freq
-
-!--------------------------------------------------------------------
-!    determine if it is desired to change the donner_deep_freq from that
-!    used in the previous job. if so, modify the alarm as read from the 
-!    restart file.
-!--------------------------------------------------------------------
-      if (Nml%donner_deep_freq /= old_freq ) then
-        Initialized%conv_alarm = Initialized%conv_alarm - old_freq + &
-                                 Nml%donner_deep_freq
-        if (mpp_pe() == mpp_root_pe()) then
-          call error_mesg ('donner_deep_mod', 'read_restart:  &
-            &donner_deep time step has changed', NOTE)
-        endif
-      endif
-
-!---------------------------------------------------------------------
-!    read the total heating and moistening rates produced by the donner
-!    deep convection parameterization from the restart file.
-!---------------------------------------------------------------------
-      call read_data (unit, Don_save%cemetf)
-      call read_data (unit, Don_save%cememf)
-
-!----------------------------------------------------------------------
-!    read the mass flux and large-scale cloud tendencies needed by 
-!    strat_cloud_mod. if this is an earlier file, set these values to 
-!    0.0.
-!----------------------------------------------------------------------
-      call read_data (unit, Don_save%mass_flux)
-      call read_data (unit, Don_save%dql_strat )
-      call read_data (unit, Don_save%dqi_strat )
-      call read_data (unit, Don_save%dqa_strat )
-
-!----------------------------------------------------------------------
-!    read the accumulated vertical displacement of a boundary layer 
-!    parcel.
-!----------------------------------------------------------------------
-      call read_data (unit, Don_save%parcel_disp)
-
-!----------------------------------------------------------------------
-!    read the total precipitation produced by the donner parameteriz-
-!    ation.
-!----------------------------------------------------------------------
-      call read_data (unit, Don_save%tprea1)
-
-!----------------------------------------------------------------------
-!    read the temperature, mixing ratio and pressure fields at the lag 
-!    time step from the restart file.        
-!----------------------------------------------------------------------
-      call read_data (unit, Don_save%lag_temp)
-      call read_data (unit, Don_save%lag_vapor)
-      call read_data (unit, Don_save%lag_press)
-
-!----------------------------------------------------------------------
-!    two fields which are needed by strat_cloud_mod are available and 
-!    are read in. 
-!----------------------------------------------------------------------
-      call read_data (unit, Don_save%humidity_area)
-      if (vers == 9) then
-        call error_mesg ('donner_deep_mod', &
-          'version 9 not acceptable restart -- needs to have humidity_factor&
-            & rather than humidity_ratio', FATAL)
-      else
-        call read_data (unit, Don_save%humidity_factor)
-      endif
-
-!------------------------------------------------------------------
-!    if tracers are to be transported by the donner parameterization,
-!    determine if the current tendencies are available on the restart.
-!------------------------------------------------------------------
-      if (Initialized%do_donner_tracer) then
-
-!------------------------------------------------------------------
-!    read the number of tracers whose tendencies are included in 
-!    this file. tracer tendencies are available only in version #6 and
-!    higher.
-!-------------------------------------------------------------------
-        success = .false.
-        read (unit) ntracers_in 
-
-!--------------------------------------------------------------------
-!    read each restart file tracer's name and see if it is to be 
-!    transported in the current job.
-!--------------------------------------------------------------------
-        do n=1,ntracers_in
-          read (unit) tracername_in
-          do nn=1,ntracers
-
-!--------------------------------------------------------------------
-!    if the tracer is needed in the current job, read its data and
-!    store it in the appropriate array. write a note indicating that 
-!    the data has bben found and set a logical variable to also 
-!    indicate such. exit this loop and process the next tracer present
-!    in the restart file.
-!--------------------------------------------------------------------
-            if (trim(tracername_in) ==     &
-                trim(Don_save%tracername(nn))) then
-              call read_data(unit, Don_save%tracer_tends(:,:,:,nn))
-              if (mpp_pe() == mpp_root_pe() ) then
-                call error_mesg ('donner_deep_mod', 'read_restart: &
-                         &found tracer restart data for ' // &
-                         trim(Don_save%tracername(nn)), NOTE)
-              endif
-              success(nn) = .true.
-              exit 
-
-!---------------------------------------------------------------------
-!    if the tracer in the restart file is not needed by the current
-!    job, do a dummy read to get to the next record.
-!---------------------------------------------------------------------
-            else 
-              if (nn == ntracers) then
-                read (unit)
-              endif
-            endif
-          end do
-        end do
-
-!---------------------------------------------------------------------
-!    after having completely read the file, initialize the time ten-
-!    dencies to 0.0 for any tracers whose tinme tendencies were not
-!    found on the restart file and enter a message in the output file.
-!---------------------------------------------------------------------
-        do nn=1,ntracers
-          if (success(nn) ) then
-          else
-            call error_mesg ('donner_deep_mod', 'read_restart: &
-                  &did not find tracer restart data for ' //  &
-                  trim(Don_save%tracername(nn)) //  &
-                  '; am initializing tendency to 0.0', NOTE)
-            Don_save%tracer_tends(:,:,:,nn) = 0.0
-          endif   
-        end do
-      endif  ! (do_donner_tracer)
-
-!-------------------------------------------------------------------- 
-!    close the restart file.
-!--------------------------------------------------------------------- 
-      call close_file (unit)
-
-!--------------------------------------------------------------------- 
-
-
-
-end subroutine read_restart
 
 !#####################################################################
 

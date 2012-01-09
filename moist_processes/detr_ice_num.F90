@@ -17,8 +17,8 @@ public  detr_ice_num,  detr_ice_num_init,  detr_ice_num_end
 
 !-----------------------------------------------------------------------
 !----version number-----------------------------------------------------
-character(len=128) :: version = '$Id: detr_ice_num.F90,v 1.1.2.1 2011/03/02 08:00:33 Richard.Hemler Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: detr_ice_num.F90,v 19.0 2012/01/06 20:10:40 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------

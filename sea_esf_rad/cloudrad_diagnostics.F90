@@ -22,7 +22,8 @@ use fms_mod,                 only: fms_init, open_namelist_file, &
                                    mpp_root_pe, stdlog, file_exist,  &
                                    check_nml_error, error_mesg,   &
                                    FATAL, NOTE, close_file
-use time_manager_mod,        only: time_type, time_manager_init
+use time_manager_mod,        only: time_type, time_manager_init,  &
+                                   operator(>)
 use diag_manager_mod,        only: register_diag_field, send_data, &
                                    diag_manager_init
 use constants_mod,           only: diffac, GRAV, RDGAS
@@ -65,8 +66,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 18.0.2.1.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 19.0 2012/01/06 20:14:11 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -959,7 +960,7 @@ end subroutine modis_cmip
 !    fields. 
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call cloudrad_netcdf (is, js, Time_diag, Atmos_input, cosz, &
+!   call cloudrad_netcdf (is, js, Time, Time_diag, Atmos_input, cosz, &
 !                            Lsc_microphys, Meso_microphys, &
 !                            Cell_microphys, Shallow_microphys, &
 !                            Lscrad_props,  Mesorad_props, &
@@ -970,6 +971,9 @@ end subroutine modis_cmip
 !  <IN NAME="is,js" TYPE="integer">
 !   starting subdomain i,j indices of data in
 !                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="Time" TYPE="time_type">
+!   current time [ time_type(days, seconds) ]
 !  </IN>
 !  <IN NAME="Time_diag" TYPE="time_type">
 !   time on next timestep, used as stamp for 
@@ -1025,7 +1029,7 @@ end subroutine modis_cmip
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine cloudrad_netcdf (is, js, Time_diag, Atmos_input, cosz, &
+subroutine cloudrad_netcdf (is, js, Time, Time_diag, Atmos_input, cosz, &
                             Lsc_microphys, Meso_microphys, &
                             Cell_microphys, Shallow_microphys, &
                             Lscrad_props,   &
@@ -1040,7 +1044,7 @@ subroutine cloudrad_netcdf (is, js, Time_diag, Atmos_input, cosz, &
 !---------------------------------------------------------------------
 
 integer,                        intent(in)      :: is, js
-type(time_type),                intent(in)      :: Time_diag
+type(time_type),                intent(in)      :: Time, Time_diag
 type(atmos_input_type),         intent(in)      :: Atmos_input
 real, dimension(:,:),           intent(in)      :: cosz        
 type(microphysics_type),        intent(in)      :: Lsc_microphys, &
@@ -1062,6 +1066,7 @@ real, dimension(:,:,:),         intent(in),  &
 !
 !      is,js           starting subdomain i,j indices of data 
 !                      in the physics_window being integrated
+!      Time            current time [time_type(days, seconds)]
 !      Time_diag       time on next timestep, used as stamp for 
 !                      diagnostic output [ time_type (days, seconds) ]
 !      Atmos_input     atmospheric input fields on model grid,
@@ -1189,6 +1194,8 @@ real, dimension(:,:,:),         intent(in),  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
+
+if (Time_diag > Time) then
 
 !--------------------------------------------------------------------
 !    define the array dimensions on the processor.
@@ -3651,6 +3658,9 @@ real, dimension(:,:,:),         intent(in),  &
 
       endif ! (do_stochastic_clouds)
 
+endif ! (Time_Diag > Time)
+
+
 !---------------------------------------------------------------------
 
 
@@ -3693,17 +3703,17 @@ type(microphysics_type), intent(inout) :: Model_microphys
         deallocate (Model_microphys%stoch_ice_number)
       endif ! (do_stochastic_clouds)
 
-      deallocate (Model_microphys%conc_drop   )
-      deallocate (Model_microphys%conc_ice    )
-      deallocate (Model_microphys%conc_rain   )
-      deallocate (Model_microphys%conc_snow   )
-      deallocate (Model_microphys%size_drop   )
-      deallocate (Model_microphys%size_ice    )
-      deallocate (Model_microphys%size_rain   )
-      deallocate (Model_microphys%size_snow  )
-      deallocate (Model_microphys%cldamt      )
-      deallocate (Model_microphys%droplet_number  )
-      deallocate (Model_microphys%ice_number  )
+      if ( associated(Model_microphys%conc_drop) )      deallocate (Model_microphys%conc_drop   )
+      if ( associated(Model_microphys%conc_ice) )       deallocate (Model_microphys%conc_ice    )
+      if ( associated(Model_microphys%conc_rain) )      deallocate (Model_microphys%conc_rain   )
+      if ( associated(Model_microphys%conc_snow) )      deallocate (Model_microphys%conc_snow   )
+      if ( associated(Model_microphys%size_drop) )      deallocate (Model_microphys%size_drop   )
+      if ( associated(Model_microphys%size_ice) )       deallocate (Model_microphys%size_ice    )
+      if ( associated(Model_microphys%size_rain) )      deallocate (Model_microphys%size_rain   )
+      if ( associated(Model_microphys%size_snow) )      deallocate (Model_microphys%size_snow  )
+      if ( associated(Model_microphys%cldamt) )         deallocate (Model_microphys%cldamt      )
+      if ( associated(Model_microphys%droplet_number) ) deallocate (Model_microphys%droplet_number  )
+      if ( associated(Model_microphys%ice_number) )     deallocate (Model_microphys%ice_number  )
        
 !------------------------------------------------------------------
 

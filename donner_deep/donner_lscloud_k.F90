@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_lscloud_k.F90,v 17.0.2.1.2.1 2010/03/17 20:27:07 wfc Exp $
+!  $Id: donner_lscloud_k.F90,v 19.0 2012/01/06 20:07:28 fms Exp $
 
 !module donner_lscloud_inter_mod
 

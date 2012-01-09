@@ -41,8 +41,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 17.0.2.1.4.1.2.1.2.1.2.2 2010/09/13 16:04:08 wfc Exp $'
- character(len=128) :: tagname = '$Name: riga_201104 $'
+ character(len=128) :: version = '$Id: ras.F90,v 19.0 2012/01/06 20:11:58 fms Exp $'
+ character(len=128) :: tagname = '$Name: siena $'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -1521,7 +1521,7 @@ endif
 ! --- Check for presence of optional arguments
   Ldacu = PRESENT( Dacu )
   Lmccu = PRESENT( mccu ) 
-  LRcu  = .TRUE.
+  LRcu  = (num_ras_tracers > 0 ) !.TRUE.
   do_liq_num = PRESENT(qn) 
 
 
@@ -2608,7 +2608,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 17.0.2.1.4.1.2.1.2.1.2.2 2010/09/13 16:04:08 wfc Exp $
+!     $Id: ras.F90,v 19.0 2012/01/06 20:11:58 fms Exp $
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

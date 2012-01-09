@@ -1,4 +1,4 @@
-!  $Id: donner_nml.h,v 17.0 2009/07/21 02:54:40 fms Exp $
+!  $Id: donner_nml.h,v 19.0 2012/01/06 20:08:02 fms Exp $
 
 !---------------------------------------------------------------------
 !---namelist----
@@ -222,13 +222,6 @@ logical             :: limit_pztm_to_tropo = .false.
 !   and so are not included in the donner_nml_type variable:
 !----------------------------------------------------------------------
 
-logical             :: do_netcdf_restart = .true.
-                             ! restart file written in netcdf format 
-                             ! (option is native mode) 
-                             ! NOTE: current code will produce ONLY
-                             ! a netcdf restart; if native mode restart 
-                             ! is desired, user must update the source 
-                             ! code appropriately.
 logical             :: write_reduced_restart_file = .false.
                              ! by setting this variable to .true., the 
                              ! user is asserting that the donner deep 
@@ -303,7 +296,7 @@ namelist / donner_deep_nml /      &
   use_memphis_size_limits, use_pdeep_cv, wmin_ratio,                           &
 ! not contained in donner_nml_type variable:
 
-  diagnostics_pressure_cutoff, diagnostics_start_time, do_netcdf_restart, &
+  diagnostics_pressure_cutoff, diagnostics_start_time,  &
   i_coords_gl, j_coords_gl, lat_coords_gl, lon_coords_gl, num_diag_pts_ij, &
   num_diag_pts_latlon, write_reduced_restart_file
 

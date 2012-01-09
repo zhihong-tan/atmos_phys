@@ -1,6 +1,6 @@
 !#VERSION NUMBER:
-!  $Name: riga_201104 $
-!  $Id: donner_deep_k.F90,v 17.0.2.1.2.1.2.1.2.1.2.2 2010/09/08 21:29:57 wfc Exp $
+!  $Name: siena $
+!  $Id: donner_deep_k.F90,v 19.0 2012/01/06 20:07:24 fms Exp $
 
 !module donner_deep_inter_mod
 

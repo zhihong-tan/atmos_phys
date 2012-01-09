@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: icarus.f90,v 1.1.2.2 2010/05/24 18:59:16 wfc Exp $
-! $Name: riga_201104 $
+! $Id: icarus.f90,v 19.0 2012/01/06 20:04:20 fms Exp $
+! $Name: siena $
 
       SUBROUTINE ICARUS(          &
      &     debug,                 &
@@ -42,7 +42,7 @@
      &     passing_in_column_data &
      &)
 
-!$Id: icarus.f90,v 1.1.2.2 2010/05/24 18:59:16 wfc Exp $
+!$Id: icarus.f90,v 19.0 2012/01/06 20:04:20 fms Exp $
 
 ! *****************************COPYRIGHT****************************
 ! (c) 2009, Lawrence Livermore National Security Limited Liability 

@@ -1,7 +1,7 @@
  
 !VERSION NUMBER:
-!  $Name: riga_201104 $
-!  $Id: wet_deposition_0D.F90,v 17.0.2.1.4.1 2010/03/17 20:27:08 wfc Exp $
+!  $Name: siena $
+!  $Id: wet_deposition_0D.F90,v 19.0 2012/01/06 20:09:12 fms Exp $
 
 !<SUBROUTINE NAME = "wet_deposition_0D">
 !<TEMPLATE>

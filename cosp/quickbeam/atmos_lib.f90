@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
         
-! $Id: atmos_lib.f90,v 1.1.2.1.2.1 2009/08/10 10:48:14 rsh Exp $
-! $Name: riga_201104 $
+! $Id: atmos_lib.f90,v 19.0 2012/01/06 20:04:38 fms Exp $
+! $Name: siena $
 
 ! ATMOS_LIB: Atmospheric science procedures for F90
 ! Compiled/Modified:

@@ -29,8 +29,8 @@ public  microphysics, microphysics_init, microphysics_end
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-character(len=128) :: version = '$Id: microphysics.F90,v 1.1.2.1 2011/03/02 08:18:07 Richard.Hemler Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: microphysics.F90,v 19.0 2012/01/06 20:26:13 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 
 logical :: module_is_initialized = .false.
@@ -143,7 +143,7 @@ type(diag_pt_type),                intent(inout) :: diag_pt
                          Cloud_state%SI_out, Precip_state%rain3d,  &
                          Precip_state%snow3d, Precip_state%snowclr3d,    &
                          Precip_state%surfrain, Precip_state%surfsnow,  &
-                         otun)                 
+                         Cloud_processes%f_snow_berg, otun)                 
       else if (Constants%do_mg_microphys) then
 
 !--------------------------------------------------------------------------
@@ -208,7 +208,9 @@ type(diag_pt_type),                intent(inout) :: diag_pt
                   Precip_state%surfsnow, Precip_state%qrout3d_mg(:,j,:),   &
                   Precip_state%qsout3d_mg(:,j,:), Precip_state%lsc_snow, &
                   Precip_state%lsc_rain, Precip_state%lsc_snow_size, &
-                  Precip_state%lsc_rain_size, n_diag_4d, diag_4d, diag_id, &
+                  Precip_state%lsc_rain_size,   &
+                  Cloud_processes%f_snow_berg(:,j,:), &
+                  n_diag_4d, diag_4d, diag_id, &
                   diag_pt, nrefuse, debugo0, debugo1, otun)    
 
 !------------------------------------------------------------------------

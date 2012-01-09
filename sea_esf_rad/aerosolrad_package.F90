@@ -58,8 +58,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:31 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 19.0 2012/01/06 20:13:05 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -1754,6 +1754,9 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props
             endif
           endif
 !$OMP END MASTER
+#ifndef IBM_FIX 
+!$OMP BARRIER
+#endif 
           Aerosol_props%aerextbandlw = aerextbandlw_MOD
           Aerosol_props%aerssalbbandlw = aerssalbbandlw_MOD
           Aerosol_props%aerextbandlw_cn = aerextbandlw_cn_MOD

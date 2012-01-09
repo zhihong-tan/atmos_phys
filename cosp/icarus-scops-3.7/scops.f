@@ -5,8 +5,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: scops.f,v 18.0.2.1 2010/03/25 00:31:40 pjp Exp $
-! $Name: riga_201104 $
+! $Id: scops.f,v 19.0 2012/01/06 20:04:24 fms Exp $
+! $Name: siena $
  
 
 

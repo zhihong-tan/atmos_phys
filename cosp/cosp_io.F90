@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_io.F90,v 1.1.2.1.8.1 2010/08/30 20:33:33 wfc Exp $
-! $Name: riga_201104 $
+! $Id: cosp_io.F90,v 19.0 2012/01/06 20:03:25 fms Exp $
+! $Name: siena $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -57,8 +57,8 @@ MODULE MOD_COSP_IO
   
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------     
-character(len=128)  :: versiona =  '$Id: cosp_io.F90,v 1.1.2.1.8.1 2010/08/30 20:33:33 wfc Exp $'
-character(len=128)  :: tagnamea =  '$Name: riga_201104 $'
+character(len=128)  :: versiona =  '$Id: cosp_io.F90,v 19.0 2012/01/06 20:03:25 fms Exp $'
+character(len=128)  :: tagnamea =  '$Name: siena $'
 
   ! Types to be used as arrays of pointers
   TYPE var1d
@@ -1037,7 +1037,7 @@ CONTAINS
              Ltauwlogmodis,Ltauilogmodis,Lreffclwmodis,Lreffclimodis,Lpctmodis,Llwpmodis, &
              Liwpmodis,Lclmodis
 
-  integer :: unit, io, ierr
+  integer :: unit, io, ierr, logunit
   
   do i=1,N_OUT_LIST
     cfg%out_list(i)=''
@@ -1065,8 +1065,9 @@ CONTAINS
 !    write namelist to logfile.
 !---------------------------------------------------------------------
      call write_version_number (versiona, tagnamea)
+     logunit = stdlog()
      if (mpp_pe() == mpp_root_pe() )    &
-                        write (stdlog(), nml=cosp_output)
+                        write (logunit, nml=cosp_output)
 
   
   ! Deal with dependencies

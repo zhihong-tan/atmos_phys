@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 18.0.2.1 2010/08/30 20:33:32 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 19.0 2012/01/06 20:14:13 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -471,7 +471,8 @@ end subroutine cloudrad_package_init
 !    appropriate for the radiation options that are active.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call cloud_radiative_properties (is, ie, js, je, Rad_time, Time_next,  &
+!   call cloud_radiative_properties (is, ie, js, je, Rad_time, Time, &
+!                                       Time_next,  &
 !                                       Astro, Atmos_input, Cld_spec,  &
 !                                       Lsc_microphys, Meso_microphys, &
 !                                       Cell_microphys, 
@@ -481,6 +482,9 @@ end subroutine cloudrad_package_init
 !  <IN NAME="is,ie,js,je" TYPE="integer">
 !   starting/ending subdomain i,j indices of data in
 !                   the physics_window being integrated
+!  </IN>
+!  <IN NAME="Time" TYPE="time_type">
+!    Time      The current time.  [time_type]
 !  </IN>
 !  <IN NAME="Time_next" TYPE="time_type">
 !   time on next timestep, used as stamp for 
@@ -526,7 +530,7 @@ end subroutine cloudrad_package_init
 ! </SUBROUTINE>
 !
 subroutine cloud_radiative_properties (is, ie, js, je, Rad_time,   &
-                                       Time_next,  &
+                                       Time, Time_next,  &
                                        Astro, Atmos_input, Cld_spec,  &
                                        Lsc_microphys, Meso_microphys, &
                                        Cell_microphys,   &
@@ -541,7 +545,7 @@ subroutine cloud_radiative_properties (is, ie, js, je, Rad_time,   &
 
 !----------------------------------------------------------------------
 integer,                      intent(in)             :: is, ie, js, je
-type(time_type),              intent(in)             :: Rad_time, &
+type(time_type),              intent(in)             :: Rad_time, Time, &
                                                         Time_next
 type(astronomy_type),         intent(in)             :: Astro
 type(atmos_input_type),       intent(in)             :: Atmos_input
@@ -563,6 +567,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !                        in the physics_window being integrated
 !      Time_next         time on next timestep, used as stamp for 
 !                        diagnostic output [ time_type (days, seconds) ]
+!      Time              The current time.  [time_type]
 !      Astro             astronomical properties needed by radiation
 !                        package
 !                        [ astronomy_type ]
@@ -786,7 +791,7 @@ real, dimension(:,:,:),       intent(in),   optional :: mask
 !    call cloudrad_netcdf to generate netcdf output fields.
 !-------------------------------------------------------------------
       if (.not. Cldrad_control%do_no_clouds) then 
-          call cloudrad_netcdf (is, js, Time_next, Atmos_input,&
+          call cloudrad_netcdf (is, js, Time, Time_next, Atmos_input,&
                                 Astro%cosz, Lsc_microphys, &
                                 Meso_microphys, Cell_microphys,   &
                                 Shallow_microphys, &

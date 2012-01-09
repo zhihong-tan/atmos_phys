@@ -23,8 +23,8 @@
 
 !---------------------------------------------------------------------
 
- character(len=128) :: version = '$Id: shallow_conv.F90,v 17.0.4.1 2010/08/30 20:33:35 wfc Exp $'
- character(len=128) :: tagname = '$Name: riga_201104 $'
+ character(len=128) :: version = '$Id: shallow_conv.F90,v 19.0 2012/01/06 20:25:24 fms Exp $'
+ character(len=128) :: tagname = '$Name: siena $'
 
  logical :: module_is_initialized = .false.
 

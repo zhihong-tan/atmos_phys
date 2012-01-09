@@ -67,14 +67,13 @@ use mpp_mod,                 only: input_nml_file
 use fms_mod,                 only: mpp_clock_id, mpp_clock_begin,   &
                                    mpp_clock_end, CLOCK_MODULE_DRIVER, &
                                    fms_init,  &
-                                   open_namelist_file, stdlog, &
+                                   open_namelist_file, stdlog, stdout,  &
                                    write_version_number, field_size, &
                                    file_exist, error_mesg, FATAL,   &
                                    WARNING, NOTE, check_nml_error, &
-                                   open_restart_file, read_data, &
                                    close_file, mpp_pe, mpp_root_pe, &
-                                   write_data, mpp_error, mpp_chksum
-use fms_io_mod,              only: get_restart_io_mode, &
+                                   mpp_error, mpp_chksum
+use fms_io_mod,              only: restore_state, &
                                    register_restart_field, restart_file_type, &
                                    save_restart, get_mosaic_tile_file
 use constants_mod,           only: RDGAS
@@ -177,8 +176,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 17.0.2.1.6.1.2.1.2.1.2.2.2.1.2.1.4.1.2.1.2.1.2.1.2.2.2.1 2011/03/02 07:05:50 Richard.Hemler Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 19.0 2012/01/06 20:11:24 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -193,9 +192,6 @@ public  physics_driver_init, physics_driver_down,   &
         get_radturbten, zero_radturbten, physics_driver_restart
 
 private          &
-
-!  called from physics_driver_init:
-         read_restart_file, read_restart_nc,    &
 
 !  called from physics_driver_down:
          check_args, &
@@ -250,6 +246,13 @@ logical :: donner_meso_is_largescale = .true.
 logical :: allow_cosp_precip_wo_clouds = .true.
                                ! COSP will see {ls, cv} precip in grid-
                                ! boxes w/o {ls, cv} clouds ?
+logical :: override_aerosols_radiation = .false.
+                               ! use offline aerosols for radiation 
+                               ! calculation
+                               ! (via data_override in aerosol_driver)?
+logical :: override_aerosols_cloud = .false.
+                               ! use offline aerosols for cloud calculation
+                               ! (via data_override in aerosol_driver)?
 
 ! <NAMELIST NAME="physics_driver_nml">
 !  <DATA NAME="do_radiation" UNITS="" TYPE="logical" DIM="" DEFAULT=".true.">
@@ -272,6 +275,14 @@ logical :: allow_cosp_precip_wo_clouds = .true.
 !diffusion coefficients should be 
 ! smoothed in time?
 !  </DATA>
+! <DATA NAME="override_aerosols_radiation" UNITS="" TYPE="logical" DIM=""  DEFAULT=".false.">
+!use offline aerosols for radiation calculation
+! (via data_override in aerosol_driver)?
+!  </DATA>
+!  <DATA NAME="override_aerosols_cloud" UNITS="" TYPE="logical" DIM="" DEFAULT=".false.">
+!use offline aerosols for cloud calculation
+! (via data_override in aerosol_driver)?
+!  </DATA>
 ! </NAMELIST>
 !
 namelist / physics_driver_nml / do_radiation, &
@@ -282,7 +293,9 @@ namelist / physics_driver_nml / do_radiation, &
                                 do_moist_processes, tau_diff,      &
                                 diff_min, diffusion_smooth, &
                                 use_cloud_tracers_in_radiation, &
-                                do_grey_radiation, R1, R2, R3, R4 
+                                do_grey_radiation, R1, R2, R3, R4,  &
+                                override_aerosols_radiation,  &
+                                override_aerosols_cloud 
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -407,7 +420,6 @@ real   ,    dimension(:,:)  , allocatable :: tsurf_save
 type(restart_file_type), pointer, save :: Phy_restart => NULL()
 type(restart_file_type), pointer, save :: Til_restart => NULL()
 logical                                :: in_different_file = .false.
-logical                                :: do_netcdf_restart = .true.              
 integer                                :: vers
 integer                                :: now_doing_strat  
 integer                                :: now_doing_entrain
@@ -440,7 +452,7 @@ integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
 integer   :: ncol                     ! number of stochastic columns
  
-type(radiative_gases_type)   :: Rad_gases_tv
+type(radiative_gases_type), save   :: Rad_gases_tv
 type(time_type)  :: Rad_time
 logical          ::    need_aerosols, need_clouds, need_gases,   &
                        need_basic
@@ -582,7 +594,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
       character(len=64), dimension(:), pointer :: aerosol_names => NULL()
       character(len=64), dimension(:), pointer :: aerosol_family_names => NULL()
       integer          ::  id, jd, kd, n
-      integer          ::  ierr, io, unit, logunit
+      integer          ::  ierr, io, unit, logunit, outunit
       integer          ::  ndum
 
       integer          ::  moist_processes_init_clock, damping_init_clock, &
@@ -641,8 +653,6 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 
       if(do_radiation .and. do_grey_radiation) & 
         call error_mesg('physics_driver_init','do_radiation and do_grey_radiation cannot both be .true.',FATAL)
-
-      call get_restart_io_mode(do_netcdf_restart)
 
 !--------------------------------------------------------------------
 !    write version number and namelist to log file.
@@ -820,16 +830,16 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !---------------------------------------------------------------------
 !    allocate space for the module variables.
 !---------------------------------------------------------------------
-      allocate ( diff_t     (id, jd, kd) )
-      allocate ( diff_m     (id, jd, kd) )
-      allocate ( diff_cu_mo (id, jd, kd) ) 
-      allocate ( pbltop     (id, jd) )
-      allocate ( cush       (id, jd) ); cush=-1. !miz
-      allocate ( cbmf       (id, jd) ); cbmf=0.0 !miz
-      allocate ( convect    (id, jd) )
-      allocate ( radturbten (id, jd, kd))
-      allocate ( lw_tendency(id, jd, kd))
-      allocate ( r_convect  (id, jd) )       
+      allocate ( diff_t     (id, jd, kd) ) ; diff_t = 0.0
+      allocate ( diff_m     (id, jd, kd) ) ; diff_m = 0.0
+      allocate ( diff_cu_mo (id, jd, kd) ) ; diff_cu_mo = 0.0
+      allocate ( pbltop     (id, jd) )     ; pbltop     = -999.0
+      allocate ( cush       (id, jd) )     ; cush=-1. !miz
+      allocate ( cbmf       (id, jd) )     ; cbmf=0.0 !miz
+      allocate ( convect    (id, jd) )     ; convect = .false.
+      allocate ( radturbten (id, jd, kd))  ; radturbten = 0.0
+      allocate ( lw_tendency(id, jd, kd))  ; lw_tendency = 0.0
+      allocate ( r_convect  (id, jd) )     ; r_convect   = 0.0
        
 !--------------------------------------------------------------------
 !    these variables needed to preserve rain fluxes, q and T from end 
@@ -922,11 +932,11 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
        allocate (lsc_snow           (id, jd, kd) )
        allocate (lsc_rain_size      (id, jd, kd) )
        allocate (lsc_snow_size      (id, jd, kd) )
-       lsc_cloud_area      = 0.
-       lsc_liquid          = 0.
-       lsc_ice             = 0.
-       lsc_droplet_number  = 0.
-       lsc_ice_number  = 0.
+       lsc_cloud_area      = -99.
+       lsc_liquid          = -99.
+       lsc_ice             = -99.
+       lsc_droplet_number  = -99.
+       lsc_ice_number      = -99.
    ! snow, rain
        lsc_rain = 0.
        lsc_snow = 0.
@@ -949,16 +959,68 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 
 !--------------------------------------------------------------------
 !    call physics_driver_read_restart to obtain initial values for the module
-!    variables. Also register restart fields to be ready for intermediate restart if
-!    do_netcdf_restart is true.
+!    variables. Also register restart fields to be ready for intermediate 
+!    restart.
 !--------------------------------------------------------------------
-     
-      if(do_netcdf_restart) call physics_driver_register_restart
+
+      call physics_driver_register_restart
       if(file_exist('INPUT/physics_driver.res.nc')) then
-         call read_restart_nc
-      else
-         call read_restart_file
+         call restore_state(Phy_restart)
+         if(in_different_file) call restore_state(Til_restart)
       endif
+!---------------------------------------------------------------------
+!    a flag indicating columns in which convection is occurring is
+!    present beginning with v4. if not present, set it to .false.
+!---------------------------------------------------------------------
+      convect = .false.
+      where(r_convect .GT. 0.) 
+         convect = .true.
+      end where
+         
+100 FORMAT("CHECKSUM::",A32," = ",Z20)
+      outunit = stdout()
+      write(outunit,*) 'BEGIN CHECKSUM(physics_driver_init):: '
+      write(outunit,100) 'diff_cu_mo             ', mpp_chksum(diff_cu_mo            )
+      write(outunit,100) 'pbltop                 ', mpp_chksum(pbltop                )
+      write(outunit,100) 'cush                   ', mpp_chksum(cush                  )
+      write(outunit,100) 'cbmf                   ', mpp_chksum(cbmf                  )
+      write(outunit,100) 'diff_t                 ', mpp_chksum(diff_t                )
+      write(outunit,100) 'diff_m                 ', mpp_chksum(diff_m                )
+      write(outunit,100) 'r_convect              ', mpp_chksum(r_convect             )
+      write(outunit,100) 'radturbten             ', mpp_chksum(radturbten            )
+      write(outunit,100) 'lw_tendency            ', mpp_chksum(lw_tendency           )
+      if ( doing_donner ) then
+         write(outunit,100) 'cell_cld_frac          ', mpp_chksum(cell_cld_frac         )
+         write(outunit,100) 'cell_liq_amt           ', mpp_chksum(cell_liq_amt          )
+         write(outunit,100) 'cell_liq_size          ', mpp_chksum(cell_liq_size         )
+         write(outunit,100) 'cell_ice_amt           ', mpp_chksum(cell_ice_amt          )
+         write(outunit,100) 'cell_ice_size          ', mpp_chksum(cell_ice_size         )
+         write(outunit,100) 'meso_cld_frac          ', mpp_chksum(meso_cld_frac         )
+         write(outunit,100) 'meso_liq_amt           ', mpp_chksum(meso_liq_amt          )
+         write(outunit,100) 'meso_liq_size          ', mpp_chksum(meso_liq_size         )
+         write(outunit,100) 'meso_ice_amt           ', mpp_chksum(meso_ice_amt          )
+         write(outunit,100) 'meso_ice_size          ', mpp_chksum(meso_ice_size         )
+         write(outunit,100) 'meso_droplet_number    ', mpp_chksum(meso_droplet_number   )
+         write(outunit,100) 'nsum_out               ', mpp_chksum(nsum_out              )
+      endif
+      if ( doing_uw_conv ) then
+         write(outunit,100) 'shallow_cloud_area     ', mpp_chksum(shallow_cloud_area    )
+         write(outunit,100) 'shallow_liquid         ', mpp_chksum(shallow_liquid        )
+         write(outunit,100) 'shallow_ice            ', mpp_chksum(shallow_ice           )
+         write(outunit,100) 'shallow_droplet_number ', mpp_chksum(shallow_droplet_number)
+         write(outunit,100) 'shallow_ice_number     ', mpp_chksum(shallow_ice_number    )
+      endif
+      write(outunit,100) 'lsc_cloud_area         ', mpp_chksum(lsc_cloud_area        )
+      write(outunit,100) 'lsc_liquid             ', mpp_chksum(lsc_liquid            )
+      write(outunit,100) 'lsc_ice                ', mpp_chksum(lsc_ice               )
+      write(outunit,100) 'lsc_droplet_number     ', mpp_chksum(lsc_droplet_number    )
+      write(outunit,100) 'lsc_ice_number         ', mpp_chksum(lsc_ice_number        )
+      write(outunit,100) 'lsc_snow               ', mpp_chksum(lsc_snow              )
+      write(outunit,100) 'lsc_rain               ', mpp_chksum(lsc_rain              )
+      write(outunit,100) 'lsc_snow_size          ', mpp_chksum(lsc_snow_size         )
+      write(outunit,100) 'lsc_rain_size          ', mpp_chksum(lsc_rain_size         )
+     
+
       vers = restart_versions(size(restart_versions(:)))
 
 !---------------------------------------------------------------------
@@ -1431,6 +1493,7 @@ subroutine physics_driver_down (is, ie, js, je,                       &
                                 phalfgrey,                            &
                                 u, v, t, q, r, um, vm, tm, qm, rm,    &
                                 frac_land, rough_mom,                 &
+                                frac_open_sea,                        &
                                 albedo, albedo_vis_dir, albedo_nir_dir,&
                                 albedo_vis_dif, albedo_nir_dif,       &
                                 t_surf_rad,                           &
@@ -1476,7 +1539,8 @@ real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    albedo_vis_dir, albedo_nir_dir, &
                                                    albedo_vis_dif, albedo_nir_dif, &
                                                    u_star, b_star,    &
-                                                   q_star, dtau_du, dtau_dv
+                                                   q_star, dtau_du,   &
+                                                   dtau_dv, frac_open_sea
 real,dimension(:,:),     intent(inout)          :: tau_x,  tau_y
 real,dimension(:,:,:),   intent(inout)          :: udt,vdt,tdt,qdt
 real,dimension(:,:,:,:), intent(inout)          :: rdt
@@ -1725,7 +1789,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       if (need_aerosols) then
         call aerosol_driver (is, js, Rad_time, r, &
                              Atmos_input%phalf, Atmos_input%pflux, &
-                             Aerosol)
+                             Aerosol, override_aerosols_radiation)
       endif
  
 !---------------------------------------------------------------------
@@ -2221,6 +2285,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call mpp_clock_begin ( tracer_clock )
       call atmos_tracer_driver (is, ie, js, je, Time, lon, lat,  &
                                 area, z_pbl, rough_mom,         &
+                                frac_open_sea,   &
                                 frac_land, p_half, p_full,  &
                                 u, v, t, q, r, &
                                 rm, rdt, dt, &
@@ -2696,7 +2761,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
 	pflux(:,:,size(p_full,3)+1) = p_full(:,:,size(p_full,3)) 
         call aerosol_driver (is, js, Time, r, &
                              p_half, pflux, &
-                             Aerosol)
+                             Aerosol, override_aerosols_cloud)
         end if
 !--------------------------------------------------------------------
 !    on steps on which the cosp simulator is called, move the values
@@ -3331,25 +3396,18 @@ subroutine physics_driver_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
 
-  if(do_netcdf_restart) then
-    if (mpp_pe() == mpp_root_pe() ) then
-       call error_mesg('physics_driver_mod', 'Writing netCDF formatted restart file: RESTART/physics_driver.res.nc', NOTE)
-    endif
-    call physics_driver_netcdf(timestamp)
-    call vert_turb_driver_restart(timestamp)
-    if (do_radiation) then
-      call radiation_driver_restart(timestamp)
-      call radiative_gases_restart(timestamp)
-    endif
-
-!    call moist_processes_restart(timestamp)
-    call damping_driver_restart(timestamp)
-  else
-     call error_mesg('physics_driver_mod', &
-         'Native intermediate restart files are not supported.', FATAL)
+  if (mpp_pe() == mpp_root_pe() ) then
+     call error_mesg('physics_driver_mod', 'Writing netCDF formatted restart file: RESTART/physics_driver.res.nc', NOTE)
+  endif
+  call physics_driver_netcdf(timestamp)
+  call vert_turb_driver_restart(timestamp)
+  if (do_radiation) then
+    call radiation_driver_restart(timestamp)
+    call radiative_gases_restart(timestamp)
   endif
 
-
+!    call moist_processes_restart(timestamp)
+  call damping_driver_restart(timestamp)
 
 end subroutine physics_driver_restart
 ! </SUBROUTINE> NAME="physics_driver_restart"
@@ -3541,803 +3599,56 @@ subroutine physics_driver_register_restart
      allocate(Til_restart)
   endif
 
-  id_restart = register_restart_field(Phy_restart, fname, 'vers', vers, no_domain=.true.)
-  id_restart = register_restart_field(Phy_restart, fname, 'doing_strat', now_doing_strat, no_domain=.true.)
-  id_restart = register_restart_field(Phy_restart, fname, 'doing_edt', now_doing_edt, no_domain=.true.)
+  id_restart = register_restart_field(Phy_restart, fname, 'vers',          vers,              no_domain=.true.)
+  id_restart = register_restart_field(Phy_restart, fname, 'doing_strat',   now_doing_strat,   no_domain=.true.)
+  id_restart = register_restart_field(Phy_restart, fname, 'doing_edt',     now_doing_edt,     no_domain=.true.)
   id_restart = register_restart_field(Phy_restart, fname, 'doing_entrain', now_doing_entrain, no_domain=.true.)
 
   id_restart = register_restart_field(Til_restart, fname, 'diff_cu_mo', diff_cu_mo)
-  id_restart = register_restart_field(Til_restart, fname, 'pbltop', pbltop)
-  id_restart = register_restart_field(Til_restart, fname, 'cush', cush)
-  id_restart = register_restart_field(Til_restart, fname, 'cbmf', cbmf)
-  id_restart = register_restart_field(Til_restart, fname, 'diff_t', diff_t)
-  id_restart = register_restart_field(Til_restart, fname, 'diff_m', diff_m)
-  id_restart = register_restart_field(Til_restart, fname, 'convect', r_convect) 
+  id_restart = register_restart_field(Til_restart, fname, 'pbltop',     pbltop)
+  id_restart = register_restart_field(Til_restart, fname, 'cush',       cush, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'cbmf',       cbmf, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'diff_t',     diff_t)
+  id_restart = register_restart_field(Til_restart, fname, 'diff_m',     diff_m)
+  id_restart = register_restart_field(Til_restart, fname, 'convect',    r_convect) 
   if (doing_strat()) then
-     id_restart = register_restart_field(Til_restart, fname, 'radturbten', radturbten)
+     id_restart = register_restart_field(Til_restart, fname, 'radturbten',       radturbten)
   endif
   if (doing_edt .or. doing_entrain) then
-     id_restart = register_restart_field(Til_restart, fname, 'lw_tendency', lw_tendency)
+     id_restart = register_restart_field(Til_restart, fname, 'lw_tendency',      lw_tendency)
   endif
   if (doing_donner) then
-     id_restart = register_restart_field(Til_restart, fname, 'cell_cloud_frac', cell_cld_frac)
-     id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_amt', cell_liq_amt)
-     id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_size', cell_liq_size)
-     id_restart = register_restart_field(Til_restart, fname, 'cell_ice_amt', cell_ice_amt)
-     id_restart = register_restart_field(Til_restart, fname, 'cell_ice_size', cell_ice_size)
-     id_restart = register_restart_field(Til_restart, fname, 'meso_cloud_frac', meso_cld_frac)
-     id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_amt', meso_liq_amt)
-     id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_size', meso_liq_size)
-     id_restart = register_restart_field(Til_restart, fname, 'meso_ice_amt', meso_ice_amt)
-     id_restart = register_restart_field(Til_restart, fname, 'meso_ice_size', meso_ice_size)
-     id_restart = register_restart_field(Til_restart, fname, 'nsum', nsum_out)
+     id_restart = register_restart_field(Til_restart, fname, 'cell_cloud_frac',  cell_cld_frac, mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_amt',  cell_liq_amt,  mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_size', cell_liq_size, mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'cell_ice_amt',     cell_ice_amt,  mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'cell_ice_size',    cell_ice_size, mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'meso_cloud_frac',  meso_cld_frac, mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_amt',  meso_liq_amt,  mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_size', meso_liq_size, mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'meso_ice_amt',     meso_ice_amt,  mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'meso_ice_size',    meso_ice_size, mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'nsum',             nsum_out,      mandatory = .false.)
   endif
   if (doing_uw_conv) then
-     id_restart = register_restart_field(Til_restart, fname, 'shallow_cloud_area', shallow_cloud_area)
-     id_restart = register_restart_field(Til_restart, fname, 'shallow_liquid', shallow_liquid)
-     id_restart = register_restart_field(Til_restart, fname, 'shallow_ice', shallow_ice)
-     id_restart = register_restart_field(Til_restart, fname, 'shallow_droplet_number', shallow_droplet_number)
-     id_restart = register_restart_field(Til_restart, fname, 'shallow_ice_number', shallow_ice_number)
+     id_restart = register_restart_field(Til_restart, fname, 'shallow_cloud_area',     shallow_cloud_area,     mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'shallow_liquid',         shallow_liquid,         mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'shallow_ice',            shallow_ice,            mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'shallow_droplet_number', shallow_droplet_number, mandatory = .false.)
+     id_restart = register_restart_field(Til_restart, fname, 'shallow_ice_number',     shallow_ice_number,     mandatory = .false.)
   endif
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_cloud_area', lsc_cloud_area)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_liquid', lsc_liquid )
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice', lsc_ice )
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number', lsc_droplet_number)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice_number',        lsc_ice_number)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow', lsc_snow)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_rain', lsc_rain)
- 
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow_size',  lsc_snow_size)
-
- id_restart = register_restart_field(Til_restart, fname, 'lsc_rain_size', lsc_rain_size)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_cloud_area',     lsc_cloud_area,     mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_liquid',         lsc_liquid ,        mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice',            lsc_ice,            mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number', lsc_droplet_number, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice_number',     lsc_ice_number,     mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow',           lsc_snow,           mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_rain',           lsc_rain,           mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow_size',      lsc_snow_size,      mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'lsc_rain_size',      lsc_rain_size,      mandatory = .false.)
 
 end subroutine physics_driver_register_restart
 ! </SUBROUTINE>    
-!#####################################################################
-! <SUBROUTINE NAME="read_restart_file">
-!  <OVERVIEW>
-!    read_restart_file will read the physics_driver.res file and process
-!    its contents. if no restart data can be found, the module variables
-!    are initialized to flag values.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    read_restart_file will read the physics_driver.res file and process
-!    its contents. if no restart data can be found, the module variables
-!    are initialized to flag values.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call read_restart_file
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine read_restart_file                                     
-
-!---------------------------------------------------------------------
-!    read_restart_file will read the physics_driver.res file and process
-!    its contents. if no restart data can be found, the module variables
-!    are initialized to flag values.
-!---------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!   local variables:
-
-      integer  :: io, unit
-      integer  :: vers2
-      character(len=8) :: chvers
-      logical  :: was_doing_strat, was_doing_edt, was_doing_entrain
-      logical  :: was_doing_donner                                 
-      logical  :: was_doing_uw_conv
-      logical  :: success = .false.
-
-!--------------------------------------------------------------------
-!   local variables:
-!
-!      ierr              error code
-!      io                error status returned from i/o operation
-!      unit              io unit number for reading restart file
-!      vers              restart version number if that is contained in 
-!                        file; otherwise the first word of first data 
-!                        record of file
-!      vers2             second word of first data record of file
-!      was_doing_strat   logical indicating if strat_cloud_mod was 
-!                        active in job which wrote restart file
-!      was_doing_edt     logical indicating if edt_mod was active
-!                        in job which wrote restart file
-!      was_doing_entrain logical indicating if entrain_mod was active
-!                        in job which wrote restart file
-!      success           logical indicating that restart data has been
-!                        processed
-!
-!---------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!    obtain values for radturbten, either from physics_driver.res, if
-!    reading a newer version of the file which contains it, or from 
-!    strat_cloud.res when an older version of physics_driver.res is
-!    being read.
-!--------------------------------------------------------------------
-      if(mpp_pe() == mpp_root_pe()) call mpp_error ('physics_driver_mod', &
-            'Reading native formatted restart file.', NOTE)
-      if (file_exist('INPUT/physics_driver.res')) then
-        unit = open_restart_file ('INPUT/physics_driver.res', 'read')
-
-!--------------------------------------------------------------------
-!    read restart file version number.
-!--------------------------------------------------------------------
-        read (unit) vers
-        if ( .not. any(vers ==restart_versions) ) then
-          write (chvers, '(i4)') vers
-          call error_mesg ('physics_driver_mod', &
-            'restart version ' //chvers// ' cannot be read by this'//&
-                                              'module version', FATAL)
-        endif
-
-!--------------------------------------------------------------------
-!    starting with v8, native mode files are no longer supported.
-!--------------------------------------------------------------------
-        if (vers >=8 ) then
-          call error_mesg ('physics_driver_mod, read_restart_file', &
-            ' native mode restart files are not supported after &
-                                     &version 7', FATAL)
-        endif
-
-!--------------------------------------------------------------------
-!    starting with v5,  logicals are written indicating which variables
-!    are present.
-!--------------------------------------------------------------------
-        if (vers >= 5 ) then
-          read (unit) was_doing_strat, was_doing_edt, was_doing_entrain
-        endif
-        if (vers >= 6 ) then
-          read (unit) was_doing_donner                                 
-        endif
-        if (vers >= 7 ) then
-          read (unit) was_doing_uw_conv
-        endif
-
-!---------------------------------------------------------------------
-!    read the contribution to diffusion coefficient from cumulus
-!    momentum transport.
-!---------------------------------------------------------------------
-        call read_data (unit, diff_cu_mo)
-
-!---------------------------------------------------------------------
-!    pbl top is present in file versions 2 and up. if not present,
-!    set a flag.
-!---------------------------------------------------------------------
-        if (vers >= 2) then
-          call read_data (unit, pbltop)
-          
-        else
-          pbltop     = -999.0
-        endif
-
-!---------------------------------------------------------------------
-!    cush and cbmf are present in file versions 7 and up. if not 
-!    present, set a flag.
-!---------------------------------------------------------------------
-        if (vers >= 7) then
-          call read_data (unit, cush)  !miz
-          call read_data (unit, cbmf)  !miz
-        else
-          cush       = -1. !miz
-          cbmf       = 0.0 !miz
-        endif
-
-!---------------------------------------------------------------------
-!    the temperature and momentum diffusion coefficients are present
-!    beginning with v3. if not prsent, set to 0.0.
-!---------------------------------------------------------------------
-        if (vers >= 3) then
-          call read_data (unit, diff_t)
-          call read_data (unit, diff_m)
-        else
-          diff_t = 0.0
-          diff_m = 0.0
-        end if 
-
-!---------------------------------------------------------------------
-!    a flag indicating columns in which convection is occurring is
-!    present beginning with v4. if not present, set it to .false.
-!---------------------------------------------------------------------
-        if (vers >= 4) then
-          call read_data (unit, convect)
-        else
-          convect = .false.
-        end if 
-
-!---------------------------------------------------------------------
-!    radturbten may be present in versions 5 onward, if strat_cloud_mod
-!    was active in the job writing the .res file.
-!---------------------------------------------------------------------
-        if (vers >= 5) then
-
-!--------------------------------------------------------------------
-!    if radturbten was written, read it.
-!--------------------------------------------------------------------
-          if (was_doing_strat) then
-            call read_data (unit, radturbten)
-
-!---------------------------------------------------------------------
-!    if strat_cloud_mod was not active in the job which wrote the 
-!    restart file but it is active in the current job, initialize
-!    radturbten to 0.0 and put a message in the output file.  
-!---------------------------------------------------------------------
-          else
-            if (doing_strat()) then
-              radturbten = 0.0
-              call error_mesg ('physics_driver_mod', &
-              ' initializing radturbten to 0.0, since it not present'//&
-                            ' in physics_driver.res file', NOTE)
-            endif
-          endif
-
-!--------------------------------------------------------------------
-!    if lw_tendency was written, read it.
-!--------------------------------------------------------------------
-          if (was_doing_edt .or. was_doing_entrain) then
-            call read_data (unit, lw_tendency)
-
-!---------------------------------------------------------------------
-!    if edt_mod or entrain_mod was not active in the job which wrote the
-!    restart file but it is active in the current job, initialize
-!    lw_tendency to 0.0 and put a message in the output file.  
-!---------------------------------------------------------------------
-          else
-            if (doing_edt .or. doing_entrain) then
-              lw_tendency = 0.0
-              call error_mesg ('physics_driver_mod', &
-             ' initializing lw_tendency to 0.0, since it not present'//&
-                  ' in physics_driver.res file', NOTE)
-            endif
-          endif
-
-!---------------------------------------------------------------------
-!    close the io unit associated with physics_driver.res. set flag
-!    to indicate that the restart data has been processed. 
-!---------------------------------------------------------------------
-          call close_file (unit)
-          success = .true.
-        endif  ! (vers >=5)
-
-        if (doing_donner) then
-          if (vers >= 6) then
-            if (was_doing_donner) then
-              call read_data (unit ,  cell_cld_frac)
-              call read_data (unit ,  cell_liq_amt )
-              call read_data (unit ,  cell_liq_size)
-              call read_data (unit ,  cell_ice_amt )
-              call read_data (unit ,  cell_ice_size)
-              call read_data (unit ,  meso_cld_frac)
-              call read_data (unit ,  meso_liq_amt )
-              call read_data (unit ,  meso_liq_size)
-              call read_data (unit ,  meso_ice_amt )
-              call read_data (unit ,  meso_ice_size)
-              call read_data (unit , nsum_out)                 
-            else  ! (was_doing_donner)
-              cell_cld_frac = 0.
-              cell_liq_amt  = 0.
-              cell_liq_size = 0.
-              cell_ice_amt  = 0.
-              cell_ice_size = 0.
-              meso_cld_frac = 0.
-              meso_liq_amt  = 0.
-              meso_liq_size = 0.
-              meso_ice_amt  = 0.
-              meso_ice_size = 0.
-              nsum_out = 1
-            endif ! (was_doing_donner)
-          else  ! (vers >= 6)
-            cell_cld_frac = 0.
-            cell_liq_amt  = 0.
-            cell_liq_size = 0.
-            cell_ice_amt  = 0.
-            cell_ice_size = 0.
-            meso_cld_frac = 0.
-            meso_liq_amt  = 0.
-            meso_liq_size = 0.
-            meso_ice_amt  = 0.
-            meso_ice_size = 0.
-            nsum_out = 1
-          endif ! (vers >= 6)
-        endif  ! (doing_donner)
-
-      if (doing_uw_conv) then
-       if (vers >= 7) then
-         if (was_doing_uw_conv) then
-          call read_data (unit ,  shallow_cloud_area)
-          call read_data (unit ,  shallow_liquid )
-          call read_data (unit ,  shallow_ice )
-          call read_data (unit ,  shallow_droplet_number)
-          shallow_ice_number = 0.
-      else  ! (was_doing_uw_conv)
-         shallow_cloud_area = 0.
-         shallow_liquid  = 0.
-         shallow_ice  = 0.
-         shallow_droplet_number = 0.
-         shallow_ice_number = 0.
-       endif ! (was_doing_uw_conv)
-     else  ! (vers >= 7)
-       shallow_cloud_area = 0.
-       shallow_liquid  = 0.
-       shallow_ice  = 0.
-       shallow_droplet_number = 0.
-       shallow_ice_number = 0.
-     endif ! (vers >= 7)
-  
-    endif  ! (doing_uw_conv)
-
-!---------------------------------------------------------------------
-!    if there is no physics_driver.res, set the remaining module
-!    variables to 0.0
-!---------------------------------------------------------------------
-      else
-        diff_t = 0.0
-        diff_m = 0.0
-        diff_cu_mo = 0.0
-        pbltop     = -999.0
-        cush       = -1.  !miz
-        cbmf       = 0.0  !miz
-        convect = .false.
-        if (doing_donner) then
-        cell_cld_frac = 0.
-        cell_liq_amt  = 0.
-        cell_liq_size = 0.
-        cell_ice_amt  = 0.
-        cell_ice_size = 0.
-        meso_cld_frac = 0.
-        meso_liq_amt  = 0.
-        meso_liq_size = 0.
-        meso_ice_amt  = 0.
-        meso_ice_size = 0.
-        nsum_out = 1
-        endif ! (doing_donner)
-       if (doing_uw_conv) then
-        shallow_cloud_area = 0.
-        shallow_liquid  = 0.
-        shallow_ice  = 0.
-        shallow_droplet_number = 0.
-        shallow_ice_number = 0.
-      endif ! (doing_uw_conv)
-      endif  ! present(.res)
-
-!--------------------------------------------------------------------
-!    if a version of physics_driver.res containing the needed data is
-!    not present, check for the presence of the radturbten data in 
-!    strat_cloud.res.
-!--------------------------------------------------------------------
-      if ( .not. success) then
-        if (doing_strat()) then
-          if (file_exist('INPUT/strat_cloud.res')) then
-            unit = open_restart_file ('INPUT/strat_cloud.res', 'read')
-            read (unit, iostat=io, err=142) vers, vers2
-
-!----------------------------------------------------------------------
-!    if an i/o error does not occur, then the strat_cloud.res file 
-!    contains the variable radturbten. rewind and read. close file upon
-!    completion.
-!----------------------------------------------------------------------
-142         continue
-            if (io == 0) then
-              call error_mesg ('physics_driver_mod',  &
-                'reading pre-version number strat_cloud.res file, '//&
-                 'reading  radturbten', NOTE)
-              rewind (unit)
-              call read_data (unit, radturbten)
-              call close_file (unit)
-
-!---------------------------------------------------------------------
-!    if the eor was reached (io /= 0), then the strat_cloud.res file
-!    does not contain the radturbten data.  set values to 0.0 and
-!    put a note in the output file.
-!---------------------------------------------------------------------
-            else
-              radturbten = 0.0
-              call error_mesg ('physics_driver_mod',  &
-                  'neither strat_cloud.res nor physics_driver.res '//&
-                   'contain the radturbten data, setting it to 0.0', &
-                                                                NOTE)
-            endif
-
-!----------------------------------------------------------------------
-!    if strat_cloud.res is not present, set radturbten to 0.0.
-!----------------------------------------------------------------------
-          else
-            radturbten = 0.0
-            call error_mesg ('physics_driver_mod',  &
-              'setting radturbten to zero, no strat_cloud.res '//&
-               'file present, data not in physics_driver.res', NOTE)
-          endif
-        endif
-
-!--------------------------------------------------------------------
-!    check if the lw_tendency data is in edt.res.
-!--------------------------------------------------------------------
-        if (doing_edt) then
-          if (file_exist('INPUT/edt.res')) Then
-            unit = open_restart_file ('INPUT/edt.res', 'read')
-            read (unit, iostat=io, err=143) vers, vers2
-
-!----------------------------------------------------------------------
-!    if an i/o error does not occur, then the edt.res file 
-!    contains the variable lw_tendency. rewind and read. close file 
-!    upon completion.
-!----------------------------------------------------------------------
-143         continue
-            if (io == 0) then
-              call error_mesg ('physics_driver_mod',  &
-                'reading pre-version number edt.res file, &
-                 &reading  lw_tendency', NOTE)
-              rewind (unit)
-              call read_data (unit, lw_tendency)
-              call close_file (unit)
-
-!---------------------------------------------------------------------
-!    if the eor was reached (io /= 0), then the edt.res file 
-!    does not contain the lw_tendency data.  set values to 0.0 and
-!    put a note in the output file.
-!---------------------------------------------------------------------
-            else
-              lw_tendency = 0.0
-              call error_mesg ('physics_driver_mod',  &
-                  'neither edt.res nor physics_driver.res &
-                   &contain the lw_tendency data, setting it to 0.0', &
-                                                                NOTE)
-            endif
-
-!----------------------------------------------------------------------
-!    if edt.res is not present, set lw_tendency to 0.0.
-!----------------------------------------------------------------------
-          else
-            lw_tendency = 0.0
-            call error_mesg ('physics_driver_mod',  &
-               'setting lw_tendency to zero, no edt.res &
-               &file present, data not in physics_driver.res', NOTE)
-          endif
-        endif
-
-!--------------------------------------------------------------------
-!    check if the lw_tendency data is in entrain.res. only 1 form of
-!    entrain.res has ever existed, containing only the lw_tendency
-!    variable, so it can be read without further checking.
-!--------------------------------------------------------------------
-        if (doing_entrain) then
-          if (file_exist('INPUT/entrain.res')) Then
-            unit = open_restart_file ('INPUT/entrain.res', 'read')
-            call read_data (unit, lw_tendency)
-            call close_file (unit)
-
-!----------------------------------------------------------------------
-!    if entrain.res is not present, set lw_tendency to 0.0.
-!----------------------------------------------------------------------
-          else
-            lw_tendency = 0.0
-            call error_mesg ('physics_driver_mod',  &
-              'setting lw_tendency to zero, no entrain.res &
-               &file present, data not in physics_driver.res', NOTE)
-          endif
-        endif
-      endif  ! (.not. success)
-
-
-!----------------------------------------------------------------------
-
-
- end subroutine read_restart_file     
-
-!#####################################################################
-! <SUBROUTINE NAME="read_restart_nc">
-!  <OVERVIEW>
-!    read_restart_nc will read the physics_driver.res file and process
-!    its contents. if no restart data can be found, the module variables
-!    are initialized to flag values.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    read_restart_nc will read the physics_driver.res file and process
-!    its contents. if no restart data can be found, the module variables
-!    are initialized to flag values.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call read_restart_nc
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine read_restart_nc
-
-!---------------------------------------------------------------------
-!    read_restart_file will read the physics_driver.res file and process
-!    its contents. if no restart data can be found, the module variables
-!    are initialized to flag values.
-!---------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!   local variables:
-
-      real  :: was_doing_strat=0., was_doing_edt=0., was_doing_entrain=0.
-      logical  :: field_found
-      integer, dimension(4)  :: siz
-      character(len=64) :: fname = 'INPUT/physics_driver.res.nc'
-      real, dimension(size(convect,1), size(convect,2)) :: r_convect
-!--------------------------------------------------------------------
-!   local variables:
-!
-!      vers              restart version number if that is contained in 
-!                        file; otherwise the first word of first data 
-!                        record of file
-!      was_doing_strat   logical indicating if strat_cloud_mod was 
-!                        active in job which wrote restart file
-!      was_doing_edt     logical indicating if edt_mod was active
-!                        in job which wrote restart file
-!      was_doing_entrain logical indicating if entrain_mod was active
-!                        in job which wrote restart file
-!
-!---------------------------------------------------------------------      
-                    
-      if(file_exist(fname)) then
-         if(mpp_pe() == mpp_root_pe()) call mpp_error ('physics_driver_mod', &
-            'Reading NetCDF formatted restart file: INPUT/physics_driver.res.nc', NOTE)
-         call read_data(fname, 'vers', vers, no_domain=.true.)
-         call read_data(fname, 'doing_strat', was_doing_strat, no_domain=.true.)
-         call read_data(fname, 'doing_edt', was_doing_edt, no_domain=.true.)
-         call read_data(fname, 'doing_entrain', was_doing_entrain, no_domain=.true.)
-
-!---------------------------------------------------------------------
-!    read the contribution to diffusion coefficient from cumulus
-!    momentum transport.
-!---------------------------------------------------------------------
-         call read_data (fname, 'diff_cu_mo', diff_cu_mo)
-         
-!---------------------------------------------------------------------
-!    pbl top is present in file versions 2 and up. if not present,
-!    set a flag.
-!---------------------------------------------------------------------
-         call read_data (fname, 'pbltop', pbltop)
-         call field_size (fname, 'cush', siz, field_found = field_found)
-         if (field_found) then
-           call read_data (fname, 'cush', cush) !miz
-           call read_data (fname, 'cbmf', cbmf) !miz
-         else
-           cush       = -1.  !miz
-           cbmf       = 0.0  !miz
-         endif
-
-!---------------------------------------------------------------------
-!    the temperature and momentum diffusion coefficients are present
-!    beginning with v3. if not prsent, set to 0.0.
-!---------------------------------------------------------------------
-         call read_data (fname, 'diff_t', diff_t)
-         call read_data (fname, 'diff_m', diff_m)
-
-!---------------------------------------------------------------------
-!    a flag indicating columns in which convection is occurring is
-!    present beginning with v4. if not present, set it to .false.
-!---------------------------------------------------------------------
-         convect = .false.
-         r_convect = 0.
-         call read_data (fname, 'convect', r_convect)
-         where(r_convect .GT. 0.) 
-            convect = .true.
-         end where
-         
-!---------------------------------------------------------------------
-!    donner_deep cell and meso cloud variables may be present in 
-!    versions 6 onward, if donner_deep_mod
-!    was active in the job writing the .res file.
-!---------------------------------------------------------------------
-            if (doing_donner) then
-           call field_size (fname, 'cell_cloud_frac', siz, &
-                            field_found = field_found)
-
-        if (field_found) then
-         call read_data (fname, 'cell_cloud_frac', cell_cld_frac)
-         call read_data (fname, 'cell_liquid_amt', cell_liq_amt )
-         call read_data (fname, 'cell_liquid_size', cell_liq_size)
-         call read_data (fname, 'cell_ice_amt', cell_ice_amt )
-         call read_data (fname, 'cell_ice_size', cell_ice_size)
-         call read_data (fname, 'meso_cloud_frac', meso_cld_frac)
-         call read_data (fname, 'meso_liquid_amt', meso_liq_amt )
-         call read_data (fname, 'meso_liquid_size', meso_liq_size)
-         call read_data (fname, 'meso_ice_amt', meso_ice_amt )
-         call read_data (fname, 'meso_ice_size', meso_ice_size)
-         call read_data (fname, 'nsum', nsum_out)                 
-
-!---------------------------------------------------------------------
-!    if donner_deep_mod was not active in the job which wrote the 
-!    restart file but it is active in the current job, initialize
-!    these variables and put a message in the output file.  
-!---------------------------------------------------------------------
-          else
-        cell_cld_frac = 0.
-        cell_liq_amt  = 0.
-        cell_liq_size = 0.
-        cell_ice_amt  = 0.
-        cell_ice_size = 0.
-        meso_cld_frac = 0.
-        meso_liq_amt  = 0.
-        meso_liq_size = 0.
-        meso_ice_amt  = 0.
-        meso_ice_size = 0.
-        nsum_out = 1
-              call error_mesg ('physics_driver_mod', &
-              ' initializing donner cloud  variables, since they are not present'//&
-                            ' in physics_driver.res.nc file', NOTE)
-            endif  ! (field_found)       
-     endif  ! (doing_donner)
-
-!---------------------------------------------------------------------
-!    lsc cloud variables will be present in versions 8 onward.
-!---------------------------------------------------------------------
-      call field_size (fname, 'lsc_cloud_area', siz, &
-                             field_found = field_found)
-      if (field_found) then
-
-        call read_data (fname, 'lsc_cloud_area', lsc_cloud_area)
-        call read_data (fname, 'lsc_liquid', lsc_liquid )
-        call read_data (fname, 'lsc_ice', lsc_ice )
-        call read_data (fname, 'lsc_droplet_number', lsc_droplet_number)
-
-!---------------------------------------------------------------------
-!    if fields are not present, set a flag so that values from the
-!    tracer array are supplied to the radiation package, and
-!    put a message in the output file.  
-!---------------------------------------------------------------------
-      else
-        lsc_cloud_area = -99.
-        lsc_liquid  =  -99.
-        lsc_ice  = -99.
-        lsc_droplet_number = -99.
-        call error_mesg ('physics_driver_mod', &
-             ' initial radiation call will use lsc tracer (l,i,a,n) &
-               &fields; thus the lsc cloud area field may not be compat-&
-               &ible  with the areas assigned to convective clouds', NOTE)
-      endif  ! (field_found)       
-                                  
-      call field_size (fname, 'lsc_ice_number', siz, &
-                                           field_found = field_found)
-      if (field_found) then
-        call read_data (fname, 'lsc_ice_number', lsc_ice_number)
-      else
-        lsc_ice_number = -99.
-        call error_mesg ('physics_driver_mod', &
-             ' initial radiation call will use lsc tracer ice # field; &
-               &thus the lsc cloud area field may not be compatible &
-               &with the areas assigned to convective clouds', NOTE)
-      endif  ! (field_found)       
-
-! snow, rain
-      call field_size (fname, 'lsc_snow', siz, field_found = field_found)
-      if (field_found) then
-        call read_data (fname, 'lsc_snow', lsc_snow)
-      else
-        lsc_snow(:,:,:) = 0.
-      end if
-
-      call field_size (fname, 'lsc_rain', siz, field_found = field_found)
-      if (field_found) then
-        call read_data (fname, 'lsc_rain', lsc_rain)
-      else
-        lsc_rain(:,:,:) = 0.
-      end if
-
-      call field_size (fname, 'lsc_snow_size', siz, &
-                                             field_found = field_found)
-      if (field_found) then
-        call read_data (fname, 'lsc_snow_size', lsc_snow_size)
-      else
-        lsc_snow_size(:,:,:) = 0.
-      end if
-
-      call field_size (fname, 'lsc_rain_size', siz, &
-                                               field_found = field_found)
-      if (field_found) then
-        call read_data (fname, 'lsc_rain_size', lsc_rain_size)
-      else
-        lsc_rain_size(:,:,:) = 0.
-      end if
-                                  
-!---------------------------------------------------------------------
-!    uw_conv cloud variables may be present in 
-!    versions 7 onward, if uw_conv_mod
-!    was active in the job writing the .res file.
-!---------------------------------------------------------------------
-          if (doing_uw_conv) then
-            call field_size (fname, 'shallow_cloud_area', siz, &
-                             field_found = field_found)
- 
-            if (field_found) then
-            call read_data (fname, 'shallow_cloud_area', shallow_cloud_area)
-          call read_data (fname, 'shallow_liquid', shallow_liquid )
-          call read_data (fname, 'shallow_ice', shallow_ice )
-         call read_data (fname, 'shallow_droplet_number', shallow_droplet_number)
-
-!---------------------------------------------------------------------
-!    if uw_conv_mod was not active in the job which wrote the 
-!    restart file but it is active in the current job, initialize
-!    these variables and put a message in the output file.  
-!---------------------------------------------------------------------
-        else
-         shallow_cloud_area = 0.
-         shallow_liquid  = 0.
-         shallow_ice  = 0.
-         shallow_droplet_number = 0.
-         call error_mesg ('physics_driver_mod', &
-             ' initializing uw_conv cloud  variables, since they are not present'//&
-                            ' in physics_driver.res.nc file', NOTE)
-       endif  ! (field_found)       
-
-!-------------------------------------------------------------------------
-!    check for shallow ice number.
-!-------------------------------------------------------------------------
-       call field_size (fname, 'shallow_ice_number', siz, &
-                             field_found = field_found)
-
-       if (field_found) then
-         call read_data (fname, 'shallow_ice_number', shallow_ice_number)
-       else
-!!cms 2009-2-24          shallow_ice_number = 0.
-                 !rho_ice = 500
-             !initially assume 25 micron mean volume radius for ice
-!!             shallow_ice_number(:,:,:) = shallow_ice(:,:,:)/500. * 3./(4.*3.14*1.563e-14)
-         shallow_ice_number = 0.
-         call error_mesg ('physics_driver_mod', &
-           ' initializing uw_conv shallow_ice_number, since not present'//&
-                            ' in physics_driver.res.nc file', NOTE)
-       endif 
-
-
-     endif  ! (doing_uw_conv)
-
-!---------------------------------------------------------------------
-!    radturbten may be present in versions 5 onward, if strat_cloud_mod
-!    was active in the job writing the .res file.
-!---------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!    if radturbten was written, read it.
-!--------------------------------------------------------------------
-          if (was_doing_strat .GT. 0.) then
-            call read_data (fname, 'radturbten', radturbten)
-
-!---------------------------------------------------------------------
-!    if strat_cloud_mod was not active in the job which wrote the 
-!    restart file but it is active in the current job, initialize
-!    radturbten to 0.0 and put a message in the output file.  
-!---------------------------------------------------------------------
-          else
-            if (doing_strat()) then
-              radturbten = 0.0
-              call error_mesg ('physics_driver_mod', &
-              ' initializing radturbten to 0.0, since it not present'//&
-                            ' in physics_driver.res.nc file', NOTE)
-            endif
-          endif
-
-!--------------------------------------------------------------------
-!    if lw_tendency was written, read it.
-!--------------------------------------------------------------------
-          if (was_doing_edt .GT. 0. .or. was_doing_entrain .GT. 0.) then
-            call read_data (fname, 'lw_tendency', lw_tendency)
-
-!---------------------------------------------------------------------
-!    if edt_mod or entrain_mod was not active in the job which wrote the
-!    restart file but it is active in the current job, initialize
-!    lw_tendency to 0.0 and put a message in the output file.  
-!---------------------------------------------------------------------
-          else
-            if (doing_edt .or. doing_entrain ) then
-              lw_tendency = 0.0
-              call error_mesg ('physics_driver_mod', &
-             ' initializing lw_tendency to 0.0, since it not present'//&
-                  ' in physics_driver.res.nc file', NOTE)
-            endif
-          endif
-       endif
-!----------------------------------------------------------------------
-     
-     
-end subroutine read_restart_nc
-
-
 !#####################################################################
 ! <SUBROUTINE NAME="check_args">
 !  <OVERVIEW>

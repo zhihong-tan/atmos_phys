@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
         
-! $Id: radar_simulator_types.f90,v 1.1.2.1.2.1.2.1 2009/10/06 17:54:20 rsh Exp $
-! $Name: riga_201104 $
+! $Id: radar_simulator_types.f90,v 19.0 2012/01/06 20:04:58 fms Exp $
+! $Name: siena $
 
   module radar_simulator_types
 

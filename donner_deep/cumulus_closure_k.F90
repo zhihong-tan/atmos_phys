@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: cumulus_closure_k.F90,v 17.0.2.1.4.1 2010/03/17 20:27:07 wfc Exp $
+!  $Id: cumulus_closure_k.F90,v 19.0 2012/01/06 20:06:16 fms Exp $
 
 
 !module cumulus_closure_inter_mod

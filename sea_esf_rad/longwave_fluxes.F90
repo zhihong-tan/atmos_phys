@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 17.0.6.2 2010/09/07 16:17:19 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 19.0 2012/01/06 20:15:17 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------

@@ -255,8 +255,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 17.0.6.1.2.1 2011/03/02 07:03:53 Richard.Hemler Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 19.0 2012/01/06 20:02:15 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 
 !---------------------------------------------------------------------- 

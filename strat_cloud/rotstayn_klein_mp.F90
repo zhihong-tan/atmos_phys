@@ -30,8 +30,8 @@ private  cloud_clear_xfer
 !-------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: rotstayn_klein_mp.F90,v 1.1.2.1 2011/03/02 08:18:07 Richard.Hemler Exp $'
-Character(len=128) :: Tagname = '$Name: riga_201104 $'
+Character(len=128) :: Version = '$Id: rotstayn_klein_mp.F90,v 19.0 2012/01/06 20:26:47 fms Exp $'
+Character(len=128) :: Tagname = '$Name: siena $'
 
 !-------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -145,7 +145,7 @@ SUBROUTINE rotstayn_klein_microp (&
                      diag_4d, diag_id, diag_pt, n_diag_4d_kp1,   &
                      diag_4d_kp1, limit_conv_cloud_frac, SA, SN, ST, SQ, &
                      SL, SI, rain3d, snow3d, snowclr3d, surfrain,   &
-                     surfsnow, otun)                 
+                     surfsnow, f_snow_berg, otun)                 
 
 !------------------------------------------------------------------------
 type(strat_nml_type),                intent(in)   :: Nml
@@ -175,6 +175,7 @@ TYPE(diag_pt_type),                  intent(in)   :: diag_pt
 real, dimension(idim, jdim, kdim+1), INTENT(OUT)  :: rain3d, snow3d
 real, dimension(idim, jdim, kdim+1), INTENT(OUT)  :: snowclr3d
 real, dimension(idim,jdim),          INTENT(OUT)  :: surfrain,surfsnow
+real, dimension(idim, jdim, kdim  ), INTENT(OUT)  :: f_snow_berg 
 INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 
@@ -298,10 +299,11 @@ INTEGER,                             INTENT(IN)   :: otun
                                             rad_liq, D1_dt, D2_dt, qc1, &
                                             qc0, qceq, qcbar, U_clr, &
                                             qs_d_a, tmp2s_a, tmp3s_a, &
-                                            tmp5s_a, est_a
+                                            tmp5s_a, est_a, sum_freeze, &
+                                            sum_rime, sum_berg
       real                               :: dum, Si0, qs_t, qs_d, tmp2s, &
                                             tmp3s, tmp5s, est, rhi, tc, &
-                                            tcrit
+                                            tcrit, qldt_sum
       integer                            :: i, j, k, km1
 
  
@@ -345,6 +347,10 @@ INTEGER,                             INTENT(IN)   :: otun
           end do
         end do
       end do
+
+      sum_freeze = 0.
+      sum_rime = 0.
+      sum_berg = 0.
 
 !------------------------------------------------------------------------
 !    begin big vertical loop.
@@ -1069,6 +1075,8 @@ INTEGER,                             INTENT(IN)   :: otun
           end where
         endif
 
+        sum_berg(:,:,k) = D2_dt(:,:,k)
+
 !------------------------------------------------------------------------
 !    diagnostics for bergeron process
 !------------------------------------------------------------------------
@@ -1122,6 +1130,8 @@ INTEGER,                             INTENT(IN)   :: otun
         end if        
         D2_dt(:,:,k) = D2_dt(:,:,k) + tmp1(:,:,k)
 
+        sum_rime(:,:,k) = tmp1(:,:,k)
+
 !-----------------------------------------------------------------------
 !    save the riming diagnostics.
 !-----------------------------------------------------------------------
@@ -1151,6 +1161,9 @@ INTEGER,                             INTENT(IN)   :: otun
                 (ql_mean(i,j,k) .gt. Nml%qmin).and.     &
                 (qa_mean(i,j,k) .gt. Nml%qmin))  then
               D2_dt(i,j,k) = log ( ql_mean(i,j,k)/Nml%qmin )
+              sum_freeze(i,j,k) = D2_dt(i,j,k)
+              sum_rime(i,j,k) = 0.
+              sum_berg(i,j,k) = 0.
               if (diag_id%qldt_freez + diag_id%ql_freez_col > 0)  then
                 diag_4d(i,j,k,diag_pt%qldt_freez) = D2_dt(i,j,k)
               endif
@@ -1164,6 +1177,19 @@ INTEGER,                             INTENT(IN)   :: otun
           end do
         end do
   
+!  Used for BC aerosol in-cloud scavenging:
+        do j=1,jdim
+          do i=1,idim
+            qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
+                                                         sum_freeze(i,j,k)
+            if (qldt_sum > 0.)  then
+              f_snow_berg(i,j,k) =  sum_berg(i,j,k)/qldt_sum 
+            else
+              f_snow_berg(i,j,k) = 0.
+            endif
+          end do
+        end do
+        
 !------------------------------------------------------------------------
 !       Analytic integration of ql equation
 !

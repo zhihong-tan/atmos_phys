@@ -306,8 +306,8 @@ real :: U00, rthresh, var_limit, sea_salt_scale, om_to_oc,  N_land, &
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud_legacy.F90,v 1.1.2.1 2011/03/02 08:18:07 Richard.Hemler Exp $'
-  Character(len=128) :: Tagname = '$Name: riga_201104 $'
+  Character(len=128) :: Version = '$Id: strat_cloud_legacy.F90,v 19.0 2012/01/06 20:27:21 fms Exp $'
+  Character(len=128) :: Tagname = '$Name: siena $'
    logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers
@@ -507,7 +507,7 @@ subroutine strat_cloud_legacy( Nml,  &
         diag_4d, diag_4d_kp1, diag_3d, &
       Time,is,ie,js,je,dtcloud,pfull,phalf,radturbten2,&
     T,qv,ql,qi,qa,omega,Mc,diff_t,LAND,              &
-    ST,SQ,SL,SI,SA,rain3d,snow3d,snowclr3d,surfrain,     &
+    ST,SQ,SL,SI,SA,f_snow_berg,rain3d,snow3d,snowclr3d,surfrain,     &
     surfsnow,qrat,ahuco,limit_conv_cloud_frac,MASK, &
     qn, Aerosol, SN)
 
@@ -921,6 +921,7 @@ subroutine strat_cloud_legacy( Nml,  &
         real, intent (out),   dimension(:,:)   :: surfrain,surfsnow
         real, intent (in), optional, dimension(:,:,:) :: MASK
         real, intent (in),  optional, dimension(:,:,:) :: qn
+        real, intent (out),   dimension(:,:,:) :: f_snow_berg
         real, intent (out),   dimension(:,:,:) :: rain3d
         real, intent (out),   dimension(:,:,:) :: snow3d
         real, intent (out),   dimension(:,:,:) :: snowclr3d
@@ -968,6 +969,8 @@ subroutine strat_cloud_legacy( Nml,  &
         real, dimension(size(T,1),size(T,2))   :: Vfall,iwc,lamda_f
         real, dimension(size(T,1),size(T,2))   :: U_clr
         real, dimension(size(T,1),size(T,2))   :: tmp1,tmp2,tmp3,tmp5,drop1,crystal
+        real, dimension(size(T,1),size(T,2))   :: sum_freeze, sum_rime, &
+                                                  sum_berg
         real, dimension(size(T,1),size(T,2))   :: qtbar,deltaQ
         real, dimension(size(T,1),size(T,2))   :: qtmin,qs_norm          
 
@@ -979,6 +982,7 @@ subroutine strat_cloud_legacy( Nml,  &
         real               :: freeze_pt, tmp1s, tmp2s, tmp3s, snow_fact
         real               :: qc0s, qc1s, qceqs, qcbars, C_dts, D_dts
         real               :: qagtmps,qcgtmps,qvgtmps
+        real               :: qldt_sum
 
 !       real, allocatable, dimension(:,:,:,:) :: diag_4d, diag_4d_kp1              
 !       real, allocatable, dimension(:,:,:) :: diag_3d        
@@ -1090,6 +1094,7 @@ subroutine strat_cloud_legacy( Nml,  &
         dcond_ls_ice  = 0.
         qcg           = 0.
         qcg_ice       = 0.
+        
         
                      
 !-----------------------------------------------------------------------
@@ -1347,6 +1352,10 @@ subroutine strat_cloud_legacy( Nml,  &
 
         DO j = 1, kdim
 
+        sum_freeze = 0.
+        sum_rime = 0.
+        sum_berg = 0.
+        f_snow_berg(:,:,j) = 0.
        
 !-----------------------------------------------------------------------
 !
@@ -2725,6 +2734,7 @@ subroutine strat_cloud_legacy( Nml,  &
 
       endif
 
+        sum_berg = D2_dt
 !       if (max(diag_id%qldt_berg,diag_id%ql_berg_col) > 0) qldt_berg(:,:,j) = D2_dt
         if (max(diag_id%qldt_berg,diag_id%ql_berg_col) > 0) diag_4d(:,:,j,diag_pt%qldt_berg) = D2_dt
        
@@ -2762,6 +2772,7 @@ subroutine strat_cloud_legacy( Nml,  &
         
         D2_dt = D2_dt + tmp1
 
+        sum_rime = tmp1
 !       if (max(diag_id%qldt_rime,diag_id%ql_rime_col) > 0) qldt_rime(:,:,j) = tmp1
         if (max(diag_id%qldt_rime,diag_id%ql_rime_col) > 0) diag_4d(:,:,j,diag_pt%qldt_rime) = tmp1
 
@@ -2783,23 +2794,39 @@ subroutine strat_cloud_legacy( Nml,  &
              D2_dt = log ( ql_mean / qmin )
         end where
         
+          do k=1,jdim
+           do i=1,idim
+             if (T(i,k,j).lt.(tfreeze-40.).and.(ql_mean(i,k).gt.qmin)    &
+               .and.(qa_mean(i,k).gt.qmin)) then
+               sum_freeze(i,k) = D2_dt(i,k)
+               sum_rime(i,k) = 0.
+               sum_berg(i,k) = 0.
+             endif
+           enddo
+          enddo
+
         if (max(diag_id%qldt_freez,diag_id%qldt_rime,diag_id%qldt_berg,diag_id%ql_freez_col,  &
                 diag_id%ql_rime_col,diag_id%ql_berg_col) > 0) then
           do k=1,jdim
            do i=1,idim
              if (T(i,k,j).lt.(tfreeze-40.).and.(ql_mean(i,k).gt.qmin)    &
                .and.(qa_mean(i,k).gt.qmin)) then
-!              if (max(diag_id%qldt_freez,diag_id%ql_freez_col) > 0) qldt_freez(i,k,j) = D2_dt(i,k)
                if (max(diag_id%qldt_freez,diag_id%ql_freez_col) > 0) diag_4d(i,k,j,diag_pt%qldt_freez) = D2_dt(i,k)
-!              if (max(diag_id%qldt_rime,diag_id%ql_rime_col) > 0) qldt_rime (i,k,j) = 0.
                if (max(diag_id%qldt_rime,diag_id%ql_rime_col) > 0) diag_4d(i,k,j,diag_pt%qldt_rime ) = 0.
-!              if (max(diag_id%qldt_berg,diag_id%ql_berg_col) > 0) qldt_berg (i,k,j) = 0.     
                if (max(diag_id%qldt_berg,diag_id%ql_berg_col) > 0) diag_4d(i,k,j,diag_pt%qldt_berg ) = 0.     
              endif
            enddo
           enddo
         end if
   
+! For BC aerosol in-cloud scavenging:
+          do k=1,jdim
+           do i=1,idim
+             qldt_sum = sum_berg(i,k) + sum_freeze(i,k) + sum_rime(i,k)
+             if (qldt_sum > 0.) f_snow_berg(i,k,j) = sum_berg(i,k)/qldt_sum
+           enddo
+          enddo
+
 !       Analytic integration of ql equation
 !
 !

@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_types.h,v 18.0 2010/03/02 23:30:15 fms Exp $
+!  $Id: donner_types.h,v 19.0 2012/01/06 20:08:04 fms Exp $
 
 !#####################################################################
  
@@ -50,6 +50,7 @@ type donner_wetdep_type
    real :: Henry_constant
    real :: Henry_variable
    real :: frac_in_cloud
+   real :: frac_in_cloud_snow
    real :: alpha_r
    real :: alpha_s
    logical :: Lwetdep, Lgas, Laerosol, Lice

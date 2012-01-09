@@ -33,9 +33,9 @@ private
 ! version information 
 
 character(len=128), parameter :: version = &
-'$Id: grey_radiation.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
+'$Id: grey_radiation.F90,v 19.0 2012/01/06 20:09:59 fms Exp $'
 
-character(len=128), parameter :: tagname = '$Name: riga_201104 $'
+character(len=128), parameter :: tagname = '$Name: siena $'
 
 logical                       :: module_is_initialized = .false.
 
@@ -146,7 +146,6 @@ if ( mpp_pe() == mpp_root_pe() ) then
   logunit = stdlog()
   write (logunit, nml=grey_radiation_nml)
 endif
-call close_file (unit)
 
 pi    = 4.0*atan(1.)
 deg_to_rad = 2.*pi/360.

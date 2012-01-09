@@ -12,8 +12,8 @@ end interface check_nan
 public check_nan, check_nan_init
 
 !---------------version number---------------------------
-Character(len=128) :: Version = '$Id: check_nan.F90,v 1.1.2.1 2011/03/02 08:18:07 Richard.Hemler Exp $'
-Character(len=128) :: Tagname = '$Name: riga_201104 $'
+Character(len=128) :: Version = '$Id: check_nan.F90,v 19.0 2012/01/06 20:26:10 fms Exp $'
+Character(len=128) :: Tagname = '$Name: siena $'
 
 !-------------------------------------------------------------------------
 
@@ -51,16 +51,17 @@ subroutine check_nan_3d (inarr, name)
 real, dimension(:,:,:), intent(in)  :: inarr
 character(len=*),       intent(in)  :: name
 
-      integer :: i,j,k
+      integer :: i,j,k, outunit
 
 !-----------------------------------------------------------------------
+      outunit = stdout()
       do k=1,size(inarr,3)
         do j=1,size(inarr,2)
           do i=1,size(inarr,1)
             if (inarr(i,j,k) .ne. inarr(i,j,k)) then
-              write(stdout(),*) " ------------------------------------- "
-              write(stdout(),*) " NAN ERROR i,j,k ", i,j,k
-              write(stdout(),*) " NAN ERROR msg ", name 
+              write(outunit,*) " ------------------------------------- "
+              write(outunit,*) " NAN ERROR i,j,k ", i,j,k
+              write(outunit,*) " NAN ERROR msg ", name 
               call error_mesg ('check_nan_3d', 'found nan', FATAL)
             end if
           end do
@@ -78,15 +79,16 @@ subroutine check_nan_2d (inarr, name)
 real, dimension(:,:),   intent(in)  :: inarr
 character(len=*),       intent(in)  :: name
 
-      integer :: i,j
+      integer :: i,j, outunit
 
 !------------------------------------------------------------------------
+      outunit = stdout()
       do j=1,size(inarr,2)
         do i=1,size(inarr,1)
           if (inarr(i,j) .ne. inarr(i,j)) then
-            write(stdout(),*) " ------------------------------------- "
-            write(stdout(),*) " NAN ERROR i1,i2 ", i,j
-            write(stdout(),*) " NAN ERROR msg ", name 
+            write(outunit,*) " ------------------------------------- "
+            write(outunit,*) " NAN ERROR i1,i2 ", i,j
+            write(outunit,*) " NAN ERROR msg ", name 
             call error_mesg ( 'check_nan_2d', 'found nan', FATAL)
           end if
         end do
@@ -106,14 +108,15 @@ subroutine check_nan_1d (inarr, name)
 real, dimension(:),     intent(in)  :: inarr
 character(len=*),       intent(in)  :: name
 
-      integer :: i
+      integer :: i, outunit
 
 !------------------------------------------------------------------------
+      outunit = stdout()
       do i=1,size(inarr,1)
         if (inarr(i) .ne. inarr(i)) then
-          write(stdout(),*) " ------------------------------------- "
-          write(stdout(),*) " NAN ERROR i1 ", i
-          write(stdout(),*) " NAN ERROR msg ", name 
+          write(outunit,*) " ------------------------------------- "
+          write(outunit,*) " NAN ERROR i1 ", i
+          write(outunit,*) " NAN ERROR msg ", name 
           call error_mesg ( 'check_nan_1d', 'found nan', FATAL)
         end if
       end do
@@ -132,11 +135,12 @@ subroutine check_nan_0d (inv, name)
 real,             intent (in)    :: inv
 character(len=*), intent(in)     :: name
 
-
+integer :: outunit
 !------------------------------------------------------------------------
+      outunit = stdout()
       if (inv .ne. inv) then
-        write(stdout(),*) " ------------------------------------- "
-        write(stdout(),*) " NAN ERROR msg ", name 
+        write(outunit,*) " ------------------------------------- "
+        write(outunit,*) " NAN ERROR msg ", name 
         call error_mesg ( 'check_nan_0d', 'found nan', FATAL)
       end if
 

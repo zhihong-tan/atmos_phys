@@ -129,9 +129,9 @@ use fms_mod,               only: fms_init, mpp_clock_id, &
                                  file_exist, FATAL, WARNING, NOTE, &
                                  close_file, read_data, write_data, &
                                  write_version_number, check_nml_error,&
-                                 error_mesg, open_restart_file, &
+                                 error_mesg, &
                                  read_data, mpp_error
-use fms_io_mod,            only: get_restart_io_mode, &
+use fms_io_mod,            only: restore_state, &
                                  register_restart_field, restart_file_type, &
                                  save_restart, get_mosaic_tile_file
 use diag_manager_mod,      only: register_diag_field, send_data, &
@@ -227,8 +227,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 18.0.2.1.2.2.2.1.2.1 2011/01/25 10:23:45 Richard.Hemler Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 19.0 2012/01/06 20:11:56 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -264,11 +264,11 @@ public    radiation_driver_init, radiation_driver, return_cosp_inputs, &
 private  & 
 
 ! called from radiation_driver_init:
-          read_restart_file, initialize_diagnostic_integrals,   &
+          initialize_diagnostic_integrals,   &
           diag_field_init, read_restart_nc, &
 
 ! called from radiation_driver_end:
-          write_restart_file, write_restart_nc, &
+          write_restart_nc, &
 
 ! called from radiation_driver:
           obtain_astronomy_variables, radiation_calc,    &
@@ -447,6 +447,10 @@ logical               :: treat_sfc_refl_dir_as_dif = .true.
                                       ! input to the sfc, and eliminating
                                       ! negative diffuse sw fluxes at the
                                       ! sfc, which cause problems in ESM.
+real    :: solar_scale_factor = -1.0  ! factor to multiply incoming solar 
+                                      ! spectral irradiances. default is to
+                                      ! perform no computation. used to 
+                                      ! change "solar constant"
 
 ! <NAMELIST NAME="radiation_driver_nml">
 !  <DATA NAME="rad_time_step" UNITS="" TYPE="integer" DIM="" DEFAULT="14400">
@@ -589,6 +593,9 @@ logical               :: treat_sfc_refl_dir_as_dif = .true.
 !solar_constant is to vary with
 !  time ?
 !  </DATA>
+!  <DATA NAME="solar_scale_factor" UNITS="" TYPE="real" DIM="" DEFAULT="-1.">
+! factor to multiply solar irradiance. default is not to perform calculation.
+!  </DATA>
 !  <DATA NAME="always_calculate" UNITS="" TYPE="logical" DIM="" DEFAULT="">
 !  calculate radiative fluxes and heating rates on every call to 
 !  radiation_driver ?
@@ -655,6 +662,7 @@ namelist /radiation_driver_nml/ rad_time_step, do_clear_sky_pass, &
                                 linear_tropo, thermo_tropo, &
                                 time_varying_solar_constant, &
                                 solar_dataset_entry, &
+                                solar_scale_factor,  &
                                 treat_sfc_refl_dir_as_dif, &
                                 always_calculate,  do_h2o, do_o3, &
                                 use_uniform_solar_input, &
@@ -668,7 +676,6 @@ namelist /radiation_driver_nml/ rad_time_step, do_clear_sky_pass, &
 !-- for netcdf restart
 type(restart_file_type), pointer, save :: Rad_restart => NULL()
 type(restart_file_type), pointer, save :: Til_restart => NULL()
-logical :: do_netcdf_restart = .true. !  netcdf/native restart
 logical                                :: in_different_file = .false.
 integer                                :: int_renormalize_sw_fluxes
 integer                                :: int_do_clear_sky_pass
@@ -1187,7 +1194,6 @@ integer,                         intent(out) :: ncol
 10      call close_file (unit)
       endif
 #endif
-      call get_restart_io_mode(do_netcdf_restart)
 
 !--------------------------------------------------------------------
 !    make sure other namelist variables are consistent with 
@@ -1340,6 +1346,15 @@ integer,                         intent(out) :: ncol
           read (unit, FMT = '(6e12.5 )')   &
                  (Solar_spect%solflxband_lean_ann_1882 &
                                  (nband), nband =1,numbands_lean)
+          if (solar_scale_factor >= 0.0) then
+            solflxtot_lean_ann_1882 = solflxtot_lean_ann_1882*  &
+                                                        solar_scale_factor
+            do nband = 1,numbands_lean
+              Solar_spect%solflxband_lean_ann_1882(nband) =    &
+                          Solar_spect%solflxband_lean_ann_1882(nband)* &
+                                                         solar_scale_factor
+            enddo
+          endif
           do nyr=1,years_of_data_lean
             do nv=1,nvalues_per_year_lean
               read (unit, FMT = '(2i6,f17.4)') yr, month, &
@@ -1349,6 +1364,23 @@ integer,                         intent(out) :: ncol
                                 (nyr,nv,nband), nband =1,numbands_lean)
             end do
           end do
+          if (solar_scale_factor >= 0.0) then
+            do nv=1,nvalues_per_year_lean
+              do nyr=1,years_of_data_lean
+                solflxtot_lean(nyr,nv) =    &
+                         solflxtot_lean(nyr,nv)*solar_scale_factor
+              enddo
+            enddo
+            do nband = 1,numbands_lean
+              do nv=1,nvalues_per_year_lean
+                do nyr=1,years_of_data_lean
+                  Solar_spect%solflxband_lean(nyr,nv,nband) =    &
+                           Solar_spect%solflxband_lean(nyr,nv,nband)*   &
+                                                        solar_scale_factor
+                enddo
+              enddo
+            enddo
+          endif
           allocate (Solar_spect%solflxband_lean_ann_2000(numbands_lean))
           read (unit, FMT = '(2i6,f17.4)') yr, month, &
                                            solflxtot_lean_ann_2000
@@ -1356,6 +1388,15 @@ integer,                         intent(out) :: ncol
               (Solar_spect%solflxband_lean_ann_2000 &
                               (nband), nband =1,numbands_lean)
           call close_file (unit) 
+          if (solar_scale_factor >= 0.0) then
+            solflxtot_lean_ann_2000 = solflxtot_lean_ann_2000*  &
+                                                       solar_scale_factor
+            do nband = 1,numbands_lean
+              Solar_spect%solflxband_lean_ann_2000(nband) =    &
+                        Solar_spect%solflxband_lean_ann_2000(nband)* &
+                                                        solar_scale_factor
+            enddo
+          endif
         else
           if (time_varying_solar_constant) then
             call error_mesg ('radiation_driver_mod', &
@@ -1843,19 +1884,21 @@ integer,                         intent(out) :: ncol
 
 !----------------------------------------------------------------------
 !    Register fields to be written out to restart file.
-     if(do_netcdf_restart) call rad_driver_register_restart('radiation_driver.res.nc')
+     call rad_driver_register_restart('radiation_driver.res.nc')
 
 !-----------------------------------------------------------------------
 !    if a valid restart file exists, call read_restart_file to read it.
 !-----------------------------------------------------------------------
         if ( file_exist('INPUT/radiation_driver.res.nc')) then
-          call read_restart_nc
+          call restore_state(Rad_restart)
+          if(in_different_file) call restore_state(Til_restart)
         else if ( (do_sea_esf_rad .and.   &
              (file_exist('INPUT/sea_esf_rad.res')  .or. &
               file_exist('INPUT/radiation_driver.res') )  ) .or. &
              (.not. do_sea_esf_rad .and.   &
                file_exist('INPUT/radiation_driver.res') )  ) then
-          call read_restart_file 
+          call error_mesg ('radiation_driver_mod', &
+              'Native restarts no longer supported', FATAL)
 !----------------------------------------------------------------------
 !    if no restart file is present, initialize the needed fields until
 !    the radiation package may be called. initial surface flux is set 
@@ -2518,7 +2561,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
         if (do_sea_esf_rad) then
           if (present(kbot) ) then
             call cloud_radiative_properties (     &
-                         is, ie, js, je, Rad_time, Time_next, Astro,  & 
+                         is, ie, js, je, Rad_time, Time, Time_next, Astro,&
                          Atmos_input, Cld_spec, Lsc_microphys,  &
                          Meso_microphys, Cell_microphys,    &
                          Shallow_microphys, Cldrad_props,  &
@@ -2526,7 +2569,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
           else    
 
             call cloud_radiative_properties (      &
-                         is, ie, js, je, Rad_time, Time_next, Astro,  & 
+                         is, ie, js, je, Rad_time, Time, Time_next, Astro,&
                          Atmos_input, Cld_spec, Lsc_microphys,   &
                          Meso_microphys, Cell_microphys,    &
                        Shallow_microphys, Cldrad_props, Model_microphys)
@@ -2605,7 +2648,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                                         Rad_output, Sw_output(1),  &
                                         Lw_output(1), Rad_gases,   & 
                                         Cldrad_props, Cld_spec, & 
-                                        Time_next,  &
+                                        Time_next, Time, &
                                         Aerosol=Aerosol, &
                                         Aerosol_props=Aerosol_props, &
                                         Aerosol_diags=Aerosol_diags)
@@ -2615,7 +2658,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
                                         Rad_output, Sw_output(1),   &
                                         Lw_output(1), Rad_gases,   &
                                         Cldrad_props, Cld_spec, &
-                                        Time_next)
+                                        Time_next, Time)
           endif
         endif ! (do_rad and do_sea_esf_rad)
 !     endif  ! (running_gcm)
@@ -4055,11 +4098,7 @@ subroutine radiation_driver_end
     if (using_restart_file) then
 ! Make sure that the restart_versions variable is up to date.
       vers = restart_versions(size(restart_versions(:)))
-      if ( do_netcdf_restart ) then
-        call radiation_driver_restart
-      else
-        call write_restart_file
-      endif
+      call radiation_driver_restart
     endif
 
 !---------------------------------------------------------------------
@@ -4307,12 +4346,7 @@ subroutine radiation_driver_restart(timestamp)
 
 ! Make sure that the restart_versions variable is up to date.
   vers = restart_versions(size(restart_versions(:)))
-  if ( do_netcdf_restart ) then
-    call write_restart_nc(timestamp)
-  else
-    call error_mesg ('radiation_driver_restart', &
-         'Native intermediate restart files are not supported.', FATAL)
-  endif  
+  call write_restart_nc(timestamp)
 
 end subroutine radiation_driver_restart
 ! </SUBROUTINE> NAME="radiation_driver_restart"
@@ -4322,105 +4356,6 @@ end subroutine radiation_driver_restart
 !                    PRIVATE SUBROUTINES
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-subroutine write_restart_file
-
-     integer :: unit
-
-!----------------------------------------------------------------------
-!    when running in gcm, write a restart file. this is not done in the
-!    standalone case.
-!---------------------------------------------------------------------
-     if(mpp_pe() == mpp_root_pe()) then
-       call error_mesg('radiation_driver_mod', 'Writing native formatted restart file.', NOTE)
-     endif
-        unit = open_restart_file   &
-                         ('RESTART/radiation_driver.res', 'write')
-
-!---------------------------------------------------------------------
-!    only the root pe will write control information -- the last value 
-!    in the list of restart versions and the alarm information.
-!---------------------------------------------------------------------
-        if (mpp_pe() == mpp_root_pe() ) then
-          write (unit) restart_versions(size(restart_versions(:)))
-!         write (unit) rad_alarm, rad_time_step
-          write (unit) lwrad_alarm, rad_time_step
-        endif
-
-!---------------------------------------------------------------------
-!    write out the restart data.
-!---------------------------------------------------------------------
-        call write_data (unit, Rad_output%tdt_rad)
-        call write_data (unit, Rad_output%tdtlw)
-        call write_data (unit, Rad_output%flux_sw_surf)
-        call write_data (unit, Rad_output%flux_sw_surf_dir)
-        call write_data (unit, Rad_output%flux_sw_surf_refl_dir)
-        call write_data (unit, Rad_output%flux_sw_surf_dif)
-        call write_data (unit, Rad_output%flux_sw_down_vis_dir)
-        call write_data (unit, Rad_output%flux_sw_down_vis_dif)
-        call write_data (unit, Rad_output%flux_sw_down_total_dir)
-        call write_data (unit, Rad_output%flux_sw_down_total_dif)
-        call write_data (unit, Rad_output%flux_sw_vis)
-        call write_data (unit, Rad_output%flux_sw_vis_dir)
-        call write_data (unit, Rad_output%flux_sw_refl_vis_dir)
-        call write_data (unit, Rad_output%flux_sw_vis_dif)
-        call write_data (unit, Rad_output%flux_lw_surf)
-        call write_data (unit, Rad_output%coszen_angle)
-
-!---------------------------------------------------------------------
-!    write out the optional time average restart data. note that 
-!    do_average and renormalize_sw_fluxes may not both be true.
-!---------------------------------------------------------------------
-        if (mpp_pe() == mpp_root_pe() ) then
-          write (unit) renormalize_sw_fluxes, do_clear_sky_pass
-        endif
-
-!---------------------------------------------------------------------
-!    write out the optional shortwave renormalization data. 
-!---------------------------------------------------------------------
-        if (renormalize_sw_fluxes) then   
-          call write_data (unit, solar_save)
-          call write_data (unit, flux_sw_surf_save)
-          call write_data (unit, flux_sw_surf_dir_save)
-          call write_data (unit, flux_sw_surf_refl_dir_save)
-          call write_data (unit, flux_sw_surf_dif_save)
-          call write_data (unit, flux_sw_down_vis_dir_save)
-          call write_data (unit, flux_sw_down_vis_dif_save)
-          call write_data (unit, flux_sw_down_total_dir_save)
-          call write_data (unit, flux_sw_down_total_dif_save)
-          call write_data (unit, flux_sw_vis_save)
-          call write_data (unit, flux_sw_vis_dir_save)
-           call write_data (unit, flux_sw_refl_vis_dir_save)
-          call write_data (unit, flux_sw_vis_dif_save)
-          call write_data (unit, sw_heating_save(:,:,:,1))
-          call write_data (unit, tot_heating_save(:,:,:,1))
-          call write_data (unit, dfsw_save(:,:,:,1)) 
-          call write_data (unit, ufsw_save(:,:,:,1)) 
-          call write_data (unit, fsw_save(:,:,:,1))  
-          call write_data (unit, hsw_save(:,:,:,1))
-          call write_data (unit, swdn_special_save(:,:,:,1))
-          call write_data (unit, swup_special_save(:,:,:,1))
-          if (do_clear_sky_pass) then
-            call write_data (unit, sw_heating_clr_save)
-            call write_data (unit, tot_heating_clr_save)
-            call write_data (unit, dfswcf_save) 
-            call write_data (unit, ufswcf_save) 
-            call write_data (unit, fswcf_save)  
-            call write_data (unit, hswcf_save)
-            call write_data (unit, flux_sw_down_total_dir_clr_save)
-            call write_data (unit, flux_sw_down_total_dif_clr_save)
-            call write_data (unit, flux_sw_down_vis_clr_save)
-            call write_data (unit, swdn_special_clr_save(:,:,:,1))
-            call write_data (unit, swup_special_clr_save(:,:,:,1))
-          endif
-        endif    ! (renormalize)
-
-!---------------------------------------------------------------------
-!    close the radiation_driver.res file
-!---------------------------------------------------------------------
-        call close_file (unit)
-
-end subroutine write_restart_file
 
 !---------------------------------------------------------------------
 
@@ -4468,484 +4403,6 @@ subroutine write_restart_nc(timestamp)
 
 end subroutine write_restart_nc
 
-!#####################################################################
-! <SUBROUTINE NAME="read_restart_file">
-!  <OVERVIEW>
-!    read_restart_file reads a restart file containing radiation
-!    restart information. it may be either a radiation_driver.res, or
-!    an older sea_esf_rad.res file.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    read_restart_file reads a restart file containing radiation
-!    restart information. it may be either a radiation_driver.res, or
-!    an older sea_esf_rad.res file.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call read_restart_file
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine read_restart_file 
-
-!-------------------------------------------------------------------
-!    read_restart_file reads a restart file containing radiation
-!    restart information. it may be either a radiation_driver.res, or
-!    an older sea_esf_rad.res file.
-!---------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!   local variables
-
-      integer               :: unit
-      logical               :: avg_present, renorm_present,  &
-                               cldfree_present
-      character(len=4)      :: chvers
-      integer, dimension(5) :: dummy
-      integer               :: new_rad_time, old_time_step
-      integer               :: rad_alarm
-
-!--------------------------------------------------------------------
-!   local variables:
-!
-!       unit              i/o unit number connected to .res file
-!       end               logical variable indicating, if true, that
-!                         end of file has been reached on the current
-!                         read operation
-!       avg_present       if true, time-average data is present in the
-!                         restart file
-!       renorm_present    if true, sw renormalization data is present 
-!                         in the restart file
-!       cldfree_present   if true, and if renorm_present is true, then
-!                         the clear-sky sw renormalization data is
-!                         present in the restart file
-!       chvers            character form of restart_version (i4)
-!       avg_gases         if true, then time-average data for radiative
-!                         gases is present in restart file
-!       avg_clouds        if true, then time-average data for clouds is
-!                         present in restart file
-!       dummy             dummy array used as location to read older
-!                         restart version data into           
-!       kmax              number of model layers
-!       new_rad_time      time remaining until next radiation calcul-
-!                         ation; replaces the rad_alarm value read from
-!                         restart file when the radiation timestep
-!                         changes upon restart  
-!       old_time_step     radiation timestep that was used in job 
-!                         which wrote the restart file
-!
-!---------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe() ) then
-         call error_mesg('radiation_driver_mod', 'Reading native formatted restart file.', NOTE)
-      endif
-
-!---------------------------------------------------------------------
-!    if one is using the sea_esf_rad package and there is a 
-!    sea_esf_rad.res restart file present in the input directory, it 
-!    must be version 1 in order to be readable by the current module.
-!    this file is where radiation restart data for the sea_esf radiation
-!    package was written, through AM2p8, or the galway code release.
-!    if this file is present and not version 1, exit.
-!---------------------------------------------------------------------
-      if (do_sea_esf_rad .and. file_exist('INPUT/sea_esf_rad.res')) then
-        unit = open_restart_file ('INPUT/sea_esf_rad.res', 'read')
-        read (unit) vers
-        if ( vers /= 1 ) then
-          write (chvers,'(i4)') vers
-          call error_mesg ('radiation_driver_mod', &
-             'restart version '//chvers//' cannot be read '//&
-              'by this module version', FATAL)
-        endif
-
-!---------------------------------------------------------------------
-!    if a radiation_driver.res file is present, then it must be one
-!    of the versions listed as readable for the radiation package
-!    being employed. these allowable versions are found in the array
-!    restart_versions. if the version is not acceptable, exit.
-!---------------------------------------------------------------------
-      else if ( file_exist('INPUT/radiation_driver.res')  )  then   
-        unit = open_restart_file ('INPUT/radiation_driver.res', 'read')
-        read (unit) vers
-        if ( .not. any(vers == restart_versions) ) then
-          write (chvers,'(i4)') vers
-          call error_mesg ('radiation_driver_mod', &
-                    'restart version '//chvers//' cannot be read '//&
-                    'by this module version', FATAL)
-        endif
-      endif
-
-!-----------------------------------------------------------------------
-!    read alarm information.  if reading an sea_esf_rad.res file 
-!    (version 1), recover the time step previously used, and set the
-!    radiation alarm to be 1 second from now, assuring radiation 
-!    recalculation on the first model step of this run. for later 
-!    restarts, read the previous radiation timestep and the rad_alarm
-!    that was present when the restart was written.
-!-----------------------------------------------------------------------
-      if (vers == 1) then
-        read (unit) dummy 
-        old_time_step = SECONDS_PER_DAY*dummy(4) + dummy(3)
-        rad_alarm = 1        
-        if (mpp_pe() == mpp_root_pe() ) then
-        call error_mesg ('radiation_driver_mod', &
-        ' radiation to be calculated on first step: restart file&
-          & is sea_esf_rad.res, additional fields needed to run with &
-                                          &current code', NOTE)
-        endif
-      else
-        read (unit) rad_alarm, old_time_step    
-        if (mpp_pe() == mpp_root_pe() ) then
-          print *, 'NOTE from PE 0: rad_alarm as read from restart &
-                      &file is ', rad_alarm, 'second(s).'
-        endif
-      endif
-
-!---------------------------------------------------------------------
-!    read the radiation restart data. it consists of radiative temper-
-!    ature tendencies, sw surface fluxes, lw surface fluxes and the
-!    value of the cosine of the zenith angle to be used for the next
-!    ocean albedo calcuation, in restart versions after version 1. for
-!    restart version 1, set the cosine of the zenith angle to the value
-!    used on initialization for use in diagnostics. since in this case 
-!    rad_alarm has been set so that radiation is called on the next 
-!    step, the proper zenith angles will be calculated and then used to
-!    define the albedos.
-!---------------------------------------------------------------------
-      call read_data (unit, Rad_output%tdt_rad )
-      if (vers >= 4) then
-        call read_data (unit, Rad_output%tdtlw )
-      else          
-        Rad_output%tdtlw = 0.0
-      endif
-      call read_data (unit, Rad_output%flux_sw_surf )
-      if (vers == 7) then
-        call read_data (unit, dum_idjd )
-        rad_alarm = 1
-        if (mpp_pe() == mpp_root_pe() ) then
-        call error_mesg ('radiation_driver_mod', &
-        ' radiation to be calculated on first step: restart file&
-          & is version 7, additional fields needed to run with &
-                                          &current code', NOTE)
-        endif
-      endif
-      if (vers >= 8) then
-        call read_data (unit, Rad_output%flux_sw_surf_dir )
-         call read_data (unit, Rad_output%flux_sw_surf_refl_dir )
-        call read_data (unit, Rad_output%flux_sw_surf_dif )
-        call read_data (unit, Rad_output%flux_sw_down_vis_dir )
-        call read_data (unit, Rad_output%flux_sw_down_vis_dif )
-        call read_data (unit, Rad_output%flux_sw_down_total_dir )
-        call read_data (unit, Rad_output%flux_sw_down_total_dif )
-        call read_data (unit, Rad_output%flux_sw_vis )
-        call read_data (unit, Rad_output%flux_sw_vis_dir )
-        call read_data (unit, Rad_output%flux_sw_refl_vis_dir )
-        call read_data (unit, Rad_output%flux_sw_vis_dif )
-      else
-!    SUITABLE INITIALIZATION ??
-        Rad_output%flux_sw_surf_dir = 0.0
-        Rad_output%flux_sw_surf_refl_dir = 0.0
-        Rad_output%flux_sw_surf_dif = 0.0
-        Rad_output%flux_sw_down_vis_dir = 0.0
-        Rad_output%flux_sw_down_vis_dif = 0.0
-        Rad_output%flux_sw_down_total_dir = 0.0
-        Rad_output%flux_sw_down_total_dif = 0.0
-        Rad_output%flux_sw_vis = 0.0
-        Rad_output%flux_sw_vis_dir = 0.0
-        Rad_output%flux_sw_refl_vis_dir = 0.0
-        Rad_output%flux_sw_vis_dif = 0.0
-      endif
-      call read_data (unit, Rad_output%flux_lw_surf )
-      if (vers /= 1) then
-        call read_data (unit, Rad_output%coszen_angle)
-      else
-        Rad_output%coszen_angle = coszen_angle_init
-      endif
-
-!----------------------------------------------------------------------
-!    versions 3 and 4 include variables needed when sw renormalization 
-!    is active, and logical variables indicating which additional fields
-!    are present.
-!----------------------------------------------------------------------
-      if (vers == 3 .or. vers == 4) then
-
-!---------------------------------------------------------------------
-!    determine if accumulation arrays are present in the restart file.
-!    if input fields are to be time-averaged, read the values from the
-!    files.  note that avg_present and renorm_present cannot both be 
-!    true.
-!---------------------------------------------------------------------
-        read (unit) avg_present, renorm_present, cldfree_present
-  
-!---------------------------------------------------------------------
-!    if renormalize_sw_fluxes is true and the data is present in the
-!    restart file, read it.
-!---------------------------------------------------------------------
-        if (renormalize_sw_fluxes) then  
-          if (renorm_present) then     
-            call read_data (unit, solar_save)
-            call read_data (unit, flux_sw_surf_save)
-            call read_data (unit, sw_heating_save)
-            call read_data (unit, tot_heating_save)
-            call read_data (unit, dfsw_save) 
-            call read_data (unit, ufsw_save)  
-            call read_data (unit, fsw_save)  
-            call read_data (unit, hsw_save)
-!           if (vers >= 6) then
-!      call read_data (unit, swdn_trop_save)
-!      call read_data (unit, swup_trop_save)
-!    endif
-
-!---------------------------------------------------------------------
-!    if cldfree data is desired and the data is present in the
-!    restart file, read it.
-!---------------------------------------------------------------------
-            if (do_clear_sky_pass) then
-              if (cldfree_present) then
-                call read_data (unit, sw_heating_clr_save)
-                call read_data (unit, tot_heating_clr_save)
-                call read_data (unit, dfswcf_save) 
-                call read_data (unit, ufswcf_save) 
-                call read_data (unit, fswcf_save)  
-                call read_data (unit, hswcf_save)
-
-!               if (vers >= 6) then
-!          call read_data (unit, swdn_trop_clr_save)
-!          call read_data (unit, swup_trop_clr_save)
-!        endif
-
-!--------------------------------------------------------------------
-!    if cldfree data is desired and the data is not present in the
-!    restart file, force a radiation call on next model step.  
-!---------------------------------------------------------------------
-              else
-        rad_alarm = 1
-        if (mpp_pe() == mpp_root_pe() ) then
-        call error_mesg ('radiation_driver_mod', &
-        ' radiation to be calculated on first step: cloud-free &
-          &calculations are desired, but needed fluxes and heating &
-                      &rates are notpresent in restart file', NOTE)
-        endif
-      endif  ! (cldfree_present)
-            endif
-
-!---------------------------------------------------------------------
-!    if renormalize_sw_fluxes is true and the data is not present in the
-!    restart file, force a radiation call on next model step.  
-!---------------------------------------------------------------------
-          else  ! (renorm_present)
-            rad_alarm = 1
-            if (mpp_pe() == mpp_root_pe() ) then
-            call error_mesg ('radiation_driver_mod', &
-             ' radiation to be calculated on first step: renormaliz&
-              &ation of sw fluxes is desired, but needed data is not &
-              &present in restart file', NOTE)
-            endif
-          endif ! (renorm_present)
-        endif ! (renormalize)
-!     else if (vers == 5) then
-      else if (vers >= 5) then
-
-!---------------------------------------------------------------------
-!    determine if accumulation arrays are present in the restart file.
-!    if input fields are to be time-averaged, read the values from the
-!    files.  note that avg_present and renorm_present cannot both be 
-!    true.
-!---------------------------------------------------------------------
-        read (unit) renorm_present, cldfree_present
-  
-!---------------------------------------------------------------------
-!    if renormalize_sw_fluxes is true and the data is present in the
-!    restart file, read it.
-!---------------------------------------------------------------------
-        if (renormalize_sw_fluxes) then  
-          if (renorm_present) then     
-            call read_data (unit, solar_save)
-            call read_data (unit, flux_sw_surf_save)
-            if (vers == 7) then
-               call read_data (unit, dum_idjd           )
-            endif
-            if (vers >= 8) then
-              call read_data (unit, flux_sw_surf_dir_save)
-              call read_data (unit, flux_sw_surf_refl_dir_save)
-              call read_data (unit, flux_sw_surf_dif_save)
-              call read_data (unit, flux_sw_down_vis_dir_save)
-              call read_data (unit, flux_sw_down_vis_dif_save)
-              call read_data (unit, flux_sw_down_total_dir_save)
-              call read_data (unit, flux_sw_down_total_dif_save)
-              call read_data (unit, flux_sw_vis_save)
-              call read_data (unit, flux_sw_vis_dir_save)
-              call read_data (unit, flux_sw_refl_vis_dir_save)
-              call read_data (unit, flux_sw_vis_dif_save)
-            else
-!! SUITABLE INITIALIZATION ??
-              flux_sw_surf_dir_save =0.0
-              flux_sw_surf_refl_dir_save =0.0
-              flux_sw_surf_dif_save =0.0
-              flux_sw_down_vis_dir_save =0.0
-              flux_sw_down_vis_dif_save =0.0
-              flux_sw_down_total_dir_save =0.0
-              flux_sw_down_total_dif_save =0.0
-              flux_sw_vis_save =0.0
-              flux_sw_vis_dir_save =0.0
-              flux_sw_refl_vis_dir_save =0.0
-              flux_sw_vis_dif_save =0.0
-            endif
-            call read_data (unit, sw_heating_save)
-            call read_data (unit, tot_heating_save)
-            call read_data (unit, dfsw_save) 
-            call read_data (unit, ufsw_save)  
-            call read_data (unit, fsw_save)  
-            call read_data (unit, hsw_save)
-
-!---------------------------------------------------------------------
-!    if this is a pre-version 9 restart (other than version 6), then 
-!    radiation must be called on the first step in order to define the 
-!    troopause fluxes.
-!---------------------------------------------------------------------
-            if ( (vers >= 9) .or. (vers == 6) ) then
-              call read_data (unit, swdn_special_save(:,:,:,1))
-              call read_data (unit, swup_special_save(:,:,:,1))
-            else
-              rad_alarm = 1
-              if (mpp_pe() == mpp_root_pe() ) then
-              call error_mesg ('radiation_driver_mod', &
-             ' radiation to be calculated on first step: tropopause &
-              &fluxes diagnostics are desired, but needed data is not &
-              &present in restart file', NOTE)
-              endif
-            endif
-
-!---------------------------------------------------------------------
-!    if cldfree data is desired and the data is present in the
-!    restart file, read it.
-!---------------------------------------------------------------------
-            if (do_clear_sky_pass) then
-              if (cldfree_present) then
-                call read_data (unit, sw_heating_clr_save)
-                call read_data (unit, tot_heating_clr_save)
-                call read_data (unit, dfswcf_save) 
-                call read_data (unit, ufswcf_save) 
-                call read_data (unit, fswcf_save)  
-                call read_data (unit, hswcf_save)
-                if (vers >= 10) then
-                  call read_data (unit, flux_sw_down_total_dir_clr_save)
-                  call read_data (unit, flux_sw_down_total_dif_clr_save)
-                else
-                  flux_sw_down_total_dir_clr_save =0.0
-                  flux_sw_down_total_dif_clr_save =0.0
-                endif
-                if (vers >= 11) then
-                  call read_data (unit, flux_sw_down_vis_clr_save)
-                else
-                  flux_sw_down_vis_clr_save =0.0
-                endif
-                
-!---------------------------------------------------------------------
-!    if this is a pre-version 9 restart (other than version 6), then 
-!    radiation must be called on the first step in order to define the 
-!    troopause fluxes.
-!---------------------------------------------------------------------
-                if ( (vers >= 9) .or. (vers == 6) ) then
-                  call read_data (unit, swdn_special_clr_save(:,:,:,1))
-                  call read_data (unit, swup_special_clr_save(:,:,:,1))
-                else
-                  rad_alarm = 1
-                  if (mpp_pe() == mpp_root_pe() ) then
-                  call error_mesg ('radiation_driver_mod', &
-             ' radiation to be calculated on first step: tropopause &
-              &fluxes diagnostics are desired, but needed data is not &
-              &present in restart file', NOTE)
-                  endif
-                endif
-
-!--------------------------------------------------------------------
-!    if cldfree data is desired and the data is not present in the
-!    restart file, force a radiation call on next model step.  
-!---------------------------------------------------------------------
-              else
-                rad_alarm = 1
-                if (mpp_pe() == mpp_root_pe() ) then
-                call error_mesg ('radiation_driver_mod', &
-             ' radiation to be calculated on first step: cloud-free &
-              &diagnostics are desired, but needed data is not &
-              &present in restart file', NOTE)
-                endif
-              endif  ! (cldfree_present)
-            endif
-
-!---------------------------------------------------------------------
-!    if renormalize_sw_fluxes is true and the data is not present in the
-!    restart file, force a radiation call on next model step.  
-!---------------------------------------------------------------------
-          else  ! (renorm_present)
-            rad_alarm = 1
-            if (mpp_pe() == mpp_root_pe() ) then
-            call error_mesg ('radiation_driver_mod', &
-             ' radiation to be calculated on first step: renormaliz&
-              &ation of sw fluxes is desired, but needed data is not &
-              &present in restart file', NOTE)
-            endif
-          endif ! (renorm_present)
-        endif ! (renormalize)
-      endif    ! (vers == 3 or 4)
-
-!--------------------------------------------------------------------
-!    close the unit used to read the .res file.
-!--------------------------------------------------------------------
-      call close_file (unit)
-
-!----------------------------------------------------------------------
-!    if all_step_diagnostics is active and rad_alarm is not 1, abort 
-!    job with error message. all_step_diagnostics may only be activated
-!    when radiation is to be calculated on the first step of a job, 
-!    unless additional arrays are added to the radiation restart file.
-!----------------------------------------------------------------------
-      if (rad_alarm /= 1 .and. all_step_diagnostics) then
-        if (mpp_pe() == mpp_root_pe() ) then
-          call error_mesg ('radiation_driver_mod', &
-           'cannot set all_step_diagnostics to be .true. unless &
-            & starting job on step just prior to radiation call; &
-            &doing so will lead to non-reproducibility of restarts', &
-                                                                 FATAL)
-        endif
-      endif
-
-!----------------------------------------------------------------------
-!    adjust radiation alarm if radiation step has changed from restart 
-!    file value, if it has not already been set to the first step.
-!----------------------------------------------------------------------
-      if (rad_alarm /= 1) then
-!     if (rad_alarm == 1) then
-!       if (mpp_pe() == mpp_root_pe() ) then
-!         call error_mesg ('radiation_driver_mod',          &
-!              'radiation will be called on first step of run', NOTE)
-!       endif
-!     else
-        if (rad_time_step /= old_time_step ) then
-          new_rad_time = rad_alarm - old_time_step + rad_time_step
-          if ( new_rad_time > 0 ) then
-            if (mpp_pe() == mpp_root_pe() ) then
-              print *, 'radiation time step has changed, therefore '//&
-                  'next time to next do radiation also changed;  &
-                   &new rad_alarm is', new_rad_time
-            endif
-            rad_alarm = new_rad_time
-          else
-            rad_alarm = 1
-            if (mpp_pe() == mpp_root_pe() ) then
-               call error_mesg ('radiation_driver_mod', &
-             ' radiation to be calculated on first step: radiation &
-              &timestep has gotten shorter and is past due', NOTE)
-            endif
-          endif
-        endif  
-      endif   ! (rad_alarm == 1)
-      lwrad_alarm = rad_alarm
-      swrad_alarm = rad_alarm
-
-!--------------------------------------------------------------------
-
-
-end subroutine read_restart_file
 
 !#####################################################################
 subroutine rad_driver_register_restart(fname)
@@ -4963,11 +4420,13 @@ subroutine rad_driver_register_restart(fname)
       allocate(Til_restart)
    endif
 
-  id_restart = register_restart_field(Rad_restart, fname, 'vers', vers)
-  id_restart = register_restart_field(Rad_restart, fname, 'lwrad_alarm', lwrad_alarm, mandatory=.false.)
-  id_restart = register_restart_field(Rad_restart, fname, 'swrad_alarm', swrad_alarm, mandatory=.false.)
-  id_restart = register_restart_field(Rad_restart, fname, 'lw_rad_time_step', lw_rad_time_step, mandatory=.false.)
-  id_restart = register_restart_field(Rad_restart, fname, 'sw_rad_time_step', sw_rad_time_step, mandatory=.false.)
+  id_restart = register_restart_field(Rad_restart, fname, 'vers', vers, no_domain=.true.)
+  id_restart = register_restart_field(Rad_restart, fname, 'lwrad_alarm', lwrad_alarm, mandatory=.false.,no_domain=.true.)
+  id_restart = register_restart_field(Rad_restart, fname, 'swrad_alarm', swrad_alarm, mandatory=.false.,no_domain=.true.)
+  id_restart = register_restart_field(Rad_restart, fname, 'lw_rad_time_step', lw_rad_time_step, mandatory=.false.,no_domain=.true.)
+  id_restart = register_restart_field(Rad_restart, fname, 'sw_rad_time_step', sw_rad_time_step, mandatory=.false.,no_domain=.true.)
+  id_restart = register_restart_field(Rad_restart, fname, 'renormalize_sw_fluxes', int_renormalize_sw_fluxes,no_domain=.true.)
+  id_restart = register_restart_field(Rad_restart, fname, 'do_clear_sky_pass', int_do_clear_sky_pass,no_domain=.true.)
   id_restart = register_restart_field(Til_restart, fname, 'tdt_rad', Rad_output%tdt_rad(:,:,:,1) )
   id_restart = register_restart_field(Til_restart, fname, 'tdtlw', Rad_output%tdtlw)
   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf', Rad_output%flux_sw_surf)
@@ -4984,8 +4443,6 @@ subroutine rad_driver_register_restart(fname)
   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dif', Rad_output%flux_sw_vis_dif)
   id_restart = register_restart_field(Til_restart, fname, 'flux_lw_surf', Rad_output%flux_lw_surf)
   id_restart = register_restart_field(Til_restart, fname, 'coszen_angle', Rad_output%coszen_angle)
-  id_restart = register_restart_field(Rad_restart, fname, 'renormalize_sw_fluxes', int_renormalize_sw_fluxes)
-  id_restart = register_restart_field(Rad_restart, fname, 'do_clear_sky_pass', int_do_clear_sky_pass)
   if (renormalize_sw_fluxes ) then   
      id_restart = register_restart_field(Til_restart, fname, 'solar_save', solar_save)
      id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_save', flux_sw_surf_save)
@@ -5059,29 +4516,29 @@ subroutine read_restart_nc
   if (mpp_pe() == mpp_root_pe() ) then
     call error_mesg('radiation_driver_mod', 'Reading netCDF formatted restart file: INPUT/radiation_driver.res.nc', NOTE)
   endif
-  call read_data(fname, 'vers', vers)
+  call read_data(fname, 'vers', vers, no_domain=.true.)
 
 !--------------------------------------------------------------------
   if (field_exist (fname, 'rad_alarm')) then
-    call read_data(fname, 'rad_alarm', lwrad_alarm)
-    call read_data(fname, 'rad_alarm', swrad_alarm)
+    call read_data(fname, 'rad_alarm', lwrad_alarm,no_domain=.true.)
+    call read_data(fname, 'rad_alarm', swrad_alarm,no_domain=.true.)
   else
-    call read_data(fname, 'lwrad_alarm', lwrad_alarm)
-    call read_data(fname, 'swrad_alarm', swrad_alarm)
+    call read_data(fname, 'lwrad_alarm', lwrad_alarm,no_domain=.true.)
+    call read_data(fname, 'swrad_alarm', swrad_alarm,no_domain=.true.)
   endif
 
 !--------------------------------------------------------------------
   if (field_exist (fname, 'rad_time_step')) then
-    call read_data(fname, 'rad_time_step', lw_old_time_step)
-    call read_data(fname, 'rad_time_step', sw_old_time_step)
+    call read_data(fname, 'rad_time_step', lw_old_time_step,no_domain=.true.)
+    call read_data(fname, 'rad_time_step', sw_old_time_step,no_domain=.true.)
   else
-  call read_data(fname, 'sw_rad_time_step', sw_old_time_step)
-  call read_data(fname, 'lw_rad_time_step', lw_old_time_step)
+  call read_data(fname, 'sw_rad_time_step', sw_old_time_step,no_domain=.true.)
+  call read_data(fname, 'lw_rad_time_step', lw_old_time_step,no_domain=.true.)
   endif
 
 
-  call read_data(fname, 'renormalize_sw_fluxes', flag1)
-  call read_data(fname, 'do_clear_sky_pass', flag2)
+  call read_data(fname, 'renormalize_sw_fluxes', flag1,no_domain=.true.)
+  call read_data(fname, 'do_clear_sky_pass', flag2,no_domain=.true.)
   renorm_present = .false.
   cldfree_present = .false.
   if (flag1 ==   1.0)  then

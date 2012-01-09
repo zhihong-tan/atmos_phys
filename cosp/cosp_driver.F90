@@ -113,8 +113,8 @@ IMPLICIT NONE
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cosp_driver.F90,v 1.1.2.1.4.1.4.1.2.1.2.1.2.1.2.2.8.2.2.1 2010/08/30 20:33:33 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: cosp_driver.F90,v 19.0 2012/01/06 20:03:24 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
  
 
 
@@ -258,7 +258,7 @@ subroutine cosp_driver_init (lonb, latb, Time_diag, axes,kd_in, ncol_in)
    integer, dimension(4), intent(in) :: axes
    integer,               intent(in) :: kd_in, ncol_in
 
-   integer :: io, unit, ierr
+   integer :: io, unit, ierr, logunit
 
 #ifdef INTERNAL_FILE_NML
     read (input_nml_file, nml=cosp_input, iostat=io)
@@ -281,8 +281,9 @@ subroutine cosp_driver_init (lonb, latb, Time_diag, axes,kd_in, ncol_in)
 !    write namelist to logfile.
 !---------------------------------------------------------------------
     call write_version_number (version, tagname)
+    logunit = stdlog()
     if (mpp_pe() == mpp_root_pe() )    &
-                        write (stdlog(), nml=cosp_input)
+                        write (logunit, nml=cosp_input)
 
     nlevels = kd_in
     ncolumns = ncol_in 

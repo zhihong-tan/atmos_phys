@@ -24,7 +24,7 @@ use fms_mod,             only: open_namelist_file, file_exist,    &
                                fms_init, stdlog, &
                                write_version_number, FATAL, NOTE, &
                                WARNING, mpp_pe, mpp_root_pe, close_file
-use fms_io_mod,          only: read_data, open_restart_file
+use fms_io_mod,          only: read_data
 use time_manager_mod,    only: time_type,  &
                                time_manager_init, operator(+), &
                                set_date, operator(-), print_date, &
@@ -66,8 +66,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: ozone.F90,v 18.0.2.2 2010/09/07 16:17:19 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: ozone.F90,v 19.0 2012/01/06 20:21:21 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -1086,17 +1086,7 @@ integer, intent(in) :: season
         call read_data('INPUT/zonal_ozone_data.nc', 'o3lo3', o3lo3, no_domain=.true.)
         call read_data('INPUT/zonal_ozone_data.nc', 'o3lo4', o3lo4, no_domain=.true.)
       else if (file_exist ( 'INPUT/zonal_ozone_data') ) then
-        iounit = open_restart_file ('INPUT/zonal_ozone_data', action='read')
-        if(mpp_pe() == mpp_root_pe()) &
-             call error_mesg('ozone_mod','Reading native input data: zonal_ozone_data',NOTE)
-        read (iounit) ph3
-        read (iounit)    
-        read (iounit) o3hi
-        read (iounit) o3lo1
-        read (iounit) o3lo2
-        read (iounit) o3lo3
-        read (iounit) o3lo4
-        call close_file (iounit)
+        call error_mesg('ozone_mod','Reading native input data zonal_ozone_data no longer supported',FATAL)
       else
         call error_mesg ( 'ozone_mod', &
                 'zonal_ozone_data data file is not present',FATAL)

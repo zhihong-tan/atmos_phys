@@ -47,6 +47,7 @@ use mpp_io_mod,        only: mpp_open, mpp_close, MPP_RDONLY,   &
                              MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI,  &
                              MPP_SINGLE, mpp_io_init
 use constants_mod,     only: constants_init, RADIAN, GRAV
+use data_override_mod, only: data_override
 
 !  shared radiation package modules:
 
@@ -77,8 +78,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 18.0.2.1 2010/08/30 20:39:46 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: aerosol.F90,v 19.0 2012/01/06 20:12:33 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 
 !-----------------------------------------------------------------------
@@ -201,6 +202,10 @@ type(interpolate_type), dimension(:), allocatable  :: Aerosol_interp
 !--------------------------------------------------------------------
 !    miscellaneous variables
 !--------------------------------------------------------------------
+integer  :: id                               ! number of grid points in 
+                                             ! x direction (on processor)
+integer  :: jd                               ! number of grid points in 
+                                             ! y direction (on processor)
 logical  :: make_separate_calls=.false.      ! aerosol interpolation
                                              ! to be done one at a 
                                              ! time
@@ -253,6 +258,19 @@ real, dimension (MAX_DATA_FIELDS)    :: aerosol_tracer_scale_factor
                                     ! scaling factor for each of the 
                                     ! prognostic tracer to be seen as 
                                     ! aerosols by the radiation package
+character(len=32), dimension (:),  &
+                     allocatable     ::  tracer_names
+logical, dimension(:), allocatable   :: being_overridden
+                                    ! is a given aerosol field to be over-
+                                    ! ridden based on model data_table?
+logical                              :: output_override_info = .true.
+                                    ! should override info about each 
+                                    ! aerosol field be output (will be set 
+                                    ! to .false. after first time step)
+integer                              :: override_counter = 0
+                                    ! used to count calls to aerosol_endts
+                                    ! so that output_override_info may be
+                                    ! set .false. after physics_up.
 
 #include <netcdf.inc>
  
@@ -386,6 +404,12 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
                         write (logunit, nml=aerosol_nml)
 
 !---------------------------------------------------------------------
+!    define the dimensions of the local processors portion of the grid.
+!---------------------------------------------------------------------
+      id    = size(lonb,1) - 1
+      jd    = size(latb,2) - 1
+
+!---------------------------------------------------------------------
 !    case of single input aerosol field. when running standalone code
 !    on other than FMS level structure, aerosol_data_source must be 
 !    'input'.
@@ -409,7 +433,9 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    define the names associated with these aerosols.
 !-----------------------------------------------------------------------
         call get_number_tracers(MODEL_ATMOS, num_tracers= ntrace)
+        allocate (tracer_names(ntrace))
         do n = 1, ntrace
+          call get_tracer_names(MODEL_ATMOS,n,tracer_names(n))
           flag = query_method ('radiative_param', MODEL_ATMOS, &
                                n, name, control)
           if (flag) then
@@ -433,6 +459,13 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !---------------------------------------------------------------------
         allocate (aerosol_names(nfields))
         aerosol_names(:)        = data_names_predicted(1:nfields)
+
+!----------------------------------------------------------------------
+!    allocate and fill an array to indicate whether or not each aerosol 
+!    field is  to be overridden.
+!---------------------------------------------------------------------
+        allocate (being_overridden(nfields))
+        being_overridden(:) = .false.
 
 !---------------------------------------------------------------------
 !    case of 'climatology' and 'calculate_column' aerosol data source.
@@ -1013,6 +1046,10 @@ subroutine aerosol_endts
        call unset_interpolator_time_flag (Aerosol_interp(n))
      end do
   
+     override_counter = override_counter + 1
+     if (override_counter == 2) then
+       output_override_info = .false.
+     endif
 
 end subroutine aerosol_endts
 
@@ -1045,10 +1082,13 @@ end subroutine aerosol_endts
 !  <IN NAME="js" TYPE="integer">
 !   The latitude index of model physics window domain
 !  </IN>
+!  <IN NAME="override_aerosols" TYPE="logical, optional">
+!   use offline aerosols via data_override?
+!  </IN>
 ! </SUBROUTINE>
 !
 subroutine aerosol_driver (is, js, model_time, tracer, &
-                           p_half, p_flux, Aerosol)
+                           p_half, p_flux, Aerosol, override_aerosols)
 
 !-----------------------------------------------------------------------
 !    aerosol_driver returns the names and concentrations of activated 
@@ -1061,6 +1101,7 @@ type(time_type),          intent(in)     :: model_time
 real, dimension(:,:,:,:), intent(in)     :: tracer
 real, dimension(:,:,:),   intent(in)  :: p_half, p_flux
 type(aerosol_type),       intent(inout)  :: Aerosol
+logical, optional,        intent(in)     :: override_aerosols
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
@@ -1090,8 +1131,11 @@ type(aerosol_type),       intent(inout)  :: Aerosol
       real, dimension(1,1, size(p_half,3)-1,    &
                                                nfields) :: aerosol_data
       real, dimension(1,1, size(p_half,3))   :: p_half_col
+      real, dimension(id,jd,size(p_half,3)-1) :: aerosol_proc
       integer         :: n, k, j, i, na            ! do-loop index
       integer         :: nn
+      logical         :: do_override, used
+      integer         :: ie, je
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
@@ -1112,6 +1156,8 @@ type(aerosol_type),       intent(inout)  :: Aerosol
       allocate (Aerosol%aerosol(size(p_half,1),  &
                                 size(p_half,2), &
                                 size(p_half,3) - 1, nfields)) 
+      ie = is + size(p_half,1) - 1
+      je = js + size(p_half,2) - 1
 
       if (do_column_aerosol) then
  
@@ -1230,13 +1276,48 @@ type(aerosol_type),       intent(inout)  :: Aerosol
 !    via radiative_param attribute scale_factor (in field_table).
 !------------------------------------------------------------------ 
         else                  ! (do_specified_aerosol')
+          if (present(override_aerosols)) then
+            do_override = override_aerosols
+          else
+            do_override = .false.
+          end if
+
           do nn=1,nfields
             n = aerosol_tracer_index(nn)
+
+            Aerosol%aerosol(:,:,:,nn) = tracer(:,:,:,n)
+            if (do_override) then
+              call data_override('ATM', TRIM(tracer_names(n))//'_aerosol',&
+                                 aerosol_proc, model_time, override=used)
+              if (used) then
+                if (output_override_info) then
+                  call error_mesg ('aerosol_mod', &
+                       TRIM(tracer_names(n))//'_aerosol => '// &
+                     TRIM(tracer_names(n)) // ' is being overridden', NOTE)
+                  being_overridden(nn) = .true.
+                endif
+                Aerosol%aerosol(:,:,:,nn) = aerosol_proc(is:ie,js:je,:)
+              else
+                if (output_override_info) then
+                  call error_mesg ('aerosol_mod', &
+                    TRIM(tracer_names(n))//'_aerosol => '//  &
+                       TRIM(tracer_names(n)) // ' not overridden', NOTE)
+                else
+                  if (being_overridden(nn)) then
+                    call error_mesg ('aerosol_mod', &
+                       TRIM(tracer_names(n))//'_aerosol => '//  &
+                         TRIM(tracer_names(n)) // ' not overridden &
+                                      &when override was requested', FATAL)
+                  endif
+                endif
+              endif
+            endif
+
             do k=1,size(Aerosol%aerosol,3)
               do j=1,size(Aerosol%aerosol,2)
                 do i=1,size(Aerosol%aerosol,1)
                   Aerosol%aerosol(i,j,k,nn) =    &
-                          MAX (0.0, tracer(i,j,k,n)) * &
+                          MAX (0.0, Aerosol%aerosol(i,j,k,nn)) * &
                           aerosol_tracer_scale_factor(nn) * &
                           ( p_half(i,j,k+1)-p_half(i,j,k) )/GRAV
                 end do

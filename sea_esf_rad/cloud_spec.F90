@@ -104,8 +104,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0.8.1.2.1.2.1.2.1 2011/03/02 06:55:57 Richard.Hemler Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 19.0 2012/01/06 20:13:39 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------
@@ -656,12 +656,32 @@ type(time_type),          intent(in)   ::  Time
             call error_mesg ('cloud_spec_init', &
                  'Will use temp as basis for stochastic cloud seed; &
                     &force_use_of_temp_for_seed is set true', NOTE)
+          else
+            call error_mesg ('cloud_spec_init', &
+               ' If model resolution is between c48 and c180, it is &
+               &HIGHLY RECOMMENDED that you set cloud_spec_nml variable &
+               &force_use_of_temp_for_seed to true to assure &
+               &reproducibility across pe count and domain layout', NOTE)
+            call error_mesg ('cloud_spec_init', &
+               'No action is needed at or below c48 resolution and at or &
+               &above c180 resolution.', NOTE)
           endif
 
 !---------------------------------------------------------------------
-!     if model resolution is less than 1 degree, set the logical control 
-!     variable in Cldrad_control to use the model temperature at top 
-!     level as the random number seed to provide spacial uniqueness.
+!     if the latitude and longitude of adjacent points on a pe have the 
+!     same integral values (NINT), set the logical control variable in 
+!     Cldrad_control to use the model temperature at the top level as the 
+!     random number seed to provide spacial uniqueness at the points on the
+!     processor. 
+!     Note that for model resolutions of ~ 1 degree, some pes may use
+!     lat and lon, while others use temperature, and that this may change
+!     as the domain decomposition or npes used for the problem are changed.
+!     It is recommended that for  resolutions between c48 and c180 that 
+!     nml variable force_use_of_temp_for_seed be set to .true.; it may 
+!     remain the default value of .false. for lower resolution runs to 
+!     preserve legacy results, or if reproducibility over npes or layout
+!     is not essential. At c180 and above the loop below will set 
+!     the value to .true. on all pes, so nothing need explicitly be done.
 !---------------------------------------------------------------------
           if (.not. Cldrad_control%use_temp_for_seed) then
   jLoop:    do j=1,jd
@@ -673,8 +693,14 @@ type(time_type),          intent(in)   ::  Time
                         Cldrad_control%use_temp_for_seed = .true.
                         Cldrad_control%use_temp_for_seed_iz = .true.
                         call error_mesg ('cloud_spec_init', &
-                       'Will use temp as basis for stochastic cloud seed; &
-                              &resolution higher than 1 degree', NOTE)
+                         'Found grid point within 1 degree of  &
+                         &another',NOTE)
+                        call error_mesg ('cloud_spec_init', &
+                         'if reproducibility across npes and layout is &
+                         &desired and model res is between c48 and c180, &
+                         &you must set cloud_spec_nml variable force_use_&
+                         &of_temp_for_seed to true., and restart the  &
+                         &model.', NOTE)
                         exit jLoop
                       endif
                     endif
@@ -1121,15 +1147,15 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
                                  &cloud_spec; cannot proceed', FATAL)
               endif
             endif
-          else  ! (present (lsc_liquid_in))
-            if (present (r)) then
-              if (Cldrad_control%do_ice_num) then
+          else  ! (present (lsc_ice_number_in))
+            if (Cldrad_control%do_ice_num) then
+              if (present (r)) then
                 Cld_spec%cloud_ice_num (:,:,:) = r(:,:,:,nqni)
-              endif
-            else
-              call error_mesg ('cloud_spec_mod', &
+              else
+                call error_mesg ('cloud_spec_mod', &
                   'neither lsc_ice_number_in nor r array &
                  &has been passed to cloud_spec; cannot proceed', FATAL)
+              endif
             endif
           endif ! (present(lsc_ice_number_in))
 

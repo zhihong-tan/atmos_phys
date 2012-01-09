@@ -199,8 +199,8 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud.F90,v 17.0.2.1.2.1.2.1.2.1.6.1.2.2.4.1 2011/03/02 08:09:29 Richard.Hemler Exp $'
-Character(len=128) :: Tagname = '$Name: riga_201104 $'
+Character(len=128) :: Version = '$Id: strat_cloud.F90,v 19.0 2012/01/06 20:26:50 fms Exp $'
+Character(len=128) :: Tagname = '$Name: siena $'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -219,8 +219,8 @@ integer, allocatable, dimension (:,:)   :: nsum
 !-----------------------------------------------------------------------
 !    derived types present for duratioon of run.         
 !-----------------------------------------------------------------------
-type(strat_nml_type)       :: Nml
-type(strat_constants_type) :: Constants
+type(strat_nml_type), save       :: Nml
+type(strat_constants_type), save :: Constants
 
 !------------------------------------------------------------------------
 !     ------ constants used by the scheme -------
@@ -786,8 +786,8 @@ end subroutine strat_cloud_init
 subroutine strat_cloud    &
          (Time, is, ie, js, je, dtcloud, pfull, phalf, radturbten2,&
           T, qv, ql, qi ,qa, omega, Mc, diff_t, LAND,              &
-          ST, SQ, SL, SI, SA, rain3d, snow3d, snowclr3d, surfrain, &
-          surfsnow, qrat, ahuco, limit_conv_cloud_frac, MASK,      &
+          ST, SQ, SL, SI, SA, f_snow_berg, rain3d, snow3d, snowclr3d, &
+          surfrain, surfsnow, qrat, ahuco, limit_conv_cloud_frac, MASK, &
           qn, Aerosol, SN)
 
 !-------------------------------------------------------------------------
@@ -801,7 +801,8 @@ real, dimension(:,:,:), intent (in)            :: pfull, phalf, T, qv,  &
 logical, intent(in)                            :: limit_conv_cloud_frac
 real, dimension(:,:),   intent (in)            :: LAND
 real, dimension(:,:,:), intent (out)           :: ST, SQ, SL, SI, SA,  &
-                                                  rain3d, snow3d, snowclr3d
+                                                  rain3d, snow3d, &
+                                                  snowclr3d, f_snow_berg
 real, dimension(:,:),   intent (out)           :: surfrain, surfsnow
 real, dimension(:,:,:), intent (in),  optional :: MASK, qn
 type(aerosol_type),     intent (in),  optional :: Aerosol  
@@ -845,7 +846,8 @@ real, dimension(:,:,:), intent (out), optional :: SN
             (Nml, diag_id, diag_pt, n_diag_4d, n_diag_4d_kp1, diag_4d, &
              diag_4d_kp1, diag_3d, Time, is, &
              ie, js, je, dtcloud, pfull, phalf, radturbten2, T, qv, ql, &
-             qi, qa, omega, Mc, diff_t, LAND, ST, SQ, SL, SI, SA, rain3d, &
+             qi, qa, omega, Mc, diff_t, LAND, ST, SQ, SL, SI, SA,  &
+             f_snow_berg, rain3d, &
              snow3d, snowclr3d, surfrain, surfsnow, qrat, ahuco,   &
              limit_conv_cloud_frac, MASK, qn, Aerosol, SN)
         
@@ -1046,7 +1048,8 @@ subroutine strat_cloud_new (Time, is, ie, js, je, dtcloud, pfull,  &
                             phalf, zhalf, zfull, radturbten2, &
                             T_in, qv_in, ql_in, qi_in, qa_in, omega, Mc, &
                             diff_t, LAND, ST_out, SQ_out, SL_out, SI_out, &
-                            SA_out, rain3d, snow3d, snowclr3d, surfrain, &
+                            SA_out, f_snow_berg, rain3d, snow3d, &
+                            snowclr3d, surfrain, &
                             surfsnow, qrat, ahuco, limit_conv_cloud_frac, &
                             Aerosol, MASK3d, qn_in, SN_out, qni_in,  &
                             SNi_out, lsc_snow, lsc_rain, lsc_snow_size, &
@@ -1067,6 +1070,7 @@ real, dimension(:,:),   intent (in)            :: LAND
 real, dimension(:,:,:), intent (out)           :: ST_out, SQ_out, SL_out, &
                                                   SI_out, SA_out, rain3d, &
                                                   snow3d, snowclr3d
+real, dimension(:,:,:), intent (out)           :: f_snow_berg         
 real, dimension(:,:),   intent (out)           :: surfrain,surfsnow
 real, dimension(:,:,:), intent (in),  optional :: MASK3d, qn_in, qni_in
 real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
@@ -1108,7 +1112,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 
 !------------------------------------------------------------------------
 !  variables needed with column diagnostics:
-      integer  :: unit, ipt, jpt
+      integer  :: unit, ipt, jpt, outunit
 
 !------------------------------------------------------------------------
 !  dimensions of physics window:
@@ -1121,7 +1125,9 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !------------------------------------------------------------------------
 !  counter of columns in which mg_micro is not computed due to negative
 !  water in column (activated by setting debugo4 to .true.)
-      integer :: nrefuse 
+      integer :: nrefuse
+      
+      outunit = stdout()
 
 !-----------------------------------------------------------------------
 !    check for consistent arguments and options.
@@ -1165,7 +1171,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
         END IF
       ENDIF  ! (do_rk_microphys)
       if (debugo) then
-        IF( MAXVAL( ahuco ) .GT. 1. ) WRITE(stdout(),*) "AHUCO WARNING"
+        IF( MAXVAL( ahuco ) .GT. 1. ) WRITE(outunit,*) "AHUCO WARNING"
       endif
 
 !-------------------------------------------------------------------------
@@ -1196,7 +1202,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
       end if
 
       if ( debugo4 .and. mpp_pe() .EQ. 0 ) then   
-        write (stdout(),*) "in stratcloud mod", ncall
+        write (outunit,*) "in stratcloud mod", ncall
       endif
 
       if (debugo .or. debugo0 .or. debugo3 )then
@@ -1359,6 +1365,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
       snowclr3d = Precip_state%snowclr3d
       surfrain = Precip_state%surfrain
       surfsnow = Precip_state%surfsnow
+      f_snow_berg = Cloud_processes%f_snow_berg
 
       if (present(lsc_snow)) lsc_snow = Precip_state%lsc_snow
       if (present(lsc_rain)) lsc_rain = Precip_state%lsc_rain
@@ -1406,7 +1413,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 
       
       if ( debugo4 .and. nrefuse .gt. 0)then
-        write(stdout(),*) "WARNING: Refusing to do two moment microphysics &
+        write(outunit,*) "WARNING: Refusing to do two moment microphysics &
            &in columns containing points with negative total water: " ,  &
                                                                    nrefuse
       end if
@@ -1548,7 +1555,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !    indicate exit from module for pe 0.
 !------------------------------------------------------------------------
       if ( debugo4 .and. mpp_pe() .EQ.  0) then  
-        write(stdout(),*) "out stratcloud mod"
+        write(outunit,*) "out stratcloud mod"
       endif
       call mpp_clock_end (sc_end)
 
@@ -2686,6 +2693,7 @@ real,dimension(:,:,:),      intent(in), optional :: qn_in, qni_in
       allocate  (Cloud_processes%dcond_ls_ice  (idim, jdim, kdim) )
       allocate  (Cloud_processes%dcond_ls_tot  (idim, jdim, kdim) )
       allocate  (Cloud_processes%tmp5          (idim, jdim, kdim) )
+      allocate  (Cloud_processes%f_snow_berg   (idim, jdim, kdim) )
 
       Cloud_processes%da_ls          = 0.
       Cloud_processes%D_eros         = 0.
@@ -2694,6 +2702,7 @@ real,dimension(:,:,:),      intent(in), optional :: qn_in, qni_in
       Cloud_processes%dcond_ls_ice   = 0.
       Cloud_processes%dcond_ls_tot   = 0.
       Cloud_processes%tmp5           = 0.
+      Cloud_processes%f_snow_berg    = 0.
 
 !--------------------------------------------------------------------------
 
@@ -2813,6 +2822,7 @@ type(cloud_processes_type), intent(inout) :: Cloud_processes
       deallocate (Cloud_processes%dcond_ls_ice)
       deallocate (Cloud_processes%dcond_ls_tot)
       deallocate (Cloud_processes%tmp5        )
+      deallocate (Cloud_processes%f_snow_berg )
 
 !-------------------------------------------------------------------------
 

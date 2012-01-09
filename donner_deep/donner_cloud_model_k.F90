@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 17.0.4.2 2010/09/08 21:25:48 wfc Exp $
+!  $Id: donner_cloud_model_k.F90,v 19.0 2012/01/06 20:06:50 fms Exp $
 
 !module donner_cloud_model_inter_mod
 

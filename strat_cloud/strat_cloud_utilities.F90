@@ -17,8 +17,8 @@ PUBLIC diag_id_type, diag_pt_type, strat_nml_type,  &
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 1.1.2.1 2011/03/02 08:18:07 Richard.Hemler Exp $'
-Character(len=128) :: Tagname = '$Name: riga_201104 $'
+Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 19.0 2012/01/06 20:27:23 fms Exp $'
+Character(len=128) :: Tagname = '$Name: siena $'
 
 logical  :: module_is_initialized = .false.
 
@@ -328,7 +328,8 @@ type cloud_processes_type
                                         dcond_ls       =>NULL(), &
                                         dcond_ls_ice   =>NULL(), &
                                         dcond_ls_tot   =>NULL(), &
-                                        tmp5           =>NULL()
+                                        tmp5           =>NULL(), &
+                                        f_snow_berg    =>NULL()
 
 end type cloud_processes_type
 

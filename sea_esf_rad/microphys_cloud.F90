@@ -46,8 +46,8 @@ namelist /microphys_cloud_nml/  diam_liq
 ! version control information
 !-----------------------------------------------------------------------
 
-character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 18.0.4.2 2010/09/07 16:17:19 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 19.0 2012/01/06 20:19:43 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 logical ::   module_is_initialized = .false.
 contains 

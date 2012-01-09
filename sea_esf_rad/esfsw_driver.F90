@@ -64,8 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 18.0.2.1.2.1.2.1.2.1 2011/01/25 10:28:27 Richard.Hemler Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 19.0 2012/01/06 20:15:51 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 !---------------------------------------------------------------------

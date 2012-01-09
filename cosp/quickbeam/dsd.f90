@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
          
-! $Id: dsd.f90,v 1.1.2.1.2.1.6.1 2010/03/04 08:23:50 rsh Exp $
-! $Name: riga_201104 $
+! $Id: dsd.f90,v 19.0 2012/01/06 20:04:40 fms Exp $
+! $Name: siena $
 
   subroutine dsd(Q,Re,D,N,nsizes,dtype,rho_a,tc, &
              dmin,dmax,apm,bpm,rho_c,p1,p2,p3,fc,scaled)

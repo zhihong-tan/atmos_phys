@@ -6,8 +6,7 @@ use fms_mod,                only:  fms_init, mpp_pe, mpp_root_pe,  &
                                    error_mesg,  FATAL, WARNING, NOTE, &
                                    close_file, open_namelist_file, &
                                    stdlog, write_version_number, &
-                                   read_data, write_data,   &
-                                   open_restart_file
+                                   read_data, write_data
 use fms_io_mod,             only:  register_restart_field, restart_file_type
 use fms_io_mod,             only:  save_restart, restore_state, get_mosaic_tile_file
 use time_manager_mod,       only:  time_manager_init, time_type
@@ -39,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 17.0.2.1.2.1.4.2.2.1 2010/08/30 20:33:27 wfc Exp $'
-character(len=128)  :: tagname =  '$Name: riga_201104 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 19.0 2012/01/06 20:01:37 fms Exp $'
+character(len=128)  :: tagname =  '$Name: siena $'
 
 
 
@@ -51,8 +50,7 @@ public    cg_drag_init, cg_drag_calc, cg_drag_end, cg_drag_restart, &
           cg_drag_time_vary, cg_drag_endts
 
 
-private   read_restart_file, read_nc_restart_file, &
-          write_restart_file, gwfc
+private   read_nc_restart_file, gwfc
 
 !--- for netcdf restart
 type(restart_file_type), pointer, save :: Cg_restart => NULL()
@@ -492,7 +490,8 @@ type(time_type),         intent(in)      :: Time
         call read_nc_restart_file
 
       elseif (file_exist('INPUT/cg_drag.res')) then
-        call read_restart_file
+        call error_mesg ( 'cg_drag_mod', 'Native restart capability has been removed.', &
+                                         FATAL)
 !-------------------------------------------------------------------
 !    if no restart file is present, initialize the gwd field to zero.
 !    define the time remaining until the next cg_drag calculation from
@@ -891,153 +890,6 @@ end subroutine cg_drag_end
 !                     PRIVATE SUBROUTINES
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-subroutine  write_restart_file
-
-integer :: unit     ! unit for writing restart file
-
-!-------------------------------------------------------------------
-!    open unit for restart file.
-!-------------------------------------------------------------------
-      unit = open_restart_file ('RESTART/cg_drag.res', 'write')
-
-!-------------------------------------------------------------------
-!    the root pe writes out the restart version, the time remaining 
-!    before the next call to cg_drag_mod and the current cg_drag 
-!    timestep.
-!-------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe() ) then
-        write (unit) restart_versions(size(restart_versions(:)))
-        write (unit) cgdrag_alarm, cg_drag_freq
-      endif
-
-!-------------------------------------------------------------------
-!    each processor writes out its gravity wave forcing tendency 
-!    on the zonal flow.
-!-------------------------------------------------------------------
-      call write_data (unit, gwd_u)
-
-!---------  ----------------------------------------------------------
-!    close restart file unit. if column diagnostics have been generated,
-!    close the units to which they were written.
-!---------------------------------------------------------------------
-      call close_file (unit)
-
-end subroutine write_restart_file
-
-
-!#####################################################################
-
-subroutine read_restart_file
-
-!-------------------------------------------------------------------
-!   read_restart_file reads the cg_drag_mod restart file.
-!-------------------------------------------------------------------
-
-!-------------------------------------------------------------------
-!   local variables
-
-      integer                 :: unit
-      character(len=8)        :: chvers
-      integer, dimension(5)   :: dummy
-      real                    :: secs_per_day = SECONDS_PER_DAY
-
-!-------------------------------------------------------------------
-!   local variables: 
-!   
-!       unit           unit number for nml file 
-!       chvers         character representation of restart version 
-!       vers           restart version 
-!       dummy          array to hold restart version 1 control variables
-!       old_time_step  cg_drag timestep used in previous model run [ s ]
-!       secs_per_day   seconds in a day [ s ]
-!
-!---------------------------------------------------------------------
-
-
-!--------------------------------------------------------------------
-!    open file to read restart data. 
-!---------------------------------------------------------------------
-      unit = open_restart_file ('INPUT/cg_drag.res','read')
-
-!--------------------------------------------------------------------
-!    read and check restart version number.
-!---------------------------------------------------------------------
-      read (unit) vers
-      if (.not. any(vers == restart_versions) ) then
-        write (chvers, '(i4)') vers
-        call error_mesg ('cg_drag_init', &
-               'restart version '//chvers//' cannot be read &
-               &by this module version', FATAL)
-      endif
-
-!--------------------------------------------------------------------
-!    read control information from restart file. 
-!--------------------------------------------------------------------
-      if (vers == 1) then
-
-!--------------------------------------------------------------------
-!    if reading restart version 1, use the contents of array dummy to
-!    define the cg_drag timestep that was used in the run which wrote 
-!    the restart. define the time remaining before the next cg_drag 
-!    calculation to either be the previous timestep or the current
-!    offset, if that is specified. this assumes that the restart was
-!    written at 00Z.
-!--------------------------------------------------------------------
-        read (unit) dummy           
-        old_time_step = secs_per_day*dummy(4) + dummy(3)
-        if (cg_drag_offset == 0) then
-          cgdrag_alarm =  old_time_step
-        else
-          cgdrag_alarm = cg_drag_offset 
-        endif
-      else 
-
-!--------------------------------------------------------------------
-!    for restart version 2, read the time remaining until the next 
-!    cg_drag calculation, and the previously used timestep.
-!---------------------------------------------------------------------
-        read (unit) cgdrag_alarm, old_time_step
-      endif
-
-!-------------------------------------------------------------------
-!    read  restart data (gravity wave forcing tendency terms) and close 
-!    unit.
-!-------------------------------------------------------------------
-      call read_data (unit, gwd_u)
-      gwd_v(:,:,:) = 0.0
-      call close_file (unit)
-
-!--------------------------------------------------------------------
-!    if current cg_drag calling frequency differs from that previously 
-!    used, adjust the time remaining before the next calculation. 
-!--------------------------------------------------------------------
-      if (cg_drag_freq /= old_time_step) then
-        cgdrag_alarm = cgdrag_alarm - old_time_step + cg_drag_freq
-        if (mpp_pe() == mpp_root_pe() ) then
-          call error_mesg ('cg_drag_mod',   &
-                'cgdrag time step has changed, &
-                &next cgdrag time also changed', NOTE)
-        endif
-      endif
-
-!--------------------------------------------------------------------
-!    if cg_drag_offset is specified and is smaller than the time remain-
-!    ing until the next calculation, modify the time remaining to be 
-!    that offset time. the assumption is made that the restart was
-!    written at 00Z.
-!--------------------------------------------------------------------
-      if (cg_drag_offset /= 0) then
-        if (cgdrag_alarm > cg_drag_offset) then
-          cgdrag_alarm = cg_drag_offset
-        endif
-      endif
-
-!---------------------------------------------------------------------
-
-
-end subroutine read_restart_file
 
 
 subroutine read_nc_restart_file

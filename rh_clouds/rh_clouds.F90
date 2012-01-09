@@ -7,12 +7,14 @@ module rh_clouds_mod
 !
 !=======================================================================
 
-use mpp_mod, only : input_nml_file
-use fms_mod, only : error_mesg, FATAL, file_exist,    &
-                    check_nml_error, open_namelist_file,       &
-                    close_file, open_restart_file, &
-                    read_data, write_data, mpp_pe, mpp_root_pe, &
-                    write_version_number, stdlog
+use mpp_mod,    only : input_nml_file
+use fms_mod,    only : error_mesg, FATAL, file_exist,    &
+                       check_nml_error, open_namelist_file,       &
+                       close_file, mpp_pe, mpp_root_pe, &
+                       write_version_number, stdlog
+use fms_io_mod, only : restore_state, &
+                       register_restart_field, restart_file_type, &
+                       save_restart, get_mosaic_tile_file
 
 !=======================================================================
 
@@ -84,8 +86,8 @@ end interface
 
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: rh_clouds.F90,v 17.0.4.1 2010/08/30 20:33:31 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: rh_clouds.F90,v 19.0 2012/01/06 20:12:00 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 
 !=======================================================================
 
@@ -142,6 +144,9 @@ namelist /rh_clouds_nml/ high_middle_pole, high_middle_eq, &
 
 !  OTHER MODULE VARIABLES
 
+!--- for netcdf restart
+type(restart_file_type), pointer, save :: RH_restart => NULL()
+
 logical :: module_is_initialized = .false.
 
 contains
@@ -152,7 +157,7 @@ subroutine rh_clouds_init (nlon, nlat, nlev)
 
 integer, intent(in) :: nlon, nlat, nlev
 
-integer :: unit, ierr, io, logunit
+integer :: unit, ierr, io, logunit, id_restart
 
       if (module_is_initialized) return
 
@@ -183,14 +188,21 @@ integer :: unit, ierr, io, logunit
 !---------- initialize for rh cloud averaging -------------------------
 
       allocate (rhsum(nlon,nlat,nlev), nsum(nlon,nlat))
+      allocate(RH_restart)
 
-      if (file_exist('INPUT/rh_clouds.res')) then
-           unit = open_restart_file ('INPUT/rh_clouds.res', action='read')
-           call read_data (unit, nsum)
-           call read_data (unit, rhsum)
-           call close_file (unit)
+      id_restart = register_restart_field(RH_restart, 'rh_clouds.res.nc', 'nsum',  nsum)
+      id_restart = register_restart_field(RH_restart, 'rh_clouds.res.nc', 'rhsum', rhsum)
+      if (file_exist('INPUT/rh_clouds.res.nc')) then
+        call restore_state(RH_restart)
+      else if (file_exist('INPUT/rh_clouds.res')) then
+        call error_mesg ('rh_clouds_init', &
+                         'Native restart files no longer supported.', FATAL)
+!        unit = open_restart_file ('INPUT/rh_clouds.res', action='read')
+!        call read_data (unit, nsum)
+!        call read_data (unit, rhsum)
+!        call close_file (unit)
       else
-           rhsum = 0.0;  nsum = 0
+        rhsum = 0.0;  nsum = 0
       endif
 
 
@@ -204,12 +216,8 @@ end subroutine rh_clouds_init
 
 subroutine rh_clouds_end
 
- integer :: unit
 
-    unit = open_restart_file ('RESTART/rh_clouds.res', action='write')
-    call write_data (unit, nsum)
-    call write_data (unit, rhsum)
-    call close_file (unit)
+    call save_restart(RH_restart)
     module_is_initialized = .false.
 
 end subroutine rh_clouds_end

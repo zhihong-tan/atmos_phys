@@ -33,8 +33,8 @@ public morrison_gettelman_microp, morrison_gettelman_microp_init,  &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 1.1.2.1 2011/03/02 08:18:07 Richard.Hemler Exp $'
-Character(len=128) :: Tagname = '$Name: riga_201104 $'
+Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 19.0 2012/01/06 20:26:14 fms Exp $'
+Character(len=128) :: Tagname = '$Name: siena $'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------
@@ -317,7 +317,8 @@ SUBROUTINE morrison_gettelman_microp        &
                      inv_dtcloud, ql0, qi0, qa0, nc0, ni0, rh_crit, & 
                      ST, SQ, SL, SI, SN, SNi, SA, rain3d, snow3d,    &
                      surfrain, surfsnow, qrout, qsout, lsc_snow, &
-                     lsc_rain, lsc_snow_size, lsc_rain_size, n_diag_4d,  &
+                     lsc_rain, lsc_snow_size, lsc_rain_size, f_snow_berg, &
+                     n_diag_4d,  &
                      diag_4d, diag_id, diag_pt, nrefuse, debugo0,   &
                      debugo1, otun)
        
@@ -395,6 +396,7 @@ real, dimension(idim,jdim), INTENT(INOUT)             ::    &
 REAL, dimension(idim, jdim, kdim), INTENT(INOUT)      ::    &
                                        lsc_snow, lsc_rain, lsc_snow_size, &
                                        lsc_rain_size
+REAL(kind=mg_pr), DIMENSION(idim,kdim),  INTENT(OUT) ::  f_snow_berg
 REAL(kind=mg_pr), DIMENSION(idim,kdim)                ::    &
                                        dcond_ls_tem
 ! diagnostic rain/snow for output to history
@@ -870,6 +872,10 @@ integer :: debugn
  integer, save :: errcoun = 1
  real :: tsum
 
+    
+        REAL(kind=mg_pr), DIMENSION(idim,kdim) ::  sum_freeze, sum_rime, &
+                                                   sum_berg
+        real :: qldt_sum
  
 
    debugom=.TRUE.
@@ -1069,6 +1075,10 @@ END IF
        nrout(i,k)=0._mg_pr
        nsout(i,k)=0._mg_pr
  
+!  initialize bergeron fraction arrays
+       sum_freeze(i,k) = 0.
+       sum_rime  (i,k) = 0.
+       sum_berg  (i,k) = 0.
 
        
 
@@ -4258,6 +4268,7 @@ END IF
 !diag++
             IF ( diag_id%qldt_freez > 0 ) &
              diag_4d(i,j,k,diag_pt%qldt_freez) = qctend(i,k)
+            sum_freeze(i,k) = qctend(i,k)
 
            IF ( diag_id%qndt_ihom > 0 ) &
               diag_4d(i,j,k,diag_pt%qndt_ihom) =  nctend(i,k)
@@ -4290,6 +4301,7 @@ END IF
 !diag++
             IF ( diag_id%qldt_freez > 0 ) &
               diag_4d(i,j,k,diag_pt%qldt_freez)  = qctend(i,k) -  diag_4d(i,j,k,diag_pt%qldt_freez) 
+              sum_freeze(i,k) = qctend(i,k) - sum_freeze(i,k)
 
 
            IF ( diag_id%qndt_ihom > 0 ) &
@@ -4561,8 +4573,10 @@ end do i_loop_3
   
                    qsout(i,k)=qsout(i,k)+ tmp1
 
-                   asnowrt(i,k) = asnowrt(i,k) +  tmp1/deltat
-                   atotrt(i,k) = atotrt(i,k) +  tmp1/deltat
+                   asnowrt(i,k) = asnowrt(i,k) +  tmp1/deltat*  &
+                                                     pdel(i,k)/grav /rhow
+                   atotrt(i,k) = atotrt(i,k) +  tmp1/deltat *   &
+                                                     pdel(i,k)/grav /rhow
               
 
                   END IF
@@ -4605,7 +4619,8 @@ end do i_loop_3
                    prect(i) = prect(i)+ tmp1/deltat * pdel(i,k)/grav /rhow
                   
                    qrout(i,k)=qrout(i,k)+ tmp1
-                   atotrt(i,k) = atotrt(i,k) +  tmp1/deltat
+                   atotrt(i,k) = atotrt(i,k) +  tmp1/deltat *   &
+                                                     pdel(i,k)/grav /rhow
                    END IF
 
 
@@ -4790,8 +4805,8 @@ END IF sat_adj_opt_if
 
 
 
-      rain3d(i,j,k+1) = 1000._mg_pr * MAX((atotrt(i,k)-asnowrt(i,k)), 0.)
-      snow3d(i,j,k+1) = 1000._mg_pr * MAX(asnowrt(i,k),0.)
+      rain3d(i,j,k+1) = rhow        * MAX((atotrt(i,k)-asnowrt(i,k)),0.)
+      snow3d(i,j,k+1) = rhow        * MAX(asnowrt(i,k),0.)
 
 
 
@@ -4990,6 +5005,7 @@ END IF mass_if
 
                if (diag_id%qldt_berg + diag_id%ql_berg_col > 0) &
               diag_4d(:,j,:,diag_pt%qldt_berg)  = - berg1(:,:)  /real(iter)   
+               sum_berg(:,:) = -berg1(:,:)/real(iter)
 
                if (diag_id%qldt_auto  + diag_id%ql_auto_col > 0) &
               diag_4d(:,j,:,diag_pt%qldt_auto)  = - prc1(:,:)   /real(iter)   
@@ -5003,6 +5019,8 @@ END IF mass_if
                 if (diag_id%qldt_accrs  + diag_id%ql_accrs_col > 0) & 
               diag_4d(:,j,:,diag_pt%qldt_accrs)  =  psacws1(:,:) /real(iter)
 
+               sum_rime(:,:) = psacws1(:,:)/real(iter)
+               
                if (diag_id%qldt_bergs + diag_id%ql_bergs_col > 0) &
               diag_4d(:,j,:,diag_pt%qldt_bergs)  =  bergs1(:,:) /real(iter)
 
@@ -5086,6 +5104,20 @@ END IF mass_if
               if (diag_id%qnidt_nucclim2  > 0)    &
              diag_4d(:,j,:,diag_pt%qnidt_nucclim2)  = nucclim2_1(:,:)  /real(iter)
 
+!RSH:
+!   calculate bergeron fraction of total cloud water to cloud ice 
+!   conversion
+             do k=1,kdim
+               do i=1,idim
+                 qldt_sum = sum_berg(i,k) + sum_rime(i,k) + sum_freeze(i,k)
+                 if (qldt_sum /= 0.0)  then
+                   f_snow_berg(i,k) = sum_berg(i,k)/qldt_sum
+                 else
+                   f_snow_berg(i,k) = 0.
+                 endif
+               end do
+             end do
+             
 
  ! diag--  -----
 

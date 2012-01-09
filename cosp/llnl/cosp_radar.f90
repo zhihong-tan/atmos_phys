@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_radar.f90,v 1.1.2.1.4.1.6.1.2.1 2010/09/08 21:23:39 wfc Exp $
-! $Name: riga_201104 $
+! $Id: cosp_radar.f90,v 19.0 2012/01/06 20:04:26 fms Exp $
+! $Name: siena $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
