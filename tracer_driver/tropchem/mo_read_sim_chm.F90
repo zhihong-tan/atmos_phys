@@ -5,8 +5,8 @@
                              MPP_SINGLE, mpp_close
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_read_sim_chm.F90,v 13.0.14.1.2.1 2011/03/30 20:46:08 William.Cooke Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: mo_read_sim_chm.F90,v 19.0 2012/01/06 20:34:02 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

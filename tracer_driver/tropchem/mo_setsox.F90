@@ -1,8 +1,8 @@
       module MO_SETSOX_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 16.0.4.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: mo_setsox.F90,v 19.0 2012/01/06 20:34:08 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

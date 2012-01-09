@@ -159,6 +159,10 @@ integer, save    :: aircraft_time_serie_type
 ! integer, save    :: cont_volc_time_serie_type
 ! integer, save    :: expl_volc_time_serie_type
 
+real             :: critical_sea_fraction = 0.5 ! DMS flux from sea occurs
+                                ! in grid cells with ocn_flx_fraction .gt.
+                                !  this value
+                             
 character(len=80)  :: runtype = 'default'
 
 character(len=80)  :: gocart_emission_filename = 'gocart_emission.nc'
@@ -235,6 +239,7 @@ integer, dimension(6) :: aircraft_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 real :: so2_aircraft_EI = 1.e-3  ! kg of SO2/kg of fuel
 
 namelist /simple_sulfate_nml/  &
+       critical_sea_fraction,     &
       runtype,                         &
       aerocom_emission_filename, aerocom_emission_name,  &
       gocart_emission_filename, gocart_emission_name,  &
@@ -260,8 +265,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 18.0.2.1.2.1.2.1 2010/08/30 20:33:36 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 19.0 2012/01/06 20:31:26 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 !-----------------------------------------------------------------------
 
 contains
@@ -1206,11 +1211,11 @@ end subroutine atmos_sulfate_endts
 !     The axes relating to the tracer array dimensioned as
 !      (nlon, nlat, nlev, ntime)
 !   </IN>
-subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
+subroutine atmos_DMS_emission (lon, lat, area, ocn_flx_fraction, t_surf_rad, w10m, &
        pwt, DMS_dt, Time, is,ie,js,je,kbot)
 !
       real, intent(in),    dimension(:,:)           :: lon, lat
-      real, intent(in),    dimension(:,:)           :: frac_land
+      real, intent(in),    dimension(:,:)           :: ocn_flx_fraction
       real, intent(in),    dimension(:,:)           :: t_surf_rad
       real, intent(in),    dimension(:,:)           :: w10m
       real, intent(in),    dimension(:,:)           :: area
@@ -1238,15 +1243,14 @@ subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
           used = send_data ( id_DMSo, DMSo, Time, is_in=is, js_in=js )
 
 ! ****************************************************************************
-! *  If frac_land < 0.5: DMS_emis = seawaterDMS * transfer velocity.         *
-! *  Otherwise,  DMS_emis = 0.                                               *
+! *  If ocn_flx_fraction > critical_sea_fraction: DMS_emis = seawaterDMS * transfer velocity * ocn_flx_fraction
 ! ****************************************************************************
 !
 
       do j = 1, jd
       do i = 1, id
        SST = t_surf_rad(i,j)-273.15     ! Sea surface temperature [Celsius]
-       if (frac_land(i,j).le.0.5) then
+       if (ocn_flx_fraction(i,j) .gt. critical_sea_fraction) then
 
 !  < Schmidt number for DMS (Saltzman et al., 1993) >
         Sc = 2674.0 - 147.12*SST + 3.726*(SST**2) - 0.038*(SST**3)
@@ -1309,12 +1313,12 @@ subroutine atmos_DMS_emission (lon, lat, area, frac_land, t_surf_rad, w10m, &
 ! ****************************************************************************
 !
         DMS_emis(i,j) = AKw/100./3600. * CONC*1.e-12*1000.* WTM_DMS &
-            * (1.-frac_land(i,j))
+            * (ocn_flx_fraction(i,j))
 !
-       else                !  frac_land <> 1 (water)
+       else               
         DMS_emis(i,j) = 0.
 
-       end if              ! -- if frac_land = 1.
+       end if           
 
       end do
       end do

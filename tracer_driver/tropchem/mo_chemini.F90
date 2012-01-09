@@ -5,15 +5,15 @@ implicit none
       private
       public :: chemini
 
-character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 16.0.4.1.2.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: mo_chemini.F90,v 19.0 2012/01/06 20:33:20 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 logical                       :: module_is_initialized = .false.
 
       contains
 
       subroutine chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
                           o3_column_top, jno_scale_factor, verbose, &
-                          retain_cm3_bugs )
+                          retain_cm3_bugs, do_fastjx_photo )
 !-----------------------------------------------------------------------
 !       ... Chemistry module intialization
 !-----------------------------------------------------------------------
@@ -27,6 +27,7 @@ logical                       :: module_is_initialized = .false.
       use MO_RODAS_SOL_mod,  only : rodas_slv_init
 
       use MO_READ_SIM_CHM_mod, only : read_sim_chm
+      use mo_fphoto_mod,     only : fprate_init
 
       implicit none
 
@@ -40,6 +41,7 @@ logical                       :: module_is_initialized = .false.
                                       jno_scale_factor
       integer,          intent(in) :: verbose
       logical,          intent(in) :: retain_cm3_bugs
+      logical,          intent(in) :: do_fastjx_photo
 
 !-----------------------------------------------------------------------
 !       ... Local variables
@@ -68,17 +70,25 @@ logical                       :: module_is_initialized = .false.
 !     call diags_init( tracnam, plonl, platl, pplon )
 
 !-----------------------------------------------------------------------
+!     ... initialize fast-jx photo
+!-----------------------------------------------------------------------    
+      if (do_fastjx_photo) then
+         call fprate_init (o3_column_top)
+      else
+
+!-----------------------------------------------------------------------
 !       ... Initialize photorate module
 !-----------------------------------------------------------------------
 !     filename = photo_flsp%nl_filename
 !     lpath    = photo_flsp%local_path
 !     mspath   = photo_flsp%remote_path
-      lpath = 'INPUT/'
-      filename = TRIM(file_jval_lut)
-      filename_solarmin = TRIM(file_jval_lut_min)
-      call prate_init( filename, filename_solarmin, lpath, mspath, &
-                       use_tdep_jvals, o3_column_top, jno_scale_factor, &
-                       retain_cm3_bugs )
+         lpath = 'INPUT/'
+         filename = TRIM(file_jval_lut)
+         filename_solarmin = TRIM(file_jval_lut_min)
+         call prate_init( filename, filename_solarmin, lpath, mspath, &
+                          use_tdep_jvals, o3_column_top, jno_scale_factor, &
+                          retain_cm3_bugs )
+      end if
 
 !-----------------------------------------------------------------------
 !       ... Read time-independent airplane emissions
@@ -169,6 +179,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
          call rodas_slv_init (retain_cm3_bugs)
       end if
+
 
       end subroutine chemini
 

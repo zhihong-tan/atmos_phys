@@ -177,10 +177,13 @@ logunit=stdlog()
 if (ind_co2 > 0 .and. do_co2_restore) then
 
 ! input is in dvmr (mol/mol)
+!$OMP single
   call data_override('ATM', 'co2_dvmr_restore', restore_co2_dvmr, Time, override=used)
   if (.not. used) then
     call error_mesg (trim(error_header), ' data override needed for co2_dvmr_restore ', FATAL)
   endif
+!$OMP end single
+!$OMP barrier
 !  if (mpp_pe() == mpp_root_pe() ) &
 !      write (logunit,*)' atmos_co2_sourcesink: mean restore co2_dvmr   = ', restore_co2_dvmr
 
@@ -262,10 +265,14 @@ logunit=stdlog()
 if (ind_co2 > 0 .and. co2_radiation_override) then
 
 ! input is in dvmr (mol/mol)
+!$OMP single
+
   call data_override('ATM', 'co2_dvmr_rad', radiation_co2_dvmr, Time, override=used)
   if (.not. used) then
     call error_mesg (trim(error_header), ' data override needed for co2_dvmr_rad ', FATAL)
   endif
+!$OMP end single
+!$OMP barrier
 !  if (mpp_pe() == mpp_root_pe() ) &
 !      write (logunit,*)' atmos_co2_rad       : mean radiation co2_dvmr = ', radiation_co2_dvmr
 
@@ -368,12 +375,16 @@ co2_emiss_dt(:,:,:)=0.0
 logunit=stdlog()
 if (ind_co2 > 0 .and. do_co2_emissions) then
 
-  call data_override('ATM', 'co2_emiss', co2_emis2d, Time, override=used)
-  if (id_co2_emiss_orig > 0) sent = send_data (id_co2_emiss_orig, co2_emis2d, Time, is_in=is,js_in=js)
+!$OMP  single
 
+  call data_override('ATM', 'co2_emiss', co2_emis2d, Time, override=used)
   if (.not. used) then
     call error_mesg (trim(error_header), ' data override needed for co2 emission ', FATAL)
   endif
+
+!$OMP end single
+!$OMP barrier
+  if (id_co2_emiss_orig > 0) sent = send_data (id_co2_emiss_orig, co2_emis2d, Time, is_in=is,js_in=js)
 
 ! lowest model layer
     do j=1,jd

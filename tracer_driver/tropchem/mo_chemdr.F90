@@ -8,8 +8,8 @@
 
 !     save
 
-character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 17.0.4.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 19.0 2012/01/06 20:33:18 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -28,7 +28,8 @@ logical                       :: module_is_initialized = .false.
 !                  zma, zi, cldfr, cwat, tfld, inv_data, sh, &
 !                  albedo, coszen, esfact, &
 !                  prod_out, loss_out, sulfate, psc, &
-!                  do_interactive_h2o, solar_phase, imp_slv_nonconv, plonl )
+!                  do_interactive_h2o, solar_phase, imp_slv_nonconv, plonl,&
+!                  prod_ox, loss_ox )
 !   </TEMPLATE>
 !   <IN NAME="Time" TYPE="time_type">
 !     Model time
@@ -120,6 +121,12 @@ logical                       :: module_is_initialized = .false.
 ! prod_ox and loss_ox are added to chemdr. (jmao, 1/1/2011)
 ! r,phalf, pwt and j_ndx are added for fastjx.(jmao,1/1/2011)
       subroutine chemdr( vmr, &
+                         r, &
+                         phalf,&
+                         pwt , &
+                         do_fastjx_photo,&      
+                         use_lsc_in_fastjx, &
+                         j_ndx, &
                          Time, &
                          lat, lon, &
                          delt, &
@@ -129,7 +136,8 @@ logical                       :: module_is_initialized = .false.
                          albedo, coszen, esfact, &
                          prod_out, loss_out, jvals_out, rate_const_out, sulfate, psc, &
                          do_interactive_h2o, solar_phase, imp_slv_nonconv, &
-                         plonl, prod_ox, loss_ox, retain_cm3_bugs )
+                         plonl, prod_ox, loss_ox, retain_cm3_bugs, &
+                         check_convergence )
 !-----------------------------------------------------------------------
 !     ... Chem_solver advances the volumetric mixing ratio
 !         forward one time step via a combination of explicit,
@@ -149,6 +157,7 @@ logical                       :: module_is_initialized = .false.
       use mo_adjrxt_mod,    only : adjrxt
       use mo_phtadj_mod,    only : phtadj
       use mo_setsox_mod,    only : setsox
+      use mo_fphoto_mod,    only : fphoto
       use mo_chem_utls_mod, only : inti_mr_xform, adjh2o, negtrc, mmr2vmr, vmr2mmr, &
                                    get_spc_ndx, get_grp_mem_ndx
       use time_manager_mod, only : time_type
@@ -164,6 +173,10 @@ logical                       :: module_is_initialized = .false.
       integer, intent(in) ::  plonl
       real,    intent(in) ::  delt                    ! timestep in seconds
       real, intent(inout) ::  vmr(:,:,:)              ! transported species ( vmr )
+      integer, intent(in) ::  j_ndx             
+      logical, intent(in) ::  do_fastjx_photo         ! true = use fastjx photo
+      logical, intent(in) ::  use_lsc_in_fastjx        ! true = use lsc clouds in fastjx calc
+      real, intent(in)    ::  r(:,:,:)                ! the original r species
       real, dimension(:), intent(in) :: &
                               ps, &                   ! surface press ( pascals )
                               ptop, &                 ! model top pressure (pascals)
@@ -184,7 +197,9 @@ logical                       :: module_is_initialized = .false.
                               cwat, &                 ! total cloud water (kg/kg)
                               tfld, &                 ! midpoint temperature
                               sh, &                   ! specific humidity ( kg/kg )
-                              sulfate                 ! sulfate aerosol
+                              sulfate, &              ! sulfate aerosol
+                              phalf,   &              ! pressure at boundaries (Pa)
+                              pwt
       type(psc_type), intent(in) :: &
                               psc                     ! polar stratospheric clouds (PSCs)
       real, intent(in) ::     solar_phase, &          ! solar cycle phase (1=max, 0=min)
@@ -207,12 +222,25 @@ logical                       :: module_is_initialized = .false.
                               imp_slv_nonconv         ! flag for implicit solver non-convergence (fraction)
       logical, intent(in) ::  do_interactive_h2o      ! include h2o sources/sinks
       logical, intent(in) ::  retain_cm3_bugs        ! retain cm3 bugs ?
+      logical, intent(in) ::  check_convergence      ! check convergence of implicit solver solution ?
 
 !-----------------------------------------------------------------------
 !             ... Local variables
 !-----------------------------------------------------------------------
       integer, parameter :: inst = 1, avrg = 2
       integer  ::  k
+      integer  :: i
+      integer  :: ox_ndx, o3s_ndx
+      integer  :: troplev(plonl)
+      real, parameter    :: ztrop_low = 5.  
+                                     ! lowest tropopause level allowed (km)
+      real, parameter    :: ztrop_high = 20.  
+                                    ! highest tropopause level allowed (km)
+      real, parameter    :: max_dtdz   = 2.  
+                             ! max dt/dz for tropopause level (degrees k/km)
+      real     :: dt
+      real, dimension(plonl,SIZE(vmr,2))    :: k_loss_ox   
+                                       ! Loss rate coefficient of Ox (s-1)
 !     integer  ::  ox_ndx, o3_ndx
       integer  ::  so2_ndx, so4_ndx
       real     ::  invariants(plonl,SIZE(vmr,2),max(1,nfs))
@@ -335,13 +363,33 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------      
 !             ... Calculate the photodissociation rates
 !-----------------------------------------------------------------------      
-         call photo( reaction_rates(:,:,:phtcnt), pmid, pdel, tfld, zmid, &
+         if (.not. do_fastjx_photo) then
+           call photo( reaction_rates(:,:,:phtcnt), pmid, pdel, tfld, zmid, &
                      col_dens, &
 !                    zen_angle, albs, &
                      coszen, albedo, &
                      cwat, cldfr, &
 !                    sunon, sunoff, &
                      esfact, solar_phase, plonl )
+         else    
+            call fphoto( reaction_rates(:,:,:phtcnt), &
+                         pmid, pdel, &
+                         tfld, zmid, &
+                         col_dens, &
+                         coszen, albedo, &
+                         j_ndx, &
+                         cwat, &
+                         cldfr,  &
+                         esfact, solar_phase, plonl,&           
+                         use_lsc_in_fastjx, &
+                         phalf,&
+                         zi,&
+                         pwt , &
+                         sh, &
+                         r &            
+                          )
+         end if
+
 !-----------------------------------------------------------------------      
 !       ...  History output for instantaneous photo rates
 !-----------------------------------------------------------------------      
@@ -468,7 +516,7 @@ logical                       :: module_is_initialized = .false.
                        nstep, delt, &
 !                      invariants(1,1,indexm), &
                        lat, lon, &
-                       prod_out, loss_out, &
+                       prod_out, loss_out, check_convergence, &
                        imp_slv_nonconv, &
                        plonl, plnplv, &
                        prod_ox, loss_ox)
@@ -483,6 +531,39 @@ logical                       :: module_is_initialized = .false.
 !                        invariants(1,1,indexm), &
                          plonl, plnplv )
       end if
+
+!-----------------------------------------------------------------------
+!       ... Assign O3strat to O3 at and above the tropopause and 
+!           let it undergo loss processes below the tropopause
+!-----------------------------------------------------------------------
+      ox_ndx = get_spc_ndx( 'O3' )
+      o3s_ndx = get_spc_ndx( 'O3S' )
+      do i = 1,plonl
+        do k = plev-1,2,-1
+           if (zmid(i,k) < ztrop_low ) then
+               cycle
+           else if( zmid(i,k) > ztrop_high ) then
+               troplev(i)    = k
+               exit
+           end if
+           dt = tfld(i,k) - tfld(i,k-1)
+           if( dt < max_dtdz*(zmid(i,k-1) - zmid(i,k)) ) then
+              troplev(i)    = k
+              exit
+           end if
+       end do
+     end do
+     do i = 1,plonl
+       do k = 1,plev
+         if (k <= troplev(i)) then
+            vmr(i,k,o3s_ndx) = vmr(i,k,ox_ndx)
+         else
+            k_loss_ox(i,k) = loss_ox(i,k) / (max( vmr(i,k,ox_ndx), 1.0e-20     ))
+            vmr(i,k,o3s_ndx) = vmr(i,k,o3s_ndx)*exp( -delt*k_loss_ox(i,k) )
+         end if
+       end do
+     end do
+
 !-----------------------------------------------------------------------
 !       ... Heterogeneous chemistry
 !-----------------------------------------------------------------------

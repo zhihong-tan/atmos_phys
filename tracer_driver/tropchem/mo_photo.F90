@@ -2,6 +2,8 @@
 !----------------------------------------------------------------------
 !        ... Photolysis interp table and related arrays
 !----------------------------------------------------------------------
+      use fms_mod,          only : mpp_clock_begin, mpp_clock_id, &
+                                   mpp_clock_end, CLOCK_MODULE
       use mpp_mod,          only : mpp_error, FATAL
       use mpp_io_mod,       only : mpp_open, MPP_RDONLY, MPP_ASCII,MPP_MULTI, &
                                    MPP_SINGLE, mpp_close
@@ -85,9 +87,10 @@
       logical :: use_tdep_jvals, use_solar_cycle
       real    :: o3_column_top, jno_scale_factor
 
-character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 17.0.2.1.4.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 19.0 2012/01/06 20:34:00 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 logical                       :: module_is_initialized = .false.
+integer                       :: photo_clock
 
       CONTAINS
       
@@ -393,6 +396,8 @@ logical                       :: module_is_initialized = .false.
       o3_column_top    = o3_column_top_in
       jno_scale_factor = jno_scale_factor_in
 
+      photo_clock = mpp_clock_id ('Tropchem:Photo', grain=CLOCK_MODULE)
+
       end subroutine prate_init
 ! </SUBROUTINE>
 
@@ -517,6 +522,7 @@ logical                       :: module_is_initialized = .false.
                    tmp_jno
       real    ::   prates(jdim,size(zmid,2))        ! photorates matrix
 
+      call mpp_clock_begin (photo_clock)
       plev = SIZE(zmid,2)
 !-----------------------------------------------------------------
 !        ... Zero all photorates
@@ -747,6 +753,7 @@ logical                       :: module_is_initialized = .false.
                                    wgt300(:,:)*tmp_jclono2_300(:,:)
       end if
 
+      call mpp_clock_end   (photo_clock)
       end subroutine PHOTO
 ! </SUBROUTINE>
 

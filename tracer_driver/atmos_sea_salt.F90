@@ -37,6 +37,11 @@ private
 
 public  atmos_sea_salt_sourcesink, atmos_sea_salt_init, atmos_sea_salt_end
 
+!---- version number -----
+character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 19.0 2012/01/06 20:31:22 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
+
+
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
 character(len=80) :: scheme = " "
@@ -45,83 +50,35 @@ real, save :: coef2
 !---------------------------------------------------------------------
 real :: coef_emis1=-999.
 real :: coef_emis2=-999.
-real :: critical_land_fraction = 1.0  ! sea-salt aerosol production  
+real :: critical_sea_fraction = 0.0   ! sea-salt aerosol production
                                       ! occurs in grid cells with
-                                      ! land fraction .lt. this value
+                                      ! ocn_flx_fraction .gt. this value
+
 
 namelist /ssalt_nml/  scheme, coef_emis1, coef_emis2, &
-                      critical_land_fraction
+                      critical_sea_fraction
+
 !-----------------------------------------------------------------------
 
 !--- Arrays to help calculate tracer sources/sinks ---
 
-character(len=6), parameter :: module_name = 'tracer'
+character(len=7), parameter :: mod_name = 'tracers'
 
 integer :: nseasalt=0  ! tracer number for sea_salt
 !--- identification numbers for  diagnostic fields and axes ----
 
 integer :: id_SS_emis(5), id_SS_setl(5)
+integer :: id_ocn_flx_fraction
 
 logical :: module_is_initialized=.FALSE.
 logical :: used
-
-!---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 17.0.2.1.4.2.2.1 2010/08/30 20:33:36 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
-!-----------------------------------------------------------------------
-
-contains
-
-!#######################################################################
-!<SUBROUTINE NAME="atmos_sea_salt_sourcesink">
-!<OVERVIEW>
-! The routine that calculate the emission and settling of sea_salt.
-!</OVERVIEW>
- subroutine atmos_sea_salt_sourcesink (i_SS,ra,rb,ssaltref,ssaltden, &
-       lon, lat, frac_land, pwt, &
-       zhalf, pfull, w10m, t, rh, &
-       seasalt, seasalt_dt, dt, SS_setl, SS_emis, Time, is,ie,js,je,kbot)
-
-!-----------------------------------------------------------------------
-   integer, intent(in)                 :: i_SS
-   real, intent(in)                    :: ra
-   real, intent(in)                    :: rb
-   real, intent(in)                    :: dt
-   real, intent(in)                    :: ssaltref
-   real, intent(in)                    :: ssaltden
-   real, intent(in),  dimension(:,:)   :: lon, lat
-   real, intent(in),  dimension(:,:)   :: frac_land
-   real, intent(in),  dimension(:,:)   :: w10m
-   real, intent(out),  dimension(:,:)   :: SS_setl, SS_emis
-   real, intent(in),  dimension(:,:,:) :: pwt, seasalt
-   real, intent(in),  dimension(:,:,:) :: zhalf, pfull, t, rh
-   real, intent(out), dimension(:,:,:) :: seasalt_dt
-   type(time_type), intent(in) :: Time     
-   integer, intent(in),  dimension(:,:), optional :: kbot
-!-----------------------------------------------------------------------
-real, dimension(size(seasalt,3)) :: SS_conc0, SS_conc1
-integer  i, j, k, id, jd, kd, kb, ir, irh
-integer, intent(in)                    :: is, ie, js, je
-!----------------------------------------------
-!     Sea-Salt parameters
-!----------------------------------------------
-      real, dimension(size(seasalt,3)) :: setl
+integer :: logunit
 
       real, parameter :: small_value = 1.e-20
       real, parameter :: mtv  = 1.    ! factor connversion for mixing ratio
       integer, parameter :: nrh= 65   ! number of RH in look-up table
       integer, parameter :: nr = 10   ! number of integration points 
                                       ! The difference with nr=100 & nr=5 < 1e-3
-      integer :: istep, nstep, logunit
-      real, parameter :: ptmb = 0.01     ! pascal to mb
-      integer, parameter :: nstep_max = 5  !Maximum number of cyles for settling
-      real :: step
-      real :: rhb, betha
-      real :: rho_wet_salt, viscosity, free_path, C_c
-      real :: rho_air, Bcoef
-      real :: r, dr, rmid, rwet, seasalt_flux
-      real :: a1, a2
-      real, dimension(size(pfull,3))  :: vdep
       real, dimension(nrh) :: rho_table, growth_table
 !! Sea salt hygroscopic growth factor from 35 to 99% RH
 !! We start at the deliquescence point of sea-salt for RH=37%
@@ -145,7 +102,60 @@ integer, intent(in)                    :: is, ie, js, je
        1.163, 1.156, 1.150, 1.142, 1.135, 1.128, 1.120, 1.112, 1.103, &
        1.094, 1.084, 1.074, 1.063, 1.051, 1.038, 1.025, 1.011/
 
-      betha = growth_table(46)  ! Growth factor at 80% RH
+real :: betha
+
+!-----------------------------------------------------------------------
+
+contains
+
+!#######################################################################
+!<SUBROUTINE NAME="atmos_sea_salt_sourcesink">
+!<OVERVIEW>
+! The routine that calculate the emission and settling of sea_salt.
+!</OVERVIEW>
+ subroutine atmos_sea_salt_sourcesink (i_SS,ra,rb,ssaltref,ssaltden, &
+                                       lon, lat, ocn_flx_fraction, pwt, &
+                                       zhalf, pfull, w10m, t, rh, &
+                                       seasalt, seasalt_dt, dt, SS_setl, &
+                                       SS_emis, Time, is,ie,js,je, kbot)
+
+!-----------------------------------------------------------------------
+   integer, intent(in)                 :: i_SS
+   real, intent(in)                    :: ra
+   real, intent(in)                    :: rb
+   real, intent(in)                    :: dt
+   real, intent(in)                    :: ssaltref
+   real, intent(in)                    :: ssaltden
+   real, intent(in),  dimension(:,:)   :: lon, lat
+   real, intent(in),  dimension(:,:)   :: ocn_flx_fraction
+   real, intent(in),  dimension(:,:)   :: w10m
+   real, intent(out), dimension(:,:)   :: SS_setl, SS_emis
+   real, intent(in),  dimension(:,:,:) :: pwt, seasalt
+   real, intent(in),  dimension(:,:,:) :: zhalf, pfull, t, rh
+   real, intent(out), dimension(:,:,:) :: seasalt_dt
+   integer, intent(in)                 :: is, ie, js, je
+   type(time_type), intent(in) :: Time     
+   integer, intent(in),  dimension(:,:), optional :: kbot
+!-----------------------------------------------------------------------
+
+real, dimension(size(seasalt,3)) :: SS_conc0, SS_conc1
+integer  i, j, k, id, jd, kd, kb, ir, irh
+
+!----------------------------------------------
+!     Sea-Salt parameters
+!----------------------------------------------
+      real, dimension(size(seasalt,3)) :: setl
+
+      integer :: istep, nstep
+      real, parameter :: ptmb = 0.01     ! pascal to mb
+      integer, parameter :: nstep_max = 5  !Maximum number of cyles for settling
+      real :: step
+      real :: rhb
+      real :: rho_wet_salt, viscosity, free_path, C_c
+      real :: rho_air, Bcoef
+      real :: r, dr, rmid, rwet, seasalt_flux
+      real :: a1, a2
+      real, dimension(size(pfull,3))  :: vdep
 !-----------------------------------------------------------------------
 
       id=size(seasalt,1); jd=size(seasalt,2); kd=size(seasalt,3)
@@ -153,8 +163,8 @@ integer, intent(in)                    :: is, ie, js, je
       SS_emis(:,:)      = 0.0
       SS_setl(:,:)      = 0.0
       seasalt_dt(:,:,:) = 0.0
-      seasalt_flux = 0.
-      if (scheme .ne. "Smith") then 
+
+!-------------------------------------------------------------------------
 ! Smith et al. (1993) derived an expression for the sea-salt flux
 ! by assuming that particle size spectra measured at a height of 10 m
 ! on the ocast of the Outer Hevrides islands with prevailing winds from
@@ -173,7 +183,9 @@ integer, intent(in)                    :: is, ie, js, je
 ! radius disappear by cancelation with r^3 in Monahan formula. However
 ! there is 1/betha3 remaining multiply by betha from the integrand, such
 ! that finally 1/betha^2 remained. 
-!
+!-------------------------------------------------------------------------
+
+      if (scheme .ne. "Smith") then !  ie, Monahan et . (1986)
         r = ra* 1.e6
         dr= (rb - ra)/float(nr)* 1.e6
         seasalt_flux=0.
@@ -186,23 +198,25 @@ integer, intent(in)                    :: is, ie, js, je
              (1.+0.057*(betha*rmid)**1.05)*dr*      &
              10**(1.19*exp(-(Bcoef**2)))
         enddo
-      endif
-
-      logunit=stdlog()
-      if (present(kbot)) then
-   
-        if (scheme .eq. "Smith") then
-          if (mpp_pe() == mpp_root_pe()) write (logunit,*) "Smith parameterization for sea-salt production"
           do j=1,jd
             do i=1,id
-              kb=kbot(i,j)
-!              if (frac_land(i,j).lt.1.) then
-              if (frac_land(i,j).lt.critical_land_fraction) then
+              if (ocn_flx_fraction (i,j).gt.critical_sea_fraction) then
+                SS_emis(i,j) = seasalt_flux*(ocn_flx_fraction (i,j))*   &
+                                                           w10m(i,j)**3.41
+              endif
+            enddo
+          enddo
+
+      else  !  scheme .ne. smith
+        if (mpp_pe() == mpp_root_pe())   &
+          write (logunit,*) "Smith parameterization for sea-salt production"
+          do j=1,jd
+            do i=1,id
+              if (ocn_flx_fraction (i,j).gt.critical_sea_fraction) then
 !------------------------------------------------------------------
-!    Surface emission of sea salt
+!    Surface emission of sea salt  (Smith et al. (1993))
 !------------------------------------------------------------------
-! Smith et al. (1993)
-                seasalt_flux = 0.0
+                seasalt_flux            = 0.0
                 a1=exp(0.155*w10m(i,j)+5.595)
                 a2=exp(2.2082*sqrt(w10m(i,j))-3.3986)
                 r = ra* 1.e6
@@ -210,72 +224,40 @@ integer, intent(in)                    :: is, ie, js, je
                 do ir=1,nr
                   rmid=r+dr*0.5   ! Dry radius
                   r=r+dr
-                  seasalt_flux = seasalt_flux + &
+                  seasalt_flux            = seasalt_flux            + &
                      4.188e-18*rmid**3*ssaltden*betha*( &
                     + coef1*a1*exp(-3.1*(alog(betha*rmid/2.1))**2) &
                     + coef2*a2*exp(-3.3*(alog(betha*rmid/9.2))**2) )
                 enddo
-                SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))
-                seasalt_dt(i,j,kb)=amax1(0.,SS_emis(i,j)/pwt(i,j,kb)*mtv)
-              endif
+                  SS_emis(i,j) = seasalt_flux*ocn_flx_fraction (i,j)
+              endif  
             enddo
           enddo
-        else  
-          do j=1,jd
-            do i=1,id
-              kb=kbot(i,j)
-              if (frac_land(i,j).lt.critical_land_fraction) then
-! Monahan et . (1986)
-                SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))*w10m(i,j)**3.41
-                seasalt_dt(i,j,kb)=amax1(0.,SS_emis(i,j)/pwt(i,j,kb)*mtv)
-              endif 
-            enddo
-          enddo
-        endif
-      else
-
-!------------------------------------------------------------------
-!    Surface emission of sea salt
-!------------------------------------------------------------------
-        if (scheme .eq. "Smith") then
-          if (mpp_pe() == mpp_root_pe()) write (logunit,*) "Smith parameterization for sea-salt production"
-! Smith et al. (1993)
-          do j=1,jd
-            do i=1,id
-!              if (frac_land(i,j).lt.1.) then
-              if (frac_land(i,j).lt.critical_land_fraction) then
-                seasalt_flux = 0.0
-                a1=exp(0.155*w10m(i,j)+5.595)
-                a2=exp(2.2082*sqrt(w10m(i,j))-3.3986)
-                r = ra* 1.e6
-                dr= (rb - ra)/float(nr)* 1.e6
-                do ir=1,nr
-                  rmid=r+dr*0.5   ! Dry radius
-                  r=r+dr
-                  seasalt_flux = seasalt_flux + &
-                     4.188e-18*rmid**3*ssaltden*betha*( &
-                         + coef1*a1*exp(-3.1*(alog(betha*rmid/2.1))**2) &
-                         + coef2*a2*exp(-3.3*(alog(betha*rmid/9.2))**2) )
-                enddo
-                SS_emis(i,j) = seasalt_flux*(1.-frac_land(i,j))
-                seasalt_dt(i,j,kd)=SS_emis(i,j)/pwt(i,j,kd)*mtv
-              endif
-            enddo
-          enddo
-        else
-! Monahan et . (1986)
-!         where (frac_land(:,:).lt.1.0 )
-          where (frac_land(:,:).lt.critical_land_fraction )
-            SS_emis(:,:) = seasalt_flux*(1.-frac_land(:,:))*w10m(:,:)**3.41
-            seasalt_dt(:,:,kd)=SS_emis(:,:)/pwt(:,:,kd)*mtv
-          endwhere
-        endif
       endif
+
+      if (present(kbot)) then
+        do j=1,jd
+          do i=1,id
+            kb = kbot(i,j)
+            seasalt_dt(i,j,kb)=amax1(0.,SS_emis(i,j)/pwt(i,j,kb)*mtv)
+          enddo
+        enddo
+      else  
+        do j=1,jd
+          do i=1,id
+            seasalt_dt(i,j,kd) =  amax1(0., SS_emis(i,j)/pwt(i,j,kd)*mtv)
+          end do
+        end do
+      endif  
 
 ! Send the emission data to the diag_manager for output.
       if (id_SS_emis(i_SS) > 0 ) then
         used = send_data ( id_SS_emis(i_SS), SS_emis, Time, &
               is_in=is,js_in=js )
+      endif
+      if (id_ocn_flx_fraction > 0) then
+        used = send_data ( id_ocn_flx_fraction, ocn_flx_fraction, Time, &
+             is_in=is,js_in=js )
       endif
 
 !------------------------------------------
@@ -353,6 +335,7 @@ integer, intent(in)                    :: is, ie, js, je
  end subroutine atmos_sea_salt_sourcesink
 !</SUBROUTINE>
 
+
 !#######################################################################
 !<SUBROUTINE NAME="atmos_sea_salt_init">
 !<OVERVIEW>
@@ -364,12 +347,11 @@ real, intent(in),    dimension(:,:)                 :: lonb, latb
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
 real, intent(in), dimension(:,:,:), optional        :: mask
-character(len=7), parameter :: mod_name = 'tracers'
 integer :: n, m
 !
 !-----------------------------------------------------------------------
 !
-      integer  unit,ierr,io,logunit
+      integer  unit,ierr,io
       character(len=1) :: numb(5)
       data numb/'1','2','3','4','5'/
 
@@ -420,6 +402,7 @@ integer :: n, m
         endif
       endif
 
+      betha = growth_table(46)  ! Growth factor at 80% RH
 
 !----- set initial value of sea_salt ------------
        do m=1,5
@@ -444,6 +427,10 @@ integer :: n, m
                      missing_value=-999.  )
       enddo
 
+      id_ocn_flx_fraction  = register_diag_field   &
+                  ( mod_name,'salt_flux_area_frac', &
+                   axes(1:2),Time,'fractional_area_with_salt_flux','-', &
+                                                     missing_value=-999.)
       module_is_initialized = .TRUE.
  
   30        format (A,' was initialized as tracer number ',i2)

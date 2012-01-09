@@ -91,7 +91,9 @@ module atmos_tracer_driver_mod
 
 !-----------------------------------------------------------------------
 
-use fms_mod,               only : file_exist, &
+use mpp_mod,               only : input_nml_file 
+use fms_mod,               only : file_exist, close_file,&
+                                  open_namelist_file, check_nml_error, &
                                   write_version_number, &
                                   error_mesg, &
                                   FATAL, &
@@ -192,6 +194,13 @@ public  atmos_tracer_driver,            &
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
+logical :: prevent_flux_through_ice = .false.  
+                               ! when true, tracers will only be fluxed 
+                               ! through the non-ice-covered portions of
+                               ! ocean grid boxes
+                                             
+
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -257,6 +266,7 @@ integer :: nNH4NO3   =0
 integer :: nNH4      =0
 integer :: nDMS_cmip =0
 integer :: nSO2_cmip =0
+integer :: noh       =0
 
 real    :: ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),   &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),  &
@@ -283,6 +293,7 @@ integer, allocatable :: local_indices(:)
 ! local_indices(1) = 5 implies that the first local tracer is the fifth
 ! tracer in the tracer_manager.
   
+integer :: id_landfr, id_seaicefr, id_snowfr, id_vegnfr, id_vegnlai
 integer :: id_om_ddep, id_bc_ddep, id_ssalt_ddep, id_dust_ddep, &
            id_nh4_ddep_cmip
 integer :: id_ssalt_emis, id_dust_emis
@@ -296,8 +307,8 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 18.0.4.2.2.2.2.1 2011/01/15 01:25:00 jgj Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 19.0 2012/01/06 20:31:30 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 !-----------------------------------------------------------------------
 
 contains
@@ -388,16 +399,17 @@ contains
 !   </IN>
  subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat,  &
                            area, z_pbl, rough_mom, &
+                           frac_open_sea, &
                            land, phalf, pfull,     &
                            u, v, t, q, r,          &
-                           rm, rdt, dt,     &
+                           rm, rdt, dt,            &
                            u_star, b_star, q_star, &
-                           z_half, z_full,&
-                           t_surf_rad, albedo, &
-                           Time_next, &
-                           flux_sw_down_vis_dir, &
-                           flux_sw_down_vis_dif, &
-                           mask, &
+                           z_half, z_full,         &
+                           t_surf_rad, albedo,     &
+                           Time_next,              &
+                           flux_sw_down_vis_dir,   &
+                           flux_sw_down_vis_dif,   &
+                           mask,                   &
                            kbot)
 
 !-----------------------------------------------------------------------
@@ -407,6 +419,7 @@ real, intent(in),    dimension(:,:)           :: lon, lat
 real, intent(in),    dimension(:,:)           :: u_star, b_star, q_star
 real, intent(in),    dimension(:,:)           :: land
 real, intent(in),    dimension(:,:)           :: area, z_pbl, rough_mom
+real, intent(in),    dimension(:,:)           :: frac_open_sea
 real, intent(in),    dimension(:,:,:)         :: phalf, pfull
 real, intent(in),    dimension(:,:,:)         :: u, v, t, q
 real, intent(inout), dimension(:,:,:,:)       :: r
@@ -448,7 +461,8 @@ real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_settl, dust_settl              
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_emis, dust_emis                
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl         
-real, dimension(size(r,1),size(r,2)) ::  suma
+real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction
+real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 
 integer :: j, k, id, jd, kd, nt
 integer :: nqq  ! index of specific humidity
@@ -591,6 +605,24 @@ logical :: used
       enddo
 
 !------------------------------------------------------------------------
+!    define various land fractions needed for dry deposition calculation.
+!------------------------------------------------------------------------
+      frland(:,:) = min(1., max(0.,     land(:,:) ) )
+      frsea(:,:)  = min(1., max(0., 1. - frland(:,:) ) )
+!      frsnow(:,:) = min(frland(:,:), max(0., snow_area(:,:) ) )
+      frice(:,:)  = min(frsea(:,:),   &
+                               max(0., frsea(:,:) - frac_open_sea(:,:) ) ) 
+
+!------------------------------------------------------------------------
+!    output land fraction information, if desired.
+!------------------------------------------------------------------------
+   used = send_data ( id_landfr, frland, Time, is_in =is,js_in=js)
+   used = send_data ( id_seaicefr, frice, Time, is_in =is,js_in=js)
+!   used = send_data ( id_snowfr, frsnow, Time, is_in =is,js_in=js)
+!   used = send_data ( id_vegnfr, vegn_cover, Time, is_in =is,js_in=js)
+!   used = send_data ( id_vegnlai, vegn_lai, Time, is_in =is,js_in=js)
+
+!------------------------------------------------------------------------
 ! For tracers other than specific humdity, cloud amount, ice water and &
 ! liquid water calculate flux at surface due to dry deposition
 !------------------------------------------------------------------------
@@ -602,7 +634,9 @@ logical :: used
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
                                  (land > 0.5), dsinku(:,:,n), &
                                  tracer(:,:,kd,n), Time, lon, half_day, &
-                                 drydep_data(n) )
+                                 drydep_data(n))!, frland, frice, frsnow, &
+!                                 vegn_cover, vegn_lai, &
+!                                 b_star, z_pbl, rough_mom)
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
          end if
       enddo
@@ -749,6 +783,17 @@ logical :: used
     call mpp_clock_end (stratozone_clock)
   endif
 
+!-----------------------------------------------------------------------
+!   define sfc area through which tracer flux from ocean is allowed; it
+!   is area fraction of sea unless prevent_flux_through_ice is .true.,
+!   in which case it is the fractional area of open sea.
+!-----------------------------------------------------------------------
+   if (prevent_flux_through_ice) then
+     ocn_flx_fraction = frac_open_sea
+   else
+     ocn_flx_fraction = 1. - land       
+   endif
+
 !------------------------------------------------------------------------
 ! Tropospheric chemistry
 !------------------------------------------------------------------------
@@ -768,7 +813,7 @@ logical :: used
       endif
 
       call mpp_clock_begin (tropchem_clock)
-      call tropchem_driver( lon, lat, land, pwt, &
+      call tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, &
                             tracer(:,:,:,1:ntp),chem_tend, &
                             Time, phalf, pfull, t, is, ie, js, je, dt, &
                             z_half, z_full, q, t_surf_rad, albedo, coszen, rrsun, &
@@ -828,13 +873,14 @@ logical :: used
             call error_mesg ('Tracer_driver', &
             'Number of tracers .lt. number for black carbon', FATAL)
      call mpp_clock_begin (carbon_clock)
-     call atmos_carbon_aerosol_driver(lon,lat,land,pfull,phalf,z_half,z_pbl, &
+     call atmos_carbon_aerosol_driver(lon,lat,ocn_flx_fraction, pfull,phalf,z_half,z_pbl, &
                                       t_surf_rad, w10m_ocean, &
                                       T, pwt, &
                                       tracer(:,:,:,nbcphobic), rtndbcphob, &
                                       tracer(:,:,:,nbcphilic), rtndbcphil, &
                                       tracer(:,:,:,nomphobic), rtndomphob, &
                                       tracer(:,:,:,nomphilic), rtndomphil, &
+                                      tracer(:,:,:,noh),    &
                                       Time,is,ie,js,je)
       rdt(:,:,:,nbcphobic)=rdt(:,:,:,nbcphobic)+rtndbcphob(:,:,:)
       rdt(:,:,:,nbcphilic)=rdt(:,:,:,nbcphilic)+rtndbcphil(:,:,:)
@@ -937,7 +983,7 @@ logical :: used
          rtnd(:,:,:) = 0.
          call atmos_sea_salt_sourcesink ( &
               1, 0.1e-6,0.5e-6,0.3e-6, 2200., &
-              lon,lat,land,pwt, &
+              lon,lat,ocn_flx_fraction,pwt, &
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt1), rtnd, dt, &
                ssalt_settl(:,:,1), ssalt_emis(:,:,1), &
@@ -950,7 +996,7 @@ logical :: used
          rtnd(:,:,:) = 0.
          call atmos_sea_salt_sourcesink ( &
               2, 0.5e-6,1.0e-6,0.75e-6, 2200., &
-              lon,lat,land,pwt, &
+              lon,lat,ocn_flx_fraction,pwt, &
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt2), rtnd, dt, &
                ssalt_settl(:,:,2), ssalt_emis(:,:,2), &
@@ -963,7 +1009,7 @@ logical :: used
          rtnd(:,:,:) = 0.
          call atmos_sea_salt_sourcesink ( &
               3, 1.e-6,2.5e-6,1.75e-6, 2200., &
-              lon,lat,land,pwt, &
+              lon,lat,ocn_flx_fraction,pwt, &
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt3), rtnd, dt, &
                ssalt_settl(:,:,3), ssalt_emis(:,:,3), &
@@ -976,7 +1022,7 @@ logical :: used
          rtnd(:,:,:) = 0.
          call atmos_sea_salt_sourcesink ( &
               4, 2.5e-6,5.0e-6,3.75e-6, 2200., &
-              lon,lat,land,pwt, &
+              lon,lat,ocn_flx_fraction,pwt, &
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt4), rtnd, dt, &
                ssalt_settl(:,:,4), ssalt_emis(:,:,4), &
@@ -989,7 +1035,7 @@ logical :: used
          rtnd(:,:,:) = 0.
          call atmos_sea_salt_sourcesink ( &
               5, 5.e-6,10.0e-6,7.5e-6, 2200., &
-              lon,lat,land,pwt, &
+              lon,lat,ocn_flx_fraction,pwt, &
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt5), rtnd, dt, &
                ssalt_settl(:,:,5), ssalt_emis(:,:,5), &
@@ -1025,7 +1071,7 @@ logical :: used
                      'Number of tracers .lt. number for SO4', FATAL)
 
       call mpp_clock_begin (sulfur_clock)
-      call atmos_DMS_emission(lon, lat, area, land, t_surf_rad, &
+      call atmos_DMS_emission(lon, lat, area, ocn_flx_fraction, t_surf_rad, &
              w10m_ocean, pwt, rtnddms, Time, is,ie,js,je,kbot)
       rdt(:,:,kd,nDMS) = rdt(:,:,kd,nDMS) + rtnddms(:,:,kd)
       call atmos_SOx_emission(lon, lat, area, land, &
@@ -1171,7 +1217,8 @@ type(time_type), intent(in)                                :: Time
 ! Local variables
 !-----------------------------------------------------------------------
       integer :: nbr_layers
-   
+      integer :: unit, ierr, io, logunit
+  
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make changes 
@@ -1180,7 +1227,27 @@ type(time_type), intent(in)                                :: Time
 
       if (module_is_initialized) return
 
+!------------------------------------------------------------------------
+!   read namelist.
+!------------------------------------------------------------------------
+      if ( file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+        read (input_nml_file, nml=atmos_tracer_driver_nml, iostat=io)
+        ierr = check_nml_error(io,'atmos_tracer_driver_nml')
+#else
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=atmos_tracer_driver_nml, iostat=io, end=10)
+        ierr = check_nml_error(io, 'atmos_tracer_driver_nml')
+        end do
+10      call close_file (unit)
+#endif
+      endif
+!--------- write version and namelist to standard log ------------
       call write_version_number (version, tagname)
+      logunit=stdlog()
+      if ( mpp_pe() == mpp_root_pe() ) &
+                         write ( logunit, nml=atmos_tracer_driver_nml )
 
 !---------------------------------------------------------------------
 !  make sure that astronomy_mod has been initialized (if radiation
@@ -1276,6 +1343,7 @@ type(time_type), intent(in)                                :: Time
       nco2      = get_tracer_index(MODEL_ATMOS,'co2')
       nDMS_cmip = get_tracer_index(MODEL_ATMOS,'DMS')
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
+      noh       = get_tracer_index(MODEL_ATMOS,'oh')
 
 ! Number of vertical layers
       nbr_layers=size(r,3)
@@ -1338,6 +1406,27 @@ type(time_type), intent(in)                                :: Time
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
+
+     id_landfr = register_diag_field ( mod_name,                    &
+            'landfr_atm', axes(1:2), Time,               &
+            'land fraction',                                 &
+            'fraction', missing_value=-999.     )
+     id_seaicefr = register_diag_field ( mod_name,                    &
+            'seaicefr_atm', axes(1:2), Time,               &
+            'seaice fraction',                                 &
+            'fraction', missing_value=-999.     )
+     id_snowfr = register_diag_field ( mod_name,                    &
+            'snowfr_atm', axes(1:2), Time,               &
+            'snow cover fraction',                                 &
+            'fraction', missing_value=-999.     )
+     id_vegnfr = register_diag_field ( mod_name,                    &
+            'vegnfr_atm', axes(1:2), Time,               &
+            'vegetation cover fraction',                                 &
+            'fraction', missing_value=-999.     )
+     id_vegnlai = register_diag_field ( mod_name,                    &
+            'vegnlai_atm', axes(1:2), Time,               &
+            'vegetation leaf area index',                                &
+            'fraction', missing_value=-999.     )
 
       id_om_ddep = register_diag_field (mod_name, &
           'om_ddep', axes(1:2), Time, &

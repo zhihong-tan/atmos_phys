@@ -20,8 +20,8 @@ private
 
 public :: atmos_nudge_init, get_atmos_nudge, atmos_nudge_end, do_ps
 
-character(len=128), parameter :: version = '$Id: atmos_nudge.F90,v 17.0.4.1.2.1 2010/09/07 18:39:55 pjp Exp $'
-character(len=128), parameter :: tagname = '$Name: riga_201104 $'
+character(len=128), parameter :: version = '$Id: atmos_nudge.F90,v 19.0 2012/01/06 20:28:34 fms Exp $'
+character(len=128), parameter :: tagname = '$Name: siena $'
 
 logical :: module_is_initialized = .false.
 

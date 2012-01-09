@@ -46,8 +46,8 @@
       type(hst_pl), private, allocatable ::   imp_hst_loss(:)
       logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 17.0.4.1.2.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 19.0 2012/01/06 20:33:58 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -337,7 +337,8 @@ logical                       :: module_is_initialized = .false.
                           het_rates, extfrc, &
                           nstep, delt, &
                           lat, lon, &
-                          prod_out, loss_out, non_convergence, &
+                          prod_out, loss_out, check_convergence, &
+                          non_convergence, &
                           plonl, plnplv, &
                           prod_ox, loss_ox)
 !-----------------------------------------------------------------------
@@ -371,6 +372,7 @@ logical                       :: module_is_initialized = .false.
       real,    intent(in)    :: reaction_rates(plnplv,rxntot)
       real,    intent(in)    :: het_rates(plnplv,max(1,hetcnt)), &
                                 extfrc(plnplv,max(1,extcnt))
+      logical, intent(in)    :: check_convergence         ! check for convergence ?
       real,    intent(out)   :: non_convergence(plnplv)   ! flag for implicit solver non-convergence (fraction)
       real,    intent(inout) :: base_sol(plnplv,pcnstm1)
       real,    intent(inout) :: prod_out(plnplv,pcnstm1),loss_out(plnplv,pcnstm1)
@@ -680,47 +682,48 @@ iter_loop : &
                   if( convergence ) then
                      stp_con_cnt = stp_con_cnt + 1
                   end if
-                  do m = 1,pcnstm1
-                     base_sol(indx,m) = lsol(m)
-                  end do
+                  if ( convergence .or. .not. check_convergence ) then
+                     do m = 1,pcnstm1
+                        base_sol(indx,m) = lsol(m)
+                     end do
 !++lwh
 !-----------------------------------------------------------------------
 !        ... Production/loss diagnostics
 !-----------------------------------------------------------------------
-                  do k = 1,clscnt4
-                     j = implicit%clsmap(k)
-                     m = implicit%permute(k)
-                     prod_out(indx,j) = prod_out(indx,j) + prod(m) * dt/delt
-                     loss_out(indx,j) = loss_out(indx,j) + loss(m) * dt/delt
-                  end do
+                     do k = 1,clscnt4
+                        j = implicit%clsmap(k)
+                        m = implicit%permute(k)
+                        prod_out(indx,j) = prod_out(indx,j) + prod(m) * dt/delt
+                        loss_out(indx,j) = loss_out(indx,j) + loss(m) * dt/delt
+                     end do
 !--lwh
-                  if( stp_con_cnt >= 2 ) then
-                     dt = 2.*dt
-                     stp_con_cnt = 0
-                     cut_cnt = max( 0,cut_cnt-1 )
-                  end if
+                     if( stp_con_cnt >= 2 ) then
+                        dt = 2.*dt
+                        stp_con_cnt = 0
+                        cut_cnt = max( 0,cut_cnt-1 )
+                     end if
+                  endif
                   dt = min( dt,delt-interval_done )
-!                  if( pdiags%imp_slv ) then
-!                     write(*,'('' imp_sol: new time step '',1p,e21.13)') dt
-!                  end if
                end if
             end do time_step_loop
 !-----------------------------------------------------------------------
 !           ... transfer latest solution back to base array
 !-----------------------------------------------------------------------
-            do k = 1,clscnt4
-               j = implicit%clsmap(k)
-               m = implicit%permute(k)
-               base_sol(indx,j) = solution(m)
+            if ( convergence .or. .not. check_convergence ) then
+               do k = 1,clscnt4
+                  j = implicit%clsmap(k)
+                  m = implicit%permute(k)
+                  base_sol(indx,j) = solution(m)
 !++lwh
 !-----------------------------------------------------------------------
 !        ... Production/loss diagnostics
 !-----------------------------------------------------------------------
-               prod_out(indx,j) = prod_out(indx,j) + prod(m) * dt/delt &
-                                                   + ind_prd(indx,m)
-               loss_out(indx,j) = loss_out(indx,j) + loss(m) * dt/delt
+                  prod_out(indx,j) = prod_out(indx,j) + prod(m) * dt/delt &
+                                                      + ind_prd(indx,m)
+                  loss_out(indx,j) = loss_out(indx,j) + loss(m) * dt/delt
 !--lwh
-            end do
+               end do
+            end if
 !-----------------------------------------------------------------------
 !           ... check for history prod, loss
 !-----------------------------------------------------------------------

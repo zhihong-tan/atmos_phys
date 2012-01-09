@@ -6,13 +6,13 @@
 
       save
 
-character(len=128), parameter :: version     = '$Id: moz.mods.F90,v 18.0.2.1 2010/03/25 00:31:42 pjp Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: moz.mods.F90,v 19.0 2012/01/06 20:34:14 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 logical                       :: module_is_initialized = .false.
 
       integer, parameter :: &
-                pcnst    =    83+1, &     ! number of advected constituents including cloud water
-                pcnstm1  =    83, &     ! number of advected constituents excluding cloud water
+                pcnst    =    84+1, &     ! number of advected constituents including cloud water
+                pcnstm1  =    84, &     ! number of advected constituents excluding cloud water
                 plev     =   1, &         ! number of vertical levels
                 plevp    = plev+1, &      ! plev plus 1
                 plevm    = plev-1, &      ! plev minus 1
@@ -55,7 +55,7 @@ logical                       :: module_is_initialized = .false.
                             imp_nzcnt  =   829, &     ! number of non-zero implicit matrix entries
                             rod_nzcnt  =     0, &     ! number of non-zero rodas matrix entries
                             extcnt     =     0, &    ! number of species with external forcing
-                            clscnt1    =     7, &  ! number of species in explicit class
+                            clscnt1    =     8, &  ! number of species in explicit class
                             clscnt2    =     0, &  ! number of species in hov class
                             clscnt3    =     0, &  ! number of species in ebi class
                             clscnt4    =    76, &  ! number of species in implicit class
@@ -115,7 +115,7 @@ logical                       :: module_is_initialized = .false.
 
       integer :: astat
 
-      explicit%clscnt       =     7
+      explicit%clscnt       =     8
       explicit%indprd_cnt   =    52
 
       implicit%clscnt       =    76
@@ -247,28 +247,29 @@ logical                       :: module_is_initialized = .false.
       integer, parameter :: id_XOOH =  59
       integer, parameter :: id_ISOPOOH =  60
       integer, parameter :: id_H2 =  61
-      integer, parameter :: id_SO2 =  62
-      integer, parameter :: id_SO4 =  63
-      integer, parameter :: id_DMS =  64
-      integer, parameter :: id_NH3 =  65
-      integer, parameter :: id_NH4NO3 =  66
-      integer, parameter :: id_NH4 =  67
-      integer, parameter :: id_HCl =  68
-      integer, parameter :: id_HOCl =  69
-      integer, parameter :: id_ClONO2 =  70
-      integer, parameter :: id_Cl =  71
-      integer, parameter :: id_ClO =  72
-      integer, parameter :: id_Cl2O2 =  73
-      integer, parameter :: id_Cl2 =  74
-      integer, parameter :: id_HOBr =  75
-      integer, parameter :: id_HBr =  76
-      integer, parameter :: id_BrONO2 =  77
-      integer, parameter :: id_Br =  78
-      integer, parameter :: id_BrO =  79
-      integer, parameter :: id_BrCl =  80
-      integer, parameter :: id_LCH4 =  81
-      integer, parameter :: id_H =  82
-      integer, parameter :: id_H2O =  83
+      integer, parameter :: id_O3S = 62
+      integer, parameter :: id_SO2 = 63
+      integer, parameter :: id_SO4 = 64
+      integer, parameter :: id_DMS = 65
+      integer, parameter :: id_NH3 = 66
+      integer, parameter :: id_NH4NO3 = 67
+      integer, parameter :: id_NH4 = 68
+      integer, parameter :: id_HCl = 69
+      integer, parameter :: id_HOCl = 70
+      integer, parameter :: id_ClONO2 = 71
+      integer, parameter :: id_Cl = 72
+      integer, parameter :: id_ClO = 73
+      integer, parameter :: id_Cl2O2 = 74
+      integer, parameter :: id_Cl2 = 75
+      integer, parameter :: id_HOBr = 76
+      integer, parameter :: id_HBr = 77
+      integer, parameter :: id_BrONO2 = 78
+      integer, parameter :: id_Br = 79
+      integer, parameter :: id_BrO = 80
+      integer, parameter :: id_BrCl = 81
+      integer, parameter :: id_LCH4 = 82
+      integer, parameter :: id_H = 83
+      integer, parameter :: id_H2O = 84
   
   
       end module M_SPC_ID_MOD

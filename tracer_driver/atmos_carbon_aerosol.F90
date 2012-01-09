@@ -56,6 +56,7 @@ integer :: id_bcphob_sink, id_omphob_sink
 integer :: id_emisbb, id_omemisbb_col
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
 integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisoc
+integer :: id_bc_tau
 !----------------------------------------------------------------------
 !--- Interpolate_type variable containing all the information needed to
 ! interpolate the emission provided in the netcdf input file.
@@ -237,6 +238,18 @@ character(len=80)     :: omss_time_dependency_type = 'constant'
 integer, dimension(6) :: omss_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 real, save :: coef_omss_emis
 real :: omss_coef=-999.
+logical               :: do_dynamic_bc = .false.
+real                  :: bcage = 1.0
+real                  :: bcageslow = 25.
+logical               :: do_dynamic_om = .false.
+real                  :: omage = 0.5
+real                  :: omageslow = 20.  !days
+real                  :: frac_bc_phobic = 0.8
+real                  :: frac_bc_philic = 0.2
+real                  :: frac_bcbb_phobic = 0.8
+real                  :: frac_bcbb_philic = 0.2
+real                  :: frac_om_phobic = 0.5
+real                  :: frac_om_philic = 0.5
 !!!!!!!!!!!!!!!!!!!!!!!!!!
 namelist /carbon_aerosol_nml/ &
  bcff_source, bcff_input_name, bcff_filename, &
@@ -260,7 +273,11 @@ namelist /carbon_aerosol_nml/ &
  omna_source, omna_input_name, omna_filename, &
   omna_time_dependency_type, omna_dataset_entry, &
  omss_source, omss_input_name, omss_filename, &
-  omss_time_dependency_type, omss_dataset_entry, omss_coef
+  omss_time_dependency_type, omss_dataset_entry, omss_coef, &
+ do_dynamic_bc, bcage, bcageslow,            &
+ do_dynamic_om, omage, omageslow,            &
+ frac_bc_phobic, frac_bc_philic, frac_om_phobic, frac_om_philic, &
+ frac_bcbb_philic, frac_bcbb_phobic
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -268,8 +285,8 @@ logical :: module_is_initialized = .FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 17.0.2.1.2.1.6.1.2.1.6.1.2.2.2.2 2010/08/30 20:39:47 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: atmos_carbon_aerosol.F90,v 19.0 2012/01/06 20:29:40 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 !-----------------------------------------------------------------------
 
 type(time_type)                        :: bcff_time
@@ -290,7 +307,8 @@ contains
 
 !#######################################################################
 
-subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf, &
+subroutine atmos_carbon_aerosol_driver(lon, lat, ocn_flx_fraction,  &
+                               pfull,phalf, &
                                z_half, z_pbl, &
                                t_surf, w10m, &
                                T, pwt, &
@@ -298,17 +316,19 @@ subroutine atmos_carbon_aerosol_driver(lon, lat, land, pfull,phalf, &
                                bcphil, bcphil_dt,  &
                                omphob, omphob_dt, &
                                omphil, omphil_dt, &
+                               oh_conc,&
                                model_time, is, ie, js, je )
 
 !-----------------------------------------------------------------------
    real, intent(in),  dimension(:,:)   :: lon, lat
-   real, intent(in),  dimension(:,:)   :: land
+   real, intent(in),  dimension(:,:)   :: ocn_flx_fraction
    real, intent(in),  dimension(:,:)   :: z_pbl
    real, intent(in),  dimension(:,:,:) :: z_half
    real, intent(in),  dimension(:,:)   :: w10m, t_surf  ! ocean sea surface temperature and 10 meter wind speed
    real, intent(in),  dimension(:,:,:) :: pwt,pfull,phalf,T
    real, intent(in),  dimension(:,:,:) :: bcphob,bcphil
    real, intent(in),  dimension(:,:,:) :: omphob,omphil
+   real, intent(in),  dimension(:,:,:) :: oh_conc
    real, intent(out), dimension(:,:,:) :: bcphob_dt,bcphil_dt
    real, intent(out), dimension(:,:,:) :: omphob_dt,omphil_dt
 type(time_type), intent(in)            :: model_time
@@ -337,10 +357,6 @@ real, dimension(nlevel_fire_GEIA) :: &
 real :: ze1 = 100.
 real :: ze2 = 300.
 integer        :: i, j,l, id,jd,kd,k
-REAL,PARAMETER :: frac_bc_phobic = 0.8
-REAL,PARAMETER :: frac_bc_philic = 0.2
-REAL,PARAMETER :: frac_om_phobic = 0.5
-REAL,PARAMETER :: frac_om_philic = 0.5
 real  :: sst, Schm, SchmCO2, AKw
 
 !
@@ -353,6 +369,7 @@ real, dimension(size(omphob,1),size(omphob,2),6) :: omemisbb
 real,dimension(size(bcphob,1),size(bcphob,2)) ::  emisob, omemisob_2d
 real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::&
    bcphob_emis, bcphil_emis, bcphob_sink, bcemisob, bcemisff, bcemisav
+real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) :: bc_tau
 real,dimension(size(omphob,1),size(omphob,2),size(omphob,3)) ::&
    omphob_emis, omphil_emis, omphob_sink, omemisob, omemisff
 real, dimension(size(bcphob,1),size(bcphob,2)) ::          &
@@ -360,6 +377,8 @@ real, dimension(size(bcphob,1),size(bcphob,2)) ::          &
 real, dimension(size(omphob,1),size(omphob,2)) ::          &
    omemisbf, omemissh, omemisbg, dmso, omemisocean
 real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
+real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::zzz1,  &
+                                                               oh_conc1
 !
 !-----------------------------------------------------------------------
 !
@@ -391,6 +410,7 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
     omphob_emis(:,:,:) = 0.0
     omphil_emis(:,:,:) = 0.0
     omphob_sink(:,:,:) = 0.0
+    bc_tau(:,:,:)      = 0.0
 
     omemisff_l1(:,:) = 0.0
     omemisff_l2(:,:) = 0.0
@@ -525,7 +545,7 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
      do j = 1, jd
      do i = 1, id
        SST = t_surf(i,j)-273.15     ! Sea surface temperature [Celsius]
-       if (land(i,j).lt.1) then
+       if (ocn_flx_fraction(i,j).gt.0.) then
 !  < Schmidt number (Saltzman et al., 1993) >
          Schm = 2674.0 - 147.12*SST + 3.726*(SST**2) - 0.038*(SST**3)
          Schm = max(1., Schm)
@@ -543,7 +563,7 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
          else
            AKw = AKw * sqrt(SchmCO2/Schm)
          end if
-         omemisocean(i,j) = coef_omss_emis*AKw/100./3600. * 1.e-6*(1.-land(i,j))
+         omemisocean(i,j) = coef_omss_emis*AKw/100./3600. * 1.e-6*ocn_flx_fraction(i,j)
        end if
 
      enddo
@@ -650,12 +670,8 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 ! Biogenic
 ! Bio-fuel (if not included in fossil fuel inevntory)
 ! International shipping
-        bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
         omphob_emis(i,j,kd) =  omemisbf(i,j) + omemissh(i,j) + &
            omemisbg(i,j) + omemisocean(i,j)
-        bcphob_emis(i,j,:)= bcphob_emis(i,j,:) + &
-           bc_aircraft_EI * bcemisav(i,j,:)    + &
-           bcemisff(i,j,:) + bcemisob(i,j,:)
         omphob_emis(i,j,:)= omphob_emis(i,j,:) + omemisff(i,j,:) + &
            omemisob(i,j,:)
 
@@ -664,13 +680,41 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
           omemisob_2d(i,j) = omemisob_2d(i,j) + omemisob(i,j,l)
         end do
 
-        bcphil_emis(i,j,:) = bcphob_emis(i,j,:) * frac_bc_philic/pwt(i,j,:)
         omphil_emis(i,j,:) = omphob_emis(i,j,:) * frac_om_philic/pwt(i,j,:)
-        bcphob_emis(i,j,:) = bcphob_emis(i,j,:) * frac_bc_phobic/pwt(i,j,:)
         omphob_emis(i,j,:) = omphob_emis(i,j,:) * frac_om_phobic/pwt(i,j,:)
 !
       enddo
     enddo
+
+!------------------------------------------------------------------------
+! if frac_bcbb_phobic .eq. frac_bc_phobic, then frac_bcbb_philic must equal
+!  frac_bc_philic, since sum must be 1.
+!------------------------------------------------------------------------
+    if (frac_bcbb_phobic == frac_bc_phobic) then
+      do j = 1, jd
+        do i = 1, id
+          bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
+          bcphob_emis(i,j,:)= bcphob_emis(i,j,:) + &
+                              bc_aircraft_EI * bcemisav(i,j,:)    + &
+                              bcemisff(i,j,:) + bcemisob(i,j,:)
+          bcphil_emis(i,j,:) = bcphob_emis(i,j,:)*frac_bc_philic/pwt(i,j,:)
+          bcphob_emis(i,j,:) = bcphob_emis(i,j,:)*frac_bc_phobic/pwt(i,j,:)
+        enddo
+      enddo
+    else
+      do j = 1, jd
+        do i = 1, id
+          bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
+          bcphob_emis(i,j,:)= bcphob_emis(i,j,:) + &
+                              bc_aircraft_EI * bcemisav(i,j,:)    + &
+                              bcemisff(i,j,:) 
+          bcphil_emis(i,j,:) = (bcphob_emis(i,j,:)*frac_bc_philic +   &
+                               bcemisob(i,j,:)*frac_bcbb_philic)/pwt(i,j,:)
+          bcphob_emis(i,j,:) = (bcphob_emis(i,j,:)*frac_bc_phobic +   &
+                               bcemisob(i,j,:)*frac_bcbb_phobic)/pwt(i,j,:)
+        enddo
+      enddo
+    endif
 
 !------- compute black carbon phobic sink --------------
 !
@@ -679,12 +723,27 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 !
 !  sink = 1./(86400.*1.44) = 8.023e-6
 
+    do l = 1,kd
+      zzz1(:,:,l)=z_half(:,:,l)-z_half(:,:,l+1)
+    enddo
+    oh_conc1 = oh_conc * pwt/zzz1*2.079e19
+
     bcphob_sink(:,:,:) = 0.0
-    where (bcphob > 0.0)
-        bcphob_sink = 8.038e-6*bcphob
-    elsewhere
+    if (do_dynamic_bc) then
+      where (bcphob > 0.0)
+        bcphob_sink = (oh_conc1/2.16e11/bcage + 1./86400./bcageslow)*bcphob
+      elsewhere
         bcphob_sink = 0.0
-    endwhere
+      endwhere
+      bc_tau = 1./(1./bcageslow + oh_conc1/(2.5e6*bcage))
+    else
+      where (bcphob > 0.0)
+        bcphob_sink = 8.038e-6*bcphob
+      elsewhere
+        bcphob_sink = 0.0
+      endwhere
+      bc_tau = 1.44
+    endif
 !
 
 !------- tendency ------------------
@@ -700,11 +759,19 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 !  sink = 1./(86400.*1.44) = 8.023e-6
 !
     omphob_sink(:,:,:) = 0.0
-    where (omphob >= 0.0)
-       omphob_sink = 8.023e-6*omphob
-    elsewhere
-       omphob_sink = 0.0
-    endwhere
+    if (do_dynamic_om) then
+      where (omphob > 0.0)
+        omphob_sink = (oh_conc1/2.16e11/omage + 1./86400./omageslow)*omphob
+      elsewhere
+        omphob_sink = 0.0
+      endwhere
+    else
+      where (omphob >= 0.0)
+        omphob_sink = 8.023e-6*omphob
+      elsewhere
+        omphob_sink = 0.0
+      endwhere
+    endif
 
 !------- tendency ------------------
 
@@ -722,8 +789,8 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 
         bc_emis = 0.
         do k=1,kd
-          bc_emis(is:ie,js:je) = bc_emis(is:ie,js:je) +  &
-               bcphob_emis(is:ie,js:je,k) + bcphil_emis(is:ie,js:je,k)
+          bc_emis(:,:) = bc_emis(:,:) + bcphob_emis(:,:,k) +  &
+                                                       bcphil_emis(:,:,k)
         end do
 
         used = send_data ( id_bc_emis_col, bc_emis, model_time, &
@@ -735,8 +802,8 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 
         om_emis = 0.
         do k=1,kd
-          om_emis(is:ie,js:je) = om_emis(is:ie,js:je) +  &
-              omphob_emis(is:ie,js:je,k) + omphil_emis(is:ie,js:je,k)
+          om_emis(:,:) = om_emis(:,:) + omphob_emis(:,:,k) +    &
+                                                       omphil_emis(:,:,k)
         end do
 
         used = send_data ( id_om_emis_col, om_emis, model_time, &
@@ -751,8 +818,8 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 
         bc_emis = 0.
         do k=1,kd
-          bc_emis(is:ie,js:je) = bc_emis(is:ie,js:je) + pwt(is:ie,js:je,k)*&
-               (bcphob_emis(is:ie,js:je,k) + bcphil_emis(is:ie,js:je,k))
+          bc_emis(:,:) = bc_emis(:,:) + pwt(:,:,k)*&
+                               (bcphob_emis(:,:,k) + bcphil_emis(:,:,k))
         end do
         used = send_data ( id_bc_emis_colv2, bc_emis, model_time, &
               is_in=is,js_in=js)
@@ -763,8 +830,8 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
 
         om_emis = 0.
         do k=1,kd
-          om_emis(is:ie,js:je) = om_emis(is:ie,js:je) + pwt(is:ie,js:je,k)* &
-              (omphob_emis(is:ie,js:je,k) + omphil_emis(is:ie,js:je,k))
+          om_emis(:,:) = om_emis(:,:) + pwt(:,:,k)* &
+                               (omphob_emis(:,:,k) + omphil_emis(:,:,k))
         end do
         used = send_data ( id_om_emis_colv2, om_emis, model_time, &
               is_in=is,js_in=js)
@@ -847,6 +914,10 @@ real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
       if (id_omemisoc > 0) then
         used = send_data ( id_omemisoc, omemisocean, model_time, &
               is_in=is,js_in=js)
+      endif
+      if (id_bc_tau > 0) then
+        used = send_data ( id_bc_tau, bc_tau, model_time, &
+              is_in=is,js_in=js,ks_in=1)
       endif
 !
  end subroutine atmos_carbon_aerosol_driver
@@ -1064,6 +1135,10 @@ integer ::  unit, ierr, io, logunit
      id_omemisoc    = register_diag_field ( mod_name,           &
                     'omemisoc', axes(1:2),Time,                 &
                     'OM biogenic emission over ocean', 'kg/m2/sec' )
+
+     id_bc_tau    = register_diag_field ( mod_name,           &
+                    'bc_tau', axes(1:3),Time,                 &
+                    'bcphob aging lifetime', 'days' )
 
 !----------------------------------------------------------------------
 !    initialize namelist entries

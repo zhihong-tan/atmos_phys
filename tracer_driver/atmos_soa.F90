@@ -76,8 +76,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_soa.F90,v 18.0.2.1 2010/08/30 20:39:47 wfc Exp $'
-character(len=128) :: tagname = '$Name: riga_201104 $'
+character(len=128) :: version = '$Id: atmos_soa.F90,v 19.0 2012/01/06 20:31:24 fms Exp $'
+character(len=128) :: tagname = '$Name: siena $'
 !-----------------------------------------------------------------------
 
 contains
@@ -335,8 +335,7 @@ end subroutine atmos_SOA_endts
 
       SOA_prod = 0.
       do k=1,kd
-        SOA_prod(is:ie,js:je) = SOA_prod(is:ie,js:je) +  &
-                                             SOA_chem(is:ie,js:je,k)
+        SOA_prod = SOA_prod +  SOA_chem(:,:,k)
       end do
 
       if (id_SOA_chem_col > 0) then

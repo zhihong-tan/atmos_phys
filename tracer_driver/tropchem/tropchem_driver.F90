@@ -155,8 +155,7 @@ logical            :: allow_psc_settling_type1 = .false.! Allow Type-I (NAT) PSC
 logical            :: allow_psc_settling_type2 = .false.! Allow Type-II (ice) PSCs to settle
 logical            :: force_cly_conservation = .false.  ! Force chemical conservation of Cly
 logical            :: rescale_cly_components = .false.  ! Rescale individual Cly components to total Cly VMR
-logical            :: set_min_h2o_strat = .false.       
-! Don't allow total water concentration in the stratosphere to fall below 2*CH4_trop
+logical            :: set_min_h2o_strat = .false.       ! Don't allow total water concentration in the stratosphere to fall below 2*CH4_trop
 character(len=64)  :: ch4_filename = 'ch4_gblannualdata'! Methane timeseries filename
 real               :: ch4_scale_factor = 1.             ! Methane scale factor to convert to VMR (mol/mol)
 character(len=64)  :: cfc_lbc_filename = 'chemlbf'      ! Input file for CFC lower boundary conditions
@@ -169,6 +168,9 @@ integer, parameter :: nveg=5, npft=17, nmos=12          ! number of vegetation t
 !--amf/van
 integer            :: verbose = 3                       ! level of diagnostic output
 logical            :: retain_cm3_bugs = .false.         ! retain bugs present in code used in CM3
+logical            :: do_fastjx_photo = .false.         ! use fastjx routine ?
+character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen in fastjx calculation; may currently be 'none' or 'lsc_only' (default)
+logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
  
 namelist /tropchem_driver_nml/    &
                                relaxed_dt, &
@@ -209,7 +211,11 @@ namelist /tropchem_driver_nml/    &
                                Tdaily_clim, &
                                Pdaily_clim, &
                                verbose,   &
-                               retain_cm3_bugs
+                               retain_cm3_bugs, &
+                               do_fastjx_photo, &
+                               clouds_in_fastjx, &
+                               check_convergence
+                              
 
 character(len=7), parameter :: module_name = 'tracers'
 real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
@@ -256,6 +262,7 @@ integer :: id_sul, id_temp, id_dclydt, id_dbrydt, id_dclydt_chem, &
 integer :: inqa, inql, inqi !index of the three water species(nqa, nql, nqi)
 integer :: age_ndx ! index of age tracer
 logical :: module_is_initialized=.false.
+logical :: use_lsc_in_fastjx
 
 integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_emis, id_emis3d, id_xactive_emis, &
@@ -306,8 +313,8 @@ type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 17.0.2.1.6.1.2.1.2.1.4.1.2.1.2.1 2011/03/15 13:17:01 Richard.Hemler Exp $'
-character(len=128), parameter :: tagname     = '$Name: riga_201104 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 19.0 2012/01/06 20:34:20 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena $'
 !-----------------------------------------------------------------------
 
 contains
@@ -411,7 +418,7 @@ contains
 !     Integer array describing which model layer intercepts the surface.
 !   </IN>
 
-subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
+subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,                 &
                             Time, phalf, pfull, t, is, ie, js, je, dt,       &
                             z_half, z_full, q, tsurf, albedo, coszen, rrsun, &
                             area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
@@ -421,6 +428,7 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
 !-----------------------------------------------------------------------
    real, intent(in),    dimension(:,:)            :: lon, lat
    real, intent(in),    dimension(:,:)            :: land    ! land fraction
+   real, intent(in),    dimension(:,:)            :: ocn_flx_fraction ! grid box fraction over which DMS flux from ocean occurs
    real, intent(in),    dimension(:,:,:)          :: pwt
    real, intent(in),    dimension(:,:,:,:)        :: r
    real, intent(out),   dimension(:,:,:,:)        :: chem_dt
@@ -626,7 +634,7 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
             end if
          case ('DMS')
             call calc_xactive_emis( n, Time, lon, lat, pwt, is, ie, js, je, &
-                 area, land, tsurf, w10m, xactive_emis, &
+                 area, land, ocn_flx_fraction,tsurf, w10m, xactive_emis, &
                  kbot=kbot, id_emis_diag=id_xactive_emis(n) )
             if (has_xactive_emis(n)) then
                emis_source(:,:,:,n) = emis_source(:,:,:,n) + xactive_emis(:,:,:)
@@ -836,8 +844,8 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
                                h2so4, strat_aerosol(:,j,:), psc, psc_vmr_out=psc_vmr_save(:,j,:,:) )
 
       if (repartition_water_tracers) then
-         cloud_water(:,:) = MAX(0.,cloud_water(:,:) - psc_vmr_save(:,j,:,3)*WTMH2O/WTMAIR) ! reduce cloud_water by amount of type-II
-         h2o_temp(:,:) = h2o_temp(:,:) - cloud_water(:,:) * WTMAIR/WTMH2O                  ! PSC remaining water is present as vapor
+         cloud_water(:,:) = MAX(0.,cloud_water(:,:) - psc_vmr_save(:,j,:,3)*WTMH2O/WTMAIR) ! reduce cloud_water by amount of type-II PSC
+         h2o_temp(:,:) = h2o_temp(:,:) - cloud_water(:,:) * WTMAIR/WTMH2O                  ! remaining water is present as vapor
       end if
       if (sphum_ndx>0) then
          r_temp(:,j,:,sphum_ndx) = h2o_temp(:,:)
@@ -855,6 +863,12 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
 !     ... call chemistry driver
 !-----------------------------------------------------------------------
       call chemdr(r_temp(:,j,:,:),             & ! species volume mixing ratios (VMR)
+                  r(:,j,:,:),                  &
+                  phalf(:,j,:),                & ! pressure at boundaries (Pa)
+                  pwt(:,j,:) ,                 & ! column air density (Kg/m2)  
+                  do_fastjx_photo,             & ! true = use fastjx photo
+                  use_lsc_in_fastjx,           & ! use lsc clouds in fastjx
+                  j,                           & ! j
 !                 0,                           & ! time step index
                   Time_next,                   & ! time
                   lat(:,j),                    & ! latitude
@@ -888,7 +902,7 @@ subroutine tropchem_driver( lon, lat, land, pwt, r, chem_dt,                 &
                   plonl,                       & ! number of longitudes
                   prodox(:,j,:),               & ! production of ox(jmao,1/1/2011)
                   lossox(:,j,:),               & ! loss of ox(jmao,1/1/2011)
-                  retain_cm3_bugs)
+                  retain_cm3_bugs, check_convergence)
 
       call strat_chem_destroy_psc( psc )
 
@@ -1393,7 +1407,19 @@ function tropchem_driver_init( r, mask, axes, Time, &
    if (.not. Ltropchem) then
       return
    end if
-     
+      
+!-------------------------------------------------------------------------
+!     ... Make sure input value for clouds_in_fastjx is a valid option.
+!-------------------------------------------------------------------------
+   if (trim(clouds_in_fastjx) == 'none') then
+     use_lsc_in_fastjx = .false.
+   else if (trim(clouds_in_fastjx) == 'lsc_only') then
+     use_lsc_in_fastjx = .true.
+   else
+     call error_mesg ('tropchem_driver_init', &
+                     ' invalid string for clouds_in_fastjx', FATAL)
+   endif
+
 !-----------------------------------------------------------------------
 !     ... Setup sulfate input/interpolation
 !-----------------------------------------------------------------------
@@ -1405,7 +1431,8 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !     ... Initialize chemistry driver
 !-----------------------------------------------------------------------
    call chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
-                 o3_column_top, jno_scale_factor, verbose, retain_cm3_bugs)
+                 o3_column_top, jno_scale_factor, verbose,   &
+                 retain_cm3_bugs, do_fastjx_photo)
    
 !-----------------------------------------------------------------------
 !     ... set initial value of indices
@@ -2225,7 +2252,7 @@ end subroutine read_3D_emis_data
 !   </TEMPLATE>
 
 subroutine calc_xactive_emis( index, Time, lon, lat, pwt, is, ie, js, je, &
-                              area, land, tsurf, w10m, emis, &
+                              area, land, ocn_flx_fraction, tsurf, w10m, emis, &
                               kbot, id_emis_diag )
     
    integer,intent(in) :: index
@@ -2235,6 +2262,7 @@ subroutine calc_xactive_emis( index, Time, lon, lat, pwt, is, ie, js, je, &
    integer, intent(in) :: is, ie, js, je
    real, intent(in), dimension(:,:) :: area    ! grid box area (m^2)
    real, intent(in), dimension(:,:) :: land    ! land fraction
+   real, intent(in), dimension(:,:) :: ocn_flx_fraction 
    real, intent(in), dimension(:,:) :: tsurf   ! surface temperature (K)
    real, intent(in), dimension(:,:) :: w10m    ! wind speed at 10m (m/s)
    real, dimension(:,:,:),intent(out) :: emis  ! VMR/s
@@ -2245,7 +2273,7 @@ subroutine calc_xactive_emis( index, Time, lon, lat, pwt, is, ie, js, je, &
 
    
    if (index == dms_ndx) then
-      call atmos_DMS_emission( lon, lat, area, land, tsurf, w10m, pwt, &
+      call atmos_DMS_emission( lon, lat, area, ocn_flx_fraction, tsurf, w10m, pwt, &
                                emis, Time, is, ie, js, je, kbot )
    else
       call error_mesg ('calc_xactive_emis', &
@@ -3115,6 +3143,7 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
 !       ... local variables
 !-------------------------------------------------------------------------------------
       integer                  :: i, j, n, nlon, nlat, nl, nu
+      integer                  :: ie, je
       integer                  :: pft_li(nveg)
       integer                  :: pft_lu(nveg)
 !      real                     :: wrk_area  
@@ -3132,6 +3161,8 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
 
       nlon = size(lon,1)
       nlat = size(lat,2)
+      ie = is + nlon -1
+      je = js + nlat -1
 
 !       if( mpp_pe() == mpp_root_pe() ) then 
 !          print*, 'AMF get_monthly_gammas: made it here'
@@ -3152,8 +3183,8 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
       pft_lu(1:nveg-1) = (/ 4,9,12,15 /)
       pft_lu(nveg) = npft
 !--amf/van
-      do j = 1,nlat
-         do i = 1,nlon
+      do j = js,je 
+         do i = is,ie 
             total_iso = 0. 
             total_work_gamma = 0.
             if (has_ts_avg) then
@@ -3163,7 +3194,7 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
 !-----------------------------------------------------------------
 !       ... no emissions for ocean grid point 
 !-----------------------------------------------------------------
-            if( oro(i,j) .eq. 1 ) then
+            if( oro(i-is+1,j-js+1) .eq. 1 ) then
                 
 !++amv/van
             lai_work(:,:) = mlai(i,j,:,:)
