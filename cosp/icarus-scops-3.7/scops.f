@@ -6,7 +6,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: scops.f,v 19.0 2012/01/06 20:04:24 fms Exp $
-! $Name: siena $
+! $Name: siena_201202 $
  
 
 

@@ -38,7 +38,7 @@ public  moistproc_init, moistproc_end, moistproc_mca, moistproc_ras, &
 !--------------------- version number ----------------------------------
 character(len=128) :: &
 version = '$Id: moistproc_kernels.F90,v 19.0 2012/01/06 20:10:46 fms Exp $'
-character(len=128) :: tagname = '$Name: siena $'
+character(len=128) :: tagname = '$Name: siena_201202 $'
 
 !-----------------------------------------------------------------------
 real, public, allocatable, dimension(:,:)     :: rain_uw, snow_uw

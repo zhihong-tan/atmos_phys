@@ -105,7 +105,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: cloud_spec.F90,v 19.0 2012/01/06 20:13:39 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena $'
+character(len=128)  :: tagname =  '$Name: siena_201202 $'
 
 
 !---------------------------------------------------------------------

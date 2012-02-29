@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
          
 ! $Id: radar_simulator.f90,v 19.0 2012/01/06 20:04:56 fms Exp $
-! $Name: siena $
+! $Name: siena_201202 $
 
   subroutine radar_simulator(me,freq,k2,do_ray,use_gas_abs,use_mie_table,mt, &
     nhclass,hp,nprof,ngate,nsizes,D,hgt_matrix,hm_matrix,re_matrix,p_matrix,t_matrix, &

@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
         
 ! $Id: array_lib.f90,v 19.0 2012/01/06 20:04:36 fms Exp $
-! $Name: siena $
+! $Name: siena_201202 $
 
 ! ARRAY_LIB: Array procedures for F90
 ! Compiled/Modified:

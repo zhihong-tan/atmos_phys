@@ -18,7 +18,7 @@ PUBLIC diag_id_type, diag_pt_type, strat_nml_type,  &
 !----version number----------------------------------------------------
 
 Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 19.0 2012/01/06 20:27:23 fms Exp $'
-Character(len=128) :: Tagname = '$Name: siena $'
+Character(len=128) :: Tagname = '$Name: siena_201202 $'
 
 logical  :: module_is_initialized = .false.
 
