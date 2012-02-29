@@ -21,7 +21,7 @@
       logical ::  class_hist_loss = .false.
 
 character(len=128), parameter :: version     = '$Id: mo_exp_slv.F90,v 19.0 2012/01/06 20:33:52 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: siena $'
+character(len=128), parameter :: tagname     = '$Name: siena_201202 $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
