@@ -88,7 +88,7 @@
       real    :: o3_column_top, jno_scale_factor
 
 character(len=128), parameter :: version     = '$Id: mo_photo.F90,v 19.0 2012/01/06 20:34:00 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: siena_201202 $'
+character(len=128), parameter :: tagname     = '$Name: siena_201203 $'
 logical                       :: module_is_initialized = .false.
 integer                       :: photo_clock
 
