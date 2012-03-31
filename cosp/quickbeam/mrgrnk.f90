@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
        
 ! $Id: mrgrnk.f90,v 19.0 2012/01/06 20:04:52 fms Exp $
-! $Name: siena_201202 $
+! $Name: siena_201203 $
 
 Module m_mrgrnk
 Integer, Parameter :: kdp = selected_real_kind(15)
