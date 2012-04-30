@@ -46,8 +46,8 @@
       type(hst_pl), private, allocatable ::   imp_hst_loss(:)
       logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 19.0 2012/01/06 20:33:58 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: siena_201203 $'
+character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 17.0.4.1.2.1.2.1.4.1.2.1 2012/02/01 13:40:55 z1l Exp $'
+character(len=128), parameter :: tagname     = '$Name: siena_201204 $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -818,8 +818,8 @@ iter_loop : &
 ! here I sperate the o1d term because we need ozone implicitly from o1d.
                                      loss_ox(indx)=loss_ox(indx)*base_sol(indx,ox_ndx)&
                                    +reaction_rates(indx,ox_l1_ndx)*base_sol(indx,o1d_ndx)*base_sol(indx,h2o_ndx)
-                                   prod_ox(indx)=max(prod_ox(indx),0d0)
-                                   loss_ox(indx)=max(loss_ox(indx),0d0)
+                                   prod_ox(indx)=max(prod_ox(indx),0.0)
+                                   loss_ox(indx)=max(loss_ox(indx),0.0)
                              end if
 !                             write(*,*)prod_ox(k)
 !                           else

@@ -39,7 +39,7 @@ public  atmos_sea_salt_sourcesink, atmos_sea_salt_init, atmos_sea_salt_end
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 19.0 2012/01/06 20:31:22 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201203 $'
+character(len=128) :: tagname = '$Name: siena_201204 $'
 
 
 !-----------------------------------------------------------------------
