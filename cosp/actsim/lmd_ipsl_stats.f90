@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: lmd_ipsl_stats.f90,v 19.0 2012/01/06 20:04:17 fms Exp $
-! $Name: siena_201203 $
+! $Name: siena_201204 $
 
 ! Copyright (c) 2009, Centre National de la Recherche Scientifique
 ! All rights reserved.

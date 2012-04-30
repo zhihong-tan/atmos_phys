@@ -40,7 +40,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: longwave_params.F90,v 19.0 2012/01/06 20:18:35 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201203 $'
+character(len=128)  :: tagname =  '$Name: siena_201204 $'
 
 
 !--------------------------------------------------------------------

@@ -227,8 +227,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 19.0 2012/01/06 20:11:56 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201203 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 18.0.2.1.2.2.2.1.2.1.6.1.2.1.4.1.2.1 2012/04/04 15:06:36 z1l Exp $'
+character(len=128) :: tagname = '$Name: siena_201204 $'
 
 
 !---------------------------------------------------------------------
@@ -3285,9 +3285,6 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
       real, dimension (size(t,1), size(t,2), size(t,3)) :: t2, pfull2
       real, dimension (size(t,1), size(t,2), size(t,3)+1) ::  phalf2
       real, dimension (size(ts,1), size(ts,2)) ::  ts2
-      real, dimension (id, jd, size(t,3)) :: r_proc, t_proc, press_proc
-      real, dimension (id, jd, size(t,3)+1) :: phalf_proc
-      real, dimension (id, jd) :: ts_proc
       integer                  :: ico2
 
 !---------------------------------------------------------------------
@@ -3329,13 +3326,12 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    an error message; if it succeeds move the data fro the current
 !    window into array t2.
 !---------------------------------------------------------------------
-          call data_override ('ATM', 'tnew', t_proc, Data_time ,  &
-                              override=override)
+          call data_override ('ATM', 'tnew', t2(:,:,1:kmax), Data_time ,  &
+                              override=override,                  &
+                              is_in=is, ie_in=ie, js_in=js, je_in=je)
           if ( .not. override) then
             call error_mesg ('radiation_driver_mod', &
                       'temp => t not overridden successfully', FATAL)
-          else
-            t2(:,:,1:kmax) = t_proc(is:ie,js:je,:)
           endif
         else
           t2 = t
@@ -3353,14 +3349,14 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    write an error message; if it succeeds move the data from the 
 !    current window into array ts2, and also into array ts2.
 !---------------------------------------------------------------------
-          call data_override ('ATM', 'ts', ts_proc, Data_time ,  &
-                              override=override)
+          call data_override ('ATM', 'ts', ts2, Data_time ,  &
+                              override=override,             &
+                              is_in=is, ie_in=ie, js_in=js, je_in=je)
           if ( .not. override) then
             call error_mesg ('radiation_driver_mod', &
               't_surf => ts not overridden successfully', FATAL)
           else
-            ts2(:,:) = ts_proc(is:ie,js:je)
-            t2(:,:,kmax+1) = ts_proc(is:ie,js:je)
+            t2(:,:,kmax+1) = ts2(:,:)
           endif
         else
           ts2 = ts
@@ -3381,13 +3377,12 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    write an error message; if it succeeds move the data from the 
 !    current window into array q2.
 !---------------------------------------------------------------------
-          call data_override ('ATM', 'q', r_proc, Data_time ,  &
-                              override=override)
+          call data_override ('ATM', 'q', q2, Data_time ,  &
+                              override=override,           &
+                              is_in=is, ie_in=ie, js_in=js, je_in=je)
           if ( .not. override) then
             call error_mesg ('radiation_driver_mod', &
                  'sphum => q not overridden successfully', FATAL)
-          else
-            q2(:,:,:) = r_proc(is:ie,js:je,:)
           endif
         else
           q2 = q
@@ -3405,21 +3400,19 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
 !    message; if it succeeds move the data from the current window into
 !    array pfull2 and phalf2.
 !---------------------------------------------------------------------
-          call data_override ('ATM', 'pfull2', press_proc,  &
-                              Data_time , override=override)
+          call data_override ('ATM', 'pfull2', pfull2,  &
+                              Data_time , override=override, &
+                              is_in=is, ie_in=ie, js_in=js, je_in=je)
           if ( .not. override) then
             call error_mesg ('radiation_driver_mod', &
                  'pressm => pfull2 not overridden successfully', FATAL)
-          else
-            pfull2(:,:,:) = press_proc(is:ie,js:je,:)
           endif
-          call data_override ('ATM', 'phalf2', phalf_proc,  &
-                              Data_time, override=override)
+          call data_override ('ATM', 'phalf2', phalf2,  &
+                              Data_time, override=override,&
+                              is_in=is, ie_in=ie, js_in=js, je_in=je)
           if ( .not. override) then
             call error_mesg ('radiation_driver_mod', &
                  'phalfm => phalf2 not overridden successfully', FATAL)
-          else
-            phalf2(:,:,kmax+1) = phalf_proc(is:ie,js:je,kmax+1)
           endif
         else
           pfull2 = pfull
@@ -3764,10 +3757,6 @@ type(surface_type),      intent(inout)           :: Surface
                                                          albedo_nir_dir2, &
                                                          albedo_vis_dif2,  &
                                                          albedo_nir_dif2
-     real, dimension (id,jd) :: albedo_vis_dir_proc, &
-                                albedo_nir_dir_proc, &
-                                albedo_vis_dif_proc,  &
-                                albedo_nir_dif_proc
 
 !-------------------------------------------------------------------
 !    verify that the module has been initialized. if not, exit.
@@ -3802,43 +3791,39 @@ type(surface_type),      intent(inout)           :: Surface
 !           endif
             
             call data_override ('ATM', 'albedo_nir_dir_new',   &
-                                albedo_nir_dir_proc,   &
-                                Data_time, override=override)
+                                albedo_nir_dir2,   &
+                                Data_time, override=override, &
+                                is_in=is, ie_in=ie, js_in=js, je_in=je)
             if ( .not. override) then
               call error_mesg ('radiation_driver_mod', &
                 'nirdir => albedo not overridden successfully', FATAL)
-            else
-              albedo_nir_dir2(:,:) = albedo_nir_dir_proc(is:ie,js:je)
             endif
 
             call data_override ('ATM', 'albedo_nir_dif_new',   &
-                                albedo_nir_dif_proc,   &
-                                Data_time, override=override)
+                                albedo_nir_dif2,   &
+                                Data_time, override=override, &
+                                is_in=is, ie_in=ie, js_in=js, je_in=je)
             if ( .not. override) then
               call error_mesg ('radiation_driver_mod', &
                 'nirdif => albedo not overridden successfully', FATAL)
-            else
-              albedo_nir_dif2(:,:) = albedo_nir_dif_proc(is:ie,js:je)
             endif
 
             call data_override ('ATM', 'albedo_vis_dir_new',   &
-                                albedo_vis_dir_proc,   &
-                                Data_time, override=override)
+                                albedo_vis_dir2,   &
+                                Data_time, override=override, &
+                                is_in=is, ie_in=ie, js_in=js, je_in=je)
             if ( .not. override) then
               call error_mesg ('radiation_driver_mod', &
                'visdir => albedo not overridden successfully', FATAL)
-            else
-              albedo_vis_dir2(:,:) = albedo_vis_dir_proc(is:ie,js:je)
             endif
 
             call data_override ('ATM', 'albedo_vis_dif_new',   &
-                                albedo_vis_dif_proc,   &
-                                Data_time, override=override)
+                                albedo_vis_dif2,   &
+                                Data_time, override=override, &
+                                is_in=is, ie_in=ie, js_in=js, je_in=je)
             if ( .not. override) then
               call error_mesg ('radiation_driver_mod', &
               'visdif => albedo not overridden successfully', FATAL)
-            else
-              albedo_vis_dif2(:,:) = albedo_vis_dif_proc(is:ie,js:je)
            endif
 
 !--------------------------------------------------------------------
@@ -4363,7 +4348,7 @@ subroutine write_restart_nc(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
 
-
+  if( .not. using_restart_file ) return
 !---------------------------------------------------------------------
 !    only the root pe will write control information -- the last value 
 !    in the list of restart versions and the alarm information.

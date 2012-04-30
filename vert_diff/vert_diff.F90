@@ -74,7 +74,7 @@ integer :: sphum, mix_rat
 !--------------------- version number ---------------------------------
 
 character(len=128) :: version = '$Id: vert_diff.F90,v 19.0 2012/01/06 20:27:29 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201203 $'
+character(len=128) :: tagname = '$Name: siena_201204 $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS

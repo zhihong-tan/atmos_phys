@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
          
 ! $Id: load_mie_table.f90,v 19.0 2012/01/06 20:04:48 fms Exp $
-! $Name: siena_201203 $
+! $Name: siena_201204 $
 
   subroutine load_mie_table(mie_table_name,mt)
   use radar_simulator_types

@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
         
 ! $Id: radar_simulator_types.f90,v 19.0 2012/01/06 20:04:58 fms Exp $
-! $Name: siena_201203 $
+! $Name: siena_201204 $
 
   module radar_simulator_types
 

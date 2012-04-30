@@ -104,8 +104,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 19.0 2012/01/06 20:13:39 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201203 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0.8.1.2.1.2.1.2.1.2.1.2.1.2.1 2012/01/05 22:49:33 wfc Exp $'
+character(len=128)  :: tagname =  '$Name: siena_201204 $'
 
 
 !---------------------------------------------------------------------
@@ -919,7 +919,6 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
       integer   :: ierr
       logical   :: override
       type(time_type) :: Data_time
-      real, dimension (id, jd, kmax) :: ql_proc, qi_proc, qa_proc
       real, dimension (size (Atmos_input%deltaz,1), &
                        size (Atmos_input%deltaz,2), &
                        size (Atmos_input%deltaz,3)) :: rho
@@ -1185,13 +1184,12 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !    an error message; if it succeeds move the data for the current 
 !    physics window, into the appropriate Cld_spec% array.
 !---------------------------------------------------------------------
-            call data_override ('ATM', 'qlnew', ql_proc,   &
-                                  Data_time, override=override)
+            call data_override ('ATM', 'qlnew', Cld_spec%cloud_water,   &
+                                Data_time, override=override,           &
+                                is_in=is, ie_in=ie, js_in=js, je_in=je)
             if ( .not. override) then
               call error_mesg ('radiation_driver_mod', &
                 'ql => cloud_water not overridden successfully', FATAL)
-            else
-              Cld_spec%cloud_water(:,:,:) = ql_proc(is:ie,js:je,:)
             endif
 
 !---------------------------------------------------------------------
@@ -1200,13 +1198,12 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !    an error message; if it succeeds move the data for the current 
 !    physics window, into the appropriate Cld_spec% array.
 !---------------------------------------------------------------------
-            call data_override ('ATM', 'qinew', qi_proc,   &
-                                Data_time, override=override)
+            call data_override ('ATM', 'qinew', Cld_spec%cloud_ice,   &
+                                Data_time, override=override,         &
+                                is_in=is, ie_in=ie, js_in=js, je_in=je)
             if ( .not. override) then
               call error_mesg ('radiation_driver_mod', &
                 'qi => cloud_ice   not overridden successfully', FATAL)
-            else
-              Cld_spec%cloud_ice(:,:,:) = qi_proc(is:ie,js:je,:)
             endif
 
 !---------------------------------------------------------------------
@@ -1215,13 +1212,12 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
 !    an error message; if it succeeds move the data for the current
 !    physics window, into the appropriate Cld_spec% array.
 !---------------------------------------------------------------------
-            call data_override ('ATM', 'qanew', qa_proc,   &
-                                 Data_time, override=override)
+            call data_override ('ATM', 'qanew', Cld_spec%cloud_area,   &
+                                Data_time, override=override,         &
+                                is_in=is, ie_in=ie, js_in=js, je_in=je)
             if ( .not. override) then
               call error_mesg ('radiation_driver_mod', &
                'qa => cloud_area not overridden successfully', FATAL)
-            else
-              Cld_spec%cloud_area(:,:,:) = qa_proc(is:ie,js:je,:)
             endif
             ierr = 0
           endif ! (doing_override)

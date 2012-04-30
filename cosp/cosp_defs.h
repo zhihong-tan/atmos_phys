@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: cosp_defs.h,v 19.0 2012/01/06 20:03:22 fms Exp $
-! $Name: siena_201203 $
+! $Name: siena_201204 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
