@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
          
 ! $Id: format_input.f90,v 19.0 2012/01/06 20:04:42 fms Exp $
-! $Name: siena_201204 $
+! $Name: siena_201207 $
 
 ! FORMAT_INPUT: Procedures to prepare data for input to the simulator
 ! Compiled/Modified:

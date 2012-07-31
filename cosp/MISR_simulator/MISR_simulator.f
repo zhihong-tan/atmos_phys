@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: MISR_simulator.f,v 19.0 2012/01/06 20:04:12 fms Exp $
-! $Name: siena_201204 $
+! $Name: siena_201207 $
 
 ! 
 ! Copyright (c) 2009,  Roger Marchand, version 1.2

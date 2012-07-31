@@ -32,7 +32,7 @@ private nc_cond_nopdf_nosuper, nc_cond_nopdf_super, nc_cond_pdf, &
 !---version number------------------------------------------------------
 
 Character(len=128) :: Version = '$Id: nc_cond.F90,v 19.0 2012/01/06 20:26:15 fms Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201204 $'
+Character(len=128) :: Tagname = '$Name: siena_201207 $'
 
 !-----------------------------------------------------------------------
 !---namelist------------------------------------------------------------

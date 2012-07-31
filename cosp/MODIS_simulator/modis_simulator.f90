@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: modis_simulator.f90,v 19.0 2012/01/06 20:04:13 fms Exp $
-! $Name: siena_201204 $
+! $Name: siena_201207 $
 
 
 ! (c) 2009-2010, Regents of the Unversity of Colorado

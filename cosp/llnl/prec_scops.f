@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: prec_scops.f,v 19.0 2012/01/06 20:04:32 fms Exp $
-! $Name: siena_201204 $
+! $Name: siena_201207 $
 
 ! (c) 2008, Lawrence Livermore National Security Limited Liability Corporation.
 ! All rights reserved.

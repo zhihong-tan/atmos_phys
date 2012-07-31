@@ -67,7 +67,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: ozone.F90,v 19.0 2012/01/06 20:21:21 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201204 $'
+character(len=128)  :: tagname =  '$Name: siena_201207 $'
 
 
 !---------------------------------------------------------------------
