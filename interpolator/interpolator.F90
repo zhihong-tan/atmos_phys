@@ -4,6 +4,7 @@ module interpolator_mod
 !
 ! author: William Cooke William.Cooke@noaa.gov
 !
+#include <fms_platform.h>
 
 use mpp_mod,           only : mpp_error, &
                               FATAL,     &
@@ -99,8 +100,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 19.0 2012/01/06 20:28:36 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201204 $'
+'$Id: interpolator.F90,v 19.0.8.2 2012/06/11 19:26:57 Seth.Underwood Exp $'
+character(len=128) :: tagname = '$Name: siena_201207 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -194,11 +195,20 @@ integer :: climo_diag_id(max_diag_fields), hinterp_id(max_diag_fields)
 real ::  missing_value = -1.e10
 ! sjs integer :: itaum, itaup
 
+#ifdef NO_QUAD_PRECISION
+! 64-bit precision (kind=8)
+ integer, parameter:: f_p = selected_real_kind(15)
+#else
+! Higher precision (kind=16) for grid geometrical factors:
+ integer, parameter:: f_p = selected_real_kind(20)
+#endif
+
 logical :: read_all_on_init = .false.
 integer :: verbose = 0  
+logical :: conservative_interp = .true.
 
 namelist /interpolator_nml/    &
-                             read_all_on_init, verbose
+                             read_all_on_init, verbose, conservative_interp
 
 contains
 
@@ -308,6 +318,9 @@ integer :: yr, mo, dy, hr, mn, sc
 integer :: n
 type(time_type) :: Julian_time, Noleap_time
 real, allocatable :: time_in(:)
+real, allocatable, save :: agrid_mod(:,:,:)
+integer :: nx, ny
+integer :: io, ierr
 
 if (.not. module_is_initialized) then
   call fms_init
@@ -756,9 +769,35 @@ endif
 
 !Assume that the horizontal interpolation within a file is the same for each variable.
 
- call horiz_interp_new (clim_type%interph, &
+ if (conservative_interp) then
+    call horiz_interp_new (clim_type%interph, &
                         clim_type%lonb, clim_type%latb, &
                         lonb_mod, latb_mod)
+ else
+    
+    call mpp_error(NOTE, "Using Bilinear interpolation")
+
+    !!! DEBUG CODE
+    if (.not. allocated(agrid_mod)) then
+       nx = size(lonb_mod,1)-1
+       ny = size(latb_mod,2)-1
+       allocate(agrid_mod(nx,ny,2))
+       do j=1,ny
+       do i=1,nx
+          call cell_center2((/lonb_mod(i,j),latb_mod(i,j)/), & 
+               (/lonb_mod(i+1,j),latb_mod(i+1,j)/), & 
+               (/lonb_mod(i,j+1),latb_mod(i,j+1)/), & 
+               (/lonb_mod(i+1,j+1),latb_mod(i+1,j+1)/),  agrid_mod(i,j,:))          
+       enddo
+       enddo
+    endif
+
+    !!! END DEBUG CODE
+
+    call horiz_interp_new (clim_type%interph, &
+                        clim_type%lonb, clim_type%latb, &
+                        agrid_mod(:,:,1), agrid_mod(:,:,2), interp_method="bilinear")    
+ endif
 
 !--------------------------------------------------------------------
 !  allocate the variable clim_type%data . This will be the climatology 
@@ -990,6 +1029,100 @@ module_is_initialized = .true.
 call write_version_number (version, tagname)
 
 end subroutine interpolator_init
+
+ subroutine cell_center2(q1, q2, q3, q4, e2)
+      real , intent(in ) :: q1(2), q2(2), q3(2), q4(2)
+      real , intent(out) :: e2(2)
+! Local
+      real p1(3), p2(3), p3(3), p4(3)
+      real ec(3)
+      real dd
+      integer k
+
+      call latlon2xyz(q1, p1)
+      call latlon2xyz(q2, p2)
+      call latlon2xyz(q3, p3)
+      call latlon2xyz(q4, p4)
+
+      do k=1,3
+         ec(k) = p1(k) + p2(k) + p3(k) + p4(k)
+      enddo
+      dd = sqrt( ec(1)**2 + ec(2)**2 + ec(3)**2 )
+
+      do k=1,3
+         ec(k) = ec(k) / dd
+      enddo
+
+      call cart_to_latlon(1, ec, e2(1), e2(2))
+
+ end subroutine cell_center2
+
+ subroutine cart_to_latlon(np, q, xs, ys)
+! vector version of cart_to_latlon1
+  integer, intent(in):: np
+  real, intent(inout):: q(3,np)
+  real, intent(inout):: xs(np), ys(np)
+! local
+  real, parameter:: esl=1.e-10
+  real (f_p):: p(3)
+  real (f_p):: dist, lat, lon
+  integer i,k
+
+  do i=1,np
+     do k=1,3
+        p(k) = q(k,i)
+     enddo
+     dist = sqrt(p(1)**2 + p(2)**2 + p(3)**2)
+     do k=1,3
+        p(k) = p(k) / dist
+     enddo
+
+     if ( (abs(p(1))+abs(p(2)))  < esl ) then
+          lon = 0.
+     else
+          lon = atan2( p(2), p(1) )   ! range [-pi,pi]
+     endif
+
+     if ( lon < 0.) lon = 2.*pi + lon
+     lat = asin(p(3))
+     
+     xs(i) = lon
+     ys(i) = lat
+! q Normalized:
+     do k=1,3
+        q(k,i) = p(k)
+     enddo
+  enddo
+
+ end  subroutine cart_to_latlon
+
+ subroutine latlon2xyz(p, e)
+!
+! Routine to map (lon, lat) to (x,y,z)
+!
+ real, intent(in) :: p(2)
+ real, intent(out):: e(3)
+
+ integer n
+ real (f_p):: q(2)
+ real (f_p):: e1, e2, e3
+
+    do n=1,2
+       q(n) = p(n)
+    enddo
+
+    e1 = cos(q(2)) * cos(q(1))
+    e2 = cos(q(2)) * sin(q(1))
+    e3 = sin(q(2))
+!-----------------------------------
+! Truncate to the desired precision:
+!-----------------------------------
+    e(1) = e1
+    e(2) = e2
+    e(3) = e3
+
+ end subroutine latlon2xyz
+
 !
 !#######################################################################
 !
