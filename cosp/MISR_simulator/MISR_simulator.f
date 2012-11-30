@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: MISR_simulator.f,v 19.0 2012/01/06 20:04:12 fms Exp $
-! $Name: siena_201207 $
+! $Id: MISR_simulator.f,v 19.0.2.1 2012/02/23 16:20:22 Chris.Golaz Exp $
+! $Name: siena_201211 $
 
 ! 
 ! Copyright (c) 2009,  Roger Marchand, version 1.2
@@ -101,13 +101,17 @@
       						       ! NOTE: == 0 if area ==0
       						
 
+!-->cjg: modification to set missing values, 20111209
+      real  :: missing_value = -1.0E30
+!<--cjg
+
 !     ------
 !     Working variables 
 !     ------
 
       REAL tau(npoints,ncol) 		! total column optical depth ... 
 
-      INTEGER j,ilev,ilev2,ibox
+      INTEGER j,k,ilev,ilev2,ibox       ! cjg
       INTEGER itau
          
       LOGICAL box_cloudy(npoints,ncol)
@@ -467,8 +471,23 @@
  
 	      endif
 		
-	   endif ! is sunlight ?
 	   
+!-->cjg: set missing values based on newer code version from Roger Marchand
+           else
+
+              ! Set to missing data. A. Bodas - 14/05/2010
+              do loop=1,n_MISR_CTH
+                 do k=1,7
+                    fq_MISR_TAU_v_CTH(j,k,loop) = missing_value
+                 enddo
+                 dist_model_layertops(j,loop) = missing_value
+              enddo
+              MISR_cldarea(j) = missing_value
+              MISR_mean_ztop(j) = missing_value
+!<--cjg
+
+	   endif ! is sunlight ?
+
 	enddo ! ibox - loop over subcolumns          
       
 	if( MISR_cldarea(j) .gt. 0.) then

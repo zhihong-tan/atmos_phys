@@ -12,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 19.0 2012/01/06 20:25:58 fms Exp $'
-  character(len=128) :: tagname = '$Name: siena_201207 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 19.0.4.1 2012/05/29 18:40:10 Zhi.Liang Exp $'
+  character(len=128) :: tagname = '$Name: siena_201211 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -1091,8 +1091,8 @@ contains
 
     if (qlu_new .lt. 0. .or. qiu_new .lt. 0. .or. clu_new .lt. 0.0 .or.&
         ciu_new .lt. 0.0) then
-       print*, qlu_new, qiu_new, clu_new, ciu_new,   &
-                             qrj, qsj, qlj, qij, '??????????????????'
+       print*, "from micro_donner_k:", qlu_new, qiu_new, clu_new, ciu_new,   &
+                             qrj, qsj, qlj, qij
     end if
     return
     

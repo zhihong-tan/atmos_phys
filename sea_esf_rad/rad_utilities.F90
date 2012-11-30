@@ -44,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 19.0 2012/01/06 20:21:55 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201207 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 19.0.4.1 2012/08/27 19:19:23 z1l Exp $'
+character(len=128)  :: tagname =  '$Name: siena_201211 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -3451,7 +3451,6 @@ subroutine sw_output_type_eq(sw_output_out,sw_output_in)
    sw_output_out%ufsw_vis_sfc_dir = sw_output_in%ufsw_vis_sfc_dir
    sw_output_out%dfsw_vis_sfc_dir = sw_output_in%dfsw_vis_sfc_dir
    sw_output_out%dfsw_vis_sfc_dif = sw_output_in%dfsw_vis_sfc_dif
-   sw_output_out%dfsw_vis_sfc_clr = sw_output_in%dfsw_vis_sfc_clr
    sw_output_out%ufsw_vis_sfc_dif = sw_output_in%ufsw_vis_sfc_dif
    sw_output_out%swdn_special     = sw_output_in%swdn_special
    sw_output_out%swup_special     = sw_output_in%swup_special
@@ -3463,6 +3462,7 @@ subroutine sw_output_type_eq(sw_output_out,sw_output_in)
        sw_output_out%hswcf            = sw_output_in%hswcf
        sw_output_out%dfsw_dir_sfc_clr = sw_output_in%dfsw_dir_sfc_clr
        sw_output_out%dfsw_dif_sfc_clr = sw_output_in%dfsw_dif_sfc_clr
+       sw_output_out%dfsw_vis_sfc_clr = sw_output_in%dfsw_vis_sfc_clr
        sw_output_out%swdn_special_clr = sw_output_in%swdn_special_clr
        sw_output_out%swup_special_clr = sw_output_in%swup_special_clr
        sw_output_out%bdy_flx_clr      = sw_output_in%bdy_flx_clr

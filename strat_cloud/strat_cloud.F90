@@ -199,8 +199,8 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud.F90,v 19.0 2012/01/06 20:26:50 fms Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201207 $'
+Character(len=128) :: Version = '$Id: strat_cloud.F90,v 19.0.4.1 2012/05/29 18:40:10 Zhi.Liang Exp $'
+Character(len=128) :: Tagname = '$Name: siena_201211 $'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -1996,127 +1996,127 @@ type(precip_state_type), intent(in) :: Precip_state
 !------------------------------------------------------------------------
 !    write numerous diagnostics to file otun to aid in debugging.
 !------------------------------------------------------------------------
-      write(otun, *) , "eee max, min ST ", MAXVAL(ST_out), MINVAL(ST_out)
-      write(otun, *) , "eee maxloc, minloc  ", MAXLOC(ST_out),   &
+      write(otun, *)  "eee max, min ST ", MAXVAL(ST_out), MINVAL(ST_out)
+      write(otun, *)  "eee maxloc, minloc  ", MAXLOC(ST_out),   &
                                                             MINLOC(ST_out)
 
       call check_nan (ST_out,'ST_out')
 
 
-      write(otun, *) , "eee max, min SQ ", MAXVAL(SQ_out), MINVAL(SQ_out)
-      write(otun, *) , "eee maxloc, minloc  ", MAXLOC(SQ_out),   &
+      write(otun, *)  "eee max, min SQ ", MAXVAL(SQ_out), MINVAL(SQ_out)
+      write(otun, *)  "eee maxloc, minloc  ", MAXLOC(SQ_out),   &
                                                             MINLOC(SQ_out)
       call check_nan (SQ_out,'SQ_out')
 
-      write(otun, *) , "eee max, min SL ", MAXVAL(Cloud_state%SL_out), &
+      write(otun, *)  "eee max, min SL ", MAXVAL(Cloud_state%SL_out), &
                                                  MINVAL(Cloud_state%SL_out)
-      write(otun, *) , "eee maxloc, minloc  ", MAXLOC(Cloud_state%SL_out),&
+      write(otun, *)  "eee maxloc, minloc  ", MAXLOC(Cloud_state%SL_out),&
                                                  MINLOC(Cloud_state%SL_out)
 
-      write(otun, *) , "eee max, min SI ", MAXVAL(Cloud_state%SI_out), &
+      write(otun, *)  "eee max, min SI ", MAXVAL(Cloud_state%SI_out), &
                                                  MINVAL(Cloud_state%SI_out)
-      write(otun, *) , "eee maxloc, minloc  ", MAXLOC(Cloud_state%SI_out),&
+      write(otun, *)  "eee maxloc, minloc  ", MAXLOC(Cloud_state%SI_out),&
                                                  MINLOC(Cloud_state%SI_out)
       call check_nan   (Cloud_state%SI_out,'SI_out')
 
-      write(otun, *) , "eee max, min SA ", MAXVAL(Cloud_state%SA_out), &
+      write(otun, *)  "eee max, min SA ", MAXVAL(Cloud_state%SA_out), &
                                                 MINVAL(Cloud_state%SA_out)
-      write(otun, *) , "eee maxloc, minloc  ", MAXLOC(Cloud_state%SA_out),&
+      write(otun, *)  "eee maxloc, minloc  ", MAXLOC(Cloud_state%SA_out),&
                                                  MINLOC(Cloud_state%SA_out)
       call check_nan   (Cloud_state%SA_out,'SA_out')
 
-      write(otun, *) , "eee max, min SN ", MAXVAL(Cloud_state%SN_out), &
+      write(otun, *)  "eee max, min SN ", MAXVAL(Cloud_state%SN_out), &
                                                 MINVAL(Cloud_state%SN_out)
-      write(otun, *) , "eee maxloc, minloc  ", &
+      write(otun, *)  "eee maxloc, minloc  ", &
                      MAXLOC(Cloud_state%SN_out), MINLOC(Cloud_state%SN_out)
       call check_nan   (Cloud_state%SN_out,'SN_out')
 
-      write(otun, *) , "eee max, min SNi ", MAXVAL(Cloud_state%SNi_out),&
+      write(otun, *)  "eee max, min SNi ", MAXVAL(Cloud_state%SNi_out),&
                                                 MINVAL(Cloud_state%SNi_out)
-      write(otun, *) , "eee maxloc, minloc  ", &
+      write(otun, *)  "eee maxloc, minloc  ", &
                    MAXLOC(Cloud_state%SNi_out), MINLOC(Cloud_state%SNi_out)
       call check_nan   (Cloud_state%SNi_out,'SNi_out')
 
-      write(otun, *) , "--"
-      write(otun, *) , "eee max, min T+ST ",  &
+      write(otun, *)  "--"
+      write(otun, *)  "eee max, min T+ST ",  &
                                  MAXVAL(Atmos_state%T_in + ST_out),  &  
                                          MINVAL(Atmos_state%T_in + ST_out)
 
-      write(otun, *) , "eee max, min qv+SQ ", &
+      write(otun, *)  "eee max, min qv+SQ ", &
                                  MAXVAL(Atmos_state%qv_in + SQ_out), &
                                         MINVAL(Atmos_state%qv_in + SQ_out)
 
-      write(otun, *) , "eee max, min ql+ SL ",   &
+      write(otun, *)  "eee max, min ql+ SL ",   &
                            MAXVAL(Cloud_state%ql_in+Cloud_state%SL_out),  &
                                MINVAL(Cloud_state%ql_in+Cloud_state%SL_out)
 
-      write(otun, *) , "eee max, min qi +SI ",  &
+      write(otun, *)  "eee max, min qi +SI ",  &
                            MAXVAL(Cloud_state%qi_in+ Cloud_state%SI_out), &
                              MINVAL(Cloud_state%qi_in + Cloud_state%SI_out)
 
-      write(otun, *) , "eee max, min qa + SA ",  &
+      write(otun, *)  "eee max, min qa + SA ",  &
                            MAXVAL(Cloud_state%qa_in+Cloud_state%SA_out),  &
                               MINVAL(Cloud_state%qa_in+Cloud_state%SA_out)
 
-      write(otun, *) , "eee max, min qn + SN ",  &
+      write(otun, *)  "eee max, min qn + SN ",  &
                          MAXVAL(Cloud_state%qn_in + Cloud_state%SN_out), &
                             MINVAL(Cloud_state%qn_in + Cloud_state%SN_out)
 
-      write(otun, *) , "eee max, min qni SNi ",   &
+      write(otun, *)  "eee max, min qni SNi ",   &
                         MAXVAL(Cloud_state%qni_in+ Cloud_state%SNi_out), &
                             MINVAL(Cloud_state%qni_in+Cloud_state%SNi_out)
 
-      write(otun, *) , "--"
-      write(otun, *) , "--"
+      write(otun, *)  "--"
+      write(otun, *)  "--"
 
-      write(otun, *) , "eee max, min rain3d ",  &
+      write(otun, *)  "eee max, min rain3d ",  &
                   MAXVAL(Precip_state%rain3d), MINVAL(Precip_state%rain3d)
-      write(otun, *) , "eee maxloc, minloc  ",  &
+      write(otun, *)  "eee maxloc, minloc  ",  &
                   MAXLOC(Precip_state%rain3d), MINLOC(Precip_state%rain3d)
       call check_nan   (Precip_state%rain3d,'rain3d')
 
-      write(otun, *) , "eee max, min snow3d ",   &
+      write(otun, *)  "eee max, min snow3d ",   &
                   MAXVAL(Precip_state%snow3d), MINVAL(Precip_state%snow3d)
-      write(otun, *) , "eee maxloc, minloc  ",  &
+      write(otun, *)  "eee maxloc, minloc  ",  &
                    MAXLOC(Precip_state%snow3d), MINLOC(Precip_state%snow3d)
       call check_nan   (Precip_state%snow3d,'snow3d')
 
-      write(otun, *) , "--"
-      write(otun, *) , "eee max, min surfrain ",   &
+      write(otun, *)  "--"
+      write(otun, *)  "eee max, min surfrain ",   &
                MAXVAL(Precip_state%surfrain), MINVAL(Precip_state%surfrain)
-      write(otun, *) , "eee maxloc, minloc  ",    &
+      write(otun, *)  "eee maxloc, minloc  ",    &
                MAXLOC(Precip_state%surfrain), MINLOC(Precip_state%surfrain)
 
-      write(otun, *) , "eee max, min surfsnow ",   &
+      write(otun, *)  "eee max, min surfsnow ",   &
                MAXVAL(Precip_state%surfsnow), MINVAL(Precip_state%surfsnow)
-      write(otun, *) , "eee maxloc, minloc  ",   &
+      write(otun, *)  "eee maxloc, minloc  ",   &
                MAXLOC(Precip_state%surfsnow), MINLOC(Precip_state%surfsnow)
-      write(otun, *) , "--"
+      write(otun, *)  "--"
 
       IF ( MAXVAL(SQ_out + Cloud_state%ql_in) .GT. 1.e-1 )  &
-                                            write(otun, *) ," MMMMM Q1 "
+                                            write(otun, *) " MMMMM Q1 "
       IF ( MAXVAL(SQ_out + Cloud_state%ql_in) .LT. 0. )   &
-                                            write(otun, *) ," MMMMM Q2 "
+                                            write(otun, *) " MMMMM Q2 "
 
       IF ( MAXVAL(Cloud_state%SI_out + Cloud_state%qi_in) .LT. 0. )  &
-                                            write(otun, *) ," MMMMM I11 "
+                                            write(otun, *) " MMMMM I11 "
       IF ( MAXVAL(Cloud_state%SL_out + Cloud_state%ql_in) .LT. 0. )   &
-                                            write(otun, *) ," MMMMM L11 "
+                                            write(otun, *) " MMMMM L11 "
 
       IF ( MAXVAL(  &
               Cloud_state%qa_in+Cloud_state%SA_out+Atmos_state%ahuco)   &
                                                .GT. 1.00000000001  ) THEN
-        write(otun, *) ," MMMMMA1 ahuco "
+        write(otun, *) " MMMMMA1 ahuco "
         maxl =  maxloc (Cloud_state%qa_in + Cloud_state%SA_out +  &
                                                         Atmos_state%ahuco) 
-        write(otun, *) ,"  maxloc(qa+SA) ",  &
+        write(otun, *) "  maxloc(qa+SA) ",  &
              maxloc (Cloud_state%qa_in + Cloud_state%SA_out +  &
                                                          Atmos_state%ahuco)
-        write(otun, *) ," qa+SA+ahuco ",    &
+        write(otun, *) " qa+SA+ahuco ",    &
                       Cloud_state%qa_in(maxl(1),maxl(2),maxl(3)) +     &
                           Cloud_state%SA_out(maxl(1),maxl(2),maxl(3)) +&
                               Atmos_state%ahuco(maxl(1),maxl(2),maxl(3))
-        write(otun, *) ," qa, ahuco, SA ",   &
+        write(otun, *) " qa, ahuco, SA ",   &
                      Cloud_state%qa_in(maxl(1),maxl(2),maxl(3)),   &
                      Atmos_state%ahuco(maxl(1),maxl(2),maxl(3)),  &
                      Cloud_state%SA_out(maxl(1),maxl(2),maxl(3)) 
@@ -2125,23 +2125,23 @@ type(precip_state_type), intent(in) :: Precip_state
 
       IF ( MINVAL(Cloud_state%qa_in+Cloud_state%SA_out) .LT. 0.  ) THEN
         minl =  minloc(Cloud_state%qa_in+Cloud_state%SA_out)
-        write(otun, *) ," MMMMMA2"
-        write(otun, *) ,"  minloc(qa+SA) ",   &
+        write(otun, *) " MMMMMA2"
+        write(otun, *) "  minloc(qa+SA) ",   &
                               minloc(Cloud_state%qa_in+Cloud_state%SA_out)
-        write(otun, *) ," qa+SA ", &
+        write(otun, *) " qa+SA ", &
                          Cloud_state%qa_in(minl(1),minl(2),minl(3)) +  &
                                 Cloud_state%SA_out(minl(1),minl(2),minl(3))
-        write(otun, *) ,"    qa, SA ",  &
+        write(otun, *) "    qa, SA ",  &
                            Cloud_state%qa_in(minl(1),minl(2),minl(3)),  &
                                 Cloud_state%SA_out(minl(1),minl(2),minl(3))
       END IF
 
       IF ( MINVAL(Cloud_state%qn_in+Cloud_state%SN_out) .LT. 0.  ) THEN
-        write(otun, *) ," MMMMMN1"
+        write(otun, *) " MMMMMN1"
         minl =  minloc(Cloud_state%qn_in+Cloud_state%SN_out)
-        write(otun, *) ,"  minloc(qn+SN) ",  &
+        write(otun, *) "  minloc(qn+SN) ",  &
                            minloc(Cloud_state%qn_in+Cloud_state%SN_out)
-        write(otun, *) ,"    qn, SN ",   &
+        write(otun, *) "    qn, SN ",   &
                           Cloud_state%qn_in(minl(1),minl(2),minl(3)),  &
                           Cloud_state%SN_out(minl(1),minl(2),minl(3)) 
       END IF
@@ -2149,40 +2149,40 @@ type(precip_state_type), intent(in) :: Precip_state
       IF ( MAXVAL(Cloud_state%qi_in +    &
                                    Cloud_state%SI_out) .GT. 1.e-2 )   then
         maxl = MAXLOC(Cloud_state%qi_in + Cloud_state%SI_out)
-        write(otun, *) ," MMMMMII"
-        write(otun, *) ,"  maxloc(qi+SI) ",    &
+        write(otun, *) " MMMMMII"
+        write(otun, *) "  maxloc(qi+SI) ",    &
                               maxloc(Cloud_state%qi_in+Cloud_state%SI_out)
-        write(otun, *) ,"  qi+SI " ,    &
+        write(otun, *) "  qi+SI " ,    &
                            Cloud_state%qi_in(maxl(1),maxl(2),maxl(3))+  &
                                 Cloud_state%SI_out(maxl(1),maxl(2),maxl(3))
-        write(otun, *) ,"  qi, SI " ,    &
+        write(otun, *) "  qi, SI " ,    &
                       Cloud_state%qi_in(maxl(1),maxl(2),maxl(3)),  &
                                Cloud_state%SI_out(maxl(1),maxl(2),maxl(3))
-        write(otun, *) ,"  T ",    &
+        write(otun, *) "  T ",    &
                      Atmos_state%T_in(maxl(1),maxl(2),maxl(3)),   &
                                Cloud_state%SI_out(maxl(1),maxl(2),maxl(3))
       END IF
 
       IF ( MAXVAL(Cloud_state%ql_in + Cloud_state%SL_out) .GT. 1.e-2 )   &
-                                               write(otun, *) ," MMMMMLL"
+                                               write(otun, *) " MMMMMLL"
       IF ( MINVAL(Cloud_state%qni_in+Cloud_state%SNi_out) .LT. -1.e-5) &
-                                                write(otun, *) ," MMMMMN2"
-      IF ( MAXVAL(ST_out) .GT. 7. ) write(otun, *) ," MMMMMT1 "
-      IF ( MINVAL(ST_out) .LT. - 7. ) write(otun, *) ," MMMMMT2 "
+                                                write(otun, *) " MMMMMN2"
+      IF ( MAXVAL(ST_out) .GT. 7. ) write(otun, *) " MMMMMT1 "
+      IF ( MINVAL(ST_out) .LT. - 7. ) write(otun, *) " MMMMMT2 "
       IF ( MAXVAL(Atmos_state%T_in+ST_out) .GT. 330. )   &
-                                            write(otun, *) ," MMMMMT3 "
+                                            write(otun, *) " MMMMMT3 "
       IF ( MINVAL(Atmos_state%T_in+ST_out) .LT. 170. )    &
-                                               write(otun, *) ," MMMMMT4 "
+                                               write(otun, *) " MMMMMT4 "
 
       IF  ( MINVAL(Precip_state%rain3d) .LT. 0. )   &
-                                                write(otun, *) ," MMMMMR1 "
+                                                write(otun, *) " MMMMMR1 "
       IF  ( MINVAL(Precip_state%snow3d) .LT. 0. )   &
-                                                write(otun, *) ," MMMMMS1 "
+                                                write(otun, *) " MMMMMS1 "
 
       IF ( MINVAL(Precip_state%surfrain) .LT. 0. )   &
-                                                write(otun, *) ," MMMMMX1 "
+                                                write(otun, *) " MMMMMX1 "
       IF ( MINVAL(Precip_state%surfsnow) .LT. 0. )   &
-                                                write(otun, *) ," MMMMMX2 "
+                                                write(otun, *) " MMMMMX2 "
 
 !-------------------------------------------------------------------------
 

@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_types.f90,v 19.0 2012/01/06 20:04:08 fms Exp $
-! $Name: siena_201207 $
+! $Id: cosp_types.f90,v 19.0.4.1 2012/05/29 18:40:09 Zhi.Liang Exp $
+! $Name: siena_201211 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -258,8 +258,10 @@ MODULE MOD_COSP_TYPES
     integer :: Npoints_it   ! Max number of gridpoints to be processed in one iteration
     
     ! Time [days]
-    double precision :: time
-    double precision :: time_bnds(2)
+    real :: time
+    real :: time_bnds(2)
+!    double precision :: time
+!    double precision :: time_bnds(2)
     
     ! Radar ancillary info
     real :: radar_freq, & ! Radar frequency [GHz]
@@ -895,8 +897,10 @@ CONTAINS
                                    ! RTTOV inputs
                                    Plat,Sat,Inst,Nchan,ZenAng,Ichan,SurfEm,co2,ch4,n2o,co,&
                                    y)
-    double precision,intent(in) :: time ! Time since start of run [days] 
-    double precision, intent(in) :: time_bnds(2)  ! Time boundaries
+    real, intent(in) :: time ! Time since start of run [days] 
+    real, intent(in) :: time_bnds(2)  ! Time boundaries       
+!    double precision,intent(in) :: time ! Time since start of run [days] 
+!    double precision, intent(in) :: time_bnds(2)  ! Time boundaries
     real,intent(in)    :: radar_freq, & ! Radar frequency [GHz]
                           k2            ! |K|^2, -1=use frequency dependent default
     integer,intent(in) :: &
@@ -1194,7 +1198,8 @@ SUBROUTINE COSP_GRIDBOX_CPHP(x,y)
     type(cosp_gridbox),intent(inout) :: y
     
     integer :: i,j,k,sz(3)
-    double precision :: tny
+    real    :: tny
+!    double precision :: tny
     
     tny = tiny(tny)
     y%hp%p1      = x%hp%p1

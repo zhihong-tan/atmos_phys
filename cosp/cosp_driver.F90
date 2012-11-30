@@ -113,8 +113,8 @@ IMPLICIT NONE
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cosp_driver.F90,v 19.0 2012/01/06 20:03:24 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201207 $'
+character(len=128)  :: version =  '$Id: cosp_driver.F90,v 19.0.6.1 2012/08/08 14:18:29 William.Cooke Exp $'
+character(len=128)  :: tagname =  '$Name: siena_201211 $'
  
 
 
@@ -170,7 +170,6 @@ character(len=128)  :: tagname =  '$Name: siena_201207 $'
               use_precipitation_fluxes,use_reff, &
               platform,satellite,Instrument,Nchannels, &
               Channels,Surfem,ZenAng,co2,ch4,n2o,co
-  double precision :: time(ntsteps)=(/1.D0,2.D0,3.D0,4.D0,5.D0/)
 
   !---------------- End of declaration of variables --------------
 
@@ -234,7 +233,6 @@ integer , dimension(numPressureHistogramBins) :: id_tauctpmodis
 
 real  :: missing_value = -1.0E30
 real  :: missing_value2 = -.000999
-real  :: time_bnds(2,ntsteps)
 
 real, dimension(:,:,:), allocatable        :: location   
 logical, dimension(:,:,:), allocatable     :: lflag_array
@@ -1370,6 +1368,8 @@ type(time_type), intent(in) :: Time_diag
   real,dimension(:,:,:),allocatable :: p_half_in, z_half_in
   real,dimension(:),allocatable :: skt,landmask,sfc_height,u_wind,v_wind
   integer :: nlon,nlat,npoints
+  double precision :: time(ntsteps)=(/1.D0,2.D0,3.D0,4.D0,5.D0/)
+  double precision :: time_bnds(2,ntsteps)
 
       nlon = size(T_in,1)
       nlat = size(T_in,2)

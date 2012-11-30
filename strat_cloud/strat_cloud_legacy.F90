@@ -307,7 +307,7 @@ real :: U00, rthresh, var_limit, sea_salt_scale, om_to_oc,  N_land, &
   !
 
   Character(len=128) :: Version = '$Id: strat_cloud_legacy.F90,v 19.0 2012/01/06 20:27:21 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: siena_201207 $'
+  Character(len=128) :: Tagname = '$Name: siena_201211 $'
    logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers

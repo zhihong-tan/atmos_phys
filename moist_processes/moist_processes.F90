@@ -99,8 +99,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 19.0 2012/01/06 20:10:42 fms Exp $'
-   character(len=128) :: tagname = '$Name: siena_201207 $'
+   version = '$Id: moist_processes.F90,v 19.0.6.1 2012/08/08 14:40:19 William.Cooke Exp $'
+   character(len=128) :: tagname = '$Name: siena_201211 $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -2769,7 +2769,7 @@ logical, intent(out), dimension(:,:)     :: convect
       temp_3d2 = rdt(:,:,:,nql) - rdt_init(is:ie,js:je,:,nql)
       temp_3d3 = rdt(:,:,:,nqi) - rdt_init(is:ie,js:je,:,nqi)
       temp_2d(:,:) = precip
-      call column_diag(id_enth_moist_col, is, js, Time, temp_3d1, 1.0, temp_3d2, 1.0, temp_3d3, 1.0, temp_2d)
+      call column_diag(id_wat_moist_col, is, js, Time, temp_3d1, 1.0, temp_3d2, 1.0, temp_3d3, 1.0, temp_2d)
       if (id_max_water_imbal > 0) then
         max_water_imbal = max( abs(temp_2d), max_water_imbal )
         used = send_data(id_max_water_imbal, max_water_imbal, Time, is, js)
