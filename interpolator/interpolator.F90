@@ -100,8 +100,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 19.0.8.2.2.1 2012/08/23 18:29:52 Zhi.Liang Exp $'
-character(len=128) :: tagname = '$Name: siena_201211 $'
+'$Id: interpolator.F90,v 19.0.8.2.2.3 2012/11/29 21:20:47 Zhi.Liang Exp $'
+character(len=128) :: tagname = '$Name: siena_201303 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -204,11 +204,11 @@ real ::  missing_value = -1.e10
 #endif
 
 logical :: read_all_on_init = .false.
-integer :: verbose = 0
-character(len=64) :: interp_method = "conserve_latlon"  
+integer :: verbose = 0  
+logical :: conservative_interp = .true.
 
 namelist /interpolator_nml/    &
-                             read_all_on_init, verbose, interp_method
+                             read_all_on_init, verbose, conservative_interp
 
 contains
 
@@ -769,15 +769,11 @@ endif
 
 !Assume that the horizontal interpolation within a file is the same for each variable.
 
- if (trim(interp_method) == "conserve_latlon" ) then
+ if (conservative_interp) then
     call horiz_interp_new (clim_type%interph, &
                         clim_type%lonb, clim_type%latb, &
                         lonb_mod, latb_mod)
- else if (trim(interp_method) == "conserve_great_circle") then
-    call horiz_interp_new(clim_type%interph, &
-                        clim_type%lonb, clim_type%latb, &
-                        lonb_mod, latb_mod, interp_method="conserve_great_circle")
- else if( trim(interp_method) == "bilinear" ) then
+ else
     
     call mpp_error(NOTE, "Using Bilinear interpolation")
 
@@ -800,10 +796,7 @@ endif
 
     call horiz_interp_new (clim_type%interph, &
                         clim_type%lonb, clim_type%latb, &
-                        agrid_mod(:,:,1), agrid_mod(:,:,2), interp_method="bilinear")
- else
-   call mpp_error(FATAL,'Interpolator_init : interp_methos should be "conserve_latlon", "conserve_great_circle" or "bilinear"')
-    
+                        agrid_mod(:,:,1), agrid_mod(:,:,2), interp_method="bilinear")    
  endif
 
 !--------------------------------------------------------------------

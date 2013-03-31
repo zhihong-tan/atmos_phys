@@ -112,7 +112,8 @@ use astronomy_mod,         only : astronomy_init, diurnal_solar
 use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_number_tracers, &
                                   get_tracer_names,   &
-                                  get_tracer_indices
+                                  get_tracer_indices, &
+                                  adjust_positive_def
 use field_manager_mod,     only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only :                     &
                                   dry_deposition,     &
@@ -307,8 +308,8 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 19.0 2012/01/06 20:31:30 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201211 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 19.0.10.1.2.1 2013/02/26 19:20:11 William.Cooke Exp $'
+character(len=128) :: tagname = '$Name: siena_201303 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -504,7 +505,10 @@ logical :: used
 ! For tracers other than specific humdity, cloud amount, ice water and &
 ! liquid water fill eventual negative values
 !------------------------------------------------------------------------
-          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
+!        does tracer need to be adjusted to remain positive definite?
+!         if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
+          if ( adjust_positive_def(MODEL_ATMOS,n) ) then
+!
             do j=1,jd
               do k=1,kd
                 temp(:,k) = tracer(:,j,k,n)
@@ -527,7 +531,9 @@ logical :: used
           else
              tracer(:,:,:,n)=r(:,:,:,n)
           end if
-          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
+!        does tracer need to be adjusted to remain positive definite?
+!         if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
+          if ( adjust_positive_def(MODEL_ATMOS,n) ) then
             do j=1,jd
               do k=1,kd
                 temp(:,k) = tracer(:,j,k,n)
@@ -1083,6 +1089,7 @@ logical :: used
                 jday,hour,minute,second,lat,lon,    &
                 tracer(:,:,:,nSO2), tracer(:,:,:,nSO4), tracer(:,:,:,nDMS), &
                 tracer(:,:,:,nMSA), tracer(:,:,:,nH2O2), &
+                tracer(:,:,:,noh), &
                 rtndso2, rtndso4, rtnddms, rtndmsa, rtndh2o2, &
                 Time,is,ie,js,je,kbot)
       rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)

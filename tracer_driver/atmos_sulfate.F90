@@ -265,8 +265,8 @@ logical :: module_is_initialized=.FALSE.
 logical :: used
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sulfate.F90,v 19.0 2012/01/06 20:31:26 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201211 $'
+character(len=128) :: version = '$Id: atmos_sulfate.F90,v 19.0.8.1 2012/12/10 20:46:13 Paul.Ginoux Exp $'
+character(len=128) :: tagname = '$Name: siena_201303 $'
 !-----------------------------------------------------------------------
 
 contains
@@ -1824,7 +1824,7 @@ end subroutine atmos_SOx_emission
 !#######################################################################
       subroutine atmos_SOx_chem(pwt,temp,pfull, phalf, dt, lwc, &
         jday,hour,minute,second,lat,lon, &
-        SO2, SO4, DMS, MSA, H2O2, &
+        SO2, SO4, DMS, MSA, H2O2, oh_vmr, &
         SO2_dt, SO4_dt, DMS_dt, MSA_dt, H2O2_dt, &
         model_time,is,ie,js,je,kbot)
 !
@@ -1835,6 +1835,7 @@ end subroutine atmos_SOx_emission
       real, intent(in), dimension(:,:,:) :: lwc
       real, intent(in), dimension(:,:,:) :: temp, pfull, phalf
       real, intent(in), dimension(:,:,:) :: SO2, SO4, DMS, MSA, H2O2
+      real, intent(inout), dimension(:,:,:) :: oh_vmr
       real, intent(out),dimension(:,:,:) :: SO2_dt,SO4_dt,DMS_dt,MSA_dt,H2O2_dt
 
       type(time_type), intent(in)                    :: model_time
@@ -2003,6 +2004,7 @@ end subroutine atmos_SOx_emission
        xno3  = max(0.         , NO3_conc(i,j,k) *fac_NO3(i,j))
        xo3   = max(small_value, O3_mmr(i,j,k))
        oh_diurnal(i,j,k)=xoh
+       oh_vmr(i,j,k)=xoh/xhnm
        no3_diurnal(i,j,k)=xno3
        ho2_diurnal(i,j,k)=xho2
        jh2o2_diurnal(i,j,k)=xjh2o2

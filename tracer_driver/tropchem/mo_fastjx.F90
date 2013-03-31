@@ -262,7 +262,7 @@ module MO_FASTJX_MOD
 !     version number and tagname.
 !-----------------------------------------------------------------------
       character(len=128)            :: version     = '$Id: mo_fastjx.F90,v 19.0.4.1 2012/05/29 18:40:10 Zhi.Liang Exp $'
-      character(len=128)            :: tagname     = '$Name: siena_201211 $'
+      character(len=128)            :: tagname     = '$Name: siena_201303 $'
 
 !    include 'parm_CTM.f'  for fast-JX code v5.3+ (prather 6/05)
 !
