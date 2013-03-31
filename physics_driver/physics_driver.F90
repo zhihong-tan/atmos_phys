@@ -176,8 +176,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 19.0 2012/01/06 20:11:24 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201211 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 19.0.4.1 2012/11/24 13:31:31 rsh Exp $'
+character(len=128) :: tagname = '$Name: siena_201303 $'
 
 
 !---------------------------------------------------------------------
@@ -794,6 +794,7 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !-----------------------------------------------------------------------
         call mpp_clock_begin ( radiation_init_clock )
         call radiation_driver_init (lonb, latb, pref, axes, time,  &
+                                    donner_meso_is_largescale, &
                                     aerosol_names, &
                                     aerosol_family_names, do_cosp, ncol)
         call mpp_clock_end ( radiation_init_clock )

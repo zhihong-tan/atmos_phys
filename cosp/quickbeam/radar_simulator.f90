@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
          
-! $Id: radar_simulator.f90,v 19.0 2012/01/06 20:04:56 fms Exp $
-! $Name: siena_201211 $
+! $Id: radar_simulator.f90,v 19.0.4.1 2012/10/10 09:46:47 rsh Exp $
+! $Name: siena_201303 $
 
   subroutine radar_simulator(me,freq,k2,do_ray,use_gas_abs,use_mie_table,mt, &
     nhclass,hp,nprof,ngate,nsizes,D,hgt_matrix,hm_matrix,re_matrix,p_matrix,t_matrix, &
@@ -75,7 +75,8 @@
   integer, intent(in) :: me
   type(mie), intent(in) :: mt
   type(class_param), intent(inout) :: hp
-  real*8, intent(in) :: freq,k2
+  real*8, intent(in) :: freq
+  real*8, intent(inout) :: k2
   integer, intent(in) ::  do_ray,use_gas_abs,use_mie_table, &
     nhclass,nprof,ngate,nsizes
   real*8, dimension(nsizes), intent(in) :: D
@@ -344,51 +345,51 @@
 !         :: calculate effective reflectivity factor of volume
 	  if (use_mie_table == 1) then
 	  
-	    if ((hp%dtype(tp) == 4) .and. (hp%idd(tp) < 0)) then
-              hp%idd(tp) = infind(mt%D,Di(1))
-	    endif
+!RSH        if ((hp%dtype(tp) == 4) .and. (hp%idd(tp) < 0)) then
+!RSH          hp%idd(tp) = infind(mt%D,Di(1))
+!RSH        endif
 	    
-	    if (phase == 0) then
+!RSH        if (phase == 0) then
 	    
 	      ! itt = infind(mt_ttl,t_matrix(pr,k))
-              select case(hp%dtype(tp))
-	      case(4)
-		mt_qext(1) = mt%qext(hp%idd(tp),itt,1,iff)
-	        mt_qbsca(1) = mt%qbsca(hp%idd(tp),itt,1,iff)
-              case default
-  	        mt_qext = mt%qext(:,itt,1,iff)
-	        mt_qbsca = mt%qbsca(:,itt,1,iff)
-	      end select
+!RSH          select case(hp%dtype(tp))
+!RSH          case(4)
+!RSH		mt_qext(1) = mt%qext(hp%idd(tp),itt,1,iff)
+!RSH	        mt_qbsca(1) = mt%qbsca(hp%idd(tp),itt,1,iff)
+!RSH          case default
+!RSH  	        mt_qext = mt%qext(:,itt,1,iff)
+!RSH	        mt_qbsca = mt%qbsca(:,itt,1,iff)
+!RSH	      end select
 
-          call zeff(freq,Di,Ni,ns,k2,mt_ttl(itt),0,do_ray, &
-	        ze,zr,kr,mt_qext,mt_qbsca,xx)
+!RSH      call zeff(freq,Di,Ni,ns,k2,mt_ttl(itt),0,do_ray, &
+!RSH	        ze,zr,kr,mt_qext,mt_qbsca,xx)
 	    
-	    else
+!RSH	    else
 
 	      ! itt = infind(mt_tti,t_matrix(pr,k))
-	      select case(hp%dtype(tp))
-	      case(4)
-                if (hp%ifc(tp,1,iRe_type) < 0) then
-                  hp%ifc(tp,1,iRe_type) = infind(mt%f,rhoi(1)/917.)
- 	        endif	   	      
-                mt_qext(1) = &
-		  mt%qext(hp%idd(tp),itt+cnt_liq,hp%ifc(tp,1,iRe_type),iff)
-	        mt_qbsca(1) = &
-		  mt%qbsca(hp%idd(tp),itt+cnt_liq,hp%ifc(tp,1,iRe_type),iff)	      
-	      case default
- 	        do i=1,ns
- 	          if (hp%ifc(tp,i,iRe_type) < 0) then
-                    hp%ifc(tp,i,iRe_type) = infind(mt%f,rhoi(i)/917.)
- 	          endif	      
-       	          mt_qext(i) = mt%qext(i,itt+cnt_liq,hp%ifc(tp,i,iRe_type),iff)
-		  mt_qbsca(i) = mt%qbsca(i,itt+cnt_liq,hp%ifc(tp,i,iRe_type),iff)
-	        enddo
-	      end select
+!RSH	      select case(hp%dtype(tp))
+!RSH	      case(4)
+!RSH            if (hp%ifc(tp,1,iRe_type) < 0) then
+!RSH              hp%ifc(tp,1,iRe_type) = infind(mt%f,rhoi(1)/917.)
+!RSH 	        endif	   	      
+!RSH            mt_qext(1) = &
+!RSH		  mt%qext(hp%idd(tp),itt+cnt_liq,hp%ifc(tp,1,iRe_type),iff)
+!RSH	        mt_qbsca(1) = &
+!RSH		  mt%qbsca(hp%idd(tp),itt+cnt_liq,hp%ifc(tp,1,iRe_type),iff)	      
+!RSH	      case default
+!RSH 	        do i=1,ns
+!RSH 	          if (hp%ifc(tp,i,iRe_type) < 0) then
+!RSH                hp%ifc(tp,i,iRe_type) = infind(mt%f,rhoi(i)/917.)
+!RSH 	          endif	      
+!RSH   	          mt_qext(i) = mt%qext(i,itt+cnt_liq,hp%ifc(tp,i,iRe_type),iff)
+!RSH		  mt_qbsca(i) = mt%qbsca(i,itt+cnt_liq,hp%ifc(tp,i,iRe_type),iff)
+!RSH	        enddo
+!RSH	      end select
 
-		   call zeff(freq,Di,Ni,ns,k2,mt_tti(itt),1,do_ray, &
-	        ze,zr,kr,mt_qext,mt_qbsca,xx)
+!RSH		   call zeff(freq,Di,Ni,ns,k2,mt_tti(itt),1,do_ray, &
+!RSH	        ze,zr,kr,mt_qext,mt_qbsca,xx)
 
-	    endif
+!RSH	    endif
 
 	  else
        

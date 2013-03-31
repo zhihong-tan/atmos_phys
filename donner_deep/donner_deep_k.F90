@@ -1,6 +1,6 @@
 !#VERSION NUMBER:
-!  $Name: siena_201211 $
-!  $Id: donner_deep_k.F90,v 19.0 2012/01/06 20:07:24 fms Exp $
+!  $Name: siena_201303 $
+!  $Id: donner_deep_k.F90,v 19.0.4.1 2012/10/10 05:43:21 rsh Exp $
 
 !module donner_deep_inter_mod
 
@@ -4187,6 +4187,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
         endif
 
        pmelt_lsm = 2.0e05
+       if( temp_c(1) >  Param%KELVIN ) then
        do k=1,nlev_lsm-1
         if ((temp_c(k) >= Param%KELVIN) .and.    &
            (temp_c(k+1) <= Param%KELVIN)) then
@@ -4194,6 +4195,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
           exit
         endif
        end do
+       endif
 
        if (debug_ijt) then
          write (diag_unit, '(a, 2f19.10)')    &

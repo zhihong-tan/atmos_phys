@@ -17,8 +17,8 @@ public  simple_pdf, simple_pdf_init, simple_pdf_end
 
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
-Character(len=128) :: Version = '$Id: simple_pdf.F90,v 19.0 2012/01/06 20:26:48 fms Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201211 $'
+Character(len=128) :: Version = '$Id: simple_pdf.F90,v 19.0.4.1.2.1 2012/09/19 11:34:50 rsh Exp $'
+Character(len=128) :: Tagname = '$Name: siena_201303 $'
 
 
 
@@ -203,11 +203,11 @@ REAL, dimension(idim, kdim),           INTENT(OUT)   :: SA, qa_upd
 !--------------------------------------------------------------------------
 !    fill desired diagnostics.
 !--------------------------------------------------------------------------
-      if (diag_id%qadt_lsform > 0) then
+      if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
         diag_4d(:,j,:,diag_pt%qadt_lsform ) =    &
                                            max(qa1 - qa0, 0.)*inv_dtcloud 
       end if
-      if (diag_id%qadt_lsdiss > 0) then
+      if (diag_id%qadt_lsdiss + diag_id%qa_lsdiss_col > 0) then
         diag_4d(:,j,:,diag_pt%qadt_lsdiss ) =    &
                                              max(qa0 - qa1, 0.)*inv_dtcloud
       end if

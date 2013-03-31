@@ -37,8 +37,8 @@ public  moistproc_init, moistproc_end, moistproc_mca, moistproc_ras, &
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
-version = '$Id: moistproc_kernels.F90,v 19.0 2012/01/06 20:10:46 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201211 $'
+version = '$Id: moistproc_kernels.F90,v 19.0.4.1 2012/10/05 05:43:09 rsh Exp $'
+character(len=128) :: tagname = '$Name: siena_201303 $'
 
 !-----------------------------------------------------------------------
 real, public, allocatable, dimension(:,:)     :: rain_uw, snow_uw
@@ -502,7 +502,8 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
                                  cell_cld_frac, meso_cld_frac,                    &
                                  do_uw_conv, do_donner_deep, do_liq_num,          &
                                  do_lin_cld_microphys, id_qvout, id_qlout,        &
-                                 id_qaout, id_qiout, limit_conv_cloud_frac, mask, &
+                                 id_qaout, id_qiout, id_qnout, id_qniout, &
+                                 limit_conv_cloud_frac, mask, &
                                  hydrostatic, phys_hydrostatic,           &
                                  zfull, do_ice_num,  lsc_ice_number,   &
                                  lsc_snow, lsc_rain, lsc_snow_size,   &
@@ -510,7 +511,7 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
 
   type(time_type), intent(in) :: Time
   integer, intent(in)         :: is, ie, js, je, ktop, id_qvout, id_qlout, &
-                                 id_qaout, id_qiout
+                                 id_qaout, id_qiout, id_qnout, id_qniout
   real, intent(in)            :: dt
   logical, intent(in)         :: do_uw_conv, do_donner_deep, do_liq_num, &
                                  do_lin_cld_microphys,  &
@@ -760,6 +761,12 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, ktop, dt, tm, t, q, trace
       used = send_data (id_qaout, tracer(:,:,:,nqa), Time, is, js, 1, rmask=mask)
       used = send_data (id_qlout, tracer(:,:,:,nql), Time, is, js, 1, rmask=mask)
       used = send_data (id_qiout, tracer(:,:,:,nqi), Time, is, js, 1, rmask=mask)
+      if (do_liq_num) then
+      used = send_data (id_qnout, tracer(:,:,:,nqn), Time, is, js, 1, rmask=mask)
+      endif
+      if (do_ice_num) then
+      used = send_data (id_qniout, tracer(:,:,:,nqni), Time, is, js, 1, rmask=mask)
+      endif
 
 !----------------------------------------------------------------------
 !    call strat_cloud_sum to make the cloud variables available for 

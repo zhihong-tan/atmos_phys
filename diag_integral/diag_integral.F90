@@ -1,4 +1,5 @@
                      module diag_integral_mod
+#include <fms_platform.h>
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -42,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 19.0 2012/01/06 20:05:41 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201211 $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 19.0.4.2 2012/12/21 16:07:26 Zhi.Liang Exp $'
+character(len=128) :: tagname = '$Name: siena_201303 $'
 
 
 !---------------------------------------------------------------------
@@ -1191,7 +1192,7 @@ type (time_type), intent(in) :: Time
       real    :: xtime, rcount
       integer :: nn, ninc, nst, nend, fields_to_print
       integer :: i, kount
-
+      integer(LONG_KIND) :: icount
 !--------------------------------------------------------------------
 !   local variables:
 !
@@ -1223,22 +1224,23 @@ type (time_type), intent(in) :: Time
         rcount = real(field_count(i))
         call mpp_sum (rcount)
         call mpp_sum (field_sum(i))
-        field_count(i) = nint(rcount)
+        icount = rcount
 
 !--------------------------------------------------------------------
 !    verify that all the data expected for an integral has been 
 !    obtained.
 !--------------------------------------------------------------------
-        if (field_count(i) == 0 ) call error_mesg &
+        if (icount == 0 ) call error_mesg &
                      ('diag_integral_mod',  &
                       'field_count equals zero for field_name ' //  &
                        field_name(i)(1:len_trim(field_name(i))), FATAL )
-        kount = field_count(i)/field_size
-        if ((field_size)*kount /= field_count(i)) &
-          call error_mesg &
+        kount = icount/field_size
+        if ((field_size*1.0)*kount /= rcount) then
+           print*,"name,pe,kount,field_size,icount,rcount=",trim(field_name(i)),mpp_pe(),kount,field_size,icount,rcount
+           call error_mesg &
                  ('diag_integral_mod',  &
                   'field_count not a multiple of field_size', FATAL )
-
+        endif
 !----------------------------------------------------------------------
 !    define the global integral for field i. reinitialize the point
 !    and data accumulators.

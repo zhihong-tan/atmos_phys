@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_radar.f90,v 19.0 2012/01/06 20:04:26 fms Exp $
-! $Name: siena_201211 $
+! $Id: cosp_radar.f90,v 19.0.4.1 2012/10/10 09:46:25 rsh Exp $
+! $Name: siena_201303 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -55,7 +55,8 @@ MODULE MOD_COSP_RADAR
         integer, intent(in) :: me
         type(mie), intent(in) :: mt
         type(class_param) :: hp
-        real*8, intent(in) :: freq,k2
+        real*8, intent(in) :: freq
+        real*8, intent(inout) :: k2
         integer, intent(in) ::  do_ray,use_gas_abs,use_mie_table, &
             nhclass,nprof,ngate,nsizes
         real*8, dimension(nsizes), intent(in) :: D

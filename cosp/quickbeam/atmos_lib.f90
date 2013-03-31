@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
         
 ! $Id: atmos_lib.f90,v 19.0 2012/01/06 20:04:38 fms Exp $
-! $Name: siena_201211 $
+! $Name: siena_201303 $
 
 ! ATMOS_LIB: Atmospheric science procedures for F90
 ! Compiled/Modified:

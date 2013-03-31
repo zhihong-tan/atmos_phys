@@ -56,7 +56,7 @@ use lin_cld_microphys_mod, only: lin_cld_microphys_init, &
 use ras_mod,               only: ras_end, ras_init
 use dry_adj_mod,           only: dry_adj, dry_adj_init
 use strat_cloud_mod,       only: strat_cloud_init, strat_cloud_end, &
-                                 strat_cloud_restart
+                                 strat_cloud_restart, strat_cloud_time_vary
 use detr_ice_num_mod,      only: detr_ice_num, detr_ice_num_init,   &
                                  detr_ice_num_end
 use rh_clouds_mod,         only: rh_clouds_init, rh_clouds_end, &
@@ -99,8 +99,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 19.0.6.1 2012/08/08 14:40:19 William.Cooke Exp $'
-   character(len=128) :: tagname = '$Name: siena_201211 $'
+   version = '$Id: moist_processes.F90,v 19.0.4.1.2.1.2.1.2.1.2.1.2.1 2013/02/08 21:12:14 William.Cooke Exp $'
+   character(len=128) :: tagname = '$Name: siena_201303 $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -324,9 +324,10 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_uw_freq, &
            id_prod_no, id_m_cdet_donner, id_m_cellup, &
            id_conv_rain3d, id_conv_snow3d,   &
-           id_lscale_rain3d, id_lscale_snow3d
+           id_lscale_rain3d, id_lscale_snow3d, id_lscale_precip3d
  
 integer :: id_qvout, id_qaout, id_qlout, id_qiout
+integer :: id_qnout, id_qniout
 
 integer :: id_vaporint, id_condensint, id_precipint, id_diffint
 integer :: id_vertmotion
@@ -336,7 +337,7 @@ integer :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
 integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
            id_wetdep_NH4NO3, id_wetdep_salt, id_wetdep_dust
-integer :: id_f_snow_berg
+integer :: id_f_snow_berg, id_f_snow_berg_cond, id_f_snow_berg_wtd
 
 integer, dimension(:), allocatable :: id_tracerdt_conv,  &
                                       id_tracerdt_conv_col, &
@@ -431,78 +432,78 @@ subroutine moist_alloc_init (ix, jx, kx, lx)
 
    if (moist_allocated) return
 
-   allocate( tin       (ix,jx,kx))
-   allocate( qin       (ix,jx,kx))
-   allocate( rin       (ix,jx,kx))
-   allocate( uin       (ix,jx,kx))
-   allocate( vin       (ix,jx,kx))
-   allocate( tin_orig  (ix,jx,kx))
-   allocate( qin_orig  (ix,jx,kx))
-   allocate( t_ref     (ix,jx,kx))
-   allocate( q_ref     (ix,jx,kx))
-   allocate( ttnd      (ix,jx,kx))
-   allocate( qtnd      (ix,jx,kx))
-   allocate( rtnd      (ix,jx,kx))
-   allocate( utnd      (ix,jx,kx))
-   allocate( vtnd      (ix,jx,kx))
-   allocate( ttnd_don  (ix,jx,kx))
-   allocate( qtnd_don  (ix,jx,kx))
-   allocate( ttnd_conv (ix,jx,kx))
-   allocate( qtnd_conv (ix,jx,kx))
-   allocate( qtnd_wet  (ix,jx,kx))
-   allocate( tdt_init  (ix,jx,kx))
-   allocate( qdt_init  (ix,jx,kx))
-   allocate( cf        (ix,jx,kx))
-   allocate( cmf       (ix,jx,kx))
-   allocate( delta_temp(ix,jx,kx))
-   allocate( delta_q   (ix,jx,kx))
-   allocate( delta_vapor(ix,jx,kx))
-   allocate( donner_humidity_area(ix,jx,kx))
-   allocate( donner_humidity_factor(ix,jx,kx))
-   allocate( cloud_wet  (ix,jx,kx))
-   allocate( cloud_frac (ix,jx,kx))
-   allocate( liquid_precip(ix,jx,kx))
-   allocate( frozen_precip(ix,jx,kx))
-   allocate( ice_precflx (ix,jx,kx))
-   allocate( liq_precflx (ix,jx,kx))
-   allocate( frz_meso  (ix,jx,kx))
-   allocate( liq_meso  (ix,jx,kx))
-   allocate( frz_cell  (ix,jx,kx))
-   allocate( liq_cell  (ix,jx,kx))
-   allocate( mca_frz   (ix,jx,kx))
-   allocate( mca_liq   (ix,jx,kx))
-   allocate( frz_mesoh (ix,jx,kx+1))
-   allocate( liq_mesoh (ix,jx,kx+1))
-   allocate( frz_cellh (ix,jx,kx+1))
-   allocate( liq_cellh (ix,jx,kx+1))
-   allocate( mca_liqh  (ix,jx,kx+1))
-   allocate( mca_frzh  (ix,jx,kx+1))
-   allocate( ice_precflxh(ix,jx,kx+1))
-   allocate( liq_precflxh(ix,jx,kx+1))
-   allocate( qsat      (ix,jx,kx))
-   allocate( det0      (ix,jx,kx))
-   allocate( det_cmt   (ix,jx,kx))
-   allocate( mc_full   (ix,jx,kx))
-   allocate( mc_donner (ix,jx,kx))
-   allocate( mc_donner_up (ix,jx,kx))
-   allocate( mc_half      (ix,jx,kx+1))
-   allocate( mc_donner_half (ix,jx,kx+1))
-   allocate( m_cdet_donner(ix,jx,kx))
-   allocate( massflux  (ix,jx,kx))
-   allocate( RH        (ix,jx,kx))
+   allocate( tin       (ix,jx,kx))                          !; tin                    = 0.0
+   allocate( qin       (ix,jx,kx))                          !; qin                    = 0.0
+   allocate( rin       (ix,jx,kx))                          !; rin                    = 0.0
+   allocate( uin       (ix,jx,kx))                          !; uin                    = 0.0
+   allocate( vin       (ix,jx,kx))                          !; vin                    = 0.0
+   allocate( tin_orig  (ix,jx,kx))                          !; tin_orig               = 0.0
+   allocate( qin_orig  (ix,jx,kx))                          !; qin_orig               = 0.0
+   allocate( t_ref     (ix,jx,kx))                          ; t_ref                  = 0.0
+   allocate( q_ref     (ix,jx,kx))                          ; q_ref                  = 0.0
+   allocate( ttnd      (ix,jx,kx))                          ; ttnd                   = 0.0
+   allocate( qtnd      (ix,jx,kx))                          ; qtnd                   = 0.0
+   allocate( rtnd      (ix,jx,kx))                          ; rtnd                   = 0.0
+   allocate( utnd      (ix,jx,kx))                          ; utnd                   = 0.0
+   allocate( vtnd      (ix,jx,kx))                          ; vtnd                   = 0.0
+   allocate( ttnd_don  (ix,jx,kx))                          ; ttnd_don               = 0.0
+   allocate( qtnd_don  (ix,jx,kx))                          ; qtnd_don               = 0.0
+   allocate( ttnd_conv (ix,jx,kx))                          ; ttnd_conv              = 0.0
+   allocate( qtnd_conv (ix,jx,kx))                          ; qtnd_conv              = 0.0
+   allocate( qtnd_wet  (ix,jx,kx))                          ; qtnd_wet               = 0.0
+   allocate( tdt_init  (ix,jx,kx))                          ; tdt_init               = 0.0
+   allocate( qdt_init  (ix,jx,kx))                          ; qdt_init               = 0.0
+   allocate( cf        (ix,jx,kx))                          ; cf                     = 0.0
+   allocate( cmf       (ix,jx,kx))                          ; cmf                    = 0.0
+   allocate( delta_temp(ix,jx,kx))                          ; delta_temp             = 0.0
+   allocate( delta_q   (ix,jx,kx))                          ; delta_q                = 0.0
+   allocate( delta_vapor(ix,jx,kx))                         ; delta_vapor            = 0.0
+   allocate( donner_humidity_area(ix,jx,kx))                ; donner_humidity_area   = 0.0
+   allocate( donner_humidity_factor(ix,jx,kx))              ; donner_humidity_factor = 0.0
+   allocate( cloud_wet  (ix,jx,kx))                         ; cloud_wet              = 0.0
+   allocate( cloud_frac (ix,jx,kx))                         ; cloud_frac             = 0.0
+   allocate( liquid_precip(ix,jx,kx))                       ; liquid_precip          = 0.0
+   allocate( frozen_precip(ix,jx,kx))                       ; frozen_precip          = 0.0
+   allocate( ice_precflx (ix,jx,kx))                        ; ice_precflx            = 0.0
+   allocate( liq_precflx (ix,jx,kx))                        ; liq_precflx            = 0.0
+   allocate( frz_meso  (ix,jx,kx))                          ; frz_meso               = 0.0
+   allocate( liq_meso  (ix,jx,kx))                          ; liq_meso               = 0.0
+   allocate( frz_cell  (ix,jx,kx))                          ; frz_cell               = 0.0
+   allocate( liq_cell  (ix,jx,kx))                          ; liq_cell               = 0.0
+   allocate( mca_frz   (ix,jx,kx))                          ; mca_frz                = 0.0
+   allocate( mca_liq   (ix,jx,kx))                          ; mca_liq                = 0.0
+   allocate( frz_mesoh (ix,jx,kx+1))                        ; frz_mesoh              = 0.0
+   allocate( liq_mesoh (ix,jx,kx+1))                        ; liq_mesoh              = 0.0
+   allocate( frz_cellh (ix,jx,kx+1))                        ; frz_cellh              = 0.0
+   allocate( liq_cellh (ix,jx,kx+1))                        ; liq_cellh              = 0.0
+   allocate( mca_liqh  (ix,jx,kx+1))                        ; mca_liqh               = 0.0
+   allocate( mca_frzh  (ix,jx,kx+1))                        ; mca_frzh               = 0.0
+   allocate( ice_precflxh(ix,jx,kx+1))                      ; ice_precflxh           = 0.0
+   allocate( liq_precflxh(ix,jx,kx+1))                      ; liq_precflxh           = 0.0
+   allocate( qsat      (ix,jx,kx))                          ; qsat                   = 0.0
+   allocate( det0      (ix,jx,kx))                          ; det0                   = 0.0
+   allocate( det_cmt   (ix,jx,kx))                          ; det_cmt                = 0.0
+   allocate( mc_full   (ix,jx,kx))                          ; mc_full                = 0.0
+   allocate( mc_donner (ix,jx,kx))                          ; mc_donner              = 0.0
+   allocate( mc_donner_up (ix,jx,kx))                       ; mc_donner_up           = 0.0
+   allocate( mc_half      (ix,jx,kx+1))                     ; mc_half                = 0.0
+   allocate( mc_donner_half (ix,jx,kx+1))                   ; mc_donner_half         = 0.0
+   allocate( m_cdet_donner(ix,jx,kx))                       ; m_cdet_donner          = 0.0
+   allocate( massflux  (ix,jx,kx))                          ; massflux               = 0.0
+   allocate( RH        (ix,jx,kx))                          ; RH                     = 0.0
 ! pmass defined in moist_processes_utils
-   allocate( pmass     (ix,jx,kx))
-   allocate( wetdeptnd (ix,jx,kx))
-   allocate(tracer     (ix,jx,kx,lx))
-   allocate(tracer_orig(ix,jx,kx,lx))
-   allocate(q_tnd      (ix,jx,kx,lx))
-   allocate(rdt_init   (ix,jx,kx,lx))
-   allocate(qtr          (ix,jx,kx,num_donner_tracers))
-   allocate(donner_tracer(ix,jx,kx,num_donner_tracers))
-   allocate(delta_qn   (ix,jx,kx))
-   allocate(delta_qni  (ix,jx,kx))
-   allocate(nllin      (ix,jx,kx))
-   allocate(nilin      (ix,jx,kx))
+   allocate( pmass     (ix,jx,kx))                          ; pmass                  = 0.0
+   allocate( wetdeptnd (ix,jx,kx))                          ; wetdeptnd              = 0.0
+   allocate(tracer     (ix,jx,kx,lx))                       ; tracer                 = 0.0
+   allocate(tracer_orig(ix,jx,kx,lx))                       ; tracer_orig            = 0.0
+   allocate(q_tnd      (ix,jx,kx,lx))                       ; q_tnd                  = 0.0
+   allocate(rdt_init   (ix,jx,kx,lx))                       ; rdt_init               = 0.0
+   allocate(qtr          (ix,jx,kx,num_donner_tracers))     ; qtr                    = 0.0
+   allocate(donner_tracer(ix,jx,kx,num_donner_tracers))     ; donner_tracer          = 0.0
+   allocate(delta_qn   (ix,jx,kx))                          ; delta_qn               = 0.0
+   allocate(delta_qni  (ix,jx,kx))                          ; delta_qni              = 0.0
+   allocate(nllin      (ix,jx,kx))                          ; nllin                  = 0.0
+   allocate(nilin      (ix,jx,kx))                          ; nilin                  = 0.0
    
 
    moist_allocated = .true.
@@ -869,10 +870,10 @@ logical, intent(out), dimension(:,:)     :: convect
       rdt_init(is:ie,js:je,:,:)  = rdt
       tdt_init(is:ie,js:je,:)  = tdt
       qdt_init(is:ie,js:je,:)  = qdt
-      ttnd_conv(is:ie,js:je,:) = 0.
-      qtnd_conv(is:ie,js:je,:) = 0.
-      qtnd(is:ie,js:je,:)      = 0.
-      q_tnd(is:ie,js:je,:,:)     = 0.
+!      ttnd_conv(is:ie,js:je,:) = 0.
+!      qtnd_conv(is:ie,js:je,:) = 0.
+!      qtnd(is:ie,js:je,:)      = 0.
+!      q_tnd(is:ie,js:je,:,:)     = 0.
 
 !---------------------------------------------------------------------
 !    define input fields to be used, either the tau time level fields,
@@ -1005,7 +1006,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-  cmf(is:ie,js:je,:) = 0.
+!  cmf(is:ie,js:je,:) = 0.
   tracer_orig(is:ie,js:je,:,:) = tracer(is:ie,js:je,:,:)
   if (.not. do_donner_before_uw) then
     call mpp_clock_begin (shallowcu_clock)
@@ -1103,7 +1104,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    check each active tracer to find those to be transported and fill 
 !    the donner_tracers array with these fields.
 !---------------------------------------------------------------------
-    donner_tracer(is:ie,js:je,:,:) = 0.0
+!    donner_tracer(is:ie,js:je,:,:) = 0.0
     nn = 1
     do n=1,num_tracers
       if (tracers_in_donner(n)) then
@@ -1580,13 +1581,13 @@ logical, intent(out), dimension(:,:)     :: convect
 !    appropriately.
 !---------------------------------------------------------------------
   else   ! (do_donner_deep)
-    mc_donner(is:ie,js:je,:) = 0.0
-    mc_donner_up(is:ie,js:je,:) = 0.0
-    mc_donner_half(is:ie,js:je, : ) = 0.0
-    m_cdet_donner(is:ie,js:je,:) = 0.0
+!    mc_donner(is:ie,js:je,:) = 0.0
+!    mc_donner_up(is:ie,js:je,:) = 0.0
+!    mc_donner_half(is:ie,js:je, : ) = 0.0
+!    m_cdet_donner(is:ie,js:je,:) = 0.0
     m_cellup = 0.0
-    donner_humidity_area(is:ie,js:je,:) = 0.
-    donner_humidity_factor(is:ie,js:je,:) = 0.
+!    donner_humidity_area(is:ie,js:je,:) = 0.
+!    donner_humidity_factor(is:ie,js:je,:) = 0.
   endif  ! (do_donner_deep)
 ! ADD TENDENCIES HERE, IN SAME AORDER AS ORIGINAL:
   if (do_donner_deep) then
@@ -1812,7 +1813,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    if ras_mod is not activated, set the ras mass flux field to be 0.0.
 !---------------------------------------------------------------------
      mc   = 0.0
-     det0(is:ie,js:je,:) = 0.0
+!     det0(is:ie,js:je,:) = 0.0
      rain_ras = 0.0
      snow_ras = 0.0
    endif  ! (do_ras)
@@ -1857,7 +1858,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !   CURRENTLY no detrained mass flux provided from uw_conv; should only
 !   use with 'diffusive' cmt scheme, not the non-local. (attempt to
 !   use non-local will cause FATAL in _init routine.)
-         det_cmt(is:ie,js:je,:) = 0.0   
+!         det_cmt(is:ie,js:je,:) = 0.0   
          call moistproc_cmt ( Time, is, js, tin(is:ie,js:je,:), uin(is:ie,js:je,:), vin(is:ie,js:je,:), &
                               tracer(is:ie,js:je,:,:), pfull, phalf, &
                               zfull, zhalf, pmass(is:ie,js:je,:), tdt, udt, vdt, rdt,           &
@@ -1870,7 +1871,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !  if using diffusive cmt, call cu_mo_trans once with combined mass
 !  fluxes from all desired convective schemes.
        mc_cmt = 0.
-       det_cmt(is:ie,js:je,:) = 0.
+!       det_cmt(is:ie,js:je,:) = 0.
        if (cmt_uses_ras) then
          mc_cmt = mc_cmt + mc
        endif
@@ -1928,8 +1929,8 @@ logical, intent(out), dimension(:,:)     :: convect
      endif  
    end do
 
-   mc_full(is:ie,js:je,:)=0.; 
-   mc_half(is:ie,js:je,:)=0.; 
+   mc_full(is:ie,js:je,1)=0.; 
+   mc_half(is:ie,js:je,1)=0.; 
    do k=2,kx   
      mc_full(is:ie,js:je,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1)) +   &
                       0.5*(cmf(is:ie,js:je,k)+cmf(is:ie,js:je,k-1)) +   &
@@ -1992,24 +1993,24 @@ logical, intent(out), dimension(:,:)     :: convect
 ! lightning NOx parameterization
 !-----------------------------------------------------------------------
    if ( get_tracer_index(MODEL_ATMOS,'no') .ne. NO_TRACER ) then
-     cldbot = 0
-     cldtop = 0
-     do i = 1,ix
-      do j = 1,jx
-       do k = 1,kx
-         if (mc_full(i+is-1,j+js-1,k) /= 0 ) then
-           cldtop(i,j) = k
-           exit
-         endif
-       enddo
-       do k = size(r,3),1,-1
-         if (mc_full(i+is-1,j+js-1,k) /= 0 ) then
-           cldbot(i,j) = k
-           exit
-         endif
-       enddo
-      enddo
-     enddo
+!     cldbot = 0
+!     cldtop = 0
+!     do i = 1,ix
+!      do j = 1,jx
+!       do k = 1,kx
+!         if (mc_full(i+is-1,j+js-1,k) /= 0 ) then
+!           cldtop(i,j) = k
+!           exit
+!         endif
+!       enddo
+!       do k = size(r,3),1,-1
+!         if (mc_full(i+is-1,j+js-1,k) /= 0 ) then
+!           cldbot(i,j) = k
+!           exit
+!         endif
+!       enddo
+!      enddo
+!     enddo
      call moz_hook(cldtop, cldbot, land, zfull, zhalf, t, prod_no, area, lat, &
                    Time, is, js)
      rdt(:,:,:,get_tracer_index(MODEL_ATMOS,'no')) =  &
@@ -2422,7 +2423,8 @@ logical, intent(out), dimension(:,:)     :: convect
                                  cell_cld_frac, meso_cld_frac,                    &
                                  do_uw_conv, do_donner_deep, do_liq_num,          &
                                  do_lin_cld_microphys, id_qvout, id_qlout,        &
-                                 id_qaout, id_qiout, limit_conv_cloud_frac, mask, &
+                                 id_qaout, id_qiout, id_qnout, id_qniout, &
+                                 limit_conv_cloud_frac, mask, &
                                  hydrostatic, phys_hydrostatic, &     
                                  zfull,                 &
                                  do_ice_num , lsc_ice_number,          &
@@ -2448,7 +2450,13 @@ logical, intent(out), dimension(:,:)     :: convect
       endif
       cloud_wet(is:ie,js:je,:) = cloud_wet(is:ie,js:je,:) + tracer(is:ie,js:je,:,nql) + tracer(is:ie,js:je,:,nqi)
       cloud_frac(is:ie,js:je,:) = max( min( tracer(is:ie,js:je,:,nqa), 1. ), 0. )
-      used = send_data( id_f_snow_berg, f_snow_berg(:,:,:), Time,is_in=is,js_in=js )
+      used = send_data( id_f_snow_berg, f_snow_berg(:,:,:), Time,  &
+                           is,js, 1)
+      used = send_data( id_f_snow_berg_cond, f_snow_berg(:,:,:), Time,  &
+                           is,js, 1,  mask = f_snow_berg /= 0.0 )
+      used = send_data( id_f_snow_berg_wtd,   &
+               f_snow_berg(:,:,:)*(rain3d(:,:,2:)+snow3d(:,:,2:)), Time,  &
+                                   is,js, 1,  mask = f_snow_berg /= 0.0  )
     else
 !     cloud_wet = qtnd_wet * dt
       cloud_wet(is:ie,js:je,:) = 0.5e-3
@@ -2596,6 +2604,12 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
       used = send_data(id_lscale_snow3d, snow3d, Time, is, js, 1)
 
+!---------------------------------------------------------------------
+!---- diagnostics for large scale precip -------------
+!---------------------------------------------------------------------
+      used = send_data(id_lscale_precip3d, snow3d(:,:,2:)+rain3d(:,:,2:), &
+                       Time, is, js, 1, mask = f_snow_berg /= 0.0 )
+
     endif ! (do_strat)
 
 !---------------------------------------------------------------------
@@ -2697,41 +2711,19 @@ logical, intent(out), dimension(:,:)     :: convect
      endif
      if (id_wetdep_salt   > 0) then
        used = send_data (id_wetdep_salt  ,  &
-           (58.44/WTMAIR)*(total_wetdep_donner(:,:,nsalt1   ) + &
-               total_wetdep_donner(:,:,nsalt2   ) + &
-               total_wetdep_donner(:,:,nsalt3   ) + &
-               total_wetdep_donner(:,:,nsalt4   ) + &
-               total_wetdep_donner(:,:,nsalt5   ) + &
-               total_wetdep_uw    (:,:,nsalt1   ) + &
-               total_wetdep_uw    (:,:,nsalt2   ) + &
-               total_wetdep_uw    (:,:,nsalt3   ) + &
-               total_wetdep_uw    (:,:,nsalt4   ) + &
-               total_wetdep_uw    (:,:,nsalt5   )) + &
-            0.05844*(ls_wetdep          (:,:,nsalt1   ) + &
-                   ls_wetdep          (:,:,nsalt2   ) + &
-                   ls_wetdep          (:,:,nsalt3   ) + &
-                   ls_wetdep          (:,:,nsalt4   ) + &
-                   ls_wetdep          (:,:,nsalt5   )) , &
-                                                Time, is,js)
+               ( total_wetdep(:,:,nsalt1) + &
+                 total_wetdep(:,:,nsalt2) + &
+                 total_wetdep(:,:,nsalt3) + &
+                 total_wetdep(:,:,nsalt4) + &
+                 total_wetdep(:,:,nsalt5)),  Time, is,js)
      endif
      if (id_wetdep_dust   > 0) then
        used = send_data (id_wetdep_dust  ,  &
-           (58.44/WTMAIR)*(total_wetdep_donner(:,:,ndust1   ) + &
-               total_wetdep_donner(:,:,ndust2   ) + &
-               total_wetdep_donner(:,:,ndust3   ) + &
-               total_wetdep_donner(:,:,ndust4   ) + &
-               total_wetdep_donner(:,:,ndust5   ) + &
-               total_wetdep_uw    (:,:,ndust1   ) + &
-               total_wetdep_uw    (:,:,ndust2   ) + &
-               total_wetdep_uw    (:,:,ndust3   ) + &
-               total_wetdep_uw    (:,:,ndust4   ) + &
-               total_wetdep_uw    (:,:,ndust5   )) + &
-            0.05844*(ls_wetdep          (:,:,ndust1   ) + &
-                   ls_wetdep          (:,:,ndust2   ) + &
-                   ls_wetdep          (:,:,ndust3   ) + &
-                   ls_wetdep          (:,:,ndust4   ) + &
-                   ls_wetdep          (:,:,ndust5   )) , &
-                                                Time, is,js)
+               ( total_wetdep(:,:,ndust1) + &
+                 total_wetdep(:,:,ndust2) + &
+                 total_wetdep(:,:,ndust3) + &
+                 total_wetdep(:,:,ndust4) + &
+                 total_wetdep(:,:,ndust5)),  Time, is,js)
      endif
 
 !---------------------------------------------------------------------
@@ -3238,6 +3230,9 @@ real, intent(in) :: dt
 
       if (do_donner_deep) then
         call donner_deep_time_vary (dt)
+      endif
+      if (do_strat .and. .not. do_legacy_strat_cloud) then
+        call strat_cloud_time_vary (dt, limit_conv_cloud_frac)
       endif
 
 end subroutine moist_processes_time_vary
@@ -4167,6 +4162,10 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      'lscale_snow3d', axes(half), Time, &
     'Snow fall rate from lscale -3D',       'kg(h2o)/m2/s' )
    
+   id_lscale_precip3d= register_diag_field ( mod_name, &
+     'lscale_precip3d', axes(1:3), Time, &
+     'LS Precip falling out of gridbox',       'kg(h2o)/m2/s' , &
+      mask_variant = .true., missing_value = missing_value)
 
     id_max_enthalpy_imbal    = register_diag_field    &
        (mod_name, 'max_enth_imbal', axes(1:2), Time,  &
@@ -4687,6 +4686,18 @@ endif
            'qiout', axes(1:3), Time, 'qi after strat_cloud', 'kg/kg', &
                         missing_value=missing_value               )
 
+   if (do_liq_num) then
+   id_qnout = register_diag_field ( mod_name, &
+           'qnout', axes(1:3), Time, 'qn after strat_cloud', '#/kg', &
+                        missing_value=missing_value               )
+   endif
+
+   if (do_ice_num) then
+   id_qniout = register_diag_field ( mod_name, &
+           'qniout', axes(1:3), Time, 'qni after strat_cloud', '#/kg', &
+                        missing_value=missing_value               )
+   endif
+
 !---------------------------------------------------------------------
 !    register diagnostics for lightning NOx
 !---------------------------------------------------------------------
@@ -4792,8 +4803,26 @@ endif
                          register_diag_field ( mod_name, &
                          'f_snow_berg',  &
                          axes(1:3), Time,  &
-                         'fraction of liq to ice by bergeron process', &
+                         'fraction of snow/ice produced having IFN', &
                          'fraction',  &
+                         missing_value=missing_value)
+
+      id_f_snow_berg_cond   =  &
+                         register_diag_field ( mod_name, &
+                         'f_snow_berg_cond',  &
+                         axes(1:3), Time,  &
+                         'conditional fraction of snow/ice produced &
+                         &having IFN', 'fraction',  &
+                         mask_variant = .true., &
+                         missing_value=missing_value)
+
+      id_f_snow_berg_wtd   =  &
+                         register_diag_field ( mod_name, &
+                         'f_snow_berg_wtd',  &
+                         axes(1:3), Time,  &
+                         'product of snow/ice produced having IFN and &
+                         &ls precip falling out of gridbox', &
+                         'kg(h2o)/m2/s', mask_variant = .true.,   &
                          missing_value=missing_value)
 
       do n = 1,num_tracers

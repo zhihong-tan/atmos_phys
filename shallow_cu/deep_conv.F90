@@ -28,7 +28,7 @@ MODULE DEEP_CONV_MOD
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128) :: version = '$Id: deep_conv.F90,v 19.0 2012/01/06 20:26:02 fms Exp $'
-  character(len=128) :: tagname = '$Name: siena_201211 $'
+  character(len=128) :: tagname = '$Name: siena_201303 $'
 
 !-------  interfaces --------
 

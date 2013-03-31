@@ -12,8 +12,8 @@ end interface check_nan
 public check_nan, check_nan_init
 
 !---------------version number---------------------------
-Character(len=128) :: Version = '$Id: check_nan.F90,v 19.0 2012/01/06 20:26:10 fms Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201211 $'
+Character(len=128) :: Version = '$Id: check_nan.F90,v 19.0.4.1.2.1 2012/09/19 11:34:49 rsh Exp $'
+Character(len=128) :: Tagname = '$Name: siena_201303 $'
 
 !-------------------------------------------------------------------------
 
@@ -136,6 +136,7 @@ real,             intent (in)    :: inv
 character(len=*), intent(in)     :: name
 
 integer :: outunit
+
 !------------------------------------------------------------------------
       outunit = stdout()
       if (inv .ne. inv) then

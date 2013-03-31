@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 19.0 2012/01/06 20:14:13 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201211 $'
+character(len=128)  :: version =  '$Id: cloudrad_package.F90,v 19.0.4.1 2012/11/24 13:32:12 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: siena_201303 $'
 
 
 !---------------------------------------------------------------------
@@ -162,7 +162,8 @@ logical      :: module_is_initialized = .false.  ! module initialized?
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine cloudrad_package_init (pref, lonb, latb, axes, Time)
+subroutine cloudrad_package_init (pref, lonb, latb, axes, Time, &
+                                  donner_meso_is_largescale)
 
 !---------------------------------------------------------------------
 !    cloudrad_package_init is the constructor for cloudrad_package_mod.
@@ -172,6 +173,7 @@ real,    dimension(:,:), intent(in)    ::   pref
 real,    dimension(:,:), intent(in)    ::   lonb, latb
 integer, dimension(4),   intent(in)    ::   axes
 type(time_type),         intent(in)    ::   Time
+logical,                 intent(in)    ::   donner_meso_is_largescale
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -444,7 +446,8 @@ type(time_type),         intent(in)    ::   Time
         call cloudrad_diagnostics_init (min_cld_drop_rad,   &
                                         max_cld_drop_rad, &
                                   min_cld_ice_size, max_cld_ice_size, &
-                                        axes, Time)
+                                        axes, Time,    &
+                                                donner_meso_is_largescale)
       endif
 
 !--------------------------------------------------------------------

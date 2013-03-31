@@ -20,7 +20,7 @@ private
 !   ---- version number ----
 
  character(len=128) :: version = '$Id: bm_massflux.F90,v 19.0 2012/01/06 20:01:33 fms Exp $'
- character(len=128) :: tagname = '$Name: siena_201211 $'
+ character(len=128) :: tagname = '$Name: siena_201303 $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----

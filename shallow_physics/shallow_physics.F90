@@ -24,7 +24,7 @@ end interface
 !========================================================================
 ! version information 
 character(len=128) :: version = '$Id: shallow_physics.F90,v 19.0 2012/01/06 20:26:06 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201211 $'
+character(len=128) :: tagname = '$Name: siena_201303 $'
 !========================================================================
 
 real, allocatable, dimension(:,:) :: h_eq
