@@ -168,8 +168,8 @@ module lin_cld_microphys_mod
                       use_ppm, ppm_rain_fall, mono_prof, mp_debug, mp_print
 
 !---- version number -----
- character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 19.0.2.1 2012/06/10 04:47:37 Rusty.Benson Exp $'
- character(len=128) :: tagname = '$Name: siena_201303 $'
+ character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 19.0.2.1.6.1 2013/05/15 18:50:30 William.Cooke Exp $'
+ character(len=128) :: tagname = '$Name: siena_201305 $'
 
  contains
  
@@ -453,6 +453,11 @@ module lin_cld_microphys_mod
    cpaut = 0.55*0.104*grav/1.717e-5
 
    do 2000 i=is, ie
+   rain(i) = 0.0
+   snow(i) = 0.0
+   ice(i) = 0.0
+   graupel(i) = 0.0
+   cond(i) = 0.0
 
    do k=ktop, kbot
        t0(k) = pt(i,j,k)

@@ -2,8 +2,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: cosp_modis_simulator.f90,v 19.0 2012/01/06 20:03:32 fms Exp $
-! $Name: siena_201303 $
+! $Id: cosp_modis_simulator.f90,v 19.0.8.1 2013/05/15 18:49:01 William.Cooke Exp $
+! $Name: siena_201305 $
 
 ! (c) 2009, Regents of the Unversity of Colorado
 !   Author: Robert Pincus, Cooperative Institute for Research in the Environmental Sciences
@@ -87,7 +87,7 @@ contains
     type(cosp_sghydro), intent(in   ) :: subcolHydro ! subcol hydrometeor contens
     type(cosp_isccp),   intent(in   ) :: isccpSim    ! ISCCP simulator output
     integer,            intent(in   ) :: nSunlit     ! Are there any sunlit points? 
-    type(cosp_modis),   intent(  out) :: modisSim    ! MODIS simulator subcol output
+    type(cosp_modis),   intent(inout) :: modisSim    ! MODIS simulator subcol output
     
     ! ------------------------------------------------------------
     ! Local variables 
@@ -425,7 +425,7 @@ contains
   SUBROUTINE COSP_MODIS_CPSECTION(ix, iy, orig, copy)
     integer, dimension(2), intent(in) :: ix, iy
     type(cosp_modis),      intent(in   ) :: orig
-    type(cosp_modis),      intent(  out) :: copy
+    type(cosp_modis),      intent(inout) :: copy
     !
     ! Copy a set of grid points from one cosp_modis variable to another.
     !   Should test to be sure ix and iy refer to the same number of grid points 

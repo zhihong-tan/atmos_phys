@@ -44,7 +44,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128) :: version = '$Id: diag_integral.F90,v 19.0.4.2 2012/12/21 16:07:26 Zhi.Liang Exp $'
-character(len=128) :: tagname = '$Name: siena_201303 $'
+character(len=128) :: tagname = '$Name: siena_201305 $'
 
 
 !---------------------------------------------------------------------

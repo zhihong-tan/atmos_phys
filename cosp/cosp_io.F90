@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: cosp_io.F90,v 19.0 2012/01/06 20:03:25 fms Exp $
-! $Name: siena_201303 $
+! $Name: siena_201305 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -58,7 +58,7 @@ MODULE MOD_COSP_IO
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------     
 character(len=128)  :: versiona =  '$Id: cosp_io.F90,v 19.0 2012/01/06 20:03:25 fms Exp $'
-character(len=128)  :: tagnamea =  '$Name: siena_201303 $'
+character(len=128)  :: tagnamea =  '$Name: siena_201305 $'
 
   ! Types to be used as arrays of pointers
   TYPE var1d

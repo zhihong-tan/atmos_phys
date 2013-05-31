@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: cosp_isccp_simulator.f90,v 19.0 2012/01/06 20:03:27 fms Exp $
-! $Name: siena_201303 $
+! $Name: siena_201305 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.

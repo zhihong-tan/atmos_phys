@@ -52,8 +52,8 @@ module qe_moist_convection_mod
   !-----------------------------------------------------------------------
   !   ---- version number ----
 
-  character(len=128) :: version = '$Id: qe_moist_convection.F90,v 1.1.2.1 2013/01/24 14:46:13 pjp Exp $'
-  character(len=128) :: tag = '$Name: siena_201303 $'
+  character(len=128) :: version = '$Id: qe_moist_convection.F90,v 1.1.2.1.2.1 2013/04/12 13:55:26 William.Cooke Exp $'
+  character(len=128) :: tag = '$Name: siena_201305 $'
 
   !-----------------------------------------------------------------------
   !   ---- local/private data ----
@@ -1057,7 +1057,8 @@ contains
     real, intent(in)                  :: value, val_min, val_max
     real, intent(out)                 :: Tlcl
     
-    real                              :: iv_floor, w_floor, w_ceil
+    integer                           :: iv_floor
+    real                              :: w_floor, w_ceil
     
     if (value .lt. val_min) then
        write(*,*) 'qe_moist_convection: Value passed to get_lcl_temp: ',value

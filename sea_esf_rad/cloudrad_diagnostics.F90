@@ -66,8 +66,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 19.0.4.1 2012/11/24 13:32:14 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201303 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 19.0.4.1.2.1 2013/03/21 21:08:26 William.Cooke Exp $'
+character(len=128)  :: tagname =  '$Name: siena_201305 $'
 
 
 !---------------------------------------------------------------------
@@ -1805,9 +1805,10 @@ if (Time_diag > Time) then
 !    wise it is 0.0. define high cloud percentage by summing over all 
 !    bands.
 !---------------------------------------------------------------------
-        if (id_high_cld_amt > 0)  then            
+        if (id_high_cld_amt > 0)  then
+          nn=size(tmplmask4,3)
           do n=1,ncol
-            tmplmask4(:,:,:,n) = (Atmos_input%pflux(:,:,:) <= high_btm)
+            tmplmask4(:,:,:,n) = (Atmos_input%pflux(:,:,1:nn) <= high_btm)
           end do
 
           cloud2n(:,:,:) =    &
@@ -1828,10 +1829,11 @@ if (Time_diag > Time) then
 !    bands.
 !---------------------------------------------------------------------
         if (id_mid_cld_amt > 0) then    
+          nn=size(tmplmask4,3)
           do n=1,ncol
             tmplmask4(:,:,:,n) =     &
-                       (Atmos_input%pflux(:,:,:) <= mid_btm .and. &
-                             Atmos_input%pflux(:,:,:) > high_btm) 
+                       (Atmos_input%pflux(:,:,1:nn) <= mid_btm .and. &
+                             Atmos_input%pflux(:,:,1:nn) > high_btm) 
           end do
                                                 
           cloud2n(:,:,:) =    &
@@ -1852,8 +1854,9 @@ if (Time_diag > Time) then
 !    bands.
 !---------------------------------------------------------------------
         if (id_low_cld_amt > 0)  then            
+          nn=size(tmplmask4,3)
           do n=1,ncol
-            tmplmask4(:,:,:,n) = (Atmos_input%pflux(:,:,: ) > mid_btm)
+            tmplmask4(:,:,:,n) = (Atmos_input%pflux(:,:,1:nn) > mid_btm)
           end do
 
           cloud2n(:,:,:) =    &
@@ -1874,8 +1877,9 @@ if (Time_diag > Time) then
 !    summing over all bands.
 !---------------------------------------------------------------------
         if (id_lam_cld_amt > 0)  then            
+          nn=size(tmplmask4,3)
           do n=1,ncol
-            tmplmask4(:,:,:,n) = (Atmos_input%pflux(:,:,: ) > high_btm)
+            tmplmask4(:,:,:,n) = (Atmos_input%pflux(:,:,1:nn) > high_btm)
           end do
 
           cloud2n(:,:,:) =    &

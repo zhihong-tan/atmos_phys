@@ -78,8 +78,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 19.0 2012/01/06 20:12:33 fms Exp $'
-character(len=128) :: tagname = '$Name: siena_201303 $'
+character(len=128) :: version = '$Id: aerosol.F90,v 19.0.4.2 2013/03/22 18:29:22 William.Cooke Exp $'
+character(len=128) :: tagname = '$Name: siena_201305 $'
 
 
 !-----------------------------------------------------------------------
@@ -1042,9 +1042,11 @@ subroutine aerosol_endts
 
      integer :: n
 
-     do n=1, size(Aerosol_interp,1)
-       call unset_interpolator_time_flag (Aerosol_interp(n))
-     end do
+     if (allocated(Aerosol_interp)) then
+       do n=1, size(Aerosol_interp,1)
+         call unset_interpolator_time_flag (Aerosol_interp(n))
+       end do
+     endif
   
      override_counter = override_counter + 1
      if (override_counter == 2) then

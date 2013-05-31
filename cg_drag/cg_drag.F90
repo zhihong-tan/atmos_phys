@@ -38,8 +38,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: cg_drag.F90,v 19.0 2012/01/06 20:01:37 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201303 $'
+character(len=128)  :: version =  '$Id: cg_drag.F90,v 19.0.4.1 2013/03/21 14:59:00 William.Cooke Exp $'
+character(len=128)  :: tagname =  '$Name: siena_201305 $'
 
 
 
@@ -368,8 +368,8 @@ type(time_type),         intent(in)      :: Time
       end do
 
       do j=1,jdf
-        lat(:,j)=  0.5*( latb(:,j+1)+latb(:,j) )
         do i=1,idf
+          lat(i,j)=  0.5*( latb(i,j+1)+latb(i,j) )
           source_level(i,j) = (kmax + 1) - ((kmax + 1 -    &
                               klevel_of_source)*cos(lat(i,j)) + 0.5)
           source_amp(i,j) = Bt_0 +                         &
