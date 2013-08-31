@@ -266,7 +266,7 @@ logical :: used
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_sulfate.F90,v 19.0.8.1 2012/12/10 20:46:13 Paul.Ginoux Exp $'
-character(len=128) :: tagname = '$Name: siena_201305 $'
+character(len=128) :: tagname = '$Name: siena_201308 $'
 !-----------------------------------------------------------------------
 
 contains
