@@ -20,7 +20,7 @@ private
 !   ---- version number ----
 
  character(len=128) :: version = '$Id: lscale_cond.F90,v 19.0 2012/01/06 20:10:05 fms Exp $'
- character(len=128) :: tagname = '$Name: siena_201305 $'
+ character(len=128) :: tagname = '$Name: siena_201308 $'
  logical            :: module_is_initialized=.false.
 
 !-----------------------------------------------------------------------

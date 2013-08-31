@@ -169,7 +169,7 @@ module lin_cld_microphys_mod
 
 !---- version number -----
  character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 19.0.2.1.6.1 2013/05/15 18:50:30 William.Cooke Exp $'
- character(len=128) :: tagname = '$Name: siena_201305 $'
+ character(len=128) :: tagname = '$Name: siena_201308 $'
 
  contains
  

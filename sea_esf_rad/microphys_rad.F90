@@ -57,7 +57,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: microphys_rad.F90,v 19.0.4.1 2012/10/03 09:33:33 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201305 $'
+character(len=128)  :: tagname =  '$Name: siena_201308 $'
 
 
 !---------------------------------------------------------------------

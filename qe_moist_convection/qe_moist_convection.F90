@@ -53,7 +53,7 @@ module qe_moist_convection_mod
   !   ---- version number ----
 
   character(len=128) :: version = '$Id: qe_moist_convection.F90,v 1.1.2.1.2.1 2013/04/12 13:55:26 William.Cooke Exp $'
-  character(len=128) :: tag = '$Name: siena_201305 $'
+  character(len=128) :: tag = '$Name: siena_201308 $'
 
   !-----------------------------------------------------------------------
   !   ---- local/private data ----

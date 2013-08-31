@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: cosp_modis_simulator.f90,v 19.0.8.1 2013/05/15 18:49:01 William.Cooke Exp $
-! $Name: siena_201305 $
+! $Name: siena_201308 $
 
 ! (c) 2009, Regents of the Unversity of Colorado
 !   Author: Robert Pincus, Cooperative Institute for Research in the Environmental Sciences
