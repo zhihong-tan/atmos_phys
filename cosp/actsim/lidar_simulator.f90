@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: lidar_simulator.f90,v 19.0 2012/01/06 20:04:15 fms Exp $
-! $Name: siena_201308 $
+! $Name: siena_201309 $
 
 ! Copyright (c) 2009, Centre National de la Recherche Scientifique
 ! All rights reserved.

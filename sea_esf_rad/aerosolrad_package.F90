@@ -59,7 +59,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 19.0.4.1 2012/11/14 15:07:20 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201308 $'
+character(len=128)  :: tagname =  '$Name: siena_201309 $'
 
 
 !---------------------------------------------------------------------

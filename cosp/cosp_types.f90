@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
  
 ! $Id: cosp_types.f90,v 19.0 2012/01/06 20:04:08 fms Exp $
-! $Name: siena_201308 $
+! $Name: siena_201309 $
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.

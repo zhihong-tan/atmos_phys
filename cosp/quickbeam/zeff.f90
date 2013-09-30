@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
        
 ! $Id: zeff.f90,v 19.0 2012/01/06 20:05:00 fms Exp $
-! $Name: siena_201308 $
+! $Name: siena_201309 $
 
   subroutine zeff(freq,D,N,nsizes,k2,tt,ice,xr,z_eff,z_ray,kr,qe,qs,rho_e)
   use math_lib

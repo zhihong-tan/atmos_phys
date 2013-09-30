@@ -200,7 +200,7 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !---version number-------------------------------------------------------
 
 Character(len=128) :: Version = '$Id: strat_cloud.F90,v 19.0.6.1.2.1.2.1.2.1 2013/01/02 10:43:41 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201308 $'
+Character(len=128) :: Tagname = '$Name: siena_201309 $'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------

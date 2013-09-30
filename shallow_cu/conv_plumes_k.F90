@@ -13,7 +13,7 @@ MODULE CONV_PLUMES_k_MOD
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128) :: version = '$Id: conv_plumes_k.F90,v 19.0.4.1 2012/05/29 18:40:10 Zhi.Liang Exp $'
-  character(len=128) :: tagname = '$Name: siena_201308 $'
+  character(len=128) :: tagname = '$Name: siena_201309 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

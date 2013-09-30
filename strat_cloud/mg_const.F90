@@ -15,7 +15,7 @@ public mg_const_init
 !       DECLARE VERSION NUMBER
 !------------------------------------------------------------------------
 Character(len=128) :: Version = '$Id: mg_const.F90,v 19.0.4.1.2.1.2.1 2012/11/29 11:19:53 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201308 $'
+Character(len=128) :: Tagname = '$Name: siena_201309 $'
  
 !-------------------------------------------------------------------------
 !---module variables------------------------------------------------------

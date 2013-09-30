@@ -95,7 +95,7 @@ private
 !----------- version number for this module -------------------
 
     character(len=128)  :: version =  '$Id: sealw99.F90,v 19.0 2012/01/06 20:23:35 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: siena_201308 $'
+    character(len=128)  :: tagname =  '$Name: siena_201309 $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------

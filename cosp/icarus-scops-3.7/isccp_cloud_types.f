@@ -3,7 +3,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: isccp_cloud_types.f,v 19.0 2012/01/06 20:04:22 fms Exp $
-! $Name: siena_201308 $
+! $Name: siena_201309 $
 
       SUBROUTINE ISCCP_CLOUD_TYPES(
      &     debug,
