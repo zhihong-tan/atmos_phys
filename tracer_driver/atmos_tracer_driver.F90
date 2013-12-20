@@ -308,8 +308,8 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 19.0.10.1.2.1 2013/02/26 19:20:11 William.Cooke Exp $'
-character(len=128) :: tagname = '$Name: siena_201309 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 20.0 2013/12/13 23:24:10 fms Exp $'
+character(len=128) :: tagname = '$Name: tikal $'
 !-----------------------------------------------------------------------
 
 contains
@@ -567,7 +567,7 @@ logical :: used
       call get_w10m(z_full(:,:,kd) - z_half(:,:,kd+1), &
                     u(:,:,kd), v(:,:,kd), &
                     rough_mom, u_star, b_star, q_star, &
-                    w10m_ocean, w10m_land, Time, is, js)
+                    w10m_ocean, w10m_land, Time_next, is, js)
 !-----------------------------------------------------------------------
 !------Cloud liquid water content
 !-----------------------------------------------------------------------
@@ -622,11 +622,11 @@ logical :: used
 !------------------------------------------------------------------------
 !    output land fraction information, if desired.
 !------------------------------------------------------------------------
-   used = send_data ( id_landfr, frland, Time, is_in =is,js_in=js)
-   used = send_data ( id_seaicefr, frice, Time, is_in =is,js_in=js)
-!   used = send_data ( id_snowfr, frsnow, Time, is_in =is,js_in=js)
-!   used = send_data ( id_vegnfr, vegn_cover, Time, is_in =is,js_in=js)
-!   used = send_data ( id_vegnlai, vegn_lai, Time, is_in =is,js_in=js)
+   used = send_data ( id_landfr, frland, Time_next, is_in =is,js_in=js)
+   used = send_data ( id_seaicefr, frice, Time_next, is_in =is,js_in=js)
+!   used = send_data ( id_snowfr, frsnow, Time_next, is_in =is,js_in=js)
+!   used = send_data ( id_vegnfr, vegn_cover, Time_next, is_in =is,js_in=js)
+!   used = send_data ( id_vegnlai, vegn_lai, Time_next, is_in =is,js_in=js)
 
 !------------------------------------------------------------------------
 ! For tracers other than specific humdity, cloud amount, ice water and &
@@ -639,7 +639,8 @@ logical :: used
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
                                  (land > 0.5), dsinku(:,:,n), &
-                                 tracer(:,:,kd,n), Time, lon, half_day, &
+                                 tracer(:,:,kd,n), Time, Time_next, &
+                                 lon, half_day, &
                                  drydep_data(n))!, frland, frice, frsnow, &
 !                                 vegn_cover, vegn_lai, &
 !                                 b_star, z_pbl, rough_mom)
@@ -650,17 +651,17 @@ logical :: used
       if (id_om_ddep > 0) then
         used  = send_data (id_om_ddep,  &
          pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic)),  &
-                                              Time, is_in=is, js_in=js)
+                                              Time_next, is_in=is, js_in=js)
       endif
       if (id_bc_ddep > 0) then
         used  = send_data (id_bc_ddep,  &
          pwt(:,:,kd)*(dsinku(:,:,nbcphilic) + dsinku(:,:,nbcphobic)),  &
-                                               Time, is_in=is, js_in=js)
+                                               Time_next, is_in=is, js_in=js)
       endif
       if (id_nh4_ddep_cmip > 0) then
         used  = send_data (id_nh4_ddep_cmip,  &
         0.018*1.0e03*pwt(:,:,kd)*(dsinku(:,:,nNH4NO3) + dsinku(:,:,nNH4))/WTMAIR,  &
-                                              Time, is_in=is, js_in=js)
+                                              Time_next, is_in=is, js_in=js)
       endif
 
 !----------------------------------------------------------------------
@@ -674,7 +675,7 @@ logical :: used
         end do
         used  = send_data (id_nh4_col,  &
                0.018*1.0e03*suma(:,:)/WTMAIR,  &
-                                              Time, is_in=is, js_in=js)
+                                              Time_next, is_in=is, js_in=js)
       endif
       if(id_nh4no3_col > 0) then
         suma = 0.
@@ -683,7 +684,7 @@ logical :: used
         end do
         used  = send_data (id_nh4no3_col,  &
                   0.062*1.0e03*suma(:,:)/WTMAIR,  &
-                                              Time, is_in=is, js_in=js)
+                                              Time_next, is_in=is, js_in=js)
       endif
 
 !----------------------------------------------------------------------
@@ -693,43 +694,43 @@ logical :: used
         used  = send_data (id_nh4_cmip,  &
                0.018*1.0e03* (tracer(:,:,:,nNH4NO3) + &
                               tracer(:,:,:,nNH4)) /WTMAIR,  &
-                                          Time, is_in=is, js_in=js, ks_in=1)
+                                          Time_next, is_in=is, js_in=js, ks_in=1)
       endif
       if (id_nh4_cmipv2 > 0) then
         used  = send_data (id_nh4_cmipv2,  &
                0.018*1.0e03*rho(:,:,:)* (tracer(:,:,:,nNH4NO3) + &
                               tracer(:,:,:,nNH4)) /WTMAIR,  &
-                                          Time, is_in=is, js_in=js, ks_in=1)
+                                          Time_next, is_in=is, js_in=js, ks_in=1)
       endif
       if(id_nh4no3_cmip > 0) then
         used  = send_data (id_nh4no3_cmip,  &
                 0.062*1.0e03*tracer(:,:,:,nNH4NO3)/WTMAIR,  &
-                                         Time, is_in=is, js_in=js, ks_in=1)
+                                         Time_next, is_in=is, js_in=js, ks_in=1)
      endif
       if(id_nh4no3_cmipv2 > 0) then
         used  = send_data (id_nh4no3_cmipv2,  &
                 0.062*1.0e03*rho(:,:,:)*tracer(:,:,:,nNH4NO3)/WTMAIR,  &
-                                         Time, is_in=is, js_in=js, ks_in=1)
+                                         Time_next, is_in=is, js_in=js, ks_in=1)
      endif
      if(id_so2_cmip > 0) then
        used  = send_data (id_so2_cmip,  &
                  0.064*1.0e03*tracer(:,:,:,nSO2_cmip)/WTMAIR,  &
-                                         Time, is_in=is, js_in=js, ks_in=1)
+                                         Time_next, is_in=is, js_in=js, ks_in=1)
      endif
      if(id_so2_cmipv2 > 0) then
        used  = send_data (id_so2_cmipv2,  &
                0.064*1.0e03*rho(:,:,:)*tracer(:,:,:,nSO2_cmip)/WTMAIR,  &
-                                         Time, is_in=is, js_in=js, ks_in=1)
+                                         Time_next, is_in=is, js_in=js, ks_in=1)
      endif
      if(id_dms_cmip > 0) then
        used  = send_data (id_dms_cmip,  &
                 0.062*1.0e03*tracer(:,:,:,nDMS_cmip)/WTMAIR,  &
-                                         Time, is_in=is, js_in=js, ks_in=1)
+                                         Time_next, is_in=is, js_in=js, ks_in=1)
      endif
      if(id_dms_cmipv2 > 0) then
        used  = send_data (id_dms_cmipv2,  &
                 0.062*1.0e03*rho(:,:,:)*tracer(:,:,:,nDMS_cmip)/WTMAIR,  &
-                                         Time, is_in=is, js_in=js, ks_in=1)
+                                         Time_next, is_in=is, js_in=js, ks_in=1)
      endif
 
 !------------------------------------------------------------------------
@@ -887,7 +888,7 @@ logical :: used
                                       tracer(:,:,:,nomphobic), rtndomphob, &
                                       tracer(:,:,:,nomphilic), rtndomphil, &
                                       tracer(:,:,:,noh),    &
-                                      Time,is,ie,js,je)
+                                      Time_next,is,ie,js,je)
       rdt(:,:,:,nbcphobic)=rdt(:,:,:,nbcphobic)+rtndbcphob(:,:,:)
       rdt(:,:,:,nbcphilic)=rdt(:,:,:,nbcphilic)+rtndbcphil(:,:,:)
       rdt(:,:,:,nomphobic)=rdt(:,:,:,nomphobic)+rtndomphob(:,:,:)
@@ -906,7 +907,7 @@ logical :: used
               lon,lat,land,pwt, &
               z_half, pfull, w10m_land, t, rh, &
               tracer(:,:,:,ndust1), rtnd, dust_emis(:,:,1), &
-              dust_settl(:,:,1), Time, &
+              dust_settl(:,:,1), Time, Time_next, &
               is,ie,js,je, kbot)
       rdt(:,:,:,ndust1)=rdt(:,:,:,ndust1)+rtnd(:,:,:)
    endif
@@ -919,7 +920,7 @@ logical :: used
               lon,lat,land,pwt, &
               z_half, pfull, w10m_land, t, rh, &
               tracer(:,:,:,ndust2), rtnd, dust_emis(:,:,2), &
-              dust_settl(:,:,2), Time, &
+              dust_settl(:,:,2), Time, Time_next, &
               is,ie,js,je, kbot)
       rdt(:,:,:,ndust2)=rdt(:,:,:,ndust2)+rtnd(:,:,:)
    endif
@@ -932,7 +933,7 @@ logical :: used
               lon,lat,land,pwt, &
               z_half, pfull, w10m_land, t, rh, &
               tracer(:,:,:,ndust3), rtnd, dust_emis(:,:,3), &
-              dust_settl(:,:,3), Time, &
+              dust_settl(:,:,3), Time, Time_next, &
               is,ie,js,je, kbot)
       rdt(:,:,:,ndust3)=rdt(:,:,:,ndust3)+rtnd(:,:,:)
    endif
@@ -945,7 +946,7 @@ logical :: used
               lon,lat,land,pwt, &
               z_half, pfull, w10m_land, t, rh, &
               tracer(:,:,:,ndust4), rtnd, dust_emis(:,:,4), &
-              dust_settl(:,:,4), Time, &
+              dust_settl(:,:,4), Time, Time_next, &
               is,ie,js,je, kbot)
       rdt(:,:,:,ndust4)=rdt(:,:,:,ndust4)+rtnd(:,:,:)
    endif
@@ -958,7 +959,7 @@ logical :: used
               lon,lat,land,pwt, &
               z_half, pfull, w10m_land, t, rh, &
               tracer(:,:,:,ndust5), rtnd, dust_emis(:,:,5), &
-              dust_settl(:,:,5), Time, &
+              dust_settl(:,:,5), Time, Time_next, &
               is,ie,js,je, kbot)
       rdt(:,:,:,ndust5)=rdt(:,:,:,ndust5)+rtnd(:,:,:)
    endif
@@ -969,13 +970,13 @@ logical :: used
      used  = send_data (id_dust_ddep,  all_dust_settl(:,:) + &
         pwt(:,:,kd)*(dsinku(:,:,ndust1) + dsinku(:,:,ndust2) + &
                      dsinku(:,:,ndust3) + dsinku(:,:,ndust4) + &
-                      dsinku(:,:,ndust5)), Time, is_in=is, js_in=js)
+                      dsinku(:,:,ndust5)), Time_next, is_in=is, js_in=js)
    endif
    if (id_dust_emis > 0) then
      used  = send_data (id_dust_emis,  &
                  dust_emis(:,:,1) + dust_emis(:,:,2) + &
                  dust_emis(:,:,3) + dust_emis(:,:,4) + &
-                 dust_emis(:,:,5), Time, is_in=is, js_in=js)
+                 dust_emis(:,:,5), Time_next, is_in=is, js_in=js)
    endif
    call mpp_clock_end (dust_clock)
 
@@ -993,7 +994,7 @@ logical :: used
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt1), rtnd, dt, &
                ssalt_settl(:,:,1), ssalt_emis(:,:,1), &
-              Time,is,ie,js,je, kbot)
+              Time,Time_next,is,ie,js,je, kbot)
       rdt(:,:,:,nseasalt1)=rdt(:,:,:,nseasalt1)+rtnd(:,:,:)
    endif
    if (nseasalt2 > 0) then
@@ -1006,7 +1007,7 @@ logical :: used
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt2), rtnd, dt, &
                ssalt_settl(:,:,2), ssalt_emis(:,:,2), &
-              Time,is,ie,js,je, kbot)
+              Time,Time_next,is,ie,js,je, kbot)
       rdt(:,:,:,nseasalt2)=rdt(:,:,:,nseasalt2)+rtnd(:,:,:)
    endif
    if (nseasalt3 > 0) then
@@ -1019,7 +1020,7 @@ logical :: used
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt3), rtnd, dt, &
                ssalt_settl(:,:,3), ssalt_emis(:,:,3), &
-              Time,is,ie,js,je, kbot)
+              Time,Time_next,is,ie,js,je, kbot)
       rdt(:,:,:,nseasalt3)=rdt(:,:,:,nseasalt3)+rtnd(:,:,:)
    endif
    if (nseasalt4 > 0) then
@@ -1032,7 +1033,7 @@ logical :: used
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt4), rtnd, dt, &
                ssalt_settl(:,:,4), ssalt_emis(:,:,4), &
-              Time,is,ie,js,je, kbot)
+              Time,Time_next,is,ie,js,je, kbot)
       rdt(:,:,:,nseasalt4)=rdt(:,:,:,nseasalt4)+rtnd(:,:,:)
    endif
    if (nseasalt5 > 0) then
@@ -1045,7 +1046,7 @@ logical :: used
               z_half, pfull, w10m_ocean, t, rh, &
               tracer(:,:,:,nseasalt5), rtnd, dt, &
                ssalt_settl(:,:,5), ssalt_emis(:,:,5), &
-              Time,is,ie,js,je, kbot)
+              Time,Time_next,is,ie,js,je, kbot)
       rdt(:,:,:,nseasalt5)=rdt(:,:,:,nseasalt5)+rtnd(:,:,:)
    endif
    if (id_ssalt_ddep > 0) then
@@ -1055,13 +1056,13 @@ logical :: used
      used  = send_data (id_ssalt_ddep, all_salt_settl(:,:) + &
          pwt(:,:,kd)*(dsinku(:,:,nseasalt1) + dsinku(:,:,nseasalt2) + &
                       dsinku(:,:,nseasalt3) + dsinku(:,:,nseasalt4) + &
-                      dsinku(:,:,nseasalt5)), Time, is_in=is, js_in=js)
+                      dsinku(:,:,nseasalt5)), Time_next, is_in=is, js_in=js)
    endif
    if (id_ssalt_emis > 0) then
      used  = send_data (id_ssalt_emis,  &
                     ssalt_emis(:,:,1) + ssalt_emis(:,:,2) + &
                     ssalt_emis(:,:,3) + ssalt_emis(:,:,4) + &
-                    ssalt_emis(:,:,5), Time, is_in=is, js_in=js)
+                    ssalt_emis(:,:,5), Time_next, is_in=is, js_in=js)
    endif
    call mpp_clock_end (seasalt_clock)
 
@@ -1078,11 +1079,11 @@ logical :: used
 
       call mpp_clock_begin (sulfur_clock)
       call atmos_DMS_emission(lon, lat, area, ocn_flx_fraction, t_surf_rad, &
-             w10m_ocean, pwt, rtnddms, Time, is,ie,js,je,kbot)
+             w10m_ocean, pwt, rtnddms, Time, Time_next, is,ie,js,je,kbot)
       rdt(:,:,kd,nDMS) = rdt(:,:,kd,nDMS) + rtnddms(:,:,kd)
       call atmos_SOx_emission(lon, lat, area, land, &
              z_pbl, z_half, phalf, pwt, rtndso2, rtndso4, &
-             Time, is,ie,js,je,kbot)
+             Time, Time_next, is,ie,js,je,kbot)
       rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
       rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
       call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, &
@@ -1091,7 +1092,7 @@ logical :: used
                 tracer(:,:,:,nMSA), tracer(:,:,:,nH2O2), &
                 tracer(:,:,:,noh), &
                 rtndso2, rtndso4, rtnddms, rtndmsa, rtndh2o2, &
-                Time,is,ie,js,je,kbot)
+                Time,Time_next, is,ie,js,je,kbot)
       rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
       rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
       rdt(:,:,:,nDMS) = rdt(:,:,:,nDMS) + rtnddms(:,:,:)
@@ -1110,7 +1111,7 @@ logical :: used
       call mpp_clock_begin (SOA_clock)
       call atmos_SOA_chem(pwt,t,pfull,phalf,dt, &
                 jday,hour,minute,second,lat,lon,    &
-                tracer(:,:,:,nSOA),rtnd, Time,is,ie,js,je,kbot )
+                tracer(:,:,:,nSOA),rtnd, Time,Time_next,is,ie,js,je,kbot )
 
       rdt(:,:,:,nSOA)=rdt(:,:,:,nSOA)+rtnd(:,:,:)
       call mpp_clock_end (SOA_clock)
@@ -1151,11 +1152,11 @@ logical :: used
          if (nco2 > ntp ) call error_mesg ('Tracer_driver', &
                             'Number of tracers < number for co2', FATAL)
          call mpp_clock_begin (co2_clock)
-         call atmos_co2_emissions (is, ie, js, je, Time, dt, pwt, tracer(:,:,:,nco2),     &
+         call atmos_co2_emissions (is, ie, js, je, Time, Time_next, dt, pwt, tracer(:,:,:,nco2),     &
                                    tracer(:,:,:,nsphum), rtndco2_emis, kbot)
          rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2_emis(:,:,:)
 
-         call atmos_co2_sourcesink (is, ie, js, je, Time, dt, pwt, tracer(:,:,:,nco2),     &
+         call atmos_co2_sourcesink (is, ie, js, je, Time, Time_next, dt, pwt, tracer(:,:,:,nco2),     &
                                     tracer(:,:,:,nsphum), rtndco2)
          rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2(:,:,:)
          call mpp_clock_end (co2_clock)
