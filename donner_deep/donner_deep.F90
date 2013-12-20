@@ -61,8 +61,8 @@ private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
 
-character(len=128)  :: version =  '$Id: donner_deep.F90,v 19.0.4.1 2012/12/06 10:59:16 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201309 $'
+character(len=128)  :: version =  '$Id: donner_deep.F90,v 20.0 2013/12/13 23:17:16 fms Exp $'
+character(len=128)  :: tagname =  '$Name: tikal $'
 
 
 !--------------------------------------------------------------------

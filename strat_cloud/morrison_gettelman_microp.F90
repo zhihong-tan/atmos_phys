@@ -33,8 +33,8 @@ public morrison_gettelman_microp, morrison_gettelman_microp_init,  &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 19.0.4.1.2.1.2.1.2.1.2.1.2.1 2013/02/06 10:22:53 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201309 $'
+Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 20.0 2013/12/13 23:21:59 fms Exp $'
+Character(len=128) :: Tagname = '$Name: tikal $'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------
@@ -114,6 +114,7 @@ logical           :: mg_repartition_first = .true.
 logical           :: meyers_test = .false.
 logical    :: allow_all_cldtop_collection = .false.
 logical    :: rho_factor_in_max_vt = .true.
+real       :: max_rho_factor_in_vt = 1.0
 real       :: lowest_temp_for_sublimation = 180._mg_pr
 
 namelist / morrison_gettelman_microp_nml /   &
@@ -132,6 +133,8 @@ namelist / morrison_gettelman_microp_nml /   &
                  limit_volri, limit_droplet_freeze_opt,    &
                  mg_repartition_first, meyers_test, &
                  allow_all_cldtop_collection, rho_factor_in_max_vt,&
+!                allow_all_cldtop_collection,                      &
+                 max_rho_factor_in_vt, &
                  lowest_temp_for_sublimation
 
 !-----------------------------------------------------------------------
@@ -963,16 +966,21 @@ INTEGER,                                  INTENT(IN )     &
 ! hm added 11/18/06, add air density correction factor to the
 ! power of 0.54 following Heymsfield and Bansemer 2006
 
-             if (rho_factor_in_max_vt) then
+!            if (rho_factor_in_max_vt) then
                rhof(i,k)=(rhosu/rho(i,k))**0.54_mg_pr
-             else
-               rhof(i,k) = 1.0
-             endif
+!            else
+!              rhof(i,k) = 1.0
+!            endif
+             rhof(i,k) = MIN (rhof(i,k), max_rho_factor_in_vt)
 
-             arn(i,k)=ar*(rhosu/rho(i,k))**0.54_mg_pr
-             asn(i,k)=as*(rhosu/rho(i,k))**0.54_mg_pr
-             acn(i,k)=ac*(rhosu/rho(i,k))**0.54_mg_pr
-             ain(i,k)=ai*(rhosu/rho(i,k))**0.54_mg_pr
+!            arn(i,k)=ar*(rhosu/rho(i,k))**0.54_mg_pr
+!            asn(i,k)=as*(rhosu/rho(i,k))**0.54_mg_pr
+!            acn(i,k)=ac*(rhosu/rho(i,k))**0.54_mg_pr
+!            ain(i,k)=ai*(rhosu/rho(i,k))**0.54_mg_pr
+             arn(i,k)=ar*rhof(i,k)                        
+             asn(i,k)=as*rhof(i,k)                        
+             acn(i,k)=ac*rhof(i,k)                        
+             ain(i,k)=ai*rhof(i,k)                        
  
 ! keep dz positive (define as layer k-1 - layer k)
 
@@ -1682,7 +1690,7 @@ INTEGER,                                  INTENT(IN )     &
                                                                   cldm(i,k)
                    nnuccd(k) = max(nnuccd(k), 0._mg_pr)
                  else if (dqa_activation ) then
-                   nnuccd(k) = max(delta_cf(i,k), 0.)*dum2i(i,k)/deltat
+                   nnuccd(k) = max(delta_cf(i,k), 0.)*dum2i(i,k)/deltatin
                  endif
                  nimax = dum2i(i,k)*cldm(i,k)
                else
@@ -1717,7 +1725,7 @@ INTEGER,                                  INTENT(IN )     &
 ! Eq. 7 of Yi's 2007 paper
 ! dum2l has already been multiplied by 1.e6/airdens(i,k)
                    dum2l(i,k) = drop2(i,k) 
-                   npccn(k) = max(delta_cf(i,k), 0.)*dum2l(i,k) /deltat
+                   npccn(k) = max(delta_cf(i,k), 0.)*dum2l(i,k) /deltatin
                  END IF
                  ncmax = dum2l(i,k)*cldm(i,k)
                else

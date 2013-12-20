@@ -66,8 +66,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 19.0.4.1.2.1 2013/03/21 21:08:26 William.Cooke Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201309 $'
+character(len=128)  :: version =  '$Id: cloudrad_diagnostics.F90,v 20.0 2013/12/13 23:19:04 fms Exp $'
+character(len=128)  :: tagname =  '$Name: tikal $'
 
 
 !---------------------------------------------------------------------

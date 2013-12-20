@@ -17,8 +17,8 @@ PUBLIC diag_id_type, diag_pt_type, strat_nml_type,  &
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 19.0.4.1.2.1.2.1 2012/11/29 11:19:54 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201309 $'
+Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 20.0 2013/12/13 23:22:15 fms Exp $'
+Character(len=128) :: Tagname = '$Name: tikal $'
 
 logical  :: module_is_initialized = .false.
 
@@ -106,13 +106,13 @@ TYPE diag_id_type
              srfrain_evap, rain_evap_col, rain_freeze_col,  &
              srfrain_accrs_col, srfrain_freez_col, srfrain_evap_col, &
              rain_mass_conv, rain_imb, rain_imb_col, cld_liq_imb,  &
-             cld_liq_imb_col, neg_rain
+             cld_liq_imb_col, neg_rain, qrout_col
 
 !  snow diagnostics
 
   integer :: snow3d, qsout, snow_clr, snow_cld, a_snow_clr, a_snow_cld, &
              snow_melt, snow_melt_col, snow_mass_conv, sedi_ice, snow_imb, &
-             snow_imb_col, cld_ice_imb, cld_ice_imb_col, neg_snow
+             snow_imb_col, cld_ice_imb, cld_ice_imb_col, neg_snow, qsout_col
              
 
 !  total precip diagnostics

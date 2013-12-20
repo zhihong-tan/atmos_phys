@@ -17,8 +17,8 @@ private diag_field_init
 
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
-Character(len=128) :: Version = '$Id: strat_netcdf.F90,v 19.0.4.1.2.1.2.1 2013/01/02 10:43:41 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201309 $'
+Character(len=128) :: Version = '$Id: strat_netcdf.F90,v 20.0 2013/12/13 23:22:17 fms Exp $'
+Character(len=128) :: Tagname = '$Name: tikal $'
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics variables-----------------------------
@@ -756,6 +756,16 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
                Time, is, js)
 
 !-----------------------------------------------------------------------
+!    6) variables associated with precipitation and precipitation area:
+!-----------------------------------------------------------------------
+      used = send_data    &
+              (diag_id%qrout_col, diag_3d(:,:,diag_pt%qrout),  &
+               Time, is, js)
+      used = send_data   &
+              (diag_id%qsout_col, diag_3d(:,:,diag_pt%qsout),  &
+               Time, is, js)
+
+!-----------------------------------------------------------------------
 !    8) variables associated with cloud liquid time tendency:
 !-----------------------------------------------------------------------
       used = send_data   &
@@ -1174,7 +1184,7 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
 !------------------------------------------------------------------------
       diag_id%droplets = register_diag_field (mod_name,    &
              'droplets', axes(1:3), Time,   &
-             'Droplet number concentration', '/m3',  &
+             'Droplet number concentration', '/cm3',  &
              missing_value=missing_value )
       diag_id%droplets_wtd = register_diag_field (mod_name,   &
              'droplets_wtd', axes(1:3), Time,  &
@@ -1229,7 +1239,7 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              missing_value=missing_value)
       diag_id%potential_droplets = register_diag_field (mod_name,   &
              'potential_droplets', axes(1:3), Time,   &
-             'number of droplets which may be activated', '/m3',   &
+             'number of droplets which may be activated', '/cm3',   &
              missing_value=missing_value)
       diag_id%potential_crystals = register_diag_field (mod_name,    &
              'potential_crystals', axes(1:3), Time,    &
@@ -2009,6 +2019,18 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'ice number grid box column burden', '/cm2',   &
              missing_value=missing_value)
 
+!------------------------------------------------------------------------
+!    6) variables associated with precipitation and precipitation area:
+!------------------------------------------------------------------------
+      diag_id%qrout_col = register_diag_field (mod_name,   &
+             'rain_path', axes(1:2), Time,   &
+             'rain water path from stratiform', 'kg/m2',    &
+             missing_value=missing_value)
+      diag_id%qsout_col = register_diag_field (mod_name,    &
+             'snow_path', axes(1:2), Time,    &
+             'snow water path from stratiform', 'kg/m2',  &
+             missing_value=missing_value)
+
   !-----------------------------------------------------------------------
   !    8) variables associated with cloud liquid time tendency:
   !-----------------------------------------------------------------------
@@ -2691,11 +2713,11 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
 !------------------------------------------------------------------------
 !    6) variables associated with precipitation and precipitation area:
 !------------------------------------------------------------------------
-      if (diag_id%qrout  > 0) then
+      if (diag_id%qrout  + diag_id%qrout_col > 0) then
         diag_pt%qrout = n_diag_4d
         n_diag_4d = n_diag_4d + 1 
       end if
-      if (diag_id%qsout  > 0) then
+      if (diag_id%qsout  + diag_id%qsout_col > 0) then
         diag_pt%qsout = n_diag_4d
         n_diag_4d = n_diag_4d + 1 
       end if

@@ -104,8 +104,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 17.0.8.1.2.1.2.1.2.1.2.1.2.1.2.1.2.1.2.1.2.1 2013/02/05 07:39:06 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201309 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 20.0 2013/12/13 23:19:01 fms Exp $'
+character(len=128)  :: tagname =  '$Name: tikal $'
 
 
 !---------------------------------------------------------------------
@@ -277,7 +277,8 @@ integer :: id, jd, kmax
 !  </IN>
 ! </SUBROUTINE>
 ! 
-subroutine cloud_spec_init (pref, lonb, latb, axes, Time)
+subroutine cloud_spec_init (pref, lonb, latb, axes, Time,  &
+                            cloud_type_form_out)
 
 !---------------------------------------------------------------------
 !    cloud_spec_init is the constructor for cloud_spec_mod.
@@ -287,6 +288,7 @@ real, dimension(:,:),     intent(in)   ::  pref
 real, dimension(:,:),     intent(in)   ::  lonb, latb
 integer, dimension(4),    intent(in)   ::  axes
 type(time_type),          intent(in)   ::  Time
+character(len=16),        intent(out)  ::  cloud_type_form_out
 
 !-------------------------------------------------------------------
 !    intent(in) variables:
@@ -363,6 +365,11 @@ type(time_type),          intent(in)   ::  Time
       jd = size(latb,2) - 1
       kmax = size(pref,1) - 1
 
+!-----------------------------------------------------------------------
+!    define output field.
+!-----------------------------------------------------------------------
+      cloud_type_form_out = cloud_type_form
+
 !--------------------------------------------------------------------
 !    verify a valid type of cloud overlap. set logical variables
 !    based on the namelist value.
@@ -429,6 +436,10 @@ type(time_type),          intent(in)   ::  Time
             Cldrad_control%do_donner_deep_clouds = .true.
             call donner_deep_clouds_W_init (pref, lonb, latb,   &
                                             axes, Time)
+!RSH 3/6/13: The following call added to allow stochastic clouds to be 
+!            run for this case. Ultimately, the do_stochastic_clouds nml 
+!            variable should be moved to cloud_spec_nml.
+            call strat_clouds_W_init(latb, lonb)
 
 !------------------------------------------------------------------
 !    cloud fractions, heights are provided by the uw_conv shallow
@@ -438,6 +449,10 @@ type(time_type),          intent(in)   ::  Time
             Cldrad_control%do_uw_clouds = .true.
             call uw_clouds_W_init (pref, lonb, latb,   &
                                              axes, Time)
+!RSH 3/6/13: The following call added to allow stochastic clouds to be 
+!            run for this case. Ultimately, the do_stochastic_clouds nml 
+!            variable should be moved to cloud_spec_nml.
+            call strat_clouds_W_init(latb, lonb)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are a combination of the donner
@@ -463,6 +478,10 @@ type(time_type),          intent(in)   ::  Time
                                              axes, Time)
            call uw_clouds_W_init (pref, lonb, latb,   &
                                             axes, Time)
+!RSH 3/6/13: The following call added to allow stochastic clouds to be 
+!            run for this case. Ultimately, the do_stochastic_clouds nml 
+!            variable should be moved to cloud_spec_nml.
+            call strat_clouds_W_init(latb, lonb)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are provided by the klein large-scale

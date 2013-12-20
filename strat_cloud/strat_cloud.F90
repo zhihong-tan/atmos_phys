@@ -199,8 +199,8 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud.F90,v 19.0.6.1.2.1.2.1.2.1 2013/01/02 10:43:41 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: siena_201309 $'
+Character(len=128) :: Version = '$Id: strat_cloud.F90,v 20.0 2013/12/13 23:22:09 fms Exp $'
+Character(len=128) :: Tagname = '$Name: tikal $'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -1420,7 +1420,17 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
       SA_out = Cloud_state%SA_out
       rain3d = Precip_state%rain3d
       snow3d = Precip_state%snow3d
-      snowclr3d = Precip_state%snowclr3d
+!RSH
+!  for r-k, snow in cloud is included in cloud ice. For mg and ncar,
+!  snow is not included in cloud ice, so all snow must be put into
+!  snowclr3d which for those schemes is used to hold the total 
+!  precipitating ice field.
+      if (Constants%do_mg_ncar_microphys .or.  &
+                                          Constants%do_mg_microphys) then
+        snowclr3d = Precip_state%snow3d
+      else
+        snowclr3d = Precip_state%snowclr3d
+      endif
       surfrain = Precip_state%surfrain
       surfsnow = Precip_state%surfsnow
       f_snow_berg = Cloud_processes%f_snow_berg
