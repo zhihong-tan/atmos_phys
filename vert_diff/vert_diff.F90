@@ -84,8 +84,8 @@ integer :: liq_wat, ice_wat, cld_amt, liq_drp, ice_num
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 20.0 2013/12/13 23:22:25 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 20.0.4.3 2014/03/03 23:24:40 Niki.Zadeh Exp $'
+character(len=128) :: tagname = '$Name: tikal_201403 $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -216,8 +216,10 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
     endif
     ! if tracer goes through surface flux, allocate memory to hold f
     ! between downward and upward sweeps
-    if(tracers(n)%do_surf_exch)&
-         allocate(tracers(n)%f(idim,jdim,kdim-1))
+    ! initialize f to a non-physical value to trap later invalid referencing
+    if (tracers(n)%do_surf_exch) then
+      allocate(tracers(n)%f(idim,jdim,kdim-1)) ; tracers(n)%f(:,:,:) = -1.0e20
+    endif
  enddo
 
  write(logunit,*)'Tracer vertical diffusion properties:'
@@ -393,7 +395,7 @@ integer :: i, j, n, kb, ie, je, ntr, nlev
 
     if(tracers(n)%do_surf_exch) then
        ! store f for future use on upward sweep
-       tracers(n)%f(is:ie,js:je,:) = f_tr(:,:,:)
+       tracers(n)%f(is:ie,js:je,1:nlev-1) = f_tr(:,:,1:nlev-1)
     else
        ! upward sweep of tridaigonal solver for tracers that do not exchange 
        ! with surface
@@ -470,7 +472,7 @@ integer :: i, j, n, kb, ie, je, ntr, nlev
 
       if(tracers(n)%do_surf_exch) then
          ! store f for future use on upward sweep
-         tracers(n)%f(is:ie,js:je,:) = f_tr(:,:,:)
+         tracers(n)%f(is:ie,js:je,1:nlev-1) = f_tr(:,:,1:nlev-1)
       else
        ! upward sweep of tridaigonal solver for tracers that do not exchange 
          ! with surface

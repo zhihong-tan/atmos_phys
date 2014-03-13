@@ -68,7 +68,7 @@ module cldwat2m_micro
 !--version number--------------------------------------------------------
  
 character(len=128) :: Version = '$Id: cldwat2m_micro.F90,v 20.0 2013/12/13 23:21:51 fms Exp $'
-character(len=128) :: Tagname = '$Name: tikal $'
+character(len=128) :: Tagname = '$Name: tikal_201403 $'
 
  
 INTEGER, PARAMETER :: sp = SELECTED_REAL_KIND(6,30)

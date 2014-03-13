@@ -26,7 +26,7 @@ private
 !   ---- version number ----
 
  character(len=128) :: version = '$Id: betts_miller.F90,v 19.0 2012/01/06 20:01:31 fms Exp $'
- character(len=128) :: tagname = '$Name: tikal $'
+ character(len=128) :: tagname = '$Name: tikal_201403 $'
 
 !-----------------------------------------------------------------------
 !   ---- local/private data ----

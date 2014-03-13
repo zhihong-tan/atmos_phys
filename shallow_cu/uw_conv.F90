@@ -48,7 +48,7 @@ MODULE UW_CONV_MOD
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128) :: version = '$Id: uw_conv.F90,v 20.0 2013/12/13 23:21:41 fms Exp $'
-  character(len=128) :: tagname = '$Name: tikal $'
+  character(len=128) :: tagname = '$Name: tikal_201403 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

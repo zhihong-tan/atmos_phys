@@ -182,8 +182,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 20.0 2013/12/13 23:18:40 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 20.0.2.3 2014/02/24 15:01:21 wfc Exp $'
+character(len=128) :: tagname = '$Name: tikal_201403 $'
 
 
 !---------------------------------------------------------------------
@@ -1146,13 +1146,13 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
 !        'kg/kg/s', missing_value=missing_value)
 !<--cjg
 
-      allocate (id_tracer_phys(nt))      ! cjg
-      allocate (id_tracer_phys_vdif_dn(nt))
-      allocate (id_tracer_phys_vdif_up(nt))
-      allocate (id_tracer_phys_turb(nt))
-      allocate (id_tracer_phys_moist(nt))
+      allocate (id_tracer_phys(ntp))      ! cjg
+      allocate (id_tracer_phys_vdif_dn(ntp))
+      allocate (id_tracer_phys_vdif_up(ntp))
+      allocate (id_tracer_phys_turb(ntp))
+      allocate (id_tracer_phys_moist(ntp))
 
-      do n = 1,nt
+      do n = 1,ntp
 
         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
                                units = tracer_units)
@@ -2351,7 +2351,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                            Time_next, is, js, 1, rmask=mask )
       endif
 
-      do n=1,nt
+      do n=1,ntp
         if (id_tracer_phys_turb(n) > 0) then
           used = send_data ( id_tracer_phys_turb(n), -2.0*rdt(:,:,:,n), &
                              Time_next, is, js, 1, rmask=mask )
@@ -2364,8 +2364,8 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                              p_half, p_full, z_half, z_full, u_star, &
                              b_star, q_star, rough_mom, lat,         &
                              convect(is:ie,js:je),                   &
-                             u, v, t, q, r(:,:,:,1:ntp), um, vm,     &
-                             tm, qm, rm(:,:,:,1:ntp),                &
+                             u, v, t, q, r(:,:,:,:), um, vm,     & ! need to pass all tracers for CLUBB
+                             tm, qm, rm(:,:,:,:),                & ! need to pass all tracers for CLUBB
                              udt, vdt, tdt, qdt, rdt,                &
                              diff_t_vert, diff_m_vert, gust, z_pbl,  &
                              mask=mask, kbot=kbot             )
@@ -2377,7 +2377,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                            Time_next, is, js, 1, rmask=mask )
       endif
 
-      do n=1,nt
+      do n=1,ntp
         if (id_tracer_phys_turb(n) > 0) then
           used = send_data ( id_tracer_phys_turb(n), +2.0*rdt(:,:,:,n), &
                              Time_next, is, js, 1, rmask=mask )
@@ -2463,7 +2463,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                            Time_next, is, js, 1, rmask=mask )
       endif
 
-      do n=1,nt
+      do n=1,ntp
         if (id_tracer_phys_vdif_dn(n) > 0) then
           used = send_data ( id_tracer_phys_vdif_dn(n), -2.0*rdt(:,:,:,n), &
                              Time_next, is, js, 1, rmask=mask )
@@ -2472,23 +2472,35 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 
       call mpp_clock_begin ( diff_down_clock )
       radturbten(is:ie,js:je,:) = radturbten(is:ie,js:je,:) - tdt(:,:,:)
-      call vert_diff_driver_down (is, js, Time_next, dt, p_half,   &
-                                  p_full, z_full,   &
-                                  diff_m(is:ie,js:je,:),         &
-                                  diff_t(is:ie,js:je,:),         &
-                                  um ,vm ,tm ,qm ,rm(:,:,:,1:ntp), &
-                                  dtau_du, dtau_dv, tau_x, tau_y,  &
-                                  udt, vdt, tdt, qdt, rdt,       &
-                                  Surf_diff,                     &
-                                  diff_t_clubb=diff_t_clubb(is:ie,js:je,:),   &   ! cjg
-                                  mask=mask, kbot=kbot           )
+      if ( do_clubb > 0 ) then 
+        call vert_diff_driver_down (is, js, Time_next, dt, p_half,   &
+                                    p_full, z_full,   &
+                                    diff_m(is:ie,js:je,:),         &
+                                    diff_t(is:ie,js:je,:),         &
+                                    um ,vm ,tm ,qm ,rm(:,:,:,1:ntp), &
+                                    dtau_du, dtau_dv, tau_x, tau_y,  &
+                                    udt, vdt, tdt, qdt, rdt,       &
+                                    Surf_diff,                     &
+                                    diff_t_clubb=diff_t_clubb(is:ie,js:je,:),   &   ! cjg
+                                    mask=mask, kbot=kbot           )
+      else
+        call vert_diff_driver_down (is, js, Time_next, dt, p_half,   &
+                                    p_full, z_full,   &
+                                    diff_m(is:ie,js:je,:),         &
+                                    diff_t(is:ie,js:je,:),         &
+                                    um ,vm ,tm ,qm ,rm(:,:,:,1:ntp), &
+                                    dtau_du, dtau_dv, tau_x, tau_y,  &
+                                    udt, vdt, tdt, qdt, rdt,       &
+                                    Surf_diff,                     &
+                                    mask=mask, kbot=kbot           )
+      endif
 
       if (id_tdt_phys_vdif_dn > 0) then
         used = send_data ( id_tdt_phys_vdif_dn, +2.0*tdt(:,:,:), &
                            Time_next, is, js, 1, rmask=mask )
       endif
 
-      do n=1,nt
+      do n=1,ntp
         if (id_tracer_phys_vdif_dn(n) > 0) then
           used = send_data ( id_tracer_phys_vdif_dn(n), +2.0*rdt(:,:,:,n), &
                              Time_next, is, js, 1, rmask=mask )
@@ -2815,7 +2827,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            Time_next, is, js, 1, rmask=mask )
       endif
 
-      do n=1,nt
+      do n=1,ntp
         if (id_tracer_phys_vdif_up(n) > 0) then
           used = send_data ( id_tracer_phys_vdif_up(n), -2.0*rdt(:,:,:,n), &
                              Time_next, is, js, 1, rmask=mask )
@@ -2852,7 +2864,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            Time_next, is, js, 1, rmask=mask )
       endif
 
-      do n=1,nt
+      do n=1,ntp
         if (id_tracer_phys_vdif_up(n) > 0) then
           used = send_data ( id_tracer_phys_vdif_up(n), +2.0*rdt(:,:,:,n), &
                              Time_next, is, js, 1, rmask=mask )
@@ -2871,7 +2883,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                              Time_next, is, js, 1, rmask=mask )
         endif
 
-        do n=1,nt
+        do n=1,ntp
           if (id_tracer_phys_moist(n) > 0) then
             used = send_data ( id_tracer_phys_moist(n), -2.0*rdt(:,:,:,n), &
                                Time_next, is, js, 1, rmask=mask )
@@ -2887,7 +2899,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
         do i=2,size(p_full,3)
           pflux(:,:,i) = 0.5E+00*(p_full(:,:,i-1) + p_full(:,:,i))
         end do
-	pflux(:,:,size(p_full,3)+1) = p_full(:,:,size(p_full,3)) 
+        pflux(:,:,size(p_full,3)+1) = p_full(:,:,size(p_full,3)) 
         call aerosol_driver (is, js, Time, r, &
                              p_half, pflux, &
                              Aerosol, override_aerosols_cloud)
@@ -3102,7 +3114,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                              Time_next, is, js, 1, rmask=mask )
         endif
 
-        do n=1,nt
+        do n=1,ntp
           if (id_tracer_phys_moist(n) > 0) then
             used = send_data ( id_tracer_phys_moist(n), +2.0*rdt(:,:,:,n), &
                                Time_next, is, js, 1, rmask=mask )
@@ -3118,7 +3130,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
 !          used = send_data ( id_qdt_phys, qdt(:,:,:), &
 !                             Time_next, is, js, 1, rmask=mask )
 !       endif
-        do n=1,nt
+        do n=1,ntp
           if (id_tracer_phys(n) > 0) then
             used = send_data ( id_tracer_phys(n), rdt(:,:,:,n), &
                                Time_next, is, js, 1, rmask=mask )
@@ -3163,10 +3175,10 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
           tca = 0.
           cca = 0.
           do n=1,ncol                      
-            where (stoch_cloud_type(is:ie,js:je,:,n) > 0) 
+            where (stoch_cloud_type(is:ie,js:je,:,n) > 0.) 
               tca(:,:,:)  = tca(:,:,:) +  1.0
             end where
-            where (stoch_cloud_type(is:ie,js:je,:,n) == 2) 
+            where (stoch_cloud_type(is:ie,js:je,:,n) == 2.) 
               cca(:,:,:)  = cca(:,:,:) +  1.0
             end where
           end do
@@ -3231,7 +3243,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                 nls = 0
                 ncc = 0
                 do n=1,ncol                       
-                  if (stoch_cloud_type(i+is-1,j+js-1,k,n) == 1) then
+                  if (stoch_cloud_type(i+is-1,j+js-1,k,n) == 1.) then
                     nls = nls + 1
                     lsliq(i,j,k) = lsliq(i,j,k) +  &
                                      stoch_conc_drop(i+is-1,j+js-1,k,n)
@@ -3241,7 +3253,7 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                                      stoch_size_drop(i+is-1,j+js-1,k,n)
                     reff_lsclice(i,j,k) = reff_lsclice(i,j,k) +  &
                                      stoch_size_ice (i+is-1,j+js-1,k,n)
-                  else if (stoch_cloud_type(i+is-1,j+js-1,k,n) == 2)then
+                  else if (stoch_cloud_type(i+is-1,j+js-1,k,n) == 2.)then
                     ncc = ncc + 1
                     ccliq(i,j,k) = ccliq(i,j,k) +  &
                                      stoch_conc_drop(i+is-1,j+js-1,k,n)
@@ -3303,10 +3315,10 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
               flag_cc = 0
               do k=1, size(stoch_cloud_type,3)
                 do n=1,ncol                        
-                  if (stoch_cloud_type(i+is-1,j+js-1,k,n) == 1) then
+                  if (stoch_cloud_type(i+is-1,j+js-1,k,n) == 1.) then
                     flag_ls = 1
                     exit
-                  else if(stoch_cloud_type(i+is-1,j+js-1,k,n) == 2) then
+                  else if(stoch_cloud_type(i+is-1,j+js-1,k,n) == 2.) then
                     flag_cc = 1
                     exit
                   endif

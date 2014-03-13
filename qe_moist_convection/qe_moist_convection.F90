@@ -53,7 +53,7 @@ module qe_moist_convection_mod
   !   ---- version number ----
 
   character(len=128) :: version = '$Id: qe_moist_convection.F90,v 20.0 2013/12/13 23:18:42 fms Exp $'
-  character(len=128) :: tag = '$Name: tikal $'
+  character(len=128) :: tag = '$Name: tikal_201403 $'
 
   !-----------------------------------------------------------------------
   !   ---- local/private data ----

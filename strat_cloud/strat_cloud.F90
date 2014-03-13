@@ -200,7 +200,7 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !---version number-------------------------------------------------------
 
 Character(len=128) :: Version = '$Id: strat_cloud.F90,v 20.0 2013/12/13 23:22:09 fms Exp $'
-Character(len=128) :: Tagname = '$Name: tikal $'
+Character(len=128) :: Tagname = '$Name: tikal_201403 $'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------

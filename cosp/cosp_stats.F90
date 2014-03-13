@@ -5,7 +5,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: cosp_stats.F90,v 20.0 2013/12/13 23:15:52 fms Exp $
-! $Name: tikal $
+! $Name: tikal_201403 $
 ! cosp_version = 1.3.2
 
 #endif
