@@ -67,7 +67,7 @@ use time_manager_mod,  only : time_type,   &
                               assignment(=), &
                               decrement_time
 use time_interp_mod,   only : time_interp, YEAR
-use constants_mod,     only : grav, PI
+use constants_mod,     only : grav, PI, SECONDS_PER_DAY
 
 implicit none
 private 
@@ -100,8 +100,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 20.0 2013/12/13 23:23:41 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal $'
+'$Id: interpolator.F90,v 20.0.2.2 2014/02/27 14:43:46 wfc Exp $'
+character(len=128) :: tagname = '$Name: tikal_201403 $'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 
@@ -313,6 +313,7 @@ real, dimension(:), allocatable  :: alpha
 integer   :: j, i
 logical :: non_monthly
 character(len=24) :: file_calendar
+character(len=256) :: error_mesg
 integer :: model_calendar
 integer :: yr, mo, dy, hr, mn, sc
 integer :: n
@@ -501,6 +502,13 @@ do i = 1, ndim
       select case(units(:3))
         case('day')
           fileunits = units(12:) !Assuming "days since YYYY-MM-DD HH:MM:SS"
+          if ( len_trim(fileunits) < 19 ) then
+            write(error_mesg, '(A49,A,A49,A)' ) &
+              'Interpolator_init : Incorrect time units in file ', &
+              trim(file_name), '. Expecting days since YYYY-MM-DD HH:MM:SS, found', &
+              trim(units)
+            call mpp_error(FATAL,error_mesg)
+          endif
           read(fileunits(1:4)  , *)  fileyr
           read(fileunits(6:7)  , *)  filemon
           read(fileunits(9:10) , *)  fileday
@@ -509,6 +517,13 @@ do i = 1, ndim
           read(fileunits(18:19), *)  filesec
         case('mon')
           fileunits = units(14:) !Assuming "months since YYYY-MM-DD HH:MM:SS"
+          if ( len_trim(fileunits) < 19 ) then
+            write(error_mesg, '(A49,A,A51,A)' ) &
+              'Interpolator_init : Incorrect time units in file ', &
+              trim(file_name), '. Expecting months since YYYY-MM-DD HH:MM:SS, found', &
+              trim(units)
+            call mpp_error(FATAL,error_mesg)
+          endif
           read(fileunits(1:4)  , *)  fileyr
           read(fileunits(6:7)  , *)  filemon
           read(fileunits(9:10) , *)  fileday
@@ -588,7 +603,7 @@ do i = 1, ndim
         non_monthly = .false.
         do n = 1, ntime-1
 !  Assume that the times in the data file correspond to days only.
-          if (time_in(n+1) > (time_in(n) + 32)) then
+          if (time_in(n+1) > (time_in(n) + 32.)) then
             non_monthly = .true.
             exit
           endif
@@ -612,7 +627,8 @@ do i = 1, ndim
 !! the time that is needed in time_slice is the displacement into the
 !! year, not the displacement from a base_time.
             clim_type%time_slice(n) = &
-                set_time(INT( ( time_in(n) - INT(time_in(n)) ) * 86400 ),INT(time_in(n)))
+                set_time(INT( ( time_in(n) - INT(time_in(n)) ) * SECONDS_PER_DAY ), &
+                               INT(time_in(n)))
           else
 
 !--------------------------------------------------------------------
@@ -633,7 +649,8 @@ do i = 1, ndim
 !    no calendar conversion needed.
 !---------------------------------------------------------------------
               clim_type%time_slice(n) = &
-                 set_time(INT( ( time_in(n) - INT(time_in(n)) ) * 86400 ),INT(time_in(n)))  &
+                 set_time(INT( ( time_in(n) - INT(time_in(n)) ) * SECONDS_PER_DAY ),&
+                                 INT(time_in(n)))  &
                   + base_time
 
 !---------------------------------------------------------------------
@@ -1779,7 +1796,7 @@ endif ! (.not. separate_time_vary_calc)
 select case(clim_type%TIME_FLAG)
   case (LINEAR)
     do n=1, size(clim_type%field_name(:))
-      hinterp_data(:,:,:,n) = (1-clim_type%tweight)*  &
+      hinterp_data(:,:,:,n) = (1.-clim_type%tweight)*  &
                 clim_type%data(istart:iend,jstart:jend,:,clim_type%itaum,n)  +  &
                                  clim_type%tweight*   &
                 clim_type%data(istart:iend,jstart:jend,:,clim_type%itaup,n)
@@ -1788,11 +1805,11 @@ select case(clim_type%TIME_FLAG)
 ! Do sine fit to data at this point
   case (BILINEAR)
     do n=1, size(clim_type%field_name(:))
-      hinterp_data(:,:,:,n) = (1-clim_type%tweight1)*(1-clim_type%tweight3)*   &
+      hinterp_data(:,:,:,n) = (1.-clim_type%tweight1)*(1.-clim_type%tweight3)*   &
                    clim_type%pmon_pyear(istart:iend,jstart:jend,:,n) + &
-                              (1-clim_type%tweight2)*clim_type%tweight3*    &
+                              (1.-clim_type%tweight2)*clim_type%tweight3*    &
                    clim_type%nmon_pyear(istart:iend,jstart:jend,:,n) + &
-                               clim_type%tweight1* (1-clim_type%tweight3)*  &
+                               clim_type%tweight1* (1.-clim_type%tweight3)*  &
                    clim_type%pmon_nyear(istart:iend,jstart:jend,:,n) + &
                                clim_type%tweight2* clim_type%tweight3*   &
                    clim_type%nmon_nyear(istart:iend,jstart:jend,:,n)
@@ -2188,16 +2205,16 @@ if ( .not. clim_type%separate_time_vary_calc) then
     endif   !( .not. clim_type%separate_time_vary_calc) 
 select case(clim_type%TIME_FLAG)
   case (LINEAR)
-    hinterp_data = (1-clim_type%tweight) * clim_type%data(istart:iend,jstart:jend,:,clim_type%itaum,i) + &
+    hinterp_data = (1.-clim_type%tweight) * clim_type%data(istart:iend,jstart:jend,:,clim_type%itaum,i) + &
                        clim_type%tweight * clim_type%data(istart:iend,jstart:jend,:,clim_type%itaup,i)
 ! case (SEASONAL)
 ! Do sine fit to data at this point
   case (BILINEAR)
     hinterp_data = &
-    (1-clim_type%tweight1)  * (1-clim_type%tweight3) * clim_type%pmon_pyear(istart:iend,jstart:jend,:,i) + &
-    (1-clim_type%tweight2)  *    clim_type%tweight3  * clim_type%nmon_pyear(istart:iend,jstart:jend,:,i) + &
-         clim_type%tweight1 * (1-clim_type%tweight3) * clim_type%pmon_nyear(istart:iend,jstart:jend,:,i) + &
-         clim_type%tweight2 *     clim_type%tweight3 * clim_type%nmon_nyear(istart:iend,jstart:jend,:,i)
+    (1.-clim_type%tweight1) * (1.-clim_type%tweight3) * clim_type%pmon_pyear(istart:iend,jstart:jend,:,i) + &
+    (1.-clim_type%tweight2) *     clim_type%tweight3  * clim_type%nmon_pyear(istart:iend,jstart:jend,:,i) + &
+        clim_type%tweight1  * (1.-clim_type%tweight3) * clim_type%pmon_nyear(istart:iend,jstart:jend,:,i) + &
+        clim_type%tweight2  *     clim_type%tweight3  * clim_type%nmon_nyear(istart:iend,jstart:jend,:,i)
     
 
 
@@ -2602,16 +2619,16 @@ if ( .not. clim_type%separate_time_vary_calc) then
 
 select case(clim_type%TIME_FLAG)
   case (LINEAR)
-    hinterp_data = (1-clim_type%tweight)*clim_type%data(istart:iend,jstart:jend,:,clim_type%itaum,i) &
+    hinterp_data = (1.-clim_type%tweight)*clim_type%data(istart:iend,jstart:jend,:,clim_type%itaum,i) &
                      + clim_type%tweight*clim_type%data(istart:iend,jstart:jend,:,clim_type%itaup,i)
 ! case (SEASONAL)
 ! Do sine fit to data at this point
   case (BILINEAR)
     hinterp_data = &
-    (1-clim_type%tweight1)  * (1-clim_type%tweight3) * clim_type%pmon_pyear(istart:iend,jstart:jend,:,i) + &
-    (1-clim_type%tweight2)  *    clim_type%tweight3  * clim_type%nmon_pyear(istart:iend,jstart:jend,:,i) + &
-         clim_type%tweight1 * (1-clim_type%tweight3) * clim_type%pmon_nyear(istart:iend,jstart:jend,:,i) + &
-         clim_type%tweight2 *     clim_type%tweight3 * clim_type%nmon_nyear(istart:iend,jstart:jend,:,i)
+    (1.-clim_type%tweight1) * (1.-clim_type%tweight3) * clim_type%pmon_pyear(istart:iend,jstart:jend,:,i) + &
+    (1.-clim_type%tweight2) *     clim_type%tweight3  * clim_type%nmon_pyear(istart:iend,jstart:jend,:,i) + &
+         clim_type%tweight1 * (1.-clim_type%tweight3) * clim_type%pmon_nyear(istart:iend,jstart:jend,:,i) + &
+         clim_type%tweight2 *     clim_type%tweight3  * clim_type%nmon_nyear(istart:iend,jstart:jend,:,i)
 
 end select
 
@@ -3439,7 +3456,7 @@ namelist /interpolator_nml/ src_file
 ! initialize communication modules
 
 delt_days = INT(delt)
-delt_secs = INT(delt*86400.0) - delt_days*86400.0
+delt_secs = INT(delt*SECONDS_PER_DAY) - delt_days*SECONDS_PER_DAY
 
 write(*,*) delt, delt_days,delt_secs
 

@@ -309,7 +309,7 @@ type(time_type) :: Time
 
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 20.0 2013/12/13 23:24:10 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal $'
+character(len=128) :: tagname = '$Name: tikal_201403 $'
 !-----------------------------------------------------------------------
 
 contains
