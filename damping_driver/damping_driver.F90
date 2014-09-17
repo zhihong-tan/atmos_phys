@@ -48,12 +48,13 @@ module damping_driver_mod
    integer  :: nlev_rayfric = 1
    logical  :: do_mg_drag = .false.
    logical  :: do_cg_drag = .false.
-   logical  :: do_topo_drag = .false.
+   logical  :: do_topo_drag = .false., use_topo_drag = .true.
    logical  :: do_conserve_energy = .false.
 
    namelist /damping_driver_nml/  trayfric,   nlev_rayfric,  &
                                   do_cg_drag, do_topo_drag, &
-                                  do_mg_drag, do_conserve_energy
+                                  do_mg_drag, do_conserve_energy, &
+                                  use_topo_drag                      !stg
 
 !
 !   trayfric = damping time in seconds for rayleigh damping momentum
@@ -72,14 +73,17 @@ module damping_driver_mod
 integer :: id_udt_rdamp,  id_vdt_rdamp,   &
            id_udt_gwd,    id_vdt_gwd,     &
                           id_sgsmtn,      &
-           id_udt_cgwd,   id_taus
-integer    id_vdt_cgwd
+           id_udt_cgwd,   id_vdt_cgwd,    &
+           id_taubx,      id_tauby,       &
+           id_taus
 
 integer :: id_tdt_diss_rdamp,  id_diss_heat_rdamp, &
            id_tdt_diss_gwd,    id_diss_heat_gwd,   &
            id_tdt_diss_topo,   id_diss_heat_topo
 
-integer :: id_udt_topo,   id_vdt_topo,   id_taubx,  id_tauby
+integer :: id_udt_topo,   id_vdt_topo,    &
+           id_taubx_topo, id_tauby_topo,  &
+           id_taus_topo
 
 !----- missing value for all fields ------
 
@@ -99,8 +103,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 19.0 2012/01/06 20:05:04 fms Exp $'
- character(len=128) :: tagname = '$Name: tikal_201403 $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 19.0.14.2 2014/05/08 13:39:09 Chris.Golaz Exp $'
+ character(len=128) :: tagname = '$Name: tikal_201409 $'
 
 !-----------------------------------------------------------------------
 
@@ -265,8 +269,10 @@ contains
      call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf,  &
                       utnd, vtnd, ttnd, taubx, tauby, taus, kbot )
 
-     udt = udt + utnd
-     vdt = vdt + vtnd
+     if (use_topo_drag) then
+       udt = udt + utnd
+       vdt = vdt + vtnd
+     endif
 
 !----- diagnostics -----
 
@@ -280,16 +286,16 @@ contains
                            rmask=mask )
      endif
 
-     if ( id_taubx > 0 ) then
-       used = send_data ( id_taubx, taubx, Time, is, js )
+     if ( id_taubx_topo > 0 ) then
+       used = send_data ( id_taubx_topo, taubx, Time, is, js )
      endif
 
-     if ( id_tauby > 0 ) then
-        used = send_data ( id_tauby, tauby, Time, is, js )
+     if ( id_tauby_topo > 0 ) then
+        used = send_data ( id_tauby_topo, tauby, Time, is, js )
      endif
 
-     if ( id_taus > 0 ) then
-        used = send_data ( id_taus, taus, Time, is, js, 1, &
+     if ( id_taus_topo > 0 ) then
+        used = send_data ( id_taus_topo, taus, Time, is, js, 1, &
                            rmask=mask )
      endif
 
@@ -429,40 +435,40 @@ if (do_mg_drag) then
 
    id_taubx = &
    register_diag_field ( mod_name, 'taubx', axes(1:2), Time,        &
-                         'x base flux for grav wave drag', 'kg/m/s2', &
-                         missing_value=missing_value               )
+                         'x base flux for grav wave drag', 'N/m2',  &
+                         missing_value=missing_value )
 
    id_tauby = &
    register_diag_field ( mod_name, 'tauby', axes(1:2), Time,        &
-                         'y base flux for grav wave drag', 'kg/m/s2', &
-                         missing_value=missing_value )
+                         'y base flux for grav wave drag', 'N/m2',  &
+                         missing_value=missing_value  )
 
    id_taus = &
-   register_diag_field ( mod_name, 'taus', axes(1:3), Time,        &
-                       'saturation flux for gravity wave drag', 'kg/m/s2', &
-                      missing_value=missing_value               )
+   register_diag_field ( mod_name, 'taus', axes(1:3), Time,             &
+                       'saturation flux for gravity wave drag', 'N/m2', &
+                       missing_value=missing_value    )
 
    id_tdt_diss_gwd = &
-   register_diag_field ( mod_name, 'tdt_diss_gwd', axes(1:3), Time,    &
-                          'Dissipative heating from gravity wave drag',&
-                              'deg_k/s', missing_value=missing_value   )
+   register_diag_field ( mod_name, 'tdt_diss_gwd', axes(1:3), Time,     &
+                          'Dissipative heating from gravity wave drag', &
+                              'deg_K/s', missing_value=missing_value   )
        
    id_diss_heat_gwd = &
    register_diag_field ( mod_name, 'diss_heat_gwd', axes(1:2), Time,      &
-                'Integrated dissipative heating from gravity wave drag',&
+                'Integrated dissipative heating from gravity wave drag',  &
                                  'W/m2' )
 endif
 
    if (do_cg_drag) then
 
     id_udt_cgwd = &
-    register_diag_field ( mod_name, 'udt_cgwd', axes(1:3), Time,        &
+    register_diag_field ( mod_name, 'udt_cgwd', axes(1:3), Time,     &
                  'u wind tendency for cg gravity wave drag', 'm/s2', &
                       missing_value=missing_value               )
 
 
     id_vdt_cgwd = &
-    register_diag_field ( mod_name, 'vdt_cgwd', axes(1:3), Time,        &
+    register_diag_field ( mod_name, 'vdt_cgwd', axes(1:3), Time,     &
                  'v wind tendency for cg gravity wave drag', 'm/s2', &
                       missing_value=missing_value               )
 
@@ -479,44 +485,43 @@ endif
           sgsmtn(:,:) = -99999.
   endif
 
-
-
   if (do_topo_drag) then
 
    id_udt_topo = &
    register_diag_field ( mod_name, 'udt_topo', axes(1:3), Time,        &
-                       'u wind tendency for topo wave drag', 'm/s2', &
-                        missing_value=missing_value               )
+                         'u wind tendency for topo wave drag', 'm/s2', &
+                         missing_value=missing_value )
 
-  id_vdt_topo = &
+   id_vdt_topo = &
    register_diag_field ( mod_name, 'vdt_topo', axes(1:3), Time,        &
-                       'v wind tendency for topo wave drag', 'm/s2', &
-                         missing_value=missing_value               )
+                         'v wind tendency for topo wave drag', 'm/s2', &
+                         missing_value=missing_value )
 
-   id_taubx = &
-   register_diag_field ( mod_name, 'taubx', axes(1:2), Time,        &
-                     'x base flux for topo wave drag', 'kg/m/s2', &
-                        missing_value=missing_value               )
+   id_taubx_topo = &
+   register_diag_field ( mod_name, 'taubx_topo', axes(1:2), Time,      &
+                         'x base flux for topo wave drag', 'kg/m/s2',  &
+                         missing_value=missing_value )
 
-    id_tauby = &
-    register_diag_field ( mod_name, 'tauby', axes(1:2), Time,        &
-                    'y base flux for topo wave drag', 'kg/m/s2', &
-                      missing_value=missing_value )
+   id_tauby_topo = &
+   register_diag_field ( mod_name, 'tauby_topo', axes(1:2), Time,      &
+                         'y base flux for topo wave drag', 'kg/m/s2',  &
+                         missing_value=missing_value )
 
-    id_taus = &
-   register_diag_field ( mod_name, 'taus', axes(1:3), Time,        &
-                  'saturation flux for topo wave drag', 'kg/m/s2', &
-                     missing_value=missing_value               )
+   id_taus_topo = &
+   register_diag_field ( mod_name, 'taus_topo', axes(1:3), Time,          &
+                         'saturation flux for topo wave drag', 'kg/m/s2', &
+                         missing_value=missing_value )
 
    id_tdt_diss_topo = &
-   register_diag_field ( mod_name, 'tdt_diss_topo', axes(1:3), Time,    &
-                          'Dissipative heating from topo wave drag',&
-                              'deg_k/s', missing_value=missing_value   )
+   register_diag_field ( mod_name, 'tdt_diss_topo', axes(1:3), Time,   &
+                         'Dissipative heating from topo wave drag',    &
+                         'deg_k/s', missing_value=missing_value )
        
    id_diss_heat_topo = &
-   register_diag_field ( mod_name, 'diss_heat_topo', axes(1:2), Time,      &
-                'Integrated dissipative heating from topo wave drag',&
-                                 'W/m2' )
+   register_diag_field ( mod_name, 'diss_heat_topo', axes(1:2), Time,          &
+                         'Integrated dissipative heating from topo wave drag', &
+                         'W/m2' )
+
  endif
 
 

@@ -30,8 +30,8 @@ private  cloud_clear_xfer
 !-------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: rotstayn_klein_mp.F90,v 20.0 2013/12/13 23:22:05 fms Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201403 $'
+Character(len=128) :: Version = '$Id: rotstayn_klein_mp.F90,v 20.0.2.1.2.1 2014/02/24 18:01:02 wfc Exp $'
+Character(len=128) :: Tagname = '$Name: tikal_201409 $'
 
 !-------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -136,7 +136,9 @@ END SUBROUTINE rotstayn_klein_microp_init
 !########################################################################
 
 SUBROUTINE rotstayn_klein_microp (&
-                     idim, jdim, kdim, Nml, N3D, overlap, dtcloud,  &
+                     idim, jdim, kdim, Nml, N3D,  &
+                     total_activation,  &  ! cjg: total activation for RK
+                     overlap, dtcloud,  &
                      inv_dtcloud, pfull, deltpg, airdens, mask_present, &
                      mask, esat0, ql, qi, qa, ql_mean, qa_mean, qn_mean, &
                      omega, T, U, qv, qs, D_eros, dcond_ls, dcond_ls_ice, &
@@ -151,6 +153,7 @@ SUBROUTINE rotstayn_klein_microp (&
 type(strat_nml_type),                intent(in)   :: Nml
 LOGICAL,                             INTENT(IN)   :: mask_present,   &
                                                      limit_conv_cloud_frac
+logical,                             intent(in)   :: total_activation
 INTEGER,                             INTENT(IN)   :: overlap
 INTEGER,                             INTENT(IN)   :: idim, jdim, kdim
 INTEGER,                             intent(in)   :: n_diag_4d,  &
@@ -1414,7 +1417,11 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    calculate C_dt
 !------------------------------------------------------------------------
-          IF (    rk_act_only_if_ql_gt_qmin) THEN
+          if (total_activation) then  ! cjg: total activation for RK
+             C_dt(:,:,k) = max( 0.,  &
+                                 drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
+                                         qa_upd(:,:,k) - qn_upd(:,:,k))
+          ELSEIF (    rk_act_only_if_ql_gt_qmin) THEN
             where (ql_upd(:,:,k) .GT. Nml%qmin ) 
               C_dt(:,:,k) = max (delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
                                                       1.e6/airdens(:,:,k)
@@ -2468,9 +2475,9 @@ INTEGER,                             INTENT(IN)   :: otun
 !    add the ice falling out from cloud to  the qidt_fall diagnostic.
 !-----------------------------------------------------------------------
         if (diag_id%qidt_fall + diag_id%qi_fall_col > 0)  &
-             diag_4d(:,:,:,diag_pt%qidt_fall) =    &
-                      diag_4d(:,:,:,diag_pt%qidt_fall) - (snow_cld/deltpg)
-        
+             diag_4d(:,:,1:kdim,diag_pt%qidt_fall) =    &
+                      diag_4d(:,:,1:kdim,diag_pt%qidt_fall) - &
+                      (snow_cld(:,:,1:kdim)/deltpg(:,:,1:kdim))
 !-----------------------------------------------------------------------
 !    save output fields of profiles of total rain and snow and clear-sky
 !    snow.

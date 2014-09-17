@@ -12,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 20.0 2013/12/13 23:21:34 fms Exp $'
-  character(len=128) :: tagname = '$Name: tikal_201403 $'
+  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 19.0.4.1.2.1.2.1.2.1.6.1 2014/03/18 13:26:04 Ming.Zhao Exp $'
+  character(len=128) :: tagname = '$Name: tikal_201409 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -518,7 +518,7 @@ contains
           cp%fdr(k)    = 0.
           cp%fdrsat(k) = 0.
        else if (cpn%mixing_assumption.eq.2) then
-          scaleh1 = max(1000., cp%z(k))
+          scaleh1 = max(1000., cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
@@ -538,7 +538,7 @@ contains
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
+                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else
           scaleh1 = cpn%t00*Uw_p%rdgas/Uw_p%grav*log(cp%p(1)/cp%p(k))
           scaleh1 = max (1000., scaleh1)

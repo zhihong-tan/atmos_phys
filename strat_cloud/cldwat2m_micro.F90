@@ -33,8 +33,7 @@ module cldwat2m_micro
 #endif
 
 #ifdef GFDL_COMPATIBLE_MICROP
-  use constants_mod,             only: grav, rdgas, rvgas, cp_air, hlv, &
-                                       hlf, hls, tfreeze
+  use gamma_mg_mod,              only: gamma =>gamma_mg
   use strat_cloud_utilities_mod, only: diag_id_type, diag_pt_type,   &
                                        strat_nml_type
   use mpp_mod,                   only: input_nml_file
@@ -44,6 +43,7 @@ module cldwat2m_micro
                                        check_nml_error, close_file, &
                                        mpp_root_pe
   use simple_pdf_mod,            only: simple_pdf
+  use sat_vapor_pres_mod,        only: lookup_es2, lookup_es3, compute_qs
 #else
   use shr_kind_mod,   only: r8=>shr_kind_r8
   use spmd_utils,     only: masterproc
@@ -60,15 +60,15 @@ module cldwat2m_micro
 
   implicit none
   private
-  public :: ini_micro, mmicro_pcond, gamma, mmicro_end
+  public :: ini_micro, mmicro_pcond, mmicro_end
   save
  
 #ifdef GFDL_COMPATIBLE_MICROP
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
  
-character(len=128) :: Version = '$Id: cldwat2m_micro.F90,v 20.0 2013/12/13 23:21:51 fms Exp $'
-character(len=128) :: Tagname = '$Name: tikal_201403 $'
+character(len=128) :: Version = '$Id: cldwat2m_micro.F90,v 20.0.2.3.2.1 2014/05/16 14:50:42 Huan.Guo Exp $'
+character(len=128) :: Tagname = '$Name: tikal_201409 $'
 
  
 INTEGER, PARAMETER :: sp = SELECTED_REAL_KIND(6,30)
@@ -119,32 +119,21 @@ real(r8), private:: bimm,aimm !immersion freezing
 real(r8), private:: rhosu     !typical 850mn air density
 real(r8), private:: mi0       ! new crystal mass
 real(r8), private:: rin       ! radius of contact nuclei
-real(r8), private:: qcvar     ! 1/relative variance of sub-grid qc
 real(r8), private:: pi       ! pi
 
 ! Additional constants to help speed up code
 
 real(r8), private:: cons1
-real(r8), private:: cons2
-real(r8), private:: cons3
 real(r8), private:: cons4
 real(r8), private:: cons5
 real(r8), private:: cons6
 real(r8), private:: cons7
 real(r8), private:: cons8
-real(r8), private:: cons9
-real(r8), private:: cons10
 real(r8), private:: cons11
-real(r8), private:: cons12
 real(r8), private:: cons13
 real(r8), private:: cons14
-real(r8), private:: cons15
 real(r8), private:: cons16
 real(r8), private:: cons17
-real(r8), private:: cons18
-real(r8), private:: cons19
-real(r8), private:: cons20
-real(r8), private:: cons21
 real(r8), private:: cons22
 real(r8), private:: cons23
 real(r8), private:: cons24
@@ -152,12 +141,6 @@ real(r8), private:: cons25
 real(r8), private:: cons27
 real(r8), private:: cons28
 
-real(r8), private:: lammini
-real(r8), private:: lammaxi
-real(r8), private:: lamminr
-real(r8), private:: lammaxr
-real(r8), private:: lammins
-real(r8), private:: lammaxs
 
 real(r8), private:: tmax_fsnow ! max temperature for transition to 
                                ! convective snow
@@ -170,6 +153,10 @@ real(r8), private:: csmin,csmax,minrefl,mindbz
 
 !real(r8), private:: Berg_factor = 1._r8
 
+real(r8) :: icenuct  ! ice nucleation temperature: currently -5 degrees C
+
+real(r8) :: snowmelt ! what temp to melt all snow: currently 2 degrees C
+real(r8) :: rainfrze ! what temp to freeze all rain: currently -5 degrees C
 
 #ifdef GFDL_COMPATIBLE_MICROP
 
@@ -186,12 +173,20 @@ real       :: accretion_scale = 1.0_r8
 !<--cjg
 
 !-->cjg: imposed cloud or ice number
-logical,  private::             nccons = .false. ! nccons = true to specify constant cloud droplet number
-logical,  private::             nicons = .false. ! nicons = true to specify constant cloud ice number
-real(r8), private::             ncnst  = 100.e6  ! specified value (m-3) droplet num concentration (in-cloud not grid-mean) 
-real(r8), private::             ninst  = 0.1e6   ! specified value (m-3) ice num concentration (in-cloud not grid-mean)
+logical,  private::             nccons = .false. ! nccons = true to specify
+                                                 ! constant cloud droplet 
+                                                 ! number
+logical,  private::             nicons = .false. ! nicons = true to specify
+                                                 ! constant cloud ice 
+                                                 ! number
+real(r8), private::             ncnst  = 100.e6  ! specified value (m-3) 
+                                                 ! droplet num concen 
+                                                 ! (in-cloud not grid-mean)
+real(r8), private::             ninst  = 0.1e6   ! specified value (m-3) 
+                                                 ! ice num concentration 
+                                                 ! (in-cloud not grid-mean)
 !<--cjg
-
+ 
 logical           :: use_qcvar_in_accretion = .false.
 real(r8), private :: qcvar_min4accr         = 0.1
 real(r8), private :: qcvar_max4accr         = 0.5
@@ -199,34 +194,30 @@ real(r8), private :: accretion_scale_max    = 2.0
 real(r8), private :: accr_scale
 
 ! <---h1g, 2012-06-12
-logical           :: liu_in = .false. ! True = Liu et al 2007 Ice nucleation 
-                                   ! False = cooper fixed ice nucleation 
-                                   !         (MG2008)
+logical           :: liu_in = .false. 
+                             ! True = Liu et al 2007 Ice nucleation
+                             ! False = cooper fixed ice nucleation (MG2008)
+
 namelist / cldwat2m_micro_nml /   &
                  dcs, min_diam_ice,  &
                  allow_all_cldtop_collection, &
                  max_rho_factor_in_vt, &
-                rho_factor_in_max_vt, lowest_temp_for_sublimation, &
-!                                     lowest_temp_for_sublimation, &
+                 rho_factor_in_max_vt, lowest_temp_for_sublimation, &
 !--> cjg: modifications incorporated from Huan's code
                  allow_rain_num_evap, accretion_scale, &
 !<--cjg
-                rhosn,               &  ! h1g
-       nccons, ncnst,                &  ! cjg
-       nicons, ninst,                &  ! cjg
-       liu_in,                       &  ! h1g
-       use_qcvar_in_accretion,       &  ! h1g
-       qcvar_min4accr,               &  ! h1g
-       qcvar_max4accr,               &  ! h1g 
-       accretion_scale_max              ! h1g
+                 rhosn,               &  ! h1g
+                 nccons, ncnst,                &  ! cjg
+                 nicons, ninst,                &  ! cjg
+                 liu_in,                       &  ! h1g
+                 use_qcvar_in_accretion,       &  ! h1g
+                 qcvar_min4accr,               &  ! h1g
+                 qcvar_max4accr,               &  ! h1g
+                 accretion_scale_max              ! h1g
 
 
-real(r8), private, parameter :: tmelt  = tfreeze
-real(r8), private::             rhmini = 0.80_r8  ! Minimum rh for ice 
-                                                  ! cloud fraction
-real(r8), private, parameter :: epsqs = rdgas/rvgas
-!real(r8),parameter           :: d378 = 1. - epsqs      
-real(r8), private, parameter :: d378 = 1. - epsqs      
+real(r8), private :: tmelt 
+real(r8), private::             rhmini  ! minimum rh for ice cloud fraction
 #else
 logical, public :: liu_in = .true. ! True = Liu et al 2007 Ice nucleation 
                                    ! False = cooper fixed ice nucleation 
@@ -238,9 +229,11 @@ contains
 !=========================================================================
 
 #ifdef GFDL_COMPATIBLE_MICROP
-subroutine ini_micro (qcvar_in)
+subroutine ini_micro ( g_in,r_in,rv_in,cpp_in,tmelt_in, xxlv_in,&
+                       xlf_in,rhmini_in)
 
-real,  intent(in) :: qcvar_in
+real,  intent(in) ::  g_in,r_in,rv_in,cpp_in,xxlv_in,xlf_in, &
+                                tmelt_in, rhmini_in
 
 #else
 subroutine ini_micro
@@ -357,20 +350,21 @@ subroutine ini_micro
 
 #ifdef GFDL_COMPATIBLE_MICROP
 
-   qcvar = qcvar_in
 
-!obtain constants from constants_mod when in FMS
-   g = grav          !gravity
-   r = rdgas         !Dry air Gas constant: 
-                     !        note units(phys_constants are in J/K/kmol)
-   rv= rvgas         !water vapor gas contstant
-   cpp=cp_air        !specific heat of dry air
+   g = g_in
+   r = r_in
+   rv = rv_in
+   cpp = cpp_in
    rhow = 1000.0_r8  !density of liquid water
 
+   tmelt = tmelt_in
+
 ! latent heats
-   xxlv = hlv        !latent heat vaporization
-   xlf  = hlf        !latent heat freezing
-   xxls = hls        !latent heat of sublimation
+   xxlv = xxlv_in
+   xlf = xlf_in
+   xxls = xxlv + xlf !latent heat of sublimation
+   
+   rhmini = rhmini_in
 
 !---------------------------------------------------------------
 !     process namelist
@@ -448,7 +442,7 @@ subroutine ini_micro
 ! currently we assume spherical particles for cloud ice/snow
 ! m = cD^d
 
-   pi= 3.1415927_r8
+   pi = 3.14159265358979323846_r8
 
 ! cloud ice mass-diameter relationship
 
@@ -459,6 +453,7 @@ subroutine ini_micro
 
    cs = rhosn*pi/6._r8
    ds = 3._r8
+
 
 ! drop mass-diameter relationship
 
@@ -482,7 +477,7 @@ subroutine ini_micro
 ! ventilation constants for rain
 
    f1r = 0.78_r8
-   f2r = 0.32_r8
+   f2r = 0.308_r8
 
 ! autoconversion size threshold for cloud ice to snow (m)
 
@@ -492,7 +487,7 @@ subroutine ini_micro
 
 ! smallest mixing ratio considered in microphysics
 
-   qsmall = 1.e-14_r8  
+   qsmall = 1.e-18_r8  
 
 ! immersion freezing parameters, bigg 1953
 
@@ -506,6 +501,15 @@ subroutine ini_micro
 !#else
 !        rhosu = 85000._r8/(rair * tmelt)
 !#endif
+
+! Maximum temperature at which snow is allowed to exist
+  snowmelt = tmelt + 2._r8
+! Minimum temperature at which rain is allowed to exist
+  rainfrze = tmelt - 5._r8
+
+! Ice nucleation temperature
+  icenuct  = tmelt - 5._r8
+
 
 ! mass of new crystal due to aerosol freezing and growth (kg)
 
@@ -522,9 +526,6 @@ subroutine ini_micro
 ! 1 / relative variance of sub-grid cloud water distribution
 ! see morrison and gettelman, 2007, J. Climate for details
 
-#ifndef GFDL_COMPATIBLE_MICROP
-   qcvar = 2._r8
-#endif
 
 ! freezing temperature
    tt0=tmelt     
@@ -543,26 +544,16 @@ subroutine ini_micro
 ! Define constants to help speed up code (limit calls to gamma function)
 
    cons1=gamma(1._r8+di)
-   cons2=gamma(qcvar+2.47_r8)
-   cons3=gamma(qcvar)
    cons4=gamma(1._r8+br)
    cons5=gamma(4._r8+br)
    cons6=gamma(1._r8+ds)
    cons7=gamma(1._r8+bs)     
    cons8=gamma(4._r8+bs)     
-   cons9=gamma(qcvar+2._r8)     
-   cons10=gamma(qcvar+1._r8)
    cons11=gamma(3._r8+bs)
-   cons12=gamma(qcvar+1.15_r8)
    cons13=gamma(5._r8/2._r8+br/2._r8)
    cons14=gamma(5._r8/2._r8+bs/2._r8)
-   cons15=gamma(qcvar+bc/3._r8)
    cons16=gamma(1._r8+bi)
    cons17=gamma(4._r8+bi)
-   cons18=qcvar**2.47_r8
-   cons19=qcvar**2
-   cons20=qcvar**1.15_r8
-   cons21=qcvar**(bc/3._r8)
    cons22=(4._r8/3._r8*pi*rhow*(25.e-6_r8)**3)
    cons23=dcs**3
    cons24=dcs**2
@@ -570,17 +561,6 @@ subroutine ini_micro
    cons27=xxlv**2
    cons28=xxls**2
 
-#ifdef GFDL_COMPATIBLE_MICROP
-   lammaxi = 1._r8/min_diam_ice 
-   lammaxs = 1._r8/min_diam_ice 
-#else
-   lammaxi = 1._r8/10.e-6_r8
-   lammaxs = 1._r8/10.e-6_r8
-#endif
-   lammini = 1._r8/(2._r8*dcs)
-   lammaxr = 1._r8/20.e-6_r8
-   lamminr = 1._r8/500.e-6_r8
-   lammins = 1._r8/2000.e-6_r8
 
    return
 
@@ -593,15 +573,16 @@ end subroutine ini_micro
 #ifdef GFDL_COMPATIBLE_MICROP
 subroutine mmicro_pcond (dqa_activation, total_activation,    &
                          tiedtke_macrophysics, sub_column,&
-                         j, jdim, pver, pcols, ncol, deltatin, tn, &
-                         qn, qc_in, qi_in, nc_in, ni_in, p, pdel, cldn,   &
+                         j, jdim, pver, pcols, ncol, deltatin, &
+                         relvar, tn, &
+                         qn, qc_in, qi_in, nc_in, ni_in, p, pdel, pint, cldn,   &
                          liqcldf, icecldf, delta_cf,                   &
                          D_eros_l4, nerosc4, D_eros_i4, nerosi4, dqcdt, &
                          dqidt, naai, npccnin, rndst, nacon,       &
                          tlat, qvlat, qctend, qitend, nctend, nitend,&
                          prect, preci, rflx, sflx,        &
                          qrout,qsout, lsc_rain_size, lsc_snow_size,   &
-                         f_snow_berg, Nml, qa0, gamma_mg, SA_0, SA, &
+                         f_snow_berg, Nml, qa0, gamma_in, SA_0, SA, &
                          ssat_disposal, n_diag_4d, diag_4d, diag_id, &
                          diag_pt, do_clubb, qcvar_clubb)
 
@@ -615,6 +596,7 @@ integer,  intent(in) :: pver, pcols
 integer,  intent(in) :: ncol
 real(r8), intent(in) :: deltatin        ! time step (s)
 real(r8), intent(in) :: tn(pcols,pver)  ! input temperature (K)
+real(r8), intent(in) :: relvar(pcols,pver)  ! input cloud variance 
 real(r8), intent(in) :: qn(pcols,pver)  ! input h20 vapor mixing ratio 
                                            ! (kg/kg)
 ! note: all input cloud variables are grid-averaged
@@ -628,6 +610,7 @@ real(r8), intent(in) :: ni_in(pcols,pver) ! grid-average cloud ice number
 real(r8), intent(in) :: p(pcols,pver)     ! air pressure (pa)
 real(r8), intent(in) :: pdel(pcols,pver)  ! pressure difference across 
                                           ! level (pa)
+real(r8), intent(in) :: pint(pcols,pver+1)  ! pressure difference across 
 real(r8), intent(inout) :: cldn(pcols,pver)  
                                           ! cloud fraction
 real(r8), intent(in) :: liqcldf(pcols,pver)  ! liquid cloud fraction
@@ -678,7 +661,7 @@ real(r8), intent(out) :: f_snow_berg  (pcols,pver) ! ratio of bergeron
                                                    ! riming and freezing
 type(strat_nml_type), intent(in) :: Nml
 real(r8), intent(in) :: qa0(pcols,pver)       ! 
-real(r8), intent(in) :: gamma_mg(pcols,pver)       ! 
+real(r8), intent(in) :: gamma_in(pcols,pver)       ! 
 real(r8), intent(in) :: SA_0 (pcols,pver)       ! 
 real(r8), intent(inout) :: SA   (pcols,pver)       ! 
 real(r8), intent(out) :: ssat_disposal(pcols,pver) 
@@ -690,8 +673,8 @@ TYPE(diag_id_type),INTENT(IN) :: diag_id
 TYPE(diag_pt_type),INTENT(INout) :: diag_pt
 
 ! --> h1g, 2012-10-05
-   integer,  intent(in), optional :: do_clubb
-   real(r8), intent(in), optional :: qcvar_clubb(pcols,pver)
+integer,  intent(in), optional :: do_clubb
+real(r8), intent(in), optional :: qcvar_clubb(:,:)
 ! <-- h1g, 2012-10-05
 
 #else
@@ -942,7 +925,7 @@ subroutine mmicro_pcond ( sub_column,       &
    real(r8) :: dum3                ! temporary dummy variable
 
 ! droplet number
-   real(r8) :: nucclim(pver)
+   real(r8) :: nucclim(pcols,pver)
    real(r8) :: nucclimo(pcols,pver)
    real(r8) :: npccno(pcols,pver)
    real(r8) :: nnuccco(pcols,pver)
@@ -956,7 +939,7 @@ subroutine mmicro_pcond ( sub_column,       &
    real(r8) :: D_eros_l(pcols,pver)
 
 ! cloud ice number
-   real(r8) :: nucclim1i(pver)
+   real(r8) :: nucclim1i(pcols,pver)
    real(r8) :: nucclim1io(pcols,pver)
    real(r8) :: nnuccdo(pcols,pver)
    real(r8) :: nsacwio(pcols,pver)
@@ -1004,6 +987,9 @@ subroutine mmicro_pcond ( sub_column,       &
 ! local workspace
 ! all units mks unless otherwise stated
 
+real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
+                                     ! interpolation from
+                                      ! interface to mid-level
 ! temporary variables for sub-stepping 
         real(r8) :: t1(pcols,pver)
         real(r8) :: q1(pcols,pver)
@@ -1068,7 +1054,7 @@ subroutine mmicro_pcond ( sub_column,       &
         real(r8) :: cmei(pcols,pver) ! dep/sublimation rate of cloud ice
         real(r8) :: cwml(pcols,pver) ! cloud water mixing ratio
         real(r8) :: cwmi(pcols,pver) ! cloud ice mixing ratio
-        real(r8) :: nnuccd(pver)     ! ice nucleation rate from 
+        real(r8) :: nnuccd(pcols,pver)     ! ice nucleation rate from 
                                      ! deposition/cond.-freezing
         real(r8) :: mnuccd(pver)     ! mass tendency from ice nucleation
 
@@ -1081,7 +1067,7 @@ subroutine mmicro_pcond ( sub_column,       &
 
         real(r8) :: dum1,dum2   !general dummy variables
 
-        real(r8) :: npccn(pver)      ! droplet activation rate
+        real(r8) :: npccn(pcols,pver)      ! droplet activation rate
         real(r8) :: qcic(pcols,pver) ! in-cloud cloud liquid mixing ratio
         real(r8) :: qiic(pcols,pver) ! in-cloud cloud ice mixing ratio
         real(r8) :: qniic(pcols,pver)! in-precip snow mixing ratio
@@ -1103,7 +1089,7 @@ subroutine mmicro_pcond ( sub_column,       &
         real(r8) :: rercld(pcols,pver) ! effective radius calculation for 
                                        ! rain + cloud (combined size of 
                                        ! precip & cloud drops)
-        real(r8) :: arcld(pcols,pver)  ! averaging control flag
+        integer  :: arcld(pcols,pver)  ! averaging control flag
         real(r8) :: Actmp              ! area cross section of drops
         real(r8) :: Artmp              ! area cross section of rain
 
@@ -1116,23 +1102,23 @@ subroutine mmicro_pcond ( sub_column,       &
         real(r8) :: nacnt              ! number conc of contact ice nuclei
         real(r8) :: mnuccc(pver)       ! mixing ratio tendency due to 
                                        ! freezing of cloud water
-        real(r8) :: nnuccc(pver)       ! number conc tendency due to 
+        real(r8) :: nnuccc(pcols,pver)       ! number conc tendency due to 
                                        ! freezing of cloud water
 
         real(r8) :: mnucct(pver)       ! mixing ratio tendency due to 
                                        ! contact freezing of cloud water
-        real(r8) :: nnucct(pver)       ! number conc tendency due to 
+        real(r8) :: nnucct(pcols,pver)       ! number conc tendency due to 
                                        ! contact freezing of cloud water
         real(r8) :: msacwi(pver)       ! mixing ratio tendency due to HM 
                                        ! ice multiplication
-        real(r8) :: nsacwi(pver)       ! number conc tendency due to HM 
+        real(r8) :: nsacwi(pcols,pver)       ! number conc tendency due to HM 
                                        ! ice multiplication
 
         real(r8) :: prc(pver)          ! qc tendency due to autoconversion 
                                        ! of cloud droplets
         real(r8) :: nprc(pver)         ! number conc tendency due to 
                                        ! autoconversion of cloud droplets
-        real(r8) :: nprc1(pver)        ! qr tendency due to autoconversion 
+        real(r8) :: nprc1(pcols,pver)        ! qr tendency due to autoconversion 
                                        ! of cloud droplets
         real(r8) :: nsagg(pver)        ! ns tendency due to 
                                        ! self-aggregation of snow
@@ -1143,7 +1129,7 @@ subroutine mmicro_pcond ( sub_column,       &
                                        ! of snow by droplets
         real(r8) :: psacws(pver)       ! mixing rat tendency due to 
                                        ! collection of droplets by snow
-        real(r8) :: npsacws(pver)      ! number conc tendency due to 
+        real(r8) :: npsacws(pcols,pver)      ! number conc tendency due to 
                                        ! collection of droplets by snow
         real(r8) :: uni                ! number-weighted cloud ice 
                                        ! fallspeed
@@ -1166,17 +1152,17 @@ subroutine mmicro_pcond ( sub_column,       &
                                        ! freezing of rain
         real(r8) :: pra(pver)          ! mixing rat tendnency due to 
                                        ! accretion of droplets by rain
-        real(r8) :: npra(pver)         ! nc tendnency due to accretion of 
+        real(r8) :: npra(pcols,pver)         ! nc tendnency due to accretion of 
                                        ! droplets by rain
         real(r8) :: nragg(pver)        ! nr tendency due to 
                                        ! self-collection of rain
         real(r8) :: prci(pver)         ! mixing rat tendency due to auto-
                                        ! conversion of cloud ice to snow
-        real(r8) :: nprci(pver)        ! number conc tendency due to auto-
+        real(r8) :: nprci(pcols,pver)        ! number conc tendency due to auto-
                                        ! conversion of cloud ice to snow
         real(r8) :: prai(pver)         ! mixing rat tendency due to 
                                        ! accretion of cloud ice by snow
-        real(r8) :: nprai(pver)        ! number conc tendency due to 
+        real(r8) :: nprai(pcols,pver)        ! number conc tendency due to 
                                        ! accretion of cloud ice by snow
         real(r8) :: qvs                ! liquid saturation vapor mixing 
                                        ! ratio
@@ -1257,8 +1243,8 @@ subroutine mmicro_pcond ( sub_column,       &
                                        ! droplet fallspeed parameter
         real(r8) :: ain(pcols,pver)    ! air density corrected cloud ice 
                                        ! fallspeed parameter
-        real(r8) :: nsubi(pver)        ! evaporation of cloud ice number
-        real(r8) :: nsubc(pver)        ! evaporation of droplet number
+        real(r8) :: nsubi(pcols,pver)        ! evaporation of cloud ice number
+        real(r8) :: nsubc(pcols,pver)        ! evaporation of droplet number
         real(r8) :: nsubs(pver)        ! evaporation of snow number
         real(r8) :: nsubr(pver)        ! evaporation of rain number
         real(r8) :: mtime              ! factor to account for droplet 
@@ -1399,6 +1385,8 @@ subroutine mmicro_pcond ( sub_column,       &
         real(r8) dmc,ssmc,dstrn        ! variables for modal scheme.
   
         real(r8), parameter :: cdnl    = 0.e6_r8    ! cloud droplet number limiter
+        real(r8) :: dumx1 (pcols,pver) ! var_coef result                 
+        real(r8) :: dum_2D(pcols,pver) 
 
 
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -1409,7 +1397,7 @@ subroutine mmicro_pcond ( sub_column,       &
 
 !Initialize rain size
     rercld(1:ncol,1:pver)=0._r8
-    arcld(1:ncol,1:pver)=0._r8
+    arcld(1:ncol,1:pver)=0
 
 !initialize radiation output variables
     pgamrad(1:ncol,1:pver)=0._r8 ! liquid gamma parameter for optics 
@@ -1446,6 +1434,19 @@ subroutine mmicro_pcond ( sub_column,       &
     meltsdt(1:ncol,1:pver)=0._r8
     frzrdt (1:ncol,1:pver)=0._r8
     mnuccdo(1:ncol,1:pver)=0._r8
+   ! Some inputs are only used once, to create a reference array that is
+   ! used repeatedly later. Rather than bothering to pack these, just
+  ! set the local reference directly from the inputs.
+
+  ! pint: used to set int_to_mid
+  ! interface to mid-level linear interpolation
+  do k = 1,pver
+     do i = 1, ncol
+ 
+         int_to_mid(i,k) = (p(i,k) - pint(i,k))/ &
+              (pint(i,k+1) - pint(i,k))
+      end do
+   end do
 #ifdef GFDL_COMPATIBLE_MICROP
     preo(1:ncol,1:pver) =0._r8
     prdso(1:ncol,1:pver)=0._r8
@@ -1512,18 +1513,14 @@ subroutine mmicro_pcond ( sub_column,       &
 
             rhof(i,k) = (rhosu/rho(i,k))**0.54_r8
 #ifdef GFDL_COMPATIBLE_MICROP
+            if (.not. rho_factor_in_max_vt) rhof(i,k) = 1.0
             rhof(i,k) = MIN (rhof(i,k), max_rho_factor_in_vt)
 #endif
             arn(i,k) = ar*rhof(i,k)
             asn(i,k) = as*rhof(i,k)
-            acn(i,k) = ac*rhof(i,k)
-            ain(i,k) = ai*rhof(i,k)
+            acn(i,k) = g*rhow/(18._r8*mu(i,k))
+            ain(i,k) = ai*(rhosu/rho(i,k))**0.35_r8
    
-!#ifdef GFDL_COMPATIBLE_MICROP
-!           if (.not. rho_factor_in_max_vt) rhof(i,k) = 1.0
-!           rhof(i,k) = MIn(rhof(i,k), 1.6)
-!#endif
-
 ! get dz from dp and hydrostatic approx
 ! keep dz positive (define as layer k-1 - layer k)
 
@@ -1603,12 +1600,20 @@ subroutine mmicro_pcond ( sub_column,       &
 ! find wet bulk temperature and saturation value for provisional t and q 
 ! without condensation
 
+#ifdef GFDL_COMPATIBLE_MICROP
+        call compute_qs (t(:,k), p(:,k), qs(:), q = q(:,k), esat = esl(:,k), es_over_liq = .true.)
+#else
         call vqsatd_water (t(1,k),p(1,k),es,qs,gammas,ncol) ! use rhw
+#endif
 
         do i=1,ncol
 
+#ifdef GFDL_COMPATIBLE_MICROP
+          call lookup_es3(t(i,k), esi(i,k))
+#else
           esl(i,k) = polysvp(t(i,k),0)
           esi(i,k) = polysvp(t(i,k),1)
+#endif
 
 ! hm fix, make sure when above freezing that esi=esl, not active yet
           if (t(i,k).gt.tmelt) esi(i,k) = esl(i,k)
@@ -1656,27 +1661,25 @@ subroutine mmicro_pcond ( sub_column,       &
 
 #ifdef GFDL_COMPATIBLE_MICROP
 
-          if (t(i,k).lt.tmelt - 5._r8) then
+          if (t(i,k).lt. icenuct     ) then
 
-! if aerosols interact with ice set number of activated ice nuclei
-            if ( liu_in ) then 
+! define particles available on this step (dum2).
+            if ( liu_in ) then
               dum2=naai(i,k)
               dumnnuc = (dum2 - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
-            elseif ( Nml%do_ice_nucl_wpdf ) THEN             
+            elseif ( Nml%do_ice_nucl_wpdf ) THEN
               if (total_activation) then
-                dum2 = naai(i,k)
                 if (Nml%activate_all_ice_always) then
-                   dumnnuc = (dum2 - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
+                  dum2 = naai(i,k)
                 else
                   if (delta_cf(i,k) .gt. 0._r8) then
-                    dumnnuc = (dum2 - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
+                  dum2 = naai(i,k)
                   else
-                    dumnnuc = 0._r8
+                     dum2  = 0.
                   endif
                 endif
               else if (dqa_activation) then
-                dum2 = naai(i,k)
-                dumnnuc = max(delta_cf(i,k), 0._r8)*dum2/deltat
+            dum2 = (naai(i,k)*max(delta_cf(i,k),0.0) + ni(i,k))/icldm(i,k)
               endif
             else
 ! default when aerosol field not used for nuclei source
@@ -1685,28 +1688,18 @@ subroutine mmicro_pcond ( sub_column,       &
 ! put limit on number of nucleated crystals, set to number at T=-30 C
 ! cooper (limit to value at -35 C)
               dum2=min(dum2,208.9e3_r8)/rho(i,k) ! convert from m-3 to kg-1
-              dumnnuc = (dum2 - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
             endif
 
-            dumnnuc = max(dumnnuc, 0._r8)
+              dumnnuc =  max (  &
+                       (dum2 - ni(i,k)/icldm(i,k))/deltat*icldm(i,k),0._r8)
 
-! get provisional ni and qi after nucleation in order to calculate
-! Bergeron process below
-            ninew = ni(i,k) + dumnnuc*deltat
-!What is proper if test here --  dqa or tiedtke or  ????
-! or is this incorrect and qi SHOULD increase here (and so also below where
-! mnuccd is defined)
-            if ( tiedtke_macrophysics .or. dqa_activation) then
-              qinew = qi(i,k)
-            else
-              qinew = qi(i,k) + dumnnuc*deltat*mi0
-            endif
           else   ! T>268
-            ninew=ni(i,k)
-            qinew=qi(i,k)
+            dumnnuc = 0.
           end if ! T>268
+          
 #else
-          if (t(i,k).lt.tmelt - 5._r8) then
+!         if (t(i,k).lt.tmelt - 5._r8) then
+          if (t(i,k).lt. icenuct     ) then
 
 ! if aerosols interact with ice set number of activated ice nuclei
             if (liu_in) then 
@@ -1723,24 +1716,30 @@ subroutine mmicro_pcond ( sub_column,       &
             dumnnuc = (dum2 - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
             dumnnuc = max(dumnnuc, 0._r8)
 
+          else   !  T>268
+            dumnnuc = 0.
+          end if    !  T>268
+#endif
 ! get provisional ni and qi after nucleation in order to calculate
 ! Bergeron process below
             ninew = ni(i,k) + dumnnuc*deltat
-            qinew = qi(i,k) + dumnnuc*deltat*mi0
-          else   !  T>268
-            ninew = ni(i,k)
-            qinew = qi(i,k)
-          end if    !  T>268
+!What is proper if test here --  dqa or tiedtke or  ????
+! or is this incorrect and qi SHOULD increase here (and so also below where
+! mnuccd is defined)
+#ifdef GFDL_COMPATIBLE_MICROP
+!           if ( tiedtke_macrophysics .or. dqa_activation) then
+            if ( tiedtke_macrophysics ) then
+              qinew = qi(i,k)
+            else
+              qinew = qi(i,k) + dumnnuc*deltat*mi0
+            endif
+#else
+              qinew = qi(i,k) + dumnnuc*deltat*mi0
 #endif
 
 ! get in-cloud qi and ni after nucleation
-          if (icldm(i,k) .gt. 0._r8) then 
             qiic(i,k) = qinew/icldm(i,k)
             niic(i,k) = ninew/icldm(i,k)
-          else
-            qiic(i,k) = 0._r8 
-            niic(i,k) = 0._r8
-          endif
 
 !-->cjg
 ! hm add 6/2/11 switch for specification of cloud ice number
@@ -1755,7 +1754,6 @@ subroutine mmicro_pcond ( sub_column,       &
 ! initialize bergeron process terms to zero
           cmei(i,k)= 0._r8
           berg(i,k) = 0._r8
-          prd       = 0._r8
 
 #ifdef GFDL_COMPATIBLE_MICROP
 !  define the large-scale cloud water and ice condensation/evaporation from
@@ -1788,38 +1786,28 @@ subroutine mmicro_pcond ( sub_column,       &
 
 !  calculate bergeron term.
 !  temp must be cold enough
-            if (t(i,k).lt.tmelt) then
+            if (t(i,k).lt.tmelt  .and. (qi(i,k).gt.qsmall)) then
 !  ice must exist
-              if (qi(i,k).gt.qsmall) then
-                bergtsf = 0._r8 ! bergeron time scale (fraction of 
                                 !                               timestep)
+#ifdef GFDL_COMPATIBLE_MICROP
+                call compute_qs (t(i,k), p(i,k), qvi, q=q(i,k), &
+                       esat = esi(i,k), es_over_liq_and_ice = .true.) 
+                call compute_qs (t(i,k), p(i,k), qvl, q=q(i,k), &
+                       esat = esl(i,k), es_over_liq = .true.) 
+#else
                 qvi = epsqs*esi(i,k)/(p(i,k) - (1._r8 - epsqs)*esi(i,k))
                 qvl = epsqs*esl(i,k)/(p(i,k) - (1._r8 - epsqs)*esl(i,k))
 
 !LIMITS  RSH 8/14/12: probably not needed here since liquid not likely to 
 !                     be present at these pressures, but not guaranteed. 
-              if( .not. lflag ) then
                 qvi = MAX(0._r8, MIN (qvi,1.0_r8))
                 qvl = MAX(0._r8, MIN (qvl,1.0_r8))
-              endif
+#endif
                 dqsidt =  xxls*qvi/(rv*t(i,k)**2)
                 abi = 1._r8 + dqsidt*xxls/cpp
 
 ! get ice size distribution parameters
-                if (qiic(i,k).ge.qsmall) then
-                  lami(k) = (cons1*ci* &
-                             niic(i,k)/qiic(i,k))**(1._r8/di)
-                  n0i(k) = niic(i,k)*lami(k)
-
-! check for slope
-! adjust vars
-                  if (lami(k).lt.lammini) then
-                    lami(k) = lammini
-                    n0i(k) = lami(k)**(di+1._r8)*qiic(i,k)/(ci*cons1)
-                  else if (lami(k).gt.lammaxi) then
-                    lami(k) = lammaxi
-                    n0i(k) = lami(k)**(di + 1._r8)*qiic(i,k)/(ci*cons1)
-                  end if
+        call size_dist_param_ice (qiic(i,k), niic(i,k), lami(k),n0i(k))
                   epsi = 2._r8*pi*n0i(k)*rho(i,k)*Dv(i,k)/(lami(k)*lami(k))
 
 ! liquid must exist  
@@ -1831,21 +1819,21 @@ subroutine mmicro_pcond ( sub_column,       &
 
 ! calculate Bergeron process
                     prd = epsi*(qvl - qvi)/abi
-                  else
-                    prd = 0._r8
-                  end if
+!514              else
+!514                prd = 0._r8
+!514              end if
 
 ! multiply by cloud fraction
                   prd = prd*min(icldm(i,k), lcldm(i,k))
 
 ! transfer of existing cloud liquid to ice
                   berg(i,k) = max(0._r8, prd)
-                end if  !end qiic   exists bergeron
+!94             end if  !end qiic   exists bergeron
 
                 if (berg(i,k).gt.0._r8) then
 #ifdef GFDL_COMPATIBLE_MICROP
                  if( lflag ) then
-                   bergtsf = max(0._r8, (qc(i,k)/berg(i,k))/deltat) 
+                   bergtsf = max(0._r8, (qc(i,k)/berg(i,k))/deltat)
                    if (bergtsf.lt.1._r8) berg(i,k) = max(0._r8,   &
                                                          qc(i,k)/deltat)
                  else
@@ -1860,11 +1848,10 @@ subroutine mmicro_pcond ( sub_column,       &
                   if (bergtsf.lt.1._r8) berg(i,k) = max(0._r8,   &
                                                          qc(i,k)/deltat)
 #endif
-                endif
+!514            endif
 #ifdef GFDL_COMPATIBLE_MICROP
 ! Marc includes a restriction on berg at T < -40C
-                if (t(i,k) < tmelt    - 40._r8 .and.  &
-        ( .not. lflag ) ) then
+                if (t(i,k) < tmelt  - 40._r8 .and. ( .not. lflag) ) then
                   berg(i,k) = 0._r8
                 endif
 #endif
@@ -1930,11 +1917,12 @@ subroutine mmicro_pcond ( sub_column,       &
 #ifdef GFDL_COMPATIBLE_MICROP
                 endif  ! (tiedtke_macrophysics)
 #endif
-              end if            !end ice exists loop qi(i,k).gt.qsmall
-            end if  ! t(i,k).lt.tmelt  
+              endif  ! berg > 0
+             endif  ! qc > qsmall
+            end if  ! ( t(i,k).lt.tmelt  and  qi(i,k).gt.qsmall)
 
 #ifdef GFDL_COMPATIBLE_MICROP
-          endif ! (do_berg1 .or. do_clubb>0)
+          endif ! (do_berg1 .or. lflag)
 #endif
 
 !!!!!  END OF BERGERON CALCULATION
@@ -1944,8 +1932,10 @@ subroutine mmicro_pcond ( sub_column,       &
           if( lflag ) then
              if ((-berg(i,k)).lt.-qc(i,k)/deltat) &
                                  berg(i,k) = max(qc(i,k)/deltat, 0._r8)
-          endif 
-#else 
+          endif
+#else
+! evaporation should not exceed available water
+ 
           if ((-berg(i,k)).lt.-qc(i,k)/deltat) &
                                  berg(i,k) = max(qc(i,k)/deltat, 0._r8)
 #endif
@@ -1961,24 +1951,21 @@ subroutine mmicro_pcond ( sub_column,       &
 
             if ((relhum(i,k)*esl(i,k)/esi(i,k)).lt.1._r8 .and.   &
                                               qiic(i,k).ge.qsmall ) then
+#ifdef GFDL_COMPATIBLE_MICROP
+                call compute_qs (t(i,k), p(i,k), qvi, q=q(i,k), &
+                       esat = esi(i,k), es_over_liq_and_ice = .true.) 
+                call compute_qs (t(i,k), p(i,k), qvl, q=q(i,k), &
+                       esat = esl(i,k), es_over_liq = .true.) 
+#else
               qvi = epsqs*esi(i,k)/(p(i,k) - (1._r8-epsqs)*esi(i,k))
               qvl = epsqs*esl(i,k)/(p(i,k) - (1._r8-epsqs)*esl(i,k))
+#endif
               dqsidt =  xxls*qvi/(rv*t(i,k)**2)
               abi = 1._r8 + dqsidt*xxls/cpp
 
 ! get ice size distribution parameters
-              lami(k) = (cons1*ci*niic(i,k)/qiic(i,k))**(1._r8/di)
-              n0i(k) = niic(i,k)*lami(k)
-
-! check for slope
-! adjust vars
-              if (lami(k).lt.lammini) then         
-                lami(k) = lammini
-                n0i(k) = lami(k)**(di + 1._r8)*qiic(i,k)/(ci*cons1)
-              else if (lami(k).gt.lammaxi) then
-                lami(k) = lammaxi
-                n0i(k) = lami(k)**(di+1._r8)*qiic(i,k)/(ci*cons1)
-              end if
+              call size_dist_param_ice (qiic(i,k), niic(i,k), lami(k), &
+                                                                   n0i(k))
       
               epsi = 2._r8*pi*n0i(k)*rho(i,k)*Dv(i,k)/(lami(k)*lami(k))
 
@@ -2003,17 +1990,19 @@ subroutine mmicro_pcond ( sub_column,       &
           cmei(i,k) = cmei(i,k)*omsm
 
 #ifdef GFDL_COMPATIBLE_MICROP
-       if( .not. lflag ) &  
-          cmel(i,k) = cmel(i,k)*omsm
+          if( .not. lflag ) &
+               cmel(i,k) = cmel(i,k)*omsm
 #endif 
 
 ! calculate ice nucleation dum2i
 
 #ifdef GFDL_COMPATIBLE_MICROP
-          if (t(i,k).lt.(tmelt - 5._r8)) then 
+          if (t(i,k).lt. icenuct       ) then 
+
             if ( liu_in) then
               dum2i(i,k) = naai(i,k)
             elseif ( Nml%do_ice_nucl_wpdf ) THEN
+
 ! using Liu et al. (2007) ice nucleation with hooks into simulated aerosol
 ! ice nucleation rate (dum2) has already been calculated and read in (naai)
 
@@ -2029,13 +2018,13 @@ subroutine mmicro_pcond ( sub_column,       &
 ! put limit on number of nucleated crystals, set to number at T=-30 C
 ! cooper (limit to value at -35 C)
               dum2i(i,k)=min(dum2i(i,k),208.9e3_r8)/rho(i,k) ! convert from
-                                                             ! m-3 to kg-1
+!                                                            ! m-3 to kg-1
             endif
           else
             dum2i(i,k)=0._r8
-          end if  ! t(i,k).lt.(tmelt - 5._r8)
+          end if  ! t(i,k).lt. icenuct       
 #else
-          if (t(i,k) .lt. (tmelt - 5._r8)) then 
+          if (t(i,k) .lt. icenuct        ) then 
             if (liu_in) then
 ! using Liu et al. (2007) ice nucleation with hooks into simulated aerosol
 ! ice nucleation rate (dum2) has already been calculated and read in (naai)
@@ -2052,7 +2041,7 @@ subroutine mmicro_pcond ( sub_column,       &
             endif
           else
             dum2i(i,k)=0._r8
-          end if  ! t(i,k).lt.(tmelt - 5._r8)
+          end if  ! t(i,k).lt. icenuct          
 #endif
 
         end do ! i loop
@@ -2077,13 +2066,12 @@ subroutine mmicro_pcond ( sub_column,       &
                IF (ttmp .LT. tmelt - 40._r8 .OR.  (ttmp .LE. tmelt .AND. &
                      qc(i,k) + (cmel(i,k) - berg(i,k))/deltat .LT.  &
                                                      3._r8*Nml%qmin)) THEN 
-                 eslt = polysvp(ttmp,1)
+                 call compute_qs (ttmp, p(i,k), qs2d(i,k), q = q(i,k), &
+                          esat = eslt, es_over_liq_and_ice = .true.)    
                ELSE
-                 eslt = polysvp(ttmp,0)
+                 call compute_qs (ttmp, p(i,k), qs2d(i,k), q = q(i,k), &
+                          esat = eslt, es_over_liq = .true.)    
                END IF
-               qs_d = p(i,k) - d378*eslt
-               qs_d = max(qs_d,eslt)
-               qs2d(i,k) = epsqs*eslt/qs_d 
              END DO
            END DO
          END IF
@@ -2095,17 +2083,17 @@ subroutine mmicro_pcond ( sub_column,       &
                IF (ttmp .LT. tmelt - 40._r8 .OR. (ttmp .LE. tmelt .AND. &
                       qc(i,k) + ( cmel(i,k) - berg(i,k))/deltat .LT.    &
                                                     3._r8*Nml%qmin) ) THEN 
-                 eslt = polysvp(ttmp,1)
+                 call compute_qs (ttmp, p(i,k), qs2d(i,k), q = q(i,k), &
+                          esat = eslt, es_over_liq_and_ice = .true.)    
                  tc=ttmp-tmelt   
 !!!              rhi=MIN( max_super_ice , 0.000195*tc**2+0.00266*tc+1.005)
                  rhi = 0.000195_r8*tc**2+0.00266_r8*tc+1.005_r8
                ELSE
-                 eslt = polysvp(ttmp,0)
+                 call compute_qs (ttmp, p(i,k), qs2d(i,k), q = q(i,k), &
+                          esat = eslt, es_over_liq = .true.)    
                  rhi = 1._r8
                END IF
-               qs_d = p(i,k) - d378*eslt
-               qs_d = max(qs_d,eslt)
-               qs2d(i,k)= rhi * epsqs*eslt/qs_d 
+               qs2d(i,k)= rhi * qs2d(i,k)          
              END DO
            END DO
          END IF
@@ -2114,7 +2102,7 @@ subroutine mmicro_pcond ( sub_column,       &
          IF ( Nml%pdf_org )   call error_mesg ( 'cldwat2m_micro', &
                                          'ERROR 1 simple_pdf ', FATAL)
          CALL  simple_pdf(j, ncol, jdim, pver, Nml%qmin, qa0, qtot,    &
-                          qs2d,  gamma_mg, Nml%qthalfwidth, Nml%betaP,  &
+                          qs2d,  gamma_in, Nml%qthalfwidth, Nml%betaP,  &
                           1._r8/deltat, SA_0, n_diag_4d, diag_4d,  &
                           diag_id, diag_pt, SA, cldn)
 
@@ -2164,15 +2152,19 @@ subroutine mmicro_pcond ( sub_column,       &
 #endif
 #ifdef GFDL_COMPATIBLE_MICROP
            if( lflag ) then
-             if (qc(i,k).ge.qsmall.or.qi(i,k).ge.qsmall.or.cmei(i,k).ge.qsmall) ltrue(i)=1
+             if (qc(i,k).ge.qsmall.or.qi(i,k).ge.qsmall.or.  &
+                                         cmei(i,k).ge.qsmall) ltrue(i)=1
            else
-             if (qc(i,k).ge.qsmall .or. qi(i,k).ge.qsmall .or.  &
-                cmei(i,k).ge.qsmall .or. cmel(i,k).ge.qsmall) ltrue(i) = 1
+             if ((qc(i,k)+cmel(i,k)*deltat).ge.qsmall .or.   &
+                (qi(i,k)+cmei(i,k)*deltat).ge.qsmall       &
+                                                            ) ltrue(i) = 1
 !cms also skip if total water amount is negative anywhere within the column
-           if (  qc(i,k) + qi(i,k) + qn(i,k)  .lt. -1.e-9_r8 .OR.   &
+             if (  qc(i,k) + cmel(i,k)*deltat + cmei(i,k)*deltat + &
+                              qi(i,k) + qn(i,k)  .lt. -1.e-9_r8 .OR.   &
                                          qn(i,k)  .lt. -1.e-9_r8 ) then
-             ltrue(i)=0
-             end if ! (qc(i,k) + qi(i,k) + qn(i,k)  .lt. -1.e-9_r8 .OR. ... )
+               ltrue(i)=0
+               exit
+             end if
            end if ! ( lflag )
 #endif
          end do
@@ -2290,7 +2282,7 @@ subroutine mmicro_pcond ( sub_column,       &
 
 #ifdef GFDL_COMPATIBLE_MICROP
 !  set erosion, bergeron and condensation fields to input values
-        if( .not. lflag ) then 
+          if( .not. lflag ) then
             nerosi(i,k) = nerosi4(i,k)
             nerosc(i,k) = nerosc4(i,k)
             D_eros_l(i,k) = D_eros_l4(i,k)
@@ -2298,8 +2290,9 @@ subroutine mmicro_pcond ( sub_column,       &
             cmel(i,k) = cmel_orig(i,k)
             cmei(i,k) = cmei_orig(i,k)        
             berg(i,k) = berg_orig(i,k)       
-        endif
+          endif
 #endif
+
 
 !  calculate new cldmax after adjustment to cldm above
 ! calculate precip fraction based on maximum overlap assumption
@@ -2330,27 +2323,27 @@ subroutine mmicro_pcond ( sub_column,       &
 
               if (cmei(i,k) < 0._r8 .and. qi(i,k) > qsmall .and.   &
                                                  cldm(i,k) > mincld) then
-                nsubi(k)=cmei(i,k)/qi(i,k)*ni(i,k)/cldm(i,k)
+                nsubi(i,k)=cmei(i,k)/qi(i,k)*ni(i,k)/cldm(i,k)
               else
-                nsubi(k) = 0._r8
+                nsubi(i,k) = 0._r8
               end if
 
 !!SHOULD NSUBC be nonzero ?? NCAR says no, MG includes code but it is 
 !! not activated with Tiedtke. Should it be activated in general for 
 !! non-Tiedtke case ??
               if( lflag ) then
-                 nsubc(k) = 0._r8  ! (do_clubb >0) 
-              else 
+                 nsubc(i,k) = 0._r8  ! (do_clubb >0)
+              else
               if (cmel(i,k) < 0._r8  .AND. qc(i,k) .ge. qsmall     &
                                      .and. cldm(i,k) > mincld )      then
-                nsubc(k) = cmel(i,k)/qc(i,k)*nc(i,k)/cldm(i,k)
+                nsubc(i,k) = cmel(i,k)/qc(i,k)*nc(i,k)/cldm(i,k)
               else
-                nsubc(k) = 0._r8
+                nsubc(i,k) = 0._r8
               end if ! (cmel(i,k) < 0._r8  .AND. qc(i,k) .ge. qsmall
-              endif  ! (do_clubb <=0) 
+              endif  ! (do_clubb <=0)
             else  ! tiedtke_macrophysics
-              nsubc(k) = 0._r8
-              nsubi(k) = 0._r8
+              nsubc(i,k) = 0._r8
+              nsubi(i,k) = 0._r8
             endif ! tiedtke_macrophysics
 #else
 ! decrease in ice number concentration due to sublimation/evap
@@ -2359,11 +2352,11 @@ subroutine mmicro_pcond ( sub_column,       &
 
             if (cmei(i,k) < 0._r8 .and. qi(i,k) > qsmall .and.   &
                                                 cldm(i,k) > mincld) then
-              nsubi(k) = cmei(i,k)/qi(i,k)*ni(i,k)/cldm(i,k)
+              nsubi(i,k) = cmei(i,k)/qi(i,k)*ni(i,k)/cldm(i,k)
             else
-              nsubi(k) = 0._r8
+              nsubi(i,k) = 0._r8
             end if
-            nsubc(k) = 0._r8
+            nsubc(i,k) = 0._r8
 #endif
 
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -2374,18 +2367,18 @@ subroutine mmicro_pcond ( sub_column,       &
 
 #ifndef GFDL_COMPATIBLE_MICROP
  
-            if (dum2i(i,k).gt.0._r8.and.t(i,k).lt.(tmelt - 5._r8).and. &
+            if (dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct       .and. &
                  relhum(i,k)*esl(i,k)/esi(i,k).gt. rhmini + 0.05_r8) then
  
 !if NCAI > 0. then set numice = ncai (as before)
-              nnuccd(k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
+              nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
                                                                 icldm(i,k)
-              nnuccd(k) = max(nnuccd(k), 0._r8)
+              nnuccd(i,k) = max(nnuccd(i,k), 0._r8)
               nimax = dum2i(i,k)*icldm(i,k)
 
 !Calc mass of new particles using new crystal mass...
 !also this will be multiplied by mtime as nnuccd is...
-              mnuccd(k) = nnuccd(k)*mi0
+              mnuccd(k) = nnuccd(i,k)*mi0
  
 !  add mnuccd to cmei....
               cmei(i,k) = cmei(i,k) + mnuccd(k)*mtime
@@ -2400,7 +2393,7 @@ subroutine mmicro_pcond ( sub_column,       &
               cmei(i,k) = cmei(i,k)*omsm
 
             else
-              nnuccd(k) =0._r8
+              nnuccd(i,k) =0._r8
               nimax = 0._r8
               mnuccd(k) = 0._r8
             end if  
@@ -2410,18 +2403,18 @@ subroutine mmicro_pcond ( sub_column,       &
 !  Note that ice nucleation calculated later on in code for 
 !  Tiedtke macrophysics case.
             if (.not. tiedtke_macrophysics) then
-              if (dum2i(i,k).gt.0._r8.and.t(i,k).lt.(tmelt - 5._r8).and. &
+              if (dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct       .and. &
                     relhum(i,k)*esl(i,k)/esi(i,k).gt. rhmini+0.05_r8) then
                 if( liu_in ) then
-                  nnuccd(k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
+                  nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
                                                                 icldm(i,k)
-                  nnuccd(k) = max(nnuccd(k), 0._r8)
+                  nnuccd(i,k) = max(nnuccd(i,k), 0._r8)
                 elseif (total_activation) then
-                  nnuccd(k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*   &
+                  nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*   &
                                                                 icldm(i,k)
-                  nnuccd(k) = max(nnuccd(k), 0._r8)
+                  nnuccd(i,k) = max(nnuccd(i,k), 0._r8)
                 else if (dqa_activation) then
-                  nnuccd(k) = max(delta_cf(i,k),0._r8) *dum2i(i,k)/deltatin
+                  nnuccd(i,k) = max(delta_cf(i,k),0._r8) *dum2i(i,k)/deltatin
                 endif
                 nimax = dum2i(i,k)*icldm(i,k)
 
@@ -2429,13 +2422,18 @@ subroutine mmicro_pcond ( sub_column,       &
 
 !Calc mass of new particles using new crystal mass...
 !also this will be multiplied by mtime as nnuccd is...
-                  mnuccd(k) = nnuccd(k) * mi0
+                  mnuccd(k) = nnuccd(i,k) * mi0
 
 !  add mnuccd to cmei....
                   cmei(i,k)= cmei(i,k) + mnuccd(k) * mtime
 
 !  limit cmei
-                  qvi = epsqs*esi(i,k)/(p(i,k) - (1._r8-epsqs)*esi(i,k))
+#ifdef GFDL_COMPATIBLE_MICROP
+                  call compute_qs (t(i,k), p(i,k), qvi, q=q(i,k), &
+                       esat = esi(i,k), es_over_liq_and_ice = .true.) 
+#else
+                   qvi = epsqs*esi(i,k)/(p(i,k) - (1._r8-epsqs)*esi(i,k))
+#endif
                   dqsidt =  xxls*qvi/(rv*t(i,k)**2)
                   abi = 1._r8 + dqsidt*xxls/cpp
                   cmei(i,k) = min(cmei(i,k),(q(i,k) - qvi)/abi/deltat)
@@ -2446,7 +2444,7 @@ subroutine mmicro_pcond ( sub_column,       &
                   mnuccd(k) = 0.
                 endif ! (dqa_activation)
               else
-                nnuccd(k)=0._r8
+                nnuccd(i,k)=0._r8
                 nimax = 0._r8
                 mnuccd(k) = 0._r8
               end if  
@@ -2498,7 +2496,7 @@ subroutine mmicro_pcond ( sub_column,       &
                 cmei(i,k) = (-qi(i,k)/deltat - berg(i,k))*omsm
               end if
             end if
-
+ 
           else
             if (qc(i,k) + (cmel(i,k) + D_eros_l(i,k) -    &
                                          berg(i,k))*deltat.lt.qsmall) then
@@ -2565,7 +2563,6 @@ subroutine mmicro_pcond ( sub_column,       &
                 end if
               end if
             end if
-
           endif
 #else
             if (qc(i,k) - berg(i,k)*deltat.lt.qsmall) then
@@ -2592,38 +2589,26 @@ subroutine mmicro_pcond ( sub_column,       &
 !  calculate ice nuclei activation for tiedtke macrophysics
 !  note: this is gridbox averaged
             if ( tiedtke_macrophysics) then
-              if (qiic(i,k).ge.qsmall .and. t(i,k).lt.tmelt - 5._r8) then
+              if (qiic(i,k).ge.qsmall .and. t(i,k).lt. icenuct     ) then
                 if (total_activation) then
-                  nnuccd(k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
+                if (Nml%activate_all_ice_always) then
+                   nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
+                else
+                  if (delta_cf(i,k) .gt. 0._r8) then
+                  nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
                                                                 icldm(i,k)
-                  nnuccd(k) = max(nnuccd(k), 0._r8)
+                  else
+                    nnuccd(i,k) = 0._r8
+                  endif
+                endif
+                  nnuccd(i,k) = max(nnuccd(i,k), 0._r8)
                 else if (dqa_activation) then
-                  nnuccd(k) = max(delta_cf(i,k),0._r8)*dum2i(i,k)/deltatin
+                  nnuccd(i,k) = max(delta_cf(i,k),0._r8)*dum2i(i,k)/deltatin
                 endif
                 nimax = dum2i(i,k)*icldm(i,k)
-!               if (.not. dqa_activation) then
-
-!Calc mass of new particles using new crystal mass...
-!also this will be multiplied by mtime as nnuccd is...
-!                 mnuccd(k) = nnuccd(k) * mi0
-
-!  add mnuccd to cmei....
-!                 cmei(i,k) = cmei(i,k) + mnuccd(k)*mtime
-
-!  limit cmei
-!                 qvi = epsqs*esi(i,k)/(p(i,k) - (1._r8-epsqs)*esi(i,k))
-!                 dqsidt =  xxls*qvi/(rv*t(i,k)**2)
-!                 abi = 1._r8 + dqsidt*xxls/cpp
-!                 cmei(i,k) = min(cmei(i,k), (q(i,k)-qvi)/abi/deltat)
-
-! limit for roundoff error
-!                 cmei(i,k) = cmei(i,k)*omsm
-!               else
-!                 mnuccd(k) = 0.
-!               endif   !(dqa_activation)
-                mnuccd(k) = 0._r8
+                  mnuccd(k) = 0.
               else
-                nnuccd(k)=0._r8
+                nnuccd(i,k)=0._r8
                 nimax = 0._r8
                 mnuccd(k) = 0._r8
               end if 
@@ -2643,8 +2628,8 @@ subroutine mmicro_pcond ( sub_column,       &
 #ifdef GFDL_COMPATIBLE_MICROP
             if (qcic(i,k).ge.qsmall) then   
               if( lflag ) then
-                npccn(k) = max(0._r8, npccnin(i,k))
-                dum2l(i,k) = (nc(i,k) + npccn(k)*deltat)/cldm(i,k)
+                npccn(i,k) = max(0._r8, npccnin(i,k))
+                dum2l(i,k) = (nc(i,k) + npccn(i,k)*deltat)/cldm(i,k)
                 dum2l(i,k) = max(dum2l(i,k), cdnl/rho(i,k)) ! sghan minimum
                                                        ! in #/cm3  
                 ncmax = dum2l(i,k)*cldm(i,k)
@@ -2652,35 +2637,35 @@ subroutine mmicro_pcond ( sub_column,       &
               else
               IF ( total_activation) THEN
                 dum2l(i,k) = max(0._r8, npccnin(i,k))  
-                npccn(k) = ((dum2l(i,k) - nc(i,k)/cldm(i,k))/deltat)* &
+                npccn(i,k) = ((dum2l(i,k) - nc(i,k)/cldm(i,k))/deltat)* &
                                                                  cldm(i,k)
-                npccn(k) = max(0._r8,npccn(k))
-                dum2l(i,k) = (nc(i,k) + npccn(k)*deltat)/cldm(i,k)
+                npccn(i,k) = max(0._r8,npccn(i,k))
+                dum2l(i,k) = (nc(i,k) + npccn(i,k)*deltat)/cldm(i,k)
                 dum2l(i,k) = max(dum2l(i,k), cdnl/rho(i,k)) ! sghan minimum
                                                             ! in #/cm3  
               ELSE IF   ( dqa_activation    ) THEN
 !delta_cf:  A_dt * (1.-qabar)   where A_dt = A*dt , A source rate
 ! Eq. 7 of Yi's 2007 paper
 !dum2l has already been multiplied by 1.e6/airdens(i,k)
-                npccn(k) = max (delta_cf(i,k), 0._r8)*npccnin(i,k)/deltatin
-                dum2l(i,k) = (nc(i,k) + npccn(k)*deltat)/cldm(i,k)
+                npccn(i,k) = max (delta_cf(i,k), 0._r8)*npccnin(i,k)/deltatin
+                dum2l(i,k) = (nc(i,k) + npccn(i,k)*deltat)/cldm(i,k)
               END IF
               ncmax = npccnin(i,k)*cldm(i,k)
-              endif
+             endif
             else
-              npccn(k)=0._r8
+              npccn(i,k)=0._r8
               ncmax = 0._r8
               dum2l(i,k) = 0._r8
             end if
 #else
             if (qcic(i,k).ge.qsmall) then   
-              npccn(k) = max(0._r8, npccnin(i,k))
-              dum2l(i,k) = (nc(i,k) + npccn(k)*deltat)/cldm(i,k)
+              npccn(i,k) = max(0._r8, npccnin(i,k))
+              dum2l(i,k) = (nc(i,k) + npccn(i,k)*deltat)/cldm(i,k)
               dum2l(i,k) = max(dum2l(i,k),cdnl/rho(i,k)) ! sghan minimum  
                                                        ! in #/cm3  
               ncmax = dum2l(i,k)*cldm(i,k)
             else
-              npccn(k)=0._r8
+              npccn(i,k)=0._r8
               dum2l(i,k)=0._r8
               ncmax = 0._r8
             end if
@@ -2694,68 +2679,16 @@ subroutine mmicro_pcond ( sub_column,       &
 !......................................................................
 ! cloud ice
 
-            if (qiic(i,k).ge.qsmall) then
+            call size_dist_param_ice (qiic(i,k), niic(i,k), lami(k),  &
+                                                                  n0i(k))
 
-! impose upper limit on in-cloud number concentration to prevent numerical 
-! error
-              niic(i,k) = min(niic(i,k), qiic(i,k)*1.e20_r8)
-              lami(k) = (cons1*ci*niic(i,k)/qiic(i,k))**(1._r8/di)
-              n0i(k) = niic(i,k)*lami(k)
-! check for slope
-! adjust vars
-              if (lami(k).lt.lammini) then
-                lami(k) = lammini
-                n0i(k) = lami(k)**(di+1._r8)*qiic(i,k)/(ci*cons1)
-                niic(i,k) = n0i(k)/lami(k)
-              else if (lami(k).gt.lammaxi) then
-                lami(k) = lammaxi
-                n0i(k) = lami(k)**(di+1._r8)*qiic(i,k)/(ci*cons1)
-                niic(i,k) = n0i(k)/lami(k)
-              end if
-            else
-              lami(k) = 0._r8
-              n0i(k) = 0._r8
-            end if  !qiic(i,k).ge.qsmall 
-
-            if (qcic(i,k).ge.qsmall) then
-
-! add upper limit to in-cloud number concentration to prevent numerical 
-! error
-              ncic(i,k) = min(ncic(i,k), qcic(i,k)*1.e20_r8)
-              ncic(i,k) = max(ncic(i,k), cdnl/rho(i,k)) ! sghan minimum 
-                                                        ! in #/cm  
-
-! get pgam from fit to observations of martin et al. 1994
-              pgam(k) = 0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k)) +   &
-                                                                 0.2714_r8
-              pgam(k) = 1._r8/(pgam(k)**2) - 1._r8
-              pgam(k) = max(pgam(k), 2._r8)
-              pgam(k) = min(pgam(k), 15._r8)
-
-! calculate lamc
-              lamc(k) = (pi/6._r8*rhow*ncic(i,k)*gamma(pgam(k) + 4._r8)/ &
-                        (qcic(i,k)*gamma(pgam(k) + 1._r8)))**(1._r8/3._r8)
-
-! lammin, 50 micron diameter max mean size
-              lammin = (pgam(k) + 1._r8)/50.e-6_r8
-              lammax = (pgam(k) + 1._r8)/2.e-6_r8
-
-              if (lamc(k).lt.lammin) then
-                lamc(k) = lammin
-                ncic(i,k) = 6._r8*lamc(k)**3*qcic(i,k)*  &
-                                 gamma(pgam(k)+1._r8)/ &
-                                    (pi*rhow*gamma(pgam(k) + 4._r8))
-              else if (lamc(k).gt.lammax) then
-                lamc(k) = lammax
-                ncic(i,k) = 6._r8*lamc(k)**3*qcic(i,k)* &
-                                    gamma(pgam(k)+1._r8)/ &
-                                        (pi*rhow*gamma(pgam(k) + 4._r8))
-              end if
+            call size_dist_param_liq (qcic(i,k), ncic(i,k), cdnl,    &
+                             rho(i,k), .true., pgam(k), lamc(k) )
 
 ! parameter to calculate droplet freezing
+            if (lamc(k) > 0._r8) then
               cdist1(k) = ncic(i,k)/gamma(pgam(k) + 1._r8) 
             else
-              lamc(k) = 0._r8
               cdist1(k) = 0._r8
             end if
 
@@ -2779,27 +2712,32 @@ subroutine mmicro_pcond ( sub_column,       &
                 prc(k) = 1350._r8*qcic(i,k)**2.47_r8* &
                       (ncic(i,k)/1.e6_r8*rho(i,k))**(-1.79_r8)
                 nprc(k) = prc(k)/(4._r8/3._r8*pi*rhow*(25.e-6_r8)**3)
-                nprc1(k) = prc(k)/(qcic(i,k)/ncic(i,k))
+                nprc1(i,k) = prc(k)/(qcic(i,k)/ncic(i,k))
               else
 #ifdef GFDL_COMPATIBLE_MICROP
                 if( present(qcvar_clubb) ) then
-                  prc(k) = gamma(qcvar_clubb(i,k)+2.47_r8)/(gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**2.47_r8)*1350._r8*qcic(i,k)**2.47_r8* &
+                  prc(k) = gamma(qcvar_clubb(i,k)+2.47_r8)/  &
+                              (gamma(qcvar_clubb(i,k))*   &
+                           qcvar_clubb(i,k)**2.47_r8)*1350._r8*  &
+                                               qcic(i,k)**2.47_r8* &
                                (ncic(i,k)/1.e6_r8*rho(i,k))**(-1.79_r8)
                 else
-                  prc(k) = cons2/(cons3*cons18)*1350._r8*qcic(i,k)**2.47_r8* &
+                dumx1(i,k) = var_coef(relvar(i,k),2.47_r8)
+                prc(k) = dumx1(i,k)*1350._r8*qcic(i,k)**2.47_r8*&
                                (ncic(i,k)/1.e6_r8*rho(i,k))**(-1.79_r8)
-                endif
+                 end if             
 #else
-                prc(k) = cons2/(cons3*cons18)*1350._r8*qcic(i,k)**2.47_r8*&
+                dumx1(i,k) = var_coef(relvar(i,k),2.47_r8)
+                prc(k) = dumx1(i,k)*1350._r8*qcic(i,k)**2.47_r8*&
                                (ncic(i,k)/1.e6_r8*rho(i,k))**(-1.79_r8)
 #endif
                 nprc(k) = prc(k)/cons22
-                nprc1(k) = prc(k)/(qcic(i,k)/ncic(i,k))
+                nprc1(i,k) = prc(k)/(qcic(i,k)/ncic(i,k))
               end if               ! sub-column switch
             else
               prc(k)=0._r8
               nprc(k)=0._r8
-              nprc1(k)=0._r8
+              nprc1(i,k)=0._r8
             end if
  
 !  add autoconversion to precip from above to get provisional rain mixing 
@@ -2809,8 +2747,8 @@ subroutine mmicro_pcond ( sub_column,       &
             dum1 = 0.45_r8
 
             if (k.eq.1) then
-              qric(i,k) = prc(k)*lcldm(i,k)*dz(i,k)/cldmax(i,k)/dum
-              nric(i,k) = nprc(k)*lcldm(i,k)*dz(i,k)/cldmax(i,k)/dum
+              qric(i,k) = prc(k)*lcldm(i,k)*dz(i,k)/2.0_r8/cldmax(i,k)/dum
+              nric(i,k) = nprc(k)*lcldm(i,k)*dz(i,k)/2.0_r8/cldmax(i,k)/dum
             else
               if (qric(i,k-1).ge.qsmall) then
                 dum = umr(k-1)
@@ -2842,12 +2780,12 @@ subroutine mmicro_pcond ( sub_column,       &
 #endif
 
               qric(i,k) = (rho(i,k-1)*umr(k-1)*qric(i,k-1)*cldmax(i,k-1)+ &
-                          (rho(i,k)*dz(i,k)*((pra(k-1) + prc(k))*   &
+                          (rho(i,k)*dz(i,k)/2.0_r8*((pra(k-1) + prc(k))*   &
                            lcldm(i,k) + (pre(k-1) - pracs(k-1) -   &
                                   mnuccr(k-1))*cldmax(i,k))))/    &
                                               (dum*rho(i,k)*cldmax(i,k))
               nric(i,k) = (rho(i,k-1)*unr(k-1)*nric(i,k-1)*cldmax(i,k-1)+ &
-                          (rho(i,k)*dz(i,k)*(nprc(k)*lcldm(i,k) +  &
+                          (rho(i,k)*dz(i,k)/2.0_r8*(nprc(k)*lcldm(i,k) +  &
                              (nsubr(k-1) - npracs(k-1) - nnuccr(k-1)   &
                               + nragg(k-1))*cldmax(i,k))))   &
                                          /(dum1*rho(i,k)*cldmax(i,k))
@@ -2859,14 +2797,14 @@ subroutine mmicro_pcond ( sub_column,       &
 ! note: assumes autoconversion timescale of 180 sec
 
             if (t(i,k).le.tmelt    .and.qiic(i,k).ge.qsmall) then
-               nprci(k) = n0i(k)/(lami(k)*180._r8)*exp(-lami(k)*dcs)
+               nprci(i,k) = n0i(k)/(lami(k)*180._r8)*exp(-lami(k)*dcs)
                prci(k) = pi*rhoi*n0i(k)/(6._r8*180._r8)* &
                             (cons23/lami(k) + 3._r8*cons24/lami(k)**2 + &
                                      6._r8*dcs/lami(k)**3 +    &
                                         6._r8/lami(k)**4)*exp(-lami(k)*dcs)
             else
               prci(k)=0._r8
-              nprci(k)=0._r8
+              nprci(i,k)=0._r8
             end if
 
 ! add autoconversion to flux from level above to get provisional 
@@ -2874,8 +2812,8 @@ subroutine mmicro_pcond ( sub_column,       &
             dum = (asn(i,k)*cons25)
             dum1 = (asn(i,k)*cons25)
             if (k.eq.1) then
-              qniic(i,k) = prci(k)*icldm(i,k)*dz(i,k)/cldmax(i,k)/dum
-              nsic(i,k) = nprci(k)*icldm(i,k)*dz(i,k)/cldmax(i,k)/dum
+              qniic(i,k) = prci(k)*icldm(i,k)*dz(i,k)/2._r8/cldmax(i,k)/dum
+              nsic(i,k) = nprci(i,k)*icldm(i,k)*dz(i,k)/2._r8/cldmax(i,k)/dum
             else
               if (qniic(i,k-1).ge.qsmall) then
                 dum = ums(k-1)
@@ -2883,13 +2821,13 @@ subroutine mmicro_pcond ( sub_column,       &
               end if
               qniic(i,k) = (rho(i,k-1)*ums(k-1)*qniic(i,k-1)*  &
                                                       cldmax(i,k-1) + &
-                             (rho(i,k)*dz(i,k)*((prci(k) + prai(k-1) +   &
+                             (rho(i,k)*dz(i,k)/2._r8*((prci(k) + prai(k-1) +   &
                                psacws(k-1) + bergs(k-1))*icldm(i,k) +  &
                                  (prds(k-1) + pracs(k-1) + mnuccr(k-1))   &
                                         *cldmax(i,k))))&
                                              /(dum*rho(i,k)*cldmax(i,k))
               nsic(i,k) = (rho(i,k-1)*uns(k-1)*nsic(i,k-1)*cldmax(i,k-1)+ &
-                              (rho(i,k)*dz(i,k)*(nprci(k)*icldm(i,k) +   &
+                              (rho(i,k)*dz(i,k)/2._r8*(nprci(i,k)*icldm(i,k) +   &
                                (nsubs(k-1) + nsagg(k-1) + nnuccr(k-1))*  &
                                  cldmax(i,k))))/(dum1*rho(i,k)*cldmax(i,k))
             end if  ! k > 1
@@ -2915,29 +2853,15 @@ subroutine mmicro_pcond ( sub_column,       &
 ! get size distribution parameters for precip
 !......................................................................
 ! rain
-            if (qric(i,k).ge.qsmall) then
-              lamr(k) = (pi*rhow*nric(i,k)/qric(i,k))**(1._r8/3._r8)
-              n0r(k) = nric(i,k)*lamr(k)
-
-! check for slope
-! adjust vars
-              if (lamr(k).lt.lamminr) then
-                lamr(k) = lamminr
-                n0r(k) = lamr(k)**4*qric(i,k)/(pi*rhow)
-                nric(i,k) = n0r(k)/lamr(k)
-              else if (lamr(k).gt.lammaxr) then
-                lamr(k) = lammaxr
-                n0r(k) = lamr(k)**4*qric(i,k)/(pi*rhow)
-                nric(i,k) = n0r(k)/lamr(k)
-              end if
+              call size_dist_param_rain(qric(i,k), nric(i,k), lamr(k),   &
+                                                                 n0r(k) )
 
 ! provisional rain number and mass weighted mean fallspeed (m/s)
+            if (qric(i,k).ge.qsmall) then
               unr(k) = min(arn(i,k)*cons4/lamr(k)**br,9.1_r8*rhof(i,k))
               umr(k) = min(arn(i,k)*cons5/(6._r8*lamr(k)**br),   &
                                                         9.1_r8*rhof(i,k))
             else
-              lamr(k) = 0._r8
-              n0r(k) = 0._r8
               umr(k) = 0._r8
               unr(k) = 0._r8
             end if  ! qric(i,k).ge.qsmall
@@ -2945,31 +2869,15 @@ subroutine mmicro_pcond ( sub_column,       &
 !......................................................................
 ! snow
 
-            if (qniic(i,k).ge.qsmall) then
-              lams(k) = (cons6*cs*nsic(i,k)/ &
-              qniic(i,k))**(1._r8/ds)
-              n0s(k) = nsic(i,k)*lams(k)
-
-! check for slope
-! adjust vars
-              if (lams(k).lt.lammins) then
-                lams(k) = lammins
-                n0s(k) = lams(k)**(ds+1._r8)*qniic(i,k)/(cs*cons6)
-                nsic(i,k) = n0s(k)/lams(k)
-              else if (lams(k).gt.lammaxs) then
-                lams(k) = lammaxs
-                n0s(k) = lams(k)**(ds+1._r8)*qniic(i,k)/(cs*cons6)
-                nsic(i,k) = n0s(k)/lams(k)
-              end if
+        call size_dist_param_snow(qniic(i,k), nsic(i,k), lams(k), n0s(k) )
 
 ! provisional snow number and mass weighted mean fallspeed (m/s)
 
+            if (qniic(i,k).ge.qsmall) then
               ums(k) = min(asn(i,k)*cons8/(6._r8*lams(k)**bs),   &
                                                          1.2_r8*rhof(i,k))
               uns(k) = min(asn(i,k)*cons7/lams(k)**bs,1.2_r8*rhof(i,k))
             else
-              lams(k) = 0._r8
-              n0s(k) = 0._r8
               ums(k) = 0._r8
               uns(k) = 0._r8
             end if  ! qniic(i,k).ge.qsmall
@@ -2985,30 +2893,34 @@ subroutine mmicro_pcond ( sub_column,       &
                    cdist1(k)*gamma(7._r8+pgam(k))* &
                        bimm*(exp(aimm*(273.15_r8 - t(i,k))) - 1._r8)/ &
                                                      lamc(k)**3/lamc(k)**3
-                nnuccc(k) = &
+                nnuccc(i,k) = &
                     pi/6._r8*cdist1(k)*gamma(pgam(k)+4._r8)*bimm* &
                           (exp(aimm*(273.15_r8-t(i,k)))-1._r8)/lamc(k)**3
               else
 ! ---> h1g, this is the MG 2011-02 version 
-              if( present(qcvar_clubb) ) then
-                mnuccc(k) = gamma(qcvar_clubb(i,k)+2._r8)/(gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**2)* &
+               if( present(qcvar_clubb) ) then
+                mnuccc(k) = gamma(qcvar_clubb(i,k)+2._r8)/  &
+                    (gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**2)* &
                             pi*pi/36._r8*rhow* &
                             cdist1(k)*gamma(7._r8+pgam(k))* &
                             bimm*(exp(aimm*(273.15_r8-t(i,k)))-1._r8)/ &
                             lamc(k)**3/lamc(k)**3
-                nnuccc(k) = gamma(qcvar_clubb(i,k)+1._r8)/(gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k))* &
+                nnuccc(i,k) = gamma(qcvar_clubb(i,k)+1._r8)/   &
+                        (gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k))* &
                             pi/6._r8*cdist1(k)*gamma(pgam(k)+4._r8) &
                             *bimm* &
                            (exp(aimm*(273.15_r8-t(i,k)))-1._r8)/lamc(k)**3
               else
-                mnuccc(k) = cons9/(cons3*cons19)* &
+                dumx1(i,k) = var_coef(relvar(i,k),2.0_r8)
+                mnuccc(k) = dumx1(i,k)* &
                        pi*pi/36._r8*rhow*cdist1(k)*gamma(7._r8+pgam(k))* &
                         bimm*(exp(aimm*(tmelt - t(i,k)))-1._r8)/ &
                                                     lamc(k)**3/lamc(k)**3
-                nnuccc(k) = cons10/(cons3*qcvar)* &
+                dumx1(i,k) = var_coef(relvar(i,k),1.0_r8)
+                nnuccc(i,k) = dumx1(i,k)* &
                          pi/6._r8*cdist1(k)*gamma(pgam(k)+4._r8)*bimm* &
                           (exp(aimm*(tmelt - t(i,k))) - 1._r8)/lamc(k)**3
-                endif
+              endif
 ! <--- h1g, the MG 2011-02 version
 ! ---> h1g, this is the MG 2010-09 version
                ! mnuccc(k) = cons9/(cons3*cons19)* &
@@ -3027,67 +2939,93 @@ subroutine mmicro_pcond ( sub_column,       &
 #ifdef GFDL_COMPATIBLE_MICROP
 !   contact freezing not currently availablein GFDL. Need to get proper
 !   dust input fields.
-         if( .not. lflag ) then
+            if( .not. lflag ) then
               mnucct(k) = 0._r8
-              nnucct(k) = 0._r8
-         else
-! contact freezing (-40<T<-3 C) (Young, 1974) with hooks into simulated dust
-! dust size and number in 4 bins are read in from companion routine
-           tcnt=(270.16_r8-t(i,k))**1.3_r8
-           viscosity=1.8e-5_r8*(t(i,k)/298.0_r8)**0.85_r8    ! Viscosity (kg/m/s)
-           mfp=2.0_r8*viscosity/(p(i,k)  &                   ! Mean free path (m)
-               *sqrt(8.0_r8*28.96e-3_r8/(pi*8.314409_r8*t(i,k))))           
+              nnucct(i,k) = 0._r8
+            else
+! contact freezing (-40<T<-3 C) (Young, 1974) with hooks into simulated 
+! dust.  dust size and number in 4 bins are read in from companion routine
+              tcnt = (tmelt - 3._r8 - t(i,k))**1.3_r8
+              viscosity = 1.8e-5_r8*(t(i,k)/298.0_r8)**0.85_r8 ! Viscosity
+                                                                !  (kg/m/s)
+              mfp = 2.0_r8*viscosity/(p(i,k)  &      ! Mean free path (m)
+                      *sqrt(8.0_r8*28.96e-3_r8/(pi*8.314409_r8*t(i,k)))) 
+              nslip1=1.0_r8+(mfp/rndst(i,k,1))*(1.257_r8+(0.4_r8*  &
+                  Exp(-(1.1_r8*rndst(i,k,1)/mfp))))! Slip correction factor
+              nslip2=1.0_r8+(mfp/rndst(i,k,2))*(1.257_r8+(0.4_r8*  &
+                                        Exp(-(1.1_r8*rndst(i,k,2)/mfp))))
+              nslip3=1.0_r8+(mfp/rndst(i,k,3))*(1.257_r8+(0.4_r8*  &
+                                        Exp(-(1.1_r8*rndst(i,k,3)/mfp))))
+              nslip4=1.0_r8+(mfp/rndst(i,k,4))*(1.257_r8+(0.4_r8*  &
+                                         Exp(-(1.1_r8*rndst(i,k,4)/mfp))))
 
-           nslip1=1.0_r8+(mfp/rndst(i,k,1))*(1.257_r8+(0.4_r8*Exp(-(1.1_r8*rndst(i,k,1)/mfp))))! Slip correction factor
-           nslip2=1.0_r8+(mfp/rndst(i,k,2))*(1.257_r8+(0.4_r8*Exp(-(1.1_r8*rndst(i,k,2)/mfp))))
-           nslip3=1.0_r8+(mfp/rndst(i,k,3))*(1.257_r8+(0.4_r8*Exp(-(1.1_r8*rndst(i,k,3)/mfp))))
-           nslip4=1.0_r8+(mfp/rndst(i,k,4))*(1.257_r8+(0.4_r8*Exp(-(1.1_r8*rndst(i,k,4)/mfp))))
+              ndfaer1=1.381e-23_r8*t(i,k)*nslip1/(6._r8*pi*viscosity*  &
+                                rndst(i,k,1))  ! aerosol diffusivity (m2/s)
+              ndfaer2=1.381e-23_r8*t(i,k)*nslip2/(6._r8*pi*viscosity*  &
+                                                       rndst(i,k,2))
+              ndfaer3=1.381e-23_r8*t(i,k)*nslip3/(6._r8*pi*viscosity*  &
+                                                             rndst(i,k,3))
+              ndfaer4=1.381e-23_r8*t(i,k)*nslip4/(6._r8*pi*viscosity*  &
+                                                              rndst(i,k,4))
 
-           ndfaer1=1.381e-23_r8*t(i,k)*nslip1/(6._r8*pi*viscosity*rndst(i,k,1))  ! aerosol diffusivity (m2/s)
-           ndfaer2=1.381e-23_r8*t(i,k)*nslip2/(6._r8*pi*viscosity*rndst(i,k,2))
-           ndfaer3=1.381e-23_r8*t(i,k)*nslip3/(6._r8*pi*viscosity*rndst(i,k,3))
-           ndfaer4=1.381e-23_r8*t(i,k)*nslip4/(6._r8*pi*viscosity*rndst(i,k,4))
-
-           if (sub_column) then
+              if (sub_column) then
+                mnucct(k) = &
+                       (ndfaer1*(nacon(i,k,1)*tcnt)+  &
+                         ndfaer2*(nacon(i,k,2)*tcnt)+  &
+                         ndfaer3*(nacon(i,k,3)*tcnt)+  &
+                         ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
+                                cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
  
-               mnucct(k) = &
-                        (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
-                        cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
- 
-               nnucct(k) = (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*  &
-                        cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
- 
-           else
+                nnucct(i,k) = (ndfaer1*(nacon(i,k,1)*tcnt)+   &
+                              ndfaer2*(nacon(i,k,2)*tcnt)+   &
+                              ndfaer3*(nacon(i,k,3)*tcnt)+   &
+                              ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*  &
+                                cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
+              else
 
 ! ---> h1g, this is the MG 2011-02 version
-             if( present(qcvar_clubb) ) then
-               mnucct(k) = gamma(qcvar_clubb(i,k)+4._r8/3._r8)/(gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**(4._r8/3._r8))*  &
-                       (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
+            if( present(qcvar_clubb) ) then
+               mnucct(k) = gamma(qcvar_clubb(i,k)+4._r8/3._r8)/  &
+         (gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**(4._r8/3._r8))*  &
+                   (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*  &
+            tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*   &
+                (nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
                        cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
-               nnucct(k) =  gamma(qcvar_clubb(i,k)+1._r8/3._r8)/(gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**(1._r8/3._r8))*  &
-                         (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*  &
-                       cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
+               nnucct(i,k) =  gamma(qcvar_clubb(i,k)+1._r8/3._r8)/  &
+         (gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**(1._r8/3._r8))*  &
+                  (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*  &
+         tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*  &
+                  2._r8*pi*cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
              else
-               mnucct(k) = gamma(qcvar+4._r8/3._r8)/(cons3*qcvar**(4._r8/3._r8))*  &
-                       (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
-                       cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
-               nnucct(k) =  gamma(qcvar+1._r8/3._r8)/(cons3*qcvar**(1._r8/3._r8))*  &
-                         (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*  &
-                       cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
-             endif
+                dumx1(i,k) = var_coef(relvar(i,k),4._r8/3._r8)
+                mnucct(k) = dumx1(i,k) *  &
+                       (ndfaer1*(nacon(i,k,1)*tcnt)+    &
+                        ndfaer2*(nacon(i,k,2)*tcnt)+   &
+                        ndfaer3*(nacon(i,k,3)*tcnt)+   &
+                        ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
+                              cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
+                dumx1(i,k) = var_coef(relvar(i,k),1._r8/3._r8)
+                nnucct(i,k) =  dumx1(i,k) *  &
+                       (ndfaer1*(nacon(i,k,1)*tcnt)+   &
+                        ndfaer2*(nacon(i,k,2)*tcnt)+   &
+                        ndfaer3*(nacon(i,k,3)*tcnt)+   &
+                        ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*  &
+                                cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
+              endif
 ! <--- h1g, the MG 2011-02 version
 
 
 ! ---> h1g, this is the MG 2010-09 version
-           ! mnucct(k) = cons10/(cons3*qcvar)*  &
-           !            (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow*&
-           !            cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
-           ! nnucct(k) = (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*&
-           !            cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
+              ! mnucct(k) = cons10/(cons3*qcvar)*  &
+              !            (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow*&
+              !            cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
+              ! nnucct(k) = (ndfaer1*(nacon(i,k,1)*tcnt)+ndfaer2*(nacon(i,k,2)*tcnt)+ndfaer3*(nacon(i,k,3)*tcnt)+ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*&
+              !            cdist1(k)*gamma(pgam(k)+2._r8)/lamc(k)
 ! <--- h1g, the MG 2010-09 version
 
-           end if      ! sub-column switch
-         endif
+              end if      ! sub-column switch
+          endif
+           
 #endif
 #ifndef GFDL_COMPATIBLE_MICROP
 
@@ -3124,7 +3062,7 @@ subroutine mmicro_pcond ( sub_column,       &
                          ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
                                 cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
  
-                nnucct(k) = (ndfaer1*(nacon(i,k,1)*tcnt)+   &
+                nnucct(i,k) = (ndfaer1*(nacon(i,k,1)*tcnt)+   &
                               ndfaer2*(nacon(i,k,2)*tcnt)+   &
                               ndfaer3*(nacon(i,k,3)*tcnt)+   &
                               ndfaer4*(nacon(i,k,4)*tcnt))*2._r8*pi*  &
@@ -3132,15 +3070,15 @@ subroutine mmicro_pcond ( sub_column,       &
               else
 
 ! ---> h1g, this is the MG 2011-02 version
-                mnucct(k) = gamma(qcvar+4._r8/3._r8)/    &
-                                      (cons3*qcvar**(4._r8/3._r8))*  &
+                dumx1(i,k) = var_coef(relvar(i,k),4._r8/3._r8)
+                mnucct(k) = dumx1(i,k) *  &
                        (ndfaer1*(nacon(i,k,1)*tcnt)+    &
                         ndfaer2*(nacon(i,k,2)*tcnt)+   &
                         ndfaer3*(nacon(i,k,3)*tcnt)+   &
                         ndfaer4*(nacon(i,k,4)*tcnt))*pi*pi/3._r8*rhow* &
                               cdist1(k)*gamma(pgam(k)+5._r8)/lamc(k)**4
-                nnucct(k) =  gamma(qcvar+1._r8/3._r8)/   &
-                                       (cons3*qcvar**(1._r8/3._r8))*  &
+                dumx1(i,k) = var_coef(relvar(i,k),1._r8/3._r8)
+                nnucct(i,k) =  dumx1(i,k)  &
                        (ndfaer1*(nacon(i,k,1)*tcnt)+   &
                         ndfaer2*(nacon(i,k,2)*tcnt)+   &
                         ndfaer3*(nacon(i,k,3)*tcnt)+   &
@@ -3164,18 +3102,18 @@ subroutine mmicro_pcond ( sub_column,       &
 ! concentration 
 ! this prevents 'runaway' droplet freezing
 
-              if (nnuccc(k)*lcldm(i,k).gt.nnuccd(k)) then
-                dum = (nnuccd(k)/(nnuccc(k)*lcldm(i,k)))
+              if (nnuccc(i,k)*lcldm(i,k).gt.nnuccd(i,k)) then
+                dum = (nnuccd(i,k)/(nnuccc(i,k)*lcldm(i,k)))
 
 ! scale mixing ratio of droplet freezing with limit
                 mnuccc(k)=mnuccc(k)*dum
-                nnuccc(k)=nnuccd(k)/lcldm(i,k)
+                nnuccc(i,k)=nnuccd(i,k)/lcldm(i,k)
               end if
             else
               mnuccc(k) = 0._r8
-              nnuccc(k) = 0._r8
+              nnuccc(i,k) = 0._r8
               mnucct(k) = 0._r8
-              nnucct(k) = 0._r8
+              nnucct(i,k) = 0._r8
             end if  ! qcic(i,k).ge.qsmall .and. t(i,k).lt.269.15_r8
 
 !.......................................................................
@@ -3225,40 +3163,41 @@ subroutine mmicro_pcond ( sub_column,       &
 
               psacws(k) = pi/4._r8*asn(i,k)*qcic(i,k)*rho(i,k)* &
                                    n0s(k)*Eci*cons11/ lams(k)**(bs+3._r8)
-              npsacws(k) = pi/4._r8*asn(i,k)*ncic(i,k)*rho(i,k)* &
+              npsacws(i,k) = pi/4._r8*asn(i,k)*ncic(i,k)*rho(i,k)* &
                                    n0s(k)*Eci*cons11/lams(k)**(bs+3._r8)
             else
               psacws(k) = 0._r8
-              npsacws(k) = 0._r8
+              npsacws(i,k) = 0._r8
             end if
 
 #ifdef GFDL_COMPATIBLE_MICROP
             if (Nml%do_hallet_mossop .or. lflag ) then
+
 #endif
 ! add secondary ice production due to accretion of droplets by snow 
 ! (Hallet-Mossop process) (from Cotton et al., 1986)
               if ((t(i,k).lt.tmelt - 3._r8) .and.     &
                                       (t(i,k).ge.tmelt - 5._r8)) then
                 ni_secp = 3.5e8_r8*(tmelt - 3._r8-t(i,k))/2.0_r8*psacws(k)
-                nsacwi(k) = ni_secp
+                nsacwi(i,k) = ni_secp
                 msacwi(k) = min(ni_secp*mi0, psacws(k))
               else if((t(i,k).lt.tmelt -5._r8) .and.   &
                                       (t(i,k).ge.tmelt - 8._r8)) then
                 ni_secp = 3.5e8_r8*(t(i,k) - (tmelt -8._r8))/   &
                                                        3.0_r8*psacws(k)
-                nsacwi(k) = ni_secp
+                nsacwi(i,k) = ni_secp
                 msacwi(k) = min(ni_secp*mi0, psacws(k))
               else
                 ni_secp   = 0.0_r8
-                nsacwi(k) = 0.0_r8
+                nsacwi(i,k) = 0.0_r8
                 msacwi(k) = 0.0_r8
               endif
               psacws(k) = max(0.0_r8, psacws(k) - ni_secp*mi0)
 #ifdef GFDL_COMPATIBLE_MICROP
             else
               msacwi(k) = 0.0_r8
-              nsacwi(k) = 0.0_r8
-            endif ! (do_hallet_mossop or do_clubb>0)
+              nsacwi(i,k) = 0.0_r8
+            endif ! (do_hallet_mossop or lflag)
 #endif
 
 !.......................................................................
@@ -3330,7 +3269,7 @@ subroutine mmicro_pcond ( sub_column,       &
               if (sub_column) then
                 pra(k) = &
                             67._r8*(qcic(i,k)*qric(i,k))**1.15_r8
-                npra(k) = pra(k)/(qcic(i,k)/ncic(i,k))
+                npra(i,k) = pra(k)/(qcic(i,k)/ncic(i,k))
               else
 !--> cjg: modifications incorporated from Huan's code
 #ifdef GFDL_COMPATIBLE_MICROP
@@ -3341,28 +3280,32 @@ subroutine mmicro_pcond ( sub_column,       &
                     elseif( qcvar_clubb(i,k) < qcvar_min4accr ) then
                         accr_scale = accretion_scale_max
                     else
-                        accr_scale =   (accretion_scale_max-1.0)/(1.0/qcvar_min4accr - 1.0/qcvar_max4accr) &
-                               * (1.0/qcvar_clubb(i,k) - 1.0/qcvar_max4accr) + 1.0
-                    endif 
-                  else
-                    accr_scale = accretion_scale                  
+                        accr_scale =   (accretion_scale_max-1.0)/  &
+                       (1.0/qcvar_min4accr - 1.0/qcvar_max4accr) &
+                   * (1.0/qcvar_clubb(i,k) - 1.0/qcvar_max4accr     ) + 1.0
+                   endif
+                 else
+                    accr_scale = accretion_scale
                   endif
-                  pra(k) = accr_scale* gamma(qcvar_clubb(i,k)+1.15_r8)/(gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**1.15_r8)* &
+                  pra(k) = accr_scale* gamma(qcvar_clubb(i,k)+1.15_r8)/  &
+                     (gamma(qcvar_clubb(i,k))*qcvar_clubb(i,k)**1.15_r8)* &
                       67._r8*(qcic(i,k)*qric(i,k))**1.15_r8
                 else
-                pra(k) = accretion_scale*cons12/(cons3*cons20)* &
+                  dumx1(i,k) = var_coef(relvar(i,k), 1.15_r8)
+                  pra(k) = accretion_scale*dumx1(i,k)* &
                       67._r8*(qcic(i,k)*qric(i,k))**1.15_r8
                 endif
 #else
-                pra(k) = cons12/(cons3*cons20)* &
-                      67._r8*(qcic(i,k)*qric(i,k))**1.15_r8
+                dumx1(i,k) = var_coef(relvar(i,k), 1.15_r8)
+                pra(k) = dumx1(i,k)* &
+                              67._r8*(qcic(i,k)*qric(i,k))**1.15_r8
 #endif
 !<--cjg
-                npra(k) = pra(k)/(qcic(i,k)/ncic(i,k))
+                npra(i,k) = pra(k)/(qcic(i,k)/ncic(i,k))
               end if               ! sub-column switch
             else
               pra(k) = 0._r8
-              npra(k) = 0._r8
+              npra(i,k) = 0._r8
             end if
 
 !.......................................................................
@@ -3384,11 +3327,11 @@ subroutine mmicro_pcond ( sub_column,       &
                                                     t(i,k).le.tmelt) then
               prai(k) = pi/4._r8*asn(i,k)*qiic(i,k)*rho(i,k)* &
                                  n0s(k)*Eii*cons11/lams(k)**(bs+3._r8)
-              nprai(k) = pi/4._r8*asn(i,k)*niic(i,k)* &
+              nprai(i,k) = pi/4._r8*asn(i,k)*niic(i,k)* &
                              rho(i,k)*n0s(k)*Eii*cons11/lams(k)**(bs+3._r8)
             else
               prai(k) = 0._r8
-              nprai(k) = 0._r8
+              nprai(i,k) = 0._r8
             end if
 
 !ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -3429,24 +3372,38 @@ subroutine mmicro_pcond ( sub_column,       &
               end if
 
 ! saturation vapor pressure
+#ifdef GFDL_COMPATIBLE_MICROP
+              call compute_qs (t(i,k), p(i,k), qsn,q = q(i,k), &
+                              esat = esl(i,k), es_over_liq = .true.)
+#else
               esn = polysvp(t(i,k),0)
               qsn = min(epsqs*esn/(p(i,k) - (1._r8 - epsqs)*esn), 1._r8)
 !RSH 8/1/12: Need to prevent negative values which may occur at low p
-#ifdef GFDL_COMPATIBLE_MICROP
-              if( .not. lflag ) &
               qsn = max(qsn, 0._r8)
-#endif
+
 ! recalculate saturation vapor pressure for liquid and ice
               esl(i,k) = esn
+#endif
+
+#ifdef GFDL_COMPATIBLE_MICROP
+              call compute_qs (t(i,k), p(i,k), qvi,q = q(i,k), &
+                           esat = esi(i,k), es_over_liq_and_ice = .true.)
+#else
               esi(i,k) = polysvp(t(i,k),1)
 ! hm fix, make sure when above freezing that esi=esl, not active yet
               if (t(i,k) .gt. tmelt) esi(i,k) = esl(i,k)
+#endif
 
 ! calculate q for out-of-cloud region
               qclr = (q(i,k) - dum*qsn)/(1._r8 - dum)
 
               if (qric(i,k).ge.qsmall) then
+#ifdef GFDL_COMPATIBLE_MICROP
+!RSH:insert here qvs = qsn, remove next line:
+              qvs = qsn
+#else
                 qvs = epsqs*esl(i,k)/(p(i,k) - (1._r8 - epsqs)*esl(i,k))
+#endif
                 dqsdt = xxlv*qvs/(rv*t(i,k)**2)
                 ab = 1._r8 + dqsdt*xxlv/cpp
                 epsr = 2._r8*pi*n0r(k)*rho(i,k)*Dv(i,k)* &
@@ -3464,7 +3421,10 @@ subroutine mmicro_pcond ( sub_column,       &
 
 ! sublimation of snow
               if (qniic(i,k).ge.qsmall) then
+#ifdef GFDL_COMPATIBLE_MICROP
+#else
                 qvi = epsqs*esi(i,k)/(p(i,k) - (1._r8 - epsqs)*esi(i,k))
+#endif
                 dqsidt =  xxls*qvi/(rv*t(i,k)**2)
                 abi = 1._r8 + dqsidt*xxls/cpp
                 epss = 2._r8*pi*n0s(k)*rho(i,k)*Dv(i,k)* &
@@ -3498,7 +3458,7 @@ subroutine mmicro_pcond ( sub_column,       &
               ttmp = t(i,k) +    &
                       ((pre(k)*cldmax(i,k))*xxlv + &
                         (cmei(i,k) + prds(k)*cldmax(i,k))*xxls)*deltat/cpp
-            endif 
+            endif
 #else
               qtmp = q(i,k) -    &
                         (cmei(i,k) + (pre(k) + prds(k))*cldmax(i,k))*deltat
@@ -3513,11 +3473,13 @@ subroutine mmicro_pcond ( sub_column,       &
 #else
               ttmp = max(180._r8, min(ttmp, 323._r8))
 #endif
+#ifdef GFDL_COMPATIBLE_MICROP
+              call compute_qs (ttmp, p(i,k), qsn, q = q(i,k), &
+                          esat = esn, es_over_liq = .true.)
+#else
               esn = polysvp(ttmp,0) ! use rhw to allow ice supersaturation
               qsn = min(epsqs*esn/(p(i,k) - (1._r8 - epsqs)*esn), 1._r8)
-#ifdef GFDL_COMPATIBLE_MICROP
 !RSH 8/1/12: Need to prevent negative values which may occur at low p
-            if( .not. lflag ) &
               qsn = max(qsn, 0._r8)
 #endif
 
@@ -3527,31 +3489,32 @@ subroutine mmicro_pcond ( sub_column,       &
                   dum1 = pre(k)/(pre(k) + prds(k))
 ! recalculate q and t after cloud water cond but without precip evap
 #ifdef GFDL_COMPATIBLE_MICROP
-            if( .not. lflag ) then
+                 if( .not. lflag ) then
                   qtmp = q(i,k) -    &
                                (D_eros_l(i,k) + D_eros_i(i,k) +   &
                                           cmel(i,k) + cmei(i,k))*deltat
                   ttmp = t(i,k)+    &
                             ((D_eros_l(i,k) + cmel(i,k))*xxlv + &
                                (D_eros_i(i,k) + cmei(i,k))*xxls)*deltat/cpp
-            else
+                else
                   qtmp = q(i,k) - (cmei(i,k))*deltat
                   ttmp = t(i,k) + (cmei(i,k)*xxls)*deltat/cpp
-            endif 
+                endif
 #else
                   qtmp = q(i,k) - (cmei(i,k))*deltat
                   ttmp = t(i,k) + (cmei(i,k)*xxls)*deltat/cpp
 #endif
-                  esn = polysvp(ttmp,0) ! use rhw to allow ice 
+#ifdef GFDL_COMPATIBLE_MICROP
                                         ! supersaturation
+                  call compute_qs (ttmp, p(i,k), qsn, q=q(i,k), &
+                         esat = esn, es_over_liq = .true.)
+#else
+                  esn = polysvp(ttmp,0) ! use rhw to allow ice 
                   qsn = min(epsqs*esn/(p(i,k) - (1._r8 - epsqs)*esn),  &
                                                                      1._r8)
 !RSH 8/1/12:  Need to prevent negative values which may occur at low p
-#ifdef GFDL_COMPATIBLE_MICROP
-            if( .not. lflag ) &
                   qsn = max(qsn, 0._r8) 
 #endif
-
                   dum = (qtmp - qsn)/(1._r8 + cons27*qsn/(cpp*rv*ttmp**2))
                   dum = min(dum, 0._r8)
 
@@ -3559,10 +3522,15 @@ subroutine mmicro_pcond ( sub_column,       &
                   pre(k) = dum*dum1/deltat/cldmax(i,k)
 
 ! do separately using RHI for prds....
+#ifdef GFDL_COMPATIBLE_MICROP
+                  call compute_qs (ttmp, p(i,k), qsn, q=q(i,k), &
+                         esat = esn, es_over_liq_and_ice = .true.)
+#else
                   esn = polysvp(ttmp,1) ! use rhi to allow ice 
                                         ! supersaturation
                   qsn = min(epsqs*esn/(p(i,k) - (1._r8 - epsqs)*esn),  &
                                                                     1._r8)
+#endif
                   dum = (qtmp - qsn)/(1._r8 + cons28*qsn/(cpp*rv*ttmp**2))
                   dum = min(dum, 0._r8)
 
@@ -3577,15 +3545,17 @@ subroutine mmicro_pcond ( sub_column,       &
             if (qniic(i,k) .ge. qsmall .and.   &
                  qcic(i,k) .ge. qsmall .and.   &
                                            t(i,k) .lt. tmelt) then
+#ifdef GFDL_COMPATIBLE_MICROP
+              call compute_qs (t(i,k),p(i,k), qvi, q=q(i,k), &
+                             esat = esi(i,k), es_over_liq_and_ice = .true.)
+              call compute_qs (t(i,k),p(i,k), qvs, q=q(i,k), &
+                             esat = esl(i,k), es_over_liq = .true.)
+#else
               qvi = epsqs*esi(i,k)/(p(i,k) - (1._r8 - epsqs)*esi(i,k))
               qvs = epsqs*esl(i,k)/(p(i,k) - (1._r8 - epsqs)*esl(i,k))
-
-#ifdef GFDL_COMPATIBLE_MICROP
 !8/1/12 RSH:   Need to prevent negative values which may occur at low p
-            if( .not. lflag ) then
               qvi = MAX(0._r8, MIN (qvi,1.0_r8))
               qvs = MAX(0._r8, MIN (qvs,1.0_r8))
-            endif
 #endif
               dqsidt =  xxls*qvi/(rv*t(i,k)**2)
               abi = 1._r8 + dqsidt*xxls/cpp
@@ -3612,27 +3582,27 @@ subroutine mmicro_pcond ( sub_column,       &
 ! include mixing timescale  (mtime)
 
 #ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag ) then
+           if( .not. lflag ) then
             qce = (qc(i,k) +    &
                             (D_eros_l(i,k) + cmel(i,k) - berg(i,k))*deltat)
-          else
+           else
             qce = (qc(i,k) - berg(i,k)*deltat)
-          endif 
+          endif
 #else
             qce = (qc(i,k) - berg(i,k)*deltat)
 #endif
-            nce = (nc(i,k) + npccn(k)*deltat*mtime)
+            nce = (nc(i,k) + npccn(i,k)*deltat*mtime)
 #ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag ) then
+           if( .not. lflag ) then
             qie = (qi(i,k) +    &
                            (D_eros_i(i,k) + cmei(i,k) + berg(i,k))*deltat)
-          else
+           else
             qie = (qi(i,k) + (cmei(i,k) + berg(i,k))*deltat)
           endif
 #else
             qie = (qi(i,k) + (cmei(i,k) + berg(i,k))*deltat)
 #endif
-            nie = (ni(i,k) + nnuccd(k)*deltat*mtime)
+            nie = (ni(i,k) + nnuccd(i,k)*deltat*mtime)
 
 ! conservation of qc
 
@@ -3654,42 +3624,42 @@ subroutine mmicro_pcond ( sub_column,       &
 ! conservation of nc
 
 #ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag ) then
-            dum = (nprc1(k) + npra(k) + nnuccc(k) + nnucct(k) + &
-                    npsacws(k) - nsubc(k) - nerosc(i,k))*lcldm(i,k)*deltat
-          else
-            dum = (nprc1(k) + npra(k) + nnuccc(k) + nnucct(k) + &
-                                npsacws(k) - nsubc(k))*lcldm(i,k)*deltat
+           if( .not. lflag ) then
+            dum = (nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) + &
+                    npsacws(i,k) - nsubc(i,k) - nerosc(i,k))*lcldm(i,k)*deltat
+           else
+            dum = (nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) + &
+                    npsacws(i,k) - nsubc(i,k) )*lcldm(i,k)*deltat
           endif
 #else
-            dum = (nprc1(k) + npra(k) + nnuccc(k) + nnucct(k) + &
-                                npsacws(k) - nsubc(k))*lcldm(i,k)*deltat
+            dum = (nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) + &
+                                npsacws(i,k) - nsubc(i,k))*lcldm(i,k)*deltat
 #endif 
 
             if (dum .gt. nce) then
 #ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag ) then
+              if( .not. lflag ) then
               ratio = nce/deltat/   &
-                     ((nprc1(k) + npra(k) + nnuccc(k) + nnucct(k) +  &
-                     npsacws(k) - nsubc(k) - nerosc(i,k))*lcldm(i,k))*omsm
-          else
+                     ((nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) +  &
+                     npsacws(i,k) - nsubc(i,k) - nerosc(i,k))*lcldm(i,k))*omsm
+              else
               ratio = nce/deltat/   &
-                       ((nprc1(k) + npra(k) + nnuccc(k) + nnucct(k) +   &
-                                   npsacws(k) - nsubc(k))*lcldm(i,k))*omsm
-          endif
+                       ((nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) +   &
+                                   npsacws(i,k) - nsubc(i,k))*lcldm(i,k))*omsm
+             endif
 #else
               ratio = nce/deltat/   &
-                       ((nprc1(k) + npra(k) + nnuccc(k) + nnucct(k) +   &
-                                   npsacws(k) - nsubc(k))*lcldm(i,k))*omsm
+                       ((nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) +   &
+                                   npsacws(i,k) - nsubc(i,k))*lcldm(i,k))*omsm
 #endif
-              nprc1(k) = nprc1(k)*ratio
-              npra(k) = npra(k)*ratio
-              nnuccc(k) = nnuccc(k)*ratio
-              nnucct(k) = nnucct(k)*ratio  
-              npsacws(k) = npsacws(k)*ratio
-              nsubc(k)=nsubc(k)*ratio
+              nprc1(i,k) = nprc1(i,k)*ratio
+              npra(i,k) = npra(i,k)*ratio
+              nnuccc(i,k) = nnuccc(i,k)*ratio
+              nnucct(i,k) = nnucct(i,k)*ratio  
+              npsacws(i,k) = npsacws(i,k)*ratio
+              nsubc(i,k)=nsubc(i,k)*ratio
 #ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag )  &    
+          if( .not. lflag )  &
               nerosc(i,k)=nerosc(i,k)*ratio
 #endif
             end if
@@ -3710,36 +3680,36 @@ subroutine mmicro_pcond ( sub_column,       &
 
 #ifdef GFDL_COMPATIBLE_MICROP
           if( .not. lflag ) then
-            dum = ((-nnucct(k) - nsacwi(k))*lcldm(i,k) + (nprci(k) + &
-                     nprai(k) - nsubi(k) - nerosi(i,k))*icldm(i,k))*deltat
+            dum = ((-nnucct(i,k) - nsacwi(i,k))*lcldm(i,k) + (nprci(i,k) + &
+                     nprai(i,k) - nsubi(i,k) - nerosi(i,k))*icldm(i,k))*deltat
           else
-            dum = ((-nnucct(k) - nsacwi(k))*lcldm(i,k) + (nprci(k) + &
-                                 nprai(k) - nsubi(k))*icldm(i,k))*deltat
-          endif 
+            dum = ((-nnucct(i,k) - nsacwi(i,k))*lcldm(i,k) + (nprci(i,k) + &
+                                 nprai(i,k) - nsubi(i,k))*icldm(i,k))*deltat
+          endif
 #else
-            dum = ((-nnucct(k) - nsacwi(k))*lcldm(i,k) + (nprci(k) + &
-                                 nprai(k) - nsubi(k))*icldm(i,k))*deltat
+            dum = ((-nnucct(i,k) - nsacwi(i,k))*lcldm(i,k) + (nprci(i,k) + &
+                                 nprai(i,k) - nsubi(i,k))*icldm(i,k))*deltat
 #endif
             if (dum .gt. nie) then
 
 #ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag ) then
-              ratio = (nie/deltat + (nnucct(k) + nsacwi(k))*lcldm(i,k))/ &
-                         ((nprci(k) + nprai(k) - nsubi(k) - nerosi(i,k))* &
+              if( .not. lflag ) then
+              ratio = (nie/deltat + (nnucct(i,k) + nsacwi(i,k))*lcldm(i,k))/ &
+                         ((nprci(i,k) + nprai(i,k) - nsubi(i,k) - nerosi(i,k))* &
                                                           icldm(i,k))*omsm
-          else
-              ratio = (nie/deltat + (nnucct(k) + nsacwi(k))*lcldm(i,k))/ &
-                        ((nprci(k) + nprai(k) - nsubi(k))*icldm(i,k))*omsm
-          endif       
+             else
+              ratio = (nie/deltat + (nnucct(i,k) + nsacwi(i,k))*lcldm(i,k))/ &
+                        ((nprci(i,k) + nprai(i,k) - nsubi(i,k))*icldm(i,k))*omsm
+             endif
 #else
-              ratio = (nie/deltat + (nnucct(k) + nsacwi(k))*lcldm(i,k))/ &
-                        ((nprci(k) + nprai(k) - nsubi(k))*icldm(i,k))*omsm
+              ratio = (nie/deltat + (nnucct(i,k) + nsacwi(i,k))*lcldm(i,k))/ &
+                        ((nprci(i,k) + nprai(i,k) - nsubi(i,k))*icldm(i,k))*omsm
 #endif
-              nprci(k) = nprci(k)*ratio
-              nprai(k) = nprai(k)*ratio
-              nsubi(k) = nsubi(k)*ratio
+              nprci(i,k) = nprci(i,k)*ratio
+              nprai(i,k) = nprai(i,k)*ratio
+              nsubi(i,k) = nsubi(i,k)*ratio
 #ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag )  &  
+           if( .not. lflag )  &
               nerosi(i,k) = nerosi(i,k)*ratio
 #endif
             end if
@@ -3765,12 +3735,13 @@ subroutine mmicro_pcond ( sub_column,       &
 ! conservation of nr
 ! for now neglect evaporation of nr
             nsubr(k)=0._r8
+
 !--> cjg: modifications incorporated from Huan's code
-            if (allow_rain_num_evap)  then
-              if (qric(i,k) .ge. qsmall) nsubr(k)= max(pre(k)/qric(i,k)*nric(i,k), -nric(i,k)/deltat)
+           if (allow_rain_num_evap)  then
+              if (qric(i,k) .ge. qsmall) nsubr(k)= max(pre(k)/qric(i,k)*  &
+                         nric(i,k), -nric(i,k)/deltat)
             endif
 !<--cjg
-
             if ((nprc(k)*lcldm(i,k) + (-nnuccr(k) + nsubr(k) -   &
                    npracs(k) + nragg(k))*cldmax(i,k))*dz(i,k)*rho(i,k) +  &
                                                     nrtot .lt. 0._r8) then
@@ -3799,6 +3770,8 @@ subroutine mmicro_pcond ( sub_column,       &
                                  (pracs(k) + mnuccr(k))*cldmax(i,k))/   &
                                                (-prds(k)*cldmax(i,k))*omsm
                 prds(k) = prds(k)*ratio
+              else
+                prds(k) = 0.0           
               end if  ! -prds(k).ge.qsmall
             end if
 
@@ -3807,11 +3780,11 @@ subroutine mmicro_pcond ( sub_column,       &
 ! calculate loss of number due to sublimation
 ! for now neglect sublimation of ns
             nsubs(k)=0._r8
-            if ((nprci(k)*icldm(i,k) + (nnuccr(k) + nsubs(k) +   &
+            if ((nprci(i,k)*icldm(i,k) + (nnuccr(k) + nsubs(k) +   &
                                            nsagg(k))*cldmax(i,k))*&
                                 dz(i,k)*rho(i,k) + nstot .lt. 0._r8) then
               if (-nsubs(k) - nsagg(k) .ge. qsmall) then
-                ratio = (nstot/(dz(i,k)*rho(i,k)) + nprci(k)*   &
+                ratio = (nstot/(dz(i,k)*rho(i,k)) + nprci(i,k)*   &
                              icldm(i,k) + nnuccr(k)*cldmax(i,k))/   &
                                ((-nsubs(k) - nsagg(k))*cldmax(i,k))*omsm
                 nsubs(k) = nsubs(k)*ratio
@@ -3825,7 +3798,7 @@ subroutine mmicro_pcond ( sub_column,       &
 ! note: cmei is already grid-average values
 
 #ifdef GFDL_COMPATIBLE_MICROP
-        if( .not. lflag ) then
+          if( .not. lflag ) then
             qvlat(i,k) = qvlat(i,k) - &
                           (pre(k) + prds(k))*cldmax(i,k) - cmel(i,k) -  &
                            cmei(i,k) - D_eros_l(i,k) - D_eros_i(i,k) 
@@ -3846,7 +3819,7 @@ subroutine mmicro_pcond ( sub_column,       &
                                                            lcldm(i,k) +   &
                              (-prci(k) - prai(k))*icldm(i,k) +   &
                                      cmei(i,k) + berg(i,k) + D_eros_i(i,k)
-        else
+          else
             qvlat(i,k) = qvlat(i,k) -   &
                             (pre(k) + prds(k))*cldmax(i,k) - cmei(i,k) 
             tlat(i,k) = tlat(i,k) + ((pre(k)*cldmax(i,k))*xxlv +  &
@@ -3861,11 +3834,10 @@ subroutine mmicro_pcond ( sub_column,       &
                                                    lcldm(i,k) - berg(i,k) 
             qitend(i,k) = qitend(i,k) + &
                            (mnuccc(k) + mnucct(k) + msacwi(k))*    &
-                                                           lcldm(i,k) +    &
+                                                           lcldm(i,k) +   &
                            (-prci(k) - prai(k))*icldm(i,k)    &
                                                    + cmei(i,k) + berg(i,k)
-
-        endif
+         endif
 #else
             qvlat(i,k) = qvlat(i,k) -   &
                             (pre(k) + prds(k))*cldmax(i,k) - cmei(i,k) 
@@ -3952,39 +3924,40 @@ subroutine mmicro_pcond ( sub_column,       &
 ! multiply activation/nucleation by mtime to account for fast timescale
 
 #ifdef GFDL_COMPATIBLE_MICROP
-         if( .not. lflag ) then
-            nctend(i,k) = nctend(i,k) + npccn(k)*mtime + &
-                          (-nnuccc(k) - nnucct(k) - npsacws(k) +   &
-                            nsubc(k) + nerosc(i,k) - npra(k) - nprc1(k))* &
+           if( .not. lflag ) then
+            nctend(i,k) = nctend(i,k) + npccn(i,k)*mtime + &
+                          (-nnuccc(i,k) - nnucct(i,k) - npsacws(i,k) +   &
+                            nsubc(i,k) + nerosc(i,k) - npra(i,k) - nprc1(i,k))* &
                                                                  lcldm(i,k)
-            nitend(i,k) = nitend(i,k) + nnuccd(k)*mtime + &
-                           (nnucct(k) + nsacwi(k))*lcldm(i,k) +   &
-                            (nsubi(k) + nerosi(i,k) - nprci(k) - &
-                                                       nprai(k))*icldm(i,k)
-         else
-            nctend(i,k) = nctend(i,k)+ npccn(k)*mtime+&
-                  (-nnuccc(k)-nnucct(k)-npsacws(k)+nsubc(k) &
-                  -npra(k)-nprc1(k))*lcldm(i,k)
+            nitend(i,k) = nitend(i,k) + nnuccd(i,k)*mtime + &
+                           (nnucct(i,k) + nsacwi(i,k))*lcldm(i,k) +   &
+                            (nsubi(i,k) + nerosi(i,k) - nprci(i,k) - &
+                                                       nprai(i,k))*icldm(i,k)
+          else
+            nctend(i,k) = nctend(i,k) + npccn(i,k)*mtime +  &  
+                           (-nnuccc(i,k) - nnucct(i,k) - npsacws(i,k) +  &
+                            nsubc(i,k) - npra(i,k) - nprc1(i,k))*lcldm(i,k)
 
-            nitend(i,k) = nitend(i,k)+ nnuccd(k)*mtime+ &
-                  (nnucct(k)+nsacwi(k))*lcldm(i,k)+(nsubi(k)-nprci(k)- &
-                  nprai(k))*icldm(i,k)
-
-         endif 
+            nitend(i,k) = nitend(i,k) + nnuccd(i,k)*mtime +  &
+                           (nnucct(i,k) + nsacwi(i,k))*lcldm(i,k) +    &
+                            (nsubi(i,k) - nprci(i,k) - nprai(i,k))*icldm(i,k)
+          endif
 #else
 !#endif
 !#ifndef GFDL_COMPATIBLE_MICROP
-            nctend(i,k) = nctend(i,k) + npccn(k)*mtime +  &  
-                           (-nnuccc(k) - nnucct(k) - npsacws(k) +  &
-                            nsubc(k) - npra(k) - nprc1(k))*lcldm(i,k)
-            nitend(i,k) = nitend(i,k) + nnuccd(k)*mtime +  &
-                           (nnucct(k) + nsacwi(k))*lcldm(i,k) +    &
-                            (nsubi(k) - nprci(k) - nprai(k))*icldm(i,k)
+            nctend(i,k) = nctend(i,k) + npccn(i,k)*mtime +  &  
+                           (-nnuccc(i,k) - nnucct(i,k) - npsacws(i,k) +  &
+                            nsubc(i,k) - npra(i,k) - nprc1(i,k))*lcldm(i,k)
+
+            nitend(i,k) = nitend(i,k) + nnuccd(i,k)*mtime +  &
+                           (nnucct(i,k) + nsacwi(i,k))*lcldm(i,k) +    &
+                            (nsubi(i,k) - nprci(i,k) - nprai(i,k))*icldm(i,k)
+           end do
 #endif
 
             nstend(i,k) = nstend(i,k) + (nsubs(k) +    &
                            nsagg(k) + nnuccr(k))*cldmax(i,k) +   &
-                                                       nprci(k)*icldm(i,k)
+                                                       nprci(i,k)*icldm(i,k)
             nrtend(i,k) = nrtend(i,k) + &
                            nprc(k)*lcldm(i,k) + (nsubr(k) - npracs(k) -  &
                                           nnuccr(k) + nragg(k))*cldmax(i,k)
@@ -3993,12 +3966,12 @@ subroutine mmicro_pcond ( sub_column,       &
 ! save current tendencies so that upcoming adjustment may be captured
             IF (diag_id%qndt_nucclim +     &
                                       diag_id%qn_nucclim_col  > 0) THEN
-              nucclim(k) = nctend(i,k)
+              nucclim(i,k) = nctend(i,k)
             END IF
 
             IF (diag_id%qnidt_nucclim1 +    &
                                        diag_id%qni_nucclim1_col > 0) THEN
-              nucclim1i(k) = nitend(i,k)
+              nucclim1i(i,k) = nitend(i,k)
             END IF
 #endif
 ! make sure that nc and ni at advanced time step do not exceed
@@ -4018,11 +3991,11 @@ subroutine mmicro_pcond ( sub_column,       &
 ! complete diagnostic calculation 
             IF (diag_id%qndt_nucclim +     &
                                     diag_id%qn_nucclim_col  > 0) THEN
-              nucclim(k) = nctend(i,k) - nucclim(k)
+              nucclim(i,k) = nctend(i,k) - nucclim(i,k)
             END IF
             IF (diag_id%qnidt_nucclim1 +     &
                                     diag_id%qni_nucclim1_col > 0) THEN
-              nucclim1i(k) = nitend(i,k) - nucclim1i(k)
+              nucclim1i(i,k) = nitend(i,k) - nucclim1i(i,k)
             END IF
 #endif
 
@@ -4085,42 +4058,24 @@ subroutine mmicro_pcond ( sub_column,       &
             rainrt(i,k) = qric(i,k)*rho(i,k)*umr(k)/rhow*3600._r8*1000._r8
 
 ! vertically-integrated precip source/sink terms (note: grid-averaged)
-#ifdef GFDL_COMPATIBLE_MICROP
-      if( .not. lflag ) then
-!RSH 4/3/12
-!       qrtot = max(qrtot+qrtend(i,k)*dz(i,k)*rho(i,k),0._r8)
-!       qstot = max(qstot+qnitend(i,k)*dz(i,k)*rho(i,k),0._r8)
-!       nrtot = max(nrtot+nrtend(i,k)*dz(i,k)*rho(i,k),0._r8)
-!       nstot = max(nstot+nstend(i,k)*dz(i,k)*rho(i,k),0._r8)
-            qrtot = (qrtot + qrtend(i,k)*dz(i,k)*rho(i,k))
-            qstot = (qstot + qnitend(i,k)*dz(i,k)*rho(i,k))
-            nrtot = (nrtot + nrtend(i,k)*dz(i,k)*rho(i,k))
-            nstot = (nstot + nstend(i,k)*dz(i,k)*rho(i,k))
-      else
-        qrtot = max(qrtot + qrtend(i,k)*dz(i,k)*rho(i,k),0._r8)
-        qstot = max(qstot + qnitend(i,k)*dz(i,k)*rho(i,k),0._r8)
-        nrtot = max(nrtot + nrtend(i,k)*dz(i,k)*rho(i,k),0._r8)
-        nstot = max(nstot + nstend(i,k)*dz(i,k)*rho(i,k),0._r8)
-      endif
-#else
+
         qrtot = max(qrtot+qrtend(i,k)*dz(i,k)*rho(i,k),0._r8)
         qstot = max(qstot+qnitend(i,k)*dz(i,k)*rho(i,k),0._r8)
         nrtot = max(nrtot+nrtend(i,k)*dz(i,k)*rho(i,k),0._r8)
         nstot = max(nstot+nstend(i,k)*dz(i,k)*rho(i,k),0._r8)
-#endif
 ! calculate melting and freezing of precip 
 ! melt snow at +2 C
 
-            if (t(i,k) + tlat(i,k)/cpp*deltat > tmelt + 2._r8) then
+            if (t(i,k) + tlat(i,k)/cpp*deltat > snowmelt     ) then
               if (qstot > 0._r8) then
 
 ! make sure melting snow doesn't reduce temperature below threshold
-                dum = -xlf/cpp*qstot/(dz(i,k)*rho(i,k))
+                dum = -xlf/cpp*qstot/(dz(i,k)*rho(i,k))*deltat
                 if (t(i,k) + tlat(i,k)/cpp*deltat     &
                                            + dum .lt. tmelt + 2._r8) then
                   dum = (t(i,k) + tlat(i,k)/cpp*deltat -   &
-                                                  (tmelt + 2._r8))*cpp/xlf
-                  dum = dum/(xlf/cpp*qstot/(dz(i,k)*rho(i,k)))
+                                                  (tmelt + 2._r8))
+                  dum = dum/(xlf/cpp*qstot/(dz(i,k)*rho(i,k))*deltat)
                   dum = max(0._r8, dum)
                   dum = min(1._r8, dum)
                 else
@@ -4151,16 +4106,16 @@ subroutine mmicro_pcond ( sub_column,       &
 
 ! freeze all rain at -5C for Arctic
 
-            if (t(i,k) + tlat(i,k)/cpp*deltat < (tmelt - 5._r8)) then
+            if (t(i,k) + tlat(i,k)/cpp*deltat < rainfrze       ) then
               if (qrtot > 0._r8) then
-
+ 
 ! make sure freezing rain doesn't increase temperature above threshold
-                dum = xlf/cpp*qrtot/(dz(i,k)*rho(i,k))
+                dum = xlf/cpp*qrtot/(dz(i,k)*rho(i,k))*deltat
                 if (t(i,k) + tlat(i,k)/cpp*deltat +    &
-                                            dum .gt. (tmelt - 5._r8)) then
+                                            dum .gt. rainfrze       ) then
                   dum = -(t(i,k) + tlat(i,k)/cpp*deltat -    &
-                                                 (tmelt - 5._r8))*cpp/xlf
-                  dum = dum/(xlf/cpp*qrtot/(dz(i,k)*rho(i,k)))
+                                                 rainfrze       )
+                  dum = dum/(xlf/cpp*qrtot/(dz(i,k)*rho(i,k))*deltat)
                   dum = max(0._r8, dum)
                   dum = min(1._r8, dum)
                 else
@@ -4188,7 +4143,7 @@ subroutine mmicro_pcond ( sub_column,       &
                 nrtot = (1._r8 - dum)*nrtot
                 preci(i) = preci(i) + dum*(prect(i) - preci(i))
               end if  !qrtot > 0._r8 
-            end if ! t(i,k)+tlat(i,k)/cp*deltat < (tmelt - 5._r8)
+            end if ! t(i,k)+tlat(i,k)/cp*deltat < rainfrze        
 
 ! if rain/snow mix ratio is zero so should number concentration
 
@@ -4213,89 +4168,44 @@ subroutine mmicro_pcond ( sub_column,       &
 !......................................................................
 ! rain
 
-            if (qric(i,k) .ge. qsmall) then
-              lamr(k) = (pi*rhow*nric(i,k)/qric(i,k))**(1._r8/3._r8)
-              n0r(k) = nric(i,k)*lamr(k)
-
-! check for slope
-! change lammax and lammin for rain and snow
-! adjust vars
-
-              if (lamr(k) .lt. lamminr) then
-                lamr(k) = lamminr
-                n0r(k) = lamr(k)**4*qric(i,k)/(pi*rhow)
-                nric(i,k) = n0r(k)/lamr(k)
-              else if (lamr(k) .gt. lammaxr) then
-                lamr(k) = lammaxr
-                n0r(k) = lamr(k)**4*qric(i,k)/(pi*rhow)
-                nric(i,k) = n0r(k)/lamr(k)
-              end if
+           call size_dist_param_rain(qric(i,k), nric(i,k), lamr(k),   &
+                                                          n0r(k) )
 
 ! 'final' values of number and mass weighted mean fallspeed for rain (m/s)
 
+            if (lamr(k) .ge. qsmall) then
               unr(k) = min(arn(i,k)*cons4/lamr(k)**br, 9.1_r8*rhof(i,k))
               umr(k) = min(arn(i,k)*cons5/(6._r8*lamr(k)**br),  &
                                                           9.1_r8*rhof(i,k))
             else
-              lamr(k) = 0._r8
-              n0r(k) = 0._r8
               umr(k)=0._r8
               unr(k)=0._r8
             end if
 
 !calculate mean size of combined rain and snow
 
-            if (lamr(k) .gt. 0._r8) then
-              Artmp = n0r(k)*pi/(2*lamr(k)**3._r8)
-            else 
-              Artmp = 0._r8
-            endif
+         call calc_rercld(lamr(k), n0r(k), lamc(k), cdist1(k), pgam(k),  &
+                        qric(i,k), qcic(i,k), arcld(i,k), rercld(i,k))
 
-            if (lamc(k) .gt. 0._r8) then
-              Actmp = cdist1(k)*pi*gamma(pgam(k) + 3._r8)/     &
-                                                   (4._r8*lamc(k)**2._r8)
-            else 
-              Actmp = 0._r8
-            endif
-
-!8/15        if (Actmp.gt.0_r8.or.Artmp.gt.0) then
-            if (Actmp .gt. 0._r8 .or. Artmp .gt. 0._r8) then
-              rercld(i,k) = rercld(i,k) + 3._r8*(qric(i,k) + qcic(i,k))/ &
-                                          (4._r8*rhow*(Actmp + Artmp))
-              arcld(i,k) = arcld(i,k) + 1._r8
-            endif
 
 !......................................................................
 ! snow
 
-            if (qniic(i,k) .ge. qsmall) then
-              lams(k) = (cons6*cs*nsic(i,k)/qniic(i,k))**(1._r8/ds)
-              n0s(k) = nsic(i,k)*lams(k)
+        call size_dist_param_snow(qniic(i,k), nsic(i,k), lams(k), n0s(k) )
 
-! check for slope
-! adjust vars
-
-              if (lams(k) .lt. lammins) then
-                lams(k) = lammins
-                n0s(k) = lams(k)**(ds + 1._r8)*qniic(i,k)/(cs*cons6)
-                nsic(i,k) = n0s(k)/lams(k)
-              else if (lams(k) .gt. lammaxs) then
-                lams(k) = lammaxs
-                n0s(k) = lams(k)**(ds + 1._r8)*qniic(i,k)/(cs*cons6)
-                nsic(i,k) = n0s(k)/lams(k)
-              end if
 
 ! 'final' values of number and mass weighted mean fallspeed for snow (m/s)
+            if (lams(k)    .gt. 0.0   ) then
 
               ums(k) = min(asn(i,k)*cons8/(6._r8*lams(k)**bs),   &
                                                          1.2_r8*rhof(i,k))
               uns(k) = min(asn(i,k)*cons7/lams(k)**bs, 1.2_r8*rhof(i,k))
             else
-              lams(k) = 0._r8
-              n0s(k) = 0._r8
               ums(k) = 0._r8
               uns(k) = 0._r8
             end if
+
+     END DO
 
 !c........................................................................
 ! sum over sub-step for average process rates
@@ -4303,11 +4213,57 @@ subroutine mmicro_pcond ( sub_column,       &
 ! convert rain/snow q and N for output to history, note, 
 ! output is for gridbox average
 
-            qrout(i,k) = qrout(i,k) + qric(i,k)*cldmax(i,k)
-            qsout(i,k) = qsout(i,k) + qniic(i,k)*cldmax(i,k)
-            nrout(i,k) = nrout(i,k) + nric(i,k)*rho(i,k)*cldmax(i,k)
-            nsout(i,k) = nsout(i,k) + nsic(i,k)*rho(i,k)*cldmax(i,k)
 
+      
+     dumr(i,1)  = int_to_mid(i,1) * qric(i,1)
+     qrout(i,1)  = qrout(i,1)  + int_to_mid(i,1)*qric(i,1)*cldmax(i,1)
+
+     dumr(i,2:)  = interp_to_mid(qric(i,1:),int_to_mid(i,2:))
+     qrout(i,2:) = qrout(i,2:) + interp_to_mid(qric(i,1:) * cldmax(i,1:), int_to_mid(i,2:))
+
+     dumnr(i,1) = int_to_mid(i,1) * nric(i,1)
+     nrout(i,1)  = nrout(i,1)  + &
+          (int_to_mid(i,1)*nric(i,1)*cldmax(i,1)*rho(i,1))
+
+     dumnr(i,2:) = interp_to_mid(nric(i,1:),int_to_mid(i,2:))
+     nrout(i,2:) = nrout(i,2:) + interp_to_mid(nric(i,1:) * cldmax(i,1:) * rho(i,1:), int_to_mid(i,2:))
+     ! Calculate rercld
+
+     ! calculate mean size of combined rain and cloud water
+ 
+     ! hm 11-22-11 modify to interpolate rain from interface to mid-point
+     ! logic is to interpolate rain mass and number, then recalculate PSD
+     ! parameters to get relevant parameters for mean sizi
+
+     ! interpolate rain mass and number, store in dummy variables
+     
+     ! calculate n0r and lamr from interpolated mid-point rain mass and number
+     ! divide by precip fraction to get in-precip (local) values of
+     ! rain mass and number, divide by rhow to get rain number in kg^-1
+
+     do k=1,pver
+     call size_dist_param_rain(dumr(i,k), dumnr(i,k), lamr(k), n0r(k))
+     end do
+
+#ifdef GFDL_COMPATIBLE_MICROP
+     do k=1,pver
+     call calc_rercld(lamr(k), n0r(k), lamc(k), cdist1(k), pgam(k), dumr(i,k), qcic(i,k), &
+          arcld(i,k), rercld(i,k))
+    end do
+#else
+     call calc_rercld(lamr, n0r, lamc, cdist1, pgam, dumr, qcic, &
+          arcld, rercld)
+#endif
+
+     nsout(i,1)  = nsout(i,1)  + &
+          (int_to_mid(i,1)*nsic(i,1)*cldmax(i,1)*rho(i,1))
+     nsout(i,2:) = nsout(i,2:) + interp_to_mid(nsic(i,1:) * cldmax(i,1:) * rho(i,1:), int_to_mid(i,2:))
+
+     qsout(i,1)  = qsout(i,1)  + int_to_mid(i,1)*qniic(i,1)*cldmax(i,1)
+     qsout(i,2:) = qsout(i,2:) + interp_to_mid(qniic(i,1:) * cldmax(i,1:), int_to_mid(i,2:))
+          
+
+       DO k=1,pver
             tlat1(i,k) = tlat1(i,k) + tlat(i,k)
             qvlat1(i,k) = qvlat1(i,k) + qvlat(i,k)
             qctend1(i,k) = qctend1(i,k) + qctend(i,k)
@@ -4325,7 +4281,7 @@ subroutine mmicro_pcond ( sub_column,       &
             rainrt1(i,k) = rainrt1(i,k) + rainrt(i,k)
 
 ! divide rain radius over substeps for average
-            if (arcld(i,k) .gt. 0._r8) then
+            if (arcld(i,k) .gt. 0    ) then
               rercld(i,k) = rercld(i,k)/arcld(i,k)
             end if
 
@@ -4337,15 +4293,14 @@ subroutine mmicro_pcond ( sub_column,       &
 ! calculating the precip flux (kg/m2/s) as mixingratio(kg/kg)*
 ! airdensity(kg/m3)*massweightedfallspeed(m/s)
 !!RSH 11/28/11 FIX OF BUG ??
-            rflx(i,k+1)=qrout(i,k)*rho(i,k)*umr(k)
-            sflx(i,k+1)=qsout(i,k)*rho(i,k)*ums(k)
-
-#ifdef GFDL_COMPATIBLE_MICROP
-      if( .not. lflag ) then
+!RSHCLUBB
+! the following is a bugfix added here that is not present in the base 
+! tikal code version, which maintains the bug for CLUBB. see email from 
+! hm on 7/28/13.
+!           rflx(i,k+1)=qrout(i,k)*rho(i,k)*umr(k)
+!           sflx(i,k+1)=qsout(i,k)*rho(i,k)*ums(k)
             rflx(i,k+1) = qric(i,k)*cldmax(i,k)*rho(i,k)*umr(k)
             sflx(i,k+1) = qniic(i,k)*cldmax(i,k)*rho(i,k)*ums(k)
-      endif
-#endif
 
 !  add to summing sub-stepping variable
             rflx1(i,k+1) = rflx1(i,k+1) + rflx(i,k+1)
@@ -4355,26 +4310,26 @@ subroutine mmicro_pcond ( sub_column,       &
 
 #ifdef GFDL_COMPATIBLE_MICROP
 !droplet number
-            npccno(i,k)     = npccno(i,k)   + npccn(k)*mtime
-            nnuccco(i,k)    = nnuccco(i,k)  - nnuccc(k)*lcldm(i,k)
-            nnuccto(i,k)    = nnuccto(i,k)  - nnucct(k)*lcldm(i,k)
-            npsacwso(i,k)   = npsacwso(i,k) - npsacws(k)*lcldm(i,k)
-            nsubco(i,k)     = nsubco(i,k)   + nsubc(k)*lcldm(i,k)
+            npccno(i,k)     = npccno(i,k)   + npccn(i,k)*mtime
+            nnuccco(i,k)    = nnuccco(i,k)  - nnuccc(i,k)*lcldm(i,k)
+            nnuccto(i,k)    = nnuccto(i,k)  - nnucct(i,k)*lcldm(i,k)
+            npsacwso(i,k)   = npsacwso(i,k) - npsacws(i,k)*lcldm(i,k)
+            nsubco(i,k)     = nsubco(i,k)   + nsubc(i,k)*lcldm(i,k)
             if( .not. lflag ) &
             nerosco(i,k)    = nerosco(i,k)  + nerosc(i,k)*lcldm(i,k)
-            nprao(i,k)      = nprao(i,k)    - npra(k)*lcldm(i,k)
-            nprc1o(i,k)     = nprc1o(i,k)   - nprc1(k)*lcldm(i,k)
-            nucclimo(i,k)   = nucclimo(i,k) + nucclim(k)
+            nprao(i,k)      = nprao(i,k)    - npra(i,k)*lcldm(i,k)
+            nprc1o(i,k)     = nprc1o(i,k)   - nprc1(i,k)*lcldm(i,k)
+            nucclimo(i,k)   = nucclimo(i,k) + nucclim(i,k)
 
 !ice number
-            nnuccdo(i,k)    = nnuccdo(i,k) + nnuccd(k)*mtime
-            nsacwio(i,k)    = nsacwio(i,k) + nsacwi(k)*lcldm(i,k)
-            nsubio(i,k)     = nsubio(i,k)  + nsubi(k)*icldm(i,k)
+            nnuccdo(i,k)    = nnuccdo(i,k) + nnuccd(i,k)*mtime
+            nsacwio(i,k)    = nsacwio(i,k) + nsacwi(i,k)*lcldm(i,k)
+            nsubio(i,k)     = nsubio(i,k)  + nsubi(i,k)*icldm(i,k)
             if( .not. lflag ) &
             nerosio(i,k)    = nerosio(i,k) + nerosi(i,k)*icldm(i,k)
-            nprcio(i,k)     = nprcio(i,k)  - nprci(k)*icldm(i,k)
-            npraio(i,k)     = npraio(i,k)  - nprai(k)*icldm(i,k)
-            nucclim1io(i,k) = nucclim1io(i,k) + nucclim1i(k)
+            nprcio(i,k)     = nprcio(i,k)  - nprci(i,k)*icldm(i,k)
+            npraio(i,k)     = npraio(i,k)  - nprai(i,k)*icldm(i,k)
+            nucclim1io(i,k) = nucclim1io(i,k) + nucclim1i(i,k)
 #endif
 
           end do ! k loop
@@ -4537,7 +4492,7 @@ subroutine mmicro_pcond ( sub_column,       &
           dumnc(i,k) = max((nc(i,k) + nctend(i,k)*deltat)/lcldm(i,k),0._r8)
           dumni(i,k) = max((ni(i,k) + nitend(i,k)*deltat)/icldm(i,k),0._r8)
 
-!-->cjg
+ !-->cjg
 ! hm add 6/2/11 switch for specification of droplet and crystal number
         if (nccons) then
         dumnc(i,k)=ncnst/rho(i,k)
@@ -4548,51 +4503,17 @@ subroutine mmicro_pcond ( sub_column,       &
         dumni(i,k)=ninst/rho(i,k)
         end if
 !<--cjg
-
 ! obtain new slope parameter to avoid possible singularity
 
-          if (dumi(i,k) .ge. qsmall) then
-! add upper limit to in-cloud number concentration to prevent 
-! numerical error
-            dumni(i,k) = min(dumni(i,k), dumi(i,k)*1.e20_r8)
+          call size_dist_param_ice (dumi(i,k), dumni(i,k), lami(k), &
+                                                                   n0i(k))
 
-            lami(k) = (cons1*ci*dumni(i,k)/dumi(i,k))**(1._r8/di)
-            lami(k) = max(lami(k),lammini)
-            lami(k) = min(lami(k),lammaxi)
-          else
-            lami(k)=0._r8
-          end if
-
-          if (dumc(i,k) .ge. qsmall) then
-! add upper limit to in-cloud number concentration to prevent 
-! numerical error
-            dumnc(i,k) = min(dumnc(i,k), dumc(i,k)*1.e20_r8)
-! add lower limit to in-cloud number concentration
-            dumnc(i,k) = max(dumnc(i,k), cdnl/rho(i,k)) ! sghan minimum 
-                                                       ! in #/cm3 
-#ifdef GFDL_COMPATIBLE_MICROP
-         if( .not. lflag ) then
-!RSH76     pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-            pgam(k) = 0.0005714_r8*(dumnc(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-         else
-           pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-         endif
-#else
-           pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-#endif
-            pgam(k) = 1._r8/(pgam(k)**2) - 1._r8
-            pgam(k) = max(pgam(k), 2._r8)
-            pgam(k) = min(pgam(k), 15._r8)
-
-            lamc(k) = (pi/6._r8*rhow*dumnc(i,k)*gamma(pgam(k) + 4._r8)/ &
-                       (dumc(i,k)*gamma(pgam(k) + 1._r8)))**(1._r8/3._r8)
-            lammin = (pgam(k) + 1._r8)/50.e-6_r8
-            lammax = (pgam(k) + 1._r8)/2.e-6_r8
-            lamc(k) = max(lamc(k), lammin)
-            lamc(k) = min(lamc(k), lammax)
-          else
-            lamc(k) = 0._r8
-          end if
+!RSHCLUBB
+! the following is a bugfix added here that is not present in the base 
+! tikal code version, which maintains the bug for CLUBB. see email from 
+! hm on 7/28/13.
+          call size_dist_param_liq (dumc(i,k), dumnc(i,k), cdnl, &
+                                     rho(i,k), .true., pgam(k), lamc(k) )
 
 ! calculate number and mass weighted fall velocity for droplets
 ! include effects of sub-grid distribution of cloud water
@@ -4639,8 +4560,6 @@ subroutine mmicro_pcond ( sub_column,       &
 ! calculate number of split time steps to ensure courant stability criteria
 ! for sedimentation calculations
 
-          rgvm = max(fi(k), fc(k), fni(k), fnc(k))
-          nstep = max(int(rgvm*deltat/pdel(i,k) + 1._r8),nstep)
 
 ! redefine dummy variables - sedimentation is calculated over grid-scale
 ! quantities to ensure conservation
@@ -4654,6 +4573,13 @@ subroutine mmicro_pcond ( sub_column,       &
           if (dumi(i,k) .lt. qsmall) dumni(i,k) = 0._r8
 
         end do       !!! vertical loop
+
+        nstep = 1 + int(max( &
+          maxval( fi/pdel(i,:)), &
+           maxval( fc/pdel(i,:)), &
+          maxval(fni/pdel(i,:)), &
+          maxval(fnc/pdel(i,:))) &
+          * deltat)
 
         do n = 1,nstep  !! loop over sub-time step to ensure stability
           do k = 1,pver
@@ -4754,10 +4680,10 @@ subroutine mmicro_pcond ( sub_column,       &
             dumc(i,k) = dumc(i,k) - faltndc*deltat/nstep
             dumnc(i,k) = dumnc(i,k) - faltndnc*deltat/nstep
 
-            Fni(K) = MAX(Fni(K)/pdel(i,K), Fni(K-1)/pdel(i,K-1))*pdel(i,K)
-            FI(K) = MAX(FI(K)/pdel(i,K), FI(K-1)/pdel(i,K-1))*pdel(i,K)
-            fnc(k) = max(fnc(k)/pdel(i,k), fnc(k-1)/pdel(i,k-1))*pdel(i,k)
-            Fc(K) = MAX(Fc(K)/pdel(i,K), Fc(K-1)/pdel(i,K-1))*pdel(i,K)
+!           Fni(K) = MAX(Fni(K)/pdel(i,K), Fni(K-1)/pdel(i,K-1))*pdel(i,K)
+!           FI(K) = MAX(FI(K)/pdel(i,K), FI(K-1)/pdel(i,K-1))*pdel(i,K)
+!           fnc(k) = max(fnc(k)/pdel(i,k), fnc(k-1)/pdel(i,k-1))*pdel(i,k)
+!           Fc(K) = MAX(Fc(K)/pdel(i,K), Fc(K-1)/pdel(i,K-1))*pdel(i,K)
           end do   !! k loop
 
 ! units below are m/s
@@ -4812,6 +4738,7 @@ subroutine mmicro_pcond ( sub_column,       &
           if (dumc(i,k) .lt. qsmall) dumnc(i,k) = 0._r8
           if (dumi(i,k) .lt. qsmall) dumni(i,k) = 0._r8
 
+
 ! calculate instantaneous processes (melting, homogeneous freezing)
 
           if (t(i,k) + tlat(i,k)/cpp*deltat > tmelt) then
@@ -4821,7 +4748,7 @@ subroutine mmicro_pcond ( sub_column,       &
               dum = -dumi(i,k)*xlf/cpp
               if (t(i,k) + tlat(i,k)/cpp*deltat + dum .lt. tmelt) then
                 dum = (t(i,k) + tlat(i,k)/cpp*deltat - tmelt)*cpp/xlf
-                dum = dum/dumi(i,k)*xlf/cpp 
+                dum = dum/dumi(i,k)
                 dum = max(0._r8, dum)
                 dum = min(1._r8, dum)
               else
@@ -4877,7 +4804,7 @@ subroutine mmicro_pcond ( sub_column,       &
                                              dum .gt. tmelt - 40._r8) then
                 dum = -(t(i,k) + tlat(i,k)/cpp*deltat - (tmelt -40._r8))* &
                                                                    cpp/xlf
-                dum = dum/dumc(i,k)*xlf/cpp
+                dum = dum/dumc(i,k)
                 dum = max(0._r8, dum)
                 dum = min(1._r8, dum)
               else
@@ -4931,8 +4858,13 @@ subroutine mmicro_pcond ( sub_column,       &
           qtmp = q(i,k) + qvlat(i,k)*deltat
           ttmp = t(i,k) + tlat(i,k)/cpp*deltat
 
+#ifdef GFDL_COMPATIBLE_MICROP
+          call compute_qs (ttmp, p(i,k), qsn, q=q(i,k), &
+                             esat = esn, es_over_liq = .true.)
+#else
           esn = polysvp(ttmp,0)  ! use rhw to allow ice supersaturation
           qsn = min(epsqs*esn/(p(i,k) - (1._r8 - epsqs)*esn), 1._r8)
+#endif
 
 #ifdef GFDL_COMPATIBLE_MICROP
           if (qtmp > qsn .and. qsn > 0._r8) then
@@ -4979,9 +4911,8 @@ subroutine mmicro_pcond ( sub_column,       &
 !RSH 10/05 0553
 !           dum = (qtmp-qsn)/(1._r8+(xxls*dum1+xxlv*(1._r8-dum1))**2 &
             dum = (qtmp - qsn)/(1._r8 +   &
-                               (xxlv*dum1 + xxlv*(1._r8 - dum1))**2* &
+                               (xxls*dum1 + xxlv*(1._r8 - dum1))**2* &
                                              qsn/(cpp*rv*ttmp**2))/deltat
-
          else
            if (ttmp > 268.15_r8) then
               dum1=0.0_r8
@@ -4990,7 +4921,7 @@ subroutine mmicro_pcond ( sub_column,       &
               dum1=1.0_r8
            else
               dum1=(268.15_r8-ttmp)/30._r8
-           end if  
+           end if
            dum = (qtmp-qsn)/(1._r8+(xxls*dum1+xxlv*(1._r8-dum1))**2 &
                      *qsn/(cpp*rv*ttmp**2))/deltat
          endif
@@ -5065,7 +4996,6 @@ subroutine mmicro_pcond ( sub_column,       &
         dumni(i,k)=ninst/rho(i,k)
         end if
 !<--cjg
-
 ! limit in-cloud mixing ratio to reasonable value of 5 g kg-1
 
           dumc(i,k) = min(dumc(i,k), 5.e-3_r8)
@@ -5080,26 +5010,15 @@ subroutine mmicro_pcond ( sub_column,       &
                  diag_4d(i,j,k,diag_pt%qnidt_size_adj ) =  nitend(i,k)
 #endif
 
-! add upper limit to in-cloud number concentration to prevent numerical 
-! error
-            dumni(i,k) = min(dumni(i,k), dumi(i,k)*1.e20_r8)
-            lami(k) = (cons1*ci*dumni(i,k)/dumi(i,k))**(1._r8/di)
-
-            if (lami(k) .lt. lammini) then
-              lami(k) = lammini
-              n0i(k) = lami(k)**(di + 1._r8)*dumi(i,k)/(ci*cons1)
-              niic(i,k) = n0i(k)/lami(k)
+            dum_2D(i,k) = dumni(i,k)
+            call size_dist_param_ice (dumi(i,k), dumni(i,k), lami(k), &
+                                                             n0i(k))
+            niic(i,k) = dumni(i,k)
 
 ! adjust number conc if needed to keep mean size in reasonable range
+            if (dumni(i,k) /=dum_2D(i,k)) then
               nitend(i,k) = (niic(i,k)*icldm(i,k) - ni(i,k))/deltat
-            else if (lami(k) .gt. lammaxi) then
-              lami(k) = lammaxi
-              n0i(k) = lami(k)**(di + 1._r8)*dumi(i,k)/(ci*cons1)
-              niic(i,k) = n0i(k)/lami(k)
-
-! adjust number conc if needed to keep mean size in reasonable range
-              nitend(i,k) = (niic(i,k)*icldm(i,k) - ni(i,k))/deltat
-            end if
+            endif
 
 #ifdef GFDL_COMPATIBLE_MICROP
             IF (diag_id%qnidt_size_adj +  diag_id%qni_size_adj_col > 0) &
@@ -5121,70 +5040,35 @@ subroutine mmicro_pcond ( sub_column,       &
                  diag_4d(i,j,k,diag_pt%qndt_size_adj ) =  nctend(i,k)
 #endif
 
-! add upper limit to in-cloud number concentration to prevent numerical 
-! error
-            dumnc(i,k) = min(dumnc(i,k), dumc(i,k)*1.e20_r8)
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! set tendency to ensure minimum droplet concentration after update by 
-! microphysics, except when lambda exceeds bounds on 
-! mean drop size or if there is no cloud water
-            if (dumnc(i,k) .lt. cdnl/rho(i,k)) then   
-              nctend(i,k) = (cdnl/rho(i,k)*cldm(i,k) - nc(i,k))/deltat   
-            end if
-            dumnc(i,k) = max(dumnc(i,k), cdnl/rho(i,k)) ! sghan minimum 
-                                                        ! in #/cm3 
 !-->cjg
 ! hm add 6/2/11 switch for specification of droplet and crystal number
         if (nccons) then
-! make sure nc is consistence with the constant N by adjusting tendency, need
-! to multiply by cloud fraction
+! make sure nc is consistence with the constant N by adjusting tendency, 
+! need to multiply by cloud fraction
 ! note that nctend may be further adjusted below if mean droplet size is
 ! out of bounds
 
         nctend(i,k)=(ncnst/rho(i,k)*lcldm(i,k)-nc(i,k))/deltat
         end if
 !<--cjg
+            dum = dumnc(i,k)
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#ifdef GFDL_COMPATIBLE_MICROP
-      if( .not. lflag ) then
-!RSH76      pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-            pgam(k) = 0.0005714_r8*(dumnc(i,k)/1.e6_r8*rho(i,k)) +   &
-                                                                 0.2714_r8
-      else
-           pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-      endif
-#else
-           pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-#endif
-            pgam(k) = 1._r8/(pgam(k)**2) - 1._r8
-            pgam(k) = max(pgam(k), 2._r8)
-            pgam(k) = min(pgam(k), 15._r8)
-           
-            lamc(k) = (pi/6._r8*rhow*dumnc(i,k)*gamma(pgam(k) + 4._r8)/ &
-                        (dumc(i,k)*gamma(pgam(k) + 1._r8)))**(1._r8/3._r8)
-            lammin = (pgam(k) + 1._r8)/50.e-6_r8
-            lammax = (pgam(k) + 1._r8)/2.e-6_r8
-            if (lamc(k) .lt. lammin) then
-              lamc(k) = lammin
-              ncic(i,k) = 6._r8*lamc(k)**3*dumc(i,k)*  &
-                                        gamma(pgam(k) + 1._r8)/&
-                                           (pi*rhow*gamma(pgam(k) + 4._r8))
 
-! adjust number conc if needed to keep mean size in reasonable range
-              nctend(i,k) = (ncic(i,k)*lcldm(i,k) - nc(i,k))/deltat
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! set tendency to ensure minimum droplet concentration after update by 
+! microphysics, except when lambda exceeds bounds on 
+! mean drop size or if there is no cloud water
+!RSHCLUBB
+! the use of dumnc rather than ncic is a bugfix added here that is not 
+! present in the base tikal code version, which maintains the bug for 
+! CLUBB. see email from hm on 7/28/13.
+            call size_dist_param_liq(dumc(i,k), dumnc(i,k), cdnl,   &
+                                     rho(i,k), .true., pgam(k), lamc(k))
 
-            else if (lamc(k) .gt. lammax) then
-              lamc(k) = lammax
-              ncic(i,k) = 6._r8*lamc(k)**3*dumc(i,k)* &
-                                      gamma(pgam(k) + 1._r8)/ &
-                                          (pi*rhow*gamma(pgam(k) + 4._r8))
-
-! adjust number conc if needed to keep mean size in reasonable range
-              nctend(i,k) = (ncic(i,k)*lcldm(i,k) - nc(i,k))/deltat
-            end if
-
+       if (dum /= dumnc(i,k)) then
+              ! adjust number conc if needed to keep mean size in reasonable range
+              nctend(i,k)=(dumnc(i,k)*lcldm(i,k)-nc(i,k))/deltat
+           end if
 #ifdef GFDL_COMPATIBLE_MICROP
             IF (diag_id%qndt_size_adj + diag_id%qn_size_adj_col  > 0) &
                  diag_4d(i,j,k,diag_pt%qndt_size_adj ) =     &
@@ -5213,31 +5097,10 @@ subroutine mmicro_pcond ( sub_column,       &
 
           dumnc(i,k) = 1.e8_r8
 
-          if (dumc(i,k) .ge. qsmall) then
-#ifdef GFDL_COMPATIBLE_MICROP
-          if( .not. lflag ) then
-!RSH76      pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-            pgam(k) = 0.0005714_r8*(dumnc(i,k)/1.e6_r8*rho(i,k)) +   &
-                                                                 0.2714_r8
-          else
-            pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-          endif
-#else
-            pgam(k)=0.0005714_r8*(ncic(i,k)/1.e6_r8*rho(i,k))+0.2714_r8
-#endif
-            pgam(k) = 1._r8/(pgam(k)**2) - 1._r8
-            pgam(k) = max(pgam(k), 2._r8)
-            pgam(k) = min(pgam(k), 15._r8)
+          call size_dist_param_liq(dumc(i,k), dumnc(i,k), cdnl, rho(i,k), &
+                                    .false.,  pgam(k), lamc(k))
 
-            lamc(k) = (pi/6._r8*rhow*dumnc(i,k)*gamma(pgam(k) + 4._r8)/ &
-                         (dumc(i,k)*gamma(pgam(k) + 1._r8)))**(1._r8/3._r8)
-            lammin = (pgam(k) + 1._r8)/50.e-6_r8
-            lammax = (pgam(k) + 1._r8)/2.e-6_r8
-            if (lamc(k) .lt. lammin) then
-              lamc(k) = lammin
-            else if (lamc(k) .gt. lammax) then
-              lamc(k) = lammax
-            end if
+          if (dumc(i,k) .ge. qsmall) then
             effc_fn(i,k) = gamma(pgam(k) + 4._r8)/ &
                              gamma(pgam(k) + 3._r8)/lamc(k)/2._r8*1.e6_r8
           else
@@ -5315,8 +5178,8 @@ subroutine mmicro_pcond ( sub_column,       &
           endif
         end do
       end do
-
-#else
+      
+#else 
 ! calculate effective radius of rain and snow in microns for COSP using 
 ! Eq. 9 of COSP v1.3 manual
 ! convert to diameter to pass out for use in radiation package
@@ -5326,10 +5189,8 @@ subroutine mmicro_pcond ( sub_column,       &
 !! RAIN
           if (qrout(i,k) .gt. 1.e-7_r8 .and. nrout(i,k) .gt. 0._r8) then
             lsc_rain_size(i,k) = 3.0_r8*  &
-                    (pi*rhow*nrout(i,k)/qrout(i,k))**(-1._r8/3._r8)*1.e6_r8
-
-! ---> h1g, hard-write rain effective radius range 30--750 um, 2012-04-25
-            if( lflag ) then  
+                    (pi*rhow*nrout(i,k)/(rho(i,k)*qrout(i,k)))**(-1._r8/3._r8)*1.e6_r8
+          if( lflag ) then
              lsc_rain_size(i,k) = max(  60.0_r8, lsc_rain_size(i,k) )
              lsc_rain_size(i,k) = min(1500.0_r8, lsc_rain_size(i,k) )
             endif
@@ -5337,11 +5198,10 @@ subroutine mmicro_pcond ( sub_column,       &
             lsc_rain_size(i,k) = 100._r8
           endif
 !! SNOW
-         if (qsout(i,k).gt.1.e-7_r8.and.nsout(i,k).gt.0._r8) then
-           if( lflag ) &
-           lsc_snow_size(i,k) = 3.0_r8*    &
-                  (pi*rhosn*nsout(i,k)/qsout(i,k))**(-1._r8/3._r8)*1.e6_r8
-         endif
+          if (qsout(i,k).gt.1.e-7_r8.and.nsout(i,k).gt.0._r8) then
+            lsc_snow_size(i,k) = 3.0_r8*    &
+                   (pi*rhosn*nsout(i,k)/(rho(i,k)*qsout(i,k)))**(-1._r8/3._r8)*1.e6_r8
+          endif
         end do
       end do
 #endif
@@ -5396,7 +5256,7 @@ subroutine mmicro_pcond ( sub_column,       &
           refl(i,k) = refl(i,k) + dum
  
 ! output reflectivity in Z.
-          areflz(i,k) = refl(i,k)
+          areflz(i,k) = refl(i,k)*cldmax(i,k)
  
 ! convert back to DBz 
  
@@ -5408,8 +5268,8 @@ subroutine mmicro_pcond ( sub_column,       &
   
 ! set averaging flag
           if (refl(i,k).gt.mindbz) then 
-            arefl(i,k) = refl(i,k)
-            frefl(i,k) = 1.0_r8  
+            arefl(i,k) = refl(i,k)*cldmax(i,k)
+            frefl(i,k) = 1.0_r8  *cldmax(i,k)
           else
             arefl(i,k) = 0._r8
             areflz(i,k) = 0._r8
@@ -5422,8 +5282,8 @@ subroutine mmicro_pcond ( sub_column,       &
  
 ! set averaging flag
           if (csrfl(i,k) .gt. csmin) then 
-            acsrfl(i,k) = refl(i,k)
-            fcsrfl(i,k) = 1.0_r8  
+            acsrfl(i,k) = refl(i,k)*cldmax(i,k)
+            fcsrfl(i,k) = 1.0_r8  *cldmax(i,k)
           else
             acsrfl(i,k) = 0._r8
             fcsrfl(i,k) = 0._r8
@@ -5457,16 +5317,16 @@ subroutine mmicro_pcond ( sub_column,       &
       do i = 1,ncol
         do k=1,pver
           if (qrout(i,k) .gt. 1.e-7_r8 .and. nrout(i,k) .gt. 0._r8) then
-            qrout2(i,k) = qrout(i,k)
-            nrout2(i,k) = nrout(i,k)
-            drout2(i,k) = (pi*rhow*nrout(i,k)/qrout(i,k))**(-1._r8/3._r8)
-            freqr(i,k) = 1._r8
+            qrout2(i,k) = qrout(i,k)*cldmax(i,k)
+            nrout2(i,k) = nrout(i,k)*cldmax(i,k)
+            drout2(i,k) = (pi*rhow*nrout(i,k)/qrout(i,k))**(-1._r8/3._r8)*cldmax(i,k)
+            freqr(i,k) = 1._r8*cldmax(i,k)
           endif
           if (qsout(i,k) .gt. 1.e-7_r8 .and. nsout(i,k) .gt. 0._r8) then
-            qsout2(i,k) = qsout(i,k)
-            nsout2(i,k) = nsout(i,k)
-            dsout2(i,k) = (pi*rhosn*nsout(i,k)/qsout(i,k))**(-1._r8/3._r8)
-            freqs(i,k) = 1._r8
+            qsout2(i,k) = qsout(i,k)*cldmax(i,k)
+            nsout2(i,k) = nsout(i,k)*cldmax(i,k)
+            dsout2(i,k) = (pi*rhosn*nsout(i,k)/qsout(i,k))**(-1._r8/3._r8)*cldmax(i,k)
+            freqs(i,k) = 1._r8*cldmax(i,k)
           endif
         end do
       end do
@@ -5667,7 +5527,295 @@ subroutine mmicro_pcond ( sub_column,       &
 
 end subroutine mmicro_pcond
 
+!real(r8) elemental function var_coef(relvar, a)
+real(r8) function var_coef(relvar, a)
+  ! Finds a coefficient for process rates based on the relative variance
+  ! of cloud water.
+  real(r8), intent(in) :: relvar
+  real(r8), intent(in) :: a
+ 
+  var_coef = gamma(relvar + a) / (gamma(relvar) * relvar**a)
+ 
+end function var_coef
+
+! get cloud droplet size distribution parameters
+!elemental subroutine size_dist_param_liq(qcic, ncic, cdnl, rho, nadjflag, pgam, lamc)
+ subroutine size_dist_param_liq(qcic, ncic, cdnl, rho, nadjflag, pgam, lamc)
+
+  real(r8), intent(in) :: qcic
+  real(r8), intent(inout) :: ncic
+  real(r8), intent(in) :: cdnl
+  real(r8), intent(in) :: rho
+  logical,  intent(in) :: nadjflag ! Whether to adjust number concentration to fall
+                                   ! within certain bounds
+
+  real(r8), intent(out) :: pgam
+  real(r8), intent(out) :: lamc
+
+  real(r8) :: dumgam1
+  real(r8) :: dumgam2
+  real(r8) :: lammin
+  real(r8) :: lammax
+
+  if (qcic > qsmall) then
+
+     if (nadjflag) then
+        ! add upper limit to in-cloud number concentration to prevent numerical error
+        ncic=min(ncic,qcic*1.e20_r8)
+        ! add lower limit to in-cloud number concentration
+        ncic=max(ncic,cdnl/rho) ! sghan minimum in #/cm
+     end if
+
+     ! get pgam from fit to observations of martin et al. 1994
+
+     pgam=0.0005714_r8*(ncic/1.e6_r8*rho)+0.2714_r8
+     pgam=1._r8/(pgam**2)-1._r8
+     pgam=max(pgam,2._r8)
+     pgam=min(pgam,15._r8)
+
+     ! calculate lamc
+     dumgam1 = gamma(pgam+1._r8)
+     dumgam2 = gamma(pgam+4._r8)
+
+     lamc = (pi/6._r8*rhow*ncic*dumgam2/ &
+          (qcic*dumgam1))**(1._r8/3._r8)
+
+     ! lammin, 50 micron diameter max mean size
+
+     lammin = (pgam+1._r8)/50.e-6_r8
+     lammax = (pgam+1._r8)/2.e-6_r8
+
+     if (lamc < lammin) then
+        lamc = lammin
+
+        if (nadjflag) then
+           ncic = 6._r8 * lamc**3 * qcic * dumgam1/ &
+                (pi * rhow * dumgam2)
+        end if
+     else if (lamc > lammax) then
+        lamc = lammax
+
+        if (nadjflag) then
+           ncic = 6._r8 * lamc**3 * qcic * dumgam1/ &
+                (pi * rhow * dumgam2)
+        end if
+     end if
+
+  else
+     ! pgam not calculated in this case, so set it to a value likely to cause an error
+     ! if it is accidentally used
+     ! (gamma function undefined for negative integers)
+     pgam = -100._r8
+     lamc = 0._r8
+  end if
+
+end subroutine size_dist_param_liq
+
+! get ice size distribution parameters
+!elemental subroutine size_dist_param_ice(qiic, niic, lami, n0i)
+ subroutine size_dist_param_ice(qiic, niic, lami, n0i)
+  real(r8), intent(in) :: qiic
+  real(r8), intent(inout) :: niic
+
+  real(r8), intent(out) :: lami
+  real(r8), intent(out) :: n0i
+
+  ! particle mass-diameter relationship
+  ! currently we assume spherical particles for cloud ice/snow
+  ! m = cD^d
+  ! cloud ice mass-diameter relationship
+  real(r8)            :: ci 
+
+  ! local parameters
+  real(r8)            :: lammaxi 
+  real(r8)            :: lammini
+
+   ci = rhoi*pi/6._r8
+#ifdef GFDL_COMPATIBLE_MICROP
+   lammaxi = 1._r8/min_diam_ice 
+#else
+   lammaxi = 1._r8/10.e-6_r8
+#endif
+   lammini = 1._r8/(2._r8*dcs)
+  if (qiic > qsmall) then
+
+     ! add upper limit to in-cloud number concentration to prevent numerical error
+     niic = min(niic, qiic * 1.e20_r8)
+
+     lami = (cons1*ci*niic/qiic)**(1._r8/ds)
+     n0i = niic * lami
+  
+     ! check for slope
+     ! adjust vars
+     if (lami < lammini) then
+        lami = lammini
+        n0i = lami**(ds+1._r8) * qiic/(ci*cons1)
+        niic = n0i/lami
+     else if (lami > lammaxi) then
+        lami = lammaxi
+        n0i = lami**(ds+1._r8) * qiic/(ci*cons1)
+        niic = n0i/lami
+     end if
+  else
+     lami = 0._r8
+     n0i  = 0._r8
+  end if
+
+end subroutine size_dist_param_ice
+
+! get rain size distribution parameters
+!elemental subroutine size_dist_param_rain(qric, nric, lamr, n0r)
+subroutine size_dist_param_rain(qric, nric, lamr, n0r)
+  real(r8), intent(in) :: qric
+  real(r8), intent(inout) :: nric
+
+  real(r8), intent(out) :: lamr
+  real(r8), intent(out) :: n0r
+
+  ! particle mass-diameter relationship
+  ! currently we assume spherical particles for cloud ice/snow
+  ! m = cD^d
+  ! rain mass-diameter relationship
+  ! Rain is hard-coded for spherical drops
+  ! Therefore cr is rhow*pi, rather than
+  ! using rhow*pi/6 and later multiplying
+  ! by gamma(1+dsph) == 6.
+  real(r8)            :: cr 
+
+  ! local parameters
+  real(r8)            :: lammaxr 
+  real(r8)            :: lamminr
+
+   cr = rhow*pi
+   lammaxr = 1._r8/20.e-6_r8
+   lamminr = 1._r8/500.e-6_r8
+  if (qric > qsmall) then
+
+     lamr = (cr*nric/qric)**(1._r8/3._r8)
+     n0r = nric * lamr
+  
+     ! check for slope
+     ! adjust vars
+
+     if (lamr < lamminr) then
+        lamr = lamminr
+        n0r = lamr**4 * qric/cr
+        nric = n0r/lamr
+     else if (lamr > lammaxr) then
+        lamr = lammaxr
+        n0r = lamr**4 * qric/cr
+        nric = n0r/lamr
+     end if
+
+  else
+     lamr = 0._r8
+     n0r  = 0._r8
+  end if
+
+end subroutine size_dist_param_rain
+
+! get snow size distribution parameters
+!elemental subroutine size_dist_param_snow(qsic, nsic, lams, n0s)
+ subroutine size_dist_param_snow(qsic, nsic, lams, n0s)
+  real(r8), intent(in) :: qsic
+  real(r8), intent(inout) :: nsic
+
+  real(r8), intent(out) :: lams
+  real(r8), intent(out) :: n0s
+
+  ! particle mass-diameter relationship
+  ! currently we assume spherical particles for cloud ice/snow
+  ! m = cD^d
+  ! cloud ice mass-diameter relationship
+  real(r8)            :: cs 
+
+  ! local parameters
+  real(r8)            :: lammaxs 
+  real(r8)            :: lammins
+
+   cs = rhosn*pi/6._r8
+#ifdef GFDL_COMPATIBLE_MICROP
+   lammaxs = 1._r8/min_diam_ice 
+#else
+   lammaxs = 1._r8/10.e-6_r8
+#endif
+  lammins = 1._r8/2000.e-6_r8
+  if (qsic > qsmall) then
+
+     lams = (cons1*cs*nsic/qsic)**(1._r8/ds)
+     n0s = nsic * lams
+  
+     ! check for slope
+     ! adjust vars
+     if (lams < lammins) then
+        lams = lammins
+        n0s = lams**(ds+1._r8) * qsic/(cs*cons1)
+        nsic = n0s/lams
+     else if (lams > lammaxs) then
+        lams = lammaxs
+        n0s = lams**(ds+1._r8) * qsic/(cs*cons1)
+        nsic = n0s/lams
+     end if
+  
+  else
+     lams = 0._r8
+     n0s  = 0._r8
+  end if
+
+end subroutine size_dist_param_snow
+
+   subroutine calc_rercld(lamr, n0r, lamc, cdist1, pgam, dumr, qcic,      &
+     arcld, rercld)
+  real(r8), intent(in) :: lamr          ! rain size parameter (slope)
+  real(r8), intent(in) :: n0r           ! rain size parameter (intercept)
+real(r8), intent(in) :: lamc          ! size distribution parameter (slope)
+ real(r8), intent(in) :: cdist1        ! for droplet freezing
+  real(r8), intent(in) :: pgam          ! droplet size parameter
+  real(r8), intent(in) :: dumr          ! in-cloud rain mass mixing ratio
+  real(r8), intent(in) :: qcic          ! in-cloud cloud liquid
+
+  integer,  intent(inout) :: arcld      ! number of substeps rercld has been through
+  real(r8), intent(inout) :: rercld     ! effective radius calculation for      rain + cloud
+
+! combined size of precip & cloud drops
+real(r8) :: Atmp
+
+ ! Rain drops
+ if (lamr > 0._r8) then
+    Atmp = n0r * pi / (2._r8 * lamr**3._r8)
+else
+    Atmp = 0._r8
+ end if
+
+ ! Add cloud drops
+ if (lamc > 0._r8) then
+    Atmp = Atmp + cdist1 * pi * gamma(pgam+3._r8)/(4._r8 * lamc**2._r8)
+  end if
+ 
+  if (Atmp > 0._r8) then
+     rercld = rercld + 3._r8 *(dumr + qcic) / (4._r8 * rhow * Atmp)
+     arcld = arcld+1
+  end if
+ 
+end subroutine calc_rercld
+
+
+
 !########################################################################
+
+!pure function interp_to_mid(orig_val, weights) result(new_val)
+ function interp_to_mid(orig_val, weights) result(new_val)
+  ! Linear interpolation, here used to move from interfaces to midlevel
+  real(r8), intent(in) :: orig_val(:)
+  real(r8), intent(in) :: weights(:)
+
+  ! New value is slightly smaller than the old value
+  real(r8) :: new_val(size(orig_val,1)-1)
+
+  new_val = orig_val(:size(new_val))
+  new_val = new_val + weights * (orig_val(2:) - new_val)
+
+end function interp_to_mid
 
 subroutine mmicro_end
 
@@ -5675,385 +5823,10 @@ return
 
 
 end subroutine mmicro_end
-!
-!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-
-      FUNCTION GAMMA(X)
-
-!cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-
-!D    DOUBLE PRECISION FUNCTION DGAMMA(X)
-!----------------------------------------------------------------------
-!
-! THIS ROUTINE CALCULATES THE GAMMA FUNCTION FOR A REAL ARGUMENT X.
-!   COMPUTATION IS BASED ON AN ALGORITHM OUTLINED IN REFERENCE 1.
-!   THE PROGRAM USES RATIONAL FUNCTIONS THAT APPROXIMATE THE GAMMA
-!   FUNCTION TO AT LEAST 20 SIGNIFICANT DECIMAL DIGITS.  COEFFICIENTS
-!   FOR THE APPROXIMATION OVER THE INTERVAL (1,2) ARE UNPUBLISHED.
-!   THOSE FOR THE APPROXIMATION FOR X .GE. 12 ARE FROM REFERENCE 2.
-!   THE ACCURACY ACHIEVED DEPENDS ON THE ARITHMETIC SYSTEM, THE
-!   COMPILER, THE INTRINSIC FUNCTIONS, AND PROPER SELECTION OF THE
-!   MACHINE-DEPENDENT CONSTANTS.
-!
-!
-!*******************************************************************
-!*******************************************************************
-!
-! EXPLANATION OF MACHINE-DEPENDENT CONSTANTS
-!
-! BETA   - RADIX FOR THE FLOATING-POINT REPRESENTATION
-! MAXEXP - THE SMALLEST POSITIVE POWER OF BETA THAT OVERFLOWS
-! XBIG   - THE LARGEST ARGUMENT FOR WHICH GAMMA(X) IS REPRESENTABLE
-!          IN THE MACHINE, I.E., THE SOLUTION TO THE EQUATION
-!                  GAMMA(XBIG) = BETA**MAXEXP
-! XINF   - THE LARGEST MACHINE REPRESENTABLE FLOATING-POINT NUMBER;
-!          APPROXIMATELY BETA**MAXEXP
-! EPS    - THE SMALLEST POSITIVE FLOATING-POINT NUMBER SUCH THAT
-!          1.0+EPS .GT. 1.0
-! XMININ - THE SMALLEST POSITIVE FLOATING-POINT NUMBER SUCH THAT
-!          1/XMININ IS MACHINE REPRESENTABLE
-!
-!     APPROXIMATE VALUES FOR SOME IMPORTANT MACHINES ARE:
-!
-!                            BETA       MAXEXP        XBIG
-!
-! CRAY-1         (S.P.)        2         8191        966.961
-! CYBER 180/855
-!   UNDER NOS    (S.P.)        2         1070        177.803
-! IEEE (IBM/XT,
-!   SUN, ETC.)   (S.P.)        2          128        35.040
-! IEEE (IBM/XT,
-!   SUN, ETC.)   (D.P.)        2         1024        171.624
-! IBM 3033       (D.P.)       16           63        57.574
-! VAX D-FORMAT   (D.P.)        2          127        34.844
-! VAX G-FORMAT   (D.P.)        2         1023        171.489
-!
-!                            XINF         EPS        XMININ
-!
-! CRAY-1         (S.P.)   5.45E+2465   7.11E-15    1.84E-2466
-! CYBER 180/855
-!   UNDER NOS    (S.P.)   1.26E+322    3.55E-15    3.14E-294
-! IEEE (IBM/XT,
-!   SUN, ETC.)   (S.P.)   3.40E+38     1.19E-7     1.18E-38
-! IEEE (IBM/XT,
-!   SUN, ETC.)   (D.P.)   1.79D+308    2.22D-16    2.23D-308
-! IBM 3033       (D.P.)   7.23D+75     2.22D-16    1.39D-76
-! VAX D-FORMAT   (D.P.)   1.70D+38     1.39D-17    5.88D-39
-! VAX G-FORMAT   (D.P.)   8.98D+307    1.11D-16    1.12D-308
-!
-!*******************************************************************
-!*******************************************************************
-!
-! ERROR RETURNS
-!
-!  THE PROGRAM RETURNS THE VALUE XINF FOR SINGULARITIES OR
-!     WHEN OVERFLOW WOULD OCCUR.  THE COMPUTATION IS BELIEVED
-!     TO BE FREE OF UNDERFLOW AND OVERFLOW.
-!
-!
-!  INTRINSIC FUNCTIONS REQUIRED ARE:
-!
-!     INT, DBLE, EXP, LOG, REAL, SIN
-!
-!
-! REFERENCES:  AN OVERVIEW OF SOFTWARE DEVELOPMENT FOR SPECIAL
-!              FUNCTIONS   W. J. CODY, LECTURE NOTES IN MATHEMATICS,
-!              506, NUMERICAL ANALYSIS DUNDEE, 1975, G. A. WATSON
-!              (ED.), SPRINGER VERLAG, BERLIN, 1976.
-!
-!              COMPUTER APPROXIMATIONS, HART, ET. AL., WILEY AND
-!              SONS, NEW YORK, 1968.
-!
-!  LATEST MODIFICATION: OCTOBER 12, 1989
-!
-!  AUTHORS: W. J. CODY AND L. STOLTZ
-!           APPLIED MATHEMATICS DIVISION
-!           ARGONNE NATIONAL LABORATORY
-!           ARGONNE, IL 60439
-!
-!----------------------------------------------------------------------
-      INTEGER I,N
-      LOGICAL PARITY
-
-      real(r8) gamma
-      REAL(r8) &
-!D    DOUBLE PRECISION
-         C,CONV,EPS,FACT,HALF,ONE,P,PI,Q,RES,SQRTPI,SUM,TWELVE, &
-         TWO,X,XBIG,XDEN,XINF,XMININ,XNUM,Y,Y1,YSQ,Z,ZERO
-      DIMENSION C(7),P(8),Q(8)
-!----------------------------------------------------------------------
-!  MATHEMATICAL CONSTANTS
-!----------------------------------------------------------------------
-      DATA ONE,HALF,TWELVE,TWO,ZERO/1.0E0_r8,0.5E0_r8,12.0E0_r8,2.0E0_r8,0.0E0_r8/, &
-          SQRTPI/0.9189385332046727417803297E0_r8/, &
-          PI/3.1415926535897932384626434E0_r8/
-!D    DATA ONE,HALF,TWELVE,TWO,ZERO/1.0D0,0.5D0,12.0D0,2.0D0,0.0D0/,
-!D   1     SQRTPI/0.9189385332046727417803297D0/,
-!D   2     PI/3.1415926535897932384626434D0/
-!----------------------------------------------------------------------
-!  MACHINE DEPENDENT PARAMETERS
-!----------------------------------------------------------------------
-      DATA XBIG,XMININ,EPS/35.040E0_r8,1.18E-38_r8,1.19E-7_r8/, &
-          XINF/3.4E38_r8/
-!D    DATA XBIG,XMININ,EPS/171.624D0,2.23D-308,2.22D-16/,
-!D   1     XINF/1.79D308/
-!----------------------------------------------------------------------
-!  NUMERATOR AND DENOMINATOR COEFFICIENTS FOR RATIONAL MINIMAX
-!     APPROXIMATION OVER (1,2).
-!----------------------------------------------------------------------
-      DATA P/-1.71618513886549492533811E+0_r8,2.47656508055759199108314E+1_r8,&
-            -3.79804256470945635097577E+2_r8,6.29331155312818442661052E+2_r8,&
-            8.66966202790413211295064E+2_r8,-3.14512729688483675254357E+4_r8,&
-            -3.61444134186911729807069E+4_r8,6.64561438202405440627855E+4_r8/
-      DATA Q/-3.08402300119738975254353E+1_r8,3.15350626979604161529144E+2_r8,&
-           -1.01515636749021914166146E+3_r8,-3.10777167157231109440444E+3_r8,&
-             2.25381184209801510330112E+4_r8,4.75584627752788110767815E+3_r8,&
-           -1.34659959864969306392456E+5_r8,-1.15132259675553483497211E+5_r8/
-!D    DATA P/-1.71618513886549492533811D+0,2.47656508055759199108314D+1,
-!D   1       -3.79804256470945635097577D+2,6.29331155312818442661052D+2,
-!D   2       8.66966202790413211295064D+2,-3.14512729688483675254357D+4,
-!D   3       -3.61444134186911729807069D+4,6.64561438202405440627855D+4/
-!D    DATA Q/-3.08402300119738975254353D+1,3.15350626979604161529144D+2,
-!D   1      -1.01515636749021914166146D+3,-3.10777167157231109440444D+3,
-!D   2        2.25381184209801510330112D+4,4.75584627752788110767815D+3,
-!D   3      -1.34659959864969306392456D+5,-1.15132259675553483497211D+5/
-!----------------------------------------------------------------------
-!  COEFFICIENTS FOR MINIMAX APPROXIMATION OVER (12, INF).
-!----------------------------------------------------------------------
-      DATA C/-1.910444077728E-03_r8,8.4171387781295E-04_r8, &
-          -5.952379913043012E-04_r8,7.93650793500350248E-04_r8,&
-          -2.777777777777681622553E-03_r8,8.333333333333333331554247E-02_r8,&
-           5.7083835261E-03_r8/
-!D    DATA C/-1.910444077728D-03,8.4171387781295D-04,
-!D   1     -5.952379913043012D-04,7.93650793500350248D-04,
-!D   2     -2.777777777777681622553D-03,8.333333333333333331554247D-02,
-!D   3      5.7083835261D-03/
-!----------------------------------------------------------------------
-!  STATEMENT FUNCTIONS FOR CONVERSION BETWEEN INTEGER AND FLOAT
-!----------------------------------------------------------------------
-      CONV(I) = REAL(I,r8)
-!D    CONV(I) = DBLE(I)
-      PARITY=.FALSE.
-      FACT=ONE
-      N=0
-      Y=X
-      IF(Y.LE.ZERO)THEN
-!----------------------------------------------------------------------
-!  ARGUMENT IS NEGATIVE
-!----------------------------------------------------------------------
-        Y=-X
-        Y1=AINT(Y)
-        RES=Y-Y1
-        IF(RES.NE.ZERO)THEN
-          IF(Y1.NE.AINT(Y1*HALF)*TWO)PARITY=.TRUE.
-          FACT=-PI/SIN(PI*RES)
-          Y=Y+ONE
-        ELSE
-          RES=XINF
-          GOTO 900
-        ENDIF
-      ENDIF
-!----------------------------------------------------------------------
-!  ARGUMENT IS POSITIVE
-!----------------------------------------------------------------------
-      IF(Y.LT.EPS)THEN
-!----------------------------------------------------------------------
-!  ARGUMENT .LT. EPS
-!----------------------------------------------------------------------
-        IF(Y.GE.XMININ)THEN
-          RES=ONE/Y
-        ELSE
-          RES=XINF
-          GOTO 900
-        ENDIF
-      ELSEIF(Y.LT.TWELVE)THEN
-        Y1=Y
-        IF(Y.LT.ONE)THEN
-!----------------------------------------------------------------------
-!  0.0 .LT. ARGUMENT .LT. 1.0
-!----------------------------------------------------------------------
-          Z=Y
-          Y=Y+ONE
-        ELSE
-!----------------------------------------------------------------------
-!  1.0 .LT. ARGUMENT .LT. 12.0, REDUCE ARGUMENT IF NECESSARY
-!----------------------------------------------------------------------
-          N=INT(Y)-1
-          Y=Y-CONV(N)
-          Z=Y-ONE
-        ENDIF
-!----------------------------------------------------------------------
-!  EVALUATE APPROXIMATION FOR 1.0 .LT. ARGUMENT .LT. 2.0
-!----------------------------------------------------------------------
-        XNUM=ZERO
-        XDEN=ONE
-        DO 260 I=1,8
-          XNUM=(XNUM+P(I))*Z
-          XDEN=XDEN*Z+Q(I)
-  260   CONTINUE
-        RES=XNUM/XDEN+ONE
-        IF(Y1.LT.Y)THEN
-!----------------------------------------------------------------------
-!  ADJUST RESULT FOR CASE  0.0 .LT. ARGUMENT .LT. 1.0
-!----------------------------------------------------------------------
-          RES=RES/Y1
-        ELSEIF(Y1.GT.Y)THEN
-!----------------------------------------------------------------------
-!  ADJUST RESULT FOR CASE  2.0 .LT. ARGUMENT .LT. 12.0
-!----------------------------------------------------------------------
-          DO 290 I=1,N
-            RES=RES*Y
-            Y=Y+ONE
-  290     CONTINUE
-        ENDIF
-      ELSE
-!----------------------------------------------------------------------
-!  EVALUATE FOR ARGUMENT .GE. 12.0,
-!----------------------------------------------------------------------
-        IF(Y.LE.XBIG)THEN
-          YSQ=Y*Y
-          SUM=C(7)
-          DO 350 I=1,6
-            SUM=SUM/YSQ+C(I)
-  350     CONTINUE
-          SUM=SUM/Y-Y+SQRTPI
-          SUM=SUM+(Y-HALF)*LOG(Y)
-          RES=EXP(SUM)
-        ELSE
-          RES=XINF
-          GOTO 900
-        ENDIF
-      ENDIF
-!----------------------------------------------------------------------
-!  FINAL ADJUSTMENTS AND RETURN
-!----------------------------------------------------------------------
-      IF(PARITY)RES=-RES
-      IF(FACT.NE.ONE)RES=FACT/RES
-  900 GAMMA=RES
-!D900 DGAMMA = RES
-      RETURN
-! ---------- LAST LINE OF GAMMA ----------
-      END function gamma
-
 
 
 #ifdef GFDL_COMPATIBLE_MICROP
-!########################################################################
-      function polysvp (T,type)
-!  Compute saturation vapor pressure by using
-! function from Goff and Gatch (1946)
 
-!  Polysvp returned in units of pa.
-!  T is input in units of K.
-!  type refers to saturation with respect to liquid (0) or ice (1)
-
-      real(r8) dum
-
-      real(r8) T,polysvp
-
-      integer type
-
-! ice
-
-      if (type.eq.1) then
-
-! Goff Gatch equation (good down to -100 C)
-
-         polysvp = 10._r8**(-9.09718_r8*(273.16_r8/t-1._r8)-3.56654_r8* &
-          log10(273.16_r8/t)+0.876793_r8*(1._r8-t/273.16_r8)+ &
-          log10(6.1071_r8))*100._r8
-
-      end if
-
-! Goff Gatch equation, uncertain below -70 C
-
-      if (type.eq.0) then
-         polysvp = 10._r8**(-7.90298_r8*(373.16_r8/t-1._r8)+ &
-             5.02808_r8*log10(373.16_r8/t)- &
-             1.3816e-7_r8*(10._r8**(11.344_r8*(1._r8-t/373.16_r8))-1._r8)+ &
-             8.1328e-3_r8*(10._r8**(-3.49149_r8*(373.16_r8/t-1._r8))-1._r8)+ &
-             log10(1013.246_r8))*100._r8
-         end if
-
-
-      end function polysvp
-!#########################################################################
-
-
-!#########################################################################
-subroutine vqsatd_water(t       ,p       ,es      ,qs      ,gam      , &
-                        len     )
-
-!------------------------------Arguments--------------------------------
-!
-! Input arguments
-!
-   integer, intent(in) :: len       ! vector length
-   real(r8), intent(in) :: t(len)       ! temperature
-   real(r8), intent(in) :: p(len)       ! pressure
-
-!
-! Output arguments
-!
-   real(r8), intent(out) :: es(len)   ! saturation vapor pressure
-   real(r8), intent(out) :: qs(len)   ! saturation specific humidity
-   real(r8), intent(out) :: gam(len)  ! (l/cp)*(d(qs)/dt)
-!
-!--------------------------Local Variables------------------------------
-!
-   integer i      ! index for vector calculations
-!
-   real(r8) omeps     ! 1. - 0.622
-   real(r8) hltalt    ! appropriately modified hlat for T derivatives
-!
-   real(r8) hlatsb    ! hlat weighted in transition region
-   real(r8) hlatvp    ! hlat modified for t changes above freezing
-   real(r8) desdt     ! d(es)/dT
-!
-!-----------------------------------------------------------------------
-!
-   omeps = 1.0_r8 - epsqs
-   do i=1,len
-      es(i) = polysvp(t(i),0)
-!
-! Saturation specific humidity
-!
-      qs(i) = epsqs*es(i)/(p(i) - omeps*es(i))
-!
-! The following check is to avoid the generation of negative
-! values that can occur in the upper stratosphere and mesosphere
-!
-      qs(i) = min(1.0_r8,qs(i))
-!
-      if (qs(i) < 0.0_r8) then
-         qs(i) = 1.0_r8
-         es(i) = p(i)
-      end if
-   end do
-!
-! No icephs or water to ice transition
-!
-   do i=1,len
-!
-! Account for change of hlatv with t above freezing where
-! constant slope is given by -2369 j/(kg c) = cpv - cw
-!
-      hlatvp = hlv - 2369.0_r8*(t(i)-tmelt)
-      hlatsb = hlv
-      if (t(i) < tmelt) then
-         hltalt = hlatsb
-      else
-         hltalt = hlatvp
-      end if
-      desdt  = hltalt*es(i)/(rvgas*t(i)*t(i))
-      gam(i) = hltalt*qs(i)*p(i)*desdt/(cpp*es(i)*(p(i) - omeps*es(i)))
-      if (qs(i) == 1.0_r8) gam(i) = 0.0_r8
-   end do
-!
-   return
-end subroutine vqsatd_water
-
-!#########################################################################
 end module cldwat2m_micro_mod
 
 #else

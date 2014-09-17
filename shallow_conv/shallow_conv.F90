@@ -24,7 +24,7 @@
 !---------------------------------------------------------------------
 
  character(len=128) :: version = '$Id: shallow_conv.F90,v 19.0 2012/01/06 20:25:24 fms Exp $'
- character(len=128) :: tagname = '$Name: tikal_201403 $'
+ character(len=128) :: tagname = '$Name: tikal_201409 $'
 
  logical :: module_is_initialized = .false.
 

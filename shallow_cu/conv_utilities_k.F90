@@ -12,7 +12,7 @@ MODULE CONV_UTILITIES_k_MOD
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
   character(len=128) :: version = '$Id: conv_utilities_k.F90,v 20.0 2013/12/13 23:21:37 fms Exp $'
-  character(len=128) :: tagname = '$Name: tikal_201403 $'
+  character(len=128) :: tagname = '$Name: tikal_201409 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

@@ -64,7 +64,7 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: bulkphys_rad.F90,v 19.0 2012/01/06 20:13:07 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201403 $'
+character(len=128)  :: tagname =  '$Name: tikal_201409 $'
 
 
 

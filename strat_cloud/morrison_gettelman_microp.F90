@@ -33,8 +33,8 @@ public morrison_gettelman_microp, morrison_gettelman_microp_init,  &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 20.0 2013/12/13 23:21:59 fms Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201403 $'
+Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 20.0.2.1 2014/01/09 08:18:12 rsh Exp $'
+Character(len=128) :: Tagname = '$Name: tikal_201409 $'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------
@@ -133,7 +133,6 @@ namelist / morrison_gettelman_microp_nml /   &
                  limit_volri, limit_droplet_freeze_opt,    &
                  mg_repartition_first, meyers_test, &
                  allow_all_cldtop_collection, rho_factor_in_max_vt,&
-!                allow_all_cldtop_collection,                      &
                  max_rho_factor_in_vt, &
                  lowest_temp_for_sublimation
 
@@ -966,21 +965,13 @@ INTEGER,                                  INTENT(IN )     &
 ! hm added 11/18/06, add air density correction factor to the
 ! power of 0.54 following Heymsfield and Bansemer 2006
 
-!            if (rho_factor_in_max_vt) then
-               rhof(i,k)=(rhosu/rho(i,k))**0.54_mg_pr
-!            else
-!              rhof(i,k) = 1.0
-!            endif
+             rhof(i,k)=(rhosu/rho(i,k))**0.54_mg_pr
+             if (.not. rho_factor_in_max_vt) rhof(i,k) = 1.0
              rhof(i,k) = MIN (rhof(i,k), max_rho_factor_in_vt)
-
-!            arn(i,k)=ar*(rhosu/rho(i,k))**0.54_mg_pr
-!            asn(i,k)=as*(rhosu/rho(i,k))**0.54_mg_pr
-!            acn(i,k)=ac*(rhosu/rho(i,k))**0.54_mg_pr
-!            ain(i,k)=ai*(rhosu/rho(i,k))**0.54_mg_pr
-             arn(i,k)=ar*rhof(i,k)                        
-             asn(i,k)=as*rhof(i,k)                        
-             acn(i,k)=ac*rhof(i,k)                        
-             ain(i,k)=ai*rhof(i,k)                        
+             arn(i,k)=ar*rhof(i,k)
+             asn(i,k)=as*rhof(i,k)
+             acn(i,k)=ac*rhof(i,k)
+             ain(i,k)=ai*rhof(i,k)
  
 ! keep dz positive (define as layer k-1 - layer k)
 
@@ -1164,7 +1155,7 @@ INTEGER,                                  INTENT(IN )     &
                  else
                    dumnnuc = 0._mg_pr
                  end if
-               ELSE  IF (dqa_activation) THEN
+		 ELSE  IF (dqa_activation) THEN
                  dumnnuc = max(delta_cf(i,k), 0.)*dum/deltat
                END IF
                dumnnuc=max(dumnnuc,0._mg_pr)
@@ -1433,6 +1424,7 @@ INTEGER,                                  INTENT(IN )     &
              if (qc(i,k) + qi(i,k) + qv(i,k) .lt. -1.e-9_mg_pr .OR.  &
                  qv(i,k)  .lt. -1.e-9_mg_pr) then
                ltrue(i) = 0
+               exit
                nrefuse = nrefuse + 1
              end if
            end do
@@ -3035,15 +3027,11 @@ INTEGER,                                  INTENT(IN )     &
 
 ! vertically-integrated precip source/sink terms (note: grid-averaged)
 
-!              qrtot = max(qrtot + qrtend(i,k)*rho(i,k)*dz(i,k), 0._mg_pr)
-!              qstot = max(qstot + qnitend(i,k)*rho(i,k)*dz(i,k),    &
-!                                                               0._mg_pr)
-!              nrtot = max(nrtot + nrtend(i,k)*rho(i,k)*dz(i,k), 0._mg_pr)
-!              nstot = max(nstot + nstend(i,k)*rho(i,k)*dz(i,k), 0._mg_pr)
-               qrtot = qrtot + qrtend(i,k)*rho(i,k)*dz(i,k)
-               qstot = qstot + qnitend(i,k)*rho(i,k)*dz(i,k)
-               nrtot = nrtot + nrtend(i,k)*rho(i,k)*dz(i,k)
-               nstot = nstot + nstend(i,k)*rho(i,k)*dz(i,k)
+               qrtot = max(qrtot + qrtend(i,k)*rho(i,k)*dz(i,k), 0._mg_pr)
+               qstot = max(qstot + qnitend(i,k)*rho(i,k)*dz(i,k),    &
+                                                                0._mg_pr)
+               nrtot = max(nrtot + nrtend(i,k)*rho(i,k)*dz(i,k), 0._mg_pr)
+               nstot = max(nstot + nstend(i,k)*rho(i,k)*dz(i,k), 0._mg_pr)
 
 ! calculate melting and freezing of precip
 
@@ -3051,17 +3039,18 @@ INTEGER,                                  INTENT(IN )     &
 ! NOTE RSH 11/22/11:
 ! NOTE THAT R-K only starts melting at 0 C -- called a bug to melt at +2 C 
 !
+               snow2vapor(k) = 0.0_mg_pr   
                if (t(i,k) + tlat(i,k)/cpp*deltat >     &
                                                  tfreeze + 2._mg_pr) then
                  if (qstot > 0._mg_pr) then
 
 ! make sure melting snow doesn't reduce temperature below threshold
-                   dum = -xlf/cpp*qstot/(rho(i,k)*dz(i,k))
+                   dum = -xlf/cpp*qstot/(rho(i,k)*dz(i,k))*deltat
                    if (t(i,k) + tlat(i,k)/cpp*deltat+dum .lt.    &
                                                  tfreeze + 2._mg_pr) then
                      dum = (t(i,k) + tlat(i,k)/cpp*deltat -   &
-                                            (tfreeze + 2._mg_pr))*cpp/xlf
-                     dum = dum/(xlf/cpp*qstot/(rho(i,k)*dz(i,k)))
+                                            (tfreeze + 2._mg_pr))
+                     dum = dum/(xlf/cpp*qstot/(rho(i,k)*dz(i,k)))*deltat
                      dum = max(0._mg_pr, dum)
                      dum = min(1._mg_pr, dum)
                    else
@@ -3124,12 +3113,12 @@ INTEGER,                                  INTENT(IN )     &
                  if (qrtot > 0._mg_pr) then
 
 ! make sure freezing rain doesn't increase temperature above threshold
-                   dum = xlf/cpp*qrtot/(rho(i,k)*dz(i,k))
+                   dum = xlf/cpp*qrtot/(rho(i,k)*dz(i,k))*deltat
                    if (t(i,k) + tlat(i,k)/cpp*deltat + dum   &
                                             .gt. tfreeze -5._mg_pr ) then
                      dum = -(t(i,k) + tlat(i,k)/cpp*deltat -    &
-                                             (tfreeze - 5._mg_pr) )*cpp/xlf
-                     dum = dum/(xlf/cpp*qrtot/(rho(i,k)*dz(i,k)))
+                                             (tfreeze - 5._mg_pr) )
+                     dum = dum/(xlf/cpp*qrtot/(rho(i,k)*dz(i,k)))*deltat
                      dum = max(0._mg_pr, dum)
                      dum = min(1._mg_pr, dum)
                    else
@@ -3650,13 +3639,6 @@ INTEGER,                                  INTENT(IN )     &
                dumc(i,k) = dumc(i,k) - faltndc*deltat/nstep
                dumnc(i,k) = dumnc(i,k) - faltndnc*deltat/nstep
 
-               Fni(K) = MAX(Fni(K)/pdel(i,K), Fni(K-1)/pdel(i,K-1))*   &
-                                                                 pdel(i,K)
-               FI(K) = MAX(FI(K)/pdel(i,K), FI(K-1)/pdel(i,K-1))*pdel(i,K)
-               fnc(k) = max(fnc(k)/pdel(i,k), fnc(k-1)/pdel(i,k-1))*   &
-                                                                  pdel(i,k)
-               Fc(K) = MAX(Fc(K)/pdel(i,K), Fc(K-1)/pdel(i,K-1))*pdel(i,K)
-
                IF (diag_id%qidt_fall + diag_id%qi_fall_col > 0) &
                       diag_4d(i,j,k,diag_pt%qidt_fall) =    &
                           diag_4d(i,j,k,diag_pt%qidt_fall) - faltndi/nstep
@@ -3700,7 +3682,7 @@ INTEGER,                                  INTENT(IN )     &
                  if (t(i,k) + tlat(i,k)/cpp*deltat + dum    &
                                                        .lt.  tfreeze) then
                    dum = (t(i,k) + tlat(i,k)/cpp*deltat-tfreeze)*cpp/xlf
-                   dum = dum/dumi(i,k)*xlf/cpp 
+                   dum = dum/dumi(i,k)
                    dum = max(0._mg_pr, dum)
                    dum = min(1._mg_pr, dum)
                  else
@@ -3747,7 +3729,7 @@ INTEGER,                                  INTENT(IN )     &
                                                            tmin_fice) then
                    dum = -(t(i,k) + tlat(i,k)/cpp*deltat - tmin_fice)*  &
                                                                    cpp/xlf
-                   dum = dum/dumc(i,k)*xlf/cpp
+                   dum = dum/dumc(i,k)
                    dum = max(0._mg_pr, dum)
                    dum = min(1._mg_pr, dum)
                  else

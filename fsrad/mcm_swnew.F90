@@ -8,7 +8,7 @@
 private 
 
       character(len=128) :: version = '$Id: mcm_swnew.F90,v 10.0 2003/10/24 22:00:32 fms Exp $'
-      character(len=128) :: tagname = '$Name: tikal_201403 $'
+      character(len=128) :: tagname = '$Name: tikal_201409 $'
       logical            :: module_is_initialized = .false.
 
 public mcm_swnew, mcm_swnew_init, mcm_swnew_end

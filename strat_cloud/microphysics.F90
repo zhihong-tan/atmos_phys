@@ -1,9 +1,12 @@
 module microphysics_mod
 
-use fms_mod,                      only :  FATAL, error_mesg,  &
-                                          write_version_number, &
-                                          mpp_pe
-use constants_mod,                only :  cp_air, hlv, hls, tfreeze,  &
+use fms_mod,                      only :  error_mesg, FATAL, mpp_pe,   &
+                                          mpp_root_pe, open_namelist_file, &
+                                          check_nml_error, close_file,  &
+                                          write_version_number, file_exist,&
+                                          stdlog
+use mpp_mod,                      only :  input_nml_file
+use constants_mod,                only :  cp_air, hlv, hlf, hls, tfreeze,  &
                                           rdgas, grav, rvgas
 use rotstayn_klein_mp_mod,        only :  rotstayn_klein_microp, &
                                           rotstayn_klein_microp_init,  &
@@ -20,6 +23,8 @@ use strat_cloud_utilities_mod,    only :  strat_cloud_utilities_init, &
                                           precip_state_type
 use cldwat2m_micro_mod,           only :  ini_micro, mmicro_pcond,  &
                                           mmicro_end
+use micro_mg_mod,              only:   micro_mg_init, micro_mg_get_cols,&
+                                          micro_mg_tend
 
 implicit none
 private
@@ -34,11 +39,29 @@ public  microphysics, microphysics_init, microphysics_end
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-character(len=128) :: version = '$Id: microphysics.F90,v 20.0 2013/12/13 23:21:57 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201403 $'
+character(len=128) :: version = '$Id: microphysics.F90,v 20.0.2.1 2014/01/09 08:18:12 rsh Exp $'
+character(len=128) :: tagname = '$Name: tikal_201409 $'
 
+!--------------------------------------------------------------------------
+!---namelist---------------------------------------------------------------
+ 
+! these variables used with ncar microphysics:
+real     ::         rhmini=0.80  ! minimum rh for ice cld fraction > 0
+logical  ::         microp_uniform = .false. 
+                               ! .true. = configure uniform for sub-columns 
+                               ! .false. = use w/o sub-columns (standard)
 
-logical :: module_is_initialized = .false.
+logical  ::         do_cldice = .true.
+                               ! .true. = do all processes (standard)
+                               ! .false. = skip all processes affecting
+                               !           cloud ice
+
+namelist / microphysics_nml /  rhmini, microp_uniform, do_cldice
+
+!-------------------------------------------------------------------------
+
+integer, parameter :: r8 = selected_real_kind(12)   ! 8 byte real
+logical            :: module_is_initialized = .false.
 
 
 CONTAINS
@@ -48,24 +71,64 @@ CONTAINS
 
 !##########################################################################
 
-subroutine microphysics_init (Nml)
+subroutine microphysics_init (Nml, Constants)
 
 type(strat_nml_type), intent(in) :: Nml
+type(strat_constants_type), intent(in) :: Constants
+
+      integer :: unit, io, ierr, logunit
+      character(len=128) :: errstring ! Output status: non-blank for 
+                                      ! error return
 
       if (module_is_initialized) return
 
 !-------------------------------------------------------------------------
-!    write version number to output file.
+!    process namelist.
+!-------------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+     read (input_nml_file, nml=microphysics_nml, iostat=io)
+     ierr = check_nml_error(io,'microphysics_nml')
+#else
+     if ( file_exist('input.nml')) then
+       unit = open_namelist_file ( )
+       ierr=1; do while (ierr /= 0)
+       read  (unit, nml=microphysics_nml, iostat=io, end=10)
+       ierr = check_nml_error(io,'microphysics_nml')
+       enddo
+10      call close_file (unit)
+     endif
+#endif
+!-------------------------------------------------------------------------
+!    write version number and namelist to standard log.
 !-------------------------------------------------------------------------
       call write_version_number (version, tagname)
+      logunit = stdlog()
+      if (mpp_pe() == mpp_root_pe()) &
+                                  write (logunit, nml=microphysics_nml)
 
 !-------------------------------------------------------------------------
 !    make sure needed modules have been initialized.
 !-------------------------------------------------------------------------
       call strat_cloud_utilities_init
-      call rotstayn_klein_microp_init
-      call morrison_gettelman_microp_init (Nml%do_pdf_clouds, Nml%qcvar)
-      call ini_micro (Nml%qcvar)
+      if (Constants%do_rk_microphys) then
+        call rotstayn_klein_microp_init
+      else if (Constants%do_mg_microphys) then
+        call morrison_gettelman_microp_init (Nml%do_pdf_clouds, Nml%qcvar)
+      else if (constants%do_mg_ncar_microphys) then
+        call ini_micro (grav, rdgas, rvgas, cp_air,   &
+                                         tfreeze, hlv, hlf, rhmini)
+      else if (Constants%do_ncar_microphys) then
+        call micro_mg_init (r8, grav, rdgas, rvgas, cp_air, tfreeze, &
+                            hlv, hlf, rhmini, microp_uniform, do_cldice, &
+                            errstring )
+        if (trim(errstring) /= '') then
+          call error_mesg ('strat_cloud/microphysics/micro_mg_init', &
+                                                         errstring, FATAL)
+        endif
+      else
+        call error_mesg ('strat_cloud/microphysics_init', &
+              'invalid strat_cloud_nml microphys_scheme option', FATAL)
+      endif
 
       module_is_initialized = .true.
 
@@ -75,7 +138,7 @@ end subroutine microphysics_init
 !##########################################################################
 
 subroutine microphysics &         
-                    (idim, jdim, kdim, Nml, Constants, N3D, Atmos_state, &
+                    (idim, jdim, kdim, relvarn, Nml, Constants, N3D, Atmos_state, &
                      Cloud_state, Cloud_processes, Particles, n_diag_4d, &
                      diag_4d, diag_id, diag_pt, n_diag_4d_kp1, diag_4d_kp1,&
                      ST_out, SQ_out, Precip_state, otun, ncall, &
@@ -96,7 +159,7 @@ integer,                           intent(in)    :: idim, jdim, kdim, &
                                                     jsamp, ksamp
 type(strat_nml_type),              intent(in)    :: Nml
 logical,                           intent(in)    :: debugo, debugo0, debugo1
-real, dimension (idim,jdim,kdim),  intent(in)    :: N3D 
+real, dimension (idim,jdim,kdim),  intent(in)    :: N3D, relvarn 
  real, dimension(idim,jdim,kdim),  intent(inout) :: ST_out,SQ_out,    &
                                                     qa_upd_0, SA_0   
 real, dimension(idim,jdim,kdim,0:n_diag_4d),                &
@@ -120,8 +183,14 @@ type(diag_pt_type),                intent(inout) :: diag_pt
                                            ql_new,  qi_new,              &
                                            nctend, nitend, qn_new, qni_new
       real, dimension(idim,jdim,kdim)   :: rho, liqcldf, icecldf, tmp2s
+      real, dimension(idim,jdim,kdim)   :: accre_enhann, tnd_qsnown, &
+                                           tnd_nsnown, re_icen           
       real, dimension(idim,jdim)        :: m1, m2, scalef
-      integer                           :: i,j,k
+      integer,dimension(:),allocatable  :: mgcols         
+      integer                           :: mgncol
+      integer                           :: i,j,k,n
+      integer                           :: top_lev, nlev
+      character(len=128)                :: errstring
 
 
 !------------------------------------------------------------------------
@@ -134,6 +203,8 @@ type(diag_pt_type),                intent(inout) :: diag_pt
 !------------------------------------------------------------------------
         call rotstayn_klein_microp ( &
                          idim, jdim, kdim,  Nml, N3D,     &
+! cjg: total activation for RK
+                          Constants%total_activation,  &  
                          Constants%overlap, Constants%dtcloud,  &
                          Constants%inv_dtcloud, Atmos_state%pfull,&
                          Atmos_state%deltpg, Atmos_state%airdens,     &
@@ -337,12 +408,14 @@ type(diag_pt_type),                intent(inout) :: diag_pt
                    Constants%tiedtke_macrophysics, &
                    .false., j ,jdim, kdim, idim, idim,  &
                    Constants%dtcloud,    &
+                   relvarn(:,j,:), &
                    Atmos_state%tn(:,j,:),     &
                    Atmos_state%qvn(:,j,:),   &
                    Cloud_state%ql_upd(:,j,:), Cloud_state%qi_upd(:,j,:), &
                    Cloud_state%qn_upd(:,j,:), Cloud_state%qni_upd(:,j,:), &
                    Atmos_state%pfull(:,j,:),  &
                    Atmos_state%delp(:,j,:),   &
+                   Atmos_state%phalf(:,j,:), &
                    Cloud_state%qa_upd(:,j,:),  &
                    liqcldf(:,j,:)       , icecldf(:,j,:),   & 
                    Cloud_processes%delta_cf(:,j,:), &
@@ -372,6 +445,103 @@ type(diag_pt_type),                intent(inout) :: diag_pt
                    diag_pt)    
           end do
 
+        else if (Constants%do_ncar_microphys) then  !(do_ncar_microphys) 
+!-------------------------------------------------------------------------
+!    use ncar maintained version of microphysics
+!-------------------------------------------------------------------------
+!  are these the actual bin centers, or arbitrary values ??
+          rbar_dust_4bin(:,:,:,1) = 5.0e-6
+          rbar_dust_4bin(:,:,:,2) = 10.0e-6
+          rbar_dust_4bin(:,:,:,3) = 15.0e-6
+          rbar_dust_4bin(:,:,:,4) = 20.0e-6
+          ndust_4bin = 0.0
+!         ndust_4bin(:,j,:,1) = 0.25*Particles%ndust(:,j,:) 
+!         ndust_4bin(:,j,:,2) = 0.25*Particles%ndust(:,j,:) 
+!         ndust_4bin(:,j,:,3) = 0.25*Particles%ndust(:,j,:) 
+!         ndust_4bin(:,j,:,4) = 0.25*Particles%ndust(:,j,:) 
+
+          
+
+!-------------------------------------------------------------------------
+!    call microphysics package as maintained at NCAR.
+!-------------------------------------------------------------------------
+          do k=1,kdim
+            do j=1,jdim
+              do i=1,idim
+                rho(i,j,k) = Atmos_state%pfull(i,j,k)/   &
+                                            (rdgas*Atmos_state%tn(i,j,k))
+                liqcldf(i,j,k) = Cloud_state%qa_upd(i,j,k)
+                icecldf(i,j,k) = Cloud_state%qa_upd(i,j,k)
+              end do
+            end do
+          end do
+
+
+          nlev = kdim
+          top_lev = 1
+
+          do j=1,jdim
+            call micro_mg_get_cols (idim, nlev, top_lev, &
+               Atmos_state%qvn(:,j,:), &
+               Cloud_state%ql_upd(:,j,:) + dqcdt(:,j,:)*Constants%dtcloud, &
+               Cloud_state%qi_upd(:,j,:) + dqidt(:,j,:)*Constants%dtcloud, &
+                                                    mgncol, mgcols, .false.)
+
+             accre_enhann(:,j,:) = 1.0  ! accretion enhancement factor
+             tnd_qsnown(:,j,:) = 0.     
+             tnd_nsnown(:,j,:) = 0.
+             re_icen(:,j,:) = 0.
+
+             call  micro_mg_tend ( &
+                   Constants%dqa_activation, &
+                   Constants%total_activation, &
+                   Constants%tiedtke_macrophysics, &
+                   j, jdim,   mgncol,   mgcols,   nlev,   top_lev,   &
+                   Constants%dtcloud,  &
+                   Atmos_state%tn(:,j,:),     &
+                   Atmos_state%qvn(:,j,:),   &
+                   Cloud_state%ql_upd(:,j,:), Cloud_state%qi_upd(:,j,:), &
+                   Cloud_state%qn_upd(:,j,:), Cloud_state%qni_upd(:,j,:), &
+                   relvarn(:,j,:), accre_enhann(:,j,:),                   &
+                   Atmos_state%pfull(:,j,:),  &
+                   Atmos_state%delp(:,j,:),   &
+                   Atmos_state%phalf(:,j,:), &
+                   Cloud_state%qa_upd(:,j,:),  &
+                   liqcldf(:,j,:)       , icecldf(:,j,:),   & 
+                   Cloud_processes%delta_cf(:,j,:), &
+                   D_eros_l(:,j,:), nerosc(:,j,:), &
+                   D_eros_i(:,j,:), nerosi(:,j,:), &
+                   dqcdt(:,j,:), dqidt(:,j,:), &
+                   Particles%crystal1(:,j,:)/rho(:,j,:), &
+                   Particles%drop2(:,j,:),   &
+                   rbar_dust_4bin(:,j,:,:), ndust_4bin(:,j,:,:), &
+                   ST_micro(:,j,:), SQ_micro(:,j,:), SL_micro(:,j,:), &
+                   SI_micro(:,j,:), SN_micro(:,j,:), SNI_micro(:,j,:), &
+                   Precip_state%surfrain(:,j),   &
+                   Precip_state%surfsnow(:,j),   &
+                   Precip_state%lsc_snow(:,j,:), &
+                   Precip_state%rain3d(:,j,:),   &
+                   Precip_state%snow3d(:,j,:),   &
+                   Precip_state%lsc_rain(:,j,:),   &
+                   Precip_state%lsc_rain_size(:,j,:),  &
+                   Precip_state%lsc_snow_size(:,j,:),   &
+                   tnd_qsnown(:,j,:),  tnd_nsnown(:,j,:), re_icen(:,j,:), &
+                   errstring, Cloud_processes%f_snow_berg(:,j,:), &
+                   Nml,  ssat_disposal (:,j,:), &
+                   n_diag_4d, diag_4d, diag_id, diag_pt)    
+
+!Convert from effective radius to diameter for use in radiation.
+! in old NCAR, diameter was returned from mmicro_pcond routine.
+             Precip_state%lsc_rain_size(:,j,:) =     &
+                                   2.0*Precip_state%lsc_rain_size(:,j,:)
+             Precip_state%lsc_snow_size(:,j,:) =      &
+                                  2.0*Precip_state%lsc_snow_size(:,j,:)
+
+             if (trim(errstring) /= '') then
+               call error_mesg ('strat_cloud/microphysics/micro_mg_tend', &
+                                                         errstring, FATAL)
+             endif
+           end do
 
 !-------------------------------------------------------------------------
 !    exit with error if no valid microphysics scheme was specified.

@@ -199,8 +199,8 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud.F90,v 20.0 2013/12/13 23:22:09 fms Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201403 $'
+Character(len=128) :: Version = '$Id: strat_cloud.F90,v 20.0.2.2 2014/02/20 07:25:02 rsh Exp $'
+Character(len=128) :: Tagname = '$Name: tikal_201409 $'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -433,16 +433,25 @@ logical,          intent(in), optional  :: do_legacy_strat_cloud
         Constants%do_rk_microphys = .true.
         Constants%do_mg_microphys = .false.
         Constants%do_mg_ncar_microphys = .false.
+        Constants%do_ncar_microphys = .false.
         Constants%do_predicted_ice_number = .false.
       else if (trim(microphys_scheme) == 'morrison_gettelman') then
         Constants%do_rk_microphys = .false.
         Constants%do_mg_microphys = .true.
         Constants%do_mg_ncar_microphys = .false.
+        Constants%do_ncar_microphys = .false.
         Constants%do_predicted_ice_number = .true.
       else if (trim(microphys_scheme) == 'mg_ncar') then
         Constants%do_rk_microphys = .false.
         Constants%do_mg_microphys = .false.
         Constants%do_mg_ncar_microphys = .true.
+        Constants%do_ncar_microphys = .false.
+        Constants%do_predicted_ice_number = .true.
+      else if (trim(microphys_scheme) == 'ncar') then
+        Constants%do_rk_microphys = .false.
+        Constants%do_mg_microphys = .false.
+        Constants%do_mg_ncar_microphys = .false.
+        Constants%do_ncar_microphys = .true.
         Constants%do_predicted_ice_number = .true.
       else
         call error_mesg ('strat_cloud_init', &
@@ -486,7 +495,8 @@ logical,          intent(in), optional  :: do_legacy_strat_cloud
                                N_ocean_in=N_ocean,  &
                                prog_droplet_in=do_liq_num,  &
                                overlap_out=overlap)
-        else if (Constants%do_mg_microphys .or.  &
+        else if (Constants%do_mg_microphys .or.     &
+                                     Constants%do_ncar_microphys .or.  &
                                      Constants%do_mg_ncar_microphys) then
           call cloud_rad_init (axes, Time, qmin_in=qmin, N_land_in=N_land,&
                                N_ocean_in=N_ocean,  &
@@ -494,6 +504,7 @@ logical,          intent(in), optional  :: do_legacy_strat_cloud
                                overlap_out=overlap,  &
                                qcvar_in = Nml%qcvar, &
                           prog_ice_num_in=Constants%do_mg_microphys .or.&
+                                         Constants%do_ncar_microphys .or. &
                                             Constants%do_mg_ncar_microphys)
         endif
       else
@@ -631,7 +642,7 @@ logical,          intent(in), optional  :: do_legacy_strat_cloud
       if (running_old_code) then
         call strat_cloud_legacy_init (do_pdf_clouds)
       else
-        call microphysics_init (Nml)
+        call microphysics_init (Nml, Constants)
         call aerosol_cloud_init (Constants)
         call nc_cond_init (do_pdf_clouds)
         call polysvp_init
@@ -1141,6 +1152,8 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !             [ 1/(m*m*m) ]
       real, dimension(size(T_in,1),size(T_in,2),size(T_in,3)) ::     &
               N3Di, N3D
+      real, dimension(size(T_in,1),size(T_in,2),size(T_in,3)) ::     &
+              relvarn
 
 !------------------------------------------------------------------------
 !  variables allocated to hold all netcdf diagnostic fields:
@@ -1190,6 +1203,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
           Constants%mask = 1.0       
         END IF
       ELSE if (Constants%do_mg_microphys .or.    &
+                                 Constants%do_ncar_microphys  .or.   &
                                      Constants%do_mg_ncar_microphys) then
         IF ( .NOT. present(SNi_out)) THEN
           call error_mesg ('strat_cloud_new_mod', &
@@ -1372,18 +1386,22 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
             if (diag_id%subgrid_w_variance > 0 .and.   &
                       Cloud_processes%da_ls(i,j,k) <= 0.0)   &
                            diag_4d(i,j,k,diag_pt%subgrid_w_variance) = 0.0
-            if (Cloud_processes%da_ls(i,j,k) > 0.0 .or.  &
-                                  Constants%do_mg_ncar_microphys .or.  &
-                                          Constants%do_mg_microphys) then
-              Cloud_state%qn_mean(i,j,k) =   &
+            if (Constants%do_rk_microphys) then
+              if (Constants%total_activation) then
+                Cloud_state%qn_mean(i,j,k) =  MAX( 0.,   &
+                   Cloud_state%qa_upd(i,j,k)*Particles%drop1(i,j,k)*1.e6/ &
+                                               Atmos_state%airdens(i,j,k))
+              else if (Cloud_processes%da_ls(i,j,k) > 0.0 ) then
+                Cloud_state%qn_mean(i,j,k) =   &
                     Cloud_state%qn_upd(i,j,k) +   &
                         max(Cloud_processes%delta_cf(i,j,k),0.)*  &
                            Particles%drop1(i,j,k)*1.e6/  &
                                                Atmos_state%airdens(i,j,k)
-            else
-              Particles%drop1(i,j,k) = 0.                
-              Cloud_state%qn_mean(i,j,k) = Cloud_state%qn_upd(i,j,k)
-            end if
+              else
+                Particles%drop1(i,j,k) = 0.                
+                Cloud_state%qn_mean(i,j,k) = Cloud_state%qn_upd(i,j,k)
+              end if
+            endif
           end do
         end do
       end do
@@ -1393,7 +1411,11 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !    call microphysics to compute those terms.
 !-------------------------------------------------------------------------
       call mpp_clock_begin (sc_micro)
-      call microphysics (idim, jdim, kdim, Nml, Constants, N3D,  &
+!relvarn is array holding the qcvar array (new in ncar1.5)
+! Nml%qcvar will ultimately go away, with relvarn being produced from
+! the macrophysics scheme (?)
+      relvarn(:,:,:) = Nml%qcvar
+      call microphysics (idim, jdim, kdim, relvarn, Nml, Constants, N3D,  &
                          Atmos_state, Cloud_state, Cloud_processes,  &
                          Particles, n_diag_4d, diag_4d, diag_id, diag_pt, &
                          n_diag_4d_kp1, diag_4d_kp1, ST_out, SQ_out,  &
@@ -1402,6 +1424,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
                          nrefuse, isamp, jsamp, ksamp, debugo, debugo0, &
                          debugo1)    
       if (Constants%do_mg_ncar_microphys .or.  &
+                                        Constants%do_ncar_microphys .or. &
                                           Constants%do_mg_microphys) then
         if (diag_id%qadt_limits + diag_id%qa_limits_col > 0)    &
             diag_4d(:,:,:,diag_pt%qadt_limits) =    &
@@ -1426,6 +1449,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !  snowclr3d which for those schemes is used to hold the total 
 !  precipitating ice field.
       if (Constants%do_mg_ncar_microphys .or.  &
+                              Constants%do_ncar_microphys .or.  &
                                           Constants%do_mg_microphys) then
         snowclr3d = Precip_state%snow3d
       else
@@ -1654,7 +1678,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
               - hls*diag_4d(:,:,:,diag_pt%qdt_sedi_ice2vapor)  & 
               - hls*diag_4d(:,:,:,diag_pt%qdt_cleanup_ice)     &
               - hls*diag_4d(:,:,:,diag_pt%qdt_snow_sublim  )   &
-              - hls*diag_4d(:,:,:,diag_pt%qdt_snow2vapor    )  &
+              - hlv*diag_4d(:,:,:,diag_pt%qdt_snow2vapor    )  &
                                                               )/cp_air 
               endif 
 
@@ -1681,10 +1705,10 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
       if (diag_id%nice > 0) then
         diag_4d(:,:,:,diag_pt%nice) = N3Di(:,:,:)
       end if
-      if (diag_id%qrout > 0) then
+      if (diag_id%qrout + diag_id%qrout_col > 0) then
         diag_4d(:,:,:,diag_pt%qrout) = Precip_state%lsc_rain  (:,:,:)
       end if
-      if (diag_id%qsout > 0) then
+      if (diag_id%qsout  + diag_id%qsout_col > 0) then
         diag_4d(:,:,:,diag_pt%qsout) = Precip_state%lsc_snow  (:,:,:) 
       end if
 
@@ -1755,6 +1779,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !are valid
 !------------------------------------------------------------------------
       if (Constants%do_mg_microphys .or.   &
+                               Constants%do_ncar_microphys .or.   &
                                      Constants%do_mg_ncar_microphys) then
         if (diag_id%cld_liq_imb + diag_id%cld_liq_imb_col > 0) then
           diag_3d(:,:,diag_pt%cld_liq_imb) =   - ( &
@@ -2841,6 +2866,7 @@ real, dimension(idim,jdim,kdim,0:n_diag_4d), intent(inout) :: diag_4d
         end where
       endif
       if (Constants%do_mg_microphys .or. &
+                  Constants%do_ncar_microphys .or. &
               Constants%do_mg_ncar_microphys) then
         if (Nml%debugo) then
           write(otun, *) " SNi 00 ",   &
@@ -2879,6 +2905,7 @@ real, dimension(idim,jdim,kdim,0:n_diag_4d), intent(inout) :: diag_4d
 !    for later use in the m-g microphysics.
 !------------------------------------------------------------------------
       if (Constants%do_mg_microphys .or. &
+             Constants%do_ncar_microphys .or. &
               Constants%do_mg_ncar_microphys) then
         Cloud_state%qa_upd_0 = Cloud_state%qa_upd
         Cloud_state%SA_0 = Cloud_State%SA_out

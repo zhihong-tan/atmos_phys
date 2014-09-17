@@ -182,8 +182,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 20.0.2.3 2014/02/24 15:01:21 wfc Exp $'
-character(len=128) :: tagname = '$Name: tikal_201403 $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 20.0.2.3.2.1.2.1 2014/04/14 18:52:58 Huan.Guo Exp $'
+character(len=128) :: tagname = '$Name: tikal_201409 $'
 
 
 !---------------------------------------------------------------------
@@ -449,9 +449,6 @@ integer,    dimension(:,:)  , allocatable :: nsum_out
 real   ,    dimension(:,:)  , allocatable :: tsurf_save
 
 ! --->h1g
-real,    dimension(:,:,:), allocatable ::  dcond_ls_liquid, dcond_ls_ice
-real,    dimension(:,:,:), allocatable ::  Ndrop_act_CLUBB,  Icedrop_act_CLUBB
-real,    dimension(:,:,:), allocatable ::  ndust, rbar_dust
 real,    dimension(:,:,:), allocatable ::  diff_t_clubb
 ! <---h1g
    
@@ -908,12 +905,6 @@ real, dimension(:,:,:),  intent(out),  optional  :: diffm, difft
        
 ! ---> h1g, cjg
       if (do_clubb > 0 ) then
-        allocate ( dcond_ls_liquid(id, jd, kd) );   dcond_ls_liquid   = 0.0
-        allocate ( dcond_ls_ice(id, jd, kd) );      dcond_ls_ice      = 0.0
-        allocate ( Ndrop_act_CLUBB(id, jd, kd) );   Ndrop_act_CLUBB   = 0.0
-        allocate ( Icedrop_act_CLUBB(id, jd, kd) ); Icedrop_act_CLUBB = 0.0
-        allocate ( ndust(id, jd, kd) );             ndust             = 0.0
-        allocate ( rbar_dust(id, jd, kd) );         rbar_dust         = 0.0
         allocate ( diff_t_clubb(id, jd, kd) );      diff_t_clubb      = 0.0
       end if
 ! <--- h1g, cjg
@@ -1602,6 +1593,7 @@ subroutine physics_driver_down (is, ie, js, je,                       &
                                 albedo, albedo_vis_dir, albedo_nir_dir,&
                                 albedo_vis_dif, albedo_nir_dif,       &
                                 t_surf_rad,                           &
+                                t_ref, q_ref,                         &  ! cjg: PBL depth mods
                                 u_star,    b_star, q_star,            &
                                 dtau_du, dtau_dv,  tau_x,  tau_y,     &
                                 udt, vdt, tdt, qdt, rdt,              &
@@ -1641,6 +1633,7 @@ real,dimension(:,:,:,:), intent(inout)          :: rm
 real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    rough_mom, &
                                                    albedo, t_surf_rad, &
+                                                   t_ref, q_ref, &  ! cjg: PBL depth mods
                                                    albedo_vis_dir, albedo_nir_dir, &
                                                    albedo_vis_dif, albedo_nir_dif, &
                                                    u_star, b_star,    &
@@ -2361,9 +2354,10 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call mpp_clock_begin ( turb_clock )
       call vert_turb_driver (is, js, Time, Time_next, dt,            &
                              lw_tendency(is:ie,js:je,:), frac_land,  &
-                             p_half, p_full, z_half, z_full, u_star, &
-                             b_star, q_star, rough_mom, lat,         &
-                             convect(is:ie,js:je),                   &
+                             p_half, p_full, z_half, z_full,         &
+                             t_ref, q_ref,                           &  ! cjg: PBL depth mods
+                             u_star, b_star, q_star, rough_mom,      &
+                             lat, convect(is:ie,js:je),              &
                              u, v, t, q, r(:,:,:,:), um, vm,     & ! need to pass all tracers for CLUBB
                              tm, qm, rm(:,:,:,:),                & ! need to pass all tracers for CLUBB
                              udt, vdt, tdt, qdt, rdt,                &
@@ -2943,9 +2937,6 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
            lsc_snow_size(is:ie,js:je,:),  &
            lsc_rain_size(is:ie,js:je,:), &
 ! ---> h1g
-           dcond_ls_liquid=dcond_ls_liquid,  dcond_ls_ice=dcond_ls_ice,  &
-           Ndrop_act_CLUBB=Ndrop_act_CLUBB,  Icedrop_act_CLUBB=Icedrop_act_CLUBB,  &
-           ndust=ndust, rbar_dust= rbar_dust, &
            diff_t_clubb   =diff_t_clubb,                                           &
            tdt_shf = tdt_shf,                                                      &
            qdt_lhf = qdt_lhf,                                                      &
@@ -2997,9 +2988,6 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            lsc_snow_size(is:ie,js:je,:),  &
                            lsc_rain_size(is:ie,js:je,:), &
 ! ---> h1g
-                           dcond_ls_liquid=dcond_ls_liquid,  dcond_ls_ice=dcond_ls_ice,  &
-                           Ndrop_act_CLUBB=Ndrop_act_CLUBB,  Icedrop_act_CLUBB=Icedrop_act_CLUBB,  &
-                           ndust=ndust, rbar_dust= rbar_dust, &
                            diff_t_clubb   =diff_t_clubb,                                           &
                            tdt_shf = tdt_shf,                                                      &
                            qdt_lhf = qdt_lhf,                                                      &
@@ -3047,9 +3035,6 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            lsc_snow_size(is:ie,js:je,:),  &
                            lsc_rain_size(is:ie,js:je,:), &
 ! ---> h1g
-                           dcond_ls_liquid=dcond_ls_liquid,  dcond_ls_ice=dcond_ls_ice,  &
-                           Ndrop_act_CLUBB=Ndrop_act_CLUBB,  Icedrop_act_CLUBB=Icedrop_act_CLUBB,  &
-                           ndust=ndust, rbar_dust= rbar_dust, &
                            diff_t_clubb   =diff_t_clubb,                                           &
                            tdt_shf = tdt_shf,                                                      &
                            qdt_lhf = qdt_lhf,                                                      &
@@ -3089,9 +3074,6 @@ logical,                intent(in),   optional :: hydrostatic, phys_hydrostatic
                            lsc_snow_size(is:ie,js:je,:),  &
                            lsc_rain_size(is:ie,js:je,:), &
 ! ---> h1g
-                           dcond_ls_liquid=dcond_ls_liquid,  dcond_ls_ice=dcond_ls_ice,  &
-                           Ndrop_act_CLUBB=Ndrop_act_CLUBB,  Icedrop_act_CLUBB=Icedrop_act_CLUBB,  &
-                           ndust=ndust, rbar_dust= rbar_dust, &
                            diff_t_clubb   =diff_t_clubb,                                           &
                            tdt_shf = tdt_shf,                                                      &
                            qdt_lhf = qdt_lhf,                                                      &
@@ -3535,12 +3517,6 @@ integer :: clubb_term_clock
                   lsc_droplet_number, lsc_ice_number)
       deallocate (lsc_snow, lsc_rain, lsc_snow_size, lsc_rain_size)
       if (do_clubb > 0) then
-         deallocate ( dcond_ls_liquid )
-         deallocate ( dcond_ls_ice )
-         deallocate ( Ndrop_act_CLUBB )
-         deallocate ( Icedrop_act_CLUBB )
-         deallocate ( ndust )
-         deallocate ( rbar_dust )
          deallocate ( diff_t_clubb )
       end if
 

@@ -13,7 +13,7 @@ use          fms_mod, only: file_exist, open_namelist_file,            &
                             close_file, error_mesg, FATAL, NOTE,       &
                             mpp_pe, mpp_root_pe, stdout, stdlog,       &
                             check_nml_error, write_version_number
-use       fms_io_mod, only: read_data, field_size
+use       fms_io_mod, only: read_data, field_size, field_exist
 use       fms_io_mod, only: register_restart_field, restart_file_type
 use       fms_io_mod, only: save_restart, restore_state
 use    constants_mod, only: Grav, Cp_Air, Rdgas, Pi, Radian
@@ -24,8 +24,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 19.0 2012/01/06 20:27:27 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201403 $'
+character(len=128) :: version = '$Id: topo_drag.F90,v 19.0.12.2 2014/05/08 13:39:09 Chris.Golaz Exp $'
+character(len=128) :: tagname = '$Name: tikal_201409 $'
 
 logical :: module_is_initialized = .false.
 
@@ -46,7 +46,7 @@ real, parameter :: ro=1.2       ! arbitrary density scale for diagnostics
 real, parameter :: lapse=Grav/Cp_Air ! adiabatic lapse rate
 real, parameter :: tiny=1.0e-8
 
-real, parameter :: resolution=30.0 ! # of points per degree in topo datasets
+real, parameter :: resolution=60.0 ! # of points per degree in topo datasets
 
 integer, parameter :: ipts=360*resolution
 integer, parameter :: jpts=180*resolution
@@ -237,7 +237,7 @@ real :: rnormal, gterm
 !       linear momentum flux associated with min/max Froude numbers
 
         dphdz = bfreq / vtau
-        usat = density/ro * vtau / sqrt(dphdz*xl)
+        usat = sqrt(density/ro) * vtau / sqrt(dphdz*xl)
         frusat = frcrit*usat
 
         frumin = frmin*usat         ! linear momentum flux
@@ -346,8 +346,7 @@ integer :: k, kdim, k1
 !          min/max and critical momentum flux values at half levels
 
            dphdz = bfreq / vtau
-           usat(i,j) = min(usat(i,j),                                  &
-                      sqrt(density/ro * vtau/sqrt(dphdz*xl)))
+           usat(i,j) = min(usat(i,j),sqrt(density/ro) * vtau/sqrt(dphdz*xl))
            frusat = frcrit*usat(i,j)
 
            frumin = frulo(i,j)
@@ -372,13 +371,12 @@ integer :: k, kdim, k1
   enddo
 
 ! make propagating flux constant with height in zero-drag top layer
-
-  tausat(:,:,1) = tausat(:,:,2)
+! changed 5/2014
 
   k1 = maxval(kcut)
-  do k=3,k1
+  do k=k1,1,-1
      where (k <= kcut)
-        tausat(:,:,k) = tausat(:,:,1)
+        tausat(:,:,k) = tausat(:,:,k+1)
      endwhere
   enddo
 
@@ -560,14 +558,16 @@ real, intent(in), dimension(:,:) :: lonb, latb
 
 character(len=128) :: msg
 character(len=64)  :: restart_file='topo_drag.res.nc'
-character(len=64)  :: topography_file='INPUT/postopog_2min_hp150km.nc'
-character(len=64)  :: dragtensor_file='INPUT/dragelements_2min_hp150km.nc'
+character(len=64)  :: topography_file='INPUT/poztopog.nc'
+character(len=64)  :: dragtensor_file='INPUT/dragelements.nc'
 character(len=3)   :: tensornames(4) = (/ 't11', 't21', 't12', 't22' /)
+
+logical :: found_field(4)
 
 real, parameter :: bfscale=1.0e-2      ! buoyancy frequency scale [1/s]
 
-real, allocatable, dimension(:)   :: xdat, ydat
-real, allocatable, dimension(:,:) :: zdat, zout
+real, allocatable, dimension(:)   :: xdat, ydat, xdatb, ydatb
+real, allocatable, dimension(:,:) :: zdat, zout, lon, lat
 type (horiz_interp_type) :: Interp
 real :: exponent
 
@@ -650,52 +650,67 @@ integer :: id_restart
                    trim(topography_file)//' has the wrong size', FATAL)
      endif
      
-     allocate (xdat(ipts+1))
-     allocate (ydat(jpts+1))
+     allocate (xdatb(ipts+1))
+     allocate (ydatb(jpts+1))
+     allocate (xdat(ipts))
+     allocate (ydat(jpts))
      allocate (zdat(ipts,jpts))
      allocate (zout(nlon,nlat))
 
      do i=1,ipts+1
-        xdat(i) = (i-1)/resolution / Radian
+        xdatb(i) = (i-1)/resolution / Radian
      enddo
      do j=1,jpts+1
-        ydat(j) = (-90.0 + (j-1)/resolution) / Radian
+        ydatb(j) = (-90.0 + (j-1)/resolution) / Radian
+     enddo
+     do i=1,ipts
+        xdat(i) = (i-.5)/resolution / Radian
+     enddo
+     do j=1,jpts
+        ydat(j) = (-90.0 + (j-.5)/resolution) / Radian
+     enddo
+
+     allocate (lon(nlon,nlat),lat(nlon,nlat))
+     do i=1,nlon
+        do j=1,nlat
+           lon(i,j) = 0.25*(lonb(i,j)+lonb(i+1,j)+lonb(i,j+1)+lonb(i+1,j+1))
+           lat(i,j) = 0.25*(latb(i,j)+latb(i+1,j)+latb(i,j+1)+latb(i+1,j+1))
+        enddo
      enddo
 
      ! initialize horizontal interpolation
-     ! Note: interp_method will be conservative for lat/lon grid
-     !       and bilinear for all other grids
+
      call horiz_interp_init
-     call horiz_interp_new ( Interp, xdat, ydat, lonb, latb )
+     call horiz_interp_new ( Interp, xdatb, ydatb, lonb, latb, interp_method="conservative" )
+!     call horiz_interp_new ( Interp, xdat, ydat, lon, lat, interp_method="bilinear" )
 
      call read_data (topography_file, 'hpos', zdat, no_domain=.true.)
-
-     exponent = 2.0 - gamma
-     zdat = max(0.0, zdat)**exponent
-     
+     exponent = 2. - gamma
+     zdat = max(0., zdat)**exponent
      call horiz_interp ( Interp, zdat, zout )
 
-     hmax = abs(zout)**(1.0/exponent) * sqrt(2.0/exponent)
+     hmax = (abs(zout)*(gamma + 2.)/(2.*gamma) * &
+          (1. - h_frac**(2.*gamma))/(1. - h_frac**(gamma + 2.)))**(1.0/exponent)
      hmin = hmax*h_frac
 
      if (mpp_pe() == mpp_root_pe()) then
         write ( msg, '("Reading drag tensor file: ",a)')             &
-                                                        trim(dragtensor_file)
+                                                trim(dragtensor_file)
         call error_mesg('topo_drag_mod', msg, NOTE)
      endif
 
      ! check for correct field size in tensor file
      call field_size (dragtensor_file, tensornames(1), siz)
      if (siz(1) /= ipts .or. siz(2) /= jpts) then
-         call error_mesg('topo_drag_mod', 'Field \"'//tensornames(1)// &
-         '\" in file '//trim(dragtensor_file)//' has the wrong size', FATAL)
+         call error_mesg('topo_drag_mod', 'Fields in file ' &
+         //trim(dragtensor_file)//' have the wrong size', FATAL)
      endif
 
      do n=1,4
+        found_field(n) = field_exist(dragtensor_file, tensornames(n))
+        if (.not. found_field(n)) cycle
         call read_data (dragtensor_file, tensornames(n), zdat, no_domain=.true.)
         call horiz_interp ( Interp, zdat, zout )
-       !call horiz_interp ( zdat, xdat, ydat, lonb, latb, zout,        &
-       !                                 interp_method='conservative' )
         if ( tensornames(n) == 't11' ) then
            t11 = zout/bfscale
         else if ( tensornames(n) == 't21' ) then
@@ -706,6 +721,8 @@ integer :: id_restart
            t22 = zout/bfscale
         endif
      enddo
+
+     if (.not. found_field(3)) t12 = t21
 
      deallocate (zdat, zout)
      call horiz_interp_del ( Interp )

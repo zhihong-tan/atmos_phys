@@ -1,5 +1,5 @@
-! $Id: strat_nml.h,v 20.0 2013/12/13 23:22:19 fms Exp $
-! $Name: tikal_201403 $
+! $Id: strat_nml.h,v 20.0.2.1 2014/01/09 08:18:13 rsh Exp $
+! $Name: tikal_201409 $
 
 !------------------------------------------------------------------------
 !---namelist------
@@ -99,7 +99,7 @@
 !  </DATA>
 !  <DATA NAME="microphys_scheme" TYPE="character" DEFAULT="rotstayn_klein">
 !   the microphysics scheme being used (currently either 
-!   "morrison_gettelman" or "rotstayn_klein")
+!   "morrison_gettelman" or "rotstayn_klein" or "mg_ncar" or "ncar")
 !  </DATA>
 !  <DATA NAME="macrophys_scheme" TYPE="character" DEFAULT="tiedtke">
 !   the macrophysics scheme being used (currently either 

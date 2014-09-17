@@ -52,8 +52,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: longwave_driver.F90,v 19.0 2012/01/06 20:18:03 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201403 $'
+character(len=128)  :: version =  '$Id: longwave_driver.F90,v 19.0.12.1 2014/02/25 20:39:45 Chris.Golaz Exp $'
+character(len=128)  :: tagname =  '$Name: tikal_201409 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -598,8 +598,10 @@ type(lw_output_type),      intent(inout) :: Lw_output
       allocate (Lw_output%heatra( ix, jx, kx  ) )
       allocate (Lw_output%netlw_special   &
                                 ( ix, jx, Rad_control%mx_spec_levs  ) )
+! change by Xianglei Huang
       allocate (Lw_output%bdy_flx         &
-                                ( ix, jx, 4) )
+                                ( ix, jx, 7) )
+! end of change
       Lw_output%flxnet(:,:,:) = 0.0
       Lw_output%heatra(:,:,:) = 0.0
       Lw_output%netlw_special(:,:,:) = 0.0
@@ -609,8 +611,10 @@ type(lw_output_type),      intent(inout) :: Lw_output
         allocate (Lw_output%heatracf( ix, jx, kx  ) )
         allocate (Lw_output%netlw_special_clr  &
                                 ( ix, jx, Rad_control%mx_spec_levs  ) )
+! change by Xianglei Huang
         allocate (Lw_output%bdy_flx_clr         &
-                                ( ix, jx, 4) )
+                                ( ix, jx, 7) )
+! end of change
         Lw_output%flxnetcf(:,:,:) = 0.0
         Lw_output%heatracf(:,:,:) = 0.0
         Lw_output%netlw_special_clr(:,:,:) = 0.0

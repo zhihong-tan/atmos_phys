@@ -59,7 +59,7 @@ private
 !----------- version number for this module -------------------
 
 character(len=128)  :: version =  '$Id: aerosolrad_package.F90,v 20.0 2013/12/13 23:18:56 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201403 $'
+character(len=128)  :: tagname =  '$Name: tikal_201409 $'
 
 
 !---------------------------------------------------------------------

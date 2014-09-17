@@ -19,6 +19,8 @@ use      my25_turb_mod, only: my25_turb_init, my25_turb_end,  &
                               my25_turb, tke_surf, get_tke,   &
                               my25_turb_restart
 
+use       tke_turb_mod, only: tke_turb_init, tke_turb_end, tke_turb
+
 use    diffusivity_mod, only: diffusivity, molecular_diff
 
 use            edt_mod, only: edt_init, edt, edt_end
@@ -35,13 +37,14 @@ use   diag_manager_mod, only: register_diag_field, send_data
 
 use   time_manager_mod, only: time_type, get_time, operator(-)
 
-use      constants_mod, only: rdgas, rvgas, kappa
+use      constants_mod, only: rdgas, rvgas, kappa, grav
  
 use            mpp_mod, only: input_nml_file
 use            fms_mod, only: mpp_pe, mpp_root_pe, stdlog, &
                               error_mesg, open_namelist_file, file_exist, &
                               check_nml_error, close_file, FATAL, &
-                              write_version_number
+                              write_version_number, & 
+                              stdout, mpp_chksum
  
 
 use  field_manager_mod, only: MODEL_ATMOS
@@ -60,8 +63,8 @@ public   vert_turb_driver_restart
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 20.0 2013/12/13 23:22:34 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201403 $'
+character(len=128) :: version = '$Id: vert_turb_driver.F90,v 20.0.4.1.2.1 2014/06/11 20:52:49 Chris.Golaz Exp $'
+character(len=128) :: tagname = '$Name: tikal_201409 $'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -76,12 +79,16 @@ logical            :: module_is_initialized = .false.
  real :: gust_zi = 1000.   ! constant for computed gustiness (meters)
 
  integer :: nql, nqi, nqa    !  tracer indices for stratiform clouds
+ integer :: ntke             !  tracer index for TKE
+
+ integer         :: outunit
 
 !-----------------------------------------------------------------------
 !-------------------- namelist -----------------------------------------
 
  logical :: do_shallow_conv  = .false.
  logical :: do_mellor_yamada = .true.
+ logical :: do_tke_turb      = .false.
  logical :: do_diffusivity         = .false.
  logical :: do_molecular_diffusion = .false.
  logical :: do_edt                 = .false.
@@ -95,6 +102,8 @@ logical            :: module_is_initialized = .false.
                                                 !   => 'beljaars'
  real              :: constant_gust = 1.0
  real              :: gust_factor   = 1.0
+
+ integer           :: alternate_zpbl = 0        ! alternate algorith to compute PBL height
 
 !-->h1g, 2012-07-16
  integer :: do_clubb
@@ -112,17 +121,20 @@ logical            :: module_is_initialized = .false.
 !<--h1g, 2012-07-16 
  
  namelist /vert_turb_driver_nml/ do_shallow_conv, do_mellor_yamada, &
+                                 do_tke_turb, &
                                  gust_scheme, constant_gust, use_tau, &
                                  do_molecular_diffusion, do_stable_bl, &
                                  do_diffusivity, do_edt, do_entrain, &
-                                 gust_factor, do_simple, wp2_min
+                                 gust_factor, do_simple, wp2_min, &
+                                 alternate_zpbl   ! cjg: PBL depth mods
 
 !-------------------- diagnostics fields -------------------------------
 
 integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl, id_gust,  &
            id_diff_t, id_diff_m, id_diff_sc, id_z_full, id_z_half,&
            id_uwnd,   id_vwnd,   id_diff_t_stab, id_diff_m_stab,  &
-           id_diff_t_entr, id_diff_m_entr    
+           id_diff_t_entr, id_diff_m_entr,                        &
+           id_z_Ri_025, id_tref, id_qref  ! cjg: PBL depth mods
 
 real :: missing_value = -999.
 
@@ -134,10 +146,12 @@ contains
 
 !#######################################################################
 
-subroutine vert_turb_driver (is, js, Time, Time_next, dt, tdtlw,     &
-                             frac_land,   &
-                             p_half, p_full, z_half, z_full, u_star,   &
-                             b_star, q_star, rough, lat, convect,      &
+subroutine vert_turb_driver (is, js, Time, Time_next, dt, tdtlw,       &
+                             frac_land,                                &
+                             p_half, p_full, z_half, z_full,           &
+                             t_ref, q_ref,                             &  ! cjg: PBL depth mods
+                             u_star, b_star, q_star, rough,            &
+                             lat, convect,                             &
                              u, v, t, q, r, um, vm, tm, qm, rm,        &
                              udt, vdt, tdt, qdt, rdt, diff_t, diff_m,  &
                              gust, z_pbl, mask, kbot                   )
@@ -146,14 +160,15 @@ subroutine vert_turb_driver (is, js, Time, Time_next, dt, tdtlw,     &
 integer,         intent(in)         :: is, js
 type(time_type), intent(in)         :: Time, Time_next
    real,         intent(in)         :: dt
-   real, intent(in), dimension(:,:) :: frac_land, u_star, b_star,  &
-                                       q_star, rough, lat
+   real, intent(in), dimension(:,:) :: t_ref, q_ref,  &  ! cjg: PBL depth mods
+                                       frac_land, u_star, b_star, q_star, rough, lat
 logical, intent(in), dimension(:,:) :: convect       
    real, intent(in), dimension(:,:,:) :: tdtlw, p_half, p_full, &
                                          z_half, z_full, &
                                          u, v, t, q, um, vm, tm, qm, &
                                          udt, vdt, tdt, qdt
-   real, intent(in) ,   dimension(:,:,:,:) :: r, rm, rdt
+   real, intent(inout), dimension(:,:,:,:) :: r
+   real, intent(in),    dimension(:,:,:,:) :: rm, rdt
    real, intent(out),   dimension(:,:,:) :: diff_t, diff_m
    real, intent(out),   dimension(:,:)   :: gust, z_pbl 
    real, intent(in),optional, dimension(:,:,:) :: mask
@@ -164,6 +179,7 @@ logical, dimension(size(t,1),size(t,2),size(t,3)+1) :: lmask
 real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: el, diag3
 real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: tke
 real   , dimension(size(t,1),size(t,2))             :: stbltop
+real   , dimension(size(t,1),size(t,2))             :: z_Ri_025    ! cjg: PBL depth mods
 real   , dimension(size(t,1),size(t,2))             :: el0, vspblcap
 real   , dimension(size(diff_t,1),size(diff_t,2), &
                                   size(diff_t,3))   :: diff_sc,     &
@@ -242,6 +258,8 @@ real   , dimension(size(diff_t,1),size(diff_t,2), &
 
    diff_t = 0.0
    diff_m = 0.0
+   el     = 0.0
+   el0    = 0.0
    z_pbl = -999.0
    
 !-------------------------------------------------------------------
@@ -249,7 +267,7 @@ real   , dimension(size(diff_t,1),size(diff_t,2), &
    vspblcap = 0.0   
    
 !-----------------------------------------------------------------------
-if (do_mellor_yamada) then
+if (do_mellor_yamada .or. do_tke_turb) then
 
 !    ----- virtual temp ----------
      ape(:,:,:)=(p_full(:,:,:)*p00inv)**(-kappa)
@@ -292,6 +310,55 @@ if (do_mellor_yamada) then
                      el0, el, diff_m, diff_t, &
                      mask=mask, kbot=kbot)
      end if
+
+!---------------------------
+ else if (do_tke_turb) then
+!---------------------------
+
+!-->cjg debug
+!100 format("BEFORE TURB:",A32," = ",Z20)
+!  outunit = stdout()
+!  write(outunit,100) 't                ', mpp_chksum(t)
+!  write(outunit,100) 'q                ', mpp_chksum(q)
+!  write(outunit,100) 'z_full           ', mpp_chksum(z_full)
+!  write(outunit,100) 'z_half           ', mpp_chksum(z_half)
+!  write(outunit,100) 'qa               ', mpp_chksum(r(:,:,:,nqa))
+!  write(outunit,100) 'tke              ', mpp_chksum(r(:,:,:,ntke))
+!  write(outunit,100) 'el0              ', mpp_chksum(el0)
+!  write(outunit,100) 'el               ', mpp_chksum(el)
+!  write(outunit,100) 'diff_m           ', mpp_chksum(diff_m)
+!  write(outunit,100) 'diff_t           ', mpp_chksum(diff_t)
+!  write(outunit,100) 'z_pbl            ', mpp_chksum(z_pbl)
+!<--cjg debug
+
+!    ----- time step for prognostic tke calculation -----
+     call get_time (Time_next-Time, sec, day)
+     dt_tke = real(sec+day*86400)
+
+!    --------------------- update tke-----------------------------------
+!    ---- compute tke, master length scale (el0),  -------------
+!    ---- length scale (el), and vert mix coeffs (diff_t,diff_m) ----
+
+     call tke_turb (dt_tke, frac_land, p_half, p_full, z_half, z_full, &
+                    uu, vv, thv, rough, u_star, b_star,                &
+                    r(:,:,:,ntke),                                     &
+                    el0, el, diff_m, diff_t, z_pbl)
+
+!-->cjg debug
+!101 format("AFTER TURB:",A32," = ",Z20)
+!  outunit = stdout()
+!  write(outunit,101) 't                ', mpp_chksum(t)
+!  write(outunit,101) 'q                ', mpp_chksum(q)
+!  write(outunit,101) 'z_full           ', mpp_chksum(z_full)
+!  write(outunit,101) 'z_half           ', mpp_chksum(z_half)
+!  write(outunit,101) 'qa               ', mpp_chksum(r(:,:,:,nqa))
+!  write(outunit,101) 'tke              ', mpp_chksum(r(:,:,:,ntke))
+!  write(outunit,101) 'el0              ', mpp_chksum(el0)
+!  write(outunit,101) 'el               ', mpp_chksum(el)
+!  write(outunit,101) 'diff_m           ', mpp_chksum(diff_m)
+!  write(outunit,101) 'diff_t           ', mpp_chksum(diff_t)
+!  write(outunit,101) 'z_pbl            ', mpp_chksum(z_pbl)
+!<--cjg debug
 
 !---------------------------
  else if (do_diffusivity) then
@@ -429,7 +496,7 @@ end if
 !-----------------------------------------------------------------------
 !------------------------ diagnostics section --------------------------
 
-if (do_mellor_yamada) then
+if (do_mellor_yamada .or. do_tke_turb) then
 
 !     --- set up local mask for fields with surface data ---
       if ( present(mask) ) then
@@ -476,6 +543,22 @@ if (do_edt) then
       endif
  
 end if
+
+!-->cjg: addition for new PBL depth diagnostic
+
+!------- z_Ri_025: bulk Richardson derived height  -------
+      if ( id_tref > 0 ) then
+         used = send_data ( id_tref, t_ref, Time_next, is, js )
+      endif
+      if ( id_qref > 0 ) then
+         used = send_data ( id_qref, q_ref, Time_next, is, js )
+      endif
+      if ( id_z_Ri_025 > 0 .or. alternate_zpbl == 1) then
+         call bulk_Ri_height_b(tt,qq,uu,vv,t_ref,q_ref,p_full,z_full,p_half,z_half,z_Ri_025)
+         used = send_data ( id_z_Ri_025, z_Ri_025, Time_next, is, js )
+         if ( alternate_zpbl == 1 ) z_pbl = z_Ri_025
+      endif
+!<--cjg
 
 !------- boundary layer depth -------
       if ( id_z_pbl > 0 ) then
@@ -657,6 +740,14 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
          call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
               'molecular diffusion with mellor_yamada', FATAL)
  
+      if (do_molecular_diffusion .and. do_tke_turb)  &
+         call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
+              'molecular diffusion with tke_turb', FATAL)
+ 
+      if (do_tke_turb .and. do_mellor_yamada)  &
+         call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
+              'tke_turb with mellor_yamada', FATAL)
+ 
        if (do_molecular_diffusion .and. do_edt)  &
          call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
            'molecular diffusion with EDT', FATAL)
@@ -692,6 +783,11 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
 
       if (do_mellor_yamada) call my25_turb_init (id, jd, kd)
 
+      if (do_tke_turb) then
+        ntke = get_tracer_index ( MODEL_ATMOS, 'tke' )
+        call tke_turb_init ( )
+      end if
+
       if (do_shallow_conv)  call shallow_conv_init (kd)
 
       if (do_stable_bl)     call stable_bl_turb_init ( axes, Time )
@@ -721,7 +817,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
         'geopotential height relative to surface at half levels', &
         'meters' , missing_value=missing_value    )
 
-if (do_mellor_yamada) then
+if (do_mellor_yamada .or. do_tke_turb) then
 
    id_tke = &
    register_diag_field ( mod_name, 'tke', axes(half), Time,      &
@@ -750,6 +846,18 @@ endif
    id_z_pbl = &
    register_diag_field ( mod_name, 'z_pbl', axes(1:2), Time,       &
                         'depth of planetary boundary layer',  'm'  )
+
+!-->cjg: addition for new PBL depth diagnostic
+   id_tref = &
+   register_diag_field ( mod_name, 'tref', axes(1:2), Time,       &
+                        'surface air temperature',  'K'  )
+   id_qref = &
+   register_diag_field ( mod_name, 'qref', axes(1:2), Time,       &
+                        'surface air specific humidity',  'kg/kg'  )
+   id_z_Ri_025 = &
+   register_diag_field ( mod_name, 'z_Ri_025', axes(1:2), Time,       &
+                        'Critical bulk Richardson height',  'm'  )
+!<--cjg
 
    id_gust = &
    register_diag_field ( mod_name, 'gust', axes(1:2), Time,        &
@@ -837,6 +945,7 @@ subroutine vert_turb_driver_end
 
 !-----------------------------------------------------------------------
       if (do_mellor_yamada) call my25_turb_end
+      if (do_tke_turb)      call tke_turb_end
       if (do_edt) call edt_end
       if (do_entrain) call entrain_end
       module_is_initialized =.false.
@@ -863,6 +972,221 @@ subroutine vert_turb_driver_restart(timestamp)
 end subroutine vert_turb_driver_restart
 ! </SUBROUTINE> NAME="vert_turb_driver_restart"
 
+
+!-->cjg: addition for new PBL depth diagnostic
+
+subroutine bulk_Ri_height_a(t,qv,u,v,pfull,zfull,phalf,zhalf,z_Ri_025)
+
+! This subroutine computes the height where the bulk Richardson number
+! reaches 0.25. This height can be regarded an approximation to the
+! PBL height. The algorithm was constructed to enable straight-forward 
+! comparisons with radiosondes data.
+!
+! Reference: Seidel et al. 2012 (doi:10.1029/2012JD018143)
+ 
+!-----------------------------------------------------------------------
+!
+!      variables
+!
+!      -----
+!      input
+!      -----
+!
+!      t         temperature (K)
+!      qv        water vapor specific humidity (kg vapor/kg air)
+!      u         zonal wind (m/s)
+!      v         meridional wind (m/s)
+!      zfull     height of full levels (m)
+!      zhalf     height of half levels (m)
+!      pfull     pressure at full levels (Pa)
+!      phalf     pressure at half levels (Pa)
+!
+!      ------------
+!      output
+!      ------------
+!
+!      z_Ri_025  bluk Richardson height
+
+! Input/output variables
+
+real,            intent(in),    dimension(:,:,:) :: t,qv,u,v
+real,            intent(in),    dimension(:,:,:) :: pfull, zfull
+real,            intent(in),    dimension(:,:,:) :: phalf, zhalf
+real,            intent(out),   dimension(:,:)   :: z_Ri_025
+
+! Local variables
+
+integer                                          :: i, j, k
+integer                                          :: nlev, nlat, nlon
+real, dimension(size(t,1),size(t,2))             :: zsurf
+real, dimension(size(t,1),size(t,2),size(t,3))   :: zfull_ag
+real, dimension(size(t,1),size(t,2),size(t,3)+1) :: zhalf_ag
+
+real thetavs, thetavh, zs, us, vs, vv
+real, dimension(size(t,3)) :: Ri
+
+! Constants
+real, parameter :: eps = 1.0e-8
+real, parameter :: Ri_crit = 0.25
+real, parameter :: p00 = 1000.0e2
+
+!-----------------------------------------------------------------------
+
+! Initialization
+  nlev = size(t,3)
+  nlat = size(t,2)
+  nlon = size(t,1)
+  z_Ri_025(:,:) = missing_value
+       
+! Compute height above surface
+  zsurf(:,:) = zhalf(:,:,nlev+1)
+  do k = 1, nlev
+     zfull_ag(:,:,k) = zfull(:,:,k) - zsurf(:,:)
+     zhalf_ag(:,:,k) = zhalf(:,:,k) - zsurf(:,:)
+  end do
+  zhalf_ag(:,:,nlev+1) = zhalf(:,:,nlev+1) - zsurf(:,:)
+       
+! Horizontal loop
+  do j=1,nlat
+    do i=1,nlon
+
+!      Lowest model level properties
+       thetavs = t(i,j,nlev) * (p00/pfull(i,j,nlev))**kappa  &
+                             * ( 1.0 + 0.61*qv(i,j,nlev)/(1.0-qv(i,j,nlev)) )
+       zs = zfull_ag(i,j,nlev)
+       us = 0.0
+       vs = 0.0
+       Ri(nlev) = 0.0
+
+!      Vertical upward loop
+       do k = nlev-1,1,-1
+
+         thetavh = t(i,j,k) * (p00/pfull(i,j,k))**kappa   &
+                            * ( 1.0 + 0.61*qv(i,j,k)/(1.0-qv(i,j,k)) )
+         vv = max( (u(i,j,k)-us)**2 + (v(i,j,k)-vs)**2, eps )
+         Ri(k) = grav * (thetavh-thetavs) * (zfull_ag(i,j,k)-zs) / (thetavs*vv)
+         if (Ri(k) >= Ri_crit) then
+           z_Ri_025(i,j) = zfull_ag(i,j,k+1)   &
+                           + (Ri_crit-Ri(k+1))/(Ri(k)-Ri(k+1))*(zfull_ag(i,j,k)-zfull_ag(i,j,k+1))
+           exit
+         end if
+
+       end do
+
+    end do
+  end do
+
+end subroutine bulk_Ri_height_a
+
+subroutine bulk_Ri_height_b(t,qv,u,v,t_ca,q_ca,pfull,zfull,phalf,zhalf,z_Ri_025)
+
+! This subroutine computes the height where the bulk Richardson number
+! reaches 0.25. This height can be regarded an approximation to the
+! PBL height. The algorithm was constructed to enable straight-forward 
+! comparisons with radiosondes data.
+!
+! Reference: Seidel et al. 2012 (doi:10.1029/2012JD018143)
+ 
+!-----------------------------------------------------------------------
+!
+!      variables
+!
+!      -----
+!      input
+!      -----
+!
+!      t         temperature (K)
+!      qv        water vapor specific humidity (kg vapor/kg air)
+!      u         zonal wind (m/s)
+!      v         meridional wind (m/s)
+!      t_ca      canopy air temperature (K)
+!      q_ca      canopy air specific humidity (kg vapor/kg air)
+!      zfull     height of full levels (m)
+!      zhalf     height of half levels (m)
+!      pfull     pressure at full levels (Pa)
+!      phalf     pressure at half levels (Pa)
+!
+!      ------------
+!      output
+!      ------------
+!
+!      z_Ri_025  bluk Richardson height
+
+! Input/output variables
+
+real,            intent(in),    dimension(:,:,:) :: t, qv, u, v
+real,            intent(in),    dimension(:,:)   :: t_ca, q_ca
+real,            intent(in),    dimension(:,:,:) :: pfull, zfull
+real,            intent(in),    dimension(:,:,:) :: phalf, zhalf
+real,            intent(out),   dimension(:,:)   :: z_Ri_025
+
+! Local variables
+
+integer                                          :: i, j, k
+integer                                          :: nlev, nlat, nlon
+real, dimension(size(t,1),size(t,2))             :: zsurf
+real, dimension(size(t,1),size(t,2),size(t,3))   :: zfull_ag
+real, dimension(size(t,1),size(t,2),size(t,3)+1) :: zhalf_ag
+
+real thetavs, thetavh, zs, us, vs, vv
+real, dimension(size(t,3)+1) :: Ri, z
+
+! Constants
+real, parameter :: eps = 1.0e-8
+real, parameter :: Ri_crit = 0.25
+real, parameter :: p00 = 1000.0e2
+
+!-----------------------------------------------------------------------
+
+! Initialization
+  nlev = size(t,3)
+  nlat = size(t,2)
+  nlon = size(t,1)
+  z_Ri_025(:,:) = missing_value
+       
+! Compute height above surface
+  zsurf(:,:) = zhalf(:,:,nlev+1)
+  do k = 1, nlev
+     zfull_ag(:,:,k) = zfull(:,:,k) - zsurf(:,:)
+     zhalf_ag(:,:,k) = zhalf(:,:,k) - zsurf(:,:)
+  end do
+  zhalf_ag(:,:,nlev+1) = zhalf(:,:,nlev+1) - zsurf(:,:)
+       
+! Horizontal loop
+  do j=1,nlat
+    do i=1,nlon
+
+!      Extended height
+       z(1:nlev) = zfull_ag(i,j,:)
+       z(nlev+1) = 2.0         ! Assumed reference (canopy) air height
+
+!      Canopy level properties
+       thetavs = t_ca(i,j) * (p00/phalf(i,j,nlev+1))**kappa  &
+                           * ( 1.0 + 0.61*q_ca(i,j)/(1.0-q_ca(i,j)) )
+       zs = z(nlev+1)
+       us = 0.0
+       vs = 0.0
+       Ri(nlev+1) = 0.0
+
+!      Vertical upward loop
+       do k = nlev,1,-1
+
+         thetavh = t(i,j,k) * (p00/pfull(i,j,k))**kappa   &
+                            * ( 1.0 + 0.61*qv(i,j,k)/(1.0-qv(i,j,k)) )
+         vv = max( (u(i,j,k)-us)**2 + (v(i,j,k)-vs)**2, eps )
+         Ri(k) = grav * (thetavh-thetavs) * (z(k)-zs) / (thetavs*vv)
+         if (Ri(k) >= Ri_crit) then
+           z_Ri_025(i,j) = z(k+1) + (Ri_crit-Ri(k+1))/(Ri(k)-Ri(k+1))*(z(k)-z(k+1))
+           exit
+         end if
+
+       end do
+
+    end do
+  end do
+
+end subroutine bulk_Ri_height_b
+!<--cjg
 
 end module vert_turb_driver_mod
 

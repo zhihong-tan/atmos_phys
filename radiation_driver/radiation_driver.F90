@@ -41,12 +41,19 @@
 !     tdt_sw          temperature tendency for SW radiation (deg_K/sec)
 !     tdt_lw          Temperature tendency for LW radiation (deg_K/sec)
 !     swdn_toa        SW flux down at TOA (watts/m2)
+!     rsdt            SW flux down at TOA (watts/m2)
 !     swup_toa        SW flux up at TOA (watts/m2)
+!     rsut            SW flux up at TOA (watts/m2)
 !     olr             outgoing longwave radiation (watts/m2)
+!     rlut            outgoing longwave radiation (watts/m2)
 !     swup_sfc        SW flux up at surface (watts/m2)
+!     rsus            SW flux up at surface (watts/m2)
 !     swdn_sfc        SW flux down at surface (watts/m2)
+!     rsds            SW flux down at surface (watts/m2)
 !     lwup_sfc        LW flux up at surface  (watts/m2)
+!     rlus            LW flux up at surface  (watts/m2)
 !     lwdn_sfc        LW flux down at surface (watts/m2)
+!     rlds            LW flux down at surface (watts/m2)
 !  
 !  NOTE: When namelist variable do_clear_sky_pass = .true. an additional clear sky
 !        diagnostic fields may be saved.
@@ -55,11 +62,16 @@
 !     tdt_lw_clr      clear sky Temperature tendency for LW radiation (deg_K/sec)
 !     swdn_toa_clr    clear sky SW flux down at TOA (watts/m2)
 !     swup_toa_clr    clear sky SW flux up at TOA (watts/m2)
+!     rsutcs          clear sky SW flux up at TOA (watts/m2)
 !     olr_clr         clear sky outgoing longwave radiation (watts/m2)
+!     rlutcs          clear sky outgoing longwave radiation (watts/m2)
 !     swup_sfc_clr    clear sky SW flux up at surface (watts/m2)
+!     rsuscs          clear sky SW flux up at surface (watts/m2)
 !     swdn_sfc_clr    clear sky SW flux down at surface (watts/m2)
+!     rsdscs          clear sky SW flux down at surface (watts/m2)
 !     lwup_sfc_clr    clear sky LW flux up at surface  (watts/m2)
 !     lwdn_sfc_clr    clear sky LW flux down at surface (watts/m2)
+!     rldscs          clear sky LW flux down at surface (watts/m2)
 !  </DIAGFIELDS>
 
 ! <INFO>
@@ -136,6 +148,7 @@ use fms_io_mod,            only: restore_state, &
                                  save_restart, get_mosaic_tile_file
 use diag_manager_mod,      only: register_diag_field, send_data, &
                                  diag_manager_init, get_base_time
+use diag_data_mod,         only: CMOR_MISSING_VALUE
 use time_manager_mod,      only: time_type, set_date, set_time,  &
                                  get_time,    operator(+),       &
                                  print_date, time_manager_init, &
@@ -145,7 +158,7 @@ use time_manager_mod,      only: time_type, set_date, set_time,  &
 use sat_vapor_pres_mod,    only: sat_vapor_pres_init, compute_qs
 use constants_mod,         only: constants_init, RDGAS, RVGAS,   &
                                  STEFAN, GRAV, SECONDS_PER_DAY,  &
-                                 RADIAN, diffac
+                                 RADIAN, diffac, WTMCO2, WTMAIR
 use data_override_mod,     only: data_override
 
 ! shared radiation package modules:
@@ -227,8 +240,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 20.0 2013/12/13 23:18:44 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201403 $'
+character(len=128) :: version = '$Id: radiation_driver.F90,v 20.0.6.1.2.1 2014/09/04 19:06:26 Rusty.Benson Exp $'
+character(len=128) :: tagname = '$Name: tikal_201409 $'
 
 
 !---------------------------------------------------------------------
@@ -894,6 +907,9 @@ integer                      :: id_flux_sw_dir, id_flux_sw_dif, &
                                 id_flux_sw_vis, &
                                 id_flux_sw_vis_dir, &
                                 id_flux_sw_vis_dif, &
+                                id_co2mass, id_ch4global, id_n2oglobal, &
+                                id_cfc11global, id_cfc12global, &
+                                id_cfc113global, id_hcfc22global, &
                                 id_rrvco2, id_rrvf11, id_rrvf12, &
                                 id_rrvf113, id_rrvf22, id_rrvch4, &
                                 id_rrvn2o, id_co2_tf, id_ch4_tf, &
@@ -908,6 +924,10 @@ integer, dimension(2)        :: id_tdt_sw,   id_tdt_lw,  &
                                 id_netrad_toa,  id_netrad_1_Pa,  &
                                 id_swup_sfc, id_swdn_sfc,         &
                                 id_lwup_sfc, id_lwdn_sfc
+integer                      :: id_rlds, id_rldscs, id_rlus, id_rsds,   &
+                                id_rsdscs, id_rsus, id_rsuscs, id_rsdt, &
+                                id_rsut, id_rsutcs, id_rlut, id_rlutcs, &
+                                id_rtmt
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
                                         id_netlw_special
@@ -2622,6 +2642,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
         if (do_sea_esf_rad) then
           call produce_radiation_diagnostics        &
                             (is, ie, js, je, Time_next, Time, lat, &
+                             Atmos_input%atm_mass, &
                              Atmos_input%tsfc, Surface,  &
                              flux_ratio,  Astro, Rad_output,  &
                              Rad_gases, Lw_output=Lw_output,&
@@ -2631,6 +2652,7 @@ integer, dimension(:,:),   intent(in),    optional :: kbot
         else
           call produce_radiation_diagnostics        &
                             (is, ie, js, je, Time_next, Time, lat, &
+                             Atmos_input%atm_mass, &
                              Atmos_input%tsfc, Surface,  &
                              flux_ratio,  Astro, Rad_output,  &
                              Rad_gases, Fsrad_output=Fsrad_output, &
@@ -3669,6 +3691,10 @@ real, dimension(:,:,:),  intent(in), optional    :: cloudtemp,    &
          endif
       endif
 
+!-----------------------------------------------------------------------
+!      include the atmospheric mass in Atmos_input% for use in diagnostic
+!-----------------------------------------------------------------------
+       Atmos_input%atm_mass = gavg_rrv(size(gavg_rrv))
 
 !----------------------------------------------------------------------
 
@@ -4275,15 +4301,15 @@ real, dimension(:,:,:,:), intent(inout)  ::    &
 !    convective clouds, dependent on donner_meso_is_largescale.
 !---------------------------------------------------------------------
         if (donner_meso_is_largescale) then
-          where (stoch_cloud_type(is:ie,js:je,:,:) == 2)
-            stoch_cloud_type(is:ie,js:je,:,:) = 1
+          where (stoch_cloud_type(is:ie,js:je,:,:) == 2.)
+            stoch_cloud_type(is:ie,js:je,:,:) = 1.
           end where
-          where (stoch_cloud_type(is:ie,js:je,:,:) >= 3)
-            stoch_cloud_type(is:ie,js:je,:,:) = 2
+          where (stoch_cloud_type(is:ie,js:je,:,:) >= 3.)
+            stoch_cloud_type(is:ie,js:je,:,:) = 2.
           end where
         else
-          where (stoch_cloud_type(is:ie,js:je,:,:) >= 2)
-            stoch_cloud_type(is:ie,js:je,:,:) = 2
+          where (stoch_cloud_type(is:ie,js:je,:,:) >= 2.)
+            stoch_cloud_type(is:ie,js:je,:,:) = 2.
           end where
         endif    
 
@@ -5121,6 +5147,98 @@ integer        , intent(in) :: axes(4)
                  'watts/m2', missing_value=missing_value)
  
        end do
+        id_rlds = register_diag_field (mod_name,    &
+                'rlds', axes(1:2), Time, &
+                'Surface Downwelling Longwave Radiation', 'W m-2', &
+            standard_name = 'surface_downwelling_longwave_flux_in_air',&
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rldscs = register_diag_field (mod_name,    &
+                'rldscs', axes(1:2), Time, &
+                'Surface Downwelling Clear-Sky Longwave Radiation',  &
+                'W m-2', &
+           standard_name = &
+            'surface_downwelling_longwave_flux_in_air_assuming_clear_sky',&
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rlus = register_diag_field (mod_name,    &
+                'rlus', axes(1:2), Time, &
+                'Surface Upwelling Longwave Radiation', 'W m-2', &
+            standard_name = 'surface_upwelling_longwave_flux_in_air',&
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsds = register_diag_field (mod_name,     &
+                'rsds', axes(1:2), Time, &
+                'Surface Downwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'surface_downwelling_shortwave_flux_in_air',&
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsdscs = register_diag_field (mod_name,    &
+                'rsdscs', axes(1:2), Time, &
+                'Surface Downwelling Clear-Sky Shortwave Radiation',  &
+                'W m-2', &
+           standard_name = &
+           'surface_downwelling_shortwave_flux_in_air_assuming_clear_sky',&
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsus = register_diag_field (mod_name,     &
+                'rsus', axes(1:2), Time, &
+                'Surface Upwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'surface_upwelling_shortwave_flux_in_air',&
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsuscs = register_diag_field (mod_name,    &
+                'rsuscs', axes(1:2), Time, &
+                'Surface Upwelling Clear-Sky Shortwave Radiation',  &
+                'W m-2', &
+           standard_name = &
+           'surface_upwelling_shortwave_flux_in_air_assuming_clear_sky',&
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsdt = register_diag_field (mod_name,   &
+                'rsdt', axes(1:2), Time, &
+                'TOA Incident Shortwave Radiation', &
+                'W m-2',   &
+                 standard_name = 'toa_incoming_shortwave_flux', &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rsut = register_diag_field (mod_name,    &
+                'rsut', axes(1:2), Time, &
+                'TOA Outgoing Shortwave Radiation', &
+                'W m-2',    &
+                 standard_name = 'toa_outgoing_shortwave_flux', &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rsutcs = register_diag_field (mod_name,    &
+                'rsutcs', axes(1:2), Time, &
+                'TOA Outgoing Clear-Sky Shortwave Radiation', &
+                'W m-2',    &
+                 standard_name =    &
+                      'toa_outgoing_shortwave_flux_assuming_clear_sky', &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rlut = register_diag_field (mod_name,   &
+                'rlut', axes(1:2), Time, &
+                'TOA Outgoing Longwave Radiation', &
+                'W m-2',    &
+                 standard_name = 'toa_outgoing_longwave_flux', &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rlutcs = register_diag_field (mod_name,   &
+                'rlutcs', axes(1:2), Time, &
+                'TOA Outgoing Clear-Sky Longwave Radiation', &
+                'W m-2',   &
+                 standard_name =    &
+                        'toa_outgoing_longwave_flux_assumimg_clear_sky', &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rtmt = register_diag_field (mod_name,   &
+                'rtmt', axes(1:2), Time, &
+                'Net Downward Flux at Top of Model', &
+                'W m-2',  &
+                standard_name =  &
+                 'net_downward_radiative_flux_at_top_of_atmosphere_model',&
+                missing_value=CMOR_MISSING_VALUE)
 
          id_allradp   = register_diag_field (mod_name,   &
                  'allradp', axes(1:3), Time, &
@@ -5275,6 +5393,48 @@ integer        , intent(in) :: axes(4)
                    'rrvn2o', Time, &
                    'n2o mixing ratio', 'ppbv', &
                    missing_value=missing_value)
+
+      id_co2mass = register_diag_field (mod_name,    &
+                  'co2mass', Time, &
+                  'Total Atmospheric Mass of CO2', 'kg', &
+                  standard_name = 'atmosphere_mass_of_carbon_dioxide', &
+                  missing_value=CMOR_MISSING_VALUE) 
+                           
+      id_cfc11global = register_diag_field (mod_name,    &
+                  'cfc11global', Time, &
+                  'Global Mean Mole Fraction of CFC11', '1e-12', &
+                  standard_name = 'mole_fraction_of_cfc11_in_air', &
+                  missing_value=CMOR_MISSING_VALUE) 
+        
+      id_cfc12global = register_diag_field (mod_name,    &
+                  'cfc12global', Time, &
+                  'Global Mean Mole Fraction of CFC12', '1e-12', &
+                  standard_name = 'mole_fraction_of_cfc12_in_air', &
+                  missing_value=CMOR_MISSING_VALUE) 
+
+      id_cfc113global = register_diag_field (mod_name,    &
+                   'cfc113global', Time, &
+                  'Global Mean Mole Fraction of CFC113', '1e-12', &
+                  standard_name = 'mole_fraction_of_cfc113_in_air', &
+                  missing_value=CMOR_MISSING_VALUE) 
+ 
+       id_hcfc22global = register_diag_field (mod_name,    &
+                   'hcfc22global', Time, &
+                  'Global Mean Mole Fraction of HCFC22', '1e-12', &
+                  standard_name = 'mole_fraction_of_hcfc22_in_air', &
+                  missing_value=CMOR_MISSING_VALUE) 
+
+       id_ch4global = register_diag_field (mod_name,    &
+                   'ch4global', Time, &
+                  'Global Mean Mole Fraction of CH4', '1e-9', &
+                  standard_name = 'mole_fraction_of_methane_in_air', &
+                  missing_value=CMOR_MISSING_VALUE) 
+
+       id_n2oglobal = register_diag_field (mod_name,    &
+                   'n2oglobal', Time, &
+                  'Global Mean Mole Fraction of N2O', '1e-9', &
+                standard_name = 'mole_fraction_of_nitrous_oxide_in_air', &
+                  missing_value=CMOR_MISSING_VALUE) 
 
          id_alb_sfc_avg = register_diag_field (mod_name,    &
                  'averaged_alb_sfc', axes(1:2), Time, &
@@ -6583,7 +6743,8 @@ type(sw_output_type),    intent(inout)          :: Sw_output
  
       do j = 1,je-js+1
         do i = 1,ie-is+1
-          wtlo = (1.0           - Atmos_input%pflux(i,j,1))/ &
+!         wtlo = (1.0           - Atmos_input%pflux(i,j,1))/ &
+          wtlo = (Atmos_input%phalf(i,j,1) - Atmos_input%pflux(i,j,1))/ &
                (Atmos_input%pflux(i,j,2) - Atmos_input%pflux(i,j,1))
           wthi = 1.0 - wtlo
           if (Rad_control%do_lw_rad) then
@@ -6850,7 +7011,8 @@ end subroutine flux_trop_calc
 ! </SUBROUTINE>
 !
 subroutine produce_radiation_diagnostics          &
-                 (is, ie, js, je, Time_diag, Time, lat, ts, Surface, &
+                 (is, ie, js, je, Time_diag, Time, lat, atm_mass, ts,  &
+                  Surface, &
                   flux_ratio, Astro, Rad_output, Rad_gases,&
                   Lw_output, Sw_output, Cld_spec,   &
                   Lsc_microphys, Fsrad_output, mask)
@@ -6865,6 +7027,7 @@ integer,                 intent(in)             :: is, ie, js, je
 type(time_type),         intent(in)             :: Time_diag
 type(time_type),         intent(in)             :: Time
 real,dimension(:,:),     intent(in)             :: lat, ts
+real,                    intent(in)             :: atm_mass
 type(surface_type),      intent(in)             :: Surface
 real,dimension(:,:),     intent(in)             :: flux_ratio
 type(astronomy_type),    intent(in)             :: Astro
@@ -7301,6 +7464,30 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
         endif
      endif
 
+!------- downward sw flux surface -------
+        if (id_rsds > 0 ) then
+          used = send_data (id_rsds, swdns,   &
+                            Time_diag, is, js )
+        endif
+
+!------- upward sw flux surface -------
+        if (id_rsus > 0 ) then
+          used = send_data (id_rsus, swups,   &
+                            Time_diag, is, js )
+        endif
+
+!------- incoming sw flux toa -------
+        if (id_rsdt > 0 ) then
+          used = send_data (id_rsdt, swin,   &
+                            Time_diag, is, js )
+        endif
+
+!------- outgoing sw flux toa -------
+        if (id_rsut > 0 ) then
+          used = send_data (id_rsut, swout,    &
+                            Time_diag, is, js )
+        endif
+
 !----------------------------------------------------------------------
 !    now pass clear-sky diagnostics, if they have been calculated.
 !----------------------------------------------------------------------
@@ -7434,6 +7621,25 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
         endif
 
      endif
+
+!------- downward sw flux surface -------
+          if (id_rsdscs > 0 ) then
+            used = send_data (id_rsdscs, swdns_clr,    &
+                              Time_diag, is, js )
+          endif
+
+!------- upward sw flux surface -------
+          if (id_rsuscs > 0 ) then
+            used = send_data (id_rsuscs, swups_clr,   &
+                              Time_diag, is, js )
+          endif
+
+!------- outgoing sw flux toa -------
+          if (id_rsutcs > 0 ) then
+            used = send_data (id_rsutcs, swout_clr,  &
+                              Time_diag, is, js )
+          endif
+
          endif  ! (do_clear_sky_pass)
 
 !-----------------------------------------------------------------------
@@ -7504,12 +7710,21 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             used = send_data ( id_rrvco2, 1.0E6*Rad_gases%rrvco2,  &
                                Time_diag )
           endif
+          if ( id_co2mass > 0 ) then
+            used = send_data ( id_co2mass, atm_mass*WTMCO2/(WTMAIR*GRAV)* &
+                                           Rad_gases%rrvco2,  &
+                               Time_diag )
+          endif
         endif
  
 !------- f11 mixing ratio  -------------------------
         if (do_rad) then
           if ( id_rrvf11 > 0 ) then
             used = send_data ( id_rrvf11, 1.0E12*Rad_gases%rrvf11,  &
+                               Time_diag )
+          endif
+          if ( id_cfc11global > 0 ) then
+            used = send_data ( id_cfc11global, 1.0E12*Rad_gases%rrvf11,  &
                                Time_diag )
           endif
         endif
@@ -7520,12 +7735,20 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             used = send_data ( id_rrvf12, 1.0E12*Rad_gases%rrvf12,  &
                                Time_diag )
           endif
+          if ( id_cfc12global > 0 ) then
+            used = send_data ( id_cfc12global, 1.0E12*Rad_gases%rrvf12,  &
+                               Time_diag )
+          endif
         endif
  
 !------- f113 mixing ratio  -------------------------
         if (do_rad) then
           if ( id_rrvf113 > 0 ) then
             used = send_data ( id_rrvf113, 1.0E12*Rad_gases%rrvf113,  &
+                               Time_diag )
+          endif
+          if ( id_cfc113global > 0 ) then
+            used = send_data ( id_cfc113global, 1.0E12*Rad_gases%rrvf113,  &
                                Time_diag )
           endif
         endif
@@ -7536,6 +7759,10 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             used = send_data ( id_rrvf22, 1.0E12*Rad_gases%rrvf22,  &
                                Time_diag )
           endif
+          if ( id_hcfc22global > 0 ) then
+            used = send_data ( id_hcfc22global, 1.0E12*Rad_gases%rrvf22,  &
+                               Time_diag )
+          endif
         endif
 
 !------- ch4 mixing ratio  -------------------------
@@ -7544,12 +7771,20 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
             used = send_data ( id_rrvch4, 1.0E9*Rad_gases%rrvch4,  &
                                Time_diag )
           endif
+          if ( id_ch4global > 0 ) then
+            used = send_data ( id_ch4global, 1.0E9*Rad_gases%rrvch4,  &
+                               Time_diag )
+          endif
         endif
 
 !------- n2o mixing ratio  -------------------------
         if (do_rad) then
           if ( id_rrvn2o > 0 ) then
             used = send_data ( id_rrvn2o, 1.0E9*Rad_gases%rrvn2o,  &
+                               Time_diag )
+          endif
+          if ( id_n2oglobal > 0 ) then
+            used = send_data ( id_n2oglobal, 1.0E9*Rad_gases%rrvn2o,  &
                                Time_diag )
           endif
         endif
@@ -7913,7 +8148,33 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
            used = send_data (id_lwsfc_ad(ipass), lwups_ad-lwdns_ad,    &
                              Time_diag, is, js )
         endif
+
      endif
+
+!------- downward lw flux surface -------
+        if (id_rlds > 0 ) then
+          used = send_data (id_rlds, lwdns,    &
+                            Time_diag, is, js )
+        endif
+
+!------- upward lw flux surface -------
+        if ( id_rlus > 0 ) then
+          used = send_data (id_rlus, lwups,    &
+                            Time_diag, is, js )
+        endif
+
+!------- outgoing lw flux toa (olr) -------
+        if (id_rlut > 0 ) then
+          used = send_data (id_rlut, olr,    &
+                            Time_diag, is, js )
+        endif
+
+!------- net radiation (lw + sw) at top of atmos model-------
+        if (id_rtmt > 0 ) then
+          used = send_data (id_rtmt,   &
+               swdn_trop(:,:,4) -swup_trop(:,:,4) -netlw_trop(:,:,4), &
+                             Time_diag, is, js )
+        endif
 
 !----------------------------------------------------------------------
 !    now pass clear-sky diagnostics, if they have been calculated.
@@ -7999,6 +8260,18 @@ real,dimension(:,:,:),   intent(in), optional   :: mask
                            Time_diag, is, js )
         endif
       endif
+
+!------- downward lw flux surface -------
+          if (id_rldscs > 0 ) then
+            used = send_data (id_rldscs, lwdns_clr,   &
+                              Time_diag, is, js )
+          endif
+
+!------- outgoing lw flux toa (olr) -------
+          if (id_rlutcs > 0 ) then
+            used = send_data (id_rlutcs, olr_clr,   &
+                              Time_diag, is, js )
+          endif
 
         endif  ! (do_clear_sky_pass)
         endif

@@ -5,7 +5,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: atmos_lib.F90,v 20.0 2013/12/13 23:16:12 fms Exp $
-! $Name: tikal_201403 $
+! $Name: tikal_201409 $
 ! cosp_version = 1.3.2
 
 #endif

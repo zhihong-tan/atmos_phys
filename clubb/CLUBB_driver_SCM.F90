@@ -170,7 +170,7 @@ public :: clubb_setup, &
 
 !--------------------- version number ----------------------------------
 character(len=128)   :: version = '$Id: CLUBB_driver_SCM.F90,v 20.0 2013/12/13 23:09:19 fms Exp $'
-character(len=128)   :: tagname = '$Name: tikal_201403 $'
+character(len=128)   :: tagname = '$Name: tikal_201409 $'
 
 logical              :: module_is_initialized = .false.
 character(len=32)    :: tracer_units, tracer_name

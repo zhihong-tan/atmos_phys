@@ -37,8 +37,8 @@ private  aerosol_effects
 !--------------------------------------------------------------------------
 !---version number---------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: aerosol_cloud.F90,v 20.0 2013/12/13 23:21:48 fms Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201403 $'
+Character(len=128) :: Version = '$Id: aerosol_cloud.F90,v 20.0.2.1 2014/01/09 08:18:12 rsh Exp $'
+Character(len=128) :: Tagname = '$Name: tikal_201409 $'
 
 !--------------------------------------------------------------------------
 !---namelist---------------------------------------------------------------
@@ -140,6 +140,7 @@ type(strat_constants_type), intent(in) :: Constants
 !    define offset into aerosol activation tables.
 !-------------------------------------------------------------------------
       IF (.NOT. (Constants%do_mg_microphys .OR.   & 
+                 Constants%do_ncar_microphys .OR.   & 
                                    Constants%do_mg_ncar_microphys)  & 
                                        .AND. reproduce_rk) THEN
         wpdf_offs =0
@@ -293,7 +294,10 @@ INTEGER,                    INTENT(IN )    :: otun
             do i = 1,idim
               if ( (Nml%do_pdf_clouds) .or.  &
                    (Constants%do_mg_microphys)  .or.  &
+                   (Constants%do_ncar_microphys)  .or.  &
                    (Constants%do_mg_ncar_microphys)  .or.  &
+! cjg: total activation for RK
+                   (Constants%total_activation) .or.  &  
                    (up_strat(i,j,k) >= 0.0) )  then
                 thickness(i,j,k) = Atmos_state%deltpg(i,j,k)/  &
                                                 Atmos_state%airdens(i,j,k)

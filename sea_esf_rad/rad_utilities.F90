@@ -44,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 20.0 2013/12/13 23:20:23 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201403 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 20.0.4.1 2014/08/26 04:58:43 rsh Exp $'
+character(len=128)  :: tagname =  '$Name: tikal_201409 $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -248,6 +248,7 @@ type atmos_input_type
      real, dimension(:,:),   pointer :: tsfc=>NULL(),   &
                                         psfc=>NULL()              
      real                            :: g_rrvco2
+     real                            :: atm_mass
 end type atmos_input_type
 
 !-------------------------------------------------------------------

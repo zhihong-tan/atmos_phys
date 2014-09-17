@@ -94,8 +94,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 19.0 2012/01/06 20:23:35 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: tikal_201403 $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 19.0.16.1 2014/02/25 20:39:45 Chris.Golaz Exp $'
+    character(len=128)  :: tagname =  '$Name: tikal_201409 $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -2176,34 +2176,41 @@ logical,                   intent(in)            :: including_aerosols
       call longwave_fluxes_sum (is, ie, js, je, flx, NBTRGE, &
                                 Lw_diagnostics)
     endif
+!-----------------------------------------------------------------------
+!   Changed by Xianglei Huang, for AIRS-CERES comparison purpose
+!-----------------------------------------------------------------------
     Lw_output%bdy_flx(:,:,1) = Lw_output%bdy_flx(:,:,1) + &
-                               Lw_diagnostics%fluxn(:,:,1,3) + &
-                               Lw_diagnostics%fluxn(:,:,1,4) + &
-                               Lw_diagnostics%fluxn(:,:,1,5) + &
-                               Lw_diagnostics%fluxn(:,:,1,6) 
+                               Lw_diagnostics%fluxn(:,:,1,1) 
     Lw_output%bdy_flx(:,:,2) = Lw_output%bdy_flx(:,:,2) + &
-                               Lw_diagnostics%fluxn(:,:,1,4) 
+                               Lw_diagnostics%fluxn(:,:,1,2) 
     Lw_output%bdy_flx(:,:,3) = Lw_output%bdy_flx(:,:,3) + &
-                               Lw_diagnostics%fluxn(:,:,ke+1,3) + &
-                               Lw_diagnostics%fluxn(:,:,ke+1,4) + &
-                               Lw_diagnostics%fluxn(:,:,ke+1,5) + &
-                               Lw_diagnostics%fluxn(:,:,ke+1,6) 
+                               Lw_diagnostics%fluxn(:,:,1,3) 
     Lw_output%bdy_flx(:,:,4) = Lw_output%bdy_flx(:,:,4) + &
-                               Lw_diagnostics%fluxn(:,:,ke+1,4) 
-!   Lw_output%bdy_flx = 1.0E-03*Lw_output%bdy_flx
+                               Lw_diagnostics%fluxn(:,:,1,5) 
+    Lw_output%bdy_flx(:,:,5) = Lw_output%bdy_flx(:,:,5) + &
+                               Lw_diagnostics%fluxn(:,:,1,4)
+    Lw_output%bdy_flx(:,:,6) = Lw_output%bdy_flx(:,:,6) + &
+                               Lw_diagnostics%fluxn(:,:,1,6)
+    Lw_output%bdy_flx(:,:,7) = Lw_output%bdy_flx(:,:,7) + &
+                               Lw_diagnostics%fluxn(:,:,1,7)
+    Lw_output%bdy_flx = 1.0E-03*Lw_output%bdy_flx
+!------------------------------------------------------------------------
+!   End of modification
+!------------------------------------------------------------------------
+!    Lw_output%bdy_flx = 1.0E-03*Lw_output%bdy_flx
 
     if (nnn == 1) then ! need do only once
     if (Rad_control%do_totcld_forcing) then
-      Lw_output%bdy_flx_clr(:,:,1) = Lw_diagnostics%fluxncf(:,:,1,3) + &
-                                 Lw_diagnostics%fluxncf(:,:,1,4) + &
-                                 Lw_diagnostics%fluxncf(:,:,1,5) + &
-                                 Lw_diagnostics%fluxncf(:,:,1,6) 
-      Lw_output%bdy_flx_clr(:,:,2) = Lw_diagnostics%fluxncf(:,:,1,4) 
-      Lw_output%bdy_flx_clr(:,:,3) = Lw_diagnostics%fluxncf(:,:,ke+1,3) + &
-                                 Lw_diagnostics%fluxncf(:,:,ke+1,4) + &
-                                 Lw_diagnostics%fluxncf(:,:,ke+1,5) + &
-                                 Lw_diagnostics%fluxncf(:,:,ke+1,6) 
-      Lw_output%bdy_flx_clr(:,:,4) = Lw_diagnostics%fluxncf(:,:,ke+1,4) 
+!-----------------------------------------------------------------------
+!   Changed by Xianglei Huang, for AIRS-CERES comparison purpose
+!-----------------------------------------------------------------------
+      Lw_output%bdy_flx_clr(:,:,1) = Lw_diagnostics%fluxncf(:,:,1,1)
+      Lw_output%bdy_flx_clr(:,:,2) = Lw_diagnostics%fluxncf(:,:,1,2) 
+      Lw_output%bdy_flx_clr(:,:,3) = Lw_diagnostics%fluxncf(:,:,1,3) 
+      Lw_output%bdy_flx_clr(:,:,4) = Lw_diagnostics%fluxncf(:,:,1,5) 
+      Lw_output%bdy_flx_clr(:,:,5) = Lw_diagnostics%fluxncf(:,:,1,4)
+      Lw_output%bdy_flx_clr(:,:,6) = Lw_diagnostics%fluxncf(:,:,1,6)
+      Lw_output%bdy_flx_clr(:,:,7) = Lw_diagnostics%fluxncf(:,:,1,7)
       Lw_output%bdy_flx_clr = 1.0E-03*Lw_output%bdy_flx_clr
     endif
     endif

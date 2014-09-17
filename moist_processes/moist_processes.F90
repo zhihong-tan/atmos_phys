@@ -21,6 +21,7 @@
 use sat_vapor_pres_mod,    only: compute_qs, lookup_es
 use time_manager_mod,      only: time_type, get_time
 use diag_manager_mod,      only: register_diag_field, send_data
+use diag_data_mod,         only: CMOR_MISSING_VALUE
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
                                  file_exist, check_nml_error,    &
@@ -108,8 +109,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 20.0 2013/12/13 23:18:25 fms Exp $'
-   character(len=128) :: tagname = '$Name: tikal_201403 $'
+   version = '$Id: moist_processes.F90,v 20.0.6.1.4.1.2.1 2014/09/04 19:06:26 Rusty.Benson Exp $'
+   character(len=128) :: tagname = '$Name: tikal_201409 $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -292,19 +293,28 @@ integer :: id_cell_cld_frac,  id_meso_cld_frac, id_donner_humidity_area
 
 integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_snow_tot, id_tot_cld_amt, id_conv_freq, &
+           id_ci, &
            id_tdt_ls  , id_qdt_ls  , id_prec_ls  , id_snow_ls  , &
-           id_precip  , id_WVP, id_LWP, id_IWP, id_AWP, id_gust_conv, &
+           id_precip, id_WVP, id_LWP, id_IWP, id_AWP, id_gust_conv, &
+
+           id_pr, id_prw, id_prc, id_prsn, &
+           id_clt,   &
 
            id_tot_cloud_area,  id_tot_liq_amt,  id_tot_ice_amt,  &
+           id_cl, id_clw, id_cli, &
            id_tot_h2o, id_tot_vapor, &
            id_lsc_cloud_area,  id_lsc_liq_amt,  id_lsc_ice_amt,  &
            id_conv_cloud_area, id_conv_liq_amt, id_conv_ice_amt, &
            id_LWP_all_clouds,  id_IWP_all_clouds, id_WP_all_clouds, &
 
+           id_clwvi, id_clivi, &
+
            id_tdt_dadj, id_rh,  id_qs, id_mc, id_mc_donner, id_mc_full, &
            id_mc_donner_half, &
            id_rh_cmip, id_mc_conv_up, id_mc_half, &
+           id_hur, &
            id_conv_cld_base, id_conv_cld_top, &
+           id_ccb, id_cct, &
            id_tdt_deep_donner, id_qdt_deep_donner, &
            id_qadt_deep_donner, id_qldt_deep_donner, &
            id_qidt_deep_donner, &
@@ -668,9 +678,6 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             lsc_ice_number, lsc_snow, lsc_rain,  &
                             lsc_snow_size, lsc_rain_size     , &
 ! ---> h1g
-                            dcond_ls_liquid,     dcond_ls_ice,         &
-                            Ndrop_act_CLUBB,     Icedrop_act_CLUBB,    &
-                            ndust, rbar_dust,                          &
                             diff_t_clubb,                              &
                             tdt_shf,                                   &
                             qdt_lhf,                                   &
@@ -804,9 +811,6 @@ logical, intent(out), dimension(:,:)     :: convect
    real, intent(in) , dimension(:,:)     :: lat
 
 ! ---> h1g
-    real, intent(inout), dimension(:,:,:), optional :: dcond_ls_liquid, dcond_ls_ice
-    real, intent(inout), dimension(:,:,:), optional :: Ndrop_act_CLUBB,  Icedrop_act_CLUBB
-    real, intent(inout), dimension(:,:,:), optional :: ndust, rbar_dust
     real, intent(inout), dimension(:,:,:), optional :: diff_t_clubb
     real, intent(inout), dimension(:,:),   optional :: tdt_shf,  qdt_lhf
 ! < --- h1g
@@ -915,7 +919,11 @@ logical, intent(out), dimension(:,:)     :: convect
 
 ! ---> h1g, 2012-10-05
    real, dimension(size(omega,1),size(omega,2),size(omega,3))  :: qcvar_clubb
-! <--- h1g, 2012-10-05      
+   real, dimension(size(omega,1),size(omega,2),size(omega,3))  ::       &
+                                 dcond_ls_liquid, dcond_ls_ice,         &
+                                 Ndrop_act_CLUBB, Icedrop_act_CLUBB,    &
+                                 ndust, rbar_dust
+! <--- h1g, 2014-01-24     
 !-------- input array size and position in global storage --------------
       ix=size(t,1); jx=size(t,2); kx=size(t,3); nt=size(rdt,4)
 
@@ -2048,7 +2056,10 @@ logical, intent(out), dimension(:,:)     :: convect
 
    if ( get_tracer_index(MODEL_ATMOS,'no') .ne. NO_TRACER &
        .or. id_conv_freq > 0 &
+       .or. id_ci > 0 &
        .or. id_conv_cld_base > 0 &
+       .or. id_ccb           > 0 &
+       .or. id_cct           > 0 &
        .or. id_conv_cld_top > 0 ) then
 
      cldbot = 0
@@ -2082,6 +2093,17 @@ logical, intent(out), dimension(:,:)     :: convect
                                            js_in=js,  mask = cldbot > 0)
    end if
 
+   if ( id_ccb > 0 ) then
+     temp_2d = missing_value
+     do j = 1,jx
+       do i = 1,ix
+         if ( cldbot(i,j) > 0 ) temp_2d(i,j) = pfull(i,j,cldbot(i,j))
+       end do
+     end do
+     used = send_data(id_ccb, temp_2d, Time, is_in=is,   &
+                                           js_in=js,  mask = cldbot > 0)
+   end if
+
    if ( id_conv_cld_top > 0 ) then
      temp_2d = missing_value
      do j = 1,jx
@@ -2090,6 +2112,17 @@ logical, intent(out), dimension(:,:)     :: convect
        end do
      end do
      used = send_data(id_conv_cld_top, temp_2d, Time, is_in=is, &
+                                  js_in=js,  mask = cldtop > 0)
+   end if
+
+   if ( id_cct > 0 ) then
+     temp_2d = missing_value
+     do j = 1,jx
+       do i = 1,ix
+         if ( cldtop(i,j) > 0 ) temp_2d(i,j) = pfull(i,j,cldtop(i,j))
+       end do
+     end do
+     used = send_data(id_cct, temp_2d, Time, is_in=is, &
                                   js_in=js,  mask = cldtop > 0)
    end if
 
@@ -2273,6 +2306,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    total precipitation due to convection:
 !---------------------------------------------------------------------
    used = send_data (id_prec_conv, precip, Time, is, js)
+   used = send_data (id_prc, precip, Time, is, js)
 
 !---------------------------------------------------------------------
 !    frozen precipitation (snow) due to convection:
@@ -2290,6 +2324,16 @@ logical, intent(out), dimension(:,:)     :: convect
        freq_count = 0.
      end where
      used = send_data (id_conv_freq, freq_count, Time, is, js )
+   endif
+
+   if (id_ci > 0) then
+     ltemp = precip > 0. .or. cldtop > 0
+     where (ltemp)
+       freq_count = 1.
+     elsewhere
+       freq_count = 0.
+     end where
+     used = send_data (id_ci, freq_count, Time, is, js )
    endif
 
 !---------------------------------------------------------------------
@@ -2659,9 +2703,9 @@ logical, intent(out), dimension(:,:)     :: convect
                                  do_ice_num , lsc_ice_number,          &
                                 lsc_snow, lsc_rain, lsc_snow_size,  &
                                  lsc_rain_size, do_legacy_strat_cloud, &
-                                 dcond_ls_liquid, dcond_ls_ice,                   &           ! h1g, cjg
-                                 Ndrop_act_CLUBB, Icedrop_act_CLUBB,              &           ! h1g, cjg
-                                 ndust, rbar_dust, qcvar_clubb=qcvar_clubb)                   ! h1g, cjg
+                                 dcond_ls_liquid=dcond_ls_liquid, dcond_ls_ice=dcond_ls_ice,            &   ! h1g, cjg
+                                 Ndrop_act_CLUBB=Ndrop_act_CLUBB, Icedrop_act_CLUBB=Icedrop_act_CLUBB,  &   ! h1g, cjg
+                                 ndust=ndust, rbar_dust=rbar_dust, qcvar_clubb=qcvar_clubb)                 ! h1g, cjg
       call mpp_clock_end (stratcloud_clock)
     endif  ! (do_lsc)
 !---------------------------------------------------------------------
@@ -2774,6 +2818,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    total cumulus mass flux on half levels:
 !---------------------------------------------------------------------
       used = send_data (id_mc_half, mc_half(is:ie,js:je,:), Time, is, js, 1, rmask=mask)
+      used = send_data (id_mc, mc_half(is:ie,js:je,:), Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
 !    cloud liquid, ice and area tendencies due to strat_cloud 
@@ -2871,13 +2916,13 @@ logical, intent(out), dimension(:,:)     :: convect
      m=1
      mm=1
      do n=1, size(rdt,4)
-       if (tracers_in_donner(n)) then
+       if (tracers_in_donner(n) .and. do_donner_deep) then
          total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
                                                 donner_wetdep(:,:,m)
          total_wetdep_donner(:,:,n) = donner_wetdep(:,:,m)
          m=m+1
        endif
-       if (tracers_in_uw(n)) then
+       if (tracers_in_uw(n) .and. do_uw_conv) then
          total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
                                                     uw_wetdep(:,:,mm)
          total_wetdep_uw    (:,:,n) = uw_wetdep(:,:,mm)
@@ -2910,35 +2955,35 @@ logical, intent(out), dimension(:,:)     :: convect
                                                 Time, is,js)
      endif
      if (id_wetdep_so4 > 0) then
-       used = send_data (id_wetdep_so4,  &
-          (96.0/WTMAIR)*(total_wetdep_donner(:,:,nso4     ) + &
-               total_wetdep_uw    (:,:,nso4     )) + &
-               0.096*ls_wetdep          (:,:,nso4     ) , &
-                                                Time, is,js)
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_donner(:,:,nso4) 
+       if( do_uw_conv  )    temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_uw    (:,:,nso4)
+       if( do_strat )       temp_2d = temp_2d + 0.096*ls_wetdep(:,:,nso4)
+       used = send_data (id_wetdep_so4, temp_2d, Time, is,js)
      endif
      if (id_wetdep_so2 > 0) then
-       used = send_data (id_wetdep_so2,  &
-          (64.0/WTMAIR)*(total_wetdep_donner(:,:,nso2     ) + &
-               total_wetdep_uw    (:,:,nso2     )) + &
-               0.064*ls_wetdep          (:,:,nso2     ) , &
-                                                Time, is,js)
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_donner(:,:,nso2) 
+       if( do_uw_conv  )    temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_uw    (:,:,nso2)
+       if( do_strat )       temp_2d = temp_2d + 0.064*ls_wetdep(:,:,nso2)
+       used = send_data (id_wetdep_so2, temp_2d, Time, is,js)
      endif
      if (id_wetdep_DMS > 0) then
-       used = send_data (id_wetdep_DMS,  &
-          (62.0/WTMAIR)*(total_wetdep_donner(:,:,nDMS     ) + &
-               total_wetdep_uw    (:,:,nDMS     )) + &
-               0.062*ls_wetdep          (:,:,nDMS     ) , &
-                                                Time, is,js)
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_donner(:,:,nDMS) 
+       if( do_uw_conv  )    temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_uw    (:,:,nDMS)
+       if( do_strat )       temp_2d = temp_2d + 0.062*ls_wetdep(:,:,nDMS)
+       used = send_data (id_wetdep_DMS, temp_2d, Time, is,js)
      endif
      if (id_wetdep_NH4NO3 > 0) then
-       used = send_data (id_wetdep_NH4NO3,  &
-           (18.0/WTMAIR)*(total_wetdep_donner(:,:,nnH4NO3  ) + &
-               total_wetdep_donner(:,:,nNH4     ) + &
-               total_wetdep_uw    (:,:,nNH4NO3  ) + &
-               total_wetdep_uw    (:,:,nNH4     )) + &
-            0.018*(ls_wetdep          (:,:,nNH4NO3  ) + &
-                   ls_wetdep          (:,:,nNH4     )) , &
-                                                Time, is,js)
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (18.0/WTMAIR)*(total_wetdep_donner(:,:,nnH4NO3) + &
+                                                               total_wetdep_donner(:,:,nNH4) )
+       if( do_uw_conv  )    temp_2d = temp_2d + (18.0/WTMAIR)*(total_wetdep_uw(:,:,nNH4NO3) + &
+                                                               total_wetdep_uw(:,:,nNH4) )
+       if( do_strat )       temp_2d = temp_2d + 0.018*(ls_wetdep(:,:,nNH4NO3) + ls_wetdep(:,:,nNH4))
+       used = send_data (id_wetdep_NH4NO3, temp_2d, Time, is,js)
+
      endif
      if (id_wetdep_salt   > 0) then
        used = send_data (id_wetdep_salt  ,  &
@@ -2964,11 +3009,15 @@ logical, intent(out), dimension(:,:)     :: convect
     if (id_precip > 0) then
       used = send_data (id_precip, precip, Time, is, js)
     endif
+    if (id_pr > 0) then
+      used = send_data (id_pr, precip, Time, is, js)
+    endif
 
 !---------------------------------------------------------------------
 !    snowfall rate due to all sources:
 !---------------------------------------------------------------------
     used = send_data (id_snow_tot, fprec, Time, is, js)
+    used = send_data (id_prsn, fprec, Time, is, js)
 
 !---------------------------------------------------------------------
 !    column integrated enthalpy and total water tendencies due to 
@@ -3004,6 +3053,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
     if (id_WVP > 0) &
       call column_diag(id_WVP, is, js, Time, qin(is:ie,js:je,:), 1.0) 
+    if (id_prw > 0) &
+      call column_diag(id_prw, is, js, Time, qin(is:ie,js:je,:), 1.0) 
     if (id_LWP > 0 .and. do_strat) &
       call column_diag(id_LWP, is, js, Time, tracer(is:ie,js:je,:,nql), 1.0) 
     if (id_IWP > 0 .and. do_strat) &
@@ -3059,8 +3110,10 @@ logical, intent(out), dimension(:,:)     :: convect
                                          Time, is, js, 1, rmask=mask)
     end if
 
-
     used = send_data (id_tot_cloud_area, 100.*total_cloud_area,  &
+                                          Time, is, js, 1, rmask=mask)
+
+    used = send_data (id_cl, 100.*total_cloud_area,  &
                                           Time, is, js, 1, rmask=mask)
 
     used = send_data (id_conv_cloud_area, 100.*conv_cld_frac, &
@@ -3078,12 +3131,27 @@ logical, intent(out), dimension(:,:)     :: convect
       used = send_data (id_tot_cld_amt, tca2, Time, is, js)
     endif
  
+    if (id_clt > 0 ) then
+      tca2 = 1.0
+      do k=1,kx
+        tca2(:,:) = tca2(:,:)*(1.0 - total_cloud_area(:,:,k))
+      end do
+      tca2 = 100.*(1. - tca2)
+      used = send_data (id_clt, tca2, Time, is, js)
+    endif
+ 
 !---------------------------------------------------------------------
 !    define the total and convective liquid and liquid water path. 
 !---------------------------------------------------------------------
     if (id_tot_liq_amt > 0 ) &
     used = send_data (id_tot_liq_amt, &
                  (lsc_liquid + tot_conv_liq)/(1.0 + total_conv_cloud), &
+                                           Time, is, js, 1, rmask=mask)
+
+    if (id_clw > 0 ) &
+    used = send_data (id_clw, &
+!                (lsc_liquid + tot_conv_liq )/(1.0 + total_conv_cloud), &
+                 (lsc_liquid + tot_conv_liq + lsc_rain)/(1.0 + total_conv_cloud), &
                                            Time, is, js, 1, rmask=mask)
 
     if (id_conv_liq_amt > 0 ) &
@@ -3093,7 +3161,7 @@ logical, intent(out), dimension(:,:)     :: convect
  
     if (id_LWP_all_clouds > 0 ) &
     call column_diag (id_LWP_all_clouds, is, js, Time, &
-                      lsc_liquid+tot_conv_liq, 1.0)
+                      lsc_liquid+tot_conv_liq+lsc_rain, 1.0)
 
 !---------------------------------------------------------------------
 !    define the total and convective ice and ice water path. 
@@ -3104,6 +3172,12 @@ logical, intent(out), dimension(:,:)     :: convect
                  (lsc_ice + tot_conv_ice)/(1.0 + total_conv_cloud), &
                                             Time, is, js, 1, rmask=mask)
 
+    if (id_cli > 0 ) &
+     used = send_data (id_cli, &
+!                (lsc_ice + tot_conv_ice)/(1.0 + total_conv_cloud), &
+     (lsc_ice + tot_conv_ice+ lsc_snow)/(1.0 + total_conv_cloud), &
+                                            Time, is, js, 1, rmask=mask)
+
     if (id_conv_ice_amt > 0 ) &
      used = send_data (id_conv_ice_amt, &
                   tot_conv_ice/(1.0 + total_conv_cloud), &
@@ -3111,7 +3185,11 @@ logical, intent(out), dimension(:,:)     :: convect
 
     if (id_IWP_all_clouds > 0 ) &
      call column_diag (id_IWP_all_clouds, is, js, Time, &
-                       lsc_ice+tot_conv_ice, 1.0)
+                       lsc_ice+tot_conv_ice+lsc_snow, 1.0)
+ 
+    if (id_clivi > 0 ) &
+     call column_diag (id_clivi, is, js, Time, &
+                       lsc_ice+tot_conv_ice+lsc_snow, 1.0)
  
 !---------------------------------------------------------------------
 !    define the total vapor, total water substance and condensate water
@@ -3125,7 +3203,13 @@ logical, intent(out), dimension(:,:)     :: convect
 
     if (id_WP_all_clouds > 0 ) &
     call column_diag(id_WP_all_clouds, is, js, Time, &
-              lsc_ice + tot_conv_ice +  lsc_liquid + tot_conv_liq, 1.0)
+              lsc_ice + tot_conv_ice +  lsc_liquid + tot_conv_liq + &
+                             lsc_rain + lsc_snow, 1.0)
+
+    if (id_clwvi > 0 ) &
+    call column_diag(id_clwvi, is, js, Time, &
+              lsc_ice + tot_conv_ice +  lsc_liquid + tot_conv_liq + &
+                             lsc_rain + lsc_snow, 1.0)
 
 !---------------------------------------------------------------------
 !    column integrated cloud mass:
@@ -3153,6 +3237,16 @@ logical, intent(out), dimension(:,:)     :: convect
                                                             mask=mask)
       endif
       used = send_data (id_rh_cmip, rh(is:ie,js:je,:)*100.,  &
+                                         Time, is, js, 1, rmask=mask)
+    endif
+
+    if (id_hur > 0) then
+      if (.not. (do_rh_clouds .or. do_diag_clouds)) then
+        call rh_calc (pfull, tin(is:ie,js:je,:), qin(is:ie,js:je,:), &
+                       RH(is:ie,js:je,:), do_simple, do_cmip=.true., &
+                                                            mask=mask)
+      endif
+      used = send_data (id_hur, rh(is:ie,js:je,:)*100.,  &
                                          Time, is, js, 1, rmask=mask)
     endif
 
@@ -4418,8 +4512,15 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      'Scaling factor applied to UW convection tendencies','1' )
 
    id_prec_conv = register_diag_field ( mod_name, &
-     'prec_conv', axes(1:2), Time, &
-    'Precipitation rate from convection ',       'kg(h2o)/m2/s', &
+      'prec_conv', axes(1:2), Time, &
+      'Precipitation rate from convection ',       'kg(h2o)/m2/s', &
+     interp_method = "conserve_order1" )
+
+   id_prc = register_diag_field ( mod_name, &
+     'prc', axes(1:2), Time, &
+    'Convective precipitation',   'kg m-2 s-1', &
+     standard_name = 'convective_precipitation_flux', &
+     missing_value = CMOR_MISSING_VALUE, &
      interp_method = "conserve_order1" )
 
    id_snow_conv = register_diag_field ( mod_name, &
@@ -4428,14 +4529,27 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      interp_method = "conserve_order1" )
 
    id_snow_tot  = register_diag_field ( mod_name, &
-     'snow_tot ', axes(1:2), Time, &
-     'Frozen precip rate from all sources',       'kg(h2o)/m2/s', &
+      'snow_tot ', axes(1:2), Time, &
+      'Frozen precip rate from all sources',       'kg(h2o)/m2/s', &
+      interp_method = "conserve_order1" )
+
+   id_prsn  = register_diag_field ( mod_name, &
+     'prsn', axes(1:2), Time, &
+     'Snowfall flux',       'kg m-2 s-1', &
+      standard_name = 'snowfall_flux', &
+     missing_value = CMOR_MISSING_VALUE, &
       interp_method = "conserve_order1" )
 
    id_conv_freq = register_diag_field ( mod_name, &
      'conv_freq', axes(1:2), Time, &
-    'frequency of convection ',       'number', &
+    'frequency of convection ',       '1', &
      missing_value = missing_value                       )
+
+   id_ci = register_diag_field ( mod_name, &
+     'ci', axes(1:2), Time, &
+    'Fraction of Time Convection Occurs',  '1', &
+     standard_name='convection_time_fraction', &
+     missing_value = CMOR_MISSING_VALUE  )
 
    id_gust_conv = register_diag_field ( mod_name, &
      'gust_conv', axes(1:2), Time, &
@@ -4615,11 +4729,25 @@ if ( do_lsc ) then
                        mask_variant = .true., &
                        missing_value=missing_value               )
 
+   id_ccb = register_diag_field ( mod_name, &
+     'ccb', axes(1:2), Time, &
+     'Air Pressure at Convective Cloud Base',   'Pa', &
+      standard_name = 'air_pressure_at_convective_cloud_base',  &
+                       mask_variant = .true., &
+                       missing_value=CMOR_MISSING_VALUE  )
+
    id_conv_cld_top = register_diag_field ( mod_name, &
      'conv_cld_top', axes(1:2), Time, &
      'pressure at convective cloud top',   'Pa', &
                        mask_variant = .true., &
                        missing_value=missing_value               )
+
+   id_cct = register_diag_field ( mod_name, &
+     'cct', axes(1:2), Time, &
+     'Air Pressure at Convective Cloud Top',   'Pa', &
+      standard_name = 'air_pressure_at_convective_cloud_top',  &
+                       mask_variant = .true., &
+                       missing_value=CMOR_MISSING_VALUE  )
 
 if ( do_strat ) then
 
@@ -4632,6 +4760,12 @@ if ( do_strat ) then
      'mc_half', axes(half), Time, &
      'Net Mass Flux from convection on half levs',   'kg/m2/s', &
                        missing_value=missing_value               )
+   
+   id_mc = register_diag_field ( mod_name, &
+     'mc', axes(half), Time, &
+     'Convective Mass Flux',   'kg m-2 s-1', &
+     standard_name='atmosphere_net_upward_convective_mass_flux', &
+                       missing_value=CMOR_MISSING_VALUE  )
    
    id_tdt_ls = register_diag_field ( mod_name, &
      'tdt_ls', axes(1:3), Time, &
@@ -4714,13 +4848,26 @@ if ( do_strat ) then
 endif
 
    id_precip = register_diag_field ( mod_name, &
-     'precip', axes(1:2), Time, &
-     'Total precipitation rate',                     'kg/m2/s', &
+      'precip', axes(1:2), Time, &
+      'Total precipitation rate',                     'kg/m2/s', &
+      interp_method = "conserve_order1" )
+
+   id_pr = register_diag_field ( mod_name, &
+     'pr', axes(1:2), Time, &
+     'Precipitation',                     'kg m-2 s-1', &
+      standard_name='precipitation_flux', &
+      missing_value = CMOR_MISSING_VALUE, &
       interp_method = "conserve_order1" )
 
    id_WVP = register_diag_field ( mod_name, &
      'WVP', axes(1:2), Time, &
         'Column integrated water vapor',                'kg/m2'  )
+
+   id_prw = register_diag_field ( mod_name, &
+     'prw', axes(1:2), Time, &
+        'Water Vapor Path',                'kg m-2', &
+      standard_name = 'atmosphere_water_vapor_content', &
+      missing_value = CMOR_MISSING_VALUE) 
 
 if ( do_strat ) then
 
@@ -4740,9 +4887,21 @@ if ( do_strat ) then
               (mod_name, 'cld_amt_2d', axes(1:2), Time, &
                 'total cloud amount', 'percent')
 
+    id_clt = register_diag_field    &
+              (mod_name, 'clt', axes(1:2), Time, &
+                'Total Cloud Fraction', '%',  &
+               standard_name= 'cloud_area_fraction', &
+              missing_value = CMOR_MISSING_VALUE)
+
     id_tot_cloud_area = register_diag_field ( mod_name, &
       'tot_cloud_area', axes(1:3), Time, &
       'Cloud area -- all clouds', 'percent', missing_value=missing_value )
+
+    id_cl = register_diag_field ( mod_name, &
+      'cl', axes(1:3), Time, &
+      'Cloud Area Fraction', '%',    &
+       standard_name='cloud_area_fraction_in_atmosphere_layer', &
+        missing_value=CMOR_MISSING_VALUE)
 
     id_tot_h2o     = register_diag_field ( mod_name, &
       'tot_h2o', axes(1:3), Time, &
@@ -4756,9 +4915,21 @@ if ( do_strat ) then
       'tot_liq_amt', axes(1:3), Time, &
       'Liquid amount -- all clouds', 'kg/kg', missing_value=missing_value)
 
+    id_clw = register_diag_field ( mod_name, &
+      'clw', axes(1:3), Time, &
+      'Mass Fraction of Cloud Liquid Water', '1',   &
+       standard_name='mass_fraction_of_cloud_liquid_water_in_air', &
+        missing_value=CMOR_MISSING_VALUE)
+
     id_tot_ice_amt = register_diag_field ( mod_name, &
       'tot_ice_amt', axes(1:3), Time, &
       'Ice amount -- all clouds', 'kg/kg', missing_value=missing_value )
+
+    id_cli = register_diag_field ( mod_name, &
+      'cli', axes(1:3), Time, &
+      'Mass Fraction of Cloud Ice', '1',   &
+       standard_name='mass_fraction_of_cloud_ice_in_air', &
+        missing_value=CMOR_MISSING_VALUE)
 
     id_lsc_cloud_area = register_diag_field ( mod_name, &
       'lsc_cloud_area', axes(1:3), Time, &
@@ -4786,15 +4957,27 @@ if ( do_strat ) then
  
     id_WP_all_clouds = register_diag_field ( mod_name, &
       'WP_all_clouds', axes(1:2), Time, &
-      'Total  water path -- all clouds',              'kg/m2'   )
+      'Total  water path -- all clouds + ls precip',        'kg/m2'   )
+
+    id_clwvi = register_diag_field ( mod_name, &
+      'clwvi', axes(1:2), Time, &
+      'Condensed Water Path',        'kg m-2', &
+      standard_name = 'atmosphere_cloud_condensed_water_content', &
+      missing_value=CMOR_MISSING_VALUE   )
 
     id_LWP_all_clouds = register_diag_field ( mod_name, &
       'LWP_all_clouds', axes(1:2), Time, &
-      'Liquid water path -- all clouds',              'kg/m2'   )
+      'Liquid water path -- all clouds + ls rain',              'kg/m2'   )
 
     id_IWP_all_clouds = register_diag_field ( mod_name, &
       'IWP_all_clouds', axes(1:2), Time, &
-      'Ice water path -- all clouds',                 'kg/m2'   )
+      'Ice water path -- all clouds + ls snow',              'kg/m2'   )
+
+    id_clivi = register_diag_field ( mod_name, &
+      'clivi', axes(1:2), Time, &
+      'Ice Water Path',              'kg m-2', &
+       standard_name='atmosphere_cloud_ice_content', &
+       missing_value=CMOR_MISSING_VALUE   )
 
 endif
 
@@ -4812,6 +4995,12 @@ endif
      'rh_cmip', axes(1:3), Time, &
      'relative humidity',                            'percent',  &
                       missing_value=missing_value               )
+
+   id_hur = register_diag_field ( mod_name, &
+     'hur', axes(1:3), Time, &
+     'Relative Humidity',                            '%',  &
+      standard_name='relative_humidity', &
+                      missing_value=CMOR_MISSING_VALUE          )
 
    id_qs = register_diag_field ( mod_name, &
      'qs', axes(1:3), Time, &

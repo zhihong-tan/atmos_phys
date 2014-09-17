@@ -12,10 +12,14 @@ module MG_microp_3D_mod
 
   use              fms_mod, only :  file_exist, open_namelist_file, close_file,    &
                                     error_mesg, FATAL, check_nml_error
-  use        constants_mod, only :  hlv, hls, cp_air, grav, rdgas
+  use        constants_mod, only :  cp_air, hlv, hlf, hls, tfreeze,  &
+                                          rdgas, grav, rvgas
   use        cloud_rad_mod, only :  cloud_rad_init
   use     time_manager_mod, only :  time_type, get_time, set_date
   use   cldwat2m_micro_mod, only :  mmicro_pcond, ini_micro
+  use micro_mg_mod,         only:   micro_mg_init, micro_mg_get_cols,&
+                                          micro_mg_tend
+
 
   use strat_cloud_utilities_mod, only: strat_cloud_utilities_init, &
                                        diag_id_type, diag_pt_type, &
@@ -85,11 +89,23 @@ module MG_microp_3D_mod
 
   logical               :: use_ndust = .true.
   real                  :: qcvar = 2.0
-
+  real                  :: rhmini=0.80  ! minimum rh for ice cld fraction > 0
+  logical               :: do_mg_ncar_microphys = .true.
+  logical               :: do_ncar_microphys = .false.
+  logical               :: microp_uniform = .false. 
+                               ! .true. = configure uniform for sub-columns 
+                               ! .false. = use w/o sub-columns (standard)
+  logical               :: do_cldice = .true.
+                               ! .true. = do all processes (standard)
+                               ! .false. = skip all processes affecting
+                               !           cloud ice
+   
   namelist /MG_microp_3D_nml/ &
        N_land, N_ocean, qmin, overlap, do_liq_num, init_date, micro_begin_sec, &
-       override_liq_num, override_ice_num, use_Meyers, use_Cooper, use_ndust, qcvar, do_ice_num
+       override_liq_num, override_ice_num, use_Meyers, use_Cooper, use_ndust, qcvar, do_ice_num, rhmini, &
+       do_mg_ncar_microphys,  do_ncar_microphys,  microp_uniform, do_cldice
 
+  integer, parameter    :: r8 = selected_real_kind(12)   ! 8 byte real
   logical               :: module_is_initialized = .false.
   integer, save         :: current_days0, current_sec0
 
@@ -107,6 +123,9 @@ subroutine MG_microp_3D_init(axes,Time,idim,jdim,kdim)
   ! --- internal variables ---
   integer                     :: unit, io, ierr
   type(time_type)             :: Time_init
+  character(len=128)          :: errstring ! Output status: non-blank for 
+                                           ! error return
+
 
   ! --- is module already initialized ? ---
   if (module_is_initialized) then
@@ -153,7 +172,18 @@ subroutine MG_microp_3D_init(axes,Time,idim,jdim,kdim)
   call strat_netcdf_init (axes, Time, diag_id, diag_pt, n_diag_4d, &
                           n_diag_4d_kp1)
 
- call ini_micro(qcvar)
+  if( do_mg_ncar_microphys) then
+    call ini_micro (grav, rdgas, rvgas, cp_air,   &
+                                  tfreeze, hlv, hlf, rhmini)
+  elseif ( do_ncar_microphys) then
+    call micro_mg_init (r8, grav, rdgas, rvgas, cp_air, tfreeze, &
+                            hlv, hlf, rhmini, microp_uniform, do_cldice, &
+                            errstring )
+    if (trim(errstring) /= '') then
+       call error_mesg ('strat_cloud/microphysics/micro_mg_init', &
+                                                errstring, FATAL)
+    endif
+  endif
 
 end subroutine MG_microp_3D_init
 !##############################################################################
@@ -323,9 +353,10 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
 
   ! --- internal variables ---
   integer                                              :: idim,jdim,kdim
-  integer                                              :: i, j, k, unit
+  integer                                              :: i, j, k, nn, unit
 
   real, dimension(size(pfull3d,1),size(pfull3d,3))     :: pfull
+  real, dimension(size(phalf3d,1),size(phalf3d,3))     :: phalf
 
   real, dimension(size(T3d,1),size(T3d,3))             :: T,qv,ql,qi,qa,qn,qni,tn,qvn
   real, dimension(size(T3d,1),size(T3d,3))             :: ahuco
@@ -348,7 +379,6 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
   real, dimension(size(T3d,1),size(T3d,3))             :: qsout2d_mg,     qrout2d_mg
   real, dimension(size(T3d,1),size(T3d,3))             :: reff_rain2d_mg, reff_snow2d_mg
   !  3D  (i,j,k)
-  real, dimension(size(T3d,1),size(T3d,2),size(T3d,3)) :: qsout3d_mg, qrout3d_mg
   real, dimension(size(T3d,1),size(T3d,2),size(T3d,3)) :: reff_rain3d_mg, reff_snow3d_mg
 
   ! rain and snow fluxes from the Morrison scheme ( kg/m2/sec )
@@ -375,6 +405,15 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
   type(strat_nml_type)                                 :: Nml
 !<---h1g, 06-12-2013
 
+!--->h1g, 04-12-2014
+  real, dimension(size(T3d,1),size(T3d,3))             :: relvar
+  integer                                              :: top_lev, nlev
+  character(len=128)                                   :: errstring
+  real, dimension(size(T3d,1),size(T3d,3))             :: accre_enhann, tnd_qsnown, &
+                                                          tnd_nsnown, re_icen 
+  integer,dimension(:),allocatable                     :: mgcols         
+  integer                                              :: mgncol
+!<---h1g, 04-12-2014
 
 
   ! --- is module initialized ? ---
@@ -382,23 +421,7 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
     call error_mesg('MG_microp_3D','MG_microp_3D is not initialized',FATAL)
   endif
 
-  ! --- allocate diag array ---
-  if (allocated(diag_3d)) deallocate (diag_3d)
-  allocate(diag_3d(size(T,1),size(T,2),0:n_diag_4d))
-
-  if (allocated(diag_4d)) deallocate (diag_4d)
-  allocate(diag_4d(size(T3d,1),size(T3d,2),size(T3d,3), 0:n_diag_4d))
-
-  if (allocated(diag_4d_kp1)) deallocate (diag_4d_kp1)
-  allocate( diag_4d_kp1(size(T3d,1),size(T3d,2),size(T3d,3)+1, 0:n_diag_4d_kp1) )
-
   ! --- initialization ---
-
-  ! 4D diagnostics (i,j,k, nvar)
-  diag_4d(:,:,:,0:)     = 0.
-  diag_4d_kp1(:,:,:,0:) = 0.
-  diag_3d(:,:,0:)       = 0.
-
   ! 3D rain/snow fluxes, (kg/m2/s).
   rain3d(:,:,:)    = 0.
   snow3d(:,:,:)    = 0.
@@ -412,9 +435,6 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
   surfsnow(:,:)    = 0.
 
   ! rain/snow mixing ratio  (kg/kg)
-  !  3D
-  qrout3d_mg(:,:,:)= 0.
-  qsout3d_mg(:,:,:)= 0.
   !  2D
   qrout2d_mg(:,:)  = 0.
   qsout2d_mg(:,:)  = 0.
@@ -447,11 +467,25 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
   jdim             = SIZE(T3d,2)
   kdim             = SIZE(T3d,3)
 
+!------------------------------------------------------------------------
+!    allocate and initialize the diagnostic variables.
+!------------------------------------------------------------------------
+  if (allocated(diag_3d)) deallocate (diag_3d)
+      allocate (diag_3d(idim,jdim,0:n_diag_4d))
+  if (allocated(diag_4d)) deallocate (diag_4d)
+      allocate (diag_4d(idim,jdim,kdim,0:n_diag_4d))
+  if (allocated(diag_4d_kp1)) deallocate (diag_4d_kp1)
+      allocate (diag_4d_kp1(idim,jdim,kdim+1,0:n_diag_4d_kp1))
+      diag_3d(:,:,0:) = 0.
+      diag_4d(:,:,:,0:) = 0.
+      diag_4d_kp1(:,:,:,0:) = 0.
+
   !-------------------
   !--- Main j loop ---
   !-------------------
   enth_micro_col(:,:) = 0.0
   wat_micro_col(:,:)  = 0.0
+  relvar(:,:) = qcvar
 
   j_loop: do j = 1,jdim
 
@@ -464,6 +498,8 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
     SN(:,:)  = 0.
     SNi(:,:) = 0.
 
+    if (present(qcvar_clubb)) &
+    relvar(:,:) = qcvar_clubb(:,j,:)
     T(:,:)   = T3d(:,j,:)
     qv(:,:)  = qv3d(:,j,:)
     ql(:,:)  = ql3d(:,j,:)
@@ -474,6 +510,7 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
 
     ahuco(:,:) = ahuco3d(:,j,:)
 
+    phalf(:,:) = phalf3d(:,j,:)
     pfull(:,:) = pfull3d(:,j,:)
     do k = 1, kdim
       pdel(:,k) = phalf3d(:,j,k+1)- phalf3d(:,j,k)
@@ -642,11 +679,12 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
                                  ! disposition of supersaturation at end 
                                  ! of step; 0.= no ssat, 1.= liq, 2.=ice)
 ! <---h1g, 06-12-2013
-
+  if( do_mg_ncar_microphys) then
      call mmicro_pcond (  .false.,   .false.,   & 
                           .false.,   .false.,   &
-                          j, jdim, kdim,  idim,   idim,   dtcloud,  tn,   &
-                          qvn,      ql_upd,   qi_upd,  qn_upd,   qni_upd,  pfull,  pdel,   qa_upd, &
+                          j, jdim, kdim,  idim,   idim,  dtcloud,  &
+                          relvar,  tn,   &
+                          qvn,      ql_upd,   qi_upd,  qn_upd,   qni_upd,  pfull,  pdel, phalf,  qa_upd, &
                           liqcldf,  icecldf,  delta_cf,                                     &
                           D_eros_l4, nerosc4, D_eros_i4, nerosi4, dqcdt,                    &
                           dqidt,  crystal1, drop2,    rbar_dust_4bin,  ndust_4bin,          &
@@ -655,8 +693,48 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
                           surfrain(:,j), surfsnow(:,j),rain2d_mg,   snow2d_mg,      &
                           qrout2d_mg,    qsout2d_mg,   reff_rain2d_mg, reff_snow2d_mg,  &
                           f_snow_berg, Nml, qa0, gamma_mg, SA_0, SA, &
-                          ssat_disposal,  n_diag_4d, diag_4d, diag_id, diag_pt, &
-                          do_clubb=do_clubb, qcvar_clubb =qcvar_clubb(:,j,:) )
+                          ssat_disposal,  n_diag_4d, diag_4d, diag_id, &
+                          diag_pt, do_clubb=do_clubb, qcvar_clubb =qcvar_clubb(:,j,:) )
+  elseif ( do_ncar_microphys) then
+             nlev = kdim
+             top_lev = 1
+             accre_enhann(:,:) = 1.0  ! accretion enhancement factor
+             tnd_qsnown(:,:) = 0.     
+             tnd_nsnown(:,:) = 0.
+             re_icen(:,:) = 0.
+ 
+            call micro_mg_get_cols (idim, nlev, top_lev, &
+               qvn(:,:), &
+               ql_upd(:,:) + dqcdt(:,:)*dtcloud, &
+               qi_upd(:,:) + dqidt(:,:)*dtcloud, &
+                                                    mgncol, mgcols, .true.)
+
+
+             call  micro_mg_tend (  .false.,   .false.,    .false.,   &
+                                   j, jdim, mgncol,   mgcols,   nlev,    top_lev,   &
+                                   dtcloud, tn,   &
+                                   qvn,      ql_upd,   qi_upd,  qn_upd,   qni_upd, &
+                                   relvar,   accre_enhann, &
+                                   pfull,  pdel, phalf,  qa_upd, &
+                                   liqcldf,  icecldf,  delta_cf, &
+                                   D_eros_l4, nerosc4, D_eros_i4, nerosi4, dqcdt,  &
+                                   dqidt,  crystal1, drop2,    rbar_dust_4bin,  ndust_4bin,  &
+                                   ST_micro,      SQ_micro,  SL_micro,       SI_micro,       &
+                                   SN_micro,      SNI_micro,                                 &
+                                   surfrain(:,j), surfsnow(:,j), qsout2d_mg,  rain2d_mg,   snow2d_mg,      &
+                                   qrout2d_mg,  reff_rain2d_mg, reff_snow2d_mg,  &
+                                   tnd_qsnown(:,:),  tnd_nsnown(:,:), re_icen(:,:), &
+                                   errstring, f_snow_berg, &
+                                   Nml,  ssat_disposal, &
+                                   n_diag_4d, diag_4d, diag_id, diag_pt, do_clubb=do_clubb, qcvar_clubbin=qcvar_clubb(:,j,:))
+
+             if (trim(errstring) /= '') then
+               call error_mesg ('strat_cloud/microphysics/micro_mg_tend', &
+                                                         errstring, FATAL)
+             endif
+  endif
+
+
 
 ! ---> h1g, 2012-05-16, calculate column enthalpy and total water changes
 ! Note: in MG-microphysics, temperature tendency is multiplied by Cp_air.
@@ -787,11 +865,29 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
 
       if (present(lsc_snow))      lsc_snow(:,j,:)      = qsout2d_mg(:,:)
       if (present(lsc_rain))      lsc_rain(:,j,:)      = qrout2d_mg(:,:)
-      if (present(lsc_snow_size)) lsc_snow_size(:,j,:) = reff_snow2d_mg(:,:)
-      if (present(lsc_rain_size)) lsc_rain_size(:,j,:) = reff_rain2d_mg(:,:)
 
-      if (diag_id%qrout > 0)      qrout3d_mg(:,j,:)    = qrout2d_mg(:,:)
-      if (diag_id%qsout > 0)      qsout3d_mg(:,j,:)    = qsout2d_mg(:,:)
+      if ( do_mg_ncar_microphys) then
+      ! in cldwat2m_micro.F90, the output is diameter
+        if (present(lsc_snow_size)) lsc_snow_size(:,j,:) = reff_snow2d_mg(:,:)
+        if (present(lsc_rain_size)) lsc_rain_size(:,j,:) = reff_rain2d_mg(:,:)
+      elseif  ( do_ncar_microphys) then
+      ! in MG1.5(micro_mg.F90), the output is radius
+        if (present(lsc_snow_size)) lsc_snow_size(:,j,:) = 2*reff_snow2d_mg(:,:)
+        if (present(lsc_rain_size)) lsc_rain_size(:,j,:) = 2*reff_rain2d_mg(:,:)
+      endif
+
+      if (diag_id%qrout > 0)     diag_4d(:,j,:,diag_pt%qrout) = qrout2d_mg(:,:)
+      if (diag_id%qsout > 0)     diag_4d(:,j,:,diag_pt%qsout) = qsout2d_mg(:,:)
+
+!------------------------------------------------------------------------
+!    generate column integrated diagnostics.
+!------------------------------------------------------------------------
+      do nn=1, n_diag_4d
+        do k =kdim,1, -1
+          diag_3d(:,j,nn) = diag_3d(:,j,nn) &
+                          + diag_4d(:,j,k,nn)*pdel(:,k)/grav
+        enddo
+      enddo
 
     endif !   current_total_sec >= micro_begin_sec
   end do j_loop

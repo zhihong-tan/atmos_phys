@@ -25,6 +25,7 @@ use fms_mod,           only: open_namelist_file, fms_init, &
 use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data
+use diag_data_mod,     only: CMOR_MISSING_VALUE
 use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE
 
 !  radiation package shared modules:
@@ -59,8 +60,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 19.0 2012/01/06 20:21:53 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201403 $'
+'$Id: rad_output_file.F90,v 19.0.14.1.2.1 2014/09/04 19:06:26 Rusty.Benson Exp $'
+character(len=128)  :: tagname =  '$Name: tikal_201409 $'
 
 
 !---------------------------------------------------------------------
@@ -124,8 +125,10 @@ integer, dimension(2)              :: id_absopdep_vlcno_column, &
                                       id_extopdep_vlcno_column, &
                                       id_swext_vlcno, id_swssa_vlcno, &
                                       id_swasy_vlcno, id_sw_xcoeff_vlcno
-integer, dimension(4)              :: id_lw_bdyflx_clr, id_lw_bdyflx, &
-                                      id_sw_bdyflx_clr, id_sw_bdyflx
+! change by Xianglei Huang
+integer, dimension(7)              :: id_lw_bdyflx_clr, id_lw_bdyflx
+! end of change
+integer, dimension(4)              :: id_sw_bdyflx_clr, id_sw_bdyflx
 integer                            :: id_swheat_vlcno
 integer                            :: id_sulfate_col_cmip,  &
                                       id_sulfate_cmip
@@ -140,6 +143,7 @@ integer, dimension(:,:), allocatable :: id_asymdep_fam,  &
 integer                            :: id_radswp, id_radp, id_temp, &
                                       id_rh2o, id_qo3, id_qo3_col,  &
                                       id_qo3v, &
+                                      id_tro3, &
                                       id_cmxolw, id_crndlw, id_flxnet, &
                                       id_fsw, id_ufsw, id_psj, &
                                       id_dfsw, &
@@ -976,6 +980,10 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
           used = send_data (id_qo3v, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1)
         endif
 
+        if (id_tro3  > 0 ) then
+          used = send_data (id_tro3, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1)
+        endif
+
         if (id_qo3_col  > 0 ) then
           used = send_data (id_qo3_col, qo3_col, Time_diag, is, js)
         endif
@@ -1233,31 +1241,50 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
         if (id_cirrfgd_dif > 0 ) then
           used = send_data (id_cirrfgd_dif , cirrfgd_dif , Time_diag, is,js)
         endif
-
+! change by Xianglei Huang, output more lw_bdyflx
      do n=1, 4
-        if (id_lw_bdyflx(n) > 0 ) then
-          used = send_data (id_lw_bdyflx(n) , Lw_output%bdy_flx(:,:,n),&
-                            Time_diag, is,js)
-        endif
+!        if (id_lw_bdyflx(n) > 0 ) then
+!          used = send_data (id_lw_bdyflx(n) , Lw_output%bdy_flx(:,:,n),&
+!                            Time_diag, is,js)
+!        endif
         if (id_sw_bdyflx(n) > 0 ) then
           used = send_data (id_sw_bdyflx(n) , bdy_flx_mean(:,:,n),&
                             Time_diag, is,js)
         endif
      end do
-
-        if (Rad_control%do_totcld_forcing) then
-     do n=1, 4
-        if (id_lw_bdyflx_clr(n) > 0 ) then
-          used = send_data (id_lw_bdyflx_clr(n) ,   &
-                            Lw_output%bdy_flx_clr(:,:,n),&
+! add by Xianglei Huang
+     do n = 1, 7
+        if (id_lw_bdyflx(n) > 0 ) then
+          used = send_data (id_lw_bdyflx(n) , Lw_output%bdy_flx(:,:,n),&
                             Time_diag, is,js)
         endif
+     end do
+
+
+        if (Rad_control%do_totcld_forcing) then
+! change by Xianglei Huang
+     do n=1, 4
+!        if (id_lw_bdyflx_clr(n) > 0 ) then
+!          used = send_data (id_lw_bdyflx_clr(n) ,   &
+!                            Lw_output%bdy_flx_clr(:,:,n),&
+!                            Time_diag, is,js)
+!        endif
         if (id_sw_bdyflx_clr(n) > 0 ) then
           used = send_data (id_sw_bdyflx_clr(n) ,   &
                             bdy_flx_clr_mean(:,:,n),&
                             Time_diag, is,js)
         endif
      end do
+
+! add by Xianglei Huang
+     do n = 1, 7
+	if (id_lw_bdyflx_clr(n) > 0 ) then 
+          used = send_data (id_lw_bdyflx_clr(n) ,   &
+                            Lw_output%bdy_flx_clr(:,:,n),&
+                            Time_diag, is,js)
+        endif
+     end do 
+
 
           if (id_radswpcf > 0 ) then
             used = send_data (id_radswpcf, radswpcf, Time_diag,   &
@@ -1517,6 +1544,13 @@ character(len=*), dimension(:), intent(in) :: names, family_names
          register_diag_field (mod_name, 'qo3v', axes(1:3), Time, &
                           'ozone mole fraction', &
                           '1.e-9', missing_value=missing_value)
+
+      id_tro3    = &
+         register_diag_field (mod_name, 'tro3', axes(1:3), Time, &
+                          'Mole Fraction of O3', &
+                          '1e-9',    &
+                       standard_name = 'mole_fraction_of_ozone_in_air', &
+                       missing_value=CMOR_MISSING_VALUE)
 
       id_qo3_col = &
          register_diag_field (mod_name, 'qo3_col', axes(1:2), Time, &
@@ -1910,26 +1944,48 @@ character(len=*), dimension(:), intent(in) :: names, family_names
          register_diag_field (mod_name, 'cirrfgd_dif', axes(1:2), Time, &
                        'diffuse infra-red surface albedo', &
                       'dimensionless', missing_value=missing_value)
-
+!-----------------------------------------------------------------------
+! Change by Xianglei Huang
+!-----------------------------------------------------------------------
        id_lw_bdyflx(1) = &
-         register_diag_field (mod_name, 'olr_800_1200', axes(1:2), Time, &
-                       'olr in 800_1200  band', &
+         register_diag_field (mod_name, 'olr_0_560', axes(1:2), Time, &
+                       'olr in 0_560  band', &
                       'W/m**2', missing_value=missing_value)
 
        id_lw_bdyflx(2) = &
-         register_diag_field (mod_name, 'olr_900_990', axes(1:2), Time, &
-                       'olr in 800_900  band', &
+         register_diag_field (mod_name, 'olr_560_800', axes(1:2), Time, &
+                       'olr in 560_800  band', &
                       'W/m**2', missing_value=missing_value)
 
        id_lw_bdyflx(3) = &
-         register_diag_field (mod_name, 'sfc_800_1200', axes(1:2),&
-                             Time, 'lw sfc flx in 800_1200  band', &
+         register_diag_field (mod_name, 'olr_800_900', axes(1:2),&
+                             Time, 'olr in 800_900 band', &
                       'W/m**2', missing_value=missing_value)
 
        id_lw_bdyflx(4) = &
-         register_diag_field (mod_name, 'sfc_900_990', axes(1:2), &
-                              Time, 'lw sfc flx in 900_990 band', &
+         register_diag_field (mod_name, 'olr_990_1070', axes(1:2), &
+                              Time, 'olr in 990_1070 band', &
                       'W/m**2', missing_value=missing_value)
+
+      id_lw_bdyflx(5) = &
+	register_diag_field  (mod_name, 'olr_900_990', axes(1:2), &
+			     Time, 'olr in 900_990 band', &
+	              'W/m**2', missing_value=missing_value)
+
+      id_lw_bdyflx(6) = &
+        register_diag_field  (mod_name, 'olr_1070_1200', axes(1:2), &
+                             Time, 'olr in 1070_1200 band', &
+                      'W/m**2', missing_value=missing_value)
+
+      id_lw_bdyflx(7) = &
+        register_diag_field  (mod_name, 'olr_1200_1400', axes(1:2), &
+                             Time, 'olr in 1200_1400 band', &
+                      'W/m**2', missing_value=missing_value)
+
+
+!-----------------------------------------------------------------------
+! End of Change 
+!-----------------------------------------------------------------------
 
        id_sw_bdyflx(1) = &
          register_diag_field (mod_name, 'swup_toa_vis', axes(1:2),  &
@@ -1990,31 +2046,47 @@ character(len=*), dimension(:), intent(in) :: names, family_names
            register_diag_field (mod_name, 'ufswcf', bxes(1:3), Time, &
                             'upward shortwave flux w/o clouds', &
                             'W/m**2', missing_value=missing_value)
-
-        id_dfswcf   = &
-           register_diag_field (mod_name, 'dfswcf', bxes(1:3), Time, &
-                            'downward shortwave flux w/o clouds', &
-                            'W/m**2', missing_value=missing_value)
-
+!--------------------------------------------------------------------------
+! Change by Xianglei Huang
+!--------------------------------------------------------------------------
        id_lw_bdyflx_clr(1) = &
-         register_diag_field (mod_name, 'olr_800_1200_cf', axes(1:2), Time, &
-                       'clr sky olr in 800_1200  band', &
+         register_diag_field (mod_name, 'olr_0_560_cf', axes(1:2), Time, &
+                       'clr sky olr in 0_560  band', &
                       'W/m**2', missing_value=missing_value)
 
        id_lw_bdyflx_clr(2) = &
-         register_diag_field (mod_name, 'olr_900_990_cf', axes(1:2), Time, &
-                       'clr sky olr in 800_900  band', &
+         register_diag_field (mod_name, 'olr_560_800_cf', axes(1:2), Time, &
+                       'clr sky olr in 560_800  band', &
                       'W/m**2', missing_value=missing_value)
 
        id_lw_bdyflx_clr(3) = &
-         register_diag_field (mod_name, 'sfc_800_1200_cf', axes(1:2),&
-                             Time, 'clr sky lw sfc flx in 800_1200 band', &
+         register_diag_field (mod_name, 'olr_800_900_cf', axes(1:2),&
+                             Time, 'clr sky olr in 800_900 band', &
                       'W/m**2', missing_value=missing_value)
 
        id_lw_bdyflx_clr(4) = &
-         register_diag_field (mod_name, 'sfc_900_990_cf', axes(1:2), &
-                              Time, 'clr sky lw sfc flx in 900_990 band', &
+         register_diag_field (mod_name, 'olr_990_1070_cf', axes(1:2), &
+                              Time, 'clr sky olr in 990_1070 band', &
                       'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx_clr(5) = &
+         register_diag_field (mod_name, 'olr_900_990_cf', axes(1:2), Time, &
+                       'clr sky olr in 900_990  band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx_clr(6) = &
+         register_diag_field (mod_name, 'olr_1070_1200_cf', axes(1:2),&
+                             Time, 'clr sky olr in 1070_1200 band', &
+                      'W/m**2', missing_value=missing_value)
+
+       id_lw_bdyflx_clr(7) = &
+         register_diag_field (mod_name, 'olr_1200_1400_cf', axes(1:2), &
+                              Time, 'clr sky olr in 1200_1400 band', &
+                      'W/m**2', missing_value=missing_value)
+
+!---------------------------------------------------------------------------
+! End of Change 
+!---------------------------------------------------------------------------
 
        id_sw_bdyflx_clr(1) = &
          register_diag_field (mod_name, 'swup_toa_vis_cf', axes(1:2),  &

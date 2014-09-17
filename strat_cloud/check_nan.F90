@@ -13,7 +13,7 @@ public check_nan, check_nan_init
 
 !---------------version number---------------------------
 Character(len=128) :: Version = '$Id: check_nan.F90,v 20.0 2013/12/13 23:21:50 fms Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201403 $'
+Character(len=128) :: Tagname = '$Name: tikal_201409 $'
 
 !-------------------------------------------------------------------------
 

@@ -17,8 +17,8 @@ PUBLIC diag_id_type, diag_pt_type, strat_nml_type,  &
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 20.0 2013/12/13 23:22:15 fms Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201403 $'
+Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 20.0.2.1 2014/01/09 08:18:13 rsh Exp $'
+Character(len=128) :: Tagname = '$Name: tikal_201409 $'
 
 logical  :: module_is_initialized = .false.
 
@@ -454,6 +454,7 @@ type strat_constants_type
                                      do_rk_microphys,            &
                                      do_mg_microphys,            &       
                                      do_mg_ncar_microphys,       &
+                                     do_ncar_microphys,          &
                                      tiedtke_macrophysics,       &
                                      dqa_activation,             &
                                      total_activation,           &

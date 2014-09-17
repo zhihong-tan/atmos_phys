@@ -99,7 +99,7 @@ public cosp_driver, cosp_driver_init, cosp_driver_end, cosp_driver_endts, &
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  '$Id: cosp_driver.F90,v 20.0 2013/12/13 23:15:41 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201403 $'
+character(len=128)  :: tagname =  '$Name: tikal_201409 $'
 
 !---------------------------------------------------------------------
 !namelist variables

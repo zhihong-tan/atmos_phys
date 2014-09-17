@@ -43,7 +43,7 @@ public  moistproc_init, moistproc_end, moistproc_mca, moistproc_ras, &
 !--------------------- version number ----------------------------------
 character(len=128) :: &
 version = '$Id: moistproc_kernels.F90,v 20.0 2013/12/13 23:18:29 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201403 $'
+character(len=128) :: tagname = '$Name: tikal_201409 $'
 
 !-----------------------------------------------------------------------
 real, public, allocatable, dimension(:,:)     :: rain_uw, snow_uw
