@@ -100,7 +100,8 @@ end subroutine monin_obukhov_diff
 !==============================================================================
 _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
      & error, zeta_min, max_iter, small,                         &
-     & neutral, stable_option, rich_crit, zeta_trans, drag_min,  &
+     & neutral, stable_option, rich_crit, zeta_trans,            &
+     & drag_min_heat, drag_min_moist, drag_min_mom,              &
      & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
      & drag_q, u_star, b_star, lavail, avail, ier)
 
@@ -114,7 +115,8 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
   real   , intent(in   )                :: small    ! = 1.e-04
   logical, intent(in   )                :: neutral
   integer, intent(in   )                :: stable_option
-  real   , intent(in   )                :: rich_crit, zeta_trans, drag_min
+  real   , intent(in   )                :: rich_crit, zeta_trans
+  real   , intent(in   )                :: drag_min_heat, drag_min_moist, drag_min_mom
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: pt, pt0, z, z0, zt, zq, speed
   real   , intent(inout), dimension(n)  :: drag_m, drag_t, drag_q, u_star, b_star
@@ -125,7 +127,8 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
   real   , dimension(n) :: rich, fm, ft, fq, zz
   logical, dimension(n) :: mask, mask_1, mask_2
   real   , dimension(n) :: delta_b !!, us, bs, qs
-  real                  :: r_crit, sqrt_drag_min
+  real                  :: r_crit, sqrt_drag_min_heat
+  real                  :: sqrt_drag_min_moist, sqrt_drag_min_mom 
   real                  :: us, bs, qs
   integer               :: i
 
@@ -151,8 +154,12 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
   ier = 0
   r_crit = 0.95*rich_crit  ! convergence can get slow if one is 
                            ! close to rich_crit
-  sqrt_drag_min = 0.0
-  if(drag_min.ne.0.0) sqrt_drag_min = sqrt(drag_min)
+  sqrt_drag_min_heat = 0.0
+  if(drag_min_heat.ne.0.0) sqrt_drag_min_heat = sqrt(drag_min_heat)
+  sqrt_drag_min_moist = 0.0
+  if(drag_min_moist.ne.0.0) sqrt_drag_min_moist = sqrt(drag_min_moist)
+  sqrt_drag_min_mom = 0.0
+  if(drag_min_mom.ne.0.0) sqrt_drag_min_mom = sqrt(drag_min_mom)
 
   mask = .true.
   if(lavail) mask = avail
@@ -190,11 +197,11 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
 
      do i = 1, n
         if(mask_2(i)) then
-           drag_m(i)   = drag_min
-           drag_t(i)   = drag_min
-           drag_q(i)   = drag_min
-           us       = sqrt_drag_min
-           bs       = sqrt_drag_min
+           drag_m(i)   = drag_min_mom
+           drag_t(i)   = drag_min_heat
+           drag_q(i)   = drag_min_moist
+           us       = sqrt_drag_min_mom
+           bs       = sqrt_drag_min_heat
            u_star(i)   = us*speed(i)
            b_star(i)   = bs*delta_b(i)
         end if
@@ -206,9 +213,9 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
 
      do i = 1, n
         if(mask_1(i)) then
-           us   = max(vonkarm/fm(i), sqrt_drag_min)
-           bs   = max(vonkarm/ft(i), sqrt_drag_min)
-           qs   = max(vonkarm/fq(i), sqrt_drag_min)
+           us   = max(vonkarm/fm(i), sqrt_drag_min_mom)
+           bs   = max(vonkarm/ft(i), sqrt_drag_min_heat)
+           qs   = max(vonkarm/fq(i), sqrt_drag_min_moist)
            drag_m(i)   = us*us
            drag_t(i)   = us*bs
            drag_q(i)   = us*qs
@@ -848,7 +855,8 @@ program test
   real    :: zref, zref_t
   integer :: max_iter
 
-  real    :: rich_crit, zeta_trans, drag_min
+  real    :: rich_crit, zeta_trans
+  real    :: drag_min_heat, drag_min_moist, drag_min_mom
   logical :: neutral
   integer :: stable_option
 
@@ -862,9 +870,12 @@ program test
   stable_option = 1
   rich_crit     =10.0
   zeta_trans    = 0.5
-  drag_min      = 1.0e-5
+  drag_min_heat  = 1.0e-5
+  drag_min_moist= 1.0e-5
+  drag_min_mom  = 1.0e-5
   ustar_min     = 1.e-10
   
+
   zref   = 10.
   zref_t = 2.
   
@@ -923,7 +934,8 @@ program test
 
       call monin_obukhov_drag_1d(grav, vonkarm,               &
            & error, zeta_min, max_iter, small,                         &
-           & neutral, stable_option, rich_crit, zeta_trans, drag_min,  &
+           & neutral, stable_option, rich_crit, zeta_trans,            &
+           & drag_min_heat, drag_min_moist, drag_min_mom,              &
            & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
            & drag_q, u_star, b_star, lavail, avail, ier_l)
 
