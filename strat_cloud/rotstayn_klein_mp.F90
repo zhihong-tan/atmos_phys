@@ -1417,21 +1417,37 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    calculate C_dt
 !------------------------------------------------------------------------
-          if (total_activation) then  ! cjg: total activation for RK
-             C_dt(:,:,k) = max( 0.,  &
+          if (total_activation) then
+
+            if (rk_act_only_if_ql_gt_qmin) then
+              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
+                C_dt(:,:,k) = max( 0.,  &
+                                   drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
+                                   qa_upd(:,:,k) - qn_upd(:,:,k))
+              elsewhere
+                C_dt(:,:,k) = 0.
+              end where
+            else
+              C_dt(:,:,k) = max( 0.,  &
                                  drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
-                                         qa_upd(:,:,k) - qn_upd(:,:,k))
-          ELSEIF (    rk_act_only_if_ql_gt_qmin) THEN
-            where (ql_upd(:,:,k) .GT. Nml%qmin ) 
-              C_dt(:,:,k) = max (delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
-                                                      1.e6/airdens(:,:,k)
-            elsewhere
-              C_dt(:,:,k)=0.
-            end where
-          ELSE
-            C_dt(:,:,k)=max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
+                                 qa_upd(:,:,k) - qn_upd(:,:,k))
+            end if
+
+          else
+
+            if (rk_act_only_if_ql_gt_qmin) then
+              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
+                C_dt(:,:,k) = max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
                                                        1.e6/airdens(:,:,k)
-          END IF
+              elsewhere
+                C_dt(:,:,k) = 0.
+              end where
+            else
+              C_dt(:,:,k) = max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
+                                                     1.e6/airdens(:,:,k)
+            end if
+
+          end if
 
 !------------------------------------------------------------------------
 !    set total tendency term and update cloud
