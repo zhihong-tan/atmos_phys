@@ -168,6 +168,8 @@ use tropchem_driver_mod,   only : tropchem_driver, &
                                   tropchem_driver_time_vary, &
                                   tropchem_driver_endts, &
                                   tropchem_driver_init
+use atmos_regional_tracer_driver_mod,only : regional_tracer_driver, &
+                                            regional_tracer_driver_init
 use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
 use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
@@ -268,6 +270,8 @@ integer :: nNH4      =0
 integer :: nDMS_cmip =0
 integer :: nSO2_cmip =0
 integer :: noh       =0
+integer :: ncodirect =0    
+integer :: ne90 =0          
 
 real    :: ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),   &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),  &
@@ -308,8 +312,8 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 20.0 2013/12/13 23:24:10 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 21.0 2014/12/15 21:47:28 fms Exp $'
+character(len=128) :: tagname = '$Name: ulm $'
 !-----------------------------------------------------------------------
 
 contains
@@ -403,7 +407,7 @@ contains
                            frac_open_sea, &
                            land, phalf, pfull,     &
                            u, v, t, q, r,          &
-                           rm, rdt, dt,            &
+                           rm, rdt, rdiag, dt,            &
                            u_star, b_star, q_star, &
                            z_half, z_full,         &
                            t_surf_rad, albedo,     &
@@ -423,9 +427,10 @@ real, intent(in),    dimension(:,:)           :: area, z_pbl, rough_mom
 real, intent(in),    dimension(:,:)           :: frac_open_sea
 real, intent(in),    dimension(:,:,:)         :: phalf, pfull
 real, intent(in),    dimension(:,:,:)         :: u, v, t, q
-real, intent(inout), dimension(:,:,:,:)       :: r
-real, intent(inout), dimension(:,:,:,:)       :: rm
+real, intent(in),    dimension(:,:,:,:)       :: r
+real, intent(in),    dimension(:,:,:,:)       :: rm
 real, intent(inout), dimension(:,:,:,:)       :: rdt
+real, intent(inout), dimension(:,:,:,ntp+1:)  :: rdiag
 real, intent(in)                              :: dt !timestep(used in chem_interface)
 real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at half levels
 real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
@@ -457,7 +462,7 @@ real :: rrsun
 real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
 real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
-real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)) :: tracer
+real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_settl, dust_settl              
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_emis, dust_emis                
@@ -465,7 +470,7 @@ real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
 real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 
-integer :: j, k, id, jd, kd, nt
+integer :: j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
 integer :: nql  ! index of cloud liquid specific humidity
 integer :: nqi  ! index of cloud ice water specific humidity
@@ -483,7 +488,9 @@ logical :: used
       call error_mesg ('Tracer_driver','tracer_driver_init must be called first.', FATAL)
 
 !-----------------------------------------------------------------------
-     id=size(r,1);jd=size(r,2);kd=size(r,3); nt=size(r,4)
+     id=size(r,1);jd=size(r,2);kd=size(r,3); ntcheck=size(r,4)+size(rdiag,4)
+     if (nt /= ntcheck) &
+         call error_mesg ('Tracer_driver','number of input tracers not equal total tracers.', FATAL)
 
       nqa = get_tracer_index(MODEL_ATMOS,'cld_amt')
       nqi = get_tracer_index(MODEL_ATMOS,'ice_wat')
@@ -500,7 +507,11 @@ logical :: used
 !++lwh
       if (use_tau) then
         do n = 1,nt
-          tracer(:,:,:,n) = r(:,:,:,n)
+          if (n <= ntp) then
+            tracer(:,:,:,n) = r(:,:,:,n)
+          else
+            tracer(:,:,:,n) = rdiag(:,:,:,n)
+          endif
 !------------------------------------------------------------------------
 ! For tracers other than specific humdity, cloud amount, ice water and &
 ! liquid water fill eventual negative values
@@ -529,7 +540,7 @@ logical :: used
           if (n <= ntp) then
              tracer(:,:,:,n)=rm(:,:,:,n)+rdt(:,:,:,n)*dt
           else
-             tracer(:,:,:,n)=r(:,:,:,n)
+             tracer(:,:,:,n)=rdiag(:,:,:,n)
           end if
 !        does tracer need to be adjusted to remain positive definite?
 !         if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
@@ -1162,11 +1173,19 @@ logical :: used
          call mpp_clock_end (co2_clock)
    endif
 
+   if (ncodirect > 0 .or. ne90 > 0) then
+      if (ncodirect > ntp .or. ne90 > ntp) call error_mesg ('Tracer_driver', &
+                         'Number of tracers < number for codirect', FATAL)
+      call regional_tracer_driver( lon, lat, pwt, tracer, chem_tend, &
+                                   Time, phalf, is, js, kbot)
+      rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
+   endif
+
 !------------------------------------------------------------------------
 ! Save diagnostic tracer concentrations back to tracer array
 !------------------------------------------------------------------------
    if (nt > ntp) then
-      r(:,:,:,ntp+1:nt) = tracer(:,:,:,ntp+1:nt)
+      rdiag(:,:,:,ntp+1:nt) = tracer(:,:,:,ntp+1:nt)
    end if
 
  end subroutine atmos_tracer_driver
@@ -1352,6 +1371,8 @@ type(time_type), intent(in)                                :: Time
       nDMS_cmip = get_tracer_index(MODEL_ATMOS,'DMS')
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
       noh       = get_tracer_index(MODEL_ATMOS,'oh')
+      ncodirect = get_tracer_index(MODEL_ATMOS,'codirect')
+      ne90      = get_tracer_index(MODEL_ATMOS,'e90')
 
 ! Number of vertical layers
       nbr_layers=size(r,3)
@@ -1412,7 +1433,11 @@ type(time_type), intent(in)                                :: Time
                     grain=CLOCK_MODULE )
       endif
 
-      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
+      if (ncodirect > 0 .or. ne90 > 0) then
+        call regional_tracer_driver_init (lonb, latb, axes, Time, mask)
+      endif
+
+     call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
 
      id_landfr = register_diag_field ( mod_name,                    &

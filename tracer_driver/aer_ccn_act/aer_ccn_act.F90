@@ -3,7 +3,7 @@
 use fms_mod,             only: error_mesg, FATAL, open_namelist_file, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
-                               check_nml_error, close_file
+                               check_nml_error, open_file, close_file, read_distributed
 use mpp_mod,             only: input_nml_file, get_unit
 use aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act2_k, &
                                aer_ccn_act_wpdf_k, aer_ccn_act_k_init, &
@@ -18,8 +18,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 19.0 2012/01/06 20:31:34 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: version = '$Id: aer_ccn_act.F90,v 21.0 2014/12/15 21:47:33 fms Exp $'
+character(len=128) :: tagname = '$Name: ulm $'
 
 !---------------- private data -------------------
 
@@ -224,44 +224,17 @@ end subroutine aer_ccn_act_init
 subroutine Loading(droplets, droplets2)
 
 real, dimension(:,:,:,:,:), intent(out) :: droplets, droplets2
-real xx
-integer i, j, k, l, m, unit
-integer res, res2
+integer :: unit, ios=0
 
-  res = size(droplets,1)
-  res2 = size(droplets2,1)
-  unit = get_unit()
-  open(unit, FILE='INPUT/droplets.dat')
-  do k=1,res
-    do i=1,res
-      do j=1, res
-        do l=1, res
-        do m=1, res
-          read(unit,*) xx
-          droplets(m,l,j,i,k)=xx
-        end do
-        end do
-      end do
-    end do
-  end do
-  close(unit)
+  unit = open_file(file='INPUT/droplets.dat',action='read',dist=.true.)
+  call read_distributed(unit,fmt='*',iostat=ios,data=droplets)
+  if (ios /= 0) call error_mesg ('aer_ccn_act_init', 'Read of INPUT/droplets.dat failed', FATAL)
+  call close_file(unit,dist=.true.)
 
-  unit = get_unit()
-  open(unit, FILE='INPUT/droplets2.dat')
-  do k=1,res2
-    do i=1,res2
-      do j=1, res2
-        do l=1, res2
-        do m=1, res2
-          read(unit,*) xx
-          droplets2(m,l,j,i,k)=xx
-        end do
-        end do
-      end do
-    end do
-  end do
-  close(unit)
-
+  unit = open_file(file='INPUT/droplets2.dat',action='read',dist=.true.)
+  call read_distributed(unit,fmt='*',iostat=ios,data=droplets2) 
+  if (ios /= 0) call error_mesg ('aer_ccn_act_init', 'Read of INPUT/droplets2.dat failed', FATAL)
+  call close_file(unit,dist=.true.)
 end subroutine Loading
 
 

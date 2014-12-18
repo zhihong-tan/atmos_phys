@@ -9,19 +9,19 @@
 
       integer, parameter ::  inst = 1, avrg = 2
 
-      integer ::  o3s_ndx, o3inert_ndx
+      integer ::  o3s_e90_ndx, o3s_ndx, o3inert_ndx
       integer ::  oh_ndx, ho2_ndx, c2h4_ndx, c3h6_ndx, isop_ndx, &
                   mvk_ndx, macr_ndx, c10h16_ndx, no2_ndx, n2o5_ndx, &
                   no3_ndx, ox_ndx
       integer ::  jo1d_ndx, ox_l1_ndx, o1d_n2_ndx, o1d_o2_ndx, ox_l2_ndx, &
                   ox_l3_ndx, ox_l4_ndx, ox_l5_ndx, ox_l6_ndx, ox_l7_ndx, &
                   ox_l8_ndx, ox_l9_ndx, usr4_ndx, usr16_ndx, usr17_ndx
-      logical ::  o3s_loss
+      logical ::  o3s_e90_loss, o3s_loss
       logical ::  class_hist_prod = .false.
       logical ::  class_hist_loss = .false.
 
-character(len=128), parameter :: version     = '$Id: mo_exp_slv.F90,v 19.0 2012/01/06 20:33:52 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: tikal_201409 $'
+character(len=128), parameter :: version     = '$Id: mo_exp_slv.F90,v 21.0 2014/12/15 21:47:46 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: ulm $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -40,6 +40,7 @@ logical                       :: module_is_initialized = .false.
 !       ... Local variables
 !-----------------------------------------------------------------------      
 
+      o3s_e90_ndx = get_spc_ndx( 'O3S_E90' )
       o3s_ndx     = get_spc_ndx( 'O3S' )
       o3inert_ndx = get_spc_ndx( 'O3INERT' )
       ox_ndx = get_spc_ndx( 'OX' )
@@ -187,7 +188,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------      
       do m = 1,clscnt1
          l             = explicit%clsmap(m)
-         if( l /= o3s_ndx .and. l /= o3inert_ndx ) then
+         if( l /= o3s_ndx .and. l /= o3inert_ndx .and. l /= o3s_e90_ndx ) then
          base_sol(:,l) = base_sol(:,l) + delt * (prod(:,m) + ind_prd(:,m) - loss(:,m))
 !++van : o3s is assigned in mo_chemdr.F90 so commenting these lines here
 !        else if( l == o3s_ndx ) then

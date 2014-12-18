@@ -64,7 +64,7 @@ real, parameter :: boltz = 1.38044e-16      ! Boltzmann's Constant (erg/K)
 character(len=7), parameter :: module_name = 'tracers'
 !---- version number -----
 character(len=128) :: version = '$Id: atmos_ch3i.F90,v 20.0 2013/12/13 23:23:47 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: tagname = '$Name: ulm $'
 logical :: module_is_initialized = .FALSE.
 
 contains

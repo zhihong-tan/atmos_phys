@@ -171,6 +171,7 @@ logical            :: retain_cm3_bugs = .false.         ! retain bugs present in
 logical            :: do_fastjx_photo = .false.         ! use fastjx routine ?
 character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen in fastjx calculation; may currently be 'none' or 'lsc_only' (default)
 logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
+real               :: e90_tropopause_vmr = 9.e-8        ! e90 tropopause concentration
  
 namelist /tropchem_driver_nml/    &
                                relaxed_dt, &
@@ -214,7 +215,8 @@ namelist /tropchem_driver_nml/    &
                                retain_cm3_bugs, &
                                do_fastjx_photo, &
                                clouds_in_fastjx, &
-                               check_convergence
+                               check_convergence, &
+                               e90_tropopause_vmr
                               
 
 character(len=7), parameter :: module_name = 'tracers'
@@ -249,6 +251,11 @@ integer :: sphum_ndx=0, cl_ndx=0, clo_ndx=0, hcl_ndx=0, hocl_ndx=0, clono2_ndx=0
            pan_ndx=0, onit_ndx=0, mpan_ndx=0, isopno3_ndx=0, onitr_ndx=0, &
            extinct_ndx=0, noy_ndx=0, cly_ndx=0, bry_ndx=0, ch4_ndx=0, &
            dms_ndx=0
+
+integer :: o3s_ndx=0
+integer :: o3s_e90_ndx=0
+integer :: e90_ndx=0
+
 logical :: do_interactive_h2o = .false.         ! Include chemical sources/sinks of water vapor?
 real, parameter :: solarflux_min = 1.09082, &   ! solar minimum flux (band 18) [W/m2]
                    solarflux_max = 1.14694      ! solar maximum flux (band 18) [W/m2]
@@ -313,8 +320,8 @@ type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 20.0 2013/12/13 23:25:19 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: tikal_201409 $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 21.0 2014/12/15 21:48:04 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: ulm $'
 !-----------------------------------------------------------------------
 
 contains
@@ -481,6 +488,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real, dimension(size(r,1),size(r,2),size(r,3),phtcnt) :: jvals
    real, dimension(size(r,1),size(r,2),size(r,3),gascnt) :: rate_constants
    real, dimension(size(r,1),size(r,2),size(r,3)) :: imp_slv_nonconv
+   real, dimension(size(r,1),size(r,2),size(r,3)):: e90_vmr 
    real :: solar_phase
    type(psc_type) :: psc
    type(time_type) :: lbc_Time
@@ -861,6 +869,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       solar_phase = (solar_phase-solarflux_min)/(solarflux_max-solarflux_min)
 
 !-----------------------------------------------------------------------
+!     ... get e90 concentrations
+!-----------------------------------------------------------------------
+
+   e90_ndx = get_tracer_index( MODEL_ATMOS,'e90' )
+   if (e90_ndx > 0) then
+      e90_vmr(:,j,:) = r(:,j,:,e90_ndx)
+   else
+      e90_vmr(:,j,:) = 0.
+   end if 
+
+!-----------------------------------------------------------------------
 !     ... call chemistry driver
 !-----------------------------------------------------------------------
       call chemdr(r_temp(:,j,:,:),             & ! species volume mixing ratios (VMR)
@@ -903,7 +922,10 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                   plonl,                       & ! number of longitudes
                   prodox(:,j,:),               & ! production of ox(jmao,1/1/2011)
                   lossox(:,j,:),               & ! loss of ox(jmao,1/1/2011)
-                  retain_cm3_bugs, check_convergence)
+                  retain_cm3_bugs,             & 
+                  e90_vmr(:,j,:),              & ! e90 concentrations
+                  e90_tropopause_vmr,          & ! e90 tropopause threshold
+                  check_convergence ) 
 
       call strat_chem_destroy_psc( psc )
 
@@ -1493,6 +1515,9 @@ function tropchem_driver_init( r, mask, axes, Time, &
    ch4_ndx    = get_spc_ndx('CH4')
    dms_ndx    = get_spc_ndx('DMS')
 
+   o3s_ndx       = get_spc_ndx('O3S')
+   o3s_e90_ndx   = get_spc_ndx('O3S_E90')
+   e90_ndx       = get_tracer_index(MODEL_ATMOS,'e90')
    extinct_ndx = get_tracer_index(MODEL_ATMOS, 'Extinction')
    noy_ndx     = get_tracer_index(MODEL_ATMOS, 'NOy')
    cly_ndx     = get_tracer_index(MODEL_ATMOS, 'Cly')

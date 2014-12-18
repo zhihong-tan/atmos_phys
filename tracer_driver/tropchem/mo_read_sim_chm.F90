@@ -3,10 +3,11 @@
       use mpp_mod,    only : mpp_error, FATAL
       use mpp_io_mod, only : mpp_open, MPP_RDONLY, MPP_ASCII,MPP_MULTI, &
                              MPP_SINGLE, mpp_close
+      use fms_mod,    only : open_file, close_file, read_distributed
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_read_sim_chm.F90,v 19.0 2012/01/06 20:34:02 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: tikal_201409 $'
+character(len=128), parameter :: version     = '$Id: mo_read_sim_chm.F90,v 21.0 2014/12/15 21:47:54 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: ulm $'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS
@@ -57,92 +58,90 @@ logical                       :: module_is_initialized = .false.
 !        call ENDRUN
 !     end if
       
-      call mpp_open( funit, trim(sim_data_flsp), MPP_RDONLY,MPP_ASCII, threading = MPP_MULTI, &
-                     fileset=MPP_SINGLE, recl = 2048)
-
-        
+      funit = open_file(trim(sim_data_flsp),form='formatted',action='read',threading='multi', &
+                        recl = 2048,dist=.true.)
 !--------------------------------------------------------
 !        ... Read map info from data file
 !--------------------------------------------------------
       if( explicit%clscnt > 0 ) then
-         read(funit,'(4i4)',iostat=ios) explicit%cls_rxt_cnt
+         call read_distributed(funit,'(4i4)',iostat=ios,data=explicit%cls_rxt_cnt)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read explicit cls_rxt_cnt; error = ', ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) explicit%clsmap
+         call read_distributed(funit,'(20i4)',iostat=ios,data=explicit%clsmap)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read explicit clscnt; error = ', ios
             call ENDRUN(msg)
          end if
       end if
       if( implicit%clscnt > 0 ) then
-         read(funit,'(4i4)',iostat=ios) implicit%cls_rxt_cnt
+         call read_distributed(funit,'(4i4)',iostat=ios,data=implicit%cls_rxt_cnt)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read implicit cls_rxt_cnt; error = ', ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) implicit%clsmap
+         call read_distributed(funit,'(20i4)',iostat=ios,data=implicit%clsmap)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read implicit clscnt; error = ', ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) implicit%permute
+         call read_distributed(funit,'(20i4)',iostat=ios,data=implicit%permute)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read implicit permute; error = ', ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) implicit%diag_map
+         call read_distributed(funit,'(20i4)',iostat=ios,data=implicit%diag_map)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read implicit diag_map; error = ', ios
             call ENDRUN(msg)
          end if
       end if
       if( rodas%clscnt > 0 ) then
-         read(funit,'(4i4)',iostat=ios) rodas%cls_rxt_cnt
+         call read_distributed(funit,'(4i4)',iostat=ios,data=rodas%cls_rxt_cnt)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read rodas cls_rxt_cnt; error = ', ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) rodas%clsmap
+         call read_distributed(funit,'(20i4)',iostat=ios,data=rodas%clsmap)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read rodas clscnt; error = ', ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) rodas%permute
+         call read_distributed(funit,'(20i4)',iostat=ios,data=rodas%permute)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read rodas permute; error = ', ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) rodas%diag_map
+         call read_distributed(funit,'(20i4)',iostat=ios,data=rodas%diag_map)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read rodas diag_map; error = ', ios
             call ENDRUN(msg)
          end if
       end if
       if( pcnstm1 > 0 ) then
-         read(funit,*,iostat=ios) adv_mass(:pcnstm1)
+         call read_distributed(funit,'*',iostat=ios,data=adv_mass(:pcnstm1))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read adv_mass; error = ', ios
             call ENDRUN(msg)
          end if
       end if
       if( grpcnt > 0 ) then
-         read(funit,*,iostat=ios) nadv_mass(:grpcnt)
+         call read_distributed(funit,'*',iostat=ios,data=nadv_mass(:grpcnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read nadv_mass; error = ', ios
             call ENDRUN(msg)
          end if
       end if
       if( pcnstm1 > 0 ) then
-         read(funit,'(10a8)',iostat=ios) tracnam(:pcnstm1)
+         call read_distributed(funit,'(10a8)',iostat=ios,data=tracnam(:pcnstm1))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read tracnam; error = ', ios
             call ENDRUN(msg)
          end if
       end if
       if( grpcnt > 0 ) then
-         read(funit,'(i4)',iostat=ios) ngrp
+         call read_distributed(funit,'(i4)',iostat=ios,data=ngrp)
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read ngrp; error = ',ios
             call ENDRUN(msg)
@@ -157,23 +156,23 @@ logical                       :: module_is_initialized = .false.
             write(msg,*) 'READ_SIM_CHM: Failed to allocate grp_lst; error = ',ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) grp_mem_cnt(:ngrp)
+         call read_distributed(funit,'(20i4)',iostat=ios,data=grp_mem_cnt(:ngrp))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read grp_mem_cnt; error = ',ios
             call ENDRUN(msg)
          end if
-         read(funit,'(10a8)',iostat=ios) grp_lst(:ngrp)
+         call read_distributed(funit,'(10a8)',iostat=ios,data=grp_lst(:ngrp))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read grp_lst; error = ',ios
             call ENDRUN(msg)
          end if
-         read(funit,'(10a8)',iostat=ios) natsnam(1:grpcnt)
+         call read_distributed(funit,'(10a8)',iostat=ios,data=natsnam(1:grpcnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read natsnam; error = ',ios
             call ENDRUN(msg)
          end if
       end if
-      read(funit,'(i4)',iostat=ios) srfems_cnt
+      call read_distributed(funit,'(i4)',iostat=ios,data=srfems_cnt)
       if( ios /= 0 ) then
          write(msg,*) 'READ_SIM_CHM: Failed to read srfems_cnt; error = ',ios
             call ENDRUN(msg)
@@ -184,13 +183,13 @@ logical                       :: module_is_initialized = .false.
             write(msg,*) 'READ_SIM_CHM: Failed to allocate srfems_lst; error = ',ios
             call ENDRUN(msg)
          end if
-         read(funit,'(10a8)',iostat=ios) srfems_lst(1:srfems_cnt)
+         call read_distributed(funit,'(10a8)',iostat=ios,data=srfems_lst(1:srfems_cnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read srfems_lst; error = ',ios
             call ENDRUN(msg)
          end if
       end if
-      read(funit,'(i4)',iostat=ios) drydep_cnt
+      call read_distributed(funit,'(i4)',iostat=ios,data=drydep_cnt)
       if( ios /= 0 ) then
          write(msg,*) 'READ_SIM_CHM: Failed to read drydep_cnt; error = ',ios
             call ENDRUN(msg)
@@ -201,27 +200,27 @@ logical                       :: module_is_initialized = .false.
             write(msg,*) 'READ_SIM_CHM: Failed to allocate drydep_lst; error = ',ios
             call ENDRUN(msg)
          end if
-         read(funit,'(10a8)',iostat=ios) drydep_lst(1:drydep_cnt)
+         call read_distributed(funit,'(10a8)',iostat=ios,data=drydep_lst(1:drydep_cnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read drydep_lst; error = ',ios
             call ENDRUN(msg)
          end if
       end if
       if( hetcnt > 0 ) then
-         read(funit,'(10a8)',iostat=ios) het_lst(1:hetcnt)
+         call read_distributed(funit,'(10a8)',iostat=ios,data=het_lst(1:hetcnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read het_lst; error = ',ios
             call ENDRUN(msg)
          end if
       end if
       if( extcnt > 0 ) then
-         read(funit,'(10a8)',iostat=ios) extfrc_lst(1:extcnt)
+         call read_distributed(funit,'(10a8)',iostat=ios,data=extfrc_lst(1:extcnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read extfrc_lst; error = ',ios
             call ENDRUN(msg)
          end if
       end if
-      read(funit,'(i4)',iostat=ios) rxt_alias_cnt
+      call read_distributed(funit,'(i4)',iostat=ios,data=rxt_alias_cnt)
       if( ios /= 0 ) then
          write(msg,*) 'READ_SIM_CHM: Failed to read rxt_alias_cnt; error = ',ios
             call ENDRUN(msg)
@@ -237,12 +236,12 @@ logical                       :: module_is_initialized = .false.
             write(msg,*) 'READ_SIM_CHM: Failed to allocate rxt_alias_map; error = ',ios
             call ENDRUN(msg)
          end if
-         read(funit,'(5a16)',iostat=ios) rxt_alias_lst(1:rxt_alias_cnt)
+         call read_distributed(funit,'(5a16)',iostat=ios,data=rxt_alias_lst(1:rxt_alias_cnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read rxt_alias_lst; error = ',ios
             call ENDRUN(msg)
          end if
-         read(funit,'(20i4)',iostat=ios) rxt_alias_map(1:rxt_alias_cnt)
+         call read_distributed(funit,'(20i4)',iostat=ios,data=rxt_alias_map(1:rxt_alias_cnt))
          if( ios /= 0 ) then
             write(msg,*) 'READ_SIM_CHM: Failed to read rxt_alias_map; error = ',ios
             call ENDRUN(msg)
@@ -356,7 +355,7 @@ logical                       :: module_is_initialized = .false.
 !     end do
 !     read(funit,'(i3)') ndiags
 
-      call mpp_close( funit )
+      call close_file(funit,dist=.true.)
 
 !      write(*,*) '---------------------------------------------------------------------------------'
 !      write(*,*) ' '

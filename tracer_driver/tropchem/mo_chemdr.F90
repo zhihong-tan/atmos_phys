@@ -8,8 +8,8 @@
 
 !     save
 
-character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 19.0 2012/01/06 20:33:18 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: tikal_201409 $'
+character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 21.0 2014/12/15 21:47:43 fms Exp $'
+character(len=128), parameter :: tagname     = '$Name: ulm $'
 logical                       :: module_is_initialized = .false.
 
       contains
@@ -136,7 +136,8 @@ logical                       :: module_is_initialized = .false.
                          albedo, coszen, esfact, &
                          prod_out, loss_out, jvals_out, rate_const_out, sulfate, psc, &
                          do_interactive_h2o, solar_phase, imp_slv_nonconv, &
-                         plonl, prod_ox, loss_ox, retain_cm3_bugs, &
+                         plonl, prod_ox, loss_ox, retain_cm3_bugs, e90_vmr, &
+                         e90_tropopause_vmr, &
                          check_convergence )
 !-----------------------------------------------------------------------
 !     ... Chem_solver advances the volumetric mixing ratio
@@ -162,6 +163,13 @@ logical                       :: module_is_initialized = .false.
                                    get_spc_ndx, get_grp_mem_ndx
       use time_manager_mod, only : time_type
       use strat_chem_utilities_mod, only : psc_type
+
+      use tracer_manager_mod, only : get_tracer_index,     &
+                                     query_method
+      use field_manager_mod, only : MODEL_ATMOS,          &
+                                    parse
+      use mpp_mod,           only : mpp_pe, mpp_root_pe
+
 
       implicit none
 
@@ -222,6 +230,10 @@ logical                       :: module_is_initialized = .false.
                               imp_slv_nonconv         ! flag for implicit solver non-convergence (fraction)
       logical, intent(in) ::  do_interactive_h2o      ! include h2o sources/sinks
       logical, intent(in) ::  retain_cm3_bugs        ! retain cm3 bugs ?
+      real, dimension(:,:), intent(in) :: &
+                              e90_vmr                ! e90 conc 
+      real,    intent(in) ::  e90_tropopause_vmr     ! e90 tropopause threshold 
+
       logical, intent(in) ::  check_convergence      ! check convergence of implicit solver solution ?
 
 !-----------------------------------------------------------------------
@@ -242,6 +254,8 @@ logical                       :: module_is_initialized = .false.
       real, dimension(plonl,SIZE(vmr,2))    :: k_loss_ox   
                                        ! Loss rate coefficient of Ox (s-1)
 !     integer  ::  ox_ndx, o3_ndx
+      integer  :: o3s_e90_ndx, e90_ndx, e90_tropk
+      integer,dimension(plonl,SIZE(vmr,2)) :: strate90 
       integer  ::  so2_ndx, so4_ndx
       real     ::  invariants(plonl,SIZE(vmr,2),max(1,nfs))
       real     ::  col_dens(plonl,SIZE(vmr,2),max(1,ncol_abs))                  ! column densities (molecules/cm^2)
@@ -563,6 +577,49 @@ logical                       :: module_is_initialized = .false.
          end if
        end do
      end do
+
+   !O3-Strat with tropopause diagnosed by e90 
+   !Criteria defining "stratospheric":
+   ! (1) e90 < e90_tropopause_vmr, excluding points when
+   ! (2) k >= e90_tropk and O3<100 ppbv, so to avoid labeling
+   !     aged trop air in Hadley cell[Prather et al,2011]
+   e90_ndx = get_tracer_index( MODEL_ATMOS,'e90' )
+   o3s_e90_ndx = get_spc_ndx( 'O3S_E90' )
+   ox_ndx = get_spc_ndx( 'O3' )
+
+   if( e90_ndx > 0 .and. o3s_e90_ndx > 0 ) then
+
+       strate90(:,:) = 0  ! default to trop air
+
+       do i = 1,plonl
+          e90_tropk = 0
+          do k = 1, plev
+           if ( e90_vmr(i,k) < e90_tropopause_vmr .and. pmid(i,k)*0.01 < 600.0 ) then
+              strate90(i,k) = 1  ! strat air
+              if (e90_tropk>0 .and. vmr(i,k,ox_ndx)*1.0e9<100.0) then
+                 strate90(i,k) = 0
+              endif
+           else 
+              strate90(i,k) = 0  ! trop air
+              if (e90_tropk==0) then
+                  e90_tropk=k
+              endif
+           endif
+          end do
+       end do
+ 
+       do i = 1,plonl
+          do k = 1,plev 
+            if (strate90(i,k)==1 ) then
+               vmr(i,k,o3s_e90_ndx) = vmr(i,k,ox_ndx)
+            else
+               k_loss_ox(i,k) = loss_ox(i,k) / (max( vmr(i,k,ox_ndx), 1.0e-20 ))
+               vmr(i,k,o3s_e90_ndx) = vmr(i,k,o3s_e90_ndx)*exp( -delt*k_loss_ox(i,k) )
+            end if
+          end do
+       end do 
+ 
+   end if
 
 !-----------------------------------------------------------------------
 !       ... Heterogeneous chemistry
