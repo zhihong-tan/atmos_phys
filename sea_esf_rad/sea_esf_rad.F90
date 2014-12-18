@@ -74,8 +74,8 @@ private
 !-----------------------------------------------------------------------
 !------------ version number for this module ---------------------------
 
-character(len=128) :: version = '$Id: sea_esf_rad.F90,v 19.0 2012/01/06 20:23:33 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: version = '$Id: sea_esf_rad.F90,v 21.0 2014/12/15 21:45:10 fms Exp $'
+character(len=128) :: tagname = '$Name: ulm $'
 
 
 !--------------------------------------------------------------------
@@ -360,7 +360,7 @@ end subroutine sea_esf_rad_endts
 subroutine sea_esf_rad (is, ie, js, je, Rad_time, Atmos_input, Surface,&
                         Astro, Rad_gases, Aerosol, Aerosol_props,    &
                         Cldrad_props, Cld_spec, Lw_output, Sw_output, &
-                        Aerosol_diags, r)
+                        Aerosol_diags)
 
 !-----------------------------------------------------------------------
 !     sea_esf_rad calls the modules which calculate the long- and short-
@@ -381,7 +381,6 @@ type(cld_specification_type), intent(in)     :: Cld_spec
 type(lw_output_type), dimension(:), intent(inout)  :: Lw_output
 type(sw_output_type), dimension(:), intent(inout)  :: Sw_output 
 type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
-real, dimension(:,:,:,:),     intent(inout)  :: r
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
@@ -467,7 +466,7 @@ real, dimension(:,:,:,:),     intent(inout)  :: r
       call shortwave_driver (is, ie, js, je, Atmos_input, Surface,  &
                              Astro, Aerosol, Aerosol_props, Rad_gases, &
                              Cldrad_props, Cld_spec, Sw_output,   &
-                             Cldspace_rad, Aerosol_diags, r)
+                             Cldspace_rad, Aerosol_diags)
       call mpp_clock_end (shortwave_clock)
     endif
 

@@ -84,8 +84,8 @@ integer :: liq_wat, ice_wat, cld_amt, liq_drp, ice_num
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 20.0.4.3 2014/03/03 23:24:40 Niki.Zadeh Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 21.0 2014/12/15 21:46:30 fms Exp $'
+character(len=128) :: tagname = '$Name: ulm $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS

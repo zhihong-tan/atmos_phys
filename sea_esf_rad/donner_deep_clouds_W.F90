@@ -41,8 +41,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 19.0 2012/01/06 20:15:19 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+   character(len=128)  :: version =  '$Id: donner_deep_clouds_W.F90,v 21.0 2014/12/15 21:44:19 fms Exp $'
+   character(len=128)  :: tagname =  '$Name: ulm $'
 
 
 
@@ -254,14 +254,14 @@ subroutine donner_deep_clouds_amt (is, ie, js, je,   &
 !----------------------------------------------------------------------
 
 integer,                 intent(in)    :: is,ie,js,je
-real, dimension(:,:,:), intent(inout) ::   &
+real, dimension(:,:,:),  intent(in)    ::   &
                    cell_cloud_frac, cell_liquid_amt, cell_liquid_size, &
                    cell_ice_amt, cell_ice_size, &
                    cell_droplet_number, &
                    meso_cloud_frac, meso_liquid_amt, meso_liquid_size, &
                    meso_ice_amt, meso_ice_size, &
                    meso_droplet_number
-integer, dimension(:,:), intent(inout) ::  nsum_out
+integer, dimension(:,:), intent(in)    ::  nsum_out
 type(microphysics_type), intent(inout) :: Cell_microphys, Meso_microphys
 
 !---------------------------------------------------------------------
@@ -320,31 +320,31 @@ subroutine donner_deep_avg    &
 !--------------------------------------------------------------------
 
 integer,                   intent(in)  :: is, ie, js, je
-real,    dimension(:,:,:), intent(inout) :: cell_cloud_frac,        &
+real,    dimension(:,:,:), intent(in)  :: cell_cloud_frac,        &
                                           cell_liquid_amt,   &
                                           cell_liquid_size,  &
                                           cell_ice_amt, &
                                           cell_ice_size,   &
-                                       cell_droplet_number, &
+                                          cell_droplet_number, &
                                           meso_cloud_frac,   &
                                           meso_liquid_amt, &
                                           meso_liquid_size, &
                                           meso_ice_amt,  &
                                           meso_ice_size, &
-                                        meso_droplet_number
-integer, dimension(:,:), intent(inout) :: nsum                        
+                                          meso_droplet_number
+integer, dimension(:,:),   intent(in)  :: nsum                        
 real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
                                           cell_liquid_amt_out,   &
                                           cell_liquid_size_out,  &
                                           cell_ice_amt_out, &
                                           cell_ice_size_out,   &
-                                        cell_droplet_number_out, &
+                                          cell_droplet_number_out, &
                                           meso_cloud_frac_out,   &
                                           meso_liquid_amt_out, &
                                           meso_liquid_size_out, &
                                           meso_ice_amt_out,  &
                                           meso_ice_size_out, &
-                                       meso_droplet_number_out
+                                          meso_droplet_number_out
 
 !----------------------------------------------------------------------
 !  intent(in) variables:
@@ -510,26 +510,6 @@ real,    dimension(:,:,:), intent(out) :: cell_cloud_frac_out,        &
       endif
  
 !----------------------------------------------------------------------
-!    reset the variables just processed so that new sums may be begun 
-!    when donner_deep is called again.
-!----------------------------------------------------------------------
-      cell_cloud_frac                 = 0.0
-      cell_liquid_amt                 = 0.0
-      cell_liquid_size                = 0.0
-      cell_ice_amt                    = 0.0
-      cell_ice_size                   = 0.0
-      cell_droplet_number             = 0.0
-      meso_cloud_frac                 = 0.0
-      meso_liquid_amt                 = 0.0
-      meso_liquid_size                = 0.0
-      meso_ice_amt                    = 0.0
-      meso_ice_size                   = 0.0
-      meso_droplet_number             = 0.0
-      nsum                            = 0
-       
-!----------------------------------------------------------------------
-
-
 
 end subroutine donner_deep_avg
 

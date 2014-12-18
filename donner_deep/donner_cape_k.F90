@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 19.0 2012/01/06 20:06:18 fms Exp $
+!  $Id: donner_cape_k.F90,v 21.0 2014/12/15 21:42:23 fms Exp $
 
 !module donner_cape_inter_mod
 
@@ -806,6 +806,7 @@ integer,                      intent(out)   :: error
       z = 0.
 
       first_freezing_level = .true.
+      condensate_to_freeze = 0.0
       fact7 = 0.
       not_all_frozen = .true.
       prev_cufr = 0.
@@ -1300,10 +1301,10 @@ integer,                     intent(out) :: error
 !   grid. define the top level pressure in that grid to be zero.
 !   interpolate to define the pressure levels of that grid.
 !-------------------------------------------------------------------
-      dp = (model_p(1) - model_p(nlev_lsm))/(nlev_hires-1)
+      dp = (model_p(1) - model_p(nlev_lsm))/real(nlev_hires-1)
       cape_p(nlev_hires) = 0.
       do k=1,nlev_hires-1
-        cape_p(k) = model_p(1) - (k-1)*dp     
+        cape_p(k) = model_p(1) - real(k-1)*dp
       end do
 
 !--------------------------------------------------------------------

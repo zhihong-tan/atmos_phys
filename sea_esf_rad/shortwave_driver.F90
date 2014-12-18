@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 19.0 2012/01/06 20:24:07 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 21.0 2014/12/15 21:45:16 fms Exp $'
+character(len=128)  :: tagname =  '$Name: ulm $'
 
 
 !---------------------------------------------------------------------
@@ -343,7 +343,7 @@ end subroutine shortwave_driver_init
 subroutine shortwave_driver (is, ie, js, je, Atmos_input, Surface,  &
                              Astro, Aerosol, Aerosol_props, Rad_gases, &
                              Cldrad_props,  Cld_spec, Sw_output,      &
-                             Cldspace_rad, Aerosol_diags, r) 
+                             Cldspace_rad, Aerosol_diags) 
 
 !---------------------------------------------------------------------
 !    shortwave_driver initializes shortwave radiation output variables, 
@@ -364,7 +364,6 @@ type(cld_specification_type),    intent(in)    :: Cld_spec
 type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 type(cld_space_properties_type), intent(inout) :: Cldspace_rad
 type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
-real, dimension(:,:,:,:),        intent(inout) :: r
 
 !--------------------------------------------------------------------
 !  intent(in) variables:
@@ -527,7 +526,7 @@ real, dimension(:,:,:,:),        intent(inout) :: r
           endif 
           call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
                        Aerosol, Aerosol_props, Astro, Cldrad_props,  &
-                       Cld_spec, .false., Sw_output_std, Aerosol_diags, r, &
+                       Cld_spec, .false., Sw_output_std, Aerosol_diags, &
 !                      Sw_control%do_swaerosol)
                        Sw_control%do_swaerosol, naerosol_optical)
           Aerosol_diags%sw_heating_vlcno = Sw_output_std%hsw 
@@ -572,7 +571,7 @@ real, dimension(:,:,:,:),        intent(inout) :: r
           call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
                        Aerosol, Aerosol_props, Astro, Cldrad_props,  &
                        Cld_spec, Rad_control%volcanic_sw_aerosols, &
-                       Sw_output_std, Aerosol_diags, r, &
+                       Sw_output_std, Aerosol_diags, &
                        Sw_control%do_swaerosol, naerosol_optical)
 
 !----------------------------------------------------------------------
@@ -610,7 +609,7 @@ real, dimension(:,:,:,:),        intent(inout) :: r
            call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
                         Aerosol, Aerosol_props, Astro, Cldrad_props,  &
                         Cld_spec, Rad_control%volcanic_sw_aerosols, &
-                        Sw_output_ad, Aerosol_diags, r,   &
+                        Sw_output_ad, Aerosol_diags,   &
                         calc_includes_aerosols, naerosol_optical)  
             Sw_output(Rad_control%indx_swaf) = Sw_output_ad
          endif
@@ -626,7 +625,7 @@ real, dimension(:,:,:,:),        intent(inout) :: r
           call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
                        Aerosol, Aerosol_props, Astro, Cldrad_props,  &
                        Cld_spec, Rad_control%volcanic_sw_aerosols, &
-                       Sw_output_std, Aerosol_diags, r,  &
+                       Sw_output_std, Aerosol_diags,  &
                        Sw_control%do_swaerosol, naerosol_optical)
             Sw_output(1) = Sw_output_std
         endif

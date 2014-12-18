@@ -199,8 +199,8 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud.F90,v 20.0.2.2 2014/02/20 07:25:02 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201409 $'
+Character(len=128) :: Version = '$Id: strat_cloud.F90,v 21.0 2014/12/15 21:46:14 fms Exp $'
+Character(len=128) :: Tagname = '$Name: ulm $'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -2345,6 +2345,8 @@ subroutine fill_nml_variable
       Nml%rthresh = rthresh
       Nml%use_kk_auto = use_kk_auto 
       Nml%var_limit = var_limit
+      Nml%var_limit_opt = var_limit_opt   ! cjg
+      Nml%up_strat_opt = up_strat_opt     ! cjg
       Nml%use_online_aerosol = use_online_aerosol
       Nml%sea_salt_scale = sea_salt_scale
       Nml%om_to_oc = om_to_oc

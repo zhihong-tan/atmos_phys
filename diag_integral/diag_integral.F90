@@ -43,8 +43,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: diag_integral.F90,v 20.0 2013/12/13 23:17:05 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: version = '$Id: diag_integral.F90,v 21.0 2014/12/15 21:42:14 fms Exp $'
+character(len=128) :: tagname = '$Name: ulm $'
 
 
 !---------------------------------------------------------------------
@@ -1235,7 +1235,7 @@ type (time_type), intent(in) :: Time
                       'field_count equals zero for field_name ' //  &
                        field_name(i)(1:len_trim(field_name(i))), FATAL )
         kount = icount/field_size
-        if ((field_size*1.0)*kount /= rcount) then
+        if ((field_size)*kount /= icount) then
            print*,"name,pe,kount,field_size,icount,rcount=",trim(field_name(i)),mpp_pe(),kount,field_size,icount,rcount
            call error_mesg &
                  ('diag_integral_mod',  &

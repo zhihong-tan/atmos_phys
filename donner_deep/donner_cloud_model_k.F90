@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cloud_model_k.F90,v 19.0 2012/01/06 20:06:50 fms Exp $
+!  $Id: donner_cloud_model_k.F90,v 21.0 2014/12/15 21:42:25 fms Exp $
 
 !module donner_cloud_model_inter_mod
 
@@ -207,7 +207,7 @@ integer,                            intent(out)    :: error
 !--------------------------------------------------------------------
 !    define the cloud top pressure for the current ensemble member.
 !--------------------------------------------------------------------
-      pt_kou = pb + cldtop_indx*Param%dp_of_cloud_model
+      pt_kou = pb + real(cldtop_indx)*Param%dp_of_cloud_model
 
 !--------------------------------------------------------------------
 !    if in diagnostics column, output the ensemble member number and
@@ -572,6 +572,7 @@ integer,                            intent(out)   :: error
       do k=1,nlev_hires
         if (cld_press(k) < Param%pstop) then
           max_cloud_level = k - 1 
+          exit
         endif
       end do
 
@@ -2792,10 +2793,17 @@ integer,                      intent(out)   :: error
                 'in mulsub: k,dfr,dpr,rcl= ', k, dfr(k) ,dpf(k), rcl(k)
         endif
         if (debug_ijt) then
-          write (diag_unit, '(a, i4, 3e20.12)')  &
-                'in mulsub: k,dpf,pf,pfavg= ', k, dpf(k) ,pf(k),  &
+          if ( k > 1 ) then 
+            write (diag_unit, '(a, i4, 3e20.12)')  &
+                  'in mulsub: k,dpf,pf,pfavg= ', k, dpf(k) ,pf(k),  &
 ! note pf(k-1) when k=1 is garbage !
-                                  0.5*(pf(k) + pf(k-1))
+                                    0.5*(pf(k) + pf(k-1))
+          else
+            write (diag_unit, '(a, i4, 3e20.12)')  &
+                  'in mulsub: k,dpf,pf,pfavg= ', k, dpf(k) ,pf(k),  &
+! note pf(k-1) when k=1 is garbage !
+                                    pf(k)
+          endif
         endif
  
 !--------------------------------------------------------------------

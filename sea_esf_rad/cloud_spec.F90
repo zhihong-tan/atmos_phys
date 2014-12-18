@@ -52,7 +52,8 @@ use rad_utilities_mod,        only: rad_utilities_init, &
                                     surface_type, &
                                     Rad_control, &
                                     microphysics_type,  &         
-                                    Cldrad_control
+                                    Cldrad_control, & 
+                                    aerosol_type
 use esfsw_parameters_mod,     only: esfsw_parameters_init, Solar_spect
 
 ! interface modules to various cloud parameterizations:
@@ -104,8 +105,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 20.0 2013/12/13 23:19:01 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 21.0 2014/12/15 21:44:09 fms Exp $'
+character(len=128)  :: tagname =  '$Name: ulm $'
 
 
 !---------------------------------------------------------------------
@@ -853,7 +854,7 @@ end subroutine cloud_spec_init
 subroutine cloud_spec (is, ie, js, je, lat, z_half, z_full, Rad_time, &
                        Atmos_input, Surface, Cld_spec, Lsc_microphys, &
                        Meso_microphys, Cell_microphys,  &
-                       Shallow_microphys, lsc_area_in, lsc_liquid_in, &
+                       Shallow_microphys, Aerosol, lsc_area_in, lsc_liquid_in, &
                        lsc_ice_in, lsc_droplet_number_in,   &
                        lsc_ice_number_in,   &
                        lsc_snow_in, lsc_rain_in,   &
@@ -884,16 +885,17 @@ type(cld_specification_type), intent(inout)          :: Cld_spec
 type(microphysics_type),      intent(inout)          :: Lsc_microphys, &
                                                         Meso_microphys,&
                                                         Cell_microphys,&
-                                                     Shallow_microphys
-real, dimension(:,:,:),       intent(in), optional ::  &
+                                                        Shallow_microphys
+type(aerosol_type),           intent(inout)          :: Aerosol
+real, dimension(:,:,:),       intent(in),   optional ::  &
                                       lsc_liquid_in, lsc_ice_in, &
                                       lsc_droplet_number_in, lsc_area_in, &
                                       lsc_ice_number_in
-real, dimension(:,:,:),       intent(in), optional ::   &
+real, dimension(:,:,:),       intent(in),     optional ::   &
                                       lsc_snow_in, lsc_rain_in,  &
                                       lsc_snow_size_in,  lsc_rain_size_in
-real, dimension(:,:,:,:),     intent(in),   optional :: r
-real, dimension(:,:,:),       intent(inout),optional :: &
+real, dimension(:,:,:,:),     intent(in),     optional :: r
+real, dimension(:,:,:),       intent(in),     optional :: &
                       shallow_cloud_area, shallow_liquid, shallow_ice,&
                         shallow_droplet_number, &
                            cell_cld_frac, cell_liq_amt, cell_liq_size, &
@@ -903,7 +905,7 @@ real, dimension(:,:,:),       intent(inout),optional :: &
                            meso_ice_amt, meso_ice_size, &
                            meso_droplet_number,  &
                            shallow_ice_number
-integer, dimension(:,:),      intent(inout), optional:: nsum_out
+integer, dimension(:,:),      intent(in),     optional :: nsum_out
 
 !-------------------------------------------------------------------
  
@@ -1317,7 +1319,7 @@ integer, dimension(:,:),      intent(inout), optional:: nsum_out
                                    Atmos_input%cloudvapor(:,:,:)/  &
                                    (1.0+Atmos_input%cloudvapor(:,:,:)), &
                                    Surface%land,&
-                                   Cld_spec, Lsc_microphys)
+                                   Cld_spec, Lsc_microphys, Aerosol)
 
 !----------------------------------------------------------------------
 !    if ierr is non-zero, then cloud data was not successfully obtained.

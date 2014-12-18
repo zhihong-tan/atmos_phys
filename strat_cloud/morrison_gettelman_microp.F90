@@ -33,8 +33,8 @@ public morrison_gettelman_microp, morrison_gettelman_microp_init,  &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 20.0.2.1 2014/01/09 08:18:12 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201409 $'
+Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 21.0 2014/12/15 21:46:07 fms Exp $'
+Character(len=128) :: Tagname = '$Name: ulm $'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------

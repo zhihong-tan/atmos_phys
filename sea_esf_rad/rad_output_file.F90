@@ -21,10 +21,11 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
-                             FATAL, close_file
+                             FATAL, NOTE, close_file
 use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
-                             send_data
+                             send_data, get_diag_field_id, &
+                             DIAG_FIELD_NOT_FOUND
 use diag_data_mod,     only: CMOR_MISSING_VALUE
 use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE
 
@@ -60,8 +61,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 19.0.14.1.2.1 2014/09/04 19:06:26 Rusty.Benson Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+'$Id: rad_output_file.F90,v 21.0 2014/12/15 21:44:58 fms Exp $'
+character(len=128)  :: tagname =  '$Name: ulm $'
 
 
 !---------------------------------------------------------------------
@@ -159,6 +160,7 @@ integer                            :: id_radswp, id_radp, id_temp, &
                                       id_phalfm, id_pfluxm, &
                                       id_dphalf, id_dpflux, &
                                       id_ptop
+integer                            :: area_id
 
 
 
@@ -312,6 +314,14 @@ character(len=*), dimension(:), intent(in)    :: family_names
                          write (logunit, nml=rad_output_file_nml)
 
 !--------------------------------------------------------------------
+!    retrieve the diag_manager id for the area diagnostic, needed for
+!    cmorizing various diagnostics.
+!--------------------------------------------------------------------
+        area_id = get_diag_field_id ('dynamics', 'area')
+        if (area_id .eq. DIAG_FIELD_NOT_FOUND) call error_mesg &
+          ('rad_output_file_mod', 'diagnostic field "dynamics", "area" is not in the diag_table', NOTE)
+
+!--------------------------------------------------------------------
 !    if running gcm, continue on if data file is to be written. 
 !--------------------------------------------------------------------
         if (write_data_file) then
@@ -323,6 +333,7 @@ character(len=*), dimension(:), intent(in)    :: family_names
           call register_fields (Time, axes, nfields, names,  &
                                 family_names)
         endif
+
 
 !--------------------------------------------------------------------
 !    mark the module as initialized.
@@ -1550,6 +1561,7 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                           'Mole Fraction of O3', &
                           '1e-9',    &
                        standard_name = 'mole_fraction_of_ozone_in_air', &
+                       area = area_id, &
                        missing_value=CMOR_MISSING_VALUE)
 
       id_qo3_col = &

@@ -25,8 +25,8 @@ use fms_mod,            only : open_namelist_file, fms_init, &
                                file_exist, write_version_number, &
                                check_nml_error, error_mesg, &
                                FATAL, close_file, lowercase
-use  field_manager_mod, only : parse
-
+use field_manager_mod,  only : parse
+use interpolator_mod,   only : interpolate_type
 use time_manager_mod,   only : time_type
 
 !--------------------------------------------------------------------
@@ -44,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 20.0.4.1 2014/08/26 04:58:43 rsh Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+character(len=128)  :: version =  '$Id: rad_utilities.F90,v 21.0 2014/12/15 21:45:01 fms Exp $'
+character(len=128)  :: tagname =  '$Name: ulm $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -88,10 +88,40 @@ public   aerosol_type
 !    family_members
 
 type aerosol_type
-     real, dimension(:,:,:,:),        pointer :: aerosol=>NULL()
-     logical, dimension(:,:),        pointer :: family_members=>NULL()
+     real,        dimension(:,:,:,:), pointer :: aerosol=>NULL()
+     logical,         dimension(:,:), pointer :: family_members=>NULL()
      character(len=64), dimension(:), pointer :: aerosol_names=>NULL()
 end type aerosol_type              
+
+!------------------------------------------------------------------
+
+public   aerosol_time_vary_type     
+  
+!  Interp                interpolate_type variable containing the
+!                        information about the aerosol species
+!  Time                  time for which data is obtained from
+!                        aerosol timeseries
+!  being_overridden      is a given aerosol field to be overridden
+!                        based on the model data_table?
+!  output_override_info  should override info about each
+!                        aerosol field be output (will be
+!                        set to .false. after first time step)
+!  override_counter      used to count calls to aerosol_endts
+!                        so that output_override_info may
+!                        set to .false. after physics_up
+!  nfields               number of active aerosol species
+!  nfamilies             number of active aerosol families
+
+type aerosol_time_vary_type
+     type(interpolate_type), dimension(:), pointer :: Interp=>NULL()
+     type(time_type),        dimension(:), pointer :: Time=>NULL()
+     logical,                dimension(:), pointer :: being_overridden=>NULL()
+     integer :: nfields=0
+     integer :: nfamilies=0
+     logical :: output_override_info = .true.
+     integer :: override_counter = 0
+     logical :: variable_is_initialized = .false.
+end type aerosol_time_vary_type    
 
 !------------------------------------------------------------------
  
@@ -106,17 +136,15 @@ public   aerosol_diagnostics_type
 !    sw_heating_vlcno
  
 type aerosol_diagnostics_type
-!    real, dimension(:,:,:),   pointer  :: sw_heating_vlcno=>NULL()
-     real, dimension(:,:,:,:),   pointer  :: sw_heating_vlcno=>NULL()
-     real, dimension(:,:,:,:,:), pointer  :: extopdep=>NULL(), &
-                                             absopdep=>NULL()
-     real, dimension(:,:,:,:,:), pointer  :: asymdep=>NULL()
+     real, dimension(:,:,:,:),   pointer :: sw_heating_vlcno=>NULL()
+     real, dimension(:,:,:,:,:), pointer :: extopdep=>NULL(), &
+                                            absopdep=>NULL()
+     real, dimension(:,:,:,:,:), pointer :: asymdep=>NULL()
 
-     real, dimension(:,:,:,:), pointer  :: extopdep_vlcno=>NULL(), &
-                                           absopdep_vlcno=>NULL(), &
-                                           lw_extopdep_vlcno=>NULL(), &
-                                           lw_absopdep_vlcno=>NULL()
- 
+     real, dimension(:,:,:,:),   pointer :: extopdep_vlcno=>NULL(), &
+                                            absopdep_vlcno=>NULL(), &
+                                            lw_extopdep_vlcno=>NULL(), &
+                                            lw_absopdep_vlcno=>NULL()
 end type aerosol_diagnostics_type
  
 !------------------------------------------------------------------
@@ -248,7 +276,6 @@ type atmos_input_type
      real, dimension(:,:),   pointer :: tsfc=>NULL(),   &
                                         psfc=>NULL()              
      real                            :: g_rrvco2
-     real                            :: atm_mass
 end type atmos_input_type
 
 !-------------------------------------------------------------------
@@ -999,35 +1026,35 @@ public rad_output_type
 
 type rad_output_type
      real, dimension(:,:,:,:), pointer :: tdt_rad=>NULL(),  &
-                                        ufsw=>NULL(),  &
-                                        dfsw=>NULL(),  &
-                                        tdtsw=>NULL()  
+                                          ufsw=>NULL(),  &
+                                          dfsw=>NULL(),  &
+                                          tdtsw=>NULL()  
      real, dimension(:,:,:,:), pointer :: tdt_rad_clr=>NULL(), &
-                                        ufsw_clr=>NULL(),  &
-                                        dfsw_clr=>NULL(),  &
-                                        tdtsw_clr=>NULL()
-                                        
+                                          ufsw_clr=>NULL(),  &
+                                          dfsw_clr=>NULL(),  &
+                                          tdtsw_clr=>NULL()
      real, dimension(:,:,:), pointer :: tdtlw=>NULL()
      real, dimension(:,:,:), pointer :: flxnet=>NULL()
      real, dimension(:,:,:), pointer :: flxnetcf=>NULL()
      real, dimension(:,:,:), pointer :: tdtlw_clr=>NULL()
-     real, dimension(:,:,:),   pointer :: flux_sw_surf=>NULL(), &
+     real, dimension(:,:,:), pointer :: flux_sw_surf=>NULL(), &
                                         flux_sw_surf_refl_dir=>NULL(), &
                                         flux_sw_surf_dir=>NULL(), &
                                         flux_sw_surf_dif=>NULL(), &
                                         flux_sw_down_vis_dir=>NULL(), &
                                         flux_sw_down_vis_dif=>NULL(), &
-                                       flux_sw_down_total_dir=>NULL(), &
-                                       flux_sw_down_total_dif=>NULL(), &
+                                        flux_sw_down_total_dir=>NULL(), &
+                                        flux_sw_down_total_dif=>NULL(), &
                                         flux_sw_vis=>NULL(), &
                                         flux_sw_vis_dir=>NULL(), &
                                         flux_sw_refl_vis_dir=>NULL(), &
                                         flux_sw_vis_dif=>NULL()
-     real, dimension(:,:,:),   pointer :: flux_sw_down_vis_clr=>NULL(), &
-                                  flux_sw_down_total_dir_clr=>NULL(), &
-                                  flux_sw_down_total_dif_clr=>NULL()
+     real, dimension(:,:,:), pointer :: flux_sw_down_vis_clr=>NULL(), &
+                                        flux_sw_down_total_dir_clr=>NULL(), &
+                                        flux_sw_down_total_dif_clr=>NULL()
      real, dimension(:,:),   pointer :: flux_lw_surf=>NULL(), &
                                         coszen_angle=>NULL()
+     real, dimension(:,:,:), pointer :: extinction=>NULL()
 end type rad_output_type
 
 !-------------------------------------------------------------------

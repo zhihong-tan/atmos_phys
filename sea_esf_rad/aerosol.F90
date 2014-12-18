@@ -38,6 +38,7 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
                              FATAL, NOTE, WARNING, close_file
+use fms_io_mod,        only: string
 use interpolator_mod,  only: interpolate_type, interpolator_init, &
                              interpolator, interpolator_end, &
                              obtain_interpolator_time_slices, &    
@@ -51,9 +52,9 @@ use data_override_mod, only: data_override
 
 !  shared radiation package modules:
 
-use   rad_utilities_mod, only  : aerosol_type, rad_utilities_init, &
-                                 get_radiative_param,              &
-                                 atmos_input_type     
+use rad_utilities_mod, only: aerosol_type, aerosol_time_vary_type, &
+                             rad_utilities_init, get_radiative_param, &
+                             atmos_input_type     
 
 !---------------------------------------------------------------------
 
@@ -78,8 +79,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: aerosol.F90,v 20.0 2013/12/13 23:18:53 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: version = '$Id: aerosol.F90,v 21.0 2014/12/15 21:44:02 fms Exp $'
+character(len=128) :: tagname = '$Name: ulm $'
 
 
 !-----------------------------------------------------------------------
@@ -193,12 +194,6 @@ namelist /aerosol_nml/                            &
 !-------------------------------------------------------------------
 real, dimension (:), allocatable     ::  specified_aerosol
  
-!---------------------------------------------------------------------
-!   the following is an interpolate_type variable containing the
-!   information about the aerosol species.
-!---------------------------------------------------------------------
-type(interpolate_type), dimension(:), allocatable  :: Aerosol_interp
-
 !--------------------------------------------------------------------
 !    miscellaneous variables
 !--------------------------------------------------------------------
@@ -209,19 +204,11 @@ integer  :: jd                               ! number of grid points in
 logical  :: make_separate_calls=.false.      ! aerosol interpolation
                                              ! to be done one at a 
                                              ! time
-type(time_type), dimension(:), allocatable   ::    &
-                   Aerosol_time              ! time for which data is
-                                             ! obtained from aerosol
-                                             ! timeseries
 logical  :: do_column_aerosol = .false.      ! using single column aero-
                                              ! sol data ?
 logical  :: do_predicted_aerosol = .false.   ! using predicted aerosol fields?
 logical  :: do_specified_aerosol = .false.   ! using specified aerosol fields 
                                              ! from a timeseries file?
-integer  :: nfields=0                        ! number of active aerosol 
-                                             ! species
-integer  :: nfamilies=0                      ! number of active aerosol 
-                                             ! families
 logical  :: module_is_initialized = .false.  ! module has been 
                                              ! initialized  ?
 
@@ -260,17 +247,6 @@ real, dimension (MAX_DATA_FIELDS)    :: aerosol_tracer_scale_factor
                                     ! aerosols by the radiation package
 character(len=32), dimension (:),  &
                      allocatable     ::  tracer_names
-logical, dimension(:), allocatable   :: being_overridden
-                                    ! is a given aerosol field to be over-
-                                    ! ridden based on model data_table?
-logical                              :: output_override_info = .true.
-                                    ! should override info about each 
-                                    ! aerosol field be output (will be set 
-                                    ! to .false. after first time step)
-integer                              :: override_counter = 0
-                                    ! used to count calls to aerosol_endts
-                                    ! so that output_override_info may be
-                                    ! set .false. after physics_up.
 
 #include <netcdf.inc>
  
@@ -310,16 +286,17 @@ integer                              :: override_counter = 0
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine aerosol_init (lonb, latb, aerosol_names,   &
+subroutine aerosol_init (lonb, latb, Aerosol_tv, aerosol_names,   &
                          aerosol_family_names)
 
 !-----------------------------------------------------------------------
 !    aerosol_init is the constructor for aerosol_mod.
 !-----------------------------------------------------------------------
 
-real, dimension(:,:),            intent(in)  :: lonb,latb
-character(len=64), dimension(:), pointer     :: aerosol_names
-character(len=64), dimension(:), pointer     :: aerosol_family_names
+real, dimension(:,:),         intent(in)    :: lonb,latb
+type(aerosol_time_vary_type), intent(inout) :: Aerosol_tv
+character(len=64), dimension(:), optional, pointer     :: aerosol_names
+character(len=64), dimension(:), optional, pointer     :: aerosol_family_names
 
 !----------------------------------------------------------------------
 !  intent(in) variables:
@@ -362,9 +339,9 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 
 
 !---------------------------------------------------------------------
-!    if routine has already been executed, exit.
+!    if routine has already been executed for this instance, exit.
 !---------------------------------------------------------------------
-      if (module_is_initialized) return
+      if (Aerosol_tv%variable_is_initialized) return
  
 !---------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
@@ -417,9 +394,11 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
       if (trim(aerosol_data_source)== 'input') then
         do_column_aerosol = .true.
         call obtain_input_file_data
-        nfields = 1
-        allocate (aerosol_names(nfields))
-        aerosol_names (1) = 'total_aerosol'
+        Aerosol_tv%nfields = 1
+        if (present(aerosol_names)) then
+          allocate (aerosol_names(Aerosol_tv%nfields))
+          aerosol_names (1) = 'total_aerosol'
+        endif
 
 !---------------------------------------------------------------------
 !    case of predicted aerosols.
@@ -433,7 +412,13 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    define the names associated with these aerosols.
 !-----------------------------------------------------------------------
         call get_number_tracers(MODEL_ATMOS, num_tracers= ntrace)
-        allocate (tracer_names(ntrace))
+        if (.not.allocated(tracer_names)) then
+          allocate (tracer_names(ntrace))
+        else
+          if (size(tracer_names,1).ne.ntrace) call error_mesg &
+              ('aerosol_mod', 'inconsistent number of tracers', FATAL)
+        endif
+
         do n = 1, ntrace
           call get_tracer_names(MODEL_ATMOS,n,tracer_names(n))
           flag = query_method ('radiative_param', MODEL_ATMOS, &
@@ -443,12 +428,12 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
                                      tr_rad_name, tr_clim_name, &
                                      tr_rad_scale_factor)
             if (rad_forc_online) then
-              nfields = nfields +1
-              aerosol_tracer_index(nfields) = n
-              data_names_predicted(nfields) = trim(tr_rad_name)
-!             data_names(nfields)           = trim(tr_clim_name)
-              data_names(nfields)           = trim(tr_rad_name)
-              aerosol_tracer_scale_factor(nfields) = tr_rad_scale_factor
+              Aerosol_tv%nfields = Aerosol_tv%nfields +1
+              aerosol_tracer_index(Aerosol_tv%nfields) = n
+              data_names_predicted(Aerosol_tv%nfields) = trim(tr_rad_name)
+              data_names(Aerosol_tv%nfields)           = trim(tr_clim_name)
+              data_names(Aerosol_tv%nfields)           = trim(tr_rad_name)
+              aerosol_tracer_scale_factor(Aerosol_tv%nfields) = tr_rad_scale_factor
             endif
           endif
         end do
@@ -457,15 +442,21 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    allocate and fill pointer arrays to return the names of the activ-
 !    ated species and any activated families to the calling routine.
 !---------------------------------------------------------------------
-        allocate (aerosol_names(nfields))
-        aerosol_names(:)        = data_names_predicted(1:nfields)
+        if (present(aerosol_names)) then
+          allocate (aerosol_names(Aerosol_tv%nfields))
+          aerosol_names(:) = data_names_predicted(1:Aerosol_tv%nfields)
+          call error_mesg ('aerosol_mod', &
+             'number of predicted aerosol_names = '//string(Aerosol_tv%nfields),NOTE)
+        endif
 
 !----------------------------------------------------------------------
 !    allocate and fill an array to indicate whether or not each aerosol 
 !    field is  to be overridden.
 !---------------------------------------------------------------------
-        allocate (being_overridden(nfields))
-        being_overridden(:) = .false.
+        allocate (Aerosol_tv%being_overridden(Aerosol_tv%nfields))
+        Aerosol_tv%being_overridden(:) = .false.
+        Aerosol_tv%override_counter = 0
+        Aerosol_tv%output_override_info = .true.
 
 !---------------------------------------------------------------------
 !    case of 'climatology' and 'calculate_column' aerosol data source.
@@ -478,7 +469,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !--------------------------------------------------------------
         do n=1,MAX_DATA_FIELDS
           if (data_names(n) /= ' '  ) then
-            nfields = n
+            Aerosol_tv%nfields = n
           else
             exit
           endif
@@ -493,7 +484,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    are defined so as to allow backward compatibility with existing 
 !    code and script settings, and lead to this conflict.
 !---------------------------------------------------------------------
-        do n=1, nfields
+        do n=1, Aerosol_tv%nfields
           if (.not. use_aerosol_timeseries) then
             if (time_varying_species(n)) then
               call error_mesg ('aerosol_mod', &
@@ -511,14 +502,26 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    allocate and fill pointer arrays to return the names of the activ-
 !    ated species and any activated families to the calling routine.
 !--------------------------------------------------------------------
-        allocate (aerosol_names(nfields))
-        aerosol_names (:) = data_names(1:nfields)
+        if (present(aerosol_names)) then
+          allocate (aerosol_names(Aerosol_tv%nfields))
+          aerosol_names (:) = data_names(1:Aerosol_tv%nfields)
+          call error_mesg ('aerosol_mod', &
+             'number of specified aerosol_names = '//string(Aerosol_tv%nfields),NOTE)
+        endif
 
 !----------------------------------------------------------------------
 !    allocate and initialize module variables.
 !----------------------------------------------------------------------
-        allocate (Aerosol_offset(nfields), Aerosol_entry(nfields), &
-              negative_offset(nfields), using_fixed_year_data(nfields)) 
+        if (.not. module_is_initialized) then
+          allocate (Aerosol_offset (Aerosol_tv%nfields), &
+                    Aerosol_entry  (Aerosol_tv%nfields), &
+                    negative_offset(Aerosol_tv%nfields), &
+                    using_fixed_year_data(Aerosol_tv%nfields)) 
+        else
+          if (size(Aerosol_offset,1).ne.Aerosol_tv%nfields) call error_mesg &
+              ('aerosol_mod', 'inconsistent number of tracers', FATAL)
+        end if
+
         Aerosol_offset = set_time (0,0)
         Aerosol_entry = set_time (0,0)
         negative_offset = .false.
@@ -537,7 +540,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    non-default aerosol_dataset_entry has been specified; otherwise it 
 !    will be .false..
 !----------------------------------------------------------------------
-        do n=1,nfields           
+        do n=1,Aerosol_tv%nfields           
           if (use_aerosol_timeseries) then
             if (time_varying_species(n)) then
               using_fixed_year_data(n) = .false.
@@ -576,7 +579,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !--------------------------------------------------------------------
             call error_mesg ( 'aerosol_mod', &
                'PROCESSING AEROSOL TIMESERIES FOR ' // &
-               trim(aerosol_names(n)), NOTE)
+               trim(data_names(n)), NOTE)
             call print_date (Aerosol_entry(n) ,   &
                 str= ' Data from aerosol timeseries at time: ')
             call print_date (Model_init_time , str=' This data is &
@@ -591,10 +594,10 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
               call error_mesg ('aerosol_mod', &
                  'This annual cycle will be used every model year &
                & -- no interannual variation for '  &
-                                     // trim(aerosol_names(n)), NOTE)
+                                     // trim(data_names(n)), NOTE)
             else
               call error_mesg ('aerosol_mod', &
-                      trim(aerosol_names(n)) //   &
+                      trim(data_names(n)) //   &
                      ' will exhibit interannual variation as defined &
                      & in the climatology file ', NOTE)
             endif
@@ -631,7 +634,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
                 aerosol_dataset_entry(6,n) == 1 ) then
               using_fixed_year_data(n) = .false.
               if (mpp_pe() == mpp_root_pe() ) then
-                print *, 'Aerosol data for ', trim(aerosol_names(n)),   &
+                print *, 'Aerosol data for ', trim(data_names(n)),   &
                    ' obtained from single year climatology file '
               endif
 
@@ -649,10 +652,10 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
                                            2, 1, 0, 0, 0)
               call error_mesg ('aerosol_mod', &
                   'Aerosol data is defined from a single annual cycle &
-                  &for ' // trim(aerosol_names(n)) //   &
+                  &for ' // trim(data_names(n)) //   &
                   &' - no interannual variation', NOTE)
               if (mpp_pe() == mpp_root_pe() ) then
-                print *, 'Aerosol data for ', trim(aerosol_names(n)),  &
+                print *, 'Aerosol data for ', trim(data_names(n)),  &
                     ' obtained from aerosol timeseries &
                     &for year:', aerosol_dataset_entry(1,n)
               endif
@@ -661,24 +664,16 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
         end do
 
 !-----------------------------------------------------------------------
-!    count number of activated aerosol families. allocate a pointer 
-!    array to return the names of the activated species to the calling 
-!    routine.
-!-----------------------------------------------------------------------
-!       do n=1,MAX_AEROSOL_FAMILIES
-!         if (family_names(n) /= ' '  ) then
-!           nfamilies = n
-!         else
-!           exit
-!         endif
-!       end do
-
-!-----------------------------------------------------------------------
 !    allocate and initialize variables needed for interpolator_mod if 
 !    any aerosol species have been activated.
 !-----------------------------------------------------------------------
-        allocate (data_out_of_bounds(nfields))
-        allocate (vert_interp       (nfields))
+        if (.not. module_is_initialized) then
+          allocate (data_out_of_bounds (Aerosol_tv%nfields), &
+                    vert_interp        (Aerosol_tv%nfields))
+        else
+          if (size(data_out_of_bounds,1).ne.Aerosol_tv%nfields) call error_mesg &
+              ('aerosol_mod', 'inconsistent number of tracers', FATAL)
+        end if
         data_out_of_bounds = CONSTANT
         vert_interp = INTERP_WEIGHTED_P
 
@@ -690,7 +685,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    interpolation procedures and different treatment of undefined
 !    data.
 !----------------------------------------------------------------------
-          do n=2,nfields
+          do n=2,Aerosol_tv%nfields
             if (time_varying_species(n) .and.   &
                (.not. time_varying_species(n-1) ) ) then
               make_separate_calls = .true.
@@ -715,11 +710,11 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
             endif
           end do
           if (make_separate_calls) then
-            allocate (Aerosol_interp(nfields))  
-            allocate (Aerosol_time  (nfields))  
+            allocate (Aerosol_tv%Interp(Aerosol_tv%nfields))  
+            allocate (Aerosol_tv%Time  (Aerosol_tv%nfields))  
           else
-            allocate (Aerosol_interp(1))  
-            allocate (Aerosol_time  (1))  
+            allocate (Aerosol_tv%Interp(1))  
+            allocate (Aerosol_tv%Time  (1))  
           endif
 
 !----------------------------------------------------------------------
@@ -756,7 +751,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
          'must use_aerosol_timeseries when calculate_column is .true.', FATAL)
           endif 
 
-          if (any(time_varying_species(1:nfields))) then
+          if (any(time_varying_species(1:Aerosol_tv%nfields))) then
               call error_mesg ('aerosol_mod', &
                    'aerosol values must be fixed in time when &
                                    &calculate_column is .true.', FATAL)
@@ -772,10 +767,10 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
               call error_mesg ('aerosol_mod', &
          'make_separate_calls not allowed  for calculate_column', FATAL)
      else       
-          call interpolator_init (Aerosol_interp(1)    , filename,  &
+          call interpolator_init (Aerosol_tv%Interp(1)    , filename,  &
                                     spread(lonb_col/RADIAN,2,2),  &
                                     spread(latb_col/RADIAN,1,2),&
-                                    data_names(:nfields),   &
+                                    data_names(:Aerosol_tv%nfields),   &
                                     data_out_of_bounds=   &
                                                   data_out_of_bounds, &
                                     vert_interp=vert_interp,  &
@@ -799,8 +794,8 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !-------------------------------------------------------------------
         else  ! (calculate_column)
     if (make_separate_calls) then
-       do n=1,nfields
-          call interpolator_init (Aerosol_interp(n), filename, lonb, &
+       do n=1,Aerosol_tv%nfields
+          call interpolator_init (Aerosol_tv%Interp(n), filename, lonb, &
                                   latb, data_names(n:n     ),   &
                                   data_out_of_bounds=    &
                                                   data_out_of_bounds(n:n), &
@@ -808,8 +803,8 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
                                   single_year_file=single_year_file)
        end do
      else
-          call interpolator_init (Aerosol_interp(1), filename, lonb, &
-                                  latb, data_names(:nfields),   &
+          call interpolator_init (Aerosol_tv%Interp(1), filename, lonb, &
+                                  latb, data_names(:Aerosol_tv%nfields),   &
                                   data_out_of_bounds=    &
                                                   data_out_of_bounds, &
                                   vert_interp=vert_interp, &
@@ -826,7 +821,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
                'aerosol input file is single-year, yet interannual &
                 &variation of aerosol is requested', FATAL  )
         endif
-        do n=1, nfields
+        do n=1, Aerosol_tv%nfields
           if (.not. use_aerosol_timeseries .and.   &
               .not. using_fixed_year_data(n) .and. &
               .not. single_year_file)  then
@@ -853,7 +848,7 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !-----------------------------------------------------------------------
       do n=1,MAX_AEROSOL_FAMILIES
         if (family_names(n) /= ' '  ) then
-          nfamilies = n
+          Aerosol_tv%nfamilies = n
         else
           exit
         endif
@@ -863,13 +858,18 @@ character(len=64), dimension(:), pointer     :: aerosol_family_names
 !    allocate and fill pointer arrays to return the names of any activ-
 !    ated families to the calling routine.
 !-------------------------------------------------------------------
-      allocate (aerosol_family_names(nfamilies))
-      aerosol_family_names (:) = family_names(1:nfamilies)
+      if (present(aerosol_family_names)) then
+         allocate (aerosol_family_names(Aerosol_tv%nfamilies))
+         aerosol_family_names (:) = family_names(1:Aerosol_tv%nfamilies)
+         call error_mesg ('aerosol_mod', &
+             'number of aerosol_family_names = '//string(Aerosol_tv%nfamilies),NOTE)
+      endif
 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
-      module_is_initialized = .true.
+      Aerosol_tv%variable_is_initialized = .true.
+      module_is_initialized=.true.
 
 !---------------------------------------------------------------------
 
@@ -879,14 +879,15 @@ end subroutine aerosol_init
 
 !############################################################################
 
-subroutine aerosol_time_vary (model_time)
+subroutine aerosol_time_vary (model_time, Aerosol_tv)
 
 !--------------------------------------------------------------------------- 
 !   subroutine aerosol_time_vary makes sure the aerosol interpolate_type 
 !   variable has access to the proper time levels of data in the aerosol
 !---------------------------------------------------------------------------
 
-type(time_type), intent(in) :: model_time
+type(time_type),              intent(in)    :: model_time
+type(aerosol_time_vary_type), intent(inout) :: Aerosol_tv
 
 
       integer :: n
@@ -901,7 +902,7 @@ type(time_type), intent(in) :: model_time
 !    if separate calls are required for each aerosol species, loop over
 !    the individual species.
 !--------------------------------------------------------------------
-          do n=1,nfields
+	do n=1,Aerosol_tv%nfields
 
 !--------------------------------------------------------------------
 !    if the data timeseries is to be used for species n, define the
@@ -912,21 +913,21 @@ type(time_type), intent(in) :: model_time
               if (time_varying_species(n)) then
 
 !----------------------------------------------------------------------
-!    define the Aerosol_time for aerosol n and check for the  
+!    define the Aerosol_tv%Time for aerosol n and check for the  
 !    appropriate time slices.
 !----------------------------------------------------------------------
                 if (negative_offset(n)) then
-                  Aerosol_time(n) = model_time - Aerosol_offset(n)
+                  Aerosol_tv%Time(n) = model_time - Aerosol_offset(n)
                 else
-                  Aerosol_time(n) = model_time + Aerosol_offset(n)
+                  Aerosol_tv%Time(n) = model_time + Aerosol_offset(n)
                 endif
-                call obtain_interpolator_time_slices (Aerosol_interp(n), &
-                                                          Aerosol_time(n))     
+                call obtain_interpolator_time_slices (Aerosol_tv%Interp(n), &
+                                                      Aerosol_tv%Time(n))     
               else
                 call set_aerosol_time (model_time, Aerosol_entry(n), &
-                                       Aerosol_time(n))
-                call obtain_interpolator_time_slices (Aerosol_interp(n), &
-                                                       Aerosol_time(n))     
+                                       Aerosol_tv%Time(n))
+                call obtain_interpolator_time_slices (Aerosol_tv%Interp(n), &
+                                                     Aerosol_tv%Time(n))     
               endif
 
 !--------------------------------------------------------------------
@@ -941,21 +942,21 @@ type(time_type), intent(in) :: model_time
 !    the current model year.
 !---------------------------------------------------------------------
               if ( .not. using_fixed_year_data(n)) then
-                call obtain_interpolator_time_slices (Aerosol_interp(n), &
-                                                              model_time)     
-                Aerosol_time(n) = model_time
+                Aerosol_tv%Time(n) = model_time
+                call obtain_interpolator_time_slices (Aerosol_tv%Interp(n), &
+                                                      Aerosol_tv%Time(n))
 
 !----------------------------------------------------------------------
 !    if a fixed year has been specified, call set_aerosol_time to define
-!    the Aerosol_time to be used for aerosol n. call interpolator to 
+!    the Aerosol_tv%Time to be used for aerosol n. call interpolator to 
 !    obtain the aerosol values and store the aerosol amounts in 
 !    Aerosol%aerosol.
 !----------------------------------------------------------------------
               else 
                 call set_aerosol_time (model_time, Aerosol_entry(n), &
-                                         Aerosol_time(n))
-                call obtain_interpolator_time_slices (Aerosol_interp(n), &
-                                                          Aerosol_time(n))     
+                                       Aerosol_tv%Time(n))
+                call obtain_interpolator_time_slices (Aerosol_tv%Interp(n), &
+                                                      Aerosol_tv%Time(n))
               endif  
             endif ! (use_aerosol_timeseries)
           end do  !(nfields)
@@ -968,9 +969,9 @@ type(time_type), intent(in) :: model_time
 !--------------------------------------------------------------------
           if (use_aerosol_timeseries) then
             if (negative_offset(1)) then
-              Aerosol_time(1) = model_time - Aerosol_offset(1)
+              Aerosol_tv%Time(1) = model_time - Aerosol_offset(1)
             else
-              Aerosol_time(1) = model_time + Aerosol_offset(1)
+              Aerosol_tv%Time(1) = model_time + Aerosol_offset(1)
             endif
 
 !--------------------------------------------------------------------
@@ -978,8 +979,9 @@ type(time_type), intent(in) :: model_time
 !    are in memory.
 !--------------------------------------------------------------------
             if (trim(aerosol_data_source) == 'calculate_column') then
-              call obtain_interpolator_time_slices (Aerosol_interp(1), &
-                                Aerosol_column_time)
+              Aerosol_tv%Time(1) = Aerosol_column_time
+              call obtain_interpolator_time_slices (Aerosol_tv%Interp(1), &
+                                                    Aerosol_tv%Time(1))
             else
 
 !-------------------------------------------------------------------
@@ -987,13 +989,13 @@ type(time_type), intent(in) :: model_time
 !    either time_varying  or not.  be sure the needed time slices are available.
 !--------------------------------------------------------------------
               if (time_varying_species(1)) then
-                call obtain_interpolator_time_slices (Aerosol_interp(1), &
-                                Aerosol_time(1))
+                call obtain_interpolator_time_slices (Aerosol_tv%Interp(1), &
+                                                      Aerosol_tv%Time(1))
               else
                 call set_aerosol_time (model_time, Aerosol_entry(1), &
-                                       Aerosol_time(1))
-                call obtain_interpolator_time_slices (Aerosol_interp(1), &
-                                Aerosol_time(1))
+                                       Aerosol_tv%Time(1))
+                call obtain_interpolator_time_slices (Aerosol_tv%Interp(1), &
+                                                      Aerosol_tv%Time(1))
               endif    
             endif  ! (calculate_column)
 
@@ -1010,19 +1012,19 @@ type(time_type), intent(in) :: model_time
 !    climatology file.
 !---------------------------------------------------------------------
             if (.not. using_fixed_year_data(1)) then
-              call obtain_interpolator_time_slices (Aerosol_interp(1), &
-                                  model_time)
-              Aerosol_time(1) = model_time
+              Aerosol_tv%Time(1) = model_time
+              call obtain_interpolator_time_slices (Aerosol_tv%Interp(1), &
+                                                    Aerosol_tv%Time(1))
 
 !----------------------------------------------------------------------
 !    if a fixed year has been specified, call set_aerosol_time to define
-!    the Aerosol_time, then verify the needed time slices are available. 
+!    the Aerosol_tv%time, then verify the needed time slices are available. 
 !----------------------------------------------------------------------
             else
               call set_aerosol_time (model_time, Aerosol_entry(1), &
-                                                             Aerosol_time(1))
-              call obtain_interpolator_time_slices (Aerosol_interp(1), &
-                                                            Aerosol_time(1))
+                                     Aerosol_tv%Time(1))
+              call obtain_interpolator_time_slices (Aerosol_tv%Interp(1), &
+                                                    Aerosol_tv%Time(1))
             endif ! (using_fixed_year)
           endif ! (use_aerosol_timeseries)
         endif  ! (make_separate_calls   )
@@ -1038,19 +1040,18 @@ end subroutine aerosol_time_vary
 
 !####################################################################
 
-subroutine aerosol_endts
+subroutine aerosol_endts(Aerosol_tv)
 
+type(aerosol_time_vary_type), intent(inout) :: Aerosol_tv
      integer :: n
 
-     if (allocated(Aerosol_interp)) then
-       do n=1, size(Aerosol_interp,1)
-         call unset_interpolator_time_flag (Aerosol_interp(n))
-       end do
-     endif
+     do n=1, size(Aerosol_tv%Interp,1)
+       call unset_interpolator_time_flag (Aerosol_tv%Interp(n))
+     end do
   
-     override_counter = override_counter + 1
-     if (override_counter == 2) then
-       output_override_info = .false.
+     Aerosol_tv%override_counter = Aerosol_tv%override_counter + 1
+     if (Aerosol_tv%override_counter == 2) then
+       Aerosol_tv%output_override_info = .false.
      endif
 
 end subroutine aerosol_endts
@@ -1064,10 +1065,13 @@ end subroutine aerosol_endts
 !   climatology input and model set up.
 !  </OVERVIEW>
 !  <TEMPLATE>
-!   call aerosol_driver (is, js, model_time, p_half, Aerosol)
+!   call aerosol_driver (is, js, model_time, p_half, Aerosol_tv, Aerosol)
 !  </TEMPLATE>
+!  <INOUT NAME="Aerosol_tv" TYPE="aerosol_time_vary_type">
+!   Aerosol time varying data
+!  </INOUT>
 !  <INOUT NAME="Aerosol" TYPE="aerosol_type">
-!   Aerosol climatology input
+!   Aerosol data
 !  </INOUT>
 !  <IN NAME="model_time" TYPE="time_type">
 !   The internal model simulation time, i.e. Jan. 1 1982
@@ -1090,7 +1094,8 @@ end subroutine aerosol_endts
 ! </SUBROUTINE>
 !
 subroutine aerosol_driver (is, js, model_time, tracer, &
-                           p_half, p_flux, Aerosol, override_aerosols)
+                           p_half, p_flux, Aerosol_tv, Aerosol, &
+                           override_aerosols)
 
 !-----------------------------------------------------------------------
 !    aerosol_driver returns the names and concentrations of activated 
@@ -1098,12 +1103,13 @@ subroutine aerosol_driver (is, js, model_time, tracer, &
 !    calling routine in aerosol_type variable Aerosol. 
 !-----------------------------------------------------------------------
 
-integer,                  intent(in)     :: is,js
-type(time_type),          intent(in)     :: model_time
-real, dimension(:,:,:,:), intent(in)     :: tracer
-real, dimension(:,:,:),   intent(in)  :: p_half, p_flux
-type(aerosol_type),       intent(inout)  :: Aerosol
-logical, optional,        intent(in)     :: override_aerosols
+integer,                      intent(in)    :: is,js
+type(time_type),              intent(in)    :: model_time
+real, dimension(:,:,:,:),     intent(in)    :: tracer
+real, dimension(:,:,:),       intent(in)    :: p_half, p_flux
+type(aerosol_time_vary_type), intent(inout) :: Aerosol_tv
+type(aerosol_type),           intent(inout) :: Aerosol
+logical, optional,            intent(in)    :: override_aerosols
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
@@ -1130,9 +1136,9 @@ logical, optional,        intent(in)     :: override_aerosols
 !---------------------------------------------------------------------
 !  local variables:
 
-      real, dimension(1,1, size(p_half,3)-1,    &
-                                               nfields) :: aerosol_data
-      real, dimension(1,1, size(p_half,3))   :: p_half_col
+      real, dimension(1,1, size(p_half,3)-1, &
+                          Aerosol_tv%nfields) :: aerosol_data
+      real, dimension(1,1, size(p_half,3))    :: p_half_col
       real, dimension(id,jd,size(p_half,3)-1) :: aerosol_proc
       integer         :: n, k, j, i, na            ! do-loop index
       integer         :: nn
@@ -1142,9 +1148,9 @@ logical, optional,        intent(in)     :: override_aerosols
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
 !---------------------------------------------------------------------
-      if (.not. module_is_initialized ) then
+      if (.not. Aerosol_tv%variable_is_initialized ) then
         call error_mesg ('aerosol_mod',   &
-                         'module has not been initialized',FATAL )
+                         'variable has not been initialized',FATAL )
       endif
 
 !---------------------------------------------------------------------
@@ -1153,11 +1159,11 @@ logical, optional,        intent(in)     :: override_aerosols
 !    allocate an array to hold the aerosol amounts for each species at
 !    each grid point. 
 !---------------------------------------------------------------------
-      allocate (Aerosol%aerosol_names (nfields))
-      allocate (Aerosol%family_members(nfields+1, nfamilies))
+      allocate (Aerosol%aerosol_names (Aerosol_tv%nfields))
+      allocate (Aerosol%family_members(Aerosol_tv%nfields+1, Aerosol_tv%nfamilies))
       allocate (Aerosol%aerosol(size(p_half,1),  &
                                 size(p_half,2), &
-                                size(p_half,3) - 1, nfields)) 
+                                size(p_half,3) - 1, Aerosol_tv%nfields)) 
       ie = is + size(p_half,1) - 1
       je = js + size(p_half,2) - 1
 
@@ -1175,15 +1181,15 @@ logical, optional,        intent(in)     :: override_aerosols
 !--------------------------------------------------------------------
 !    define an array to hold the activated aerosol names.
 !---------------------------------------------------------------------
-        Aerosol%aerosol_names = data_names(:nfields) 
+        Aerosol%aerosol_names = data_names(:Aerosol_tv%nfields) 
 
 !--------------------------------------------------------------------
 !    define an array which defines the members of the requested aerosol
 !    families.
 !---------------------------------------------------------------------
-        if (nfamilies > 0) then
-          do n=1,nfamilies
-            do na = 1, nfields
+        if (Aerosol_tv%nfamilies > 0) then
+          do n=1,Aerosol_tv%nfamilies
+            do na = 1, Aerosol_tv%nfields
               select case(n)
                 case (1)
                   Aerosol%family_members(na,1) = in_family1(na)
@@ -1213,9 +1219,9 @@ logical, optional,        intent(in)     :: override_aerosols
               end select
             end do
             if (volc_in_fam_col_opt_depth(n)) then
-              Aerosol%family_members(nfields+1,n) = .true.
+              Aerosol%family_members(Aerosol_tv%nfields+1,n) = .true.
             else
-              Aerosol%family_members(nfields+1,n) = .false.
+              Aerosol%family_members(Aerosol_tv%nfields+1,n) = .false.
             endif
           end do
         endif
@@ -1233,8 +1239,8 @@ logical, optional,        intent(in)     :: override_aerosols
                 do j=1, size(p_half,2)
                   do i=1, size(p_half,1)
                     p_half_col(1,1,:) = p_flux(i,j,:)
-                    call interpolator (Aerosol_interp(1),&
-                                       Aerosol_column_time,  &
+                    call interpolator (Aerosol_tv%Interp(1),&
+                                       Aerosol_tv%Time(1),  &
                                        p_half_col, aerosol_data, &
                                        Aerosol%aerosol_names(1), 1, 1  )
                     Aerosol%aerosol(i,j,:,:) = aerosol_data(1,1,:,:)
@@ -1247,23 +1253,25 @@ logical, optional,        intent(in)     :: override_aerosols
 !    the individual species.
 !--------------------------------------------------------------------
                 if (make_separate_calls) then
-                  do n=1,nfields                
-                    call interpolator (Aerosol_interp(n), Aerosol_time(n),  &
-                                     p_flux, &
-                                     Aerosol%aerosol(:,:,:,n),    &
-                                     Aerosol%aerosol_names(n), is, js)
-                  end do  !(nfields)
+                  do n=1,Aerosol_tv%nfields                
+                    call interpolator (Aerosol_tv%Interp(n), &
+                                       Aerosol_tv%Time(n),  &
+                                       p_flux, &
+                                       Aerosol%aerosol(:,:,:,n),    &
+                                       Aerosol%aerosol_names(n), is, js)
+                  end do  !(Aerosol_tv%nfields)
 
 !----------------------------------------------------------------------
 !    if separate calls are not required, use the first aerosol char-
-!    acteristics to define Aerosol_time and make a single call to 
+!    acteristics to define Aerosol_tv%Time and make a single call to 
 !    interpolator. store the aerosol amounts in Aerosol%aerosol.
 !----------------------------------------------------------------------
                 else      
-                  call interpolator (Aerosol_interp(1), Aerosol_time(1),  &
-                                    p_flux, &
-                                    Aerosol%aerosol,    &
-                                    Aerosol%aerosol_names(1), is, js)
+                  call interpolator (Aerosol_tv%Interp(1), &
+                                     Aerosol_tv%Time(1),  &
+                                     p_flux, &
+                                     Aerosol%aerosol,    &
+                                     Aerosol%aerosol_names(1), is, js)
                 endif      
               endif ! (calculate_column)
 
@@ -1284,7 +1292,7 @@ logical, optional,        intent(in)     :: override_aerosols
             do_override = .false.
           end if
 
-          do nn=1,nfields
+          do nn=1,Aerosol_tv%nfields
             n = aerosol_tracer_index(nn)
 
             Aerosol%aerosol(:,:,:,nn) = tracer(:,:,:,n)
@@ -1292,24 +1300,24 @@ logical, optional,        intent(in)     :: override_aerosols
               call data_override('ATM', TRIM(tracer_names(n))//'_aerosol',&
                                  aerosol_proc, model_time, override=used)
               if (used) then
-                if (output_override_info) then
+                if (Aerosol_tv%output_override_info) then
                   call error_mesg ('aerosol_mod', &
-                       TRIM(tracer_names(n))//'_aerosol => '// &
-                     TRIM(tracer_names(n)) // ' is being overridden', NOTE)
-                  being_overridden(nn) = .true.
+                           TRIM(tracer_names(n))//'_aerosol => '// &
+                           TRIM(tracer_names(n)) // ' is being overridden', NOTE)
+                  Aerosol_tv%being_overridden(nn) = .true.
                 endif
                 Aerosol%aerosol(:,:,:,nn) = aerosol_proc(is:ie,js:je,:)
               else
-                if (output_override_info) then
+                if (Aerosol_tv%output_override_info) then
                   call error_mesg ('aerosol_mod', &
-                    TRIM(tracer_names(n))//'_aerosol => '//  &
-                       TRIM(tracer_names(n)) // ' not overridden', NOTE)
+                           TRIM(tracer_names(n))//'_aerosol => '//  &
+                           TRIM(tracer_names(n)) // ' not overridden', NOTE)
                 else
-                  if (being_overridden(nn)) then
+                  if (Aerosol_tv%being_overridden(nn)) then
                     call error_mesg ('aerosol_mod', &
-                       TRIM(tracer_names(n))//'_aerosol => '//  &
-                         TRIM(tracer_names(n)) // ' not overridden &
-                                      &when override was requested', FATAL)
+                           TRIM(tracer_names(n))//'_aerosol => '//  &
+                           TRIM(tracer_names(n)) // ' not overridden &
+                          &when override was requested', FATAL)
                   endif
                 endif
               endif
@@ -1348,21 +1356,20 @@ end subroutine aerosol_driver
 !  </TEMPLATE>
 ! </SUBROUTINE>
 !
-subroutine aerosol_end
-
+subroutine aerosol_end (Aerosol_tv)
 !----------------------------------------------------------------------
 !    aerosol_end is the destructor for aerosol_mod.
 !----------------------------------------------------------------------
-
+type(aerosol_time_vary_type), intent(inout) :: Aerosol_tv
       integer  :: n
-
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
 !---------------------------------------------------------------------
-      if (.not. module_is_initialized ) then
+      if (.not. Aerosol_tv%variable_is_initialized ) then
         call error_mesg ('aerosol_mod',   &
-                         'module has not been initialized',FATAL )
+                         'variable has not been initialized: '// &
+                         'can not un-initialize',FATAL )
       endif
 
 !---------------------------------------------------------------------
@@ -1370,28 +1377,32 @@ subroutine aerosol_end
 !    used in this module.
 !---------------------------------------------------------------------
       if (do_specified_aerosol) then
-          if (nfields > 0) then
-            do n=1, size(Aerosol_interp,1)
-              call interpolator_end (Aerosol_interp(n))
+          if (Aerosol_tv%nfields > 0) then
+            do n=1, size(Aerosol_tv%Interp,1)
+              call interpolator_end (Aerosol_tv%Interp(n))
             end do        
           endif
-          deallocate (Aerosol_time)
+          if (associated (Aerosol_tv%Time)) deallocate (Aerosol_tv%Time)
+          if (associated (Aerosol_tv%being_overridden)) &
+                                         deallocate (Aerosol_tv%being_overridden)
       endif
 
-      if (allocated (specified_aerosol)) deallocate (specified_aerosol)
-      if (allocated (Aerosol_offset   )) deallocate (Aerosol_offset   )
-      if (allocated (Aerosol_entry    )) deallocate (Aerosol_entry    )
-      if (allocated (negative_offset  )) deallocate (negative_offset  )
-      if (allocated (data_out_of_bounds))   &
-                                      deallocate (data_out_of_bounds  )
-      if (allocated (vert_interp      )) deallocate (vert_interp      ) 
+      if (allocated (specified_aerosol))  deallocate (specified_aerosol)
+      if (allocated (Aerosol_offset   ))  deallocate (Aerosol_offset   )
+      if (allocated (Aerosol_entry    ))  deallocate (Aerosol_entry    )
+      if (allocated (negative_offset  ))  deallocate (negative_offset  )
+      if (allocated (data_out_of_bounds)) deallocate (data_out_of_bounds)
+      if (allocated (vert_interp      ))  deallocate (vert_interp      ) 
       if (allocated (using_fixed_year_data))  &
                                      deallocate (using_fixed_year_data)
+
+      Aerosol_tv%nfields=0
+      Aerosol_tv%nfamilies=0
 
 !--------------------------------------------------------------------
 !    mark the module as uninitialized.
 !--------------------------------------------------------------------
-      module_is_initialized = .false.
+      Aerosol_tv%variable_is_initialized = .false.
 
 !---------------------------------------------------------------------
 
@@ -1461,22 +1472,13 @@ type(aerosol_type), intent(inout) :: Aerosol
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-!    be sure module has been initialized.
-!---------------------------------------------------------------------
-      if (.not. module_is_initialized ) then
-        call error_mesg ('aerosol_mod',   &
-                         'module has not been initialized',FATAL )
-      endif
-
-!---------------------------------------------------------------------
 !    deallocate the components of the aerosol_type variable.
 !---------------------------------------------------------------------
-      deallocate (Aerosol%aerosol)
-      deallocate (Aerosol%aerosol_names)
-      deallocate (Aerosol%family_members)
+      if (ASSOCIATED(Aerosol%aerosol))        deallocate (Aerosol%aerosol)
+      if (ASSOCIATED(Aerosol%aerosol_names))  deallocate (Aerosol%aerosol_names)
+      if (ASSOCIATED(Aerosol%family_members)) deallocate (Aerosol%family_members)
  
 !----------------------------------------------------------------------
-
 
 end subroutine aerosol_dealloc
 
@@ -1623,6 +1625,7 @@ real :: latb(NLON+1,NLAT+1),lonb(NLON+1,NLAT+1),pi,phalf(NLON,NLAT,NLEV+1)
 integer :: i,nspecies
 type(time_type) :: model_time
 character(len=64), dimension(MAX_AEROSOL_NAMES) :: names
+type(aerosol_time_vary_type)  :: Aerosol_tv
 type(aerosol_type)  :: Aerosol
 
 pi = 4.*atan(1.)
@@ -1649,13 +1652,20 @@ end do
 
 model_time = set_date(1980,1,1,0,0,0)
 
-call aerosol_init (lonb, latb, names)
+call aerosol_init (lonb, latb, Aerosol_tv, names)
 
-call aerosol_driver (1,1,model_time, phalf, Aerosol)
+call aerosol_time_vary (model_time, Aerosol_tv)
+
+! note this will not work
+call aerosol_driver (1,1,model_time, phalf, Aerosol_tv, Aerosol)
+!call aerosol_driver (1, 1, model_time, TRACER, p_half, p_half,
+!                     Aerosol_tv, Aerosol)
 
 call aerosol_dealloc (Aerosol)
 
-call aerosol_end
+call aerosol_endts (Aerosol_tv)
+
+call aerosol_end (Aerosol_tv)
 
 call mpp_exit
 

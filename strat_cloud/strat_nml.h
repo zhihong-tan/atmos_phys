@@ -1,5 +1,5 @@
-! $Id: strat_nml.h,v 20.0.2.1 2014/01/09 08:18:13 rsh Exp $
-! $Name: tikal_201409 $
+! $Id: strat_nml.h,v 21.0 2014/12/15 21:46:22 fms Exp $
+! $Name: ulm $
 
 !------------------------------------------------------------------------
 !---namelist------
@@ -265,6 +265,10 @@ INTEGER, PARAMETER  :: max_strat_pts = 5
   real              :: N_land         =  250.E+06
   real              :: N_ocean        =  100.E+06
   real              :: var_limit      = 0.0
+!-->cjg
+  integer           :: var_limit_opt  = 1
+  integer           :: up_strat_opt   = 1
+!<--cjg
   logical           :: do_liq_num   = .false.
   logical           :: do_dust_berg   = .false.
   real              :: N_min          = 1.E6
@@ -301,7 +305,9 @@ namelist / strat_cloud_nml /   &
 
        use_online_aerosol, use_sub_seasalt, sea_salt_scale, om_to_oc, &
        N_land, N_ocean, var_limit, do_liq_num, do_dust_berg, N_min,  & 
-
+!-->cjg
+       var_limit_opt, up_strat_opt,  &
+!<--cjg
        do_pdf_clouds, betaP, qthalfwidth, nsublevels, kmap, kord, pdf_org, &
 
        num_strat_pts, strat_pts, debugo, isamp, jsamp, ksamp,  &

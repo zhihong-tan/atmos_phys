@@ -25,8 +25,8 @@ module mg_drag_mod
 
  private
 
- character(len=128) :: version = '$Id: mg_drag.F90,v 19.0 2012/01/06 20:10:07 fms Exp $'
- character(len=128) :: tagname = '$Name: tikal_201409 $'
+ character(len=128) :: version = '$Id: mg_drag.F90,v 21.0 2014/12/15 21:43:24 fms Exp $'
+ character(len=128) :: tagname = '$Name: ulm $'
 
  real, parameter :: p00 = 1.e5
 
@@ -70,14 +70,17 @@ type(restart_file_type), save :: Mg_restart
       ,low_lev_frac = .23
 
 real  ::  flux_cut_level= 0.0
+real  ::  g_max = 8.            ! computed gmax upper bound
 
+logical :: scale_aware = .false.   ! SJL: make the drag resolution dependent
 logical :: do_conserve_energy = .false.
 logical :: do_mcm_mg_drag = .false.
 character(len=128) :: source_of_sgsmtn = 'input'
 
     namelist / mg_drag_nml / xl_mtn, gmax, acoef, rho, low_lev_frac, &
                              do_conserve_energy, do_mcm_mg_drag,     &
-                             source_of_sgsmtn, flux_cut_level 
+                             scale_aware,source_of_sgsmtn,           &
+                             flux_cut_level, g_max
 
  public mg_drag, mg_drag_init, mg_drag_end, mg_drag_restart
 
@@ -85,7 +88,7 @@ character(len=128) :: source_of_sgsmtn = 'input'
 
 !#############################################################################      
 
- subroutine mg_drag (is, js, delt, uwnd, vwnd, temp, pfull, phalf, &
+ subroutine mg_drag (is, js, delt, area, uwnd, vwnd, temp, pfull, phalf, &
                     zfull,zhalf,dtaux,dtauy,dtemp,taubx, tauby, tausf,&
                     kbot)
 !===================================================================
@@ -94,6 +97,7 @@ character(len=128) :: source_of_sgsmtn = 'input'
 
  integer, intent(in) :: is,js
  real, intent(in)    :: delt
+ real, intent(in), dimension (:,:) :: area
  real, intent(in), dimension (:,:,:) :: &
      &             uwnd, vwnd, temp, pfull, phalf, zfull, zhalf
  integer, intent(in), optional, dimension(:,:)   :: kbot
@@ -180,7 +184,7 @@ character(len=128) :: source_of_sgsmtn = 'input'
 
 !=======================================================================
 !  (Intent local)
- real , dimension(size(uwnd,1),size(uwnd,2)) ::  xn, yn, psurf,ptop,taub
+ real , dimension(size(uwnd,1),size(uwnd,2)) ::  xn, yn, psurf,ptop,taub, g_fac
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) ::  theta 
  real , dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)+1) ::  taus
  real vsamp
@@ -272,6 +276,12 @@ real,    dimension(size(uwnd,1),size(uwnd,2),size(uwnd,3)) :: sigma, del_sigma
 !                 A = 1.0
 !=======================================================================
 
+if( scale_aware ) then    ! SJL
+   g_fac(:,:) = min(g_max, gmax*exp(log(4.e10/area(:,:))/3.)) ! g_fac=gmax if dx=200 km
+else
+   g_fac(:,:) = gmax
+endif
+
 if ( .not.do_mcm_mg_drag ) then
 
 !--- export sub grid scale topography
@@ -320,7 +330,7 @@ if ( .not.do_mcm_mg_drag ) then
 !     print *,'ktop=', ktop
 
 !  calculate base flux
-    call mgwd_base_flux (is,js,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,theta, &
+    call mgwd_base_flux (is,js,g_fac,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,theta, &
          &               xn,yn,taub)
 
 !  split taub in to x and y components
@@ -328,7 +338,7 @@ if ( .not.do_mcm_mg_drag ) then
     tauby(:,:) = taub(:,:)*yn(:,:)
 
 !  calculate saturation flux profile
-    call mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
+    call mgwd_satur_flux (g_fac,uwnd,vwnd,temp,theta,ktop,kbtm, &
          &                xn,yn,taub,pfull, phalf,zfull,zhalf,vsamp,taus)
 
 !  calculate mountain gravity wave drag tendency contributions
@@ -474,7 +484,7 @@ end subroutine mg_drag
 
 !#############################################################################      
  
-subroutine mgwd_base_flux (is,js,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,  &
+subroutine mgwd_base_flux (is,js,g_fac,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,  &
                           theta,xn,yn,taub)
                                   
 
@@ -485,6 +495,7 @@ subroutine mgwd_base_flux (is,js,uwnd,vwnd,temp,pfull,phalf,ktop,kbtm,  &
 
 !===================================================================
 ! Arguments (intent in)
+ real, intent(in), dimension (:,:) :: g_fac
  real, intent(in), dimension (:,:,:) :: uwnd, vwnd, temp, pfull, phalf
  integer, intent(in), dimension (:,:) :: ktop, kbtm
  integer, intent(in)   :: is, js
@@ -589,7 +600,7 @@ real grav2, xli, a, small
            where (bnv2(:,:) .gt. 0.0) 
              bnv(:,:) = sqrt(bnv2(:,:))
              fr (:,:) = bnv(:,:)*hprime(:,:)/(ulow(:,:) + small)
-             g  (:,:) = gmax*fr(:,:)*fr(:,:)/(fr(:,:)*fr(:,:)+a*a)
+             g  (:,:) = g_fac(:,:)*fr(:,:)*fr(:,:)/(fr(:,:)*fr(:,:)+a*a)
              taub(:,:) = -rho*xli*ulow(:,:)*ulow(:,:)*ulow(:,:) &
      &                 / bnv(:,:)*g(:,:)
            elsewhere
@@ -602,7 +613,7 @@ end subroutine mgwd_base_flux
 
 !#############################################################################      
 
-subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
+subroutine mgwd_satur_flux (g_fac,uwnd,vwnd,temp,theta,ktop,kbtm, &
                            xn,yn,taub,pfull,phalf,zfull,zhalf,vsamp,taus)
 
 !===================================================================
@@ -610,6 +621,7 @@ subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
  real, intent(in), dimension (:,:,:)  :: &
      &             uwnd, vwnd, temp, theta, pfull, phalf,zfull, zhalf
  real, intent(in), dimension (:,:)    :: xn, yn, taub
+ real, intent(in), dimension (:,:)    :: g_fac
  real, intent(in)                     :: vsamp 
  integer, intent(in), dimension (:,:) :: ktop, kbtm
 !===================================================================
@@ -830,7 +842,7 @@ subroutine mgwd_satur_flux (uwnd,vwnd,temp,theta,ktop,kbtm, &
 
           do k=2,ktm1
             taus(i,j,k) = -phalf(i,j,k)*umag(i,j,k)*umag(i,j,k) &
-     &                  *d(i,j,k)*xli*gmax &
+     &                  *d(i,j,k)*xli*g_fac(i,j) &
      &                / (0.50*(temp(i,j,k-1)+temp(i,j,k))*rdgas)
           end do
 

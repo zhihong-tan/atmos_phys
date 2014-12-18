@@ -47,9 +47,6 @@ use rad_utilities_mod,    only:  Rad_control, rad_utilities_init, &
                                  Cldrad_control, &
                                  atmos_input_type, surface_type, &
                                  sw_output_type, Sw_control
-use tracer_manager_mod,   only : get_tracer_index,   &
-                                 NO_TRACER
-use field_manager_mod,    only : MODEL_ATMOS
 !---------------------------------------------------------------------
 
 implicit none
@@ -64,8 +61,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 19.0 2012/01/06 20:15:51 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 21.0 2014/12/15 21:44:22 fms Exp $'
+character(len=128)  :: tagname =  '$Name: ulm $'
 
 
 !---------------------------------------------------------------------
@@ -102,15 +99,15 @@ logical      ::  do_ch4_sw_effects = .false.    ! the shortwave effects
                                                 ! of ch4 are included ?
 logical      ::  do_n2o_sw_effects = .false.    ! the shortwave effects
                                                 ! of n2o are included ?
-logical      ::  do_coupled_stratozone = .false. ! include the coupled
-                                                 ! stratospheric ozone effects?
-  
+logical      ::  do_sw_continuum =  .false.      ! include the shortwave
+						 ! continuum? 						 
+                                                 
 
 namelist / esfsw_driver_nml /    &
                                do_ica_calcs, do_rayleigh_all_bands, &
                                do_herzberg, do_quench, &
                                do_ch4_sw_effects, do_n2o_sw_effects, &
-                               do_coupled_stratozone
+                               do_sw_continuum
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -143,12 +140,16 @@ namelist / esfsw_driver_nml /    &
 !                                                                       
 ! kh2o         =  the psuedo-absorption coefficients in cm2/gm for h2o  
 !                                                                       
-! ko3          = the absorption coefficients in cm2/gm for o3           
+! ko3          =  the absorption coefficients in cm2/gm for o3    
+! kctms         = the psuedo-absorption coefficients in cm2/(molecules*atm)
+!                  for h2o self continuum
+! kctmf         = the psuedo-absorption coefficients in cm2/(molecules*atm)
+!                 for h2o foriegn continuum		     
 !                                                                       
 ! wtfreq       = the weight associated with each exponential term       
 ! strterm      = logical flag to indicate whether or not a h2o pseudo-  
 !                absorption coefficient is assigned a non-scaled        
-!                (true) or pressure-scaled (false) gas amount           
+!                (true) or pressure-scaled (false) gas amount    
 !---------------------------------------------------------------------
 real, dimension (:), allocatable    :: c1co2, c1co2str, c1o2, c1o2str, &
                                        c2co2, c2co2str, c2o2, c2o2str, &
@@ -163,7 +164,7 @@ real, dimension (:), allocatable    :: c1co2, c1co2str, c1o2, c1o2str, &
                                        powph2o, p0h2o
 real                                :: c1o2strschrun, c2o2strschrun, &
                                        c3o2strschrun, c4o2strschrun
-real, dimension (:), allocatable    :: kh2o, ko3, wtfreq
+real, dimension (:), allocatable    :: kh2o, ko3,kctms, kctmf, wtfreq
 logical, dimension(:), allocatable  :: strterm
 
 !---------------------------------------------------------------------
@@ -475,6 +476,8 @@ subroutine esfsw_driver_init
       allocate ( solflxband      (nbands) )
       allocate ( solflxbandref   (nbands) )
       allocate ( kh2o            (nfrqpts),   & 
+          	 kctms            (nfrqpts),  & 
+		 kctmf            (nfrqpts),  & 
                  ko3             (nfrqpts),   &
                  wtfreq          (nfrqpts),   &
                  strterm         (nfrqpts)   )
@@ -500,6 +503,7 @@ subroutine esfsw_driver_init
       wtfreq          = 0.0 ; strterm     = .FALSE. ; wtstr           = 0.0
       cosangstr       = 0.0 ; totco2max     = 0.0 ; totco2strmax  = 0.0
       toto2max      = 0.0 ; toto2strmax   = 0.0
+      kctms    = 0.0 ; kctmf    = 0.0
       c1ch4    = 0.0 ; c1ch4str = 0.0; c2ch4    = 0.0
       c2ch4str = 0.0 ; c3ch4    = 0.0 ; c3ch4str = 0.0
       c4ch4    = 0.0 ; c4ch4str = 0.0
@@ -526,15 +530,36 @@ subroutine esfsw_driver_init
 !    read input file for band positions, solar fluxes and band
 !    strengths.
 !---------------------------------------------------------------------
+   if (do_sw_continuum) then
       if (nbands == 25 .and. nfrqpts == 72) then 
+        file_name = 'INPUT/esf_sw_input_data_n72b25ctm'
+      else if (nbands == 18 .and. nfrqpts == 38) then
+        file_name = 'INPUT/esf_sw_input_data_n38b18ctm'
+     else if (nbands == 18 .and. nfrqpts == 74) then
+        file_name = 'INPUT/esf_sw_input_data_n74b18ctm'
+      else
+        call error_mesg ( 'esfsw_driver_mod', &
+        &  'shortwave continuum is turned on, but no input file', &
+                                                               FATAL)
+      endif
+      
+   else    
+     if (nbands == 25 .and. nfrqpts == 72) then 
         file_name = 'INPUT/esf_sw_input_data_n72b25'
       else if (nbands == 18 .and. nfrqpts == 38) then
         file_name = 'INPUT/esf_sw_input_data_n38b18'
+     else if (nbands == 18 .and. nfrqpts == 74) then
+        file_name = 'INPUT/esf_sw_input_data_n74b18'
       else
         call error_mesg ( 'esfsw_driver_mod', &
           'input file for desired bands and frqs is not available', &
                                                                FATAL)
-      endif
+      endif      
+    endif   
+      
+      
+      
+      
       iounit = open_namelist_file (file_name)
       read(iounit,101) ( solflxbandref(nband), nband=1,NBANDS )
       read(iounit,102) ( nfreqpts(nband), nband=1,NBANDS )
@@ -569,10 +594,16 @@ subroutine esfsw_driver_init
       read(iounit,105) ( c2n2ostr(nband), nband=1,NH2OBANDS )
       read(iounit,105) ( c3n2o(nband), nband=1,NH2OBANDS )
       read(iounit,105) ( c3n2ostr(nband), nband=1,NH2OBANDS )
-      do nf = 1,nfrqpts
-        read(iounit,106) wtfreq(nf),kh2o(nf),ko3(nf),strterm (nf)
-      end do
-
+      
+      If (do_sw_continuum) then   
+       do nf = 1,nfrqpts
+       read(iounit,1066) wtfreq(nf),kh2o(nf),ko3(nf),kctms(nf),kctmf(nf),strterm(nf)    
+       end do
+       else 
+       do nf = 1,nfrqpts
+       read(iounit,106) wtfreq(nf),kh2o(nf),ko3(nf),strterm(nf)
+       end do 
+      end if  
       read(iounit,107) nintsolar
 
       allocate ( nwvnsolar (nintsolar) )
@@ -641,7 +672,7 @@ subroutine esfsw_driver_init
 !    (0.55 microns). note that endwvnbands is in units of (cm**-1).
 !---------------------------------------------------------------------
       do ni=1,nbands
-        if (endwvnbands(ni) > vis_wvnum) then
+        if (endwvnbands(ni) >wvnum_340) then
           Solar_spect%visible_band_indx = ni
           Solar_spect%visible_band_indx_iz = .true.
           exit
@@ -942,6 +973,7 @@ subroutine esfsw_driver_init
  103  format( 20i6 )
  104  format( 12f10.2 )
  105  format( 1p,16e8.1 )
+ 1066  format( 1p,5e16.6,l16 )
  106  format( 1p,3e16.6,l16 )
  107  format( i5,1p,e14.5 )
  
@@ -1023,7 +1055,7 @@ end subroutine esfsw_driver_init
 subroutine swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,  &
                    Aerosol, Aerosol_props, Astro, Cldrad_props,  &
                    Cld_spec, including_volcanoes, Sw_output,   &
-                   Aerosol_diags, r, including_aerosols,   &
+                   Aerosol_diags, including_aerosols,   &
                    naerosol_optical) 
 
 !----------------------------------------------------------------------
@@ -1045,7 +1077,6 @@ type(cld_specification_type),  intent(in)    :: Cld_spec
 logical,                       intent(in)    :: including_volcanoes
 type(sw_output_type),          intent(inout) :: Sw_output   
 type(aerosol_diagnostics_type),intent(inout) :: Aerosol_diags
-real,dimension(:,:,:,:),       intent(inout) :: r
 logical,                       intent(in)    :: including_aerosols  
 integer,                       intent(in)    :: naerosol_optical
 
@@ -1262,7 +1293,7 @@ integer,                       intent(in)    :: naerosol_optical
         
       call compute_aerosol_optical_props     &
                 (Atmos_input, Aerosol, Aerosol_props, &
-                 including_volcanoes, Aerosol_diags, r,  &
+                 including_volcanoes, Aerosol_diags,  &
                  including_aerosols, naerosol_optical, &
                  daylight, aeroextopdep, aerosctopdep, aeroasymfac) 
 
@@ -1494,7 +1525,7 @@ integer,                       intent(in)    :: naerosol_optical
 !---------------------------------------------------------------------
 !    begin frequency points in the band loop.                          
 !--------------------------------------------------------------------
-          do nf = 1,nfreqpts(nband)
+	  do nf = 1,nfreqpts(nband)
             np = np + 1
  
 !---------------------------------------------------------------------
@@ -2037,7 +2068,8 @@ integer,                       intent(in)    :: naerosol_optical
                 do k = KSRAD,KERAD
                   do j=JSRAD,JERAD
                     do i=ISRAD,IERAD
-                      hswbandclr(i,j,k,nz) =    &
+		     
+                       hswbandclr(i,j,k,nz) =    &
                                 (fswbandclr(i,j,k+1,nz) -      &
                                     fswbandclr(i,j,k,nz))*gocpdp(i,j,k)
                       Sw_output%hswcf(i,j,k,nz) =   &
@@ -2265,7 +2297,7 @@ end subroutine esfsw_driver_end
 
 subroutine compute_aerosol_optical_props    &
           (Atmos_input, Aerosol, Aerosol_props, including_volcanoes,  &
-           Aerosol_diags, r, including_aerosols, naerosol_optical, &
+           Aerosol_diags, including_aerosols, naerosol_optical, &
            daylight, aeroextopdep, aerosctopdep, aeroasymfac)
 
 !----------------------------------------------------------------------
@@ -2280,7 +2312,6 @@ type(aerosol_type),            intent(in)    :: Aerosol
 type(aerosol_properties_type), intent(in)    :: Aerosol_props
 logical,                       intent(in)    :: including_volcanoes
 type(aerosol_diagnostics_type),intent(inout) :: Aerosol_diags
-real,dimension(:,:,:,:),       intent(inout) :: r
 logical,                       intent(in)    :: including_aerosols  
 integer,                       intent(in)    :: naerosol_optical
 logical,dimension(:,:),        intent(in)    :: daylight
@@ -2326,7 +2357,6 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
       real        :: aerext_i, aerssalb_i, aerasymm_i
       integer     :: j, i, k, nband, nsc
       integer     :: israd, jsrad, ierad, jerad, ksrad, kerad
-      integer     :: nextinct  !variable to pass extinction to chemistry
 
 !-----------------------------------------------------------------------
 !     local variables:
@@ -2675,14 +2705,6 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
             end do ! (nband)
           endif  ! (daylight or cmip_diagnostics)
 
-          if (including_volcanoes) then
-            if (do_coupled_stratozone ) then
-              nextinct = get_tracer_index(MODEL_ATMOS,'Extinction')
-              if (nextinct  /= NO_TRACER) &
-                    r(i,j,:,nextinct) = Aerosol_props%sw_ext(i,j,:,4)
-            endif  
-          endif  
-
         end do ! (i loop)
       end do   ! (j loop)
 
@@ -2804,7 +2826,8 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
                    efftauo2,   efftauco2,   efftauch4,   efftaun2o, &
                    wh2ostr,    wo3,         wo2,         quenchfac, &
                    opdep,      delpdig,     deltap,      tco2,    &
-                   tch4,       tn2o,        to2,         wh2o
+                   tch4,       tn2o,        to2,         wh2o,    &
+		   wh2octms,   wh2octmf     
 
            
       real, dimension (size(Atmos_input%temp,3))  :: &
@@ -2822,6 +2845,7 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
       real :: wtquench
       real :: rrvco2 
       real :: rrvch4, rrvn2o
+      real :: h2o_conv
 
       integer  :: j, i, k, ng, nband, kq
       integer  :: np, nf
@@ -2860,11 +2884,12 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
       alphach4str(1) = 0.0
       alphan2o   (1) = 0.0
       alphan2ostr(1) = 0.0
-
       rrvco2 = Rad_gases%rrvco2
       rrvch4 = Rad_gases%rrvch4
       rrvn2o = Rad_gases%rrvn2o
-
+      h2o_conv = 3.30E16
+      wh2octms(:) = 0 
+      wh2octmf(:) = 0
       do j = JSRAD,JERAD
         do i = ISRAD,IERAD
           if ( daylight(i,j) ) then
@@ -2970,14 +2995,59 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
               do nband = 1, NBANDS
 
 !-------------------------------------------------------------------
-!    define the h2o scaled gas amounts in kgrams/meter**2            
+!    Define the h2o scaled gas amounts in kgrams/meter**2     
+!    
+!    Define the h2o self and foriegn continuum scaled gas amounts
+!    in molecules/(cm**2*atm) 
+!    See equation 5b of Paynter et al. 2009 
+!    Optical depth self continuum = Number of moleclues in path*
+!    (vapor pressure/101325)*Continuum Coefficent*
+!    temperature dependence of continuum cofficent
+!    Optical depth foriegn continuum = Number of moleclues in path*
+!    (dry atm pressure/101325)*Continuum Coefficent*
+!    temperature dependence of contiuum cofficent 
+!
+!    We firstly have to convert from mass density
+!    (i.e. rh2o*delpdig) to number density by mutiplying by 
+!    (R_water/K_b) and then mulitply this value by vapor 
+!     pressure of H2O/1atm for self continuum and pressure of 
+!     AIR/1atm for foreign continuum.
+!     We will assume presssure of H2O = sphum*Pressure(atm)/0.622
+!     and use 1E-4 converts from m2 to cm2  
+!    
+!    For self continuum: 
+!    Number of moleclues in path*(vapor pressure/101325) = 
+!    press*sphum*(deltaP/g)*(R_water/K_b)*(1E-4*(sphum/0.622)/101325) 
+!    Define h2o_conv as  (R_water/K_b)*1E-4/101325 = 3.30E16 
+!    sphum**2*press/0.622*(deltaP/g)*h2o_conv  
+!    
+!    For foreign continuum:  
+!    sphum*press*(deltaP/g)*h2o_conv  
+!                            
+!    The temperature dependence of the self continuum has the form:
+!    exp(TD*(1/T-1/296)) 
+!    We have assumed a value of TD of 1500, based up Paynter 
+!    and ramaswamy 2014 JGR. 
+!    The temperature dependence of the foriegn continuum has the form
+!    296/T). 
+!     
+! 		
+!
 !---------------------------------------------------------------------
                 if (nband <= nh2obands) then
-                  do k = KSRAD,KERAD
+     
+		  do k = KSRAD,KERAD
                     wh2o(k) = rh2o(k)*delpdig(k)*   &
                         exp(powph2o(nband)*alog(press(k)*p0h2o(nband)))
-                  end do
- 
+		    If (do_sw_continuum) then 
+		       wh2octms(k) = (h2o_conv/0.622)*press(k)*rh2o(k)**2 &
+		       *delpdig(k)*exp(1500.*((1./temp(k)) -3.38E-3))&
+		       *(296./temp(K))
+		        wh2octmf(k) = h2o_conv*press(k)*rh2o(k)&
+		       *delpdig(k)*(296./temp(K)) - wh2octms(k)     
+		    End if 
+		  end do
+
 !---------------------------------------------------------------------
 !    calculate the "effective" co2, o2, ch4 and n2o gas optical depths 
 !    for the appropriate absorbing bands.                               
@@ -3137,16 +3207,21 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
 !    define the h2o + o3 gas optical depths.                           
 !--------------------------------------------------------------------
                   if (strterm(np)) then
-                    opdep(:) = kh2o(np)*wh2ostr(:) + ko3(np)*wo3(:)
+                  opdep(:) = kh2o(np)*wh2ostr(:) + ko3(np)*wo3(:) 	    
                   else
-                    opdep(:) = kh2o(np)*wh2o(:) + ko3(np)*wo3(:)
-                  end if
-
+                  opdep(:) = kh2o(np)*wh2o(:) + ko3(np)*wo3(:)  
+		  end if
+                  If (do_sw_continuum) then 
                   gasopdep(i,j,:,np,ng) =    &
-                           opdep(:) + quenchfac(:)*efftauco2(:) +   &
-                              efftauo2(:) + efftauch4(:) + efftaun2o(:)
-
-                end do  ! (nf loop)
+                  opdep(:) + quenchfac(:)*efftauco2(:) +   &
+                  efftauo2(:) + efftauch4(:) + efftaun2o(:) &
+                  +  wh2octms(:)*kctms(np) +wh2octmf(:)*kctmf(np)
+                  else
+	          gasopdep(i,j,:,np,ng) =    &
+                  opdep(:) + quenchfac(:)*efftauco2(:) +   &
+                  efftauo2(:) + efftauch4(:) + efftaun2o(:)
+		  end IF 
+		end do  ! (nf loop)
               end do   ! (nband loop)
             end do  ! (ng loop)
           endif  ! (daylight)

@@ -50,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 19.0 2012/01/06 20:16:23 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 21.0 2014/12/15 21:44:25 fms Exp $'
+character(len=128)  :: tagname =  '$Name: ulm $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------
@@ -185,9 +185,13 @@ subroutine esfsw_parameters_init
         Solar_spect%nbands = 18
         Solar_spect%nfrqpts = 38
         Solar_spect%nh2obands = 9
+      else if (trim(sw_resolution) == 'med') then
+        Solar_spect%nbands = 18
+        Solar_spect%nfrqpts = 74
+        Solar_spect%nh2obands = 9	
       else
         call error_mesg ( 'esfsw_parameters_mod',   &
-       ' sw_resolution must be specified as "high" or "low".', FATAL)
+       ' sw_resolution must be specified as "high" or "med" or "low".', FATAL)
       endif
       if (sw_diff_streams == 4) then
         Solar_spect%nstreams = 4

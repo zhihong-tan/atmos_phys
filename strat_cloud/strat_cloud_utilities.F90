@@ -17,8 +17,8 @@ PUBLIC diag_id_type, diag_pt_type, strat_nml_type,  &
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 20.0.2.1 2014/01/09 08:18:13 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201409 $'
+Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 21.0 2014/12/15 21:46:19 fms Exp $'
+Character(len=128) :: Tagname = '$Name: ulm $'
 
 logical  :: module_is_initialized = .false.
 
@@ -261,6 +261,10 @@ type strat_nml_type
 
   integer :: num_strat_pts, betaP, nsublevels, kmap, kord,    &
              super_ice_opt, isamp, jsamp, ksamp
+
+!-->cjg
+  integer :: var_limit_opt, up_strat_opt
+!<--cjg
 
   character(len=64)                :: microphys_scheme, &
                                       macrophys_scheme, &

@@ -31,7 +31,7 @@ use rad_utilities_mod,      only: rad_utilities_init, &
                                   cldrad_properties_type,  &
                                   cld_specification_type, &
                                   solar_spectrum_type, &
-                                  microphysics_type, Cldrad_control
+                                  microphysics_type, Cldrad_control, aerosol_type
 use esfsw_parameters_mod,   only: Solar_spect, esfsw_parameters_init
 
 !   cloud parameterization module:
@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 19.0 2012/01/06 20:24:43 fms Exp $'
-character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+character(len=128)  :: version =  '$Id: strat_clouds_W.F90,v 21.0 2014/12/15 21:45:23 fms Exp $'
+character(len=128)  :: tagname =  '$Name: ulm $'
 
 
 !---------------------------------------------------------------------
@@ -275,7 +275,7 @@ end subroutine strat_clouds_W_init
 !
 subroutine strat_clouds_amt (is, ie, js, je, Rad_time, pflux, &
                              press, temp, qv, &
-                             land, Cld_spec, Lsc_microphys)
+                             land, Cld_spec, Lsc_microphys, Aerosol)
 
 !---------------------------------------------------------------------
 !    strat_clouds_amt defines the location, amount (cloud fraction), 
@@ -292,6 +292,7 @@ real,    dimension(:,:,:),    intent(in)        :: pflux, press, temp, qv
 real,    dimension(:,:),      intent(in)        :: land
 type(cld_specification_type), intent(inout)     :: Cld_spec      
 type(microphysics_type),      intent(inout)     :: Lsc_microphys
+type(aerosol_type),           intent(in)        :: Aerosol
 
 !----------------------------------------------------------------------
 !   intent(in) variables:
@@ -477,7 +478,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &       
                                Cld_spec%cloud_ice_num, &
-                               press(:,:,1:kx), pflux, temp, ncldlvls, &
+                               press(:,:,1:kx), pflux, temp, Aerosol, ncldlvls, &
                                cldamt, Cld_spec%lwp, Cld_spec%iwp,   &
                                Cld_spec%reff_liq, Cld_spec%reff_ice, &
                                conc_drop= Lsc_microphys%conc_drop, &
@@ -587,7 +588,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 qi_stoch_lw(:,:,:,nb), qa_stoch_lw(:,:,:,nb),&
                 qn_stoch_lw(:,:,:,nb), &
                 qni_stoch_lw(:,:,:,nb),&
-                press(:,:,1:kx), pflux, temp, ncldlvls, &
+                press(:,:,1:kx), pflux, temp, Aerosol, ncldlvls, &
                 cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
                 Cld_spec%iwp_lw_band(:,:,:,nb),   &
                 Cld_spec%reff_liq_lw_band(:,:,:,nb), &
@@ -635,7 +636,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
               qi_stoch_sw(:,:,:,nb), qa_stoch_sw(:,:,:,nb),&
               qn_stoch_sw(:,:,:,nb), &
               qni_stoch_sw(:,:,:,nb), &
-              press(:,:,1:kx), pflux, temp, ncldlvls, &
+              press(:,:,1:kx), pflux, temp, Aerosol, ncldlvls, &
               cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
               Cld_spec%iwp_sw_band(:,:,:,nb),   &
               Cld_spec%reff_liq_sw_band(:,:,:,nb), &
@@ -726,7 +727,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 qi_stoch_lw2(:,:,:,nb), qa_stoch_lw2(:,:,:,nb),&
                 qn_stoch_lw2(:,:,:,nb), &
                 qni_stoch_lw2(:,:,:,nb), &
-                press(:,:,1:kx), pflux, temp, ncldlvls, &
+                press(:,:,1:kx), pflux, temp, Aerosol, ncldlvls, &
                 cldamt, Cld_spec%lwp_lw_band(:,:,:,nb),&
                 Cld_spec%iwp_lw_band(:,:,:,nb),   &
                 Cld_spec%reff_liq_lw_band(:,:,:,nb), &
@@ -774,7 +775,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                 qi_stoch_sw2(:,:,:,nb), qa_stoch_sw2(:,:,:,nb),&
                 qn_stoch_sw2(:,:,:,nb), &
                 qni_stoch_sw2(:,:,:,nb), &
-                press(:,:,1:kx), pflux, temp, ncldlvls, &
+                press(:,:,1:kx), pflux, temp, Aerosol, ncldlvls, &
                 cldamt, Cld_spec%lwp_sw_band(:,:,:,nb), &
                 Cld_spec%iwp_sw_band(:,:,:,nb),   &
                 Cld_spec%reff_liq_sw_band(:,:,:,nb), &
@@ -830,7 +831,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &
                                Cld_spec%cloud_ice_num, &
-                               press(:,:,1:kx), pflux, temp, ncldlvls, &
+                               press(:,:,1:kx), pflux, temp, Aerosol, ncldlvls, &
                                cldamt, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
                                Cld_spec%reff_ice)
@@ -882,7 +883,7 @@ type(microphysics_type),      intent(inout)     :: Lsc_microphys
                                Cld_spec%cloud_ice, Cld_spec%cloud_area,&
                                Cld_spec%cloud_droplet, &
                                Cld_spec%cloud_ice_num, &
-                               press(:,:,1:kx), pflux, temp, ncldlvls, &
+                               press(:,:,1:kx), pflux, temp, Aerosol, ncldlvls, &
                                Cld_spec%camtsw, Cld_spec%lwp,   &
                                Cld_spec%iwp, Cld_spec%reff_liq,   &
                                Cld_spec%reff_ice,  &

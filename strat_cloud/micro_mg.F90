@@ -137,8 +137,8 @@ public :: &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-character(len=128) :: Version = '$Id: micro_mg.F90,v 1.1.2.2.2.1 2014/05/16 14:50:42 Huan.Guo Exp $'
-character(len=128) :: Tagname = '$Name: tikal_201409 $'
+character(len=128) :: Version = '$Id: micro_mg.F90,v 21.0 2014/12/15 21:46:03 fms Exp $'
+character(len=128) :: Tagname = '$Name: ulm $'
 #endif
  
 #ifndef GFDL_COMPATIBLE_MICROP

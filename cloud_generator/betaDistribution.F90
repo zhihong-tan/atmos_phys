@@ -1,6 +1,7 @@
 module beta_dist_mod
   use fms_mod,only: stdlog, write_version_number, &
                     error_mesg, FATAL
+  use fms_mod,only: open_file, close_file, read_distributed
   use mpp_mod,only: get_unit                  
   implicit none
   private 
@@ -17,8 +18,8 @@ module beta_dist_mod
   !   x, p, q. The range of P and Q are specified when the tables are built. 
   !   The arrays bounds are from 0 to nSteps + 1, just in case we draw exactly 0 or 1. 
   !
-  character(len=128)  :: version =  '$Id: betaDistribution.F90,v 16.0 2008/07/30 22:06:18 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: tikal_201409 $'
+  character(len=128)  :: version =  '$Id: betaDistribution.F90,v 21.0 2014/12/15 21:39:50 fms Exp $'
+  character(len=128)  :: tagname =  '$Name: ulm $'
   
   logical         :: module_is_initialized = .false.
   
@@ -399,22 +400,27 @@ contains
     logical                         :: readFromFile
 
     ! Local variables
-!    integer, parameter :: unit = 909
-    integer :: unit
+    integer :: unit, istat
+    integer, dimension(3) :: readMaxVals
     
-    unit = get_unit()
-    open(unit = unit, file = trim(fileName), status = 'old')
-    read(unit, '(3(i5, 1x))') Pmax, Qmax, numXSteps
+    unit = open_file(file=trim(fileName), action='read', dist=.true.)
+    call read_distributed(unit, fmt='(3(i5, 1x))', iostat=istat, data=readMaxVals)
+    if ( istat.NE.0 ) call error_mesg('beta_dist_mod', 'Read of Pmax/Qmax/numXSteps failed', FATAL)
+
+    Pmax = readMaxVals(1)
+    Qmax = readMaxVals(2)
+    numXsteps = readMaxVals(3)
+
     allocate(   betaDeviateTable(0:numXSteps + 1, Pmax, Qmax), &
              incompleteBetaTable(0:numXSteps + 1, Pmax, Qmax))
-    read(unit, '(8(f10.8, 1x))') betaDeviateTable
-    read(unit, '(8(f10.8, 1x))') incompleteBetaTable
-    close(unit)
- 
-!    print *, "Reading beta distribution tables..."
-!    write(*, '(8(f10.8, 1x))') betaDeviateTable(:8, 5, 5)
-!    write(*, '(8(f10.8, 1x))') incompleteBetaTable(:8, 5, 5)
-   
+
+    call read_distributed(unit, fmt='(8(f10.8, 1x))', iostat=istat, data=betaDeviateTable)
+    if ( istat.NE.0 ) call error_mesg('beta_dist_mod', 'Read of betaDeviateTable failed', FATAL)
+    call read_distributed(unit, fmt='(8(f10.8, 1x))', iostat=istat, data=incompleteBetaTable)
+    if ( istat.NE.0 ) call error_mesg('beta_dist_mod', 'Read of incompleteBetaTable failed', FATAL)
+
+    call close_file(unit, dist=.true.)
+
     readFromFile = .true.
   end function readFromFile 
   

@@ -169,8 +169,8 @@ public :: clubb_setup, &
           clubb_end
 
 !--------------------- version number ----------------------------------
-character(len=128)   :: version = '$Id: CLUBB_driver_SCM.F90,v 20.0 2013/12/13 23:09:19 fms Exp $'
-character(len=128)   :: tagname = '$Name: tikal_201409 $'
+character(len=128)   :: version = '$Id: CLUBB_driver_SCM.F90,v 21.0 2014/12/15 21:40:08 fms Exp $'
+character(len=128)   :: tagname = '$Name: ulm $'
 
 logical              :: module_is_initialized = .false.
 character(len=32)    :: tracer_units, tracer_name
@@ -428,7 +428,7 @@ contains
                    phalf, pfull, zhalf, zfull, omega_avg,     &
                    t, q, r, u, v,                             &
                    u_star, b_star, q_star,                    &
-                   tdt, qdt, rdt, udt, vdt,                   &
+                   tdt, qdt, rdt, rdiag, udt, vdt,                   &
                    dcond_ls_liquid, dcond_ls_ice,             &
                    Ndrop_act_clubb, Icedrop_act_clubb,        &
                    ndust, rbar_dust,                          &
@@ -547,10 +547,11 @@ contains
   real, intent(in)                              ::  dtmain
   real, intent(in), dimension(:,:,:)            ::  phalf, pfull, zhalf, zfull, omega_avg
   real, intent(in), dimension(:,:,:)            ::  t, q, u, v
-  real, intent(inout), dimension(:,:,:,:)       ::  r
+  real, intent(in), dimension(:,:,:,:)          ::  r
   real, intent(in), dimension(:,:)              ::  u_star, b_star, q_star
   real, intent(inout), dimension(:,:,:)         ::  tdt, qdt, udt, vdt
   real, intent(inout), dimension(:,:,:,:)       ::  rdt
+  real, intent(inout), dimension(:,:,:,ntp+1:)  ::  rdiag
   real, intent(out), dimension(:,:,:)           ::  dcond_ls_liquid
   real, intent(out), dimension(:,:,:)           ::  dcond_ls_ice
   real, intent(out), dimension(:,:,:)           ::  Ndrop_act_clubb
@@ -826,7 +827,7 @@ contains
     call setup_grid_heights(.true., 2, avg_deltaz, momentum_heights(1), momentum_heights, thermodynamic_heights)
 
     ! Load higher order terms and high-res results
-    call clubb_3d_2_1d(ix, iy, r)
+    call clubb_3d_2_1d(ix, iy, rdiag)
 
     ! Pressure on thermodynamic points [Pa]
     call host2clubb_full(pfull(ix,iy,:), p_in_Pa)
@@ -1894,7 +1895,7 @@ contains
       endif  ! nqn > 0
       ! end passive tracers
 
-      call clubb_1D_2_3D( ix, iy, r )
+      call clubb_1D_2_3D( ix, iy, rdiag )
 
     enddo ! enddo of ix
   enddo ! enddo of iy
@@ -2837,7 +2838,7 @@ contains
 subroutine clubb_3D_2_1D( ix, iy, r )
 implicit none
 integer,  intent(in) ::  ix, iy
-real, intent(in) , dimension(:,:,:,:)   ::  r
+real,     intent(in), dimension(:,:,:,ntp+1:) ::  r
 
 !=======================================================================
 do iz_clubb=2, kdim+1
@@ -2886,26 +2887,26 @@ end subroutine clubb_3D_2_1D
 subroutine clubb_1D_2_3D( ix, iy, r )
 implicit none
 integer,  intent(in) ::  ix, iy
-real, intent(out) , dimension(:,:,:,:)   ::  r
+real, intent(inout), dimension(:,:,:,ntp+1:) :: r
 
 !=======================================================================
 do iz_clubb=2, kdim+1
   ! iz_host = iz_clubb - 1
    iz_host = kdim + 2 - iz_clubb
-   r( ix, iy, iz_host, nwp2 )         = wp2( iz_clubb )
-   r( ix, iy, iz_host, nwp3 )         = wp3( iz_clubb )
-   r( ix, iy, iz_host, nupwp )        = upwp(iz_clubb )
-   r( ix, iy, iz_host, nvpwp )        = vpwp(iz_clubb )
-   r( ix, iy, iz_host, nwprtp )       = wprtp(iz_clubb )
-   r( ix, iy, iz_host, nwpthlp )      = wpthlp(iz_clubb )
-   r( ix, iy, iz_host, nrtp2 )        = rtp2(iz_clubb )
-   r( ix, iy, iz_host, nthlp2 )       = thlp2(iz_clubb )
-   r( ix, iy, iz_host, nrtpthlp )     = rtpthlp(iz_clubb )
-   r( ix, iy, iz_host, nup2 )         = up2(iz_clubb )
-   r( ix, iy, iz_host, nvp2 )         = vp2(iz_clubb )
+   r(ix,iy,iz_host,nwp2    ) =     wp2(iz_clubb)
+   r(ix,iy,iz_host,nwp3    ) =     wp3(iz_clubb)
+   r(ix,iy,iz_host,nupwp   ) =    upwp(iz_clubb)
+   r(ix,iy,iz_host,nvpwp   ) =    vpwp(iz_clubb)
+   r(ix,iy,iz_host,nwprtp  ) =   wprtp(iz_clubb)
+   r(ix,iy,iz_host,nwpthlp ) =  wpthlp(iz_clubb)
+   r(ix,iy,iz_host,nrtp2   ) =    rtp2(iz_clubb)
+   r(ix,iy,iz_host,nthlp2  ) =   thlp2(iz_clubb)
+   r(ix,iy,iz_host,nrtpthlp) = rtpthlp(iz_clubb)
+   r(ix,iy,iz_host,nup2    ) =     up2(iz_clubb)
+   r(ix,iy,iz_host,nvp2    ) =     vp2(iz_clubb)
    if ( sclr_dim > 0) then
-     r( ix, iy, iz_host, nrhcrit1 ) = RH_crit(iz_clubb, 1, 1 )
-     r( ix, iy, iz_host, nrhcrit2 ) = RH_crit(iz_clubb, 1, 2 )
+     r(ix,iy,iz_host,nrhcrit1) = RH_crit(iz_clubb,1,1)
+     r(ix,iy,iz_host,nrhcrit2) = RH_crit(iz_clubb,1,2)
    endif
 enddo
 
@@ -2924,7 +2925,7 @@ real :: dtmain
 real, intent(in),    dimension(:)    ::   var_clubb
 real, intent(in),    dimension(:)    ::   var_host
 real, intent(inout), dimension(:)    ::   vardt_host
-real, intent(out),   dimension(:)    ::   vardt_clubb
+real, intent(inout), dimension(:)    ::   vardt_clubb
  
 do iz_clubb=2, kdim+1
    iz_host = kdim + 2 - iz_clubb
@@ -2976,7 +2977,7 @@ use  aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act_wpdf_k
 
 implicit none
 real, intent(inout),  dimension(:, :)    ::    aeromass_clubb
-real, intent(out),    dimension(:)       ::    Ndrop_max
+real, intent(inout),  dimension(:)       ::    Ndrop_max
 real ::   drop
   
 !=======================================================================
@@ -3903,7 +3904,7 @@ endif
                    phalf, pfull, zhalf, zfull, omega_avg,     &
                    t, q, r, u, v,                             &
                    u_star, b_star, q_star,                    &
-                   tdt, qdt, rdt, udt, vdt,                   &
+                   tdt, qdt, rdt, rdiag, udt, vdt,                   &
                    dcond_ls_liquid, dcond_ls_ice,             &
                    Ndrop_act_clubb, Icedrop_act_clubb,        &
                    ndust, rbar_dust,                          &
@@ -4022,10 +4023,11 @@ endif
   real, intent(in)                              ::  dtmain
   real, intent(in), dimension(:,:,:)            ::  phalf, pfull, zhalf, zfull, omega_avg
   real, intent(in), dimension(:,:,:)            ::  t, q, u, v
-  real, intent(inout), dimension(:,:,:,:)       ::  r
+  real, intent(in), dimension(:,:,:,:)          ::  r
   real, intent(in), dimension(:,:)              ::  u_star, b_star, q_star
   real, intent(inout), dimension(:,:,:)         ::  tdt, qdt, udt, vdt
   real, intent(inout), dimension(:,:,:,:)       ::  rdt
+  real, intent(inout), dimension(:,:,:,:)       ::  rdiag
   real, intent(out), dimension(:,:,:)           ::  dcond_ls_liquid
   real, intent(out), dimension(:,:,:)           ::  dcond_ls_ice
   real, intent(out), dimension(:,:,:)           ::  Ndrop_act_clubb

@@ -37,8 +37,8 @@ private  aerosol_effects
 !--------------------------------------------------------------------------
 !---version number---------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: aerosol_cloud.F90,v 20.0.2.1 2014/01/09 08:18:12 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: tikal_201409 $'
+Character(len=128) :: Version = '$Id: aerosol_cloud.F90,v 21.0 2014/12/15 21:45:57 fms Exp $'
+Character(len=128) :: Tagname = '$Name: ulm $'
 
 !--------------------------------------------------------------------------
 !---namelist---------------------------------------------------------------
@@ -268,6 +268,7 @@ INTEGER,                    INTENT(IN )    :: otun
 !    compute the relevant upward velocity for droplet / ice activation.
 !-------------------------------------------------------------------------
         call mpp_clock_begin (aero_loop1)
+        if (Nml%up_strat_opt == 1) then   ! cjg
         do k = 1,kdim
           do j=1,jdim
             do i = 1,idim
@@ -279,6 +280,17 @@ INTEGER,                    INTENT(IN )    :: otun
             end do
           end do
         end do
+
+        elseif (Nml%up_strat_opt == 2) then   ! cjg
+        do k = 1,kdim
+          do j=1,jdim
+            do i = 1,idim
+              up_strat(i,j,k) = -1.*( Atmos_state%omega(i,j,k) &
+                                      / (Atmos_state%airdens(i,j,k)*grav) )
+            end do
+          end do
+        end do
+        endif   ! cjg
         call mpp_clock_end (aero_loop1)
 
 !-------------------------------------------------------------------------
@@ -289,6 +301,7 @@ INTEGER,                    INTENT(IN )    :: otun
 !    are not activated; in such a case, no particles are activated. 
 !-------------------------------------------------------------------------
         call mpp_clock_begin (aero_loop2)
+        if (Nml%var_limit_opt == 1) then   ! cjg
         do k = 1,kdim
           do j=1,jdim
             do i = 1,idim
@@ -320,6 +333,25 @@ INTEGER,                    INTENT(IN )    :: otun
             end do
           end do
         end do
+
+        elseif (Nml%var_limit_opt == 2) then   ! cjg
+        do k = 1,kdim
+          do j=1,jdim
+            do i = 1,idim
+
+              wp2(i,j,k) = Nml%var_limit**2
+              if (diag_id%subgrid_w_variance > 0)   &
+                diag_4d(i,j,k,diag_pt%subgrid_w_variance) = wp2(i,j,k)**0.5
+               
+              call aer_ccn_act_wpdf_m   &
+                   (Atmos_state%T_in(i,j,k), Atmos_state%pfull(i,j,k), &
+                    up_strat(i,j,k), wp2(i,j,k), wpdf_offs,   &
+                    totalmass1(i,j,k,:), Particles%drop1(i,j,k))
+
+            end do
+          end do
+        end do
+        endif   ! cjg
         call mpp_clock_end   (aero_loop2)
 
 !-------------------------------------------------------------------------

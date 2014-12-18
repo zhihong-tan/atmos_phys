@@ -232,6 +232,7 @@ use mg_const_mod,         ONLY : mg_const_init, rhow, di_mg, ci_mg
 use  diag_manager_mod,    only:  diag_manager_init,    &
                                  register_diag_field, send_data
 use  time_manager_mod,    only:  time_type, time_manager_init
+use rad_utilities_mod,      only: aerosol_type
 
 implicit none
 private
@@ -255,8 +256,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 20.0 2013/12/13 23:09:10 fms Exp $'
-character(len=128) :: tagname = '$Name: tikal_201409 $'
+character(len=128) :: version = '$Id: cloud_rad.F90,v 21.0 2014/12/15 21:39:58 fms Exp $'
+character(len=128) :: tagname = '$Name: ulm $'
 
 
 !---------------------------------------------------------------------- 
@@ -336,6 +337,8 @@ real         :: min_diam_drop_mg = 2.e-6
 real         :: max_diam_drop_mg = 50.e-6
 real         :: dcs_mg =  200.e-6
 real         :: Ni_min = 10.
+logical      :: prog_ccn = .false.
+
 !--------------------------------------------------------------------
 !    namelist variables:
 !
@@ -429,7 +432,7 @@ namelist /cloud_rad_nml/                                       &
                          adjust_top, scale_factor, qamin, &
                          do_brenguier, N_min, Ni_min, snow_in_cloudrad, &
                          rain_in_cloudrad, min_diam_ice_mg, &
-                         dcs_mg, min_diam_drop_mg, max_diam_drop_mg
+                         dcs_mg, min_diam_drop_mg, max_diam_drop_mg, prog_ccn
 
 
 !------------------------------------------------------------------
@@ -979,7 +982,7 @@ end subroutine lw_emissivity
 !
 subroutine cloud_summary3 (is, js, land,  use_fu2007, ql, qi, qa, qn, &
                            qni, pfull, phalf, &
-                           tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
+                           tkel, Aerosol, nclds, cldamt, lwp, iwp, reff_liq,  &
                            reff_ice, ktop, kbot, conc_drop, conc_ice, &
                            size_drop, size_ice, droplet_number,  &
                            ice_number)
@@ -994,6 +997,7 @@ real, dimension(:,:),      intent(in)            :: land
 logical,                   intent(in)             :: use_fu2007
 real, dimension(:,:,:),    intent(in)            :: ql, qi, qa, qn, pfull,&
                                                     phalf, tkel, qni
+type(aerosol_type),        intent(in)	         :: Aerosol
 integer, dimension(:,:),   intent(out)           :: nclds          
 real, dimension(:,:,:),    intent(out)           :: cldamt, lwp, iwp, &
                                                     reff_liq, reff_ice
@@ -1056,10 +1060,11 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
       real,dimension (size(ql,1),size(ql,2),   &
                                  size(ql,3)) :: qa_local, ql_local, &
                                                 qi_local, N_drop3D, &
-                                                N_ice3D
+                                                N_ice3D, N_drop2D
 
-      real,dimension (size(ql,1),size(ql,2)) :: N_drop2D, k_ratio
+      real,dimension (size(ql,1),size(ql,2)) :: k_ratio
       integer  :: i, j, k
+      real     :: depth, aerosols_concen
 
 !--------------------------------------------------------------------
 !    local variables:
@@ -1102,7 +1107,28 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !    define the cloud droplet concentration and the ratio of the 
 !    effective drop radius to the mean volume radius.
 !--------------------------------------------------------------------
-      N_drop2D(:,:)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
+      if (prog_ccn) then
+!droplet number concentration in #/cc following Boucher and Lohmann 1995
+!the lin microphysics uses #/cc								
+      do k=1, size(ql,3)
+        do j=1, size(ql,2)
+          do i=1, size(ql,1)
+!sulfate concentration in ug/m3	
+         depth=(phalf(i,j,k+1) - phalf(i,j,k))/(9.8*0.029*pfull(i,j,k)/(8.314*tkel(i,j,k)))
+         aerosols_concen = (Aerosol%aerosol(i,j,k,1)) /depth*1.e9
+         N_drop2D(i,j,k) = (land(i,j)*(10.**2.24* &
+                           (0.7273*aerosols_concen)**0.257)+ &
+                           (1.-land(i,j))*(10.**2.06* &
+                           (0.7273*aerosols_concen)**0.48))*1.e6
+! Treating Antartica as "ocean"? lat < -60
+	enddo
+	enddo
+	enddo
+      else
+        do k=1, size(ql,3)
+	      N_drop2D(:,:,k)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
+        end do
+      endif
       k_ratio(:,:) = k_land*land(:,:) + k_ocean*(1. - land(:,:))
 !yim prognostic droplet number
       if (do_liq_num) then
@@ -1112,7 +1138,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
         do k=1, size(ql,3)
           do j=1, size(ql,2)
             do i=1, size(ql,1)
-              droplet_number(i,j,k) = N_drop2D(i,j)/(pfull(i,j,k)/  &
+              droplet_number(i,j,k) = N_drop2D(i,j,k)/(pfull(i,j,k)/  &
                                       (RDGAS*tkel(i,j,k)))
             end do
           end do
@@ -1314,8 +1340,8 @@ subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D, 
  
 real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
                                                      pfull, phalf, tkel, &
-                                                     N_drop3D, N_ice3D
-real,    dimension(:,:),   intent(in)             :: N_drop2D, k_ratio
+                                                     N_drop3D, N_ice3D, N_drop2D
+real,    dimension(:,:),   intent(in)             :: k_ratio
 integer, dimension(:,:),   intent(out)            :: nclds
 integer, dimension(:,:,:), intent(out)            :: ktop, kbot
 real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
@@ -1486,7 +1512,7 @@ do_liq_num_if: if(.not. do_liq_num) then
                   reff_liq_local = k_ratio(i,j)*620350.49*    &
                                    (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/  &
                                    RDGAS/tkel(i,j,k)/DENS_H2O/  &
-                                   N_drop2D(i,j))**(1./3.)
+                                   N_drop2D(i,j,k))**(1./3.)
                else
                  reff_liq_local = 0.
                endif
@@ -1970,9 +1996,9 @@ subroutine rnd_overlap    (ql, qi, qa, use_fu2007, pfull, phalf,   &
  
 real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
                                                      pfull, phalf, tkel, &
-                                                     N_drop3D, N_ice3d
+                                                     N_drop3D, N_ice3d, N_drop2D
 logical,                   intent(in)             :: use_fu2007
-real,    dimension(:,:),   intent(in)             :: N_drop2D, k_ratio
+real,    dimension(:,:),   intent(in)             :: k_ratio
 integer, dimension(:,:),   intent(out)            :: nclds
 real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
                                                      reff_liq, reff_ice
@@ -2134,7 +2160,7 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
                 reff_liq_local = k_ratio(i,j)* 620350.49 *    &
                                  (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/   & 
                                  RDGAS/tkel(i,j,k)/DENS_H2O/    &
-                                 N_drop2D(i,j))**(1./3.)
+                                 N_drop2D(i,j,k))**(1./3.)
         else ! do_liq_num_if2
 
 !cms++

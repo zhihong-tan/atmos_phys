@@ -103,8 +103,8 @@ character(len=7) :: mod_name = 'damping'
 !   note:  
 !     rfactr = coeff. for damping momentum at the top level
 
- character(len=128) :: version = '$Id: damping_driver.F90,v 19.0.14.2 2014/05/08 13:39:09 Chris.Golaz Exp $'
- character(len=128) :: tagname = '$Name: tikal_201409 $'
+ character(len=128) :: version = '$Id: damping_driver.F90,v 21.0 2014/12/15 21:42:05 fms Exp $'
+ character(len=128) :: tagname = '$Name: ulm $'
 
 !-----------------------------------------------------------------------
 
@@ -112,7 +112,7 @@ contains
 
 !#######################################################################
 
- subroutine damping_driver (is, js, lat, Time, delt, pfull, phalf, zfull, zhalf, &
+ subroutine damping_driver (is, js, lat, Time, delt, area, pfull, phalf, zfull, zhalf, &
                             u, v, t, q, r,  udt, vdt, tdt, qdt, rdt,  &
 !                                   mask, kbot)
                             z_pbl,  mask, kbot)
@@ -128,7 +128,7 @@ contains
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real, dimension(:,:), intent(in)           :: z_pbl
+ real, dimension(:,:), intent(in)           :: z_pbl, area
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -191,7 +191,7 @@ contains
 !-----------------------------------------------------------------------
    if (do_mg_drag) then
 
-       call mg_drag (is, js, delt, u, v, t, pfull, phalf, zfull, zhalf,  &
+       call mg_drag (is, js, delt, area, u, v, t, pfull, phalf, zfull, zhalf,  &
                      utnd, vtnd, ttnd, taubx,tauby,taus,        kbot)
        udt = udt + utnd
        vdt = vdt + vtnd
