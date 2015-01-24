@@ -761,7 +761,7 @@ subroutine esfsw_driver_init
 !----------------------------------------------------------------------
 !
 !----------------------------------------------------------------------
-      do n=1,NH2OBANDS
+     do n=1,NH2OBANDS
         if (c1co2(n) /= input_flag .and.  &
             c2co2(n) /= input_flag .and.  &
             c3co2(n) /= input_flag ) then
@@ -788,32 +788,36 @@ subroutine esfsw_driver_init
           totco2max(n) = 0.0                                            
           totco2strmax(n) = 0.0
         endif
+       
         if (c1o2(n) /= input_flag .and.   &
             c2o2(n) /= input_flag .and.   &
             c3o2(n) /= input_flag ) then
           c4o2(n) = c1o2(n) * c2o2(n) ** c3o2(n)
-          c4o2str(n) = c1o2str(n) * c2o2str(n) ** c3o2str(n)
           toto2max(n) = ( (1.0/c1o2(n) ) + c2o2(n) ** c3o2(n) ) ** &
-                          (1.0/c3o2(n) ) - c2o2(n)
-          if (nbands == 18) then
-            if ( n /= 4) then
+                          (1.0/c3o2(n) ) - c2o2(n)   
+        else
+         c4o2(n) = 0.0                              
+         toto2max(n) = 0.0                                            
+       endif
+	
+       if ( c1o2str(n) /= input_flag .and.   &
+            c2o2str(n) /= input_flag .and.   &
+            c3o2str(n) /= input_flag ) then
+          c4o2str(n) = c1o2str(n) * c2o2str(n) ** c3o2str(n)
+                            if (c3o2str(n) > 3.3E-3) then
               toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
                                 c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
                                 c2o2str(n)
-            else
-              toto2strmax(n) = HUGE (c4o2strschrun) 
-            endif
           else
-              toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
-                                c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
-                                c2o2str(n)
+              toto2strmax(n) = HUGE (c4o2strschrun) 
           endif
         else
-          c4o2(n) = 0.0                              
           c4o2str(n) = 0.0
-          toto2max(n) = 0.0                                            
           toto2strmax(n) = 0.0
-        endif
+        endif	
+	
+	
+	
     if (do_ch4_sw_effects) then
         if (c1ch4(n) /= input_flag .and.  &
             c2ch4(n) /= input_flag .and.  &
