@@ -25,8 +25,8 @@
       integer :: id_prod_no_col, id_flash_freq
       real :: lat25
       
-character(len=128), parameter :: version     = '$Id: mo_hook.F90,v 19.0 2012/01/06 20:33:56 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: testing $'
+character(len=128), parameter :: version     = '$Id$'
+character(len=128), parameter :: tagname     = '$Name$'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

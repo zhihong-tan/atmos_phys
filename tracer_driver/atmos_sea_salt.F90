@@ -38,8 +38,8 @@ private
 public  atmos_sea_salt_sourcesink, atmos_sea_salt_init, atmos_sea_salt_end
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_sea_salt.F90,v 20.0 2013/12/13 23:23:59 fms Exp $'
-character(len=128) :: tagname = '$Name: testing $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 
 !-----------------------------------------------------------------------

@@ -6,8 +6,8 @@
       use fms_mod,    only : open_file, close_file, read_distributed
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_read_sim_chm.F90,v 19.0.16.1 2014/10/16 14:37:26 Jeffrey.Durachta Exp $'
-character(len=128), parameter :: tagname     = '$Name: testing $'
+character(len=128), parameter :: version     = '$Id$'
+character(len=128), parameter :: tagname     = '$Name$'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

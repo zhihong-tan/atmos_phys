@@ -11,8 +11,8 @@ public  aerosol_params_init
 
 !------------------------------------------------------------------------
 !----version number------------------------------------------------------
-Character(len=128) :: Version = '$Id: aerosol_params.F90,v 19.0 2012/01/06 20:31:39 fms Exp $'
-Character(len=128) :: Tagname = '$Name: testing $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------

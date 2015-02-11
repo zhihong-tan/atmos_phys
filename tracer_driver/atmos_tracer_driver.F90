@@ -312,8 +312,8 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 type(time_type) :: Time
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_driver.F90,v 20.0.2.1.2.3 2014/10/07 17:34:59 Jeffrey.Durachta Exp $'
-character(len=128) :: tagname = '$Name: testing $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
 
 contains

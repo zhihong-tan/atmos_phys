@@ -46,8 +46,8 @@
       type(hst_pl), private, allocatable ::   imp_hst_loss(:)
       logical, private, allocatable      ::   factor(:)
 
-character(len=128), parameter :: version     = '$Id: mo_imp_slv.F90,v 20.0 2013/12/13 23:25:05 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: testing $'
+character(len=128), parameter :: version     = '$Id$'
+character(len=128), parameter :: tagname     = '$Name$'
 logical                       :: module_is_initialized = .false.
 
       contains
