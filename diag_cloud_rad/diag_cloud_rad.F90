@@ -156,8 +156,8 @@ use Cloud_Rad_Mod, ONLY: CLOUD_RAD, CLOUD_RAD_INIT, cloud_rad_k_diag
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud_rad.F90,v 19.0 2012/01/06 20:05:09 fms Exp $'
- character(len=128) :: tagname = '$Name: testing $'
+ character(len=128) :: version = '$Id$'
+ character(len=128) :: tagname = '$Name$'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 

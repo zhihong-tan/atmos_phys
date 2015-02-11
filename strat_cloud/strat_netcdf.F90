@@ -17,8 +17,8 @@ private diag_field_init
 
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
-Character(len=128) :: Version = '$Id: strat_netcdf.F90,v 20.0 2013/12/13 23:22:17 fms Exp $'
-Character(len=128) :: Tagname = '$Name: testing $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics variables-----------------------------

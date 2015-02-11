@@ -1,6 +1,6 @@
 !#VERSION NUMBER:
-!  $Name: testing $
-!  $Id: donner_deep_k.F90,v 20.0 2013/12/13 23:17:18 fms Exp $
+!  $Name$
+!  $Id$
 
 !module donner_deep_inter_mod
 

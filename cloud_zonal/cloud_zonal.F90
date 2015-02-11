@@ -25,8 +25,8 @@ public   cloud_zonal, cloud_zonal_init, getcld
    real, dimension(37,4)   :: phigh,pmidl,ptop,pbtm
    real                    :: rad2deg
 
-   character(len=128) :: version = '$Id: cloud_zonal.F90,v 13.0 2006/03/28 21:07:56 fms Exp $'
-   character(len=128) :: tagname = '$Name: testing $'
+   character(len=128) :: version = '$Id$'
+   character(len=128) :: tagname = '$Name$'
    logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

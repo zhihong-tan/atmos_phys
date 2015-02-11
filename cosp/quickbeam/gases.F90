@@ -4,8 +4,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: gases.F90,v 20.0 2013/12/13 23:16:45 fms Exp $
-! $Name: testing $
+! $Id$
+! $Name$
 ! cosp_version = 1.3.2
 
 #endif

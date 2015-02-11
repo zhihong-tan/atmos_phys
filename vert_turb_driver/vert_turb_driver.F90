@@ -63,8 +63,8 @@ public   vert_turb_driver_restart
 !-----------------------------------------------------------------------
 !--------------------- version number ----------------------------------
 
-character(len=128) :: version = '$Id: vert_turb_driver.F90,v 20.0.4.1.2.1 2014/06/11 20:52:49 Chris.Golaz Exp $'
-character(len=128) :: tagname = '$Name: testing $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

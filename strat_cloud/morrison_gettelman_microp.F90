@@ -33,8 +33,8 @@ public morrison_gettelman_microp, morrison_gettelman_microp_init,  &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: morrison_gettelman_microp.F90,v 20.0.2.1 2014/01/09 08:18:12 rsh Exp $'
-Character(len=128) :: Tagname = '$Name: testing $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------

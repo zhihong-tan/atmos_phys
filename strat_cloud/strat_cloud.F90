@@ -199,8 +199,8 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud.F90,v 20.0.2.2.2.1 2014/07/09 17:17:33 Chris.Golaz Exp $'
-Character(len=128) :: Tagname = '$Name: testing $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------

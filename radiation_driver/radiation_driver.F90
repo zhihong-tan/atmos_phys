@@ -276,8 +276,8 @@ private
 !----------------------------------------------------------------------
 !------------ version number for this module --------------------------
 
-character(len=128) :: version = '$Id: radiation_driver.F90,v 20.0.4.3.2.1.2.2.2.1.2.1.2.2 2014/11/19 02:38:22 Seth.Underwood Exp $'
-character(len=128) :: tagname = '$Name: testing $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 
 !---------------------------------------------------------------------

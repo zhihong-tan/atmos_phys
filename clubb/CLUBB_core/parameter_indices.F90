@@ -1,6 +1,6 @@
 #ifdef CLUBB
 !-------------------------------------------------------------------------------
-! $Id: parameter_indices.F90,v 20.0 2013/12/13 23:10:09 fms Exp $
+! $Id$
 module parameter_indices
 
 ! Description:

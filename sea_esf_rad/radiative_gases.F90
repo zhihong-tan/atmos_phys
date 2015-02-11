@@ -71,8 +71,8 @@ private
 !----------- version number for this module --------------------------
 
 character(len=128)  :: version =  &
-'$Id: radiative_gases.F90,v 20.0 2013/12/13 23:20:28 fms Exp $'
-character(len=128)  :: tagname =  '$Name: testing $'
+'$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

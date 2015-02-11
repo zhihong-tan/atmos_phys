@@ -44,8 +44,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 20.0.2.1 2014/08/22 13:52:14 rab Exp $'
-character(len=128)  :: tagname =  '$Name: testing $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

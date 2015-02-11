@@ -1,5 +1,5 @@
 #ifdef CLUBB
-!$Id: pos_definite_module.F90,v 20.0 2013/12/13 23:10:16 fms Exp $
+!$Id$
 module pos_definite_module
 
   implicit none

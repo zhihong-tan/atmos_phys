@@ -1,5 +1,5 @@
 #ifdef CLUBB
-!$Id: input_names.F90,v 20.0 2013/12/13 23:09:51 fms Exp $
+!$Id$
 module input_names
 !
 !  Description: This module contains all of the strings used to define the

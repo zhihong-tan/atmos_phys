@@ -6,7 +6,7 @@
 #define GFDL
 #endif
 
-! $Id: pdf_closure_module.F90,v 20.0 2013/12/13 23:10:14 fms Exp $
+! $Id$
 module pdf_closure_module
 
   implicit none

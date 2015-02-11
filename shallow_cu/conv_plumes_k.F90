@@ -12,8 +12,8 @@ MODULE CONV_PLUMES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_plumes_k.F90,v 19.0.4.1.2.1.2.1.2.1.6.1 2014/03/18 13:26:04 Ming.Zhao Exp $'
-  character(len=128) :: tagname = '$Name: testing $'
+  character(len=128) :: version = '$Id$'
+  character(len=128) :: tagname = '$Name$'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

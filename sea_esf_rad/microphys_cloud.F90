@@ -46,8 +46,8 @@ namelist /microphys_cloud_nml/  diam_liq
 ! version control information
 !-----------------------------------------------------------------------
 
-character(len=128)  :: version =  '$Id: microphys_cloud.F90,v 19.0 2012/01/06 20:19:43 fms Exp $'
-character(len=128)  :: tagname =  '$Name: testing $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 logical ::   module_is_initialized = .false.
 contains 

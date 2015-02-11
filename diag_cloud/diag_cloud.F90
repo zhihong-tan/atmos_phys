@@ -44,8 +44,8 @@ use mpp_mod, only: input_nml_file
 
 
 !--------------------- version number ----------------------------------
- character(len=128) :: version = '$Id: diag_cloud.F90,v 19.0 2012/01/06 20:05:06 fms Exp $'
- character(len=128) :: tagname = '$Name: testing $'
+ character(len=128) :: version = '$Id$'
+ character(len=128) :: tagname = '$Name$'
  logical            :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 

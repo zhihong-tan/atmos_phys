@@ -26,8 +26,8 @@ MODULE DEEP_CONV_MOD
   private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: deep_conv.F90,v 20.0 2013/12/13 23:21:39 fms Exp $'
-  character(len=128) :: tagname = '$Name: testing $'
+  character(len=128) :: version = '$Id$'
+  character(len=128) :: tagname = '$Name$'
 
 !-------  interfaces --------
 

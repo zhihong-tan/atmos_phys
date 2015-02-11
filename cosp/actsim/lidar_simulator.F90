@@ -4,8 +4,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: lidar_simulator.F90,v 20.0 2013/12/13 23:15:57 fms Exp $
-! $Name: testing $
+! $Id$
+! $Name$
 ! cosp_version = 1.3.2
 
 #endif

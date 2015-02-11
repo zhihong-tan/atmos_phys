@@ -36,8 +36,8 @@ private
 
 !------------ VERSION NUMBER ----------------
 
- character(len=128) :: version = '$Id: fs_profile.F90,v 10.0 2003/10/24 22:00:30 fms Exp $'
- character(len=128) :: tagname = '$Name: testing $'
+ character(len=128) :: version = '$Id$'
+ character(len=128) :: tagname = '$Name$'
  logical            :: module_is_initialized = .false.
 
 CONTAINS

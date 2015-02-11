@@ -22,8 +22,8 @@
       public  FSrad, RdParm_Init, CO2_Data, fsrad_init, fsrad_end
 !-----------------------------------------------------------------------
 
-      character(len=128) :: version = '$Id: fsrad.F90,v 14.0 2007/03/15 22:03:19 fms Exp $'
-      character(len=128) :: tagname = '$Name: testing $'
+      character(len=128) :: version = '$Id$'
+      character(len=128) :: tagname = '$Name$'
       logical            :: module_is_initialized = .false.
 
       real, parameter :: Day_Length=86400.

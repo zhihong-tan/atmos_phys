@@ -17,8 +17,8 @@ public  detr_ice_num,  detr_ice_num_init,  detr_ice_num_end
 
 !-----------------------------------------------------------------------
 !----version number-----------------------------------------------------
-character(len=128) :: version = '$Id: detr_ice_num.F90,v 19.0 2012/01/06 20:10:40 fms Exp $'
-character(len=128) :: tagname = '$Name: testing $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------

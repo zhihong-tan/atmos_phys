@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: pdf_parameter_module.F90,v 20.0 2013/12/13 23:10:15 fms Exp $
+! $Id$
 module pdf_parameter_module
 ! Description:
 !   This module defines the derived type pdf_parameter.

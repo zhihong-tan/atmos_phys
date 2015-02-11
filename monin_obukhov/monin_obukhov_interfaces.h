@@ -1,7 +1,7 @@
 ! -*-f90-*-
 !#include <fms_platform.h>
 
-! $Id: monin_obukhov_interfaces.h,v 13.0 2006/03/28 21:10:30 fms Exp $
+! $Id$
 
   interface
      

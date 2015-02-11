@@ -12,8 +12,8 @@ public gamma_mg, gamma_mg_init, gamma_mg_end
 
 !-----------------------------------------------------------------------
 !-------version number-------------------------------------------------
-Character(len=128) :: Version = '$Id: gamma_mg.F90,v 20.0 2013/12/13 23:21:53 fms Exp $'
-Character(len=128) :: Tagname = '$Name: testing $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 
 logical            :: module_is_initialized = .false.

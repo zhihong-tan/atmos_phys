@@ -17,8 +17,8 @@ PUBLIC diag_id_type, diag_pt_type, strat_nml_type,  &
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud_utilities.F90,v 20.0.2.1.2.1 2014/07/09 17:17:33 Chris.Golaz Exp $'
-Character(len=128) :: Tagname = '$Name: testing $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 logical  :: module_is_initialized = .false.
 

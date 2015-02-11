@@ -15,8 +15,8 @@ private
 !------- interfaces -------
       PUBLIC  SWRAD, SHORTWAVE_INIT, SHORTWAVE_END
 
-      character(len=128) :: version = '$Id: shortwave.F90,v 10.0 2003/10/24 22:00:32 fms Exp $'
-      character(len=128) :: tagname = '$Name: testing $'
+      character(len=128) :: version = '$Id$'
+      character(len=128) :: tagname = '$Name$'
       logical            :: module_is_initialized = .false.
 
       integer :: IMAX

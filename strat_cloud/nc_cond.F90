@@ -31,8 +31,8 @@ private nc_cond_nopdf_nosuper, nc_cond_nopdf_super, nc_cond_pdf, &
 !-----------------------------------------------------------------------
 !---version number------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: nc_cond.F90,v 20.0 2013/12/13 23:22:01 fms Exp $'
-Character(len=128) :: Tagname = '$Name: testing $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 !-----------------------------------------------------------------------
 !---namelist------------------------------------------------------------
