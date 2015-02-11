@@ -5,7 +5,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: cosp_io.F90,v 20.0 2013/12/13 23:15:43 fms Exp $
-! $Name: ulm $
+! $Name: testing $
 ! cosp_version = 1.3.2
 
 #endif
@@ -70,7 +70,7 @@ MODULE MOD_COSP_IO
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 character(len=128)  :: versiona =  '$Id: cosp_io.F90,v 20.0 2013/12/13 23:15:43 fms Exp $'
-character(len=128)  :: tagnamea =  '$Name: ulm $'
+character(len=128)  :: tagnamea =  '$Name: testing $'
 #endif
 
   ! Types to be used as arrays of pointers

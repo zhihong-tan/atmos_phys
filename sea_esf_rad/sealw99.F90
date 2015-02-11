@@ -94,8 +94,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 21.0 2014/12/15 21:45:13 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: ulm $'
+    character(len=128)  :: version =  '$Id: sealw99.F90,v 19.0.16.1 2014/02/25 20:39:45 Chris.Golaz Exp $'
+    character(len=128)  :: tagname =  '$Name: testing $'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------

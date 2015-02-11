@@ -216,8 +216,8 @@ module lin_cld_microphys_mod
                       do_sedi_w,  mp_debug, mp_print
 
 !---- version number -----
- character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 21.0 2014/12/15 21:43:19 fms Exp $'
- character(len=128) :: tagname = '$Name: ulm $'
+ character(len=128) :: version = '$Id: lin_cloud_microphys.F90,v 19.0.2.1.6.1.6.1.2.15.2.1.4.1 2014/11/24 19:16:19 Lucas.Harris Exp $'
+ character(len=128) :: tagname = '$Name: testing $'
 
  contains
 

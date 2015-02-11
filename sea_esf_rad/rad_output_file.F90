@@ -61,8 +61,8 @@ private
 !----------- version number for this module ------------------------
 
 character(len=128)  :: version = &
-'$Id: rad_output_file.F90,v 21.0 2014/12/15 21:44:58 fms Exp $'
-character(len=128)  :: tagname =  '$Name: ulm $'
+'$Id: rad_output_file.F90,v 19.0.14.1.2.1.2.1.2.1 2014/11/03 20:52:30 sdu Exp $'
+character(len=128)  :: tagname =  '$Name: testing $'
 
 
 !---------------------------------------------------------------------

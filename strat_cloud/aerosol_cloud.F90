@@ -37,8 +37,8 @@ private  aerosol_effects
 !--------------------------------------------------------------------------
 !---version number---------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: aerosol_cloud.F90,v 21.0 2014/12/15 21:45:57 fms Exp $'
-Character(len=128) :: Tagname = '$Name: ulm $'
+Character(len=128) :: Version = '$Id: aerosol_cloud.F90,v 20.0.2.1.2.1 2014/07/09 17:17:33 Chris.Golaz Exp $'
+Character(len=128) :: Tagname = '$Name: testing $'
 
 !--------------------------------------------------------------------------
 !---namelist---------------------------------------------------------------

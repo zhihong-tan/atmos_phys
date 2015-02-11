@@ -41,8 +41,8 @@ public  moistproc_mca, moistproc_ras, moistproc_lscale_cond, &
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
-version = '$Id: moistproc_kernels.F90,v 21.0 2014/12/15 21:43:35 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+version = '$Id: moistproc_kernels.F90,v 20.0.4.2.2.1 2014/09/22 02:52:19 Rusty.Benson Exp $'
+character(len=128) :: tagname = '$Name: testing $'
 
 contains
 

@@ -62,8 +62,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module  -------------------------
 
-character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 21.0 2014/12/15 21:45:16 fms Exp $'
-character(len=128)  :: tagname =  '$Name: ulm $'
+character(len=128)  :: version =  '$Id: shortwave_driver.F90,v 19.0.14.1 2014/08/22 13:52:15 rab Exp $'
+character(len=128)  :: tagname =  '$Name: testing $'
 
 
 !---------------------------------------------------------------------

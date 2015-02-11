@@ -763,7 +763,7 @@ private
 !------------ VERSION NUMBER ----------------
 
  character(len=128) :: version = '$Id: longwave.F90,v 13.0 2006/03/28 21:09:33 fms Exp $'
- character(len=128) :: tagname = '$Name: ulm $'
+ character(len=128) :: tagname = '$Name: testing $'
  logical            :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------

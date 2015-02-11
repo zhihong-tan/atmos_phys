@@ -50,8 +50,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 21.0 2014/12/15 21:44:25 fms Exp $'
-character(len=128)  :: tagname =  '$Name: ulm $'
+character(len=128)  :: version =  '$Id: esfsw_parameters.F90,v 19.0.12.1 2014/11/06 22:20:10 Jeffrey.Durachta Exp $'
+character(len=128)  :: tagname =  '$Name: testing $'
 
 !--------------------------------------------------------------------
 !----- interfaces ------

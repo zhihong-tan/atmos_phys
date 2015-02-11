@@ -15,7 +15,7 @@ public mg_const_init
 !       DECLARE VERSION NUMBER
 !------------------------------------------------------------------------
 Character(len=128) :: Version = '$Id: mg_const.F90,v 20.0 2013/12/13 23:21:55 fms Exp $'
-Character(len=128) :: Tagname = '$Name: ulm $'
+Character(len=128) :: Tagname = '$Name: testing $'
  
 !-------------------------------------------------------------------------
 !---module variables------------------------------------------------------

@@ -18,8 +18,8 @@ module beta_dist_mod
   !   x, p, q. The range of P and Q are specified when the tables are built. 
   !   The arrays bounds are from 0 to nSteps + 1, just in case we draw exactly 0 or 1. 
   !
-  character(len=128)  :: version =  '$Id: betaDistribution.F90,v 21.0 2014/12/15 21:39:50 fms Exp $'
-  character(len=128)  :: tagname =  '$Name: ulm $'
+  character(len=128)  :: version =  '$Id: betaDistribution.F90,v 16.0.14.1 2014/10/16 21:18:20 Seth.Underwood Exp $'
+  character(len=128)  :: tagname =  '$Name: testing $'
   
   logical         :: module_is_initialized = .false.
   

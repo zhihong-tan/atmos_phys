@@ -5,7 +5,7 @@
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id: icarus.F90,v 20.0 2013/12/13 23:16:02 fms Exp $
-! $Name: ulm $
+! $Name: testing $
 ! cosp_version = 1.3.2
 
 #endif

@@ -105,8 +105,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  '$Id: cloud_spec.F90,v 21.0 2014/12/15 21:44:09 fms Exp $'
-character(len=128)  :: tagname =  '$Name: ulm $'
+character(len=128)  :: version =  '$Id: cloud_spec.F90,v 20.0.4.1.2.1 2014/09/22 02:52:19 Rusty.Benson Exp $'
+character(len=128)  :: tagname =  '$Name: testing $'
 
 
 !---------------------------------------------------------------------

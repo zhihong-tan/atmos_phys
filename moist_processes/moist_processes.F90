@@ -105,8 +105,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 21.0 2014/12/15 21:43:31 fms Exp $'
-   character(len=128) :: tagname = '$Name: ulm $'
+   version = '$Id: moist_processes.F90,v 20.0.6.1.2.1.2.2.2.2.2.1.2.1 2014/11/03 20:52:20 sdu Exp $'
+   character(len=128) :: tagname = '$Name: testing $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
