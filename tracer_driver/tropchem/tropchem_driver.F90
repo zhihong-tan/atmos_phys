@@ -320,8 +320,8 @@ type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 21.0 2014/12/15 21:48:04 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: ulm $'
+character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 20.0.4.2 2014/10/16 13:33:59 Jeffrey.Durachta Exp $'
+character(len=128), parameter :: tagname     = '$Name: testing $'
 !-----------------------------------------------------------------------
 
 contains

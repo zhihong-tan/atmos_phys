@@ -8,8 +8,8 @@
 
 !     save
 
-character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 21.0 2014/12/15 21:47:43 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: ulm $'
+character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 19.0.12.2 2014/10/07 12:26:11 Jeffrey.Durachta Exp $'
+character(len=128), parameter :: tagname     = '$Name: testing $'
 logical                       :: module_is_initialized = .false.
 
       contains
