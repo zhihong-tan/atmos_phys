@@ -232,7 +232,7 @@ use mg_const_mod,         ONLY : mg_const_init, rhow, di_mg, ci_mg
 use  diag_manager_mod,    only:  diag_manager_init,    &
                                  register_diag_field, send_data
 use  time_manager_mod,    only:  time_type, time_manager_init
-use rad_utilities_mod,      only: aerosol_type
+use  aerosol_types_mod,   only:  aerosol_type
 
 implicit none
 private

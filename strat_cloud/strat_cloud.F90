@@ -116,7 +116,7 @@ use constants_mod,             only : rdgas, rvgas, hlv, hls, hlf, cp_air, grav
 use cloud_rad_mod,             only : cloud_rad_init
 use diag_manager_mod,          only : register_diag_field, send_data
 use time_manager_mod,          only : time_type, get_date, get_time
-use rad_utilities_mod,         only : aerosol_type
+use aerosol_types_mod,         only : aerosol_type
 use microphysics_mod,          only : microphysics_init, microphysics, &
                                       microphysics_end
 use nc_cond_mod,               only:  nc_cond, nc_cond_init,  nc_cond_end

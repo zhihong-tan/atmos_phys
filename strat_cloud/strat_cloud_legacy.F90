@@ -143,7 +143,7 @@ module strat_cloud_legacy_mod
                                    cloud_generator_init, &
                                    compute_overlap_weighting
   
-  use  rad_utilities_mod,  only : aerosol_type
+  use  aerosol_types_mod, only : aerosol_type
 
 
   use strat_cloud_utilities_mod,  &

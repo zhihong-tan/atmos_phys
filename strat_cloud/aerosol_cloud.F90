@@ -6,7 +6,7 @@ use fms_mod,                   only :  error_mesg, FATAL, mpp_pe,   &
                                        write_version_number, file_exist, &
                                        stdlog
 use constants_mod,             ONLY :  grav, cp_air, rdgas, rvgas, tfreeze
-use rad_utilities_mod,         ONLY :  aerosol_type
+use aerosol_types_mod,         ONLY :  aerosol_type
 use mpp_mod,                   only :  mpp_clock_id, mpp_clock_begin,  &
                                        mpp_clock_end, CLOCK_LOOP,  &
                                        input_nml_file
