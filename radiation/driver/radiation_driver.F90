@@ -157,7 +157,8 @@ use radiation_driver_diag_mod, only: radiation_driver_diag_init, &
                                      radiation_driver_diag_end, &
                                      radiation_driver_diag_endts, &
                                      update_rad_fields, &
-                                     produce_radiation_diagnostics
+                                     produce_radiation_diagnostics, &
+                                     write_solar_interp_restart_nc
 
 !--------------------------------------------------------------------
 
@@ -1248,8 +1249,14 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       call rad_output_alloc (id, jd, kmax, Rad_control%nzens, Rad_output)
 
 !-----------------------------------------------------------------------
+!    should stardard radiation restart files be written?
+!    they are only needed when when the model does not terminate
+!    at a radiation time step 
+!---------------------------------------------------------------------
 
-   if  (using_restart_file) then
+   Rad_control%using_restart_file = using_restart_file
+
+   if  (Rad_control%using_restart_file) then
 
 !----------------------------------------------------------------------
 !    Register fields to be written out to restart file.
@@ -3445,16 +3452,11 @@ integer :: outunit
                        grain=CLOCK_MODULE_DRIVER )
 
       call mpp_clock_begin ( radiation_term_clock )
+
 !---------------------------------------------------------------------
-!    write restart file if desired; the file is not necessary if job 
-!    ends on step prior to radiation ts, or if restart seamlessness 
-!    is not required.
+!    save restarts if necessary
 !---------------------------------------------------------------------
-    if (using_restart_file) then
-! Make sure that the restart_versions variable is up to date.
-      vers = restart_versions(size(restart_versions(:)))
-      call radiation_driver_restart (Rad_flux, Atm_block)
-    endif
+      call radiation_driver_restart_nc (Rad_flux, Atm_block)
 
 !---------------------------------------------------------------------
 !    wrap up modules initialized by this module.
@@ -3698,6 +3700,28 @@ subroutine radiation_driver_restart(Rad_flux, Atm_block, timestamp)
   type(block_control_type),  intent(in)  :: Atm_block
   character(len=*), intent(in), optional :: timestamp
 
+      call radiation_driver_restart_nc (Rad_flux, Atm_block, timestamp)
+      call write_solar_interp_restart_nc (timestamp)
+      call radiative_gases_restart (timestamp)
+
+ end subroutine radiation_driver_restart
+
+!#######################################################################
+! <SUBROUTINE NAME="radiation_driver_restart_nc">
+!
+! <DESCRIPTION>
+! write out restart file.
+! Arguments: 
+!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+!                                      used for writing restart. timestamp will append to
+!                                      the any restart file name as a prefix. 
+! </DESCRIPTION>
+!
+subroutine radiation_driver_restart_nc(Rad_flux, Atm_block, timestamp)
+  type(radiation_flux_type), intent(in)  :: Rad_flux
+  type(block_control_type),  intent(in)  :: Atm_block
+  character(len=*), intent(in), optional :: timestamp
+
 !---local variables
   integer :: n, ibs, ibe, jbs, jbe
 
@@ -3730,6 +3754,11 @@ subroutine radiation_driver_restart(Rad_flux, Atm_block, timestamp)
       Restart%extinction(ibs:ibe,jbs:jbe,:)           = Rad_flux%block(n)%extinction
     end do
 
+    if (mpp_pe() == mpp_root_pe() ) then 
+       call error_mesg('radiation_driver_mod', 'Writing netCDF formatted restart file: '//&
+                       'RESTART/conc_radiation_driver.res.nc', NOTE)
+    endif
+
     call save_restart(Rad_restart,timestamp)
     call save_restart(Til_restart,timestamp)
 
@@ -3741,11 +3770,8 @@ subroutine radiation_driver_restart(Rad_flux, Atm_block, timestamp)
     call write_restart_nc(timestamp)
   endif
 
-! restart for other modules used
-  call radiative_gases_restart(timestamp)
-
-end subroutine radiation_driver_restart
-! </SUBROUTINE> NAME="radiation_driver_restart"
+end subroutine radiation_driver_restart_nc
+! </SUBROUTINE> NAME="radiation_driver_restart_nc"
 
 !#######################################################################
 
@@ -3810,7 +3836,7 @@ subroutine write_restart_nc(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
 
-  if( .not. using_restart_file ) return
+  if( .not. Rad_control%using_restart_file ) return
 !---------------------------------------------------------------------
 !    only the root pe will write control information -- the last value 
 !    in the list of restart versions and the alarm information.

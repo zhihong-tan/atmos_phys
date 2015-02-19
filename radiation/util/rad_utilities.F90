@@ -164,6 +164,7 @@ public radiation_control_type
 
 type radiation_control_type
     logical  :: do_totcld_forcing
+    logical  :: using_restart_file
     logical  :: do_sw_rad
     logical  :: do_lw_rad
     logical  :: renormalize_sw_fluxes

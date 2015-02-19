@@ -105,13 +105,13 @@ public  radiation_driver_diag_init, &
         update_rad_fields, &
         produce_radiation_diagnostics, &
         radiation_driver_diag_end, &
-        radiation_driver_diag_endts
+        radiation_driver_diag_endts, &
+        write_solar_interp_restart_nc
 
 private initialize_diagnostic_integrals,   &
         diag_field_init, &
         solar_flux_save_init, &
-        solar_interp_register_restart, &
-        write_solar_interp_restart_nc
+        solar_interp_register_restart
 
 !-----------------------------------------------------------------------
 !------- namelist ---------
@@ -141,18 +141,11 @@ logical :: linear_tropo   = .true.    !  generate tropopause fluxes when
 logical :: thermo_tropo   = .false.   !  generate tropopause fluxes when
                                       !  tropopause determined thermo-
                                       !  dynamically ?
-logical :: using_restart_file = .true. ! if set to .false, restart file
-                                       ! will NOT be written by this 
-                                       ! module; this will not affect
-                                       ! answers as long as job is 
-                                       ! restarted on a radiation
-                                       ! timestep
 
 namelist /radiation_driver_diag_nml/ all_step_diagnostics, &
                                      trop_ht_at_poles, trop_ht_at_eq, &
                                      trop_ht_constant, constant_tropo, &
-                                     linear_tropo, thermo_tropo, &
-                                     using_restart_file
+                                     linear_tropo, thermo_tropo
 
 
 !-----------------------------------------------------------------------
@@ -207,6 +200,7 @@ end type diag_special_type
 !-- for netcdf restart
 type(restart_file_type), pointer, save :: Solar_restart => NULL()
 type(restart_file_type), pointer, save :: Tile_restart => NULL()
+logical :: doing_netcdf_restart = .false.
 
 !    solar_save is used when renormalize_sw_fluxes is active, to save
 !    the solar factor (fracday*cosz/r**2) from the previous radiation
@@ -488,7 +482,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
                             Aerosolrad_control%do_lwaerosol)
 
 !----------------------------------------------------------------------
-      if  (using_restart_file) then
+      if  (Rad_control%using_restart_file) then
 !----------------------------------------------------------------------
 !    Register fields to be written out to restart file.
 !    Add the solar fields needed to restart the solar interplator
@@ -2547,7 +2541,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !    ends on step prior to radiation ts, or if restart seamlessness 
 !    is not required.
 !---------------------------------------------------------------------
-      if (using_restart_file) then
+      if (Rad_control%using_restart_file) then
         if (Rad_control%renormalize_sw_fluxes) then
           call write_solar_interp_restart_nc
         endif
@@ -2694,6 +2688,7 @@ subroutine solar_interp_register_restart(fname, do_totcld_forcing)
    ! all data is distributed on tile files
   !call get_mosaic_tile_file(fname, fname2, .false. ) 
    allocate(Tile_restart)
+   doing_netcdf_restart = .true.
 
 !  NOTE: there could a problem when restarting a model with renormalize_sw_fluxes = true
 !  if the restart file has int_renormalize_sw_fluxes = 0 (i.e., no sw fluxes saved)
@@ -2736,6 +2731,7 @@ end subroutine solar_interp_register_restart
 subroutine write_solar_interp_restart_nc (timestamp)
 character(len=*), intent(in), optional :: timestamp
 
+      if (.not.doing_netcdf_restart) return
 !---------------------------------------------------------------------
 !    only the root pe will write control information -- the last value 
 !    in the list of restart versions and the alarm information.

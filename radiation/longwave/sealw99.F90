@@ -23,8 +23,6 @@ use fms_mod,             only: open_namelist_file, fms_init, &
                                file_exist, write_version_number, &
                                check_nml_error, error_mesg, &
                                FATAL, NOTE,  close_file
-use time_manager_mod,    only: time_type, operator(>=), get_time, &
-                               operator(-), get_date
 use constants_mod,       only: constants_init, diffac, radcon_mks, &
                                SECONDS_PER_DAY, radcon
 
@@ -6009,7 +6007,7 @@ type(gas_tf_type),         intent(in)    :: Gas_tf
         do j = 1,size(tcoll(:,:,:),2)
            do i = 1,size(tcoll(:,:,:),1)
               tcoll(i,j,k) = degen*1.5E-05*pflux(i,j,KE+1)/   &
-                       (seconds_per_day*press(i,j,k)) 
+                       (SECONDS_PER_DAY*press(i,j,k)) 
            end do
         end do
       end do

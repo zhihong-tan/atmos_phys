@@ -20,7 +20,6 @@ use fms_mod,            only: open_namelist_file, fms_init, &
                               file_exist, write_version_number, &
                               check_nml_error, error_mesg, &
                               FATAL, close_file
-use time_manager_mod,   only: time_type
 
 ! shared radiation package modules:
 
@@ -31,7 +30,7 @@ use aerosolrad_types_mod, only: aerosolrad_control_type
 
 !  longwave radiation package modules:
 
-use sealw99_mod,        only: sealw99_init,sealw99_time_vary, sealw99, &
+use sealw99_mod,        only: sealw99_init, sealw99_time_vary, sealw99, &
                               sealw99_endts, sealw99_end, &
                               lw_output_type, assignment(=), &
                               lw_table_type, lw_diagnostics_type, &
