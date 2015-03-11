@@ -26,7 +26,8 @@ use fms_io_mod,           only: read_data
 
 !  longwave radiation package modules
 
-use longwave_utilities_mod, only: optical_path_type
+use longwave_utilities_mod, only: optical_path_type, &
+                                  Sealw99_control
 
 use gas_tf_mod,           only: gas_tf_init,  &
                                 put_co2_stdtf_for_gas_tf, &
@@ -56,8 +57,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: lw_gases_stdtf.F90,v 19.0 2012/01/06 20:19:09 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201305 $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 
 !---------------------------------------------------------------------
@@ -72,7 +73,7 @@ public         &
 
 private        &
         std_lblpressures, approx_fn, approx_fn_std, &
-        gasins, gasint, coeint, intcoef_1d, intcoef_2d, &
+        gasins, gasint, coeint, intcoef_1d, intcoef_2d, intcoef_2d_10um, &
         intcoef_2d_std, interp_error, interp_error_r, &
         pathv1, rctrns, read_lbltfs, allocate_interp_arrays, &
         deallocate_interp_arrays
@@ -81,13 +82,19 @@ private        &
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
+logical    :: do_co2_bug = .true.
 logical    :: do_coeintdiag = .false.
 integer    :: NSTDCO2LVLS = 496 ! # of levels at which lbl tfs exist
+integer    :: llco2 = 20  ! #no iterations in coeint for co2
+integer    :: llch4 = 20  ! #no iterations in coeint for ch4
+integer    :: lln2o = 20  ! #no iterations in coeint for n2o
 
 
 namelist/lw_gases_stdtf_nml/ &
+                                   do_co2_bug,       &
                                    do_coeintdiag,    &
-                                   NSTDCO2LVLS
+                                   NSTDCO2LVLS,      &
+                                   llco2, llch4, lln2o
 !---------------------------------------------------------------------
 !------- public data ------
 
@@ -138,9 +145,9 @@ real, dimension(:), allocatable   :: pa
 !----------------------------------------------------------------------
 !    ch4 data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_ch4_vmrs = 8
+integer, parameter                        ::  number_std_ch4_vmrs = 9
 real,    dimension(number_std_ch4_vmrs)   ::   ch4_std_vmr
-data ch4_std_vmr / 0., 300., 700., 1250., 1750., 2250., 2800., 4000. /
+data ch4_std_vmr / 0., 300., 700., 1250., 1750., 2250., 2800., 4000., 6000. /
 
 integer, parameter                        ::  nfreq_bands_sea_ch4 = 1
 
@@ -157,9 +164,9 @@ data   ntbnd_ch4      /  3  /
 !----------------------------------------------------------------------
 !    n2o data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_n2o_vmrs = 7
+integer, parameter                        ::  number_std_n2o_vmrs = 9
 real,    dimension(number_std_n2o_vmrs)   ::  n2o_std_vmr
-data n2o_std_vmr / 0., 180., 275., 310., 340., 375., 500. /
+data n2o_std_vmr / 0., 180., 275., 310., 340., 375., 500., 600., 800. /
 
 integer, parameter                        ::  nfreq_bands_sea_n2o = 3
 logical, dimension(nfreq_bands_sea_n2o)   ::  do_lyrcalc_n2o_nf, &
@@ -175,21 +182,21 @@ data ntbnd_n2o /  3, 3, 3/
 !----------------------------------------------------------------------
 !    co2 data
 !----------------------------------------------------------------------
-integer, parameter                        ::  number_std_co2_vmrs = 11
+integer, parameter                        ::  number_std_co2_vmrs = 14
 real,    dimension(number_std_co2_vmrs)   ::  co2_std_vmr
 data co2_std_vmr / 0., 165.0, 300.0, 330.0, 348.0, 356.0, 360.0,  &
-                   600.0, 660.0, 1320.0, 1600.0/
+                   600.0, 660.0, 1320.0, 1600.0, 2000., 5000., 10000./
 
-integer, parameter                        ::  nfreq_bands_sea_co2 = 5
+integer, parameter                        ::  nfreq_bands_sea_co2 = 8
 logical, dimension(nfreq_bands_sea_co2)   ::  do_lyrcalc_co2_nf, &
                                               do_lvlcalc_co2_nf, &
                                               do_lvlctscalc_co2_nf
-data do_lyrcalc_co2_nf    / .true., .false., .false., .false., .true./
-data do_lvlcalc_co2_nf    / .true., .true., .true., .true., .true./
-data do_lvlctscalc_co2_nf / .false., .true., .true., .true., .false./
+data do_lyrcalc_co2_nf    / .true., .false., .false., .false., .true., .true., .true., .true./
+data do_lvlcalc_co2_nf    / .true., .true., .true., .true., .true., .true., .true., .true./
+data do_lvlctscalc_co2_nf / .false., .true., .true., .true., .false., .true., .true., .true./
 
 integer, dimension(nfreq_bands_sea_co2)   ::  ntbnd_co2
-data ntbnd_co2 / 3, 3, 3, 3, 1/
+data ntbnd_co2 / 3, 3, 3, 3, 1, 3, 3, 3/
 
 real,  dimension (:,:), allocatable   :: dgasdt8_lvl, dgasdt10_lvl, &
                                          d2gast8_lvl, d2gast10_lvl, &
@@ -218,6 +225,7 @@ integer             :: ndimkp, ndimk, nlev
 real, parameter     :: dop_core0 = 25.0
 real                :: dop_core 
 logical             :: do_calcstdco2tfs
+logical             :: do_calcstdco210umtfs
 logical             :: do_calcstdch4tfs
 logical             :: do_calcstdn2otfs
 
@@ -490,6 +498,7 @@ subroutine lw_gases_stdtf_time_vary
 !    determine if the tfs are to be calculated.
 !-------------------------------------------------------------------
       call get_control_gas_tf (calc_co2=do_calcstdco2tfs, &
+                               calc_co2_10um=do_calcstdco210umtfs, &
                                calc_n2o=do_calcstdn2otfs, &
                                calc_ch4=do_calcstdch4tfs)
 
@@ -497,7 +506,7 @@ subroutine lw_gases_stdtf_time_vary
 !    define the number of levels being used in the calculation and
 !    the dimension extents of the interpolation arrays:
 !-------------------------------------------------------------------
-      if (do_calcstdco2tfs .or. do_calcstdn2otfs .or.   &
+      if (do_calcstdco2tfs .or. do_calcstdco210umtfs .or. do_calcstdn2otfs .or.   &
           do_calcstdch4tfs) then
         nlev = KERAD - KSRAD + 1
         ndimkp = nlev + 1
@@ -728,6 +737,7 @@ real,              intent(in)  :: ch4_vmr
             if (callrctrns_ch4) then
               trns_std_lo(:,:) = trns_std_lo_nf(:,:,nt)
             endif
+
             call gasint(gas_type,           &
                         ch4_vmr, ch4_std_lo, ch4_std_hi,   &
                         callrctrns_ch4,   &
@@ -865,7 +875,7 @@ real,             intent(in)     ::  co2_vmr
       logical              ::  do_lyrcalc_co2
       logical              ::  do_lvlcalc_co2
       logical              ::  do_lvlctscalc_co2
-      integer              ::  n, nf, nt
+      integer              ::  n, nf, nt, nfco2
       real                 ::  co2_std_lo, co2_std_hi
       integer              ::  nstd_co2_lo, nstd_co2_hi
       character(len=8)     ::  gas_type = 'co2'
@@ -943,14 +953,24 @@ real,             intent(in)     ::  co2_vmr
 
 !--------------------------------------------------------------------
 !    loop on frequency bands. in the 1996 SEA formulation, there are
-!    5 frequency ranges for lbl co2 transmissions:
+!    8 frequency ranges for lbl co2 transmissions:
 !    nf = 1:  lbl transmissions over 490-850 cm-1    
 !    nf = 2:  lbl transmissions over 490-630 cm-1    
 !    nf = 3:  lbl transmissions over 630-700 cm-1    
 !    nf = 4:  lbl transmissions over 700-800 cm-1    
 !    nf = 5:  lbl transmissions over 2270-2380 cm-1    
+!    nf = 6:  lbl transmissions over 990-1070 cm-1    
+!    nf = 7:  lbl transmissions over 900-990 cm-1    
+!    nf = 8:  lbl transmissions over 1070-1200 cm-1
 !---------------------------------------------------------------------
-        do nf = 1,nfreq_bands_sea_co2
+        if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' .or. &
+            trim(Sealw99_control%linecatalog_form) == 'hitran_2008' ) then
+           nfco2 = 5  ! only the first 5 bands are used, not the 10 um band
+        else 
+           nfco2 = nfreq_bands_sea_co2
+        endif
+
+        do nf = 1,nfco2
  
 !---------------------------------------------------------------------
 !    read in co2 transmissivities at this point-----
@@ -979,7 +999,7 @@ real,             intent(in)     ::  co2_vmr
             if (callrctrns_co2) then
               trns_std_lo(:,:) = trns_std_lo_nf(:,:,nt)
             endif
-    
+
             call gasint(         & 
                         gas_type,        &
                         co2_vmr, co2_std_lo, co2_std_hi,      &
@@ -1036,12 +1056,12 @@ real,             intent(in)     ::  co2_vmr
 !    has been used here and the values of do_lvlcalc, do_lvlctscalc,
 !    and do_lyrcalc are assumed to be from the data statement.
 !----------------------------------------------------------------------
-          if (nf == 1 .or. nf == 5) then
+          if (nf == 1 .or. nf == 5 .or. nf == 6 .or. nf == 7 .or. nf == 8) then
             call put_co2_stdtf_for_gas_tf (nf, gasp10_lyr, gasp8_lyr, &
                                            dgasdt10_lyr, dgasdt8_lyr, &
                                            d2gast10_lyr,  d2gast8_lyr)
           endif
-          if (nf <= 4) then
+          if (nf <= 4 .or. nf == 6 .or. nf == 7 .or. nf == 8) then
             call put_co2_nbltf_for_gas_tf (nf, gasp10_lvl,   &
                                            dgasdt10_lvl, d2gast10_lvl, &
                                            gasp8_lvl, dgasdt8_lvl,  &
@@ -1259,6 +1279,7 @@ real,             intent(in)   :: n2o_vmr
             if (callrctrns_n2o) then
               trns_std_lo(:,:) = trns_std_lo_nf(:,:,nt)
             endif
+
             call gasint(gas_type, n2o_vmr, n2o_std_lo, n2o_std_hi,    &
                         callrctrns_n2o,     &
                         do_lvlcalc_n2o, do_lvlctscalc_n2o,    &
@@ -2391,6 +2412,9 @@ real, dimension(:)  , intent(out)  :: &
 !        nf=3    630-700      consol=630-700
 !        nf=4    700-800      consol=700-850
 !        nf=5   2270-2380     consol=2270-2380
+!        nf=6    990-1070     consol=990-1070
+!        nf=7    900-990     consol=900-990
+!        nf=8    1070-1200     consol=1070-1200
 !    the following loop obtains transmission functions for bands
 !    used in radiative model calculations,with the equivalent
 !    widths kept from the original consolidated co2 tf's.
@@ -2411,6 +2435,15 @@ real, dimension(:)  , intent(out)  :: &
         else if (nf.eq.5) then
           c1=1.0
           c2=0.0
+        else if (nf.eq.6) then
+          c1=1.0
+          c2=0.0
+        else if (nf.eq.7) then
+          c1=1.0
+          c2=0.0
+        else if (nf.eq.8) then
+          c1=1.0
+          c2=0.0
         else
           call error_mesg ('lw_gases_stdtf_mod', &
               'illegal value of nf for co2', FATAL)
@@ -2422,7 +2455,7 @@ real, dimension(:)  , intent(out)  :: &
 !        nf=1    1200-1400    consol=1200-1400
 !    the following loop obtains transmission functions for bands
 !    used in radiative model calculations,with the equivalent
-!    widths kept from the original consolidated co2 tf's.
+!    widths kept from the original consolidated ch4 tf's.
 !--------------------------------------------------------------------
       else if (gas_type .EQ. 'ch4') then
         if (nf.eq.1) then
@@ -2441,7 +2474,7 @@ real, dimension(:)  , intent(out)  :: &
 !        nf=3    560-630    consol=560-630
 !    the following loop obtains transmission functions for bands
 !    used in radiative model calculations,with the equivalent
-!    widths kept from the original consolidated co2 tf's.
+!    widths kept from the original consolidated n2o tf's.
 !--------------------------------------------------------------------
       else if (gas_type .EQ. 'n2o') then
         if (nf.eq.1) then
@@ -3067,10 +3100,17 @@ character(len=*),     intent(in)  ::  gas_type
               enddo
             enddo
           endif
-          call intcoef_2d (pressint_hiv, pressint_lov, do_triangle,  &
-                           nklo, nkhi, nkplo, nkphi,  &
-                           indx_pressint_hiv, indx_pressint_lov,  &
-                           caintv, sexpintv, xaintv, uexpintv)
+          if (gas_type == 'co2' .and. (nf .ge. 6 .and. nf .le. 8)) then  !  co2 10um interpolation
+            call intcoef_2d_10um (pressint_hiv, pressint_lov, do_triangle,  &
+                             nklo, nkhi, nkplo, nkphi,  &
+                             indx_pressint_hiv, indx_pressint_lov,  &
+                             caintv, sexpintv, xaintv, uexpintv)
+          else
+            call intcoef_2d (pressint_hiv, pressint_lov, do_triangle,  &
+                             nklo, nkhi, nkplo, nkphi,  &
+                             indx_pressint_hiv, indx_pressint_lov,  &
+                             caintv, sexpintv, xaintv, uexpintv)
+          endif
 
 !-------------------------------------------------------------------
 !    4) interpolate error function to (pressint_hiv, pressint_lov)
@@ -3189,10 +3229,17 @@ character(len=*),     intent(in)  ::  gas_type
                 enddo
               enddo
             endif
-            call intcoef_2d (pressint_hiv, pressint_lov, do_triangle,  &
+            if (gas_type == 'co2' .and. (nf .ge. 6 .and. nf .le. 8)) then  !  co2 10um interpolation
+              call intcoef_2d_10um (pressint_hiv, pressint_lov, do_triangle,  &
                              nklo, nkhi, nkplo, nkphi,  &
                              indx_pressint_hiv, indx_pressint_lov,  &
                              caintv, sexpintv, xaintv, uexpintv)
+            else
+              call intcoef_2d (pressint_hiv, pressint_lov, do_triangle,  &
+                             nklo, nkhi, nkplo, nkphi,  &
+                             indx_pressint_hiv, indx_pressint_lov,  &
+                             caintv, sexpintv, xaintv, uexpintv)
+            endif
 
 !-------------------------------------------------------------------
 !    4) interpolate error function to (pressint_hiv, pressint_lov)
@@ -3312,10 +3359,17 @@ character(len=*),     intent(in)  ::  gas_type
                 enddo
               enddo
             endif
-            call intcoef_2d (pressint_hiv, pressint_lov, do_triangle,  &
+            if (gas_type == 'co2' .and. (nf .ge. 6 .and. nf .le. 8)) then  !  co2 10um interpolation
+              call intcoef_2d_10um (pressint_hiv, pressint_lov, do_triangle,  &
+                             nklo, nkhi, nkplo, nkphi,  &
+                             indx_pressint_hiv, indx_pressint_lov,  &
+                             caintv, sexpintv, xaintv, uexpintv)
+            else
+              call intcoef_2d (pressint_hiv, pressint_lov, do_triangle,  &
                              nklo, nkhi, nkplo, nkphi,  &
                              indx_pressint_hiv, indx_pressint_lov,  &
                              caintv, sexpintv, xaintv,uexpintv)
+            endif
 
 !-------------------------------------------------------------------
 !    4) interpolate error function to (pressint_hiv, pressint_lov)
@@ -3427,10 +3481,17 @@ character(len=*),     intent(in)  ::  gas_type
             pressnbl_lov(51,nkhi) = plm8(nkhi)
             pressnbl_hiv(51,nkhi) = plm8(nkhi) + 1.0E-13*plm8(nkhi)
           endif
-          call intcoef_2d (pressnbl_hiv, pressnbl_lov, do_triangle,  &
+          if (gas_type == 'co2' .and. (nf .ge. 6 .and. nf .le. 8)) then  !  co2 10um interpolationn
+            call intcoef_2d_10um (pressnbl_hiv, pressnbl_lov, do_triangle,  &
                            nklo, nkhi, nkplo, nkphi,  &
                            indx_pressnbl_hiv, indx_pressnbl_lov,  &
                            canblv, sexpnblv, xanblv, uexpnblv)
+          else
+            call intcoef_2d (pressnbl_hiv, pressnbl_lov, do_triangle,  &
+                           nklo, nkhi, nkplo, nkphi,  &
+                           indx_pressnbl_hiv, indx_pressnbl_lov,  &
+                           canblv, sexpnblv, xanblv, uexpnblv)
+          endif
 
 !-------------------------------------------------------------------
 !    4) interpolate error function to (pressnbl_hiv, pressnbl_lov)
@@ -3596,7 +3657,9 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
                                             rexp, f, f1, f2, fprime, &
                                             ftest1, ftest2, xx, xxlog,&
                                             pa2
+      real, dimension(:), allocatable    :: xx0, xxtest
       integer     :: k, ll
+      integer     :: llmax
       real        :: check
 
 !-----------------------------------------------------------------
@@ -3628,6 +3691,8 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
       allocate ( xxlog   (NSTDCO2LVLS) )
       allocate ( pa2     (NSTDCO2LVLS) )
 
+      allocate ( xx0     (NSTDCO2LVLS) )
+      allocate ( xxtest  (NSTDCO2LVLS) )
 !--------------------------------------------------------------------
 !    the following specifications for dop_core, sexp and uexp follow
 !    "try9", which has (as of 5/27/97) been found to produce the
@@ -3641,6 +3706,9 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
         if (nf .eq. 3) dop_core = dop_core0*665./670.
         if (nf .eq. 4) dop_core = dop_core0*775./670.
         if (nf .eq. 5) dop_core = dop_core0*2325./670.
+        if (nf .eq. 6) dop_core = dop_core0*1030./670.
+        if (nf .eq. 7) dop_core = dop_core0*945./670.
+        if (nf .eq. 8) dop_core = dop_core0*1135./670.
       endif
       if (gas_type .EQ. 'ch4') then
         if (nf .eq. 1) dop_core = dop_core0*1300./670.
@@ -3695,8 +3763,17 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
         upathb(k) = EXP(uexp(k)*ALOG(upathb(k)))
         xx(k) = 2.0*(upathb(k)*rexp(k) - upatha(k))/   &
                 (upathb(k)*upathb(k)*rexp(k) - upatha(k)*upatha(k))
+        xx0(k) = xx(k)
       enddo
-      do ll=1,20
+!!    do ll=1,20
+      if (gas_type .eq. 'co2') then
+        llmax = llco2
+      else if (gas_type .eq. 'ch4') then
+        llmax = llch4
+      else if (gas_type .eq. 'n2o') then
+        llmax = lln2o
+      endif
+      do ll=1,llmax
         do k=3,NSTDCO2LVLS
           ftest1(k) =xx(k)*upatha(k)
           ftest2(k) =xx(k)*upathb(k)
@@ -3736,7 +3813,16 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
             fprime(k) = (f2(k)*upatha(k)/(1.0 + xx(k)*upatha(k)) -  &
                          f1(k)*upathb(k)/(1.0 + xx(k)*upathb(k)))/  &
                          (f2(k)*f2(k))
-            xx(k) = xx(k) - f(k)/fprime(k)
+            if (do_co2_bug) then
+              xx(k) = xx(k) - f(k)/fprime(k)
+            else
+              xxtest(k) = xx(k) - f(k)/fprime(k)
+              if (xxtest(k) .le. 0.0) then
+                xx(k) = xx0(k)
+              else
+                xx(k) = xxtest(k)
+              endif
+            endif
           endif
         enddo
       enddo
@@ -3749,7 +3835,7 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
           check=1.0 +xx(k)*upatha(k)
           if (check .le. 0.0) then
     write (     *, 360)  k, check
-360         format ('check le zero, i=',i3, ' check =',f20.10)
+360         format ('check le zero, k=',i3, ' check =',f20.10)
             call error_mesg ('lw_gases_stdtf_mod', &
                              ' error, check le zero', FATAL)
           endif
@@ -4222,7 +4308,15 @@ logical,                 intent(in)  :: do_triangle
 !---------------------------------------------------------------------
 !    compute ca
 !---------------------------------------------------------------------
-          ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
+          if (do_co2_bug) then
+            ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
+          else
+            ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
+            if (ca_hiv(kp,k) .le. 0.0) then
+              call error_mesg('lw_gases_stdtf_mod', &
+                              'intcoef_2d, ca_hiv le 0', FATAL)
+            endif
+          endif
         enddo
       enddo
  
@@ -4262,6 +4356,207 @@ logical,                 intent(in)  :: do_triangle
 
 end subroutine intcoef_2d
 
+!#####################################################################
+
+subroutine intcoef_2d_10um (press_hiv, press_lov, do_triangle,  &
+                       nklo, nkhi, nkplo, nkphi,  &
+                       indx_hiv, indx_lov,  &
+                       caintv,  sexpintv, xaintv, uexpintv)
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+
+real,    dimension(:,:), intent(out) :: sexpintv, &
+                                        uexpintv, caintv, xaintv
+integer, dimension(:,:), intent(out) :: indx_hiv, indx_lov
+integer,                 intent(in)  :: nklo, nkhi, nkplo, nkphi
+real,    dimension(:,:), intent(in)  :: press_hiv, press_lov
+logical,                 intent(in)  :: do_triangle
+
+!--------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    sexpintv
+!
+!-------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+!  local variables:
+
+      real, dimension(:),   allocatable :: caxa
+      real, dimension(:,:), allocatable :: sexp_hiv, uexp_hiv, ca_hiv, &
+                                           prod_hiv, xa_hiv, d1kp,   &
+                                           d2kp, bkp, akp, delp_hi
+
+      integer    :: k, kp, kp0, kpp
+      integer    :: k1, k2
+
+!-------------------------------------------------------------------
+!  local variables:
+!
+!      caxa
+!
+!--------------------------------------------------------------------
+
+!----------------------------------------------------------------
+!    obtain array extents for internal arrays and allocate these arrays
+!----------------------------------------------------------------
+      k1 = size(press_hiv,1)       ! this corresponds to ndimkp
+      k2 = size(press_hiv,2)       ! this corresponds to ndimk
+      allocate  (caxa (NSTDCO2LVLS) )
+      allocate (sexp_hiv(k1,k2),    &
+                uexp_hiv(k1,k2),    &
+                ca_hiv(k1,k2)  ,    &
+                prod_hiv(k1,k2),    &
+                xa_hiv(k1,k2)  ,    &
+                d1kp(k1,k2)    ,    &
+                d2kp(k1,k2)    ,    &
+                bkp(k1,k2)     ,    &
+                akp(k1,k2)     ,    &
+                delp_hi(k1,k2)      )
+
+!---------------------------------------------------------------------
+!    compute the index of the inputted pressures (press_hiv,
+!    press_lov) corresponding to the standard (pa) pressures.
+!---------------------------------------------------------------------
+      do k=nklo,nkhi
+        if (do_triangle) then
+          kp0 = k + nkplo
+        else
+          kp0 = nkplo
+        endif
+        do kp=kp0,nkphi
+          if (press_hiv(kp,k) .LT. pa(1)) then
+            indx_hiv(kp,k) = 1
+          endif
+          if (press_hiv(kp,k) .GE. pa(NSTDCO2LVLS)) then
+            indx_hiv(kp,k) = NSTDCO2LVLS - 1
+          endif
+          if (press_lov(kp,k) .LT. pa(1)) then
+            indx_lov(kp,k) = 1
+          endif
+          if (press_lov(kp,k) .GE. pa(NSTDCO2LVLS)) then
+            indx_lov(kp,k) = NSTDCO2LVLS - 1
+          endif
+        enddo
+      enddo
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+
+      do k=nklo,nkhi
+        if (do_triangle) then
+          kp0 = k + nkplo
+        else
+          kp0 = nkplo
+        endif
+        do kp=kp0,nkphi
+          do kpp=1,NSTDCO2LVLS - 1
+            if (press_hiv(kp,k) .GE. pa(kpp) .AND.  &
+                press_hiv(kp,k) .LT. pa(kpp+1)) then
+              indx_hiv(kp,k) = kpp
+              exit
+            endif
+          enddo
+          do kpp=1,NSTDCO2LVLS - 1
+            if (press_lov(kp,k) .GE. pa(kpp) .AND.  &
+                press_lov(kp,k) .LT. pa(kpp+1)) then
+              indx_lov(kp,k) = kpp
+              exit
+            endif
+          enddo
+        enddo
+      enddo
+ 
+!---------------------------------------------------------------------
+!    interpolate values of cint, xint, sexp, uexp for the pressures
+!    (press_hiv)
+!--------------------------------------------------------------------
+      do k=1,NSTDCO2LVLS
+        caxa(k) = ca(k)*xa(k)
+      enddo
+      do k=nklo,nkhi
+        if (do_triangle) then
+          kp0 = k + nkplo
+        else
+          kp0 = nkplo
+        endif
+        do kp=kp0,nkphi
+          sexp_hiv(kp,k) = sexp(indx_hiv(kp,k)) +   &
+                   (sexp(indx_hiv(kp,k)+1) - sexp(indx_hiv(kp,k))) /  &
+                   (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
+                   (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
+           uexp_hiv(kp,k) = uexp(indx_hiv(kp,k)) +   &
+                   (uexp(indx_hiv(kp,k)+1) - uexp(indx_hiv(kp,k))) /  &
+                   (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
+                   (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
+ 
+!--------------------------------------------------------------------
+!    use 2-point interpolation: (indx_hiv of 1 or 2 are excluded
+!    since ca and xa were arbitrarily set to ca(3),xa(3))
+!--------------------------------------------------------------------
+            prod_hiv(kp,k) = caxa(indx_hiv(kp,k)) +   &
+               (caxa(indx_hiv(kp,k)+1) - caxa(indx_hiv(kp,k))) /  &
+               (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
+                          (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
+            xa_hiv(kp,k) = xa(indx_hiv(kp,k)) +   &
+               (xa(indx_hiv(kp,k)+1) - xa(indx_hiv(kp,k))) /  &
+               (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
+                          (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
+
+!---------------------------------------------------------------------
+!    compute ca
+!---------------------------------------------------------------------
+                   If (do_CO2_BUG) then 
+          ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
+          else
+          ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
+           if (ca_hiv(kp,k) .lt. 0.0) then
+            call error_mesg('lw_gases_stdtf_mod', &
+            'intcoef_2d, ca_hiv set to 0' , NOTE)
+                ca_hiv(kp,k) = 0.0
+            endif
+          endif 
+        enddo
+      enddo
+ 
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      do k=nklo,nkhi
+        if (do_triangle) then
+          kp0 = k + nkplo
+        else
+          kp0 = nkplo
+        endif
+        do kp=kp0,nkphi
+          sexpintv(kp,k)     = sexp_hiv(kp,k)
+          uexpintv(kp,k)     = uexp_hiv(kp,k)
+          caintv(kp,k)     = ca_hiv(kp,k)
+          xaintv(kp,k)     = xa_hiv(kp,k)
+        enddo
+      enddo
+
+!--------------------------------------------------------------------- 
+!    deallocate local arrays
+!--------------------------------------------------------------------- 
+      deallocate (sexp_hiv,    &
+                  uexp_hiv,    &
+                  ca_hiv  ,    &
+                  prod_hiv,    &
+                  xa_hiv  ,    &
+                  d1kp    ,    &
+                  d2kp    ,    &
+                  bkp     ,    &
+                  akp     ,    &
+                  caxa,        &
+                  delp_hi      )
+
+!---------------------------------------------------------------------
+
+end subroutine intcoef_2d_10um
 
 !#####################################################################
 ! <SUBROUTINE NAME="intcoef_2d_std">
@@ -4485,6 +4780,15 @@ integer, dimension(:,:), intent(out)  :: indx_hiv, indx_lov
             prod_hiv(kp,k) =   &
               caxa(indx_hiv(kp,k)+1) +  &
                 delp_hi(kp)*(akp(kp) + delp_hi(kp)*bkp(kp))
+
+            !BW - temporary fix to by-pass co2 bug
+            !     use second-order interp
+            if (.not.do_co2_bug .and. prod_hiv(kp,k) .le. 0.0) then
+               prod_hiv(kp,k) = caxa(indx_hiv(kp,k)) +   &
+                   (caxa(indx_hiv(kp,k)+1) - caxa(indx_hiv(kp,k))) /  &
+                    (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
+                            (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
+            endif
  
           else
             prod_hiv(kp,k) = caxa(indx_hiv(kp,k)) +   &
@@ -5463,9 +5767,9 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !--------------------------------------------------------------------
 !  local variables:
 
-      character(len=24) input_lblco2name(nfreq_bands_sea_co2,11)
-      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,8)
-      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,7)
+      character(len=24) input_lblco2name(nfreq_bands_sea_co2,number_std_co2_vmrs)
+      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,number_std_ch4_vmrs)
+      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,number_std_n2o_vmrs)
       character(len=24) name_lo
       character(len=24) name_hi
       character(len=32) filename, ncname
@@ -5473,73 +5777,102 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       real, dimension(:,:), allocatable  :: trns_in
 
       integer        :: n, nt, nrec_inhi, inrad, nrec_inlo
- 
+
       data (input_lblco2name(n,1),n=1,nfreq_bands_sea_co2)/            &
-        'cns_0_490850   ', 'cns_0_490630   ', 'cns_0_630700   ', &
-        'cns_0_700850   ', 'cns_0_43um     '/
+        'cnsco2_0_490850   ', 'cnsco2_0_490630   ', 'cnsco2_0_630700   ', &
+        'cnsco2_0_700850   ', 'cnsco2_0_43um     ', 'cnsco2_0_9901070  ', &
+        'cnsco2_0_900990   ', 'cnsco2_0_10701200'  /
       data (input_lblco2name(n,2),n=1,nfreq_bands_sea_co2)/            &
-        'cns_165_490850   ', 'cns_165_490630   ', 'cns_165_630700   ', &
-        'cns_165_700850   ', 'cns_165_43um     '/
+        'cnsco2_165_490850   ', 'cnsco2_165_490630   ', 'cnsco2_165_630700   ', &
+        'cnsco2_165_700850   ', 'cnsco2_165_43um     ', 'cnsco2_165_9901070  ', &
+        'cnsco2_165_900990   ', 'cnsco2_165_10701200'  /
       data (input_lblco2name(n,3),n=1,nfreq_bands_sea_co2)/            &
-        'cns_300_490850   ', 'cns_300_490630   ', 'cns_300_630700   ', &
-        'cns_300_700850   ', 'cns_300_43um     '/
+        'cnsco2_300_490850   ', 'cnsco2_300_490630   ', 'cnsco2_300_630700   ', &
+        'cnsco2_300_700850   ', 'cnsco2_300_43um     ', 'cnsco2_300_9901070  ', &
+        'cnsco2_300_900990   ', 'cnsco2_300_10701200'  /
       data (input_lblco2name(n,4),n=1,nfreq_bands_sea_co2)/            &
-        'cns_330_490850   ', 'cns_330_490630   ', 'cns_330_630700   ', &
-        'cns_330_700850   ', 'cns_330_43um     '/
+        'cnsco2_330_490850   ', 'cnsco2_330_490630   ', 'cnsco2_330_630700   ', &
+        'cnsco2_330_700850   ', 'cnsco2_330_43um     ', 'cnsco2_330_9901070  ', &
+        'cnsco2_330_900990   ', 'cnsco2_330_10701200'  /
       data (input_lblco2name(n,5),n=1,nfreq_bands_sea_co2)/            &
-        'cns_348_490850   ', 'cns_348_490630   ', 'cns_348_630700   ', &
-        'cns_348_700850   ', 'cns_348_43um     '/
+        'cnsco2_348_490850   ', 'cnsco2_348_490630   ', 'cnsco2_348_630700   ', &
+        'cnsco2_348_700850   ', 'cnsco2_348_43um     ', 'cnsco2_348_9901070  ', &
+        'cnsco2_348_900990   ', 'cnsco2_348_10701200'  /
       data (input_lblco2name(n,6),n=1,nfreq_bands_sea_co2)/            &
-        'cns_356_490850   ', 'cns_356_490630   ', 'cns_356_630700   ', &
-        'cns_356_700850   ', 'cns_356_43um     '/
+        'cnsco2_356_490850   ', 'cnsco2_356_490630   ', 'cnsco2_356_630700   ', &
+        'cnsco2_356_700850   ', 'cnsco2_356_43um     ', 'cnsco2_356_9901070  ', &
+        'cnsco2_356_900990   ', 'cnsco2_356_10701200'  /
       data (input_lblco2name(n,7),n=1,nfreq_bands_sea_co2)/            &
-        'cns_360_490850   ', 'cns_360_490630   ', 'cns_360_630700   ', &
-        'cns_360_700850   ', 'cns_360_43um     '/
+        'cnsco2_360_490850   ', 'cnsco2_360_490630   ', 'cnsco2_360_630700   ', &
+        'cnsco2_360_700850   ', 'cnsco2_360_43um     ', 'cnsco2_360_9901070  ', &
+        'cnsco2_360_900990   ', 'cnsco2_360_10701200'  /
       data (input_lblco2name(n,8),n=1,nfreq_bands_sea_co2)/            &
-        'cns_600_490850   ', 'cns_600_490630   ', 'cns_600_630700   ', &
-        'cns_600_700850   ', 'cns_600_43um     '/
+        'cnsco2_600_490850   ', 'cnsco2_600_490630   ', 'cnsco2_600_630700   ', &
+        'cnsco2_600_700850   ', 'cnsco2_600_43um     ', 'cnsco2_600_9901070  ', &
+        'cnsco2_600_900990   ', 'cnsco2_600_10701200'  /
       data (input_lblco2name(n,9),n=1,nfreq_bands_sea_co2)/            &
-        'cns_660_490850   ', 'cns_660_490630   ', 'cns_660_630700   ', &
-        'cns_660_700850   ', 'cns_660_43um     '/
+        'cnsco2_660_490850   ', 'cnsco2_660_490630   ', 'cnsco2_660_630700   ', &
+        'cnsco2_660_700850   ', 'cnsco2_660_43um     ', 'cnsco2_660_9901070  ', &
+        'cnsco2_660_900990   ', 'cnsco2_660_10701200'  /
       data (input_lblco2name(n,10),n=1,nfreq_bands_sea_co2)/           &
-        'cns_1320_490850  ', 'cns_1320_490630  ', 'cns_1320_630700  ', &
-        'cns_1320_700850  ', 'cns_1320_43um    '/
+        'cnsco2_1320_490850  ', 'cnsco2_1320_490630  ', 'cnsco2_1320_630700  ', &
+        'cnsco2_1320_700850  ', 'cnsco2_1320_43um    ', 'cnsco2_1320_9901070 ', &
+        'cnsco2_1320_900990   ', 'cnsco2_1320_10701200'  /
       data (input_lblco2name(n,11),n=1,nfreq_bands_sea_co2)/           &
-        'cns_1600_490850  ', 'cns_1600_490630  ', 'cns_1600_630700  ', &
-        'cns_1600_700850  ', 'cns_1600_43um    '/
+        'cnsco2_1600_490850  ', 'cnsco2_1600_490630  ', 'cnsco2_1600_630700  ', &
+        'cnsco2_1600_700850  ', 'cnsco2_1600_43um    ', 'cnsco2_1600_9901070 ', &
+        'cnsco2_1600_900990   ', 'cnsco2_1600_10701200'  /
+      data (input_lblco2name(n,12),n=1,nfreq_bands_sea_co2)/           &
+        'cnsco2_2000_490850  ', 'cnsco2_2000_490630  ', 'cnsco2_2000_630700  ', &
+        'cnsco2_2000_700850  ', 'cnsco2_2000_43um    ', 'cnsco2_2000_9901070 ', &
+        'cnsco2_2000_900990   ', 'cnsco2_2000_10701200'  /
+      data (input_lblco2name(n,13),n=1,nfreq_bands_sea_co2)/           &
+        'cnsco2_5000_490850  ', 'cnsco2_5000_490630  ', 'cnsco2_5000_630700  ', &
+        'cnsco2_5000_700850  ', 'cnsco2_5000_43um    ', 'cnsco2_5000_9901070 ', &
+        'cnsco2_5000_900990   ', 'cnsco2_5000_10701200'  /
+      data (input_lblco2name(n,14),n=1,nfreq_bands_sea_co2)/           &
+        'cnsco2_10000_490850  ', 'cnsco2_10000_490630  ', 'cnsco2_10000_630700  ', &
+        'cnsco2_10000_700850  ', 'cnsco2_10000_43um    ', 'cnsco2_10000_9901070 ', &
+        'cnsco2_10000_900990   ', 'cnsco2_10000_10701200'  /
  
       data (input_lblch4name(n,1),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_0_12001400'/
+        'cnsch4_0_12001400'/
       data (input_lblch4name(n,2),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_300_12001400'/
+        'cnsch4_300_12001400'/
       data (input_lblch4name(n,3),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_700_12001400'/
+        'cnsch4_700_12001400'/
       data (input_lblch4name(n,4),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_1250_12001400'/
+        'cnsch4_1250_12001400'/
       data (input_lblch4name(n,5),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_1750_12001400'/
+        'cnsch4_1750_12001400'/
       data (input_lblch4name(n,6),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_2250_12001400'/
+        'cnsch4_2250_12001400'/
       data (input_lblch4name(n,7),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_2800_12001400'/
+        'cnsch4_2800_12001400'/
       data (input_lblch4name(n,8),n=1,nfreq_bands_sea_ch4)/          &
-        'cns_4000_12001400'/
+        'cnsch4_4000_12001400'/
+      data (input_lblch4name(n,9),n=1,nfreq_bands_sea_ch4)/          &
+        'cnsch4_6000_12001400'/
  
       data (input_lbln2oname(n,1),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_0_12001400 ', 'cns_0_10701200 ', 'cns_0_560630   '/
+        'cnsn2o_0_12001400 ', 'cnsn2o_0_10701200 ', 'cnsn2o_0_560630   '/
       data (input_lbln2oname(n,2),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_180_12001400 ', 'cns_180_10701200 ', 'cns_180_560630   '/
+        'cnsn2o_180_12001400 ', 'cnsn2o_180_10701200 ', 'cnsn2o_180_560630   '/
       data (input_lbln2oname(n,3),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_275_12001400 ', 'cns_275_10701200 ', 'cns_275_560630   '/
+        'cnsn2o_275_12001400 ', 'cnsn2o_275_10701200 ', 'cnsn2o_275_560630   '/
       data (input_lbln2oname(n,4),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_310_12001400 ', 'cns_310_10701200 ', 'cns_310_560630   '/
+        'cnsn2o_310_12001400 ', 'cnsn2o_310_10701200 ', 'cnsn2o_310_560630   '/
       data (input_lbln2oname(n,5),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_340_12001400 ', 'cns_340_10701200 ', 'cns_340_560630   '/
+        'cnsn2o_340_12001400 ', 'cnsn2o_340_10701200 ', 'cnsn2o_340_560630   '/
       data (input_lbln2oname(n,6),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_375_12001400 ', 'cns_375_10701200 ', 'cns_375_560630   '/
+        'cnsn2o_375_12001400 ', 'cnsn2o_375_10701200 ', 'cnsn2o_375_560630   '/
       data (input_lbln2oname(n,7),n=1,nfreq_bands_sea_n2o)/           &
-        'cns_500_12001400 ', 'cns_500_10701200 ', 'cns_500_560630   '/
-
+        'cnsn2o_500_12001400 ', 'cnsn2o_500_10701200 ', 'cnsn2o_500_560630   '/
+      data (input_lbln2oname(n,8),n=1,nfreq_bands_sea_n2o)/           &
+        'cnsn2o_600_12001400 ', 'cnsn2o_600_10701200 ', 'cnsn2o_600_560630   '/
+      data (input_lbln2oname(n,9),n=1,nfreq_bands_sea_n2o)/           &
+        'cnsn2o_800_12001400 ', 'cnsn2o_800_10701200 ', 'cnsn2o_800_560630   '/
+ 
 !--------------------------------------------------------------------
 !  local variables:
 !

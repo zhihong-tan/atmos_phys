@@ -177,6 +177,7 @@ type radiation_control_type
     logical  :: do_n2o_lw
     logical  :: do_cfc_lw
     logical  :: do_co2_lw
+    logical  :: do_co2_10um
   ! from shortwave_control_type
     logical  :: do_esfsw
     logical  :: do_diurnal

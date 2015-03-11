@@ -58,7 +58,19 @@ public       &
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-character(len=16)  :: sw_resolution = '   ' ! either 'high' or 'low'
+character(len=16)  :: sw_resolution = 'low' ! no longer does anything
+                                            ! superceeded by sw_code_version
+character(len=16)  :: sw_code_version = 'esf1999' ! define version of code
+                                            ! either esf1999 or esf2015
+integer            :: sw_bands = 18         ! Number of shortwave
+                                            ! bands only works if 
+                                            ! sw_code_version = esf2015
+integer            :: sw_int_points = 74    ! number of shortwave
+                                            ! frequency intergration points only works
+                                            ! if sw_code_version = esf2015
+integer            :: sw_NIRVISgas_bands = 11   ! number of shortwave
+                                            ! bands in the NIR and VIS only works
+                                            ! if sw_code_version = esf2015
 integer            :: sw_diff_streams = 0   ! number of streams of
                                             ! diffuse radiation that
                                             ! are considered
@@ -66,7 +78,11 @@ integer            :: sw_diff_streams = 0   ! number of streams of
 
 namelist /esfsw_parameters_nml/    &
                                  sw_resolution,   &
-                                 sw_diff_streams
+                                 sw_diff_streams, &
+                                 sw_code_version, &
+                                 sw_bands,        &
+                                 sw_int_points,   &
+                                 sw_NIRVISgas_bands
 
 !-------------------------------------------------------------------
 !----- public data --------
@@ -78,7 +94,6 @@ namelist /esfsw_parameters_nml/    &
 !DEL                of the solar spectral paramaterization
 !---------------------------------------------------------------------
 integer, parameter :: TOT_WVNUMS_LOCAL  = 57600
-!DELtype(solar_spectrum_type), public, save :: Solar_spect
 
 
 !-------------------------------------------------------------------
@@ -176,22 +191,19 @@ integer, intent(out) :: nbands, nfrqpts, nh2obands, &
 !    process the namelist entries to obtain the parameters specifying
 !    the solar spectral parameterization.
 !--------------------------------------------------------------------
-      if (trim(sw_resolution) == 'high') then
-        nbands = 25
-        nfrqpts = 72
-        nh2obands = 14
-      else if (trim(sw_resolution) == 'low') then
+      if (trim(sw_code_version) == 'esf1999') then
         nbands = 18
         nfrqpts = 38
         nh2obands = 9
-      else if (trim(sw_resolution) == 'med') then
-        nbands = 18
-        nfrqpts = 74
-        nh2obands = 9
-      else
+      else if (trim(sw_code_version) == 'esf2015') then
+        nbands = sw_bands 
+        nfrqpts = sw_int_points 
+        nh2obands = sw_NIRVISgas_bands      
+      else       
         call error_mesg ( 'esfsw_parameters_mod',   &
-       ' sw_resolution must be specified as "high", "med" or "low".', FATAL)
+           'esf_version must be specified as "esf2015" or "es1999', FATAL)
       endif
+
       if (sw_diff_streams == 4) then
         nstreams = 4
       else if (sw_diff_streams == 1) then

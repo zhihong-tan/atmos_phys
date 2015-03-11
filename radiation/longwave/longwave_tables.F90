@@ -48,8 +48,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_tables.F90,v 19.0 2012/01/06 20:18:37 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201305 $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 
 !---------------------------------------------------------------------
@@ -304,7 +304,8 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !---------------------------------------------------------------------
       if (trim(Sealw99_control%linecatalog_form) == 'hitran_1992' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
 
 !---------------------------------------------------------------------
 !
@@ -361,7 +362,8 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !---------------------------------------------------------------------
       else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
           inrad = open_namelist_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi00')
           read (inrad,9000) dum
           read (inrad,9000) dum
@@ -408,23 +410,42 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
           read (inrad,9000) (bdhicm_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (dummy_n(k),k=1,NBLY_RSB)
         endif
-      else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012' ) then 
-        if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &    
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+      else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012' ) then
+        if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
           inrad = open_namelist_file ('INPUT/h2o_ckd_widebds_hi12')
 !  ckd lo/hi freq for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (bdlocm_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (bdhicm_c(k),k=1,NBLY_CKD)
-        else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then 
+          apwd_c = 0.0; bpwd_c = 0.0
+          atpwd_c = 0.0; btpwd_c = 0.0
+          bdlowd_c = 0.0; bdhiwd_c = 0.0
+          acomb_c = 0.0; bcomb_c = 0.0
+          apcm_c = 0.0; bpcm_c = 0.0
+          atpcm_c = 0.0; btpcm_c = 0.0
+        else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
           inrad = open_namelist_file ('INPUT/h2o_rsb_widebds_hi12')
 !  rsb lo/hi freq for 8 comb bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (bdlocm_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (bdhicm_n(k),k=1,NBLY_RSB)
-        else if (trim(Sealw99_control%continuum_form) == 'BPS' ) then 
+          apwd_n = 0.0; bpwd_n = 0.0
+          atpwd_n = 0.0; btpwd_n = 0.0
+          bdlowd_n = 0.0; bdhiwd_n = 0.0
+          acomb_n = 0.0; bcomb_n = 0.0
+          apcm_n = 0.0; bpcm_n = 0.0
+          atpcm_n = 0.0; btpcm_n = 0.0
+        else if (trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
           inrad = open_namelist_file ('INPUT/h2o_BPS_widebds_hi12')
 !  ckd lo/hi freq for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (bdlocm_n(k),k=1,NBLY_CKD)
           read (inrad,9000) (bdhicm_n(k),k=1,NBLY_CKD)
+          apwd_c = 0.0; bpwd_c = 0.0
+          atpwd_c = 0.0; btpwd_c = 0.0
+          bdlowd_c = 0.0; bdhiwd_c = 0.0
+          acomb_c = 0.0; bcomb_c = 0.0
+          apcm_c = 0.0; bpcm_c = 0.0
+          atpcm_c = 0.0; btpcm_c = 0.0
         endif
 
       endif
@@ -465,13 +486,13 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
         else if(trim(Sealw99_control%linecatalog_form) == 'hitran_2000') then
           inrad = open_namelist_file ('INPUT/h2o12001400_hi00_data')
         else if(trim(Sealw99_control%linecatalog_form) == 'hitran_2012') then
-         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
-          inrad = open_namelist_file ('INPUT/bandpar_h2o_ckdsea_12001400_hi12_data')
-        else if(trim(Sealw99_control%linecatalog_form) == 'BPS') then
-          inrad = open_namelist_file ('INPUT/bandpar_h2o_BPS_12001400_hi12_data')
-         endif
-          inrad = open_namelist_file ('INPUT/h2o12001400_hi00_data')
+          if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
+              trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+              trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
+            inrad = open_namelist_file ('INPUT/bandpar_h2o_ckdsea_12001400_hi12_data')
+          else if(trim(Sealw99_control%linecatalog_form) == 'bps2.0') then
+            inrad = open_namelist_file ('INPUT/bandpar_h2o_BPS_12001400_hi12_data')
+          endif
         endif
 
 !----------------------------------------------------------------------
@@ -527,14 +548,15 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
           endif
         end do
         call close_file(inrad)
-      endif
+      endif ! NBTRGE > 0
 
 !----------------------------------------------------------------------
 !
 !----------------------------------------------------------------------
       if (trim(Sealw99_control%linecatalog_form) == 'hitran_1992') then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
           NBLY = NBLY_CKD
           call id2h2o ('INPUT/id2h2obdckd2p1')
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
@@ -552,7 +574,8 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !----------------------------------------------------------------------
       else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+            trim(Sealw99_control%continuum_form) == 'ckd2.4'.or.      &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
           NBLY = NBLY_CKD
           call id2h2o ('INPUT/h2ocoeff_ckd_0_3000_10cm_hi00')
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
@@ -566,10 +589,11 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
         endif
       else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
           NBLY = NBLY_CKD
           call id2h2o ('INPUT/bandpar_h2o_ckdsea_0_3000_10cm_hi12')
-        else if (trim(Sealw99_control%continuum_form) == 'BPS' ) then
+        else if (trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
           NBLY = NBLY_CKD
           call id2h2o ('INPUT/bandpar_h2o_BPS_0_3000_10cm_hi12')
 
@@ -593,7 +617,9 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !
 !----------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.  &
+          trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
         apwd = apwd_c
         bpwd = bpwd_c
         atpwd = atpwd_c

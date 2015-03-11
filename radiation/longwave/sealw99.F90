@@ -40,6 +40,7 @@ use longwave_utilities_mod, only: longwave_utilities_init, &
                                   mass_1, temp_1, Sealw99_control
 
 use longwave_params_mod, only: longwave_params_init, NBLW, NBCO215, &
+                               NBCO210, NBCO243,  &
                                NBLY_CKD, NBLY_RSB, longwave_params_end
 
 use longwave_clouds_mod, only: longwave_clouds_init, cldtau, cloud,   &
@@ -63,9 +64,11 @@ use optical_path_mod,    only: optical_path_setup, &
                                get_totvo2, get_totch2o, get_totch2obd,&
                                optical_dealloc, optical_path_end
 use gas_tf_mod,          only: co2coef, transcolrow, transcol, &
+                               transcolrow_10um, transcol_10um, &
                                gas_tf_init, get_control_gas_tf, &
                                gas_tf_dealloc, gas_tf_end,   &
-                               trans_sfc, trans_nearby
+                               trans_sfc, trans_nearby, &
+                               trans_sfc_10um, trans_nearby, trans_nearby_10um
 use lw_gases_stdtf_mod,  only: lw_gases_stdtf_init, cfc_indx8,  &
                                cfc_indx8_part, cfc_exact, &
                                lw_gases_stdtf_time_vary, &
@@ -87,8 +90,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id: sealw99.F90,v 19.0 2012/01/06 20:23:35 fms Exp $'
-    character(len=128)  :: tagname =  '$Name: siena_201211 $'
+    character(len=128)  :: version =  '$Id:$'
+    character(len=128)  :: tagname =  '$Name$'
     logical             ::  module_is_initialized = .false.
 
 !---------------------------------------------------------------------
@@ -140,8 +143,8 @@ logical            ::   &
                                     ! of model ?
 character(len=16)  ::  &
             continuum_form = '    ' ! continuum specification; either
-                                    ! 'ckd2.1', 'ckd2.4', 'mt_ckd1.0', 
-                                    ! 'rsb' or 'none'
+                                    ! 'ckd2.1', 'ckd2.4', 'mt_ckd2.5', 
+                                    ! 'rsb', 'bps2.0' or 'none'
 character(len=16)  ::  &
         linecatalog_form = '    '   ! line catalog specification; either
                                     ! 'hitran_1992' or 'hitran_2000' or 'hitran_2012'
@@ -204,7 +207,7 @@ type (longwave_tables2_type), save       :: tab1a, tab2a, tab3a
 type(lw_table_type), save, target :: Lw_tables
 
 !--------------------------------------------------------------------
-integer, parameter                  ::  no_combined_bands = 8
+integer, parameter                  ::  no_combined_bands = 9
 real, dimension(no_combined_bands)  ::  band_no_start, band_no_end
 integer, dimension(NBLY_CKD-1)      ::  cld_indx_table
 
@@ -215,6 +218,8 @@ integer :: nlwcldb
 !
 !---------------------------------------------------------------------
 real, dimension (:),    allocatable    ::  c1b7, c2b7
+real                                   ::  c1b7990, c2b7990, c1b7900, c2b7900, &
+                                           c1b71070, c2b71070
 integer, dimension (:), allocatable    ::  cld_indx
 
 !---------------------------------------------------------------------
@@ -256,7 +261,7 @@ integer    ::  ks, ke
 !  <TEMPLATE>
 !   call sealw99_init (pref, 
 !                      do_h2o, do_o3, do_ch4,
-!                      do_n2o, do_co2, do_cfc)
+!                      do_n2o, do_co2, do_co2_um, do_cfc)
 !  </TEMPLATE>
 !  <IN NAME="latb" TYPE="real">
 !   2d array of model latitudes at cell corners [radians]
@@ -264,14 +269,14 @@ integer    ::  ks, ke
 ! </SUBROUTINE>
 !
 subroutine sealw99_init (pref, do_h2o, do_o3, do_ch4, &
-                               do_n2o, do_co2, do_cfc )
+                               do_n2o, do_co2, do_co2_10um, do_cfc )
  
 !---------------------------------------------------------------------
 !    sealw99_init is the constructor for sealw99_mod.
 !---------------------------------------------------------------------
 
 real, dimension(:,:), intent(in) :: pref
-logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cfc
+logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co2_10um, do_cfc
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -299,11 +304,11 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
                                              band_no_end_rsb,    &
                                            band_no_end_ckd
 
-       data band_no_start_ckd / 1, 25, 41, 42, 43, 44, 46, 47 /
-       data band_no_end_ckd   / 24,40, 41, 42, 43, 45, 46, 47 /
+       data band_no_start_ckd / 1, 25, 41, 42, 43, 44, 45, 46, 47 /
+       data band_no_end_ckd   / 24,40, 41, 42, 43, 44, 45, 46, 47 /
 
-       data band_no_start_rsb / 1, 5, 9, 10, 11, 12, 14, 15 /
-       data band_no_end_rsb   / 4, 8, 9, 10, 11, 13, 14, 15 /
+       data band_no_start_rsb / 1, 5, 9, 10, 11, 12, 13, 14, 15 /
+       data band_no_end_rsb   / 4, 8, 9, 10, 11, 12, 13, 14, 15 /
 
        real, dimension (NBLY_CKD-1) :: cld_indx_table_lwclde, &
                                       cld_indx_table_rsb
@@ -319,6 +324,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
                                        btpcm_c, acomb_c, bcomb_c 
        real, dimension(size(pref,1) ) :: plm
        real, dimension (NBCO215) :: cent, del
+       real            :: cent990, del990, cent900, del900, cent1070, del1070
 
        integer         :: unit, ierr, io, k, n,  nn, logunit
        integer         :: ioffset
@@ -411,7 +417,13 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
       Sealw99_control%do_ch4 = do_ch4
       Sealw99_control%do_n2o = do_n2o
       Sealw99_control%do_co2 = do_co2
+      Sealw99_control%do_co2_10um = do_co2_10um
       Sealw99_control%do_cfc = do_cfc
+
+      if (.not.Sealw99_control%do_co2 .and. Sealw99_control%do_co2_10um) then
+        call error_mesg ( 'sealw99_mod', &
+           'do_co2 is false when do_co2_10um is true', FATAL)
+      endif
 
 !---------------------------------------------------------------------
       kmax = size(pref,1) - 1   ! radiation grid size
@@ -427,7 +439,8 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
 !---------------------------------------------------------------------
       if (trim(continuum_form) == 'ckd2.1'      .or.   &
           trim(continuum_form) == 'ckd2.4'      .or.   &
-          trim(continuum_form) == 'mt_ckd1.0'   .or.   &
+          trim(continuum_form) == 'mt_ckd2.5'   .or.   &
+          trim(continuum_form) == 'bps2.0'      .or.   &
           trim(continuum_form) == 'rsb'         .or.   &
           trim(continuum_form) == 'none'        )      then
       else
@@ -461,10 +474,15 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
       trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
       OFFSET = 32
       NBLY = NBLY_CKD
+  else if (trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+           trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
+      OFFSET = 32
+      NBLY = NBLY_CKD
   else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
       OFFSET = 0
       NBLY = NBLY_RSB  
    endif
+   ioffset = OFFSET
 
 !---------------------------------------------------------------------
 !
@@ -545,9 +563,10 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
           read (inrad,9000) (atpcm_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (btpcm_n(k),k=1,NBLY_RSB)
         endif
-      else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012' ) then 
-        if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &    
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+      else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012' ) then
+        if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
           inrad = open_namelist_file ('INPUT/h2ocoeff_ckdsea_speccombwidebds_hi12')
 !  ckd rndm coeff for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (acomb_c(k),k=1,NBLY_CKD)
@@ -556,8 +575,8 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
           read (inrad,9000) (bpcm_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (atpcm_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (btpcm_c(k),k=1,NBLY_CKD)
-        else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then 
-          inrad = open_namelist_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi12')
+        else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
+          inrad = open_namelist_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
 !  rsb rndm coeff for 8 comb bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (acomb_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (bcomb_n(k),k=1,NBLY_RSB)
@@ -565,7 +584,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
           read (inrad,9000) (bpcm_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (atpcm_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (btpcm_n(k),k=1,NBLY_RSB)
-        else if (trim(Sealw99_control%continuum_form) == 'BPS' ) then 
+        else if (trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
           inrad = open_namelist_file ('INPUT/h2ocoeff_BPS_speccombwidebds_hi12')
 !  BPS rndm coeff for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (acomb_c(k),k=1,NBLY_CKD)
@@ -602,7 +621,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
                                  tab1a, tab2a, tab3a)
 !---------------------------------------------------------------------
 
-     !if (Lw_control%do_co2_iz) then
+     !if (Sealw99_control%do_co2_iz) then
         if (do_nlte .and. .not. Sealw99_control%do_co2) then
           call error_mesg ('sealw99_mod', &
          ' cannot activate nlte when co2 not active as radiative gas',&
@@ -661,7 +680,6 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
 !   allocate and obtain elements of the source function for bands in 
 !   the 15 um range (used in nlte)
 !---------------------------------------------------------------------
-        ioffset = OFFSET
         allocate ( c1b7    (NBCO215) )
         allocate ( c2b7    (NBCO215) )
         do n=1,NBCO215 
@@ -675,8 +693,40 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
       endif
 
 !---------------------------------------------------------------------
+!   allocate and obtain elements of the source function for bands in 
+!   the 10 um range (used in nlte)
+!---------------------------------------------------------------------
+      if (Sealw99_control%do_co2_10um) then
+!  use 990-1070 band (n=46 in bandlo/hi input data)
+!  use 900-990 band (n=45 in bandlo/hi input data)
+!  use 1070-1200 band (n=47 in bandlo/hi input data)
+! (these numbers assume offset = 32 as in CKD/BPS/MT_CKD data; RSB has offset = 0)
+          cent990 = 0.5E+00*(Lw_tables%bdlocm(14+ioffset) +   &
+                             Lw_tables%bdhicm(14+ioffset))
+          del990  = Lw_tables%bdhicm(14+ioffset) -    &
+                    Lw_tables%bdlocm(14+ioffset)
+          c1b7990 = (3.7412E-05)*cent990*cent990*cent990*del990 
+          c2b7990 = (1.4387E+00)*cent990
+          cent900 = 0.5E+00*(Lw_tables%bdlocm(13+ioffset) +   &
+                             Lw_tables%bdhicm(13+ioffset))
+          del900  = Lw_tables%bdhicm(13+ioffset) -    &
+                    Lw_tables%bdlocm(13+ioffset)
+          c1b7900 = (3.7412E-05)*cent900*cent900*cent900*del900 
+          c2b7900 = (1.4387E+00)*cent900
+          cent1070 = 0.5E+00*(Lw_tables%bdlocm(15+ioffset) +   &
+                             Lw_tables%bdhicm(15+ioffset))
+          del1070  = Lw_tables%bdhicm(15+ioffset) -    &
+                    Lw_tables%bdlocm(15+ioffset)
+          c1b71070 = (3.7412E-05)*cent1070*cent1070*cent1070*del1070 
+          c2b71070 = (1.4387E+00)*cent1070
+      endif
+
+!---------------------------------------------------------------------
+
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+          trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
         band_no_start = band_no_start_ckd
         band_no_end   = band_no_end_ckd
         NBLY = NBLY_CKD
@@ -687,13 +737,11 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
       endif
 
 !---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
+
       Sealw99_control%do_lwcldemiss = do_lwcldemiss
 
 !---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
+
       if (do_lwcldemiss) then
         cld_indx_table = cld_indx_table_lwclde
         nlwcldb = 7
@@ -703,13 +751,11 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
       endif
 
 !--------------------------------------------------------------------
-!
-!--------------------------------------------------------------------
+
       call longwave_clouds_init (nlwcldb)
 
 !---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
+
       allocate (apcm(NBLY))
       allocate (bpcm(NBLY))
       allocate (atpcm(NBLY))
@@ -718,10 +764,11 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
       allocate (bcomb(NBLY))
 
 !---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
+
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+          trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
         apcm = apcm_c
         atpcm = atpcm_c
         bpcm = bpcm_c
@@ -738,8 +785,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
       endif
 
 !---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
+
       allocate (cld_indx(6+NBTRGE) )
       do nn=1,6+NBTRGE
         if (nn > nlwcldb) then
@@ -758,14 +804,12 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_cf
         cld_indx(7:) = 1
       endif
 
-!--------------------------------------------------------------------
-!
 !---------------------------------------------------------------------
+
       call longwave_fluxes_init
 
 !---------------------------------------------------------------------
-!
-!---------------------------------------------------------------------
+
      module_is_initialized = .true.
 
 !---------------------------------------------------------------------
@@ -847,35 +891,14 @@ end subroutine sealw99_endts
 !   for the longwave radiation and cloud.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call sealw99 (is, ie, js, je, Atmos_input, Rad_gases, &
+!   call sealw99 (press, pflux, temp, tflux, rh2o, deltaz, qo3, &
+!                 rrvco2, rrvf11, rrvf12, rrvf113, rrvf22,  &
 !                 emrndlw, emmxolw, crndlw, cmxolw, &
 !                 aerooptdep, aerooptdep_volc, &
 !                Lw_output, Lw_diagnostics)
 !  </TEMPLATE>
-!  <IN NAME="is" TYPE="integer">
-!   starting subdomain i indice of data in the physics_window being
-!       integrated
-!  </IN>
-!  <IN NAME="ie" TYPE="integer">
-!   ending subdomain i indice of data in the physics_window being
-!       integrated
-!  </IN>
-!  <IN NAME="js" TYPE="integer">
-!   starting subdomain j indice of data in the physics_window being
-!       integrated
-!  </IN>
-!  <IN NAME="je" TYPE="integer">
-!   ending subdomain j indice of data in the physics_window being
-!       integrated
-!  </IN>
-!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
-!   atmos_input_type variable containing the atmospheric
-!                   input fields needed by the radiation package
-!  </IN>
-!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
-!   radiative_gases_type variable containing the radi-
-!                   ative gas input fields needed by the radiation 
-!                   package
+!  <IN NAME="rrvco2, rrvf11, rrvf12, rrvf113, rrvf22" TYPE="real">
+!   Radiative gases
 !  </IN>
 !  <IN NAME="aerooptdep" TYPE="real">
 !   Aerosol optical depth for model layers
@@ -963,8 +986,10 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !  intent(in) variables:
 !
 !    is,js,ie,je 
-!    Atmos_input
-!    Rad_gases
+!    press, pflux
+!    temp, tflux
+!    rh2o, deltaz, qo3
+!    rrvco2, rrvf11, rrvf12, rrvf113, rrvf22
 !    emrndlw      cloud emissivity for random overlap clouds by band
 !    emmxolw      cloud emissivity for maximum overlap clouds by band
 !    crndlw       cloud amount for random overlap clouds
@@ -993,8 +1018,8 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
       real, dimension (size(pflux,1),    &
                        size(pflux,2),    &
                        size(pflux,3)) ::    &
-           cnttaub1, cnttaub2, cnttaub3, co21c, &
-           co21r, heatem, overod, tmp1, to3cnt, &
+           cnttaub1, cnttaub2, cnttaub3, co21c, co2990c, co2900c, co21070c, &
+           co21r, co2990r, co2900r, co21070r, heatem, overod, tmp1, to3cnt, &
            e1ctw1, e1ctw2,        &
            emisdg, flxcf, &
            heatemcf, flx, to3dg, tcfc8, &
@@ -1005,6 +1030,9 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 
       real, dimension (size(pflux,1), &
                        size(pflux,2)) :: co21c_KEp1, co21r_KEp1, &
+                                         co2990c_KEp1, co2990r_KEp1, &
+                                         co2900c_KEp1, co2900r_KEp1, &
+                                         co21070c_KEp1, co21070r_KEp1, &
                                          flx1e1cf, gxctscf
 
       real, dimension (size(pflux,1), &
@@ -1028,12 +1056,12 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
       real, dimension (size(pflux,1), &
                        size(pflux,2), &
                        size(pflux,3), &
-                           6+NBTRGE ) :: source_band, dsrcdp_band, &
-                                         trans_band1, trans_band2
+                           6+NBTRGE+1 ) :: source_band, dsrcdp_band, &
+                                           trans_band1, trans_band2
 
       real, dimension (size(pflux,1), &
                        size(pflux,2), &
-                           6+NBTRGE ) :: trans_b2d1, trans_b2d2
+                           6+NBTRGE+1 ) :: trans_b2d1, trans_b2d2
 
       real, dimension (size(pflux,1), &
                        size(pflux,2), &
@@ -1089,7 +1117,7 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !     tmp2        temporary arrays, similar to tmp1
 !     to3cnt      transmission function for the 990-1070 cm-1 band
 !                 including o3(9.6 um) + h2o continuum (no lines) 
-!                 and possibly cfcs.
+!                 and possibly cfcs and co2 10um.
 !     ch41c
 !     n2o1c
 !     n2o17c
@@ -1098,6 +1126,12 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !     flxge1
 !     co21c_KEp1
 !     co21r_KEp1
+!     co2990c_KEp1
+!     co2990r_KEp1
+!     co2900c_KEp1
+!     co2900r_KEp1
+!     co21070c_KEp1
+!     co21070r_KEp1
 !     contdg
 !     cfc_tf
 !     pdflux
@@ -1280,6 +1314,15 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
       call transcolrow (Gas_tf, KS, KS, KS, KE+1, KS+1, KE+1,   &
                         co21c, co21r, tch4n2oe)
 
+!-----------------------------------------------------------------
+!    if desired, compute co2 10 um band (1 or 2 band) transmission functions
+!    appropriate for level KS. 
+!---------------------------------------------------------------------
+      if (Sealw99_control%do_co2_10um) then
+        call transcolrow_10um (Gas_tf, KS, KS, KS, KE+1, KS+1, KE+1,   &
+                        co2990c, co2900c, co21070c, co2990r, co2900r, co21070r)
+      endif
+
 !---------------------------------------------------------------------
 !    go into optical_path_mod to obtain the optical path functions 
 !    needed for use from level KS.
@@ -1325,6 +1368,9 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !    index 5 = to3cnt
 !    index 6 = cnttaub3
 !    index 7 = e1flxf
+!    if co2 10 um band is included, index 5 becomes to3cnt*co2990r
+!    if co2 10 um band is included, index 4 becomes cnttaub2*co2900r
+!    if co2 10 um band is included, index 6 becomes cnttaub3*co21070r
 !! trans_band2:
 !    index 1 = emiss
 !    index 2 = co21c*overod
@@ -1333,12 +1379,15 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !    index 5 = to3cnt
 !    index 6 = cnttaub3
 !    index 7 = emissf
+!    if co2 10 um band is included, index 5 becomes to3cnt*co2990c
+!    if co2 10 um band is included, index 4 becomes cnttaub2*co2900c
+!    if co2 10 um band is included, index 6 becomes cnttaub3*co21070c
 !----------------------------------------------------------------------
-       call e1e290 (temp, tflux,  e1ctw1, e1ctw2, trans_band1,   &
-                    trans_band2,  Optical, tch4n2oe, &
-                    source_band(:,:,:,1), Lw_diagnostics, cldtf, &
-                    cld_indx, flx1e1cf,  tcfc8, &
-                    do_totcld_forcing, including_aerosols)  
+      call e1e290 (temp, tflux,  e1ctw1, e1ctw2, trans_band1,   &
+                   trans_band2,  Optical, tch4n2oe, &
+                   source_band(:,:,:,1), Lw_diagnostics, cldtf, &
+                   cld_indx, flx1e1cf,  tcfc8, &
+                   do_totcld_forcing, including_aerosols)  
 
      do kk = KS,KE+1
         do j = 1,size(trans_band1(:,:,:,:),2)
@@ -1348,6 +1397,7 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            end do
         end do
      end do
+
      do kk = KS,KE+1
         do j = 1,size(trans_band1(:,:,:,:),2)
            do i = 1,size(trans_band1(:,:,:,:),1)
@@ -1355,27 +1405,60 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            end do
         end do
      end do
-     do kk = KS,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,4) = cnttaub2(i,j,kk)
+
+     if (Sealw99_control%do_co2_10um) then
+        do kk = KS,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,4) = cnttaub2(i,j,kk)*co2900r(i,j,kk)
+              end do
            end do
         end do
-     end do
-     do kk = KS,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,5) = to3cnt  (i,j,kk)
+     else
+        do kk = KS,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,4) = cnttaub2(i,j,kk)
+              end do
            end do
         end do
-     end do
-     do kk = KS,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,6) = cnttaub3(i,j,kk)
+     endif
+
+     if (Sealw99_control%do_co2_10um) then
+        do kk = KS,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,5) = to3cnt  (i,j,kk) * co2990r(i,j,kk)
+              end do
            end do
         end do
-     end do
+     else
+        do kk = KS,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,5) = to3cnt  (i,j,kk)
+              end do
+           end do
+        end do
+     endif
+
+     if (Sealw99_control%do_co2_10um) then
+        do kk = KS,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,6) = cnttaub3(i,j,kk)*co21070r(i,j,kk)
+              end do
+           end do
+        end do
+     else
+        do kk = KS,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,6) = cnttaub3(i,j,kk)
+              end do
+           end do
+        end do
+     endif
 
 !! trans_band2:
 !   index 1 = emiss
@@ -1385,6 +1468,9 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !   index 5 = to3cnt
 !   index 6 = cnttaub3
 !   index 7 = emissf
+!   if co2 10 um band is included, index 5 becomes to3cnt*co2990c
+!   if co2 10 um band is included, index 4 becomes cnttaub2*co2900c
+!   if co2 10 um band is included, index 6 becomes cnttaub3*co21070c
 
 
      do kk = KS+1,KE+1
@@ -1395,15 +1481,68 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            end do
         end do
      end do
-     do l = 3,6
-        do kk = KS+1,KE+1
-           do j = 1,size(trans_band2(:,:,:,:),2)
-              do i = 1,size(trans_band2(:,:,:,:),1)
-                 trans_band2(i,j,kk,l) = trans_band1(i,j,kk,l)
-              end do
+
+     do kk = KS+1,KE+1
+        do j = 1,size(trans_band2(:,:,:,:),2)
+           do i = 1,size(trans_band2(:,:,:,:),1)
+              trans_band2(i,j,kk,3) = trans_band1(i,j,kk,3)
            end do
         end do
      end do
+
+     if (Sealw99_control%do_co2_10um) then
+       do kk = KS+1,KE+1
+          do j = 1,size(trans_band2(:,:,:,:),2)
+             do i = 1,size(trans_band2(:,:,:,:),1)
+                trans_band2(i,j,kk,4) = cnttaub2(i,j,kk) * co2900c(i,j,kk)
+             end do
+          end do
+       end do
+     else
+        do kk = KS+1,KE+1
+          do j = 1,size(trans_band2(:,:,:,:),2)
+            do i = 1,size(trans_band2(:,:,:,:),1)
+              trans_band2(i,j,kk,4) = trans_band1(i,j,kk,4)
+            end do
+          end do
+       end do
+     endif
+
+     if (Sealw99_control%do_co2_10um) then
+       do kk = KS+1,KE+1
+          do j = 1,size(trans_band2(:,:,:,:),2)
+             do i = 1,size(trans_band2(:,:,:,:),1)
+                trans_band2(i,j,kk,5) = to3cnt  (i,j,kk) * co2990c(i,j,kk)
+             end do
+          end do
+       end do
+     else
+        do kk = KS+1,KE+1
+          do j = 1,size(trans_band2(:,:,:,:),2)
+            do i = 1,size(trans_band2(:,:,:,:),1)
+              trans_band2(i,j,kk,5) = trans_band1(i,j,kk,5)
+            end do
+          end do
+       end do
+     endif
+
+     if (Sealw99_control%do_co2_10um) then
+       do kk = KS+1,KE+1
+          do j = 1,size(trans_band2(:,:,:,:),2)
+             do i = 1,size(trans_band2(:,:,:,:),1)
+                trans_band2(i,j,kk,6) = cnttaub3(i,j,kk) * co21070c(i,j,kk)
+             end do
+          end do
+       end do
+     else
+        do kk = KS+1,KE+1
+          do j = 1,size(trans_band2(:,:,:,:),2)
+            do i = 1,size(trans_band2(:,:,:,:),1)
+              trans_band2(i,j,kk,6) = trans_band1(i,j,kk,6)
+            end do
+          end do
+       end do
+     endif
 
 !----------------------------------------------------------------------
 !     the following is a rewrite of the original code largely to
@@ -1478,6 +1617,11 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
         call transcolrow (Gas_tf, k, k, k, KE+1, k+1, KE+1,  &
                           co21c, co21r, tch4n2oe)
 
+        if (Sealw99_control%do_co2_10um) then
+          call transcolrow_10um (Gas_tf, k, k, k, KE+1, k+1, KE+1,  &
+                        co2990c, co2900c, co21070c, co2990r, co2900r, co21070r)
+        endif
+
 !-------------------------------------------------------------------
 !     the 15 um band transmission functions between levels k and k+1
 !     are stored in overod and co2nbl; they will not be overwritten,
@@ -1485,7 +1629,8 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !     from k.
 !---------------------------------------------------------------------
        call optical_trans_funct_k_down (Gas_tf, k, to3cnt, overod,  &
-                                         Optical, including_aerosols)  
+                                        Optical, cnttaub1, cnttaub2, &
+                                        cnttaub3, including_aerosols)
 
 !-----------------------------------------------------------------------
 !     compute cloud transmission functions between level k and all
@@ -1496,78 +1641,121 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !-----------------------------------------------------------------------
 !     compute the exchange terms in the flux equation (except the 
 !     nearby layer (k,k) terms, done later).
-!! trans_band1:
+!! trans_band1: used to compute fluxes from level k to levels (k+1 to KE+1)
 !   index 1 = emissb
-!   index 2 = co21r*overod
-!   index 3 = contodb1
-!   index 4 = contodb2
-!   index 5 = to3cnt
-!   index 6 = contodb3
-!   index 7 = emissbf
-!! trans_band2:
+!   index 2 = co21r*overod (560-800 cm-1)
+!   index 3 = contodb1 (800-900 cm-1)
+!   index 4 = contodb2 (900-990 cm-1)
+!   index 5 = to3cnt (990-1070 cm-1)
+!   index 6 = contodb3 (1070-1200 cm-1)
+!   index 7 = emissbf (1200-1400 cm-1)
+!   if co2 10 um band is included, index 5 becomes to3cnt*co2990r
+!   if co2 10 um band is included, index 4 becomes contodb2*co2900r
+!   if co2 10 um band is included, index 6 becomes contodb3*co21070r
+!! trans_band2: used to compute fluxes to level k from levels (k+1 to KE+1)
 !   index 1 = emiss
-!   index 2 = co21c*overod
-!   index 3 = contodb1
-!   index 4 = contodb2
-!   index 5 = to3cnt
-!   index 6 = contodb3
-!   index 7 = emissf
+!   index 2 = co21c*overod (560-800 cm-1)
+!   index 3 = contodb1 (800-900 cm-1)
+!   index 4 = contodb2 (900-990 cm-1)
+!   index 5 = to3cnt (990-1070 cm-1)
+!   index 6 = contodb3 (1070-1200 cm-1)
+!   index 7 = emissf (1200-1400 cm-1)
+!   if co2 10 um band is included, index 5 becomes to3cnt*co2990c
+!   if co2 10 um band is included, index 4 becomes contodb2*co2900c
+!   if co2 10 um band is included, index 6 becomes contodb3*co21070c
 !---------------------------------------------------------------------
-       call e290 (temp, tflux, k, trans_band2, trans_band1,   &
-                  Optical,  tch4n2oe,  tcfc8, including_aerosols)     
-       do kp=k,KE
-      do j = 1,size(trans_band1(:,:,:,:),2)
-         do i = 1,size(trans_band1(:,:,:,:),1)
-            trans_band1(i,j,kp+1,3) = cnttaub1(i,j,kp+1  )/cnttaub1(i,j,k  )
+      call e290 (temp, tflux, k, trans_band2, trans_band1,   &
+                 Optical,  tch4n2oe,  tcfc8, including_aerosols)     
+
+      do kk = k+1,KE+1
+         do j = 1,size(trans_band1(:,:,:,:),2)
+            do i = 1,size(trans_band1(:,:,:,:),1)
+               trans_band1(i,j,kk,2) = co21r(i,j,kk)*   &
+                                        overod(i,j,kk)
+            end do
          end do
-      end do
-      do j = 1,size(trans_band1(:,:,:,:),2)
-         do i = 1,size(trans_band1(:,:,:,:),1)
-            trans_band1(i,j,kp+1,4) = cnttaub2(i,j,kp+1  )/cnttaub2(i,j,k  )
+         do j = 1,size(trans_band1(:,:,:,:),2)
+            do i = 1,size(trans_band1(:,:,:,:),1)
+               trans_band1(i,j,kk,3) = cnttaub1(i,j,kk  )/cnttaub1(i,j,k  )
+            end do
          end do
+         if (Sealw99_control%do_co2_10um) then
+            do j = 1,size(trans_band1(:,:,:,:),2)
+               do i = 1,size(trans_band1(:,:,:,:),1)
+                  trans_band1(i,j,kk,4) = cnttaub2(i,j,kk  )/cnttaub2(i,j,k  ) * &
+                                          co2900r(i,j,kk)
+                  trans_band1(i,j,kk,6) = cnttaub3(i,j,kk  )/cnttaub3(i,j,k  ) * &
+                                          co21070r(i,j,kk)
+               end do
+            end do
+         else
+            do j = 1,size(trans_band1(:,:,:,:),2)
+               do i = 1,size(trans_band1(:,:,:,:),1)
+                  trans_band1(i,j,kk,4) = cnttaub2(i,j,kk  )/cnttaub2(i,j,k  )
+                  trans_band1(i,j,kk,6) = cnttaub3(i,j,kk  )/cnttaub3(i,j,k  )
+               end do
+            end do
+         endif
       end do
-      do j = 1,size(trans_band1(:,:,:,:),2)
-         do i = 1,size(trans_band1(:,:,:,:),1)
-            trans_band1(i,j,kp+1,6) = cnttaub3(i,j,kp+1  )/cnttaub3(i,j,k  )
+
+      if (Sealw99_control%do_co2_10um) then
+         do kk = k+1,KE+1
+            do j = 1,size(trans_band1(:,:,:,:),2)
+               do i = 1,size(trans_band1(:,:,:,:),1)
+                  trans_band1(i,j,kk,5) = to3cnt  (i,j,kk) * co2990r(i,j,kk)
+               end do
+            end do
          end do
-      end do
-       end do
+      else
+         do kk = k+1,KE+1
+            do j = 1,size(trans_band1(:,:,:,:),2)
+               do i = 1,size(trans_band1(:,:,:,:),1)
+                  trans_band1(i,j,kk,5) = to3cnt  (i,j,kk)
+               end do
+            end do
+         end do
+      endif
 
-
-     do kk = k+1,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,2) = co21r(i,j,kk)*   &
-                                       overod(i,j,kk)
-           end do
-        end do
-     end do
-     do kk = k+1,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,5) = to3cnt(i,j,kk)
-           end do
-        end do
-     end do
-
-
-     do kk = k+1,KE+1
-        do j = 1,size(trans_band2(:,:,:,:),2)
-           do i = 1,size(trans_band2(:,:,:,:),1)
-              trans_band2(i,j,kk,2) = co21c(i,j,kk)*   &
+      do kk = k+1,KE+1
+         do j = 1,size(trans_band2(:,:,:,:),2)
+            do i = 1,size(trans_band2(:,:,:,:),1)
+               trans_band2(i,j,kk,2) = co21c(i,j,kk)*   &
                                             overod(i,j,kk)
-           end do
-        end do
-     end do
-     do l = 3,6
-        do kk = k+1,KE+1
-           do j = 1,size(trans_band2(:,:,:,:),2)
-              do i = 1,size(trans_band2(:,:,:,:),1)
-                 trans_band2(i,j,kk,l) = trans_band1(i,j,kk,l)
-              end do
-           end do
-        end do
-     end do
+            end do
+         end do
+      end do
+
+      do kk = k+1,KE+1
+         do j = 1,size(trans_band2(:,:,:,:),2)
+            do i = 1,size(trans_band2(:,:,:,:),1)
+               trans_band2(i,j,kk,3) = trans_band1(i,j,kk,3)
+            end do
+         end do
+      end do
+
+      if (Sealw99_control%do_co2_10um) then
+         do kk=k+1,KE+1
+            do j = 1,size(trans_band2(:,:,:,:),2)
+               do i = 1,size(trans_band2(:,:,:,:),1)
+                  trans_band2(i,j,kk,4) = cnttaub2(i,j,kk  )/cnttaub2(i,j,k  ) * &
+                                          co2900c(i,j,kk)
+                  trans_band2(i,j,kk,5) = to3cnt  (i,j,kk) * co2990c(i,j,kk)
+                  trans_band2(i,j,kk,6) = cnttaub3(i,j,kk  )/cnttaub3(i,j,k  ) * &
+                                          co21070c(i,j,kk)
+               end do
+            end do
+         end do
+      else
+         do kk=k+1,KE+1
+            do j = 1,size(trans_band2(:,:,:,:),2)
+               do i = 1,size(trans_band2(:,:,:,:),1)
+                  trans_band2(i,j,kk,4) = cnttaub2(i,j,kk  )/cnttaub2(i,j,k  )
+                  trans_band2(i,j,kk,5) = trans_band1(i,j,kk,5)
+                  trans_band2(i,j,kk,6) = cnttaub3(i,j,kk  )/cnttaub3(i,j,k  )
+               end do
+            end do
+         end do
+      endif
 
 !-----------------------------------------------------------------------
 !     compute the terms for flux at levels k+1 to KE+1 from level k.
@@ -1578,7 +1766,8 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
                                     trans_band2, cldtf, cld_indx,  &
                                     do_totcld_forcing, &
                                     Lw_diagnostics          )  
-   end do   ! (end of k=KS+1,KE-1 loop)
+
+    end do   ! (end of k=KS+1,KE-1 loop)
 
 !-----------------------------------------------------------------------
 !     compute remaining flux terms. these include:
@@ -1629,31 +1818,23 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !     compute co2 560-800 cm-1, ch4 and n2o 1200-1400 cm-1 trans-
 !     mission functions and n2o 560-670 cm-1 transmission functions
 !     appropriate for level KE. if activated, save ch4n2o tf term.
+!
+!    if desired, compute co2 10um (990-1070 cm-1) transmission functions
+!    appropriate for level KE
 !-------------------------------------------------------------------
       call transcolrow (Gas_tf, KE, KE, KE, KE+1, KE+1, KE+1,  &
                         co21c, co21r, tch4n2oe)
 
+      if (Sealw99_control%do_co2_10um) then
+        call transcolrow_10um (Gas_tf, KE, KE, KE, KE+1, KE+1, KE+1,  &
+                        co2990c, co2900c, co21070c, co2990r, co2900r, co21070r)
+      endif
 !----------------------------------------------------------------------
 !     get optical path terms for KE
 !----------------------------------------------------------------------
-      call optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod, &
-                                   including_aerosols)        
-
-   do j = 1,size(trans_b2d1(:,:,:),2)
-      do i = 1,size(trans_b2d1(:,:,:),1)
-         trans_b2d1(i,j,3  ) = cnttaub1(i,j,KE+1)/cnttaub1(i,j,KE  )
-      end do
-   end do
-   do j = 1,size(trans_b2d1(:,:,:),2)
-      do i = 1,size(trans_b2d1(:,:,:),1)
-         trans_b2d1(i,j,4  ) = cnttaub2(i,j,KE+1)/cnttaub2(i,j,KE  )
-      end do
-   end do
-   do j = 1,size(trans_b2d1(:,:,:),2)
-      do i = 1,size(trans_b2d1(:,:,:),1)
-         trans_b2d1(i,j,6  ) = cnttaub3(i,j,KE+1)/cnttaub3(i,j,KE  )
-      end do
-   end do
+      call optical_trans_funct_KE (Gas_tf, to3cnt, overod,  &
+                                   Optical, cnttaub1, cnttaub2, &
+                                   cnttaub3, including_aerosols)
 
 !-----------------------------------------------------------------------
 !     compute cloud transmission functions between level KE and KE and
@@ -1682,6 +1863,9 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !    index 5 = to3cnt
 !    index 6 = contodb3
 !    index 7 = emspecf(KS+1)
+!    if co2 10 um band is included, index 5 becomes to3cnt*co2990c
+!    if co2 10 um band is included, index 4 becomes contodb2*co2900c
+!    if co2 10 um band is included, index 6 becomes contodb3*co21070c
 
 !! trans_band2:
 !    index 1 = emspec(KS)
@@ -1691,10 +1875,18 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !    index 5 = to3cnt
 !    index 6 = contodb3
 !    index 7 = emspecf(KS)
+!    if co2 10 um band is included, index 5 becomes to3cnt*co2990r
+!    if co2 10 um band is included, index 4 becomes contodb2*co2900r
+!    if co2 10 um band is included, index 6 becomes contodb3*co21070r
 !----------------------------------------------------------------------
     call trans_sfc    (Gas_tf, press, pflux, overod, co21c_KEp1, &
                        co21r_KEp1)
 
+    if (Sealw99_control%do_co2_10um) then
+      call trans_sfc_10um (Gas_tf, press, pflux, to3cnt, co2990c_KEp1, &
+                           co2900c_KEp1, co21070c_KEp1, co2990r_KEp1, &
+                           co2900r_KEp1, co21070r_KEp1)
+    endif
 
 
      do j = 1,size(trans_b2d1(:,:,:),2)
@@ -1702,16 +1894,36 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            trans_b2d1(i,j,1) = emspec(i,j,KS+1)
         end do
      end do
+
      do j = 1,size(trans_b2d1(:,:,:),2)
         do i = 1,size(trans_b2d1(:,:,:),1)
            trans_b2d1(i,j,2) = co21c_KEp1(i,j)
         end do
      end do
+
      do j = 1,size(trans_b2d1(:,:,:),2)
         do i = 1,size(trans_b2d1(:,:,:),1)
-           trans_b2d1(i,j,5) = to3cnt(i,j,KE+1)
+           trans_b2d1(i,j,3  ) = cnttaub1(i,j,KE+1)/cnttaub1(i,j,KE  )
         end do
      end do
+
+     if (Sealw99_control%do_co2_10um) then
+        do j = 1,size(trans_b2d1(:,:,:),2)
+           do i = 1,size(trans_b2d1(:,:,:),1)
+              trans_b2d1(i,j,4  ) = cnttaub2(i,j,KE+1)/cnttaub2(i,j,KE  ) * co2900c_KEp1(i,j)
+              trans_b2d1(i,j,5  ) = to3cnt(i,j,KE+1)*co2990c_KEp1(i,j)
+              trans_b2d1(i,j,6  ) = cnttaub3(i,j,KE+1)/cnttaub3(i,j,KE  ) * co21070c_KEp1(i,j)
+           end do
+        end do
+     else
+        do j = 1,size(trans_b2d1(:,:,:),2)
+           do i = 1,size(trans_b2d1(:,:,:),1)
+              trans_b2d1(i,j,4  ) = cnttaub2(i,j,KE+1)/cnttaub2(i,j,KE  )
+              trans_b2d1(i,j,5  ) = to3cnt(i,j,KE+1)
+              trans_b2d1(i,j,6  ) = cnttaub3(i,j,KE+1)/cnttaub3(i,j,KE  )
+           end do
+        end do
+     endif
 
      do m=1,NBTRGE
      do j = 1,size(trans_b2d1(:,:,:),2)
@@ -1726,18 +1938,37 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            trans_b2d2(i,j,1) = emspec(i,j,KS)
         end do
      end do
+
      do j = 1,size(trans_b2d2(:,:,:),2)
         do i = 1,size(trans_b2d2(:,:,:),1)
            trans_b2d2(i,j,2) = co21r_KEP1(i,j)
         end do
      end do
-     do kk = 3,6
-        do j = 1,size(trans_b2d2(:,:,:),2)
-           do i = 1,size(trans_b2d2(:,:,:),1)
-              trans_b2d2(i,j,kk) = trans_b2d1(i,j,kk)
-           end do
+
+     do j = 1,size(trans_b2d2(:,:,:),2)
+        do i = 1,size(trans_b2d2(:,:,:),1)
+           trans_b2d2(i,j,3) = trans_b2d1(i,j,3)
         end do
      end do
+
+     if (Sealw99_control%do_co2_10um) then
+        do j = 1,size(trans_b2d2(:,:,:),2)
+           do i = 1,size(trans_b2d2(:,:,:),1)
+              trans_b2d2(i,j,4  ) = cnttaub2(i,j,KE+1)/cnttaub2(i,j,KE  ) * co2900r_KEp1(i,j)
+              trans_b2d2(i,j,5  ) = to3cnt(i,j,KE+1)*co2990r_KEp1(i,j)
+              trans_b2d2(i,j,6  ) = cnttaub3(i,j,KE+1)/cnttaub3(i,j,KE  ) * co21070r_KEp1(i,j)
+           end do
+        end do
+     else
+        do j = 1,size(trans_b2d2(:,:,:),2)
+           do i = 1,size(trans_b2d2(:,:,:),1)
+              trans_b2d2(i,j,4  ) = cnttaub2(i,j,KE+1)/cnttaub2(i,j,KE  )
+              trans_b2d2(i,j,5  ) = trans_b2d1(i,j,5)
+              trans_b2d2(i,j,6  ) = cnttaub3(i,j,KE+1)/cnttaub3(i,j,KE  )
+           end do
+        end do
+     endif
+
      do m=1,NBTRGE
      do j = 1,size(trans_b2d2(:,:,:),2)
         do i = 1,size(trans_b2d2(:,:,:),1)
@@ -1780,6 +2011,9 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
 !----------------------------------------------------------------------
      call trans_nearby (Gas_tf, press, pflux, overod,  co21c)
 
+     if (Sealw99_control%do_co2_10um) then
+       call trans_nearby_10um (Gas_tf, press, pflux, to3cnt, co2990c, co2900c, co21070c)
+     endif
 
      do kk = ks+1,KE+1
         do j = 1,size(trans_band1(:,:,:,:),2)
@@ -1788,6 +2022,7 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            end do
         end do
      end do
+
      do kk = ks+1,KE+1
         do j = 1,size(trans_band1(:,:,:,:),2)
            do i = 1,size(trans_band1(:,:,:,:),1)
@@ -1795,6 +2030,7 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            end do
         end do
      end do
+
      do kk = ks+1,KE+1
         do j = 1,size(trans_band1(:,:,:,:),2)
            do i = 1,size(trans_band1(:,:,:,:),1)
@@ -1802,27 +2038,60 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
            end do
         end do
      end do
-     do kk = ks+1,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,4) = contdg(i,j,kk,2)
+
+     if (Sealw99_control%do_co2_10um) then
+        do kk = ks+1,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,4) = contdg(i,j,kk,2)*co2900c(i,j,kk)
+              end do
            end do
         end do
-     end do
-     do kk = ks+1,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,5) = to3dg(i,j,kk)
+     else
+        do kk = ks+1,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,4) = contdg(i,j,kk,2)
+              end do
            end do
         end do
-     end do
-     do kk = ks+1,KE+1
-        do j = 1,size(trans_band1(:,:,:,:),2)
-           do i = 1,size(trans_band1(:,:,:,:),1)
-              trans_band1(i,j,kk,6) = contdg(i,j,kk,3)
+     endif
+
+     if (Sealw99_control%do_co2_10um) then
+        do kk = ks+1,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,5) = to3dg(i,j,kk)*co2990c(i,j,kk)
+              end do
            end do
         end do
-     end do
+     else
+        do kk = ks+1,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,5) = to3dg(i,j,kk)
+              end do
+           end do
+        end do
+     endif
+
+     if (Sealw99_control%do_co2_10um) then
+        do kk = ks+1,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,6) = contdg(i,j,kk,3)*co21070c(i,j,kk)
+              end do
+           end do
+        end do
+     else
+        do kk = ks+1,KE+1
+           do j = 1,size(trans_band1(:,:,:,:),2)
+              do i = 1,size(trans_band1(:,:,:,:),1)
+                 trans_band1(i,j,kk,6) = contdg(i,j,kk,3)
+              end do
+           end do
+        end do
+     endif
 
 
      do m=1,NBTRGE
@@ -1842,7 +2111,7 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
                                cld_indx, do_totcld_forcing, &
                                Lw_diagnostics )
 
-!--------------------------------------------------------------------
+!-----------------------------------------------------------------------
 !      sum up fluxes over bands
 !-----------------------------------------------------------------------
     if (do_totcld_forcing) then
@@ -2402,7 +2671,8 @@ real, dimension (:,:,:),   intent(in), optional :: trans2
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-     nbands = size(source,4) - NBTRGE
+!    nbands = size(source,4) - NBTRGE
+     nbands = size(Lw_diagnostics%cts_out(:,:,:,:),4)
      do kk = KS,KE
         do j = 1,size(pdfinv(:,:,:),2)
            do i = 1,size(pdfinv(:,:,:),1)
@@ -2483,16 +2753,13 @@ end subroutine cool_to_space_approx
 !  </OVERVIEW>
 !  <TEMPLATE>
 !   call  cool_to_space_exact (                cldtf,          &
-!                             Atmos_input, Optical, Gas_tf,  &
+!                             press, pflux, temp, tsurf, Optical, Gas_tf,  &
 !                             sorc,        to3cnt, Lw_diagnostics, &
 !                             cts_sum, cts_sumcf, &
 !                             gxctscf) 
 !  </TEMPLATE>
 !  <IN NAME="cldtf" TYPE="real">
 !   cloud transmission function between levels k level KS.
-!  </IN>
-!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
-!   Atmospheric input to the cool to space approximation method
 !  </IN>
 !  <INOUT NAME="Optical" TYPE="optical_path_type">
 !   Optical depth of atmospheric layers and clouds
@@ -2886,8 +3153,10 @@ logical,                   intent(in)     :: do_totcld_forcing, &
 !-----------------------------------------------------------------------
         if (n >= band_no_start(1) .and. n <= band_no_end(1)) then
 !                       160-400 cm-1 region (h2o)
-  if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-      trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+  if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.   &
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.        &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
 ! bands 1-24.
             call get_totch2o (n, Optical, totch2o_tmp, dte1, ixoe1)
             do kk = KS,KE
@@ -2914,8 +3183,10 @@ logical,                   intent(in)     :: do_totcld_forcing, &
 !-----------------------------------------------------------------------
 else if (n >= band_no_start(2) .and. n <= band_no_end(2)) then
 !                       400-560 cm-1 region (h2o)
-  if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-      trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+  if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.    &
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.    &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or. &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
 ! bands 25-40.
             call get_totch2o (n, Optical, totch2o_tmp, dte1, ixoe1)
             do kk = KS,KE
@@ -2944,9 +3215,11 @@ else if (n >= band_no_start(2) .and. n <= band_no_end(2)) then
 !-----------------------------------------------------------------------
 else if (n >= band_no_start(3) .and. n <= band_no_end(3)) then
 !                       560-630 cm-1 region (h2o, co2, n2o, aerosol)
-  if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-      trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
 ! band 41.
+  if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.  &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
             call get_totch2obd (n-40, Optical, totch2o_tmp)
             do kk = KS,KE
                do j = 1,size(tmp2(:,:,:),2)
@@ -3001,7 +3274,9 @@ else if (n >= band_no_start(3) .and. n <= band_no_end(3)) then
 else if (n >= band_no_start(4) .and. n <= band_no_end(4)) then
 !                       630-700 cm-1 region (h2o, co2, aerosol)
   if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-      trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
 ! band 42.
             call get_totch2obd (n-40, Optical, totch2o_tmp)
             do kk = KS,KE
@@ -3056,7 +3331,9 @@ else if (n >= band_no_start(4) .and. n <= band_no_end(4)) then
 else if (n >= band_no_start(5) .and. n <= band_no_end(5)) then
 !                       700-800 cm-1 region (h2o, co2, aerosol)
   if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-      trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
 ! band 43.
             call get_totch2obd (n-40, Optical, totch2o_tmp)
             do kk = KS,KE
@@ -3109,10 +3386,12 @@ else if (n >= band_no_start(5) .and. n <= band_no_end(5)) then
 !
 !-----------------------------------------------------------------------
 else if (n >= band_no_start(6) .and. n <= band_no_end(6)) then
-!                       800-990 cm-1 region (h2o, aerosol)
+!                       800-900 cm-1 region (h2o, aerosol)
   if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-      trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
-! bands 44-45.
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
+! band 44.
             call get_totch2obd (n-40, Optical, totch2o_tmp)
             do kk = KS,KE
                do j = 1,size(tmp2(:,:,:),2)
@@ -3123,7 +3402,7 @@ else if (n >= band_no_start(6) .and. n <= band_no_end(6)) then
                end do
             end do
   else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then 
-! bands 12-13
+! band 12
             call get_totvo2 (n, Optical, totvo2_tmp)
             do kk = KS,KE
                do j = 1,size(tmp2(:,:,:),2)
@@ -3163,8 +3442,77 @@ else if (n >= band_no_start(6) .and. n <= band_no_end(6)) then
 !
 !-----------------------------------------------------------------------
 else if (n >= band_no_start(7) .and. n <= band_no_end(7)) then
-!                       990-1070 cm-1 region (h2o(lines), o3)
+!                       900-990 cm-1 region (h2o, co2, aerosol)
+  if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
+! band 45.
+            call get_totch2obd (n-40, Optical, totch2o_tmp)
+            do kk = KS,KE
+               do j = 1,size(tmp2(:,:,:),2)
+                  do i = 1,size(tmp2(:,:,:),1)
+                     tmp2(i,j,kk) = tmp1(i,j,kk) + diffac*    &
+                            totch2o_tmp(i,j,kk+KS+1-(KS))
+                  end do
+               end do
+            end do
+  else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then 
+! band 13
+            call get_totvo2 (n, Optical, totvo2_tmp)
+            do kk = KS,KE
+               do j = 1,size(tmp2(:,:,:),2)
+                  do i = 1,size(tmp2(:,:,:),1)
+                     tmp2(i,j,kk) = tmp1(i,j,kk) +              &
+                                totvo2_tmp(i,j,kk+KS+1-(KS))
+                  end do
+               end do
+            end do
+          endif
+          if (including_aerosols) then      
+            do kk = 1,size(totaer_tmp(:,:,:),3)
+               do j = 1,size(totaer_tmp(:,:,:),2)
+                  do i = 1,size(totaer_tmp(:,:,:),1)
+                     totaer_tmp(i,j,kk) = Optical%totaerooptdep(i,j,kk,n-8-ioffset)
+                  end do
+               end do
+            end do
+            do kk = KS,KE
+               do j = 1,size(tmp2(:,:,:),2)
+                  do i = 1,size(tmp2(:,:,:),1)
+                     tmp2(i,j,kk) = tmp2(i,j,kk)    +                &
+                            totaer_tmp   (i,j,kk+KS+1-(KS))
+                  end do
+               end do
+            end do
+          endif
+
+          do kk = KS,KE
+             do j = 1,size(tt(:,:,:),2)
+                do i = 1,size(tt(:,:,:),1)
+                   tt(i,j,kk) = EXP(-1.0E+00*tmp2(i,j,kk))
+                end do
+             end do
+          end do
+          if (Sealw99_control%do_co2_10um) then
+            do kk = KS,KE
+               do j = 1,size(tt(:,:,:),2)
+                  do i = 1,size(tt(:,:,:),1)
+                    tt(i,j,kk) = tt(i,j,kk)*                           &
+                                  Gas_tf%co2900spnb(i,j,kk+KS+1-(KS))
+                  end do
+               end do
+            end do
+          endif
+
+!-----------------------------------------------------------------------
+!
+!-----------------------------------------------------------------------
+else if (n >= band_no_start(8) .and. n <= band_no_end(8)) then
+!                       990-1070 cm-1 region (h2o(lines), o3, co2)
 !                       band 46 (ckd2.1) or 14 (rsb)
+! note: to3cnt includes h2o continuum tf (either ckd/bps or rsb), o3 tf  &
+! and aerosol tf (including_aerosols is true)
 
           do kk = KS,KE
              do j = 1,size(tt(:,:,:),2)
@@ -3174,14 +3522,26 @@ else if (n >= band_no_start(7) .and. n <= band_no_end(7)) then
                 end do
              end do
           end do
+          if (Sealw99_control%do_co2_10um) then
+            do kk = KS,KE
+               do j = 1,size(tt(:,:,:),2)
+                  do i = 1,size(tt(:,:,:),1)
+                    tt(i,j,kk) = tt(i,j,kk)*                           &
+                                  Gas_tf%co2990spnb(i,j,kk+KS+1-(KS))
+                  end do
+               end do
+            end do
+          endif
 
 !-----------------------------------------------------------------------
 !
 !-----------------------------------------------------------------------
-else if (n >= band_no_start(8) .and. n <= band_no_end(8)) then
-!                       1070-1200 cm-1 region (h2o, n2o)
+else if (n >= band_no_start(9) .and. n <= band_no_end(9)) then
+!                       1070-1200 cm-1 region (h2o, n2o, co2)
   if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-      trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+      trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+      trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+      trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
 ! band 47.
             call get_totch2obd (n-40, Optical, totch2o_tmp)
             do kk = KS,KE
@@ -3203,8 +3563,8 @@ else if (n >= band_no_start(8) .and. n <= band_no_end(8)) then
                   end do
                end do
             end do
-          endif
-          if (including_aerosols) then      
+  endif
+         if (including_aerosols) then      
             do kk = 1,size(totaer_tmp(:,:,:),3)
                do j = 1,size(totaer_tmp(:,:,:),2)
                   do i = 1,size(totaer_tmp(:,:,:),1)
@@ -3220,7 +3580,8 @@ else if (n >= band_no_start(8) .and. n <= band_no_end(8)) then
                   end do
                end do
             end do
-          endif
+         endif
+
           do kk = KS,KE
              do j = 1,size(tt(:,:,:),2)
                 do i = 1,size(tt(:,:,:),1)
@@ -3229,6 +3590,16 @@ else if (n >= band_no_start(8) .and. n <= band_no_end(8)) then
                 end do
              end do
           end do
+          if (Sealw99_control%do_co2_10um) then
+            do kk = KS,KE
+               do j = 1,size(tt(:,:,:),2)
+                  do i = 1,size(tt(:,:,:),1)
+                    tt(i,j,kk) = tt(i,j,kk)*                           &
+                                  Gas_tf%co21070spnb(i,j,kk+1)
+                  end do
+               end do
+            end do
+          endif
 
         endif
 !--------------------------------------------------------------------
@@ -3553,14 +3924,11 @@ end  subroutine cool_to_space_exact
 !     certified:  radiation version 1.0
 !   </DESCRIPTION>
 !   <TEMPLATE>
-!    call e1e290 (Atmos_input,                 e1ctw1, e1ctw2,   &
+!    call e1e290 (temp, tflux, e1ctw1, e1ctw2,   &
 !                 trans_band1, trans_band2, Optical, tch4n2oe, &
 !                 t4, Lw_diagnostics, cldtf, cld_indx, flx1e1cf, &
 !                 tcfc8)
 !   </TEMPLATE>
-!   <IN NAME="Atmos_input" TYPE="atmos_input_type">
-!    Atmospheric input data to the thermal exchange method
-!   </IN>
 !   <OUT NAME="e1ctw1" TYPE="real">
 !    Cool to space thermal exchange terms in 0-560 band
 !   </OUT>
@@ -3669,7 +4037,8 @@ logical,                   intent(in)    :: do_totcld_forcing, &
 !---------------------------------------------------------------------
 !  intent(in) variables:
 !
-!      Atmos_input
+!      temp
+!      tflux
 !      tch4n2oe
 !      t4
 !      cldtf
@@ -4313,12 +4682,9 @@ end  subroutine e1e290
 !         1475-1488.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call e290 (Atmos_input, k, trans_band2, trans_band1, Optical,  tch4n2oe, &
+!   call e290 (temp, tflux, k, trans_band2, trans_band1, Optical,  tch4n2oe, &
 !              tcfc8)
 !  </TEMPLATE>
-!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
-!   Atmospheric input data
-!  </IN>
 !  <IN NAME="k" TYPE="integer">
 !   Starting vertical level k to compute exchange terms
 !  </IN>
@@ -4383,7 +4749,8 @@ logical,                   intent(in)            :: including_aerosols
 !-------------------------------------------------------------------
 !   intent(in) variables:
 !
-!       Atmos_input
+!       temp
+!       tflux
 !       k
 !       tch4n2oe
 !
@@ -4730,12 +5097,9 @@ end subroutine e290
 !   look up tables
 !  </OVERVIEW>
 !  <TEMPLATE>
-!   call esfc  (Atmos_input,         emspec,             Optical, &
+!   call esfc  (press, pflux, temp, tflux, emspec, Optical, &
 !               emspecf, tch4n2oe, tcfc8 )
 !  </TEMPLATE>
-!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
-!   Atmospheric input data such as temperature and flux level temp
-!  </IN>
 !  <OUT NAME="emspec" TYPE="real">
 !   Emissivity of thermal layers
 !  </OUT>
@@ -4771,7 +5135,10 @@ real, dimension (:,:,:),   intent(inout) :: tcfc8
 !--------------------------------------------------------------------
 !  intent(in)variables:
 !    
-!     Atmos_input
+!     press
+!     pflux
+!     temp
+!     tflux
 !     tch4n2oe
 !
 !  intent(inout) variables:
@@ -5220,12 +5587,9 @@ end subroutine esfc
 !   look up tables
 !  </OVERVIEW>
 !  <TEMPLATE>
-!   call enear  (Atmos_input,         emisdg,             Optical, &
+!   call enear  (temp, tflux, emisdg, Optical, &
 !               emisdgf, tch4n2oe, tcfc8 )
 !  </TEMPLATE>
-!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
-!   Atmospheric input data such as temperature and flux level temp
-!  </IN>
 !  <OUT NAME="emisdg" TYPE="real">
 !   Emissivity of thermal layers
 !  </OUT>
@@ -5261,7 +5625,8 @@ real, dimension (:,:,:),   intent(inout) ::  tcfc8
 !--------------------------------------------------------------------
 !  intent(in) variables:
 !
-!     Atmos_input
+!     temp
+!     tflux
 !     tch4n2oe
 !
 !  intent(inout) variables:
@@ -5622,12 +5987,9 @@ end subroutine enear
 !   Subroutine to calculate CO2 source function
 !  </OVERVIEW>
 !  <TEMPLATE>
-!   call co2_source_calc (Atmos_input, Rad_gases, sorc,  Gas_tf, &
-!                         source_band, dsrcdp_band)
+!   call co2_source_calc (press, pflux, temp, tsurf, rrvco2,
+!                         sorc,  Gas_tf, source_band, dsrcdp_band)
 !  </TEMPLATE>
-!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
-!   Atmospheric input data
-!  </IN>
 !  <IN NAME="rrvco2" TYPE="real">
 !   co2 concentration
 !  </IN>
@@ -5754,6 +6116,9 @@ real, dimension(:,:,:,:),   intent(out)  ::  source_band, dsrcdp_band
 !-----------------------------------------------------------------------
       if (do_nlte) then
         call nlte (pflux_cgs, press_cgs, rrvco2, sorc, Gas_tf)
+        if (Sealw99_control%do_co2_10um) then
+          call nlte_10um (pflux, press, rrvco2, sorc, Gas_tf)
+        endif
       endif
 
 !----------------------------------------------------------------------
@@ -5819,8 +6184,15 @@ real, dimension(:,:,:,:),   intent(out)  ::  source_band, dsrcdp_band
          end do
       end do
       end do
+      do kk = 1,size(source_band(:,:,:,:),3)
+         do j = 1,size(source_band(:,:,:,:),2)
+            do i = 1,size(source_band(:,:,:,:),1)
+               source_band(i,j,kk,6+NBTRGE+1) = sorc(i,j,kk,8 )
+            end do
+         end do
+      end do
 
-      do n=1, 6+NBTRGE       
+      do n=1, 6+NBTRGE+1
        do kk = KS+1,KE+1
           do j = 1,size(dsrcdp_band(:,:,:,:),2)
              do i = 1,size(dsrcdp_band(:,:,:,:),1)
@@ -5835,8 +6207,6 @@ real, dimension(:,:,:,:),   intent(out)  ::  source_band, dsrcdp_band
 
 
 end subroutine co2_source_calc
-
-
 
 
 !#####################################################################
@@ -5931,7 +6301,7 @@ type(gas_tf_type),         intent(in)    :: Gas_tf
 !
 !  intent(inout) variables:
 !
-!     sorc
+!     sorc bands 1-8 for 490-1200 cm-1 range
 !
 !--------------------------------------------------------------------
 
@@ -5940,7 +6310,7 @@ type(gas_tf_type),         intent(in)    :: Gas_tf
 
       real, dimension (size(pflux,1), size(pflux,2), &
                        ixprnlte) ::  &
-                                ag, az, bdenom, cdiag, &
+                                ag, az, bdenom, cdiag, cdiag10, &
                                                 tcoll, phifx, phivar
 
       real, dimension (size(pflux,1), size(pflux,2), &
@@ -5987,7 +6357,7 @@ type(gas_tf_type),         intent(in)    :: Gas_tf
 !--------------------------------------------------------------------
 
 !-----------------------------------------------------------------------
-!     compute curtis matrix for both frequency bands.
+!     compute curtis matrix for three frequency bands in 15um band.
 !-----------------------------------------------------------------------
       call co2curt (pflux, cmtrx, Gas_tf)
 
@@ -6154,6 +6524,339 @@ type(gas_tf_type),         intent(in)    :: Gas_tf
 end subroutine nlte
 
 
+!#####################################################################
+
+subroutine nlte_10um (pflux, press, rrvco2, sorc, Gas_tf)
+
+!-----------------------------------------------------------------------
+!     nlte_10um is the present formulation of an nlte calculation of the 
+!     source function in the 10 um region (three bands).
+!
+!     the essential theory is:
+!
+!           phi = C*j
+!             j = b + E*phi
+!
+!     where
+!             C = Curtis matrix
+!              E = NLTE contribution (diagonal matrix)
+!           phi = heating rate vector
+!             b = LTE source function vector
+!             j = NLTE source function vector
+!
+!             j = b (by assumption) for pressure layers > ixnltr
+!             j = b (by assumption) for pressure layers > ixprnlte
+!      E is obtained using a formulation devised by Fels (denoted
+!      Ri in his notes).
+!
+!     author: m. d. schwarzkopf
+!
+!     revised: 1/1/93
+!
+!     certified:  radiation version 1.0
+!-----------------------------------------------------------------------
+
+real, dimension (:,:,:),   intent(in)    ::  pflux, press
+real,                      intent(in)    ::  rrvco2
+real, dimension (:,:,:,:), intent(inout) ::  sorc               
+type(gas_tf_type),         intent(in)    :: Gas_tf
+
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!     pflux
+!     press
+!     rrvco2
+!     Gas_tf
+!
+!  intent(inout) variables:
+!
+!     sorc:  bands 1-8 in 560-1200 cm-1 range
+!
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (size(press,1), size(press,2), &
+                       ixprnlte) ::  &
+                                ag990, az990, bdenom990, cdiag990,  &
+                                phifx990, phivar990,  &
+                                ag900, az900, bdenom900, cdiag900,  &
+                                phifx900, phivar900,  &
+                                ag1070, az1070, bdenom1070, cdiag1070,  &
+                                phifx1070, phivar1070,  &
+                                                tcoll
+
+      real, dimension (size(press,1), size(press,2), &
+                       ixprnlte) ::  &
+                                    fnlte990, fnlte900, fnlte1070
+      real, dimension (size(press,1), size(press,2), &
+                       size(press,3)-1, ixprnlte ) ::  &
+                                     cmtrx990, cmtrx900, cmtrx1070
+
+      real                                   :: degen = 0.5
+      integer                                :: i,j,kk
+      integer                                :: n, k, inb, kp, ioffset
+
+!---------------------------------------------------------------------
+!  local variables:
+!
+!     ag990  ag900  ag1070
+!     az990  az900  az1070
+!     bdenom990  bdenom900  bdenom1070
+!     cdiag990
+!     cdiag900
+!     cdiag1070
+!     tcoll
+!     phifx990     fixed portion of PHI (contributions from
+!                  layers > ixnltr, where j(k) = b(k))
+!                  layers > ixprnlte, where j(k) = b(k)) for 990-1070 cm-1 band
+!     phifx900 phifx1070  same as phifx990 except for 900-990 or 1070-1200 cm-1 band
+!     phivar990    varying portion of PHI (contributions
+!                  from layers <= ixprnlte).
+!                  from layers <= ixnltr). for 990-1070 cm-1 band
+!     phivar900 phivar1070  same as phivar990 except for 900-990 or 1070-1200 cm-1 band
+!     fnlte990   NLTE contribution in 990-1070 cm-1 band: (E in above notes)
+!     fnlte900   NLTE contribution in 900-990 cm-1 band: (E in above notes)
+!     fnlte1070   NLTE contribution in 1070-1200 cm-1 band: (E in above notes)
+!     cmtrx990
+!     cmtrx900
+!     cmtrx1070
+!     degen     degeneracy factor (= 0.5)
+!     n
+!     k
+!     inb
+!     kp
+!     ioffset
+!
+!-----------------------------------------------------------------------
+ 
+!-----------------------------------------------------------------------
+!
+!-----------------------------------------------------------------------
+!---------------------------------------------------------------------
+      ioffset =  OFFSET
+
+!--------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!     compute curtis matrix for three 10um frequency bands.
+!-----------------------------------------------------------------------
+      call co2curt_10um (pflux, cmtrx990, cmtrx900, cmtrx1070, Gas_tf)
+
+      do k=KS,ixprnlte
+        do j = 1,size(cdiag990(:,:,:),2)
+           do i = 1,size(cdiag990(:,:,:),1)
+              cdiag990(i,j,k) = cmtrx990(i,j,k,k)
+              cdiag900(i,j,k) = cmtrx900(i,j,k,k)
+              cdiag1070(i,j,k) = cmtrx1070(i,j,k,k)
+           end do
+        end do
+      end do
+
+!-----------------------------------------------------------------------
+!   collisional relaxation time (see fels notes for "tcoll")
+!-----------------------------------------------------------------------
+      do k=KS,ixprnlte
+        do j = 1,size(tcoll(:,:,:),2)
+           do i = 1,size(tcoll(:,:,:),1)
+              tcoll(i,j,k) = degen*1.5E-05*press(i,j,KE+1)/   &
+                       (seconds_per_day*press(i,j,k)) 
+           end do
+        end do
+      end do
+
+!-----------------------------------------------------------------------
+!   compute NLTE contribution for each band at each pressure level
+!   <= ixprnlte. fnlte = zero by assumption at other levels.
+!-----------------------------------------------------------------------
+      do kk = KS,ixprnlte
+         do j = 1,size(fnlte990(:,:,:),2)
+            do i = 1,size(fnlte990(:,:,:),1)
+               fnlte990(i,j,kk) = 3.5E+00*tcoll(i,j,kk)*  &
+                                  c1b7990/(rrvco2*c2b7990) 
+               fnlte900(i,j,kk) = 3.5E+00*tcoll(i,j,kk)*  &
+                                  c1b7900/(rrvco2*c2b7900) 
+               fnlte1070(i,j,kk) = 3.5E+00*tcoll(i,j,kk)*  &
+                                  c1b71070/(rrvco2*c2b71070) 
+            end do
+         end do
+      end do
+
+!-----------------------------------------------------------------------
+!     begin computations for   3 bands in 10um range.
+!-----------------------------------------------------------------------
+        do kk = KS,ixprnlte
+           do j = 1,size(bdenom990(:,:,:),2)
+              do i = 1,size(bdenom990(:,:,:),1)
+                 bdenom990(i,j,kk) = 1.0E+00/   &
+              (1.0E+00 - fnlte990(i,j,kk)*   &
+                        cdiag990(i,j,kk))
+              end do
+           end do
+        end do
+        do kk = KS,ixprnlte
+           do j = 1,size(phifx990(:,:,:),2)
+              do i = 1,size(phifx990(:,:,:),1)
+                 phifx990(i,j,kk) = 0.0E+00
+                 phifx900(i,j,kk) = 0.0E+00
+                 phifx1070(i,j,kk) = 0.0E+00
+              end do
+           end do
+        end do
+        do k=KS,ixprnlte
+          do kp=ixprnlte+1,KE
+            do j = 1,size(phifx990(:,:,:),2)
+               do i = 1,size(phifx990(:,:,:),1)
+                  phifx990(i,j,k) = phifx990(i,j,k) +   &
+                           cmtrx990(i,j,kp,k)*sorc(i,j,kp,6 )
+                  phifx900(i,j,k) = phifx900(i,j,k) +   &
+                           cmtrx900(i,j,kp,k)*sorc(i,j,kp,5 )
+                  phifx1070(i,j,k) = phifx1070(i,j,k) +   &
+                           cmtrx1070(i,j,kp,k)*sorc(i,j,kp,7 )
+               end do
+            end do
+          end do
+        end do
+        do kk = KS,ixprnlte
+           do j = 1,size(az990(:,:,:),2)
+              do i = 1,size(az990(:,:,:),1)
+                 az990(i,j,kk) = sorc (i,j,kk,6         ) +  &
+                     fnlte990(i,j,kk)*phifx990(i,j,kk)
+                 az900(i,j,kk) = sorc (i,j,kk,5         ) +  &
+                     fnlte900(i,j,kk)*phifx900(i,j,kk)
+                 az1070(i,j,kk) = sorc (i,j,kk,7         ) +  &
+                     fnlte1070(i,j,kk)*phifx1070(i,j,kk)
+              end do
+           end do
+        end do
+
+!----------------------------------------------------------------------
+!     first iteration. (J(k) = B(k)) as initial guess)
+!-----------------------------------------------------------------------
+        do kk = KS,ixprnlte
+           do j = 1,size(phivar990(:,:,:),2)
+              do i = 1,size(phivar990(:,:,:),1)
+                 phivar990(i,j,kk) = 0.0E+00
+                 phivar900(i,j,kk) = 0.0E+00
+                 phivar1070(i,j,kk) = 0.0E+00
+              end do
+           end do
+        end do
+        do k=KS,ixprnlte
+          do kp=KS,ixprnlte
+            do j = 1,size(phivar990(:,:,:),2)
+               do i = 1,size(phivar990(:,:,:),1)
+                  phivar990(i,j,k) = phivar990(i,j,k) +   &
+                            cmtrx990(i,j,kp,k)*sorc(i,j,kp,6           )
+                  phivar900(i,j,k) = phivar900(i,j,k) +   &
+                            cmtrx900(i,j,kp,k)*sorc(i,j,kp,5           )
+                  phivar1070(i,j,k) = phivar1070(i,j,k) +   &
+                            cmtrx1070(i,j,kp,k)*sorc(i,j,kp,7           )
+               end do
+            end do
+          end do
+        end do
+        do kk = KS,ixprnlte
+           do j = 1,size(ag990(:,:,:),2)
+              do i = 1,size(ag990(:,:,:),1)
+                 ag990(i,j,kk) = fnlte990(i,j,kk)*   &
+                                (phivar990(i,j,kk) -   &
+                                 cdiag990(i,j,kk)*  &
+                                 sorc(i,j,kk,6           ))
+                 ag900(i,j,kk) = fnlte900(i,j,kk)*   &
+                                (phivar900(i,j,kk) -   &
+                                 cdiag900(i,j,kk)*  &
+                                 sorc(i,j,kk,5           ))
+                 ag1070(i,j,kk) = fnlte1070(i,j,kk)*   &
+                                (phivar1070(i,j,kk) -   &
+                                 cdiag1070(i,j,kk)*  &
+                                 sorc(i,j,kk,7           ))
+              end do
+           end do
+        end do
+
+        do kk = KS,ixprnlte
+           do j = 1,size(sorc(:,:,:,:),2)
+              do i = 1,size(sorc(:,:,:,:),1)
+                 sorc(i,j,kk,6           ) = bdenom990(i,j,kk)*&
+                                               (az990(i,j,kk) + &
+                                                ag990(i,j,kk)) 
+                 sorc(i,j,kk,5           ) = bdenom900(i,j,kk)*&
+                                               (az900(i,j,kk) + &
+                                                ag900(i,j,kk)) 
+                 sorc(i,j,kk,7           ) = bdenom1070(i,j,kk)*&
+                                               (az1070(i,j,kk) + &
+                                                ag1070(i,j,kk)) 
+              end do
+           end do
+        end do
+
+!-----------------------------------------------------------------------
+!     second iteration.  (J(k) = result of first iteration as guess)
+!-----------------------------------------------------------------------
+        do kk = KS,ixprnlte
+           do j = 1,size(phivar990(:,:,:),2)
+              do i = 1,size(phivar990(:,:,:),1)
+                 phivar990(i,j,kk) = 0.0E+00
+                 phivar900(i,j,kk) = 0.0E+00
+                 phivar1070(i,j,kk) = 0.0E+00
+              end do
+           end do
+        end do
+        do k=KS,ixprnlte
+          do kp=KS,ixprnlte
+            do j = 1,size(phivar990(:,:,:),2)
+               do i = 1,size(phivar990(:,:,:),1)
+                  phivar990(i,j,k) = phivar990(i,j,k) +    &
+                            cmtrx990(i,j,kp,k)*sorc(i,j,kp,6           )
+                  phivar900(i,j,k) = phivar900(i,j,k) +    &
+                            cmtrx900(i,j,kp,k)*sorc(i,j,kp,5           )
+                  phivar1070(i,j,k) = phivar1070(i,j,k) +    &
+                            cmtrx1070(i,j,kp,k)*sorc(i,j,kp,7           )
+               end do
+            end do
+          end do
+        end do
+        do kk = KS,ixprnlte
+           do j = 1,size(ag990(:,:,:),2)
+              do i = 1,size(ag990(:,:,:),1)
+                 ag990(i,j,kk) = fnlte990(i,j,kk)*   &
+                        (phivar990(i,j,kk) -   &
+                         cdiag990(i,j,kk)*sorc(i,j,kk,6           ))
+                 ag900(i,j,kk) = fnlte900(i,j,kk)*   &
+                        (phivar900(i,j,kk) -   &
+                         cdiag900(i,j,kk)*sorc(i,j,kk,5           ))
+                 ag1070(i,j,kk) = fnlte1070(i,j,kk)*   &
+                        (phivar1070(i,j,kk) -   &
+                         cdiag1070(i,j,kk)*sorc(i,j,kk,7           ))
+              end do
+           end do
+        end do
+
+        do kk = KS,ixprnlte
+           do j = 1,size(sorc(:,:,:,:),2)
+              do i = 1,size(sorc(:,:,:,:),1)
+                 sorc(i,j,kk,6           ) = bdenom990(i,j,kk)*&
+                                               (az990(i,j,kk) +  &
+                                                ag990(i,j,kk)) 
+                 sorc(i,j,kk,5           ) = bdenom900(i,j,kk)*&
+                                               (az900(i,j,kk) +  &
+                                                ag900(i,j,kk)) 
+                 sorc(i,j,kk,7           ) = bdenom1070(i,j,kk)*&
+                                               (az1070(i,j,kk) +  &
+                                                ag1070(i,j,kk)) 
+              end do
+           end do
+        end do
+
+
+!-----------------------------------------------------------------------
+
+
+end subroutine nlte_10um
+
 
 !#####################################################################
 ! <SUBROUTINE NAME="co2curt">
@@ -6179,8 +6882,7 @@ subroutine co2curt (pflux, cmtrx, Gas_tf)
 
 !----------------------------------------------------------------------
 !     co2curt computes Curtis matrix elements derived from co2
-!     transmission functions.
-!     functions.
+!     transmission functions for three 15um bands.
 !
 !     author: m. d. schwarzkopf
 !
@@ -6201,7 +6903,7 @@ type(gas_tf_type),         intent(in)  :: Gas_tf
 !
 !  intent(out) variables:
 !
-!     cmtrx    cutris matrix.
+!     cmtrx    curtis matrix.
 !
 !---------------------------------------------------------------------
 
@@ -6286,6 +6988,158 @@ type(gas_tf_type),         intent(in)  :: Gas_tf
 end subroutine co2curt
 
 
+!####################################################################
+! <SUBROUTINE NAME="co2curt_10um">
+!  <OVERVIEW>
+!   co2curt_10um computes Curtis matrix elements derived from co2
+!     transmission functions for three 10um bands.
+!  </OVERVIEW>
+!  <TEMPLATE>
+!   call co2curt_10um (pflux, cmtrx990, cmtrx900, cmtrx1070, Gas_tf)
+!  </TEMPLATE>
+!  <IN NAME="pflux" TYPE="real">
+!   pressure values at flux levels
+!  </IN>
+!  <OUT NAME="cmtrx990" TYPE="real">
+!   Curtis matrix elements for 990-1070 cm-1 band
+!  </OUT>
+!  <OUT NAME="cmtrx900" TYPE="real">
+!   Curtis matrix elements for 900-990 cm-1 band
+!  </OUT>
+!  <OUT NAME="cmtrx1070" TYPE="real">
+!   Curtis matrix elements for 1070-1200 cm-1 band
+!  </OUT>
+!  <IN NAME="Gas_tf" TYPE="gas_tf_type">
+!   gas transmission function
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine co2curt_10um (pflux, cmtrx990, cmtrx900, cmtrx1070, Gas_tf)
+
+!----------------------------------------------------------------------
+!     co2curt_10um computes Curtis matrix elements derived from co2
+!     transmission functions for three 10um bands.
+!
+!     author: m. d. schwarzkopf
+!
+!     revised: 8/18/94
+!
+!     certified:  radiation version 1.0
+!
+!---------------------------------------------------------------------
+real, dimension(:,:, :),   intent(in)  :: pflux                  
+real, dimension(:,:, :,:), intent(out) :: cmtrx990, cmtrx900, cmtrx1070
+type(gas_tf_type),         intent(in)  :: Gas_tf
+
+!---------------------------------------------------------------------
+!  intent(in) variables:
+!
+!     pflux
+!     Gas_tf
+!
+!  intent(out) variables:
+!
+!     cmtrx990    curtis matrix for 990-1070 cm-1 band
+!     cmtrx900    curtis matrix for 900-990 cm-1 band
+!     cmtrx1070    curtis matrix for 1070-1200 cm-1 band
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+! local variables:
+
+      real, dimension (size(pflux,1),  &
+                       size(pflux,2), &
+                       size(pflux,3)-1) ::            pdfinv
+
+      real, dimension (size(pflux,1),   &
+                       size(pflux,2), &
+                       size(pflux,3)) ::              co2990row, co2990rowp,  &
+                                                      co2900row, co2900rowp, &
+                                                      co21070row, co21070rowp
+
+     integer   :: k, krow, kp
+     integer   :: i, j, kk
+
+!---------------------------------------------------------------------
+! local variables:
+!
+!     pdfinv
+!     co2row
+!     co2rowp
+!     k
+!     krow
+!     kp
+!
+!---------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!     compute co2 transmission functions.
+!-----------------------------------------------------------------------
+      do kk = KS,KE+1
+         do j = 1,size(co2990row(:,:,:),2)
+            do i = 1,size(co2990row(:,:,:),1)
+               co2990row(i,j,kk) = 1.0E+00
+               co2900row(i,j,kk) = 1.0E+00
+               co21070row(i,j,kk) = 1.0E+00
+            end do
+         end do
+      end do
+      do kk = KS,KE+1
+         do j = 1,size(co2990rowp(:,:,:),2)
+            do i = 1,size(co2990rowp(:,:,:),1)
+               co2990rowp(i,j,kk) = 1.0E+00
+               co2900rowp(i,j,kk) = 1.0E+00
+               co21070rowp(i,j,kk) = 1.0E+00
+            end do
+         end do
+      end do
+
+!-----------------------------------------------------------------------
+!    compute curtis matrix for rows from KS to ixprnlte
+!-----------------------------------------------------------------------
+      do k = KS,ixprnlte
+        krow = k
+        do j = 1,size(pdfinv(:,:,:),2)
+           do i = 1,size(pdfinv(:,:,:),1)
+              pdfinv(i,j,k) = 1.0/(pflux(i,j,k+1) - pflux(i,j,k))
+           end do
+        end do
+
+        call transcol_10um ( KS, krow, KS, KE+1, co2990row, co2900row, co21070row, Gas_tf)
+        call transcol_10um ( KS, krow+1, KS, KE+1, co2990rowp, co2900rowp, co21070rowp, Gas_tf)
+        do kp=KS,KE-1 
+          do j = 1,size(cmtrx990(:,:,:,:),2)
+             do i = 1,size(cmtrx990(:,:,:,:),1)
+                cmtrx990(i,j,kp,k) = radcon*pdfinv(i,j,k)*   &
+                            (co2990rowp(i,j,kp) - co2990rowp(i,j,kp+1) -  &
+                             co2990row(i,j,kp) + co2990row(i,j,kp+1)) 
+                cmtrx900(i,j,kp,k) = radcon*pdfinv(i,j,k)*   &
+                            (co2900rowp(i,j,kp) - co2900rowp(i,j,kp+1) -  &
+                             co2900row(i,j,kp) + co2900row(i,j,kp+1)) 
+                cmtrx1070(i,j,kp,k) = radcon*pdfinv(i,j,k)*   &
+                            (co21070rowp(i,j,kp) - co21070rowp(i,j,kp+1) -  &
+                             co21070row(i,j,kp) + co21070row(i,j,kp+1)) 
+             end do
+          end do
+        end do
+
+        do j = 1,size(cmtrx990(:,:,:,:),2)
+           do i = 1,size(cmtrx990(:,:,:,:),1)
+              cmtrx990(i,j,KE,k) = radcon*pdfinv(i,j,k)*   &
+                          (co2990rowp(i,j,KE) - co2990row(i,j,KE)) 
+              cmtrx900(i,j,KE,k) = radcon*pdfinv(i,j,k)*   &
+                          (co2900rowp(i,j,KE) - co2900row(i,j,KE)) 
+              cmtrx1070(i,j,KE,k) = radcon*pdfinv(i,j,k)*   &
+                          (co21070rowp(i,j,KE) - co21070row(i,j,KE)) 
+           end do
+        end do
+      enddo
+
+!--------------------------------------------------------------------
+
+
+end subroutine co2curt_10um
 
 
 !####################################################################

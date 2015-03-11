@@ -320,9 +320,11 @@ logical            ::  &
 
 logical              :: time_varying_restart_bug = .false.
 logical              :: use_globally_uniform_co2 = .true.
+logical              :: use_co2_10um = .false.
 
 namelist /radiative_gases_nml/ verbose, &
         use_globally_uniform_co2, &
+        use_co2_10um, &
         gas_printout_freq, time_varying_restart_bug, &
         co2_dataset_entry, ch4_dataset_entry, n2o_dataset_entry,  &
         f11_dataset_entry, f12_dataset_entry, f113_dataset_entry, &
@@ -844,6 +846,13 @@ type(radiation_control_type), intent(inout) :: Rad_control
         Rad_control%do_co2_lw = .true.
       endif
 
+      if (.not. use_co2_10um .or. &
+         (use_co2_10um .and. (.not. time_varying_co2) .and. rco2 == 0.0)) then
+        Rad_control%do_co2_10um = .false.
+      else
+        Rad_control%do_co2_10um = .true.
+      endif
+
 !--------------------------------------------------------------------
 !    define module variable which will be contain mixing ratio of each 
 !    gas as model is integrated in time.
@@ -1218,7 +1227,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
                                       ! radiative gas
       integer            :: yr, mo, dy, hr, mn, sc 
                                       ! components of Rad_time
-      logical            :: calc_co2, calc_n2o, calc_ch4
+      logical            :: calc_co2, calc_co2_10um, calc_n2o, calc_ch4
       type(time_type)    :: Gas_time
       integer ::  year, month, day, hour, minute, second
 
@@ -1588,7 +1597,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 ! obtain gas values for tfs (from sealw99_time_vary)
 !--------------------------------------------------------------------
 
-      call get_control_gas_tf (calc_co2, calc_ch4, calc_n2o)
+      call get_control_gas_tf (calc_co2, calc_co2_10um, calc_ch4, calc_n2o)
 
 !--------------------------------------------------------------------
 

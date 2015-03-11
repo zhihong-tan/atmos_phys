@@ -205,7 +205,8 @@ type(radiation_control_type), intent(in) :: Rad_control
         call sealw99_init ( pref, &
                             Rad_control%do_h2o,    Rad_control%do_o3,  &
                             Rad_control%do_ch4_lw, Rad_control%do_n2o_lw, &
-                            Rad_control%do_co2_lw, Rad_control%do_cfc_lw  )
+                            Rad_control%do_co2_lw, Rad_control%do_co2_10um, &
+                            Rad_control%do_cfc_lw  )
       else
         call error_mesg ( 'longwave_driver_mod', &
                  'invalid longwave radiation form specified', FATAL)

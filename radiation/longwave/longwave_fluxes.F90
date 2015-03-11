@@ -42,8 +42,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_fluxes.F90,v 19.0 2012/01/06 20:15:17 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201305 $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 
 !---------------------------------------------------------------------
@@ -263,7 +263,8 @@ type(lw_diagnostics_type),  intent(inout) :: Lw_diagnostics
 !---------------------------------------------------------------------
       ks =1
       ke = size(source2,3)-1
-      nbands = size(source,4)
+!DS   nbands = size(source,4)
+      nbands = size(cld_trans,4)  ! DS change
 
 !---------------------------------------------------------------------
 !
@@ -441,7 +442,8 @@ logical,                      intent(in)     :: do_totcld_forcing
       israd  = 1
       jsrad  = 1
       ke     = size(source,3)-1
-      nbands = size(trans,4)
+!DS   nbands = size(trans,4)
+      nbands = size(cld_trans,4)  ! DS change
 
 !---------------------------------------------------------------------
 !
@@ -601,7 +603,8 @@ type(lw_diagnostics_type),      intent(inout) :: Lw_diagnostics
 !
 !---------------------------------------------------------------------
       ke     = size(source,3) - 1
-      nbands = size(trans,3) 
+!DS   nbands = size(trans,3) 
+      nbands = size(cld_trans,4)  ! DS change
 
 !---------------------------------------------------------------------
 !
@@ -723,7 +726,8 @@ type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics
 !---------------------------------------------------------------------
       ks     = 1
       ke     = size(trans,3) - 1
-      nbands = size(trans,4)
+!DS   nbands = size(trans,4)
+      nbands = size(cld_trans,4)  ! DS change
 
 !---------------------------------------------------------------------
 !

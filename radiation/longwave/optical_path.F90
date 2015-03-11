@@ -54,9 +54,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-   character(len=128)  :: &
-   version =  '$Id: optical_path.F90,v 19.0 2012/01/06 20:20:47 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: siena_201211 $'
+   character(len=128)  :: version =  '$Id$'
+   character(len=128)  :: tagname =  '$Name$'
 
 
 !---------------------------------------------------------------------
@@ -134,7 +133,10 @@ integer     ::  nptfh2o
 !    frequency, used in all ckd AFGL continuum models.
 !    the frequency ranges and intervals are as in sh2o_296.
 !----------------------------------------------------------------------
-real         :: sfac(2000), fscal(2000), tmpfctrs(2000)
+integer                 :: nulist
+real, dimension(2000)   :: sfac = (/(1.0, nulist=1,2000)/)
+real, dimension(2000)   :: fscal = (/(1.0, nulist=1,2000)/)
+real, dimension(2000)   :: tmpfctrs = (/(1.0, nulist=1,2000)/)
 
 !----------------------------------------------------------------------
 !         the radfunc function (1 - exp(-h*nu/kt))/(1 + exp(-h*nu/kt))
@@ -434,15 +436,16 @@ subroutine optical_path_init(pref, nbtrge_in)
 !  rsb cont coeff for 8 comb bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (betacm(k),k=1,NBLY_RSB)
         endif
-      else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012' ) then 
-        if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &    
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then 
+      else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012' ) then
+        if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
 !  ckd rndm coeff for 560-800 band
           inrad = open_namelist_file('INPUT/bandpar_h2o_ckd_560800')
           read (inrad,9000) awide_c   ! ckd rndm coeff for 560-800 band
           read (inrad,9000) bwide_c   ! ckd rndm coeff for 560-800 band
-        else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then 
-          inrad = open_namelist_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi12')
+        else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
+          inrad = open_namelist_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
           read (inrad,9000) awide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) bwide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) dum
@@ -471,7 +474,9 @@ subroutine optical_path_init(pref, nbtrge_in)
 !
 !---------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.     &
+          trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
         awide = awide_c
         bwide = bwide_c
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
@@ -495,26 +500,6 @@ subroutine optical_path_init(pref, nbtrge_in)
       read (inrad,fmt='(3e14.6)') (ao3rnd(k),k=1,3)
       read (inrad,fmt='(3e14.6)') (bo3rnd(k),k=1,3)
 
-!---------------------------------------------------------------------
-!    verify that Lw_control%do_ch4 has been initialized.
-!--------------------------------------------------------------------
-     !if (Lw_control%do_ch4_iz) then
-     !else
-     !  call error_mesg ( 'optical_path_mod',  &
-     !                ' do_ch4 not yet initialized', FATAL)
-     !endif
-
-!---------------------------------------------------------------------
-!    verify that Lw_control%do_n2o has been initialized.
-!--------------------------------------------------------------------
-     !if (Lw_control%do_n2o_iz) then
-     !else
-     !  call error_mesg ( 'optical_path_mod',  &
-     !                ' do_n2o not yet initialized', FATAL)
-     !endif
-
-!---------------------------------------------------------------------
-!
 !---------------------------------------------------------------------
       if (NBTRGE > 0) then
         allocate ( csfah2o(2, NBTRGE) )
@@ -583,7 +568,9 @@ subroutine optical_path_init(pref, nbtrge_in)
 !
 !------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5'  .or.     &
+          trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
         call optical_ckd_init
       endif
 
@@ -595,10 +582,7 @@ subroutine optical_path_init(pref, nbtrge_in)
 !--------------------------------------------------------------------
 
 
-
 end subroutine optical_path_init
-
-
 
 
 !###################################################################
@@ -795,7 +779,8 @@ logical,                       intent(in)    :: including_aerosols, &
 !    paths for the rsb (Roberts) continuum.
 !---------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+           trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+           trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         call optical_path_ckd  (atmden, press_cgs, temp, rh2o, Optical)
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
         call optical_rbts  (temp, rh2o, Optical)
@@ -1000,7 +985,9 @@ logical,                   intent(in)            :: including_aerosols
       endif
 
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.    &
+          trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
         call get_totch2obd(6, Optical, totch2o_tmp)
         tmp2(:,:,KS:KE) = tmp2(:,:,KS:KE) + diffac*   &
                           totch2o_tmp(:,:,KS+1:KE+1)
@@ -1038,7 +1025,8 @@ logical,                   intent(in)            :: including_aerosols
         tmp1(:,:,:) = 0.0
       endif
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         tmp1(:,:,KS:KE) = tmp1(:,:,KS:KE) + diffac*   &
                           Optical%totch2obdwd(:,:,KS+1:KE+1)
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
@@ -1097,7 +1085,8 @@ logical,                   intent(in)            :: including_aerosols
 !    division of relevant values of cnttau.
 !---------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         call get_totch2obd(4, Optical, totch2o_tmp)
         tmp1(:,:,KS:KE) = diffac*totch2o_tmp(:,:,KS+1:KE+1)
         call get_totch2obd(5, Optical, totch2o_tmp)
@@ -1193,8 +1182,6 @@ logical,                   intent(in)            :: including_aerosols
 end subroutine optical_trans_funct_from_KS
 
 
-
-
 !####################################################################
 ! <SUBROUTINE NAME="optical_trans_funct_k_down">
 !  <OVERVIEW>
@@ -1205,7 +1192,8 @@ end subroutine optical_trans_funct_from_KS
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call optical_trans_funct_k_down (Gas_tf, k,                     &
-!                                    to3cnt, overod, Optical)
+!                                    to3cnt, overod, Optical, cnttaub1,cnttaub2, &
+!                                    cnttaub3, including_aerosols)
 !  </TEMPLATE>
 !  <INOUT NAME="Gas_tf" TYPE="gas_tf_type">
 !   Gas transmission functions
@@ -1222,17 +1210,22 @@ end subroutine optical_trans_funct_from_KS
 !  <INOUT NAME="Optical" TYPE="real">
 !   Optical depth function
 !  </INOUT>
+!  <OUT NAME="cnttaub1, cnttaub2, cnttaub3" TYPE="real">
+!   Transmission functions of gas continuum
+!  </OUT>
 ! </SUBROUTINE>
 !
 subroutine optical_trans_funct_k_down (Gas_tf, k, to3cnt, overod,   &
-                                       Optical,including_aerosols)  
+                                       Optical, cnttaub1, cnttaub2, &
+                                       cnttaub3, including_aerosols)  
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
 
 integer,                 intent (in)    :: k
-real, dimension (:,:,:), intent(out)    :: to3cnt, overod
+real, dimension (:,:,:), intent(out)    :: to3cnt, overod, &
+                                           cnttaub1, cnttaub2, cnttaub3
 type(optical_path_type), intent(inout)  :: Optical
 type(gas_tf_type),       intent(inout)  :: Gas_tf 
 logical,                   intent(in)            :: including_aerosols  
@@ -1241,6 +1234,7 @@ logical,                   intent(in)            :: including_aerosols
 !   intent(in) variable:
 !        
 !       k
+!       including_aerosols
 !
 !   intent(inout) variables:
 !
@@ -1251,6 +1245,9 @@ logical,                   intent(in)            :: including_aerosols
 !
 !       to3cnt
 !       overod
+!       cnttaub1
+!       cnttaub2
+!       cnttaub3
 !
 !---------------------------------------------------------------------
 
@@ -1301,7 +1298,8 @@ logical,                   intent(in)            :: including_aerosols
 !
 !---------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         call get_totch2obd(6, Optical, totch2o_tmp)
       endif
 
@@ -1323,7 +1321,8 @@ logical,                   intent(in)            :: including_aerosols
                              Optical%tphio3(:,:,k) 
         avpho3 (:,:,kp+k-1) = max(avpho3 (:,:,kp+k-1),1.0e-12)
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-            trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+            trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+            trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
           avckdwd(:,:,kp+k-1) = Optical%totch2obdwd(:,:,kp+k) -   &
                                 Optical%totch2obdwd(:,:,k)
           avckdo3(:,:,kp+k-1) = totch2o_tmp(:,:,kp+k) -  &
@@ -1389,7 +1388,8 @@ logical,                   intent(in)            :: including_aerosols
       endif
 
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         tmp1(:,:,k:KE) = tmp1(:,:,k:KE) + diffac*   &
                          avckdwd    (:,:,k:KE)
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
@@ -1454,7 +1454,8 @@ logical,                   intent(in)            :: including_aerosols
       endif
 
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         tmp2(:,:,k:KE) = tmp2(:,:,k:KE) + diffac*   &
                          avckdo3  (:,:,k:KE) 
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
@@ -1491,7 +1492,9 @@ end subroutine optical_trans_funct_k_down
 !   Subroutine to compute transmission function from level KE
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod)
+!   call optical_trans_funct_KE (Gas_tf, to3cnt, overod,  &
+!                                Optical, cnttaub1, cnttaub2, &
+!                                cnttaub3, including_aerosols)
 !  </TEMPLATE>
 !  <INOUT NAME="Gas_tf" TYPE="gas_tf_type">
 !   Gas transmission functions
@@ -1507,17 +1510,19 @@ end subroutine optical_trans_funct_k_down
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine optical_trans_funct_KE (Gas_tf, to3cnt, Optical, overod, &
+subroutine optical_trans_funct_KE (Gas_tf, to3cnt, overod, &
+                                   Optical, cnttaub1, cnttaub2, cnttaub3, &
                                    including_aerosols)  
 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
 
-real, dimension (:,:,:), intent(out)   :: to3cnt, overod
+real, dimension (:,:,:), intent(out)   :: to3cnt, overod, &
+                                          cnttaub1, cnttaub2, cnttaub3
 type(optical_path_type), intent(inout) :: Optical
 type(gas_tf_type),       intent(inout) :: Gas_tf 
-logical,                   intent(in)            :: including_aerosols  
+logical,                   intent(in)  :: including_aerosols  
 
 !---------------------------------------------------------------------
 !   intent(inout) variables:
@@ -1579,7 +1584,8 @@ logical,                   intent(in)            :: including_aerosols
         tmp1     (:,:,KE) = 0.0
       endif
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         tmp1(:,:,KE) = tmp1(:,:,KE) + diffac*   &
                        Optical%xch2obdwd   (:,:,KE)
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
@@ -1642,7 +1648,8 @@ logical,                   intent(in)            :: including_aerosols
       endif
 
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         tmp2(:,:,KE) = tmp2(:,:,KE) + diffac*Optical%xch2obd  (:,:,KE,6)
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
         tmp2(:,:,KE) = tmp2(:,:,KE) + betacm(14)*Optical%cntval (:,:,KE)
@@ -1663,8 +1670,6 @@ logical,                   intent(in)            :: including_aerosols
 
 
 end subroutine optical_trans_funct_KE
-
-
 
 
 !####################################################################
@@ -1789,7 +1794,8 @@ type(optical_path_type),   intent(inout) :: Optical
 !    continuum band 1
 !-----------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,4)*  &
                               delpr1(:,:,KS+1:KE)
         csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,4)*  &
@@ -1812,7 +1818,8 @@ type(optical_path_type),   intent(inout) :: Optical
 !    continuum band 2
 !---------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,5)*   &
                               delpr1(:,:,KS+1:KE)
         csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,5)*  &
@@ -1835,7 +1842,8 @@ type(optical_path_type),   intent(inout) :: Optical
 !    continuum band 3
 !--------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,7)*   &
                               delpr1(:,:,KS+1:KE)
         csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,7)*  &
@@ -1858,7 +1866,8 @@ type(optical_path_type),   intent(inout) :: Optical
 !    ozone band
 !--------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-          trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+          trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+          trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
         csuba(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS+1:KE,6)*   &
                               delpr1(:,:,KS+1:KE)
         csubb(:,:,KS+1:KE)  = diffac*Optical%xch2obd(:,:,KS:KE-1,6)*  &
@@ -2167,8 +2176,10 @@ real, dimension(:,:,:),  intent(out)      :: totvo2_out
 
       totvo2_out(:,:,:) = betacm(n)*Optical%totvo2(:,:,KS+1:KE+1)
 
-end subroutine get_totvo2 
+!-----------------------------------------------------------------
 
+
+end subroutine get_totvo2 
 
 
 !####################################################################
@@ -2237,7 +2248,8 @@ logical,                   intent(in)            :: including_aerosols
        endif
  
        if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
-           trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
+           trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
+           trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
          deallocate (Optical%xch2obd        )
          deallocate (Optical%totch2obdwd    )
          deallocate (Optical%xch2obdwd      )
@@ -2404,32 +2416,58 @@ subroutine optical_ckd_init
 !--------------------------------------------------------------------
 !    read h2o (original) data
 !    data are at frequencies 5 - 19995 cm-1, at 10 cm-1 intervals
+!    formats are as in 9001, 9002
 !-------------------------------------------------------------------
-      inrad = open_namelist_file ('INPUT/h2ockd2.1_data')
-      read (inrad,9001) v1sh2o_296, v2sh2o_296, dvsh2o_296,  &
-                        nptsh2o_296
-      read (inrad,9002) (ssh2o_296(k),k=1,2000)
-      read (inrad,9001) v1sh2o_260, v2sh2o_260, dvsh2o_260,   &
-                        nptsh2o_260
-      read (inrad,9002) (ssh2o_260(k),k=1,2000)
-      read (inrad,9001) v1fh2o, v2fh2o, dvfh2o, nptfh2o
-      read (inrad,9002) (sfh2o(k),k=1,2000)
-9001  format (3f12.1,i8)
-9002  format (5e14.5)
+      if (trim(Sealw99_control%continuum_form) == 'ckd2.1'  .or.    &
+          trim(Sealw99_control%continuum_form) == 'ckd2.4') then
+        inrad = open_namelist_file ('INPUT/h2ockd2.1_data')
+        read (inrad,fmt='(3f12.1,i8)') v1sh2o_296, v2sh2o_296, dvsh2o_296,  &
+                          nptsh2o_296
+        read (inrad,fmt='(5e14.5)') (ssh2o_296(k),k=1,2000)
+        read (inrad,fmt='(3f12.1,i8)') v1sh2o_260, v2sh2o_260, dvsh2o_260,   &
+                          nptsh2o_260
+        read (inrad,fmt='(5e14.5)') (ssh2o_260(k),k=1,2000)
+        read (inrad,fmt='(3f12.1,i8)') v1fh2o, v2fh2o, dvfh2o, nptfh2o
+        read (inrad,fmt='(5e14.5)') (sfh2o(k),k=1,2000)
+9001    format (3f12.1,i8)
+9002    format (5e14.5)
  
-      call close_file (inrad)
+        call close_file (inrad)
 
 !--------------------------------------------------------------------
-!    read h2o corrected data
-!--------------------------------------------------------------------
-      if (trim(Sealw99_control%continuum_form) == 'ckd2.1') then
-        inrad = open_namelist_file ('INPUT/h2ockd2.1_corrdata')
-      else if (trim(Sealw99_control%continuum_form) == 'ckd2.4') then
-        inrad = open_namelist_file ('INPUT/h2ockd2.4_corrdata')
+!    read h2o (mt_ckd2.5) data
+!    data are at frequencies 5 - 19995 cm-1, at 10 cm-1 intervals
+!     no need for correction factors
+!-------------------------------------------------------------------
+      else if (trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
+        inrad = open_namelist_file ('INPUT/h2omt_ckd2.5_data')
+        read (inrad,fmt='(3f12.1,i8)') v1sh2o_296, v2sh2o_296, dvsh2o_296,  &
+                          nptsh2o_296
+        read (inrad,fmt='(5e14.5)') (ssh2o_296(k),k=1,2000)
+        read (inrad,fmt='(3f12.1,i8)') v1sh2o_260, v2sh2o_260, dvsh2o_260,   &
+                          nptsh2o_260
+        read (inrad,fmt='(5e14.5)') (ssh2o_260(k),k=1,2000)
+        read (inrad,fmt='(3f12.1,i8)') v1fh2o, v2fh2o, dvfh2o, nptfh2o
+        read (inrad,fmt='(5e14.5)') (sfh2o(k),k=1,2000)
+
+        call close_file(inrad)
+
       endif
-      read (inrad,9007) (sfac(k),k=1,2000)
-      read (inrad,9007) (fscal(k),k=1,2000)
-      read (inrad,9007) (tmpfctrs(k),k=1,2000)
+
+!--------------------------------------------------------------------
+!    read h2o corrected data for ckd 2.1 or ckd 2.4
+!--------------------------------------------------------------------
+      if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.   &
+          trim(Sealw99_control%continuum_form) == 'ckd2.4')  then
+        if (trim(Sealw99_control%continuum_form) == 'ckd2.1') then
+          inrad = open_namelist_file ('INPUT/h2ockd2.1_corrdata')
+        else if (trim(Sealw99_control%continuum_form) == 'ckd2.4') then
+          inrad = open_namelist_file ('INPUT/h2ockd2.4_corrdata')
+        endif
+        read (inrad,9007) (sfac(k),k=1,2000)
+        read (inrad,9007) (fscal(k),k=1,2000)
+        read (inrad,9007) (tmpfctrs(k),k=1,2000)
+      endif
 9007  format (5e13.6)
  
       call close_file (inrad)

@@ -43,14 +43,20 @@ end interface
 public :: gas_tf_type
 
 type gas_tf_type
-     real, dimension(:,:,:),   pointer :: tdav=>NULL(),   &
+     real, dimension(:,:,:),   pointer :: tdav=>NULL(),    &
                                           tlsqu=>NULL(),   &
-                                          tmpdiff=>NULL(),   &
+                                          tmpdiff=>NULL(), &
                                           tstdav=>NULL(),  &
-                                          co2nbl=>NULL(),   &
                                           n2o9c=>NULL(),   &
                                           tn2o17=>NULL()
+     real, dimension(:,:,:),   pointer :: co2nbl=>NULL()
+     real, dimension(:,:,:),   pointer :: co2990nbl=>NULL(), &
+                                          co2900nbl=>NULL(), &
+                                          co21070nbl=>NULL()
      real, dimension(:,:,:,:), pointer :: co2spnb=>NULL()
+     real, dimension(:,:,:),   pointer :: co2990spnb=>NULL()
+     real, dimension(:,:,:),   pointer :: co2900spnb=>NULL()
+     real, dimension(:,:,:),   pointer :: co21070spnb=>NULL()
      real, dimension(:,:),     pointer :: a1=>NULL(),    &
                                           a2=>NULL()
 end type gas_tf_type
@@ -196,6 +202,7 @@ type sealw99_control_type
     logical           :: do_ch4
     logical           :: do_n2o
     logical           :: do_co2
+    logical           :: do_co2_10um
     logical           :: do_cfc
 end type sealw99_control_type
 
@@ -221,7 +228,8 @@ type (sealw99_control_type),  public   :: &
       Sealw99_control = sealw99_control_type(  '    ', '    ', &
                                               .false., .false., .false., &
                                               .false., .false., .false., &
-                                              .false., .false., .false. )
+                                              .false., .false., .false., &
+                                              .false. )
 
 !---------------------------------------------------------------------
 !------- private data -------

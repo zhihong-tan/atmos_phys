@@ -294,13 +294,6 @@ logical :: use_co2_tracer_field = .false.
                                       !  obtain co2 field for use by 
                                       !  radiation package from co2
                                       !  tracer field ?
-!BW moved to &aerosolrad_driver_nml
-!BW logical :: do_swaerosol_forcing = .false.
-!BW                                       !  calculating aerosol forcing in
-!BW                                       !  shortwave ?
-!BW logical :: do_lwaerosol_forcing = .false.
-!BW                                       !  calculating aerosol forcing in
-!BW                                       !  longwave ?
 logical :: use_uniform_solar_input = .false.
                                       !  the (lat,lon) values used to
                                       !  calculate zenith angle are
@@ -508,8 +501,6 @@ namelist /radiation_driver_nml/ do_radiation, &
                                 overriding_clouds, overriding_albedo, &
                                 overriding_aerosol, &
                                 use_co2_tracer_field, &
-!BW                             do_swaerosol_forcing,   &
-!BW                             do_lwaerosol_forcing, &
                                 treat_sfc_refl_dir_as_dif, &
                                 always_calculate,  do_h2o, do_o3, &
                                 do_ch4_lw, do_n2o_lw, do_co2_lw, do_cfc_lw, &
@@ -594,6 +585,9 @@ integer :: ido_conc_rad = 0
 integer :: idonner_meso = 0
 integer :: idoing_donner = 0
 integer :: idoing_uw_conv = 0
+type(restart_file_type), pointer, save :: Rad_restart_conc => NULL()
+type(restart_file_type), pointer, save :: Til_restart_conc => NULL()
+logical                                :: in_different_file_conc = .false.
 
 type(radiation_flux_block_type) :: Restart
 
@@ -602,9 +596,6 @@ logical :: do_concurrent_radiation = .false.
 !--- miscellaneous data ---
 
 type(radiative_gases_type), save :: Rad_gases_tv
-!BW type(aerosol_time_vary_type) :: Aerosol_rad  ! aerosol_type variable describing
-!BW                                              ! the aerosol fields to be seen by
-!BW                                              ! the radiation package
 type(aerosolrad_control_type) ::  Aerosolrad_control
 type(cloudrad_control_type) :: Cldrad_control
 type(radiation_control_type) :: Rad_control
@@ -781,11 +772,6 @@ real,parameter ::  D622 = RDGAS/RVGAS
 real,parameter ::  D378 = 1.0 - D622  
                               ! 1 - gas constant ratio
 integer :: id, jd
-!BW integer        ::  size_of_lwoutput = 1
-!BW integer        ::  size_of_swoutput = 1
-!BW integer        ::  indx_lwaf = 0
-!BW integer        ::  indx_swaf = 0
-
 
 ! number of stochastic columns if do_stochastic_clouds = true
 integer :: num_lw_stoch_columns=1, num_sw_stoch_columns=1
@@ -1035,12 +1021,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
         sw_rad_time_step = rad_time_step
       endif
       lw_rad_time_step = rad_time_step
-!BW   Rad_control%rad_time_step = rad_time_step
-!BW   Rad_control%rad_time_step_iz  = .true.
-!BW   Rad_control%lw_rad_time_step = lw_rad_time_step
-!BW   Rad_control%lw_rad_time_step_iz  = .true.
-!BW   Rad_control%sw_rad_time_step = sw_rad_time_step
-!BW   Rad_control%sw_rad_time_step_iz  = .true.
 
       if (MOD(INT(SECONDS_PER_DAY), lw_rad_time_step) /= 0) then
         call error_mesg ('radiation_drive_mod', &
@@ -1052,13 +1032,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
              'sw radiation timestep currently restricted to be an &
                        &integral factor of seconds in a day', FATAL)
       endif
-
-!----------------------------------------------------------------------
-!    store the radiation time step in a derived-type variable for 
-!    transfer to other modules.
-!----------------------------------------------------------------------
-!BW   Rad_control%rad_time_step = rad_time_step
-!BW   Rad_control%rad_time_step_iz = .true.
 
 !---------------------------------------------------------------------
 !    set logical variable defining the radiation scheme desired from the
@@ -1192,7 +1165,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       else
         Rad_control%hires_coszen = .false.
       endif
-!BW   Rad_control%hires_coszen_iz = .true.
       
       if (nzens_per_sw_rad_timestep > 1 .and. &
           .not. (use_hires_coszen) ) then
@@ -1206,13 +1178,11 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       else
         Rad_control%nzens = 1
       endif
-!BW   Rad_control%nzens_iz = .true.
 
 !----------------------------------------------------------------------
 !    store the controls for solar interpolator and all step diagnostics
 !----------------------------------------------------------------------
       Rad_control%renormalize_sw_fluxes = renormalize_sw_fluxes
-!BW   Rad_control%renormalize_sw_fluxes_iz = .true.
 
 !---------------------------------------------------------------------
 !    define the starting and ending vertical indices of the radiation
@@ -1437,7 +1407,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
              'Will use temp as basis for stochastic cloud seed; &
                                 &Rad_time is not monotonic', NOTE)
       endif
-!BW   Cldrad_control%use_temp_for_seed_iz = .true.
 
 !---------------------------------------------------------------------
 !    verify that stochastic clouds have been activated if the COSP 
@@ -1503,8 +1472,8 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
      call conc_rad_register_restart('conc_radiation_driver.res.nc', &
                                     Rad_flux(size(Rad_flux,1)), Exch_ctrl, Atm_block)
      if (file_exist('INPUT/conc_radiation_driver.res.nc')) then
-       call restore_state(Rad_restart)
-       if (in_different_file) call restore_state(Til_restart)
+       call restore_state(Rad_restart_conc)
+       if (in_different_file_conc) call restore_state(Til_restart_conc)
      else
        call error_mesg ('radiation_driver_mod', 'restart file conc_radiation_driver.res.nc not found',NOTE)
      endif
@@ -3759,10 +3728,11 @@ subroutine radiation_driver_restart_nc(Rad_flux, Atm_block, timestamp)
                        'RESTART/conc_radiation_driver.res.nc', NOTE)
     endif
 
-    call save_restart(Rad_restart,timestamp)
-    call save_restart(Til_restart,timestamp)
+    call save_restart(Rad_restart_conc,timestamp)
+    call save_restart(Til_restart_conc,timestamp)
+  endif
 
-  elseif (using_restart_file) then
+  if (using_restart_file) then
 !---------------------------------------------------------------------
 ! Make sure that the restart_versions variable is up to date.
 !---------------------------------------------------------------------
@@ -3890,13 +3860,13 @@ subroutine conc_rad_register_restart(fname, Rad_flux, Exch_ctrl, Atm_block)
   integer :: ix, jx, npz, id_restart
 
    call get_mosaic_tile_file(fname, fname2, .false. )
-   allocate(Rad_restart)
+   allocate(Rad_restart_conc)
    if(trim(fname2) == trim(fname)) then
-      Til_restart => Rad_restart
-      in_different_file = .false.
+      Til_restart_conc => Rad_restart_conc
+      in_different_file_conc = .false.
    else
-      in_different_file = .true.
-      allocate(Til_restart)
+      in_different_file_conc = .true.
+      allocate(Til_restart_conc)
    endif
 
    if (do_concurrent_radiation) ido_conc_rad = 1
@@ -3904,10 +3874,10 @@ subroutine conc_rad_register_restart(fname, Rad_flux, Exch_ctrl, Atm_block)
    if (Exch_ctrl%doing_donner) idoing_donner = 1
    if (Exch_ctrl%doing_uw_conv) idoing_uw_conv = 1
 
-   id_restart = register_restart_field(Rad_restart, fname, 'do_concurrent_radiation', ido_conc_rad, no_domain=.true.)
-   id_restart = register_restart_field(Rad_restart, fname, 'donner_meso_is_largescale', idonner_meso, no_domain=.true.)
-   id_restart = register_restart_field(Rad_restart, fname, 'doing_donner', idoing_donner, no_domain=.true.)
-   id_restart = register_restart_field(Rad_restart, fname, 'doing_uw_conv', idoing_uw_conv, no_domain=.true.)
+   id_restart = register_restart_field(Rad_restart_conc, fname, 'do_concurrent_radiation', ido_conc_rad, no_domain=.true.)
+   id_restart = register_restart_field(Rad_restart_conc, fname, 'donner_meso_is_largescale', idonner_meso, no_domain=.true.)
+   id_restart = register_restart_field(Rad_restart_conc, fname, 'doing_donner', idoing_donner, no_domain=.true.)
+   id_restart = register_restart_field(Rad_restart_conc, fname, 'doing_uw_conv', idoing_uw_conv, no_domain=.true.)
 
    ix = Atm_block%iec-Atm_block%isc+1
    jx = Atm_block%jec-Atm_block%jsc+1
@@ -3944,21 +3914,21 @@ subroutine conc_rad_register_restart(fname, Rad_flux, Exch_ctrl, Atm_block)
    Restart%coszen                =0.
    Restart%extinction            =0.
 
-   id_restart = register_restart_field(Til_restart, fname, 'tdt_rad',                Restart%tdt_rad)
-   id_restart = register_restart_field(Til_restart, fname, 'tdt_lw',                 Restart%tdt_lw)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw',                Restart%flux_sw)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_dir',            Restart%flux_sw_dir)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_dif',            Restart%flux_sw_dif)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dir',   Restart%flux_sw_down_vis_dir)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dif',   Restart%flux_sw_down_vis_dif)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dir', Restart%flux_sw_down_total_dir)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dif', Restart%flux_sw_down_total_dif)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis',            Restart%flux_sw_vis)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dir',        Restart%flux_sw_vis_dir)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dif',        Restart%flux_sw_vis_dif)
-   id_restart = register_restart_field(Til_restart, fname, 'flux_lw',                Restart%flux_lw)
-   id_restart = register_restart_field(Til_restart, fname, 'coszen',                 Restart%coszen)
-   id_restart = register_restart_field(Til_restart, fname, 'extinction',             Restart%extinction)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'tdt_rad',                Restart%tdt_rad)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'tdt_lw',                 Restart%tdt_lw)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw',                Restart%flux_sw)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_dir',            Restart%flux_sw_dir)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_dif',            Restart%flux_sw_dif)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_vis_dir',   Restart%flux_sw_down_vis_dir)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_vis_dif',   Restart%flux_sw_down_vis_dif)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_total_dir', Restart%flux_sw_down_total_dir)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_total_dif', Restart%flux_sw_down_total_dif)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_vis',            Restart%flux_sw_vis)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_vis_dir',        Restart%flux_sw_vis_dir)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_vis_dif',        Restart%flux_sw_vis_dif)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_lw',                Restart%flux_lw)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'coszen',                 Restart%coszen)
+   id_restart = register_restart_field(Til_restart_conc, fname, 'extinction',             Restart%extinction)
 
 end subroutine conc_rad_register_restart
 

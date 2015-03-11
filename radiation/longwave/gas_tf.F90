@@ -26,7 +26,7 @@ use constants_mod,       only : constants_init, RDGAS, GRAV, pstd
 !   longwave radiation package modules:
 
 use longwave_utilities_mod, only : gas_tf_type, Sealw99_control
-use longwave_params_mod,    only : NBCO215
+use longwave_params_mod,    only : NBCO215, NBCO210, NBCO243
 
 !---------------------------------------------------------------------
 
@@ -41,16 +41,17 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: gas_tf.F90,v 19.0 2012/01/06 20:16:25 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201305 $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 
 !---------------------------------------------------------------------
 !------    interfaces   ------
 
  public    &
-         gas_tf_init, co2coef, transcol,    &
-         transcolrow, trans_nearby, trans_sfc,   &
+         gas_tf_init, co2coef, transcol, transcol_10um,    &
+         transcolrow, transcolrow_10um,   &
+         trans_nearby, trans_nearby_10um, trans_sfc, trans_sfc_10um,  &
          put_co2_stdtf_for_gas_tf,  &
          put_co2_nbltf_for_gas_tf, &
          put_ch4_stdtf_for_gas_tf,  &
@@ -82,8 +83,11 @@ private   &
 
 character(len=16) :: interp_form='log'
 logical           :: do_calcstdco2tfs = .true.,   &
+                     do_calcstdco210umtfs = .false., &
                      do_writestdco2tfs = .false., &
-                     do_readstdco2tfs = .false.
+                     do_writestdco210umtfs = .false., &
+                     do_readstdco2tfs = .false., &
+                     do_readstdco210umtfs = .false.
 logical           :: do_calcstdch4tfs = .true.,   &
                      do_writestdch4tfs = .false., &
                      do_readstdch4tfs = .false.
@@ -101,8 +105,11 @@ namelist / gas_tf_nml /  &
                             do_writestdn2otfs,  &
                             do_readstdn2otfs, &
                             do_calcstdco2tfs,  &
+                            do_calcstdco210umtfs,  &
                             do_writestdco2tfs,  &
-                            do_readstdco2tfs
+                            do_writestdco210umtfs,  &
+                            do_readstdco2tfs,  &
+                            do_readstdco210umtfs
 
 !---------------------------------------------------------------------
 !---- public data -------
@@ -156,6 +163,135 @@ real, allocatable, dimension (:)         ::  co2m51, co2m58,   &
                                              c2dm51, c2dm58
 
 !--------------------------------------------------------------------- 
+!    the following arrays are co2 transmission functions, temperature
+!    and pressure derivatives for the 990-1070 cm-1 (10um) band, and standard 
+!    temperature and weighting functions.
+! 
+!      co29901   =  transmission functions for t0 (standard profile)
+!                 with p(surface)=1013.25 mb.
+!
+!      co29908   =  transmission functions for t0 (standard profile) 
+!                 with p(surface)=810 mb.
+!
+!      cdt9901   =  first temperature derivative of co29901.
+! 
+!      cdt9908   =  first temperature derivative of co29908.
+! 
+!      c2d9901   =  second temperature derivative of co29901.
+!
+!      c2d9908   =  second temperature derivative of co29908.
+!
+!      co2m9901  =  transmission functions for t0 for adjacent pressure 
+!                 levels, with no pressure quadrature.  used for nearby
+!                 layer computations.  p(surface)=1013.25 mb.
+! 
+!      co2m9908  =  transmission functions for t0 for adjacent pressure 
+!                 levels, with no pressure quadrature.  used for nearby
+!                 layer computations.  p(surface)=810 mb.
+!
+!      cdtm9901  =  first temperature derivative of co2m9901.
+!
+!      cdtm9908  =  first temperature derivative of co2m9908.
+!
+!      c2dm9901  =  second temperature derivative of co2m9901.
+! 
+!      c2dm9908  =  second temperature derivative of co2m9908.
+!--------------------------------------------------------------------- 
+
+real, allocatable, dimension (:,:)       ::  co29901, co29908,     &    
+                                             cdt9901, cdt9908,     &    
+                                             c2d9901, c2d9908
+real, allocatable, dimension (:)         ::  co2m9901, co2m9908,   &    
+                                             cdtm9901, cdtm9908,   &    
+                                             c2dm9901, c2dm9908
+
+!--------------------------------------------------------------------- 
+!    the following arrays are co2 transmission functions, temperature
+!    and pressure derivatives for the 900-990 cm-1 (10um) band, and standard 
+!    temperature and weighting functions.
+! 
+!      co29001   =  transmission functions for t0 (standard profile)
+!                 with p(surface)=1013.25 mb.
+!
+!      co29008   =  transmission functions for t0 (standard profile) 
+!                 with p(surface)=810 mb.
+!
+!      cdt9001   =  first temperature derivative of co29001.
+! 
+!      cdt9008   =  first temperature derivative of co29008.
+! 
+!      c2d9001   =  second temperature derivative of co29001.
+!
+!      c2d9008   =  second temperature derivative of co29008.
+!
+!      co2m9001  =  transmission functions for t0 for adjacent pressure 
+!                 levels, with no pressure quadrature.  used for nearby
+!                 layer computations.  p(surface)=1013.25 mb.
+! 
+!      co2m9008  =  transmission functions for t0 for adjacent pressure 
+!                 levels, with no pressure quadrature.  used for nearby
+!                 layer computations.  p(surface)=810 mb.
+!
+!      cdtm9001  =  first temperature derivative of co2m9001.
+!
+!      cdtm9008  =  first temperature derivative of co2m9008.
+!
+!      c2dm9001  =  second temperature derivative of co2m9001.
+! 
+!      c2dm9008  =  second temperature derivative of co2m9008.
+!--------------------------------------------------------------------- 
+
+real, allocatable, dimension (:,:)       ::  co29001, co29008,     &    
+                                             cdt9001, cdt9008,     &    
+                                             c2d9001, c2d9008
+real, allocatable, dimension (:)         ::  co2m9001, co2m9008,   &    
+                                             cdtm9001, cdtm9008,   &    
+                                             c2dm9001, c2dm9008
+
+!--------------------------------------------------------------------- 
+!    the following arrays are co2 transmission functions, temperature
+!    and pressure derivatives for the 1070-1200 cm-1 (10um) band, and standard 
+!    temperature and weighting functions.
+! 
+!      co210701   =  transmission functions for t0 (standard profile)
+!                 with p(surface)=1013.25 mb.
+!
+!      co210708   =  transmission functions for t0 (standard profile) 
+!                 with p(surface)=810 mb.
+!
+!      cdt10701   =  first temperature derivative of co210701.
+! 
+!      cdt10708   =  first temperature derivative of co210708.
+! 
+!      c2d10701   =  second temperature derivative of co210701.
+!
+!      c2d10708   =  second temperature derivative of co210708.
+!
+!      co2m10701  =  transmission functions for t0 for adjacent pressure 
+!                 levels, with no pressure quadrature.  used for nearby
+!                 layer computations.  p(surface)=1013.25 mb.
+! 
+!      co2m10708  =  transmission functions for t0 for adjacent pressure 
+!                 levels, with no pressure quadrature.  used for nearby
+!                 layer computations.  p(surface)=810 mb.
+!
+!      cdtm10701  =  first temperature derivative of co2m10701.
+!
+!      cdtm10708  =  first temperature derivative of co2m10708.
+!
+!      c2dm10701  =  second temperature derivative of co2m10701.
+! 
+!      c2dm10708  =  second temperature derivative of co2m10708.
+!--------------------------------------------------------------------- 
+
+real, allocatable, dimension (:,:)       ::  co210701, co210708,     &    
+                                             cdt10701, cdt10708,     &    
+                                             c2d10701, c2d10708
+real, allocatable, dimension (:)         ::  co2m10701, co2m10708,   &    
+                                             cdtm10701, cdtm10708,   &    
+                                             c2dm10701, c2dm10708
+
+!--------------------------------------------------------------------- 
 !    the following arrays are co2 transmission functions for the 2270- 
 !    2380 cm-1 part of the 4.3 um co2 band.
 ! 
@@ -195,6 +331,70 @@ real, allocatable, dimension (:,:)       ::  co215nbps1,       &
                                              co2d2t15nbps8
 
 !--------------------------------------------------------------------- 
+!    the following arrays are co2 transmission functions and temperature
+!    and pressure derivatives for (NBCO210) narrow bands in the 10um
+!    co2 band.
+!            990-1070 cm-1 band
+!        co2990nbps1    =  transmission functions for USSTD profile
+!                        with p(surface)=1013.25 mb.
+!        co2990nbps8    =  transmission functions for USSTD profile
+!                        with p(surface)=810.2 mb.
+!
+!        co2dt990nbps1  = temperature derivative of co2990nbps1.
+!
+!        co2dt990nbps8  = temperature derivative of co2990nbps8.
+!
+!        co2d2t990nbps1 = second temperature derivative of co2990nbps1.
+!
+!        co2d2t990nbps8 = second temperature derivative of co2990nbps8.
+!            900-990 cm-1 band
+!        co2900nbps1    =  transmission functions for USSTD profile
+!                        with p(surface)=1013.25 mb.
+!        co2900nbps8    =  transmission functions for USSTD profile
+!                        with p(surface)=810.2 mb.
+!
+!        co2dt900nbps1  = temperature derivative of co2900nbps1.
+!
+!        co2dt900nbps8  = temperature derivative of co2900nbps8.
+!
+!        co2d2t900nbps1 = second temperature derivative of co2900nbps1.
+!
+!        co2d2t900nbps8 = second temperature derivative of co2900nbps8.
+!            1070-1200 cm-1 band
+!        co21070nbps1    =  transmission functions for USSTD profile
+!                        with p(surface)=1013.25 mb.
+!        co21070nbps8    =  transmission functions for USSTD profile
+!                        with p(surface)=810.2 mb.
+!
+!        co2dt1070nbps1  = temperature derivative of co21070nbps1.
+!
+!        co2dt1070nbps8  = temperature derivative of co21070nbps8.
+!
+!        co2d2t1070nbps1 = second temperature derivative of co21070nbps1.
+!
+!        co2d2t1070nbps8 = second temperature derivative of co21070nbps8.
+!--------------------------------------------------------------------- 
+
+real, allocatable, dimension (:)       ::  co2990nbps1,       &    
+                                           co2990nbps8,       &    
+                                           co2dt990nbps1,     &    
+                                           co2dt990nbps8,     &    
+                                           co2d2t990nbps1,    &    
+                                           co2d2t990nbps8
+real, allocatable, dimension (:)       ::  co2900nbps1,       &    
+                                           co2900nbps8,       &    
+                                           co2dt900nbps1,     &    
+                                           co2dt900nbps8,     &    
+                                           co2d2t900nbps1,    &    
+                                           co2d2t900nbps8
+real, allocatable, dimension (:)       ::  co21070nbps1,       &    
+                                           co21070nbps8,       &    
+                                           co2dt1070nbps1,     &    
+                                           co2dt1070nbps8,     &    
+                                           co2d2t1070nbps1,    &    
+                                           co2d2t1070nbps8
+
+!---------------------------------------------------------------------
 !    the following arrays are ch4 and n2o transmission functions for
 !    the 1200-1400 cm-1 band.
 ! 
@@ -615,6 +815,63 @@ real, dimension(:,:), intent(in) :: pref
                 co218(KSRAD:KERAD+1) )
      endif
 
+     if (Sealw99_control%do_co2_10um) then
+      allocate (cdtm9901(KSRAD:KERAD) , &
+                co2m9901(KSRAD:KERAD) , &
+                c2dm9901(KSRAD:KERAD) , &
+                cdtm9908(KSRAD:KERAD) , &
+                co2m9908(KSRAD:KERAD) , &
+                c2dm9908(KSRAD:KERAD)   )
+      allocate (cdtm9001(KSRAD:KERAD) , &
+                co2m9001(KSRAD:KERAD) , &
+                c2dm9001(KSRAD:KERAD) , &
+                cdtm9008(KSRAD:KERAD) , &
+                co2m9008(KSRAD:KERAD) , &
+                c2dm9008(KSRAD:KERAD)   )
+      allocate (cdtm10701(KSRAD:KERAD) , &
+                co2m10701(KSRAD:KERAD) , &
+                c2dm10701(KSRAD:KERAD) , &
+                cdtm10708(KSRAD:KERAD) , &
+                co2m10708(KSRAD:KERAD) , &
+                c2dm10708(KSRAD:KERAD)   )
+      allocate (co2dt990nbps1(KSRAD:KERAD+1) , &
+                co2990nbps1(KSRAD:KERAD+1) , &
+                co2d2t990nbps1(KSRAD:KERAD+1) , &
+                co2dt990nbps8(KSRAD:KERAD+1) , &
+                co2990nbps8(KSRAD:KERAD+1) , &
+                co2d2t990nbps8(KSRAD:KERAD+1)   )
+      allocate (co2dt900nbps1(KSRAD:KERAD+1) , &
+                co2900nbps1(KSRAD:KERAD+1) , &
+                co2d2t900nbps1(KSRAD:KERAD+1) , &
+                co2dt900nbps8(KSRAD:KERAD+1) , &
+                co2900nbps8(KSRAD:KERAD+1) , &
+                co2d2t900nbps8(KSRAD:KERAD+1)   )
+      allocate (co2dt1070nbps1(KSRAD:KERAD+1) , &
+                co21070nbps1(KSRAD:KERAD+1) , &
+                co2d2t1070nbps1(KSRAD:KERAD+1) , &
+                co2dt1070nbps8(KSRAD:KERAD+1) , &
+                co21070nbps8(KSRAD:KERAD+1) , &
+                co2d2t1070nbps8(KSRAD:KERAD+1)   )
+      allocate (cdt9901(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                co29901(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                c2d9901(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                cdt9908(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                co29908(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                c2d9908(KSRAD:KERAD+1, KSRAD:KERAD+1)   )
+      allocate (cdt9001(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                co29001(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                c2d9001(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                cdt9008(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                co29008(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                c2d9008(KSRAD:KERAD+1, KSRAD:KERAD+1)   )
+      allocate (cdt10701(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                co210701(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                c2d10701(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                cdt10708(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                co210708(KSRAD:KERAD+1, KSRAD:KERAD+1) , &
+                c2d10708(KSRAD:KERAD+1, KSRAD:KERAD+1)   )
+     endif
+
 !----------------------------------------------------------------------
 !    allocate ch4 and n2o transmission function arrays to hold data 
 !    which will either be read in or will be coming from 
@@ -756,21 +1013,32 @@ type(gas_tf_type),      intent(inout) :: Gas_tf
 !---------------------------------------------------------------------
 !    allocate module variables
 !---------------------------------------------------------------------
-      allocate (Gas_tf%a1      (ISRAD:IERAD, JSRAD:JERAD           ))
-      allocate (Gas_tf%a2      (ISRAD:IERAD, JSRAD:JERAD           ))
-      allocate (Gas_tf%tdav    (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (Gas_tf%tlsqu   (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (Gas_tf%tmpdiff (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (Gas_tf%tstdav  (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (Gas_tf%co2nbl  (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD  ))
-      allocate (Gas_tf%n2o9c   (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (Gas_tf%tn2o17  (ISRAD:IERAD, JSRAD:JERAD,KSRAD:KERAD+1))
-      allocate (Gas_tf%co2spnb (ISRAD:IERAD, JSRAD:JERAD,  &
-                                               KSRAD:KERAD+1,  NBCO215))
+      allocate (Gas_tf%a1         (ISRAD:IERAD, JSRAD:JERAD               ))
+      allocate (Gas_tf%a2         (ISRAD:IERAD, JSRAD:JERAD               ))
+      allocate (Gas_tf%tdav       (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%tlsqu      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%tmpdiff    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%tstdav     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%co2nbl     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ))
+      allocate (Gas_tf%co2990nbl  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ))
+      allocate (Gas_tf%co2900nbl  (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ))
+      allocate (Gas_tf%co21070nbl (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD  ))
+      allocate (Gas_tf%n2o9c      (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%tn2o17     (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%co2spnb    (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1, NBCO215))
+      allocate (Gas_tf%co2990spnb (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%co2900spnb (ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
+      allocate (Gas_tf%co21070spnb(ISRAD:IERAD, JSRAD:JERAD, KSRAD:KERAD+1))
       Gas_tf%co2nbl  = 1.0                                         
+      Gas_tf%co2990nbl  = 1.0                                         
+      Gas_tf%co2900nbl  = 1.0                                         
+      Gas_tf%co21070nbl = 1.0
       Gas_tf%co2spnb = 1.0                                           
+      Gas_tf%co2990spnb  = 1.0                                           
+      Gas_tf%co2900spnb  = 1.0                                           
+      Gas_tf%co21070spnb = 1.0
       Gas_tf%n2o9c  = 0.                                          
-      Gas_tf%tn2o17  = 0.0                                        
+      Gas_tf%tn2o17 = 0.0                                        
 
 !--------------------------------------------------------------------
 !    compute temperature difference between model profile and 
@@ -854,6 +1122,14 @@ type(gas_tf_type),      intent(inout) :: Gas_tf
 !---------------------------------------------------------------------
     if (Sealw99_control%do_co2) then
       call transfn (Gas_tf)
+    endif
+
+!---------------------------------------------------------------------
+!    if desired, call transfn_10um to compute temperature-corrected co2 transmission 
+!    functions in the 10 um band(co2990/900/1070spnb and co2990/900/1070nbl).
+!---------------------------------------------------------------------
+    if (Sealw99_control%do_co2_10um) then
+      call transfn_10um (Gas_tf)
     endif
 
 !-------------------------------------------------------------------
@@ -1011,6 +1287,204 @@ type(gas_tf_type),      intent(in)  :: Gas_tf
 end subroutine transcol
 
 
+!#####################################################################
+! <SUBROUTINE NAME="transcol_10um">
+!  <OVERVIEW>
+!   Subroutine to compute temperature-corrected co2 10um transmission 
+!   functions at a particular (krow).
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine to compute temperature-corrected co2 10um transmission 
+!   functions at a particular (krow).
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call transcol_10um (kcol, krow, kcols, kcole, co2990c, co2900c, co21070c, Gas_tf)
+!  </TEMPLATE>
+!  <IN NAME="kcol" TYPE="integer">
+!   Not used
+!  </IN>
+!  <IN NAME="krow" TYPE="integer">
+!   The row index where co2 transmission is calculated
+!  </IN>
+!  <IN NAME="kcols" TYPE="integer">
+!   The starting column index number
+!  </IN>
+!  <IN NAME="kcole" TYPE="integer">
+!   The ending column index number
+!  </IN>
+!  <OUT NAME="co2990c" TYPE="real">
+!   The column of transmission functions for 990-1070 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2900c" TYPE="real">
+!   The column of transmission functions for 900-990 cm-1 band
+!  </OUT>
+!  <OUT NAME="co21070c" TYPE="real">
+!   The column of transmission functions for 1070-1200 cm-1 band
+!  </OUT>
+!  <IN NAME="Gas_tf" TYPE="gas_tf_type">
+!   The pre temperature-corrected co2 transmission functions
+!  </IN>
+! </SUBROUTINE>
+!
+subroutine transcol_10um (kcol, krow, kcols, kcole, co2990c, co2900c, co21070c, Gas_tf)        
+
+!---------------------------------------------------------------------
+!    transcol_10um computes temperature-corrected co2 10um transmission 
+!    functions at a particular (krow).
+!    author: c. l. kerr
+!    revised: 11/11/93
+!    certified:  radiation version 1.0
+!---------------------------------------------------------------------
+
+integer,                intent(in)  :: krow, kcol, kcols, kcole
+real, dimension(:,:,:), intent(out) :: co2990c, co2900c, co21070c
+type(gas_tf_type),      intent(in)  :: Gas_tf
+
+!-------------------------------------------------------------------
+!  intent(in) variables:
+!
+!      krow
+!      kcol
+!      kcols
+!      kcole
+!      Gas_tf
+!
+!  intent(out) variables:
+!
+!      co2990c    column of transmission functions for 990-1070 cm-1 band.
+!      co2900c    column of transmission functions for 900-990 cm-1 band.
+!      co21070c    column of transmission functions for 1070-1200 cm-1 band.
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (size(Gas_tf%tdav,1),&
+                       size(Gas_tf%tdav,2), &
+                       size(Gas_tf%tdav,3)  ) ::   &  
+                                            co2r, dift,  d2cdt2, dco2dt
+      integer    ::   kp
+
+!---------------------------------------------------------------------
+!  local variables:
+!
+!    co2r
+!    dift
+!    d2cdt2
+!    dco2dt
+!    k,kp
+!
+!----------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('gas_tf_mod',   &
+              'module has not been initialized', FATAL )
+      endif
+
+!--------------------------------------------------------------------
+!
+!--------------------------------------------------------------------
+      co2990c(:,:,KSRAD:KERAD+1) = 1.0E+00
+      co2900c(:,:,KSRAD:KERAD+1) = 1.0E+00
+      co21070c(:,:,KSRAD:KERAD+1) = 1.0E+00
+
+!--------------------------------------------------------------------
+!
+!--------------------------------------------------------------------
+      do kp = kcols,kcole
+        if (kp .NE. krow) then
+          dift(:,:,kp) = (Gas_tf%tdav  (:,:,kp) -   &
+                          Gas_tf%tdav(:,:,krow))/  &
+                         (Gas_tf%tstdav(:,:,kp) -  &
+                          Gas_tf%tstdav(:,:,krow))
+        else if (krow .NE. KSRAD) then
+          dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) +  &
+                                  Gas_tf%tmpdiff(:,:,kp-1))
+        else
+          dift(:,:,kp) = 0.0E+00
+        endif
+      end do
+
+!----------------------------------------------------------------------
+!    obtain transmission functions used for the flux at a fixed level
+!    (krow). ie, tf's  from varying flux levels (kp) to (krow)
+!----------------------------------------------------------------------
+!       pressure interpolation for 990-1070 cm-1 band
+      do kp=kcols,kcole
+        co2r  (:,:,kp) = Gas_tf%a1(:,:)*co29901(kp,krow) + &
+                         Gas_tf%a2(:,:)*co29908(kp,krow)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt9901(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*cdt9908(kp,krow))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d9901(kp,krow) +  &
+                                  Gas_tf%a2(:,:)*c2d9908(kp,krow))
+      enddo
+ 
+!----------------------------------------------------------------------
+!    temperature interpolation
+!----------------------------------------------------------------------
+      do kp=kcols,kcole
+        co2990c (:,:,kp) = co2r(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) + &
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+      enddo
+!       pressure interpolation for 900-990 cm-1 band
+      do kp=kcols,kcole
+        co2r  (:,:,kp) = Gas_tf%a1(:,:)*co29001(kp,krow) + &
+                         Gas_tf%a2(:,:)*co29008(kp,krow)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt9001(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*cdt9008(kp,krow))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d9001(kp,krow) +  &
+                                  Gas_tf%a2(:,:)*c2d9008(kp,krow))
+      enddo
+ 
+!----------------------------------------------------------------------
+!    temperature interpolation
+!----------------------------------------------------------------------
+      do kp=kcols,kcole
+        co2900c (:,:,kp) = co2r(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) + &
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+      enddo
+!       pressure interpolation for 1070-1200 cm-1 band
+      do kp=kcols,kcole
+        co2r  (:,:,kp) = Gas_tf%a1(:,:)*co210701(kp,krow) + &
+                         Gas_tf%a2(:,:)*co210708(kp,krow)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt10701(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*cdt10708(kp,krow))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d10701(kp,krow) +  &
+                                  Gas_tf%a2(:,:)*c2d10708(kp,krow))
+      enddo
+ 
+!----------------------------------------------------------------------
+!    temperature interpolation
+!----------------------------------------------------------------------
+      do kp=kcols,kcole
+        co21070c (:,:,kp) = co2r(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) + &
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+      enddo
+ 
+!----------------------------------------------------------------------
+!    correction for finite width of co2 bands
+!    (Eqs. 7a-7c, Ref. (2))
+!----------------------------------------------------------------------
+      do kp=kcols,kcole
+        co2990c(:,:,kp) = co2990c(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kp)) +  &
+                        Gas_tf%tlsqu(:,:,kp)
+        co2900c(:,:,kp) = co2900c(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kp)) +  &
+                        Gas_tf%tlsqu(:,:,kp)
+        co21070c(:,:,kp) = co21070c(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kp)) +  &
+                        Gas_tf%tlsqu(:,:,kp)
+      enddo
+
+!----------------------------------------------------------------
+
+
+end subroutine transcol_10um
 
  
 !#####################################################################
@@ -1397,10 +1871,363 @@ real, dimension (:,:,:,:), intent(inout) :: tch4n2oe
 !---------------------------------------------------------------------
 
 
-
 end subroutine transcolrow
 
 
+!#####################################################################
+! <SUBROUTINE NAME="transcolrow_10um">
+!  <OVERVIEW>
+!   Subroutine to compute temperature-corrected co2 10 umtransmission 
+!   functions at a particular row and particular column.
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine to compute temperature-corrected co2 10 um transmission 
+!   functions at a particular row and particular column.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call transcolrow_10um (Gas_tf, kcol, krow, kcols, kcole, krows, krowe,    &
+!                     co210c, co210r)   
+!  </TEMPLATE>
+!  <IN NAME="kcol" TYPE="integer">
+!   The column index of temperature-corrected transmission function
+!  </IN>
+!  <IN NAME="krow" TYPE="integer">
+!   The row index of temperature-corrected transmission function
+!  </IN>
+!  <IN NAME="kcols" TYPE="integer">
+!   The starting column index number
+!  </IN>
+!  <IN NAME="kcole" TYPE="integer">
+!   The ending column index number
+!  </IN>
+!  <IN NAME="krows" TYPE="integer">
+!   The starting row index number
+!  </IN>
+!  <IN NAME="krowe" TYPE="integer">
+!   The ending row index number
+!  </IN>
+!  <OUT NAME="co2990c" TYPE="real">
+!   The column of transmission functions for 990-1070 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2990r" TYPE="real">
+!   The row of transmission functions for 990-1070 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2900c" TYPE="real">
+!   The column of transmission functions for 900-990 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2900r" TYPE="real">
+!   The row of transmission functions for 900-990 cm-1 band
+!  </OUT>
+!  <OUT NAME="co21070c" TYPE="real">
+!   The column of transmission functions for 1070-1200 cm-1 band
+!  </OUT>
+!  <OUT NAME="co21070r" TYPE="real">
+!   The row of transmission functions for 1070-1200 cm-1 band
+!  </OUT>
+!  <INOUT NAME="Gas_tf" TYPE="gas_tf_type">
+!   The pre temperature-corrected co2 transmission functions
+!  </INOUT>
+! </SUBROUTINE>
+!
+subroutine transcolrow_10um (Gas_tf, kcol, krow, kcols, kcole, krows, krowe,&
+                        co2990c, co2900c, co21070c, co2990r, co2900r, co21070r)                     
+
+!----------------------------------------------------------------------
+!    transcolrow_10um computes the temperature-corrected co2 10 um transmission 
+!    functions for a particular (krow) (varying column index) and for 
+!    a particular (kcol) (varying row index).
+!    author: c. l. kerr
+!    revised: 11/11/93
+!    certified:  radiation version 1.0
+!----------------------------------------------------------------------
+
+integer,                   intent(in)    ::  kcol, krow, kcols, kcole, &
+                                             krows, krowe
+type(gas_tf_type),         intent(inout) ::  Gas_tf
+real, dimension (:,:,:),   intent(out)   ::  co2990c, co2990r, co2900c, co2900r, &
+                                             co21070c, co21070r
+
+!----------------------------------------------------------------------
+!  intent(in) variables:
+!
+!     kcol
+!     krow
+!     kcols
+!     kcole
+!     krows
+!     krowe
+!
+!  intent(inout) variables:
+!
+!     Gas_tf
+!
+!  intent(out) variables:
+!     
+!     co2990c    column of transmission functions (fixed krow).
+!     co2990r    column of transmission functions (fixed kcol).
+!     co2900c    column of transmission functions (fixed krow).
+!     co2900r    column of transmission functions (fixed kcol).
+!     co21070c    column of transmission functions (fixed krow).
+!     co21070r    column of transmission functions (fixed kcol).
+!
+!----------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!   local variables:
+
+      real, dimension (size(Gas_tf%tdav,1),  &
+                       size(Gas_tf%tdav,2), &
+                       size(Gas_tf%tdav,3)  ) ::   &  
+                                           co2p, dift, d2cdt2, dco2dt
+
+      integer    :: kp
+
+!--------------------------------------------------------------------
+!   local variables:
+!
+!      kp
+!
+!----------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('gas_tf_mod',   &
+              'module has not been initialized', FATAL )
+      endif
+
+!-----------------------------------------------------------------------
+!    initialization.
+!-----------------------------------------------------------------------
+      co2990c(:,:,kcols:kcole  ) = 1.0E+00
+      co2990r(:,:,KSRAD:KERAD+1) = 1.0E+00
+      co2900c(:,:,kcols:kcole  ) = 1.0E+00
+      co2900r(:,:,KSRAD:KERAD+1) = 1.0E+00
+      co21070c(:,:,kcols:kcole  ) = 1.0E+00
+      co21070r(:,:,KSRAD:KERAD+1) = 1.0E+00
+
+!-----------------------------------------------------------------------
+!    temperature difference averaged between levels k and kp
+!-----------------------------------------------------------------------
+      do kp = kcols,kcole
+        if (kp .NE. krow) then
+          dift(:,:,kp) = (Gas_tf%tdav  (:,:,kp) -  &
+                          Gas_tf%tdav  (:,:,krow))/  &
+                         (Gas_tf%tstdav(:,:,kp) -  &
+                          Gas_tf%tstdav(:,:,krow))
+        elseif (krow .NE. KSRAD) then
+          dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) + &
+                                  Gas_tf%tmpdiff(:,:,kp-1))
+        else
+          dift(:,:,kp) = 0.0E+00
+        endif
+      end do
+
+!-----------------------------------------------------------------------
+!    obtain transmission functions used for the flux at a fixed level
+!    (krow). ie, tf's  from varying flux levels (kp) to (krow)
+!-----------------------------------------------------------------------
+!       pressure interpolation for 990-1070 cm-1 band
+!-----------------------------------------------------------------------
+      do kp=kcols,kcole
+        if (Sealw99_control%do_co2_10um) then
+        co2p  (:,:,kp) = Gas_tf%a1(:,:)*co29901(kp,krow) +  &
+                         Gas_tf%a2(:,:)*co29908(kp,krow)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt9901(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*cdt9908(kp,krow))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d9901(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*c2d9908(kp,krow))
+        endif
+      enddo
+
+!    temperature interpolation
+!----------------------------------------------------------------------
+      do kp=kcols,kcole
+        if (Sealw99_control%do_co2_10um) then
+        co2990c (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) + &
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+        endif
+      enddo
+!--------------------------------------------------------------------
+!       pressure interpolation for 900-990 cm-1 band
+!--------------------------------------------------------------------
+      do kp=kcols,kcole
+        if (Sealw99_control%do_co2_10um) then
+        co2p  (:,:,kp) = Gas_tf%a1(:,:)*co29001(kp,krow) +  &
+                         Gas_tf%a2(:,:)*co29008(kp,krow)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt9001(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*cdt9008(kp,krow))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d9001(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*c2d9008(kp,krow))
+        endif
+      enddo
+
+!    temperature interpolation
+      do kp=kcols,kcole
+        if (Sealw99_control%do_co2_10um) then
+        co2900c (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) + &
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+        endif
+      enddo
+!--------------------------------------------------------------------
+!       pressure interpolation for 1070-1200 cm-1 band
+!--------------------------------------------------------------------
+      do kp=kcols,kcole
+        if (Sealw99_control%do_co2_10um) then
+        co2p  (:,:,kp) = Gas_tf%a1(:,:)*co210701(kp,krow) +  &
+                         Gas_tf%a2(:,:)*co210708(kp,krow)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt10701(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*cdt10708(kp,krow))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d10701(kp,krow) +   &
+                                  Gas_tf%a2(:,:)*c2d10708(kp,krow))
+        endif
+      enddo
+
+!    temperature interpolation
+!----------------------------------------------------------------------
+      do kp=kcols,kcole
+        if (Sealw99_control%do_co2_10um) then
+        co21070c (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) + &
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+        endif
+      enddo
+
+!---------------------------------------------------------------------
+!    correction for finite width of co2 bands
+!    (Eqs. 7a-7c, Ref. (2))
+!---------------------------------------------------------------------
+      do kp=kcols,kcole
+        if (Sealw99_control%do_co2) then
+        co2990c(:,:,kp) = co2990c(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kp)) + Gas_tf%tlsqu(:,:,kp)
+        co2900c(:,:,kp) = co2900c(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kp)) + Gas_tf%tlsqu(:,:,kp)
+        co21070c(:,:,kp) = co21070c(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kp)) + Gas_tf%tlsqu(:,:,kp)
+        endif
+      enddo
+
+!-----------------------------------------------------------------------
+!    obtain transmission functions used for the flux for varying levels
+!    (krow) from a fixed level (kcol). ie, tf's  from a fixed flux
+!    level (kcol) to varying levels (krow).
+!-----------------------------------------------------------------------
+ 
+!-----------------------------------------------------------------------
+!    temperature difference averaged between levels k and kp. This 
+!    computation is made unless krow = kcol, and range (krows,krowe) is
+!    entirely within (kcols,kcole), in which case the dift computed
+!    for column tfs is applicable to row tfs.
+!-----------------------------------------------------------------------
+      if (Sealw99_control%do_co2_10um) then
+        if (kcol  .NE. krow   .or. krows .LT. kcols  .or.  &
+            krowe .GT. kcole)     then
+          do kp = krows,krowe
+            if (kp .NE. krow) then
+              dift(:,:,kp) = (Gas_tf%tdav(:,:,kp) -  &
+                              Gas_tf%tdav(:,:,krow))/  &
+                             (Gas_tf%tstdav(:,:,kp) -  &
+                              Gas_tf%tstdav(:,:,krow))
+            elseif (krow .NE. KSRAD) then
+              dift(:,:,kp) = 0.5E+00*(Gas_tf%tmpdiff(:,:,kp) +  &
+                                      Gas_tf%tmpdiff(:,:,kp-1))
+            else
+              dift(:,:,kp) = 0.0E+00
+            endif
+          end do
+        endif
+      endif  ! (do_co2_10um)
+
+!--------------------------------------------------------------------
+!    pressure interpolation for 990-1070 cm-1 band
+!--------------------------------------------------------------------
+      do kp=krows,krowe
+        if (Sealw99_control%do_co2_10um) then
+        co2p  (:,:,kp) = Gas_tf%a1(:,:)*co29901(kcol,kp) +  &
+                         Gas_tf%a2(:,:)*co29908(kcol,kp)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt9901(kcol,kp) +   &
+                                  Gas_tf%a2(:,:)*cdt9908(kcol,kp))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d9901(kcol,kp) +   &
+                                  Gas_tf%a2(:,:)*c2d9908(kcol,kp))
+        endif
+      enddo
+
+!    temperature interpolation
+!---------------------------------------------------------------------
+      do kp=krows,krowe
+        if (Sealw99_control%do_co2) then
+        co2990r (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) +&
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+        endif
+      enddo
+!--------------------------------------------------------------------
+!    pressure interpolation for 900-990 cm-1 band
+!--------------------------------------------------------------------
+      do kp=krows,krowe
+        if (Sealw99_control%do_co2_10um) then
+        co2p  (:,:,kp) = Gas_tf%a1(:,:)*co29001(kcol,kp) +  &
+                         Gas_tf%a2(:,:)*co29008(kcol,kp)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt9001(kcol,kp) +   &
+                                  Gas_tf%a2(:,:)*cdt9008(kcol,kp))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d9001(kcol,kp) +   &
+                                  Gas_tf%a2(:,:)*c2d9008(kcol,kp))
+        endif
+      enddo
+
+!    temperature interpolation
+!---------------------------------------------------------------------
+      do kp=krows,krowe
+        if (Sealw99_control%do_co2) then
+        co2900r (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) +&
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+        endif
+      enddo
+!--------------------------------------------------------------------
+!    pressure interpolation for 990-1070 cm-1 band
+!--------------------------------------------------------------------
+      do kp=krows,krowe
+        if (Sealw99_control%do_co2_10um) then
+        co2p  (:,:,kp) = Gas_tf%a1(:,:)*co210701(kcol,kp) +  &
+                         Gas_tf%a2(:,:)*co210708(kcol,kp)
+        dco2dt(:,:,kp) = 1.0E-02*(Gas_tf%a1(:,:)*cdt10701(kcol,kp) +   &
+                                  Gas_tf%a2(:,:)*cdt10708(kcol,kp))
+        d2cdt2(:,:,kp) = 1.0E-03*(Gas_tf%a1(:,:)*c2d10701(kcol,kp) +   &
+                                  Gas_tf%a2(:,:)*c2d10708(kcol,kp))
+        endif
+      enddo
+
+!    temperature interpolation
+!---------------------------------------------------------------------
+      do kp=krows,krowe
+        if (Sealw99_control%do_co2) then
+        co21070r (:,:,kp) = co2p(:,:,kp) + dift(:,:,kp)*(dco2dt(:,:,kp) +&
+                         0.5E+00*dift(:,:,kp)*d2cdt2(:,:,kp))
+        endif
+      enddo
+
+!---------------------------------------------------------------------
+!    correction for finite width of co2 bands
+!    (Eqs. 7a-7c, Ref. (2))
+!---------------------------------------------------------------------
+      do kp=krows,krowe
+        if (Sealw99_control%do_co2) then
+        co2990r(:,:,kp) = co2990r(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kcol)) +  &
+                        Gas_tf%tlsqu(:,:,kcol)
+        co2900r(:,:,kp) = co2900r(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kcol)) +  &
+                        Gas_tf%tlsqu(:,:,kcol)
+        co21070r(:,:,kp) = co21070r(:,:,kp)*(1.0E+00 -  &
+                        Gas_tf%tlsqu(:,:,kcol)) +  &
+                        Gas_tf%tlsqu(:,:,kcol)
+        endif
+      enddo
+
+!---------------------------------------------------------------------
+
+
+end subroutine transcolrow_10um
 
 
 !#####################################################################
@@ -1462,7 +2289,8 @@ real, dimension (:,:,:), intent(out) :: co21diag
 ! intent(in) variables:
 !
 !    Gas_tf
-!    Atmos_input
+!    press
+!    pflux
 !    overod
 !
 ! intent(out) variables:
@@ -1565,9 +2393,222 @@ real, dimension (:,:,:), intent(out) :: co21diag
 !-------------------------------------------------------------------
 
 
-
-
 end subroutine trans_nearby
+
+
+!#####################################################################
+! <SUBROUTINE NAME="trans_nearby_10um">
+!  <OVERVIEW>
+!   Compute nearby layer transmission functions at certain level in
+!   the three frequency bands at 10 um
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Compute "nearby  layer" transmission functions at level k 
+!  ( tau(p(k),p(k))) in the frequency band at 10 um. include all
+!  gases (co2, h2o, o3, h2o cont) used in computing fluxes in this band.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call trans_nearby (Gas_tf, Atmos_input, to3cnt, cnttaub2, cnttaub3, co2990nbl, co2900nbl, co21070nbl)
+!  </TEMPLATE>
+!  <IN NAME="Gas_tf" TYPE="gas_tf_type">
+!   The gas transmission functions at model coordinate system
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!   The atmospheric input data
+!  </IN>
+!  <IN NAME="to3cnt" TYPE="real">
+!   o3, h2o continuum, halocarbon, aerosol transmission function for 990-1070 cm-1 band
+!  </IN>
+!  <IN NAME="cnttaub2" TYPE="real">
+!    h2o continuum, halocarbon, aerosol transmission function for 900-990 cm-1 band
+!  </IN>
+!  <IN NAME="cnttaub3" TYPE="real">
+!    h2o continuum, halocarbon, aerosol transmission function for 1070-1200 cm-1 band
+!  </IN>
+!  <OUT NAME="co2990nbl" TYPE="real">
+!   CO2 transmission function for 990-1070 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2900nbl" TYPE="real">
+!   CO2 transmission function for 900-990 cm-1 band
+!  </OUT>
+!  <OUT NAME="co21070nbl" TYPE="real">
+!   CO2 transmission function for 990-1070 cm-1 band
+!  </OUT>
+! </SUBROUTINE>
+subroutine trans_nearby_10um (Gas_tf, press, pflux, to3cnt, co2990nbl, co2900nbl, co21070nbl)
+ 
+!-------------------------------------------------------------------
+!    compute "nearby  layer" transmission functions at level k 
+!    ( tau(p(k),p(k))) in the three frequency bands at 10 um. include all
+!    gases (co2, h2o, h2o cont) used in computing fluxes in this band.
+!    the algorithm assumes that at pressures (p') near the pressure
+!    at level k (p(k)), the transmission function may be written as:
+!
+!              tau(p',p(k)) = EXP(-alpha*SQRT(p'-p(k)))
+!
+!    with alpha determined by the boundary condition(s)
+!    tau(p(k+1),p(k)) and tau(p(k-1),p(k)) = the values from  "normal"
+!    calculations. An integration is performed over the "nearby" 
+!    pressure layer to obtain tau(p(k),p(k)).
+!    the computation is not done for levels from KSRAD to KMINH2O-1 (if
+!    different), where it is assumed that the h2o transmissivities 
+!    are near unity, and that the precomputed co2 transmissivities may
+!    be used.
+!     two "special case" transmissivities, viz.,
+!    tau(p(KERAD),p(KERAD+1)) and tau(p(KERAD+1),p(KERAD)) are also 
+!    evaluated using the above assumptions and an integration.
+!-------------------------------------------------------------------
+
+type(gas_tf_type),       intent(in)  :: Gas_tf
+real, dimension (:,:,:), intent(in)  :: press, pflux
+real, dimension (:,:,:), intent(in)  :: to3cnt  
+real, dimension (:,:,:), intent(out) :: co2990nbl, co2900nbl, co21070nbl
+
+!--------------------------------------------------------------------
+! intent(in) variables:
+!
+!    Gas_tf
+!    press
+!    pflux
+!    to3cnt
+!
+! intent(out) variables:
+!
+!    co2990nbl
+!    co2900nbl
+!    co21070nbl
+!
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (size(pflux,1),  &
+                       size(pflux,2),  &
+                       size(pflux,3)-1) :: pdfinv, press_cgs
+
+      real, dimension (size(pflux,1), &
+                       size(pflux,2),  &
+                       size(pflux,3)) ::         &
+            pflux_cgs, delpr1, delpr2, delprsq1, delprsq2, &
+            alpa990, alpb990, ca990, cb990, rlog990, &
+            alpa900, alpb900, ca900, cb900, rlog900, &
+            alpa1070, alpb1070, ca1070, cb1070, rlog1070
+
+      real, dimension (size(pflux,1), &
+                       size(pflux,2)) ::     &
+            delprsq3
+      integer   :: k, km, kmp1
+
+!-------------------------------------------------------------------
+!  local variables:
+!
+!    pdfl
+!    pdfinv
+!    press
+!
+!    k
+!
+!    kmp1
+!
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('gas_tf_mod',   &
+              'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!    convert press and pflux to cgs.
+!---------------------------------------------------------------------
+      press_cgs(:,:,:) = 10.0*press(:,:,:)
+      pflux_cgs(:,:,:) = 10.0*pflux(:,:,:)
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      pdfinv(:,:,KSRAD:KERAD) = 1.0/(pflux_cgs(:,:,KSRAD+1:KERAD+1) -   &
+                                     pflux_cgs(:,:,KSRAD:KERAD) )
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      km= MAX(ixprkminh2o - 1, KSRAD)
+      kmp1 = MAX(ixprkminh2o - 1, KSRAD+1)
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      delpr1(:,:,kmp1:KERAD)   = pdfinv (:,:,kmp1:KERAD)*  &
+                                 (press_cgs(:,:,kmp1:KERAD) - &
+                                  pflux_cgs(:,:,kmp1:KERAD)) 
+      delpr2(:,:,kmp1:KERAD+1) = pdfinv(:,:,kmp1-1:KERAD)*  &
+                                 (pflux_cgs(:,:,kmp1:KERAD+1) -  &
+                                  press_cgs(:,:,kmp1-1:KERAD)) 
+      delprsq1(:,:,kmp1:KERAD) = SQRT(delpr2(:,:,kmp1:KERAD))
+      delprsq2(:,:,km:KERAD) = SQRT(delpr2(:,:,km+1:KERAD+1))
+      delprsq3(:,:) = SQRT(pdfinv(:,:,KERAD)*(pflux_cgs(:,:,KERAD+1) - press_cgs(:,:,KERAD-1)))
+      rlog990  (:,:,km:KERAD)     = LOG(Gas_tf%co2990nbl(:,:,km:KERAD)*   &
+                                 to3cnt(:,:,km+1:KERAD+1))
+      rlog900  (:,:,km:KERAD)     = LOG(Gas_tf%co2900nbl(:,:,km:KERAD))
+      rlog1070  (:,:,km:KERAD)     = LOG(Gas_tf%co21070nbl(:,:,km:KERAD))
+      alpb990  (:,:,kmp1:KERAD)   = -delprsq1(:,:,kmp1:KERAD)*  &
+                                  rlog990(:,:,kmp1:KERAD)
+      alpb900  (:,:,kmp1:KERAD)   = -delprsq1(:,:,kmp1:KERAD)*  &
+                                  rlog900(:,:,kmp1:KERAD)
+      alpb1070  (:,:,kmp1:KERAD)   = -delprsq1(:,:,kmp1:KERAD)*  &
+                                  rlog1070(:,:,kmp1:KERAD)
+      alpa990  (:,:,km:KERAD)     = -delprsq2(:,:,km:KERAD)*  &
+                                 rlog990(:,:,km:KERAD)
+      alpa990  (:,:,KERAD+1)      = -rlog990(:,:,KERAD)
+      alpa900  (:,:,km:KERAD)     = -delprsq2(:,:,km:KERAD)*  &
+                                 rlog900(:,:,km:KERAD)
+      alpa900  (:,:,KERAD+1)      = -rlog900(:,:,KERAD)
+      alpa1070  (:,:,km:KERAD)     = -delprsq2(:,:,km:KERAD)*  &
+                                 rlog1070(:,:,km:KERAD)
+      alpa1070  (:,:,KERAD+1)      = -rlog1070(:,:,KERAD)
+      alpb990  (:,:,KERAD+1)      = -rlog990(:,:,KERAD)* delprsq3(:,:)
+      alpb900  (:,:,KERAD+1)      = -rlog900(:,:,KERAD)* delprsq3(:,:)
+      alpb1070  (:,:,KERAD+1)      = -rlog1070(:,:,KERAD)* delprsq3(:,:)
+      ca990(:,:,km:KERAD+1) = alpa990(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                           alpa990(:,:,km:KERAD+1)*(0.25E+00 +   &
+                           alpa990(:,:,km:KERAD+1)*(-0.066667E+00)))
+      cb990(:,:,kmp1:KERAD+1) = alpb990(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                             alpb990(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                             alpb990(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+      ca900(:,:,km:KERAD+1) = alpa900(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                           alpa900(:,:,km:KERAD+1)*(0.25E+00 +   &
+                           alpa900(:,:,km:KERAD+1)*(-0.066667E+00)))
+      cb900(:,:,kmp1:KERAD+1) = alpb900(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                             alpb900(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                             alpb900(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+      ca1070(:,:,km:KERAD+1) = alpa1070(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                           alpa1070(:,:,km:KERAD+1)*(0.25E+00 +   &
+                           alpa1070(:,:,km:KERAD+1)*(-0.066667E+00)))
+      cb1070(:,:,kmp1:KERAD+1) = alpb1070(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                             alpb1070(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                             alpb1070(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      do k=ixprkminh2o,KERAD
+        co2990nbl(:,:,k) = 1.0E+00 + 0.5E+00*(cb990(:,:,k) + ca990(:,:,k-1))
+        co2900nbl(:,:,k) = 1.0E+00 + 0.5E+00*(cb900(:,:,k) + ca900(:,:,k-1))
+        co21070nbl(:,:,k) = 1.0E+00 + 0.5E+00*(cb1070(:,:,k) + ca1070(:,:,k-1))
+      enddo
+      co2990nbl(:,:,KERAD+1) = 1.0E+00 + ca990(:,:,KERAD)
+      co2900nbl(:,:,KERAD+1) = 1.0E+00 + ca900(:,:,KERAD)
+      co21070nbl(:,:,KERAD+1) = 1.0E+00 + ca1070(:,:,KERAD)
+
+!-------------------------------------------------------------------
+
+
+end subroutine trans_nearby_10um
+
 
 !#####################################################################
 ! <SUBROUTINE NAME="trans_sfc">
@@ -1599,6 +2640,7 @@ end subroutine trans_nearby
 !   CO2 transmission function
 !  </OUT>
 ! </SUBROUTINE>
+
 subroutine trans_sfc (Gas_tf, press, pflux, overod, co21c, co21r)
  
 !-------------------------------------------------------------------
@@ -1631,7 +2673,8 @@ real, dimension (:,:),   intent(out) :: co21c, co21r
 ! intent(in) variables:
 !
 !    Gas_tf
-!    Atmos_input
+!    press
+!    pflux
 !    overod
 !
 ! intent(out) variables:
@@ -1747,6 +2790,276 @@ real, dimension (:,:),   intent(out) :: co21c, co21r
 end subroutine trans_sfc
 
 
+!#####################################################################
+! <SUBROUTINE NAME="trans_sfc_10um">
+!  <OVERVIEW>
+!   Compute nearby layer transmission functions at certain level in
+!   the frequency band at 10 um
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Compute "nearby  layer" transmission functions at level k 
+!  ( tau(p(k),p(k))) in the frequency band at 10 um. include all
+!  gases (co2, o3, h2o, h2o cont) used in computing fluxes in this band.
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call trans_sfc_10um    (Gas_tf, Atmos_input, to3cnt, co2990c, co2990r, co2900c, co2900r, co21070c, co21070r)
+!  </TEMPLATE>
+!  <IN NAME="Gas_tf" TYPE="gas_tf_type">
+!   The gas transmission functions at model coordinate system
+!  </IN>
+!  <IN NAME="Atmos_input" TYPE="atmos_input_type">
+!   The atmospheric input data
+!  </IN>
+!  <IN NAME="to3cnt" TYPE="real">
+!   CO2 data
+!  </IN>
+!  <OUT NAME="co2990c" TYPE="real">
+!   CO2 transmission function for 990-1070 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2990r" TYPE="real">
+!   CO2 transmission function for 990-1070 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2900c" TYPE="real">
+!   CO2 transmission function for 900-990 cm-1 band
+!  </OUT>
+!  <OUT NAME="co2900r" TYPE="real">
+!   CO2 transmission function for 900-990 cm-1 band
+!  </OUT>
+!  <OUT NAME="co21070c" TYPE="real">
+!   CO2 transmission function for 1070-1200 cm-1 band
+!  </OUT>
+!  <OUT NAME="co21070r" TYPE="real">
+!   CO2 transmission function for 1070-1200 cm-1 band
+!  </OUT>
+! </SUBROUTINE>
+subroutine trans_sfc_10um (Gas_tf, press, pflux, to3cnt, &
+              co2990c, co2990r, co2900c, co2900r, co21070c, co21070r)
+
+ 
+!-------------------------------------------------------------------
+!    compute "nearby  layer" transmission functions at level k 
+!    ( tau(p(k),p(k))) in the frequency band at 10 um. include all
+!    gases (co2, o3, h2o, h2o cont) used in computing fluxes in this band.
+!    the algorithm assumes that at pressures (p') near the pressure
+!    at level k (p(k)), the transmission function may be written as:
+!
+!              tau(p',p(k)) = EXP(-alpha*SQRT(p'-p(k)))
+!
+!    with alpha determined by the boundary condition(s)
+!    tau(p(k+1),p(k)) and tau(p(k-1),p(k)) = the values from  "normal"
+!    calculations. An integration is performed over the "nearby" 
+!    pressure layer to obtain tau(p(k),p(k)).
+!    the computation is not done for levels from KSRAD to KMINH2O-1 (if
+!    different), where it is assumed that the h2o transmissivities 
+!    are near unity, and that the precomputed co2 transmissivities may
+!    be used.
+!     two "special case" transmissivities, viz.,
+!    tau(p(KERAD),p(KERAD+1)) and tau(p(KERAD+1),p(KERAD)) are also 
+!    evaluated using the above assumptions and an integration.
+!-------------------------------------------------------------------
+
+type(gas_tf_type),       intent(in)  :: Gas_tf
+real, dimension (:,:,:), intent(in)  :: press, pflux
+real, dimension (:,:,:), intent(in)  :: to3cnt  
+real, dimension (:,:),   intent(out) :: co2990c, co2990r, co2900c, co2900r, co21070c, co21070r
+
+!--------------------------------------------------------------------
+! intent(in) variables:
+!
+!    Gas_tf
+!    press
+!    pflux
+!    to3cnt
+!
+! intent(out) variables:
+!
+!    co2990c
+!    co2990r
+!    co2900c
+!    co2900r
+!    co21070c
+!    co21070r
+!
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (size(pflux,1),  &
+                       size(pflux,2)) :: pdfl
+
+      real, dimension (size(pflux,1),  &
+                       size(pflux,2),  &
+                       size(pflux,3)-1) :: pdfinv, press_cgs
+
+      real, dimension (size(pflux,1), &
+                       size(pflux,2),  &
+                       size(pflux,3)) ::         &
+               pflux_cgs, alpa, alpb, ca, cb, delpr1, delpr2, rlog
+
+      integer   ::  km, kmp1
+
+!-------------------------------------------------------------------
+!  local variables:
+!
+!    pdfl
+!    pdfinv
+!    press
+!
+!    k
+!
+!    kmp1
+!
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    be sure module has been initialized.
+!---------------------------------------------------------------------
+      if (.not. module_is_initialized ) then
+        call error_mesg ('gas_tf_mod',   &
+             'module has not been initialized', FATAL )
+      endif
+
+!---------------------------------------------------------------------
+!    convert press and pflux to cgs.
+!---------------------------------------------------------------------
+      press_cgs(:,:,:) = 10.0*press(:,:,:)
+      pflux_cgs(:,:,:) = 10.0*pflux(:,:,:)
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      pdfinv(:,:,KSRAD:KERAD) = 1.0/(pflux_cgs(:,:,KSRAD+1:KERAD+1) -   &
+                                     pflux_cgs(:,:,KSRAD:KERAD) )
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      km= MAX(ixprkminh2o - 1, KSRAD)
+      kmp1 = MAX(ixprkminh2o - 1, KSRAD+1)
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+
+
+      delpr1(:,:,kmp1:KERAD)   = pdfinv (:,:,kmp1:KERAD)*  &
+                                 (press_cgs(:,:,kmp1:KERAD) - &
+                                  pflux_cgs(:,:,kmp1:KERAD)) 
+
+
+      delpr2(:,:,kmp1:KERAD+1) = pdfinv(:,:,kmp1-1:KERAD)*  &
+                                 (pflux_cgs(:,:,kmp1:KERAD+1) -  &
+                                  press_cgs(:,:,kmp1-1:KERAD)) 
+      pdfl(:,:) = pflux_cgs(:,:,KERAD+1) - pflux_cgs(:,:,KERAD)
+!---------------------------------------------------------------------
+!   calculation for 990-1070 cm-1 band
+!---------------------------------------------------------------------
+      rlog  (:,:,km:KERAD)     = LOG(Gas_tf%co2990nbl(:,:,km:KERAD)*   &
+                                 to3cnt(:,:,km+1:KERAD+1))
+      alpb  (:,:,kmp1:KERAD)   = -SQRT(delpr1(:,:,kmp1:KERAD))*  &
+                                 rlog(:,:,kmp1:KERAD)
+      alpa  (:,:,km:KERAD)     = -SQRT(delpr2(:,:,km+1:KERAD+1))*  &
+                                 rlog(:,:,km:KERAD)
+      alpa  (:,:,KERAD+1)      = -rlog(:,:,KERAD)
+      alpb  (:,:,KERAD+1)      = -rlog(:,:,KERAD)* &
+                                 SQRT(pdfinv(:,:,KERAD)*&
+                                 (pflux_cgs(:,:,KERAD+1) -  &
+                                  press_cgs(:,:,KERAD-1)))
+      ca(:,:,km:KERAD+1) = alpa(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                           alpa(:,:,km:KERAD+1)*(0.25E+00 +   &
+                           alpa(:,:,km:KERAD+1)*(-0.066667E+00)))
+      cb(:,:,kmp1:KERAD+1) = alpb(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                             alpb(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                             alpb(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+
+      co2990c(:,:        ) = 1.0E+00 +    &
+                           (pdfl  (:,:      )*ca(:,:,KERAD+1) -    &
+                           (press_cgs(:,:,KERAD) - pflux_cgs(:,:,KERAD))*   &
+                            cb(:,:,KERAD))/   &
+                            (pflux_cgs(:,:,KERAD+1) - press_cgs(:,:,KERAD))
+      co2990r(:,:        )   = 1.0E+00 +    &
+                             ((pflux_cgs(:,:,KERAD+1) -  &
+                               press_cgs(:,:,KERAD-1))*  &
+                             cb(:,:,KERAD+1) -   &
+                             (pflux_cgs(:,:,KERAD+1) - press_cgs(:,:,KERAD))*  &
+                             ca(:,:,KERAD))/ &
+                             (press_cgs(:,:,KERAD) - press_cgs(:,:,KERAD-1))
+
+!---------------------------------------------------------------------
+!   calculation for 900-990 cm-1 band
+!---------------------------------------------------------------------
+      rlog  (:,:,km:KERAD)     = LOG(Gas_tf%co2900nbl(:,:,km:KERAD)*   &
+                                 to3cnt(:,:,km+1:KERAD+1))
+      alpb  (:,:,kmp1:KERAD)   = -SQRT(delpr1(:,:,kmp1:KERAD))*  &
+                                 rlog(:,:,kmp1:KERAD)
+      alpa  (:,:,km:KERAD)     = -SQRT(delpr2(:,:,km+1:KERAD+1))*  &
+                                 rlog(:,:,km:KERAD)
+      alpa  (:,:,KERAD+1)      = -rlog(:,:,KERAD)
+      alpb  (:,:,KERAD+1)      = -rlog(:,:,KERAD)* &
+                                 SQRT(pdfinv(:,:,KERAD)*&
+                                 (pflux_cgs(:,:,KERAD+1) -  &
+                                  press_cgs(:,:,KERAD-1)))
+      ca(:,:,km:KERAD+1) = alpa(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                           alpa(:,:,km:KERAD+1)*(0.25E+00 +   &
+                           alpa(:,:,km:KERAD+1)*(-0.066667E+00)))
+      cb(:,:,kmp1:KERAD+1) = alpb(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                             alpb(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                             alpb(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+
+      co2900c(:,:        ) = 1.0E+00 +    &
+                           (pdfl  (:,:      )*ca(:,:,KERAD+1) -    &
+                           (press_cgs(:,:,KERAD) - pflux_cgs(:,:,KERAD))*   &
+                            cb(:,:,KERAD))/   &
+                            (pflux_cgs(:,:,KERAD+1) - press_cgs(:,:,KERAD))
+      co2900r(:,:        )   = 1.0E+00 +    &
+                             ((pflux_cgs(:,:,KERAD+1) -  &
+                               press_cgs(:,:,KERAD-1))*  &
+                             cb(:,:,KERAD+1) -   &
+                             (pflux_cgs(:,:,KERAD+1) - press_cgs(:,:,KERAD))*  &
+                             ca(:,:,KERAD))/ &
+                             (press_cgs(:,:,KERAD) - press_cgs(:,:,KERAD-1))
+
+!---------------------------------------------------------------------
+!   calculation for 1070-12000 cm-1 band
+!---------------------------------------------------------------------
+      rlog  (:,:,km:KERAD)     = LOG(Gas_tf%co21070nbl(:,:,km:KERAD)*   &
+                                 to3cnt(:,:,km+1:KERAD+1))
+      alpb  (:,:,kmp1:KERAD)   = -SQRT(delpr1(:,:,kmp1:KERAD))*  &
+                                 rlog(:,:,kmp1:KERAD)
+      alpa  (:,:,km:KERAD)     = -SQRT(delpr2(:,:,km+1:KERAD+1))*  &
+                                 rlog(:,:,km:KERAD)
+      alpa  (:,:,KERAD+1)      = -rlog(:,:,KERAD)
+      alpb  (:,:,KERAD+1)      = -rlog(:,:,KERAD)* &
+                                 SQRT(pdfinv(:,:,KERAD)*&
+                                 (pflux_cgs(:,:,KERAD+1) -  &
+                                  press_cgs(:,:,KERAD-1)))
+      ca(:,:,km:KERAD+1) = alpa(:,:,km:KERAD+1)*(-0.66667E+00 +  &
+                           alpa(:,:,km:KERAD+1)*(0.25E+00 +   &
+                           alpa(:,:,km:KERAD+1)*(-0.066667E+00)))
+      cb(:,:,kmp1:KERAD+1) = alpb(:,:,kmp1:KERAD+1)*(-0.66667E+00 +  &
+                             alpb(:,:,kmp1:KERAD+1)*(0.25E+00 +    &
+                             alpb(:,:,kmp1:KERAD+1)*(-0.066667E+00)))
+
+      co21070c(:,:        ) = 1.0E+00 +    &
+                           (pdfl  (:,:      )*ca(:,:,KERAD+1) -    &
+                           (press_cgs(:,:,KERAD) - pflux_cgs(:,:,KERAD))*   &
+                            cb(:,:,KERAD))/   &
+                            (pflux_cgs(:,:,KERAD+1) - press_cgs(:,:,KERAD))
+      co21070r(:,:        )   = 1.0E+00 +    &
+                             ((pflux_cgs(:,:,KERAD+1) -  &
+                               press_cgs(:,:,KERAD-1))*  &
+                             cb(:,:,KERAD+1) -   &
+                             (pflux_cgs(:,:,KERAD+1) - press_cgs(:,:,KERAD))*  &
+                             ca(:,:,KERAD))/ &
+                             (press_cgs(:,:,KERAD) - press_cgs(:,:,KERAD-1))
+
+!-------------------------------------------------------------------
+
+
+end subroutine trans_sfc_10um
+  
+
 !####################################################################
 ! <SUBROUTINE NAME="put_co2_stdtf_for_gas_tf">
 !  <OVERVIEW>
@@ -1816,14 +3129,35 @@ real, dimension(:,:), intent(in)  :: co251_o, co258_o,   &
       else if (nf == 5) then
         co211(:) = co251_o(:,1)
         co218(:) = co258_o(:,1)
+      else if (Sealw99_control%do_co2_10um) then
+        if (nf == 6) then
+          co29901 = co251_o
+          co29908 = co258_o
+          cdt9901 = cdt51_o
+          cdt9908 = cdt58_o
+          c2d9901 = c2d51_o
+          c2d9908 = c2d58_o
+        else if (nf == 7) then
+          co29001 = co251_o
+          co29008 = co258_o
+          cdt9001 = cdt51_o
+          cdt9008 = cdt58_o
+          c2d9001 = c2d51_o
+          c2d9008 = c2d58_o
+        else if (nf == 8) then
+          co210701 = co251_o
+          co210708 = co258_o
+          cdt10701 = cdt51_o
+          cdt10708 = cdt58_o
+          c2d10701 = c2d51_o
+          c2d10708 = c2d58_o
+        endif
       endif
 
 !--------------------------------------------------------------------
 
 
 end subroutine put_co2_stdtf_for_gas_tf
-
-
 
 
 !#####################################################################
@@ -1924,12 +3258,59 @@ real, dimension(:),   intent(in)  :: co215nbps1_o, co215nbps8_o,     &
         co2d2t15nbps1(:,nf-1) = co2d2t15nbps1_o(:)
         co2d2t15nbps8(:,nf-1) = co2d2t15nbps8_o(:)
       endif
+      if (Sealw99_control%do_co2_10um) then
+        if (nf == 6 ) then
+          do k=KSRAD,KERAD
+            co2m9901(k) = co2m51_o(k,k+1)
+            co2m9908(k) = co2m58_o(k,k+1)
+            cdtm9901(k) = cdtm51_o(k,k+1)
+            cdtm9908(k) = cdtm58_o(k,k+1)
+            c2dm9901(k) = c2dm51_o(k,k+1)
+            c2dm9908(k) = c2dm58_o(k,k+1)
+          end do
+          co2900nbps1(:) = co215nbps1_o(:)
+          co2900nbps8(:) = co215nbps8_o(:)
+          co2dt900nbps1(:) = co2dt15nbps1_o(:)
+          co2dt900nbps8(:) = co2dt15nbps8_o(:)
+          co2d2t900nbps1(:) = co2d2t15nbps1_o(:)
+          co2d2t900nbps8(:) = co2d2t15nbps8_o(:)
+        else if (nf == 7 ) then
+          do k=KSRAD,KERAD
+            co2m9001(k) = co2m51_o(k,k+1)
+            co2m9008(k) = co2m58_o(k,k+1)
+            cdtm9001(k) = cdtm51_o(k,k+1)
+            cdtm9008(k) = cdtm58_o(k,k+1)
+            c2dm9001(k) = c2dm51_o(k,k+1)
+            c2dm9008(k) = c2dm58_o(k,k+1)
+          end do
+          co2990nbps1(:) = co215nbps1_o(:)
+          co2990nbps8(:) = co215nbps8_o(:)
+          co2dt990nbps1(:) = co2dt15nbps1_o(:)
+          co2dt990nbps8(:) = co2dt15nbps8_o(:)
+          co2d2t990nbps1(:) = co2d2t15nbps1_o(:)
+          co2d2t990nbps8(:) = co2d2t15nbps8_o(:)
+        else if (nf == 8 ) then
+          do k=KSRAD,KERAD
+            co2m10701(k) = co2m51_o(k,k+1)
+            co2m10708(k) = co2m58_o(k,k+1)
+            cdtm10701(k) = cdtm51_o(k,k+1)
+            cdtm10708(k) = cdtm58_o(k,k+1)
+            c2dm10701(k) = c2dm51_o(k,k+1)
+            c2dm10708(k) = c2dm58_o(k,k+1)
+          end do
+          co21070nbps1(:) = co215nbps1_o(:)
+          co21070nbps8(:) = co215nbps8_o(:)
+          co2dt1070nbps1(:) = co2dt15nbps1_o(:)
+          co2dt1070nbps8(:) = co2dt15nbps8_o(:)
+          co2d2t1070nbps1(:) = co2d2t15nbps1_o(:)
+          co2d2t1070nbps8(:) = co2d2t15nbps8_o(:)
+        endif
+      endif
 
 !--------------------------------------------------------------------
 
+
 end subroutine put_co2_nbltf_for_gas_tf
-
-
 
 
 !#####################################################################
@@ -2091,25 +3472,26 @@ end subroutine put_n2o_stdtf_for_gas_tf
 !   Turn on gas transmission function flag
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call get_control_gas_tf (calc_co2, calc_ch4, calc_n2o)
+!   call get_control_gas_tf (calc_co2, calc_co2_10um, calc_ch4, calc_n2o)
 !  </TEMPLATE>
-!  <OUT NAME="calc_co2, calc_ch4, calc_n2o" TYPE="logical">
+!  <OUT NAME="calc_co2, calc_co2_10um, calc_ch4, calc_n2o" TYPE="logical">
 !   logical variables that determine whether gas transmission functions
 !   should be calculated.
 !  </OUT>
 ! </SUBROUTINE>
-subroutine get_control_gas_tf (calc_co2, calc_ch4, calc_n2o)
+subroutine get_control_gas_tf (calc_co2, calc_co2_10um, calc_ch4, calc_n2o)
 
 !--------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
 
-logical, intent(out), optional     :: calc_co2, calc_ch4, calc_n2o
+logical, intent(out), optional     :: calc_co2, calc_co2_10um, calc_ch4, calc_n2o
 
 !------------------------------------------------------------------
 !  intent(out),optional variables:
 !
 !    calc_co2 
+!    calc_co2_10um
 !    calc_ch4 
 !    calc_n2o 
 !
@@ -2128,6 +3510,7 @@ logical, intent(out), optional     :: calc_co2, calc_ch4, calc_n2o
 !
 !---------------------------------------------------------------------
       calc_co2 = do_calcstdco2tfs
+      calc_co2_10um = do_calcstdco210umtfs
       calc_ch4 = do_calcstdch4tfs
       calc_n2o = do_calcstdn2otfs
 
@@ -2180,9 +3563,15 @@ type(gas_tf_type), intent(inout) :: Gas_tf
       deallocate (Gas_tf%tmpdiff       )
       deallocate (Gas_tf%tstdav        )
       deallocate (Gas_tf%co2nbl        )
+      deallocate (Gas_tf%co2990nbl     )
+      deallocate (Gas_tf%co2900nbl     )
+      deallocate (Gas_tf%co21070nbl    )
       deallocate (Gas_tf%n2o9c         )
       deallocate (Gas_tf%tn2o17        )
       deallocate (Gas_tf%co2spnb       )
+      deallocate (Gas_tf%co2990spnb    )
+      deallocate (Gas_tf%co2900spnb    )
+      deallocate (Gas_tf%co21070spnb   )
       deallocate (Gas_tf%a1            )
       deallocate (Gas_tf%a2            )
 
@@ -2190,7 +3579,6 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 
 
 end subroutine gas_tf_dealloc
-
 
 
 !###################################################################
@@ -2244,6 +3632,29 @@ subroutine gas_tf_end
         endif
       endif
 
+      if (do_writestdco210umtfs) then
+        if (mpp_pe() == mpp_root_pe() ) then
+          tfsunit = open_restart_file ('stdco210umtfs', action='write')
+          write (tfsunit) valid_versions(nvalids)
+          write (tfsunit) co2_name_save, co2_amount_save,   &
+                           nstdlvls_save, kbegin_save, kend_save
+          write (tfsunit) pd_save, plm_save, pa_save
+          write (tfsunit) co2990nbps1, co2990nbps8, co2dt990nbps1,           & 
+                          co2dt990nbps8, co2d2t990nbps1, co2d2t990nbps8
+          write (tfsunit) co29901, co29908, cdt9901, cdt9908, c2d9901, c2d9908, &
+                          co2m9901, co2m9908, cdtm9901, cdtm9908, c2dm9901, c2dm9908
+          write (tfsunit) co2900nbps1, co2900nbps8, co2dt900nbps1,           & 
+                          co2dt900nbps8, co2d2t900nbps1, co2d2t900nbps8
+          write (tfsunit) co29001, co29008, cdt9001, cdt9008, c2d9001, c2d9008, &
+                          co2m9001, co2m9008, cdtm9001, cdtm9008, c2dm9001, c2dm9008
+          write (tfsunit) co21070nbps1, co21070nbps8, co2dt1070nbps1,           & 
+                          co2dt1070nbps8, co2d2t1070nbps1, co2d2t1070nbps8
+          write (tfsunit) co210701, co210708, cdt10701, cdt10708, c2d10701, c2d10708, &
+                          co2m10701, co2m10708, cdtm10701, cdtm10708, c2dm10701, c2dm10708
+          call close_file (tfsunit)
+        endif
+      endif
+
       if (do_writestdn2otfs) then
         if (mpp_pe() == mpp_root_pe()) then
           tfsunit = open_restart_file ('stdn2otfs', action='write')
@@ -2283,8 +3694,6 @@ subroutine gas_tf_end
 
 
 end subroutine gas_tf_end
-
-
 
 
 !###################################################################
@@ -2339,12 +3748,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !---------------------------------------------------------------------
 !  local variables:
 
-
-
-
       integer               ::  unit
-
-
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -2364,8 +3768,8 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (do_readstdco2tfs) then
 
+      if (do_readstdco2tfs) then
 !--------------------------------------------------------------------
 !    read the input tf file and verify that the current model config-
 !    uration matches that for which the tfs were generated.
@@ -2380,8 +3784,33 @@ real, dimension(:), intent(in)      :: pd, plm, pa
                      co2m51, co2m58, cdtm51, cdtm58, c2dm51, c2dm58
         read  (unit) co211, co218
         call close_file (unit)
-      else if (do_writestdco2tfs) then
+      endif
 
+      if (do_readstdco210umtfs) then
+!--------------------------------------------------------------------
+!    read the input tf file and verify that the current model config-
+!    uration matches that for which the tfs were generated.
+!--------------------------------------------------------------------
+        unit = open_restart_file ('INPUT/stdco210umtfs', action='read')
+        call process_gas_input_file (gas_name, gas_amount, nstdlvls,  &
+                                     kbegin, kend, pd, plm, pa, unit)
+
+        read  (unit) co2990nbps1, co2990nbps8, co2dt990nbps1,           & 
+                     co2dt990nbps8, co2d2t990nbps1, co2d2t990nbps8
+        read  (unit) co29901, co29908, cdt9901, cdt9908, c2d9901, c2d9908,       &  
+                     co2m9901, co2m9908, cdtm9901, cdtm9908, c2dm9901, c2dm9908
+        read  (unit) co2900nbps1, co2900nbps8, co2dt900nbps1,           & 
+                     co2dt900nbps8, co2d2t900nbps1, co2d2t900nbps8
+        read  (unit) co29001, co29008, cdt9001, cdt9008, c2d9001, c2d9008,       &  
+                     co2m9001, co2m9008, cdtm9001, cdtm9008, c2dm9001, c2dm9008
+        read  (unit) co21070nbps1, co21070nbps8, co2dt1070nbps1,           & 
+                     co2dt1070nbps8, co2d2t1070nbps1, co2d2t1070nbps8
+        read  (unit) co210701, co210708, cdt10701, cdt10708, c2d10701, c2d10708,   &
+                     co2m10701, co2m10708, cdtm10701, cdtm10708, c2dm10701, c2dm10708
+        call close_file (unit)
+      endif
+
+      if (do_writestdco2tfs .or. do_writestdco210umtfs) then
 !--------------------------------------------------------------------
 !    save the data necessary to write a tf file at the end of this job
 !    if that is desired  
@@ -2403,8 +3832,8 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 
 !--------------------------------------------------------------------
 
-end subroutine process_co2_input_file
 
+end subroutine process_co2_input_file
 
 
 !####################################################################
@@ -3093,6 +4522,228 @@ type(gas_tf_type), intent(inout) :: Gas_tf
 
 end subroutine transfn
 
+
+!###################################################################
+
+subroutine transfn_10um (Gas_tf)
+
+!----------------------------------------------------------------------
+!    transfn_10um computes the temperature-corrected co2 10um nearby layer
+!    transmission functions.
+!    author: m. d. schwarzkopf
+!    revised: 1/1/93
+!    certified:  radiation version 1.0
+!----------------------------------------------------------------------
+
+type(gas_tf_type), intent(inout) :: Gas_tf
+
+!--------------------------------------------------------------------
+!  intent(inout) variables:
+!    
+!     Gas_tf
+!       co2990nbl =  co2 transmission functions (not pressure-integrated) 
+!                 for adjacent levels, over the 990-1070 cm-1 range.
+!       co2990spnb = co2 transmission functions between a flux level and
+!                 space, for 990-1070 cm-1 range. used for cool-to-space
+!                 calculations.
+!       co2900nbl =  co2 transmission functions (not pressure-integrated) 
+!                 for adjacent levels, over the 900-990 cm-1 range.
+!       co2900spnb = co2 transmission functions between a flux level and
+!                 space, for 900-990 cm-1 range. used for cool-to-space
+!                 calculations.
+!       co21070nbl =  co2 transmission functions (not pressure-integrated) 
+!                 for adjacent levels, over the 1070-1200 cm-1 range.
+!       co21070spnb = co2 transmission functions between a flux level and
+!                 space, for 1070-1200 cm-1 range. used for cool-to-space
+!                 calculations.
+! 
+!---------------------------------------------------------------------
+
+
+!---------------------------------------------------------------------
+!  local variables:
+
+      real, dimension (size(Gas_tf%tdav,1), &
+                       size(Gas_tf%tdav,2), &
+                       size(Gas_tf%tdav,3)-1) :: co2990m2d, co2990md, co2990mr, &
+                                                 co2900m2d, co2900md, co2900mr, &
+                                                 co21070m2d, co21070md, co21070mr
+
+      real, dimension (size(Gas_tf%tdav,1), &
+                       size(Gas_tf%tdav,2), &
+                       size(Gas_tf%tdav,3)  ) :: dift                 
+
+      real, dimension (size(Gas_tf%tdav,1), &
+                       size(Gas_tf%tdav,2), &
+                       size(Gas_tf%tdav,3)  ) ::       &
+                                    co2990nb, co2dt990nb, co2d2t990nb,  &
+                                    co2900nb, co2dt900nb, co2d2t900nb,  &
+                                    co21070nb, co2dt1070nb, co2d2t1070nb
+
+      integer    ::  k
+
+!---------------------------------------------------------------------
+!  local variables:
+!
+!     co2m2d
+!     co2md
+!     co2mr
+!     dift
+!     co2990nb
+!     co2dt990nb
+!     co2d2t990nb
+!     co2900nb
+!     co2dt900nb
+!     co2d2t900nb
+!     co21070nb
+!     co2dt1070nb
+!     co2d2t1070nb
+!     inb
+!     k
+! 
+!----------------------------------------------------------------------
+
+      dift(:,:,KSRAD+1:KERAD+1) = Gas_tf%tdav(:,:,KSRAD+1:KERAD+1)/   &
+                                  Gas_tf%tstdav(:,:,KSRAD+1:KERAD+1)
+!----------------------------------------------------------------------
+!    perform co2 pressure interpolation on all inputted transmission 
+!    functions and temperature derivatives successively computing 
+!    co2r, dco2dt, and d2cdt2.
+!----------------------------------------------------------------------
+        do k=KSRAD,KERAD+1
+          co2990nb(:,:,k)    = Gas_tf%a1(:,:)*co2990nbps1(k) +  &
+                                  Gas_tf%a2(:,:)*co2990nbps8(k)
+          co2dt990nb(:,:,k)  = 1.0E-2*(Gas_tf%a1(:,:)* &
+                                  co2dt990nbps1(k) +&
+                                  Gas_tf%a2(:,:)*co2dt990nbps8(k))
+          co2d2t990nb(:,:,k) = 1.0E-3*(Gas_tf%a1(:,:)* &
+                                  co2d2t990nbps1(k)+&
+                                  Gas_tf%a2(:,:)*co2d2t990nbps8(k))
+          co2900nb(:,:,k)    = Gas_tf%a1(:,:)*co2900nbps1(k) +  &
+                                  Gas_tf%a2(:,:)*co2900nbps8(k)
+          co2dt900nb(:,:,k)  = 1.0E-2*(Gas_tf%a1(:,:)* &
+                                  co2dt900nbps1(k) +&
+                                  Gas_tf%a2(:,:)*co2dt900nbps8(k))
+          co2d2t900nb(:,:,k) = 1.0E-3*(Gas_tf%a1(:,:)* &
+                                  co2d2t900nbps1(k)+&
+                                  Gas_tf%a2(:,:)*co2d2t900nbps8(k))
+          co21070nb(:,:,k)    = Gas_tf%a1(:,:)*co21070nbps1(k) +  &
+                                  Gas_tf%a2(:,:)*co21070nbps8(k)
+          co2dt1070nb(:,:,k)  = 1.0E-2*(Gas_tf%a1(:,:)* &
+                                  co2dt1070nbps1(k) +&
+                                  Gas_tf%a2(:,:)*co2dt1070nbps8(k))
+          co2d2t1070nb(:,:,k) = 1.0E-3*(Gas_tf%a1(:,:)* &
+                                  co2d2t1070nbps1(k)+&
+                                  Gas_tf%a2(:,:)*co2d2t1070nbps8(k))
+        enddo
+
+!--------------------------------------------------------------------
+!
+!--------------------------------------------------------------------
+      do k=KSRAD,KERAD
+        co2990mr (:,:,k) = Gas_tf%a1(:,:)*co2m9901(k) +  &
+                        Gas_tf%a2(:,:)*co2m9908(k)
+        co2990md (:,:,k) = 1.0E-02*(Gas_tf%a1(:,:)*cdtm9901(k) +   &
+                                 Gas_tf%a2(:,:)*cdtm9908(k))
+        co2990m2d(:,:,k) = 1.0E-03*(Gas_tf%a1(:,:)*c2dm9901(k) +   &
+                                 Gas_tf%a2(:,:)*c2dm9908(k))
+        co2900mr (:,:,k) = Gas_tf%a1(:,:)*co2m9001(k) +  &
+                        Gas_tf%a2(:,:)*co2m9008(k)
+        co2900md (:,:,k) = 1.0E-02*(Gas_tf%a1(:,:)*cdtm9001(k) +   &
+                                 Gas_tf%a2(:,:)*cdtm9008(k))
+        co2900m2d(:,:,k) = 1.0E-03*(Gas_tf%a1(:,:)*c2dm9001(k) +   &
+                                 Gas_tf%a2(:,:)*c2dm9008(k))
+        co21070mr (:,:,k) = Gas_tf%a1(:,:)*co2m10701(k) +  &
+                        Gas_tf%a2(:,:)*co2m10708(k)
+        co21070md (:,:,k) = 1.0E-02*(Gas_tf%a1(:,:)*cdtm10701(k) +   &
+                                 Gas_tf%a2(:,:)*cdtm10708(k))
+        co21070m2d(:,:,k) = 1.0E-03*(Gas_tf%a1(:,:)*c2dm10701(k) +   &
+                                 Gas_tf%a2(:,:)*c2dm10708(k))
+      enddo
+
+!----------------------------------------------------------------------
+!    perform the temperature interpolation for these transmissivities
+!----------------------------------------------------------------------
+        Gas_tf%co2990spnb(:,:,KSRAD) = 1.0E+00
+        Gas_tf%co2990spnb(:,:,KSRAD+1:KERAD+1) =     &
+                                   co2990nb(:,:,KSRAD+1:KERAD+1) +  &
+                                   dift(:,:,KSRAD+1:KERAD+1)*    &
+                                  (co2dt990nb(:,:,KSRAD+1:KERAD+1) +&
+                                  0.5E+00*dift(:,:,KSRAD+1:KERAD+1)*   &
+                                  co2d2t990nb(:,:,KSRAD+1:KERAD+1))
+        do k=KSRAD,KERAD+1
+          Gas_tf%co2990spnb(:,:,k) = Gas_tf%co2990spnb(:,:,k)*  &
+                                      (1.0E+00 -   &
+                                      Gas_tf%tlsqu(:,:,KSRAD)) +    &
+                                      Gas_tf%tlsqu(:,:,KSRAD)
+        enddo
+        Gas_tf%co2900spnb(:,:,KSRAD) = 1.0E+00
+        Gas_tf%co2900spnb(:,:,KSRAD+1:KERAD+1) =     &
+                                   co2900nb(:,:,KSRAD+1:KERAD+1) +  &
+                                   dift(:,:,KSRAD+1:KERAD+1)*    &
+                                  (co2dt900nb(:,:,KSRAD+1:KERAD+1) +&
+                                  0.5E+00*dift(:,:,KSRAD+1:KERAD+1)*   &
+                                  co2d2t900nb(:,:,KSRAD+1:KERAD+1))
+        do k=KSRAD,KERAD+1
+          Gas_tf%co2900spnb(:,:,k) = Gas_tf%co2900spnb(:,:,k)*  &
+                                      (1.0E+00 -   &
+                                      Gas_tf%tlsqu(:,:,KSRAD)) +    &
+                                      Gas_tf%tlsqu(:,:,KSRAD)
+        enddo
+        Gas_tf%co21070spnb(:,:,KSRAD) = 1.0E+00
+        Gas_tf%co21070spnb(:,:,KSRAD+1:KERAD+1) =     &
+                                   co21070nb(:,:,KSRAD+1:KERAD+1) +  &
+                                   dift(:,:,KSRAD+1:KERAD+1)*    &
+                                  (co2dt1070nb(:,:,KSRAD+1:KERAD+1) +&
+                                  0.5E+00*dift(:,:,KSRAD+1:KERAD+1)*   &
+                                  co2d2t1070nb(:,:,KSRAD+1:KERAD+1))
+        do k=KSRAD,KERAD+1
+          Gas_tf%co21070spnb(:,:,k) = Gas_tf%co21070spnb(:,:,k)*  &
+                                      (1.0E+00 -   &
+                                      Gas_tf%tlsqu(:,:,KSRAD)) +    &
+                                      Gas_tf%tlsqu(:,:,KSRAD)
+        enddo
+
+!----------------------------------------------------------------------
+!    compute special nearby layer transmission functions for three
+!    bands in 10 um range. the transmissivities are not layer-averaged.
+!----------------------------------------------------------------------
+      Gas_tf%co2990nbl(:,:,KSRAD:KERAD) = co2990mr(:,:,KSRAD:KERAD) +   &
+                                       Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*&
+                                       (co2990md (:,:,KSRAD:KERAD) +   &
+                                       0.5E+00*  &
+                                       Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*&
+                                       co2990m2d(:,:,KSRAD:KERAD))
+      Gas_tf%co2900nbl(:,:,KSRAD:KERAD) = co2900mr(:,:,KSRAD:KERAD) +   &
+                                       Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*&
+                                       (co2900md (:,:,KSRAD:KERAD) +   &
+                                       0.5E+00*  &
+                                       Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*&
+                                       co2900m2d(:,:,KSRAD:KERAD))
+      Gas_tf%co21070nbl(:,:,KSRAD:KERAD) = co21070mr(:,:,KSRAD:KERAD) +   &
+                                       Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*&
+                                       (co21070md (:,:,KSRAD:KERAD) +   &
+                                       0.5E+00*  &
+                                       Gas_tf%tmpdiff(:,:,KSRAD:KERAD)*&
+                                       co21070m2d(:,:,KSRAD:KERAD))
+
+      Gas_tf%co2990nbl(:,:,KSRAD:KERAD) = Gas_tf%co2990nbl(:,:,KSRAD:KERAD)*&
+                                       (1.0E+00 -   &
+                                       Gas_tf%tlsqu(:,:,KSRAD:KERAD)) +&
+                                       Gas_tf%tlsqu(:,:,KSRAD:KERAD) 
+      Gas_tf%co2900nbl(:,:,KSRAD:KERAD) = Gas_tf%co2900nbl(:,:,KSRAD:KERAD)*&
+                                       (1.0E+00 -   &
+                                       Gas_tf%tlsqu(:,:,KSRAD:KERAD)) +&
+                                       Gas_tf%tlsqu(:,:,KSRAD:KERAD) 
+      Gas_tf%co21070nbl(:,:,KSRAD:KERAD) = Gas_tf%co21070nbl(:,:,KSRAD:KERAD)*&
+                                       (1.0E+00 -   &
+                                       Gas_tf%tlsqu(:,:,KSRAD:KERAD)) +&
+                                       Gas_tf%tlsqu(:,:,KSRAD:KERAD) 
+
+!--------------------------------------------------------------------
+
+
+end subroutine transfn_10um
 
 
 !###################################################################

@@ -39,8 +39,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128)  :: version =  '$Id: longwave_params.F90,v 19.0 2012/01/06 20:18:35 fms Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201305 $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 
 !--------------------------------------------------------------------
@@ -73,6 +73,8 @@ namelist /longwave_params_nml/    &
 !       NBLX
 !---------------------------------------------------------------------
 integer, parameter, public   :: NBCO215     = 3
+integer, parameter, public   :: NBCO210     = 1
+integer, parameter, public   :: NBCO243     = 1
 integer, parameter, public   :: NBLY_RSB    = 16
 integer, parameter, public   :: NBLY_CKD    = 48
 integer, parameter, public   :: NBLW        = 300
@@ -171,7 +173,7 @@ subroutine longwave_params_init
       logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) then
         write (logunit, nml=longwave_params_nml)
-        write (logunit,9000) NBCO215, NBLY_RSB, NBLY_CKD,   &
+        write (logunit,9000) NBCO215,NBCO210, NBCO243, NBLY_RSB, NBLY_CKD,   &
                               NBLW, NBLX 
       endif
 
@@ -181,7 +183,7 @@ subroutine longwave_params_init
      module_is_initialized = .true.
 
 !------------------------------------------------------------------
-9000 format ( 'NBCO215=', i3,'  NBLY_RSB=', i4,   &
+9000 format ( 'NBCO215=', i3,'  NBCO210=', i3,'  NBCO243=', i3,'  NBLY_RSB=', i4,   &
               '  NBLY_CKD=', i4, '  NBLW= ', i4, '  NBLX=', i4 )
 
 !-------------------------------------------------------------------

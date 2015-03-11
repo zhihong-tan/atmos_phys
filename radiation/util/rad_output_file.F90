@@ -22,7 +22,6 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
                              FATAL, NOTE, close_file
-use fms_io_mod,        only: string
 use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
@@ -339,8 +338,6 @@ type(aerosolrad_control_type),  intent(in)    :: Aerosolrad_control
 !    register the diagnostic fields for output.
 !---------------------------------------------------------------------
           nfields = size(names(:))
-          call error_mesg ('rad_output_file_mod', &
-                'number of fields = '//string(nfields), NOTE )
           call register_fields (Time, axes, nfields, names, family_names, &
                                 Rad_control%do_totcld_forcing, &
                                 Aerosolrad_control%volcanic_lw_aerosols, &
@@ -788,21 +785,6 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
             extopdep_fam_col = 0.
             absopdep_fam_col = 0.
 
-            ! output for debugging
-             call error_mesg ('rad_output_file_mod', &
-                 'size of family_members = '// &
-                 string(size(Aerosol%family_members,1))//' x '// &
-                 string(size(Aerosol%family_members,2)), NOTE )
-             call error_mesg ('rad_output_file_mod', &
-                 'size of aerosol_name = '// &
-                 string(size(Aerosol%aerosol_names,1)), NOTE )
-             call error_mesg ('rad_output_file_mod', &
-                 'size of aerosol = '// &
-                 string(size(Aerosol%aerosol,1))//' x '// &
-                 string(size(Aerosol%aerosol,2))//' x '// &
-                 string(size(Aerosol%aerosol,3))//' x '// &
-                 string(size(Aerosol%aerosol,4)), NOTE )
-
             if ( Lasymdep ) then
               allocate (asymdep_fam ( size(Aerosol%aerosol,1), &
                                       size(Aerosol%aerosol,2), &
@@ -821,11 +803,6 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
               asymdep_fam = 0.
               asymdep_fam_col = 0.
             endif
-
-             call error_mesg ('rad_output_file_mod', &
-                              'nfamilies = '//string(nfamilies), NOTE)
-             call error_mesg ('rad_output_file_mod', &
-                              'naerosol = '//string(naerosol), NOTE)
 
             do n = 1, nfamilies                      
               do na = 1, naerosol                
