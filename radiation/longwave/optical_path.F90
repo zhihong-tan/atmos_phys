@@ -29,7 +29,7 @@ use constants_mod,       only: RDGAS, RVGAS, GRAV, wtmair, &
 !   longwave radiation package modules:
 
 use longwave_utilities_mod,  only: looktab, longwave_tables3_type, &
-                                   optical_path_type, &
+                               optical_path_type, &
                                    gas_tf_type, table_alloc, &
                                    Sealw99_control
 
@@ -371,7 +371,7 @@ subroutine optical_path_init(pref, nbtrge_in)
 !    verify that argument NBTRGE is correct
 !--------------------------------------------------------------------
       if (nbtrge_in == 0 .and. tmp_dpndnt_h2o_lines) then
-        call error_mesg ('optical_path_mod', &
+        call error_mesg ('optical_path_mod',  &
         'cannot have temperature-dependent h2o line intensities &
              &without having separate 1200-1400 cm(-1) band(s)', FATAL) 
       endif
@@ -639,7 +639,7 @@ subroutine optical_path_setup (is, ie, js, je, press, pflux, &
 !
 !------------------------------------------------------------------
 
-integer,                       intent(in)    :: is, ie, js, je
+integer, intent(in)                          :: is, ie, js, je
 real, dimension(:,:,:),        intent(in)    :: press, pflux, &
                                                 temp, tflux,  &
                                                 rh2o, deltaz, qo3
@@ -673,7 +673,7 @@ logical,                       intent(in)    :: including_aerosols, &
       real, dimension (size(press,1), &
                        size(press,2), &
                        size(press,3) ) :: press_cgs,  &
-                                          atmden, vv
+                                                       atmden, vv
 
      !real, dimension (size(Atmos_input%press,1),   &
      !                 size(Atmos_input%press,2), &
@@ -848,27 +848,27 @@ logical,                       intent(in)    :: including_aerosols, &
         if (including_volcanic_aerosols) then
           if (size(aerooptdep_volc,4) /= 0) then
             do j=1,jx
-            do i=1,ix
-              bsum(1) = 0.0
-              do k=2,kx+1
+              do i=1,ix
+                bsum(1) = 0.0
+                do k=2,kx+1
                 bsum(k) = bsum(k-1) + aerooptdep_volc(i,j,k-1,n)
-              end do
-              Optical%totaerooptdep(i,j,2:kx+1,n) =    &
-                      Optical%totaerooptdep(i,j,2:kx+1,n) +   &
-                      bsum(2:kx+1)
-              if (n == n_aerosol_bands) then
-                Optical%aerooptdep_KE_15(i,j) = &
-                              Optical%aerooptdep_KE_15(i,j) +  &
+                end do
+                Optical%totaerooptdep(i,j,2:kx+1,n) =    &
+                        Optical%totaerooptdep(i,j,2:kx+1,n) +   &
+                        bsum(2:kx+1)
+                if (n == n_aerosol_bands) then
+                  Optical%aerooptdep_KE_15(i,j) = &
+                                Optical%aerooptdep_KE_15(i,j) +  &
                                       aerooptdep_volc(i,j,kx,n)
-              endif
-            end do   
+                endif
+              end do   
             end do
           endif ! (size)
         endif  ! (volcanic_lw_aerosols)
       end do  ! (n_aerosol_bnads)
 
 !---------------------------------------------------------------------
-
+       
 end subroutine  optical_path_setup
 
 !####################################################################
@@ -1522,7 +1522,7 @@ real, dimension (:,:,:), intent(out)   :: to3cnt, overod, &
                                           cnttaub1, cnttaub2, cnttaub3
 type(optical_path_type), intent(inout) :: Optical
 type(gas_tf_type),       intent(inout) :: Gas_tf 
-logical,                   intent(in)  :: including_aerosols  
+logical,                   intent(in)            :: including_aerosols  
 
 !---------------------------------------------------------------------
 !   intent(inout) variables:
@@ -2420,19 +2420,19 @@ subroutine optical_ckd_init
 !-------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1'  .or.    &
           trim(Sealw99_control%continuum_form) == 'ckd2.4') then
-        inrad = open_namelist_file ('INPUT/h2ockd2.1_data')
+      inrad = open_namelist_file ('INPUT/h2ockd2.1_data')
         read (inrad,fmt='(3f12.1,i8)') v1sh2o_296, v2sh2o_296, dvsh2o_296,  &
-                          nptsh2o_296
+                        nptsh2o_296
         read (inrad,fmt='(5e14.5)') (ssh2o_296(k),k=1,2000)
         read (inrad,fmt='(3f12.1,i8)') v1sh2o_260, v2sh2o_260, dvsh2o_260,   &
-                          nptsh2o_260
+                        nptsh2o_260
         read (inrad,fmt='(5e14.5)') (ssh2o_260(k),k=1,2000)
         read (inrad,fmt='(3f12.1,i8)') v1fh2o, v2fh2o, dvfh2o, nptfh2o
         read (inrad,fmt='(5e14.5)') (sfh2o(k),k=1,2000)
-9001    format (3f12.1,i8)
-9002    format (5e14.5)
+9001  format (3f12.1,i8)
+9002  format (5e14.5)
  
-        call close_file (inrad)
+      call close_file (inrad)
 
 !--------------------------------------------------------------------
 !    read h2o (mt_ckd2.5) data
@@ -2460,13 +2460,13 @@ subroutine optical_ckd_init
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.   &
           trim(Sealw99_control%continuum_form) == 'ckd2.4')  then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1') then
-          inrad = open_namelist_file ('INPUT/h2ockd2.1_corrdata')
+        inrad = open_namelist_file ('INPUT/h2ockd2.1_corrdata')
         else if (trim(Sealw99_control%continuum_form) == 'ckd2.4') then
-          inrad = open_namelist_file ('INPUT/h2ockd2.4_corrdata')
-        endif
-        read (inrad,9007) (sfac(k),k=1,2000)
-        read (inrad,9007) (fscal(k),k=1,2000)
-        read (inrad,9007) (tmpfctrs(k),k=1,2000)
+        inrad = open_namelist_file ('INPUT/h2ockd2.4_corrdata')
+      endif
+      read (inrad,9007) (sfac(k),k=1,2000)
+      read (inrad,9007) (fscal(k),k=1,2000)
+      read (inrad,9007) (tmpfctrs(k),k=1,2000)
       endif
 9007  format (5e13.6)
  
@@ -2983,7 +2983,7 @@ type(optical_path_type), intent(inout) :: Optical
 !  local variables:
 
       real, dimension(size(temp,1), size(temp,2), &
-                                    size(temp,3)) :: texpsl
+                                     size(temp,3)) :: texpsl
       integer     :: k
       integer      :: israd, ierad, jsrad, jerad
 
@@ -3012,7 +3012,7 @@ type(optical_path_type), intent(inout) :: Optical
 !    1.800E+03/(1.0E+00/temp - 1.0E+00/2.960E+02)).
 !---------------------------------------------------------------------- 
       texpsl(:,:,KS:KE) = EXP(1.800E+03/temp(:,:,KS:KE) -   &
-                              6.081081081E+00) 
+                                6.081081081E+00) 
     ! surface value not needed
     ! texpsl(:,:,KE+1) = EXP(1.800E+03/tsurf(:,:) -   &
     !                           6.081081081E+00) 
