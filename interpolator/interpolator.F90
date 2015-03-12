@@ -100,8 +100,8 @@ interface interp_weighted_scalar
    module procedure interp_weighted_scalar_2D
 end interface interp_weighted_scalar
 character(len=128) :: version = &
-'$Id: interpolator.F90,v 21.0 2014/12/15 21:47:05 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+'$Id$'
+character(len=128) :: tagname = '$Name$'
 logical            :: module_is_initialized = .false.
 logical            :: clim_diag_initialized = .false.
 

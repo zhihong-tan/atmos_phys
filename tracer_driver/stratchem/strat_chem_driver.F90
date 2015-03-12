@@ -22,8 +22,8 @@ use STRAT_CHEM_MOD, only : chemistry, zen2, dcly_dt, sediment
 private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: strat_chem_driver.F90,v 19.0 2012/01/06 20:32:12 fms Exp $'
-character(len=128)  :: tagname =  '$Name: ulm $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 logical             :: module_is_initialized = .FALSE.
 
 !-------  interfaces --------

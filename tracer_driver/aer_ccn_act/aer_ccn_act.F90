@@ -18,8 +18,8 @@ private
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: aer_ccn_act.F90,v 21.0 2014/12/15 21:47:33 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 !---------------- private data -------------------
 

@@ -33,8 +33,8 @@ real, dimension(msDIM) :: ms = (/100.,10.,1.,0.1,0.01/) ! The last dimension is 
 real, dimension(upDIM) :: up = (/0.1,0.05,0.01,0.005,0.001/)
 real, dimension(tpDIM,msDIM,upDIM) :: crystal2
 
-character(len=128) :: version = '$Id: aer_in_act.F90,v 19.0 2012/01/06 20:31:38 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 logical :: module_is_initialized  = .false.
 
 contains

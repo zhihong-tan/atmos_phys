@@ -25,8 +25,8 @@ integer, parameter, public :: FLUX_FORM = 201, ADVECTIVE_FORM = 202
 integer, parameter, public :: WEIGHTED_TENDENCY=1
 integer, parameter, public :: OUTFLOW_BOUNDARY=2
 
-character(len=128), parameter :: version = '$Id: vert_advection.F90,v 17.0 2009/07/21 03:00:04 fms Exp $'
-character(len=128), parameter :: tagname = '$Name: ulm $'
+character(len=128), parameter :: version = '$Id$'
+character(len=128), parameter :: tagname = '$Name$'
 
 logical :: module_is_initialized = .false.
 
