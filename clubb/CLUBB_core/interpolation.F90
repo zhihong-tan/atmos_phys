@@ -1,6 +1,6 @@
 #ifdef CLUBB
 !-------------------------------------------------------------------------------
-!$Id: interpolation.F90,v 20.0 2013/12/13 23:09:53 fms Exp $
+!$Id$
 module interpolation
 
   use clubb_precision, only: &

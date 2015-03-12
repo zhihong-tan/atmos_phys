@@ -1,6 +1,6 @@
 #ifdef CLUBB
 !-------------------------------------------------------------------------
-! $Id: advance_helper_module.F90,v 20.0 2013/12/13 23:09:25 fms Exp $
+! $Id$
 module advance_helper_module
 
 ! Description:

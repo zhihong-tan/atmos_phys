@@ -41,8 +41,8 @@
 !---------------------------------------------------------------------
 
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- character(len=128) :: version = '$Id: ras.F90,v 19.0 2012/01/06 20:11:58 fms Exp $'
- character(len=128) :: tagname = '$Name: ulm $'
+ character(len=128) :: version = '$Id$'
+ character(len=128) :: tagname = '$Name$'
 !      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
  real :: cp_div_grav
@@ -2608,7 +2608,7 @@ if ( LRcu ) then
 FUNCTION ran0(idum)
 
 
-!     $Id: ras.F90,v 19.0 2012/01/06 20:11:58 fms Exp $
+!     $Id$
 !     Platform independent random number generator from
 !     Numerical Recipies
 !     Mark Webb July 1999

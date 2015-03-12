@@ -46,8 +46,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-   character(len=128)  :: version =  '$Id: uw_clouds_W.F90,v 19.0 2012/01/06 20:25:15 fms Exp $'
-   character(len=128)  :: tagname =  '$Name: siena_201305 $'
+   character(len=128)  :: version =  '$Id$'
+   character(len=128)  :: tagname =  '$Name$'
 
 
 

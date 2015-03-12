@@ -58,8 +58,8 @@ end interface
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: monin_obukhov.F90,v 19.0.14.1 2014/10/30 17:20:53 John.Dunne Exp $'
-character(len=128) :: tagname = '$Name: drag_min_jpd_20141030 $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 !=======================================================================
 

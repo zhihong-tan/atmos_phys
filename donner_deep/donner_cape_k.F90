@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_cape_k.F90,v 21.0 2014/12/15 21:42:23 fms Exp $
+!  $Id$
 
 !module donner_cape_inter_mod
 

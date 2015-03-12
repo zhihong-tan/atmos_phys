@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: variables_diagnostic_module.F90,v 20.0 2013/12/13 23:10:31 fms Exp $
+! $Id$
 module variables_diagnostic_module
 
 ! Description:

@@ -1,5 +1,5 @@
 !-------------------------------------------------------------------------------
-! $Id: recl.inc,v 20.0 2013/12/13 23:09:55 fms Exp $
+! $Id$
 ! Description:
 !   Preprocessing rules for determining how large an unformatted 
 !   data record is when using Fortran write.  This does not affect

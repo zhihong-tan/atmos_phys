@@ -1,6 +1,6 @@
 #ifdef CLUBB
 !---------------------------------------------------------------
-! $Id: variables_radiation_module.F90,v 20.0 2013/12/13 23:10:33 fms Exp $
+! $Id$
 module variables_radiation_module
 
 !   This module contains definitions of all radiation arrays

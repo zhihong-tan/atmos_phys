@@ -1,7 +1,7 @@
  
 !VERSION NUMBER:
-!  $Name: ulm $
-!  $Id: wet_deposition_0D.F90,v 19.0 2012/01/06 20:09:12 fms Exp $
+!  $Name$
+!  $Id$
 
 !<SUBROUTINE NAME = "wet_deposition_0D">
 !<TEMPLATE>

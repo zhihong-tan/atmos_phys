@@ -1,5 +1,5 @@
 #ifdef CLUBB
-!$Id: input_reader.F90,v 20.0 2013/12/13 23:09:52 fms Exp $
+!$Id$
 module input_reader
 !
 !  This module is respondsible for the procedures and structures necessary to

@@ -40,8 +40,8 @@ private
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-character(len=128)  :: version =  '$Id: rad_utilities.F90,v 19.0.4.1 2012/08/27 19:19:23 z1l Exp $'
-character(len=128)  :: tagname =  '$Name: siena_201211 $'
+character(len=128)  :: version =  '$Id$'
+character(len=128)  :: tagname =  '$Name$'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

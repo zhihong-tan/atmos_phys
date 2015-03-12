@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: T_in_K_module.F90,v 20.0 2013/12/13 23:09:24 fms Exp $ 
+! $Id$ 
 
 module T_in_K_module
 

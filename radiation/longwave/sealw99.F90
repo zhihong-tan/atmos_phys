@@ -90,7 +90,7 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-    character(len=128)  :: version =  '$Id:$'
+    character(len=128)  :: version =  '$Id$'
     character(len=128)  :: tagname =  '$Name$'
     logical             ::  module_is_initialized = .false.
 
