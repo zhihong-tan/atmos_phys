@@ -26,8 +26,8 @@ MODULE DEEP_CONV_MOD
   private
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: deep_conv.F90,v 20.0.4.1 2014/11/06 21:52:40 Ming.Zhao Exp $'
-  character(len=128) :: tagname = '$Name: lowsen20141106_miz $'
+  character(len=128) :: version = '$Id: deep_conv.F90,v 20.0 2013/12/13 23:21:39 fms Exp $'
+  character(len=128) :: tagname = '$Name: ulm $'
 
 !-------  interfaces --------
 
@@ -58,8 +58,6 @@ MODULE DEEP_CONV_MOD
      real    :: lofactor_d
      real    :: tcrit_d
      real    :: auto_th0_d
-     real    :: peff_l_d
-     real    :: peff_i_d
      logical :: do_forcedlifting_d
   end type deepc
 
@@ -169,6 +167,7 @@ contains
 
 !#####################################################################
 !#####################################################################
+
   subroutine dpconv1(dpc, dpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, &
                      rkm_dp, cbmf_deep, sd1, ac1, cp1, ct1, ocode, dcapedm, ier, ermesg)
     implicit none
@@ -177,7 +176,7 @@ contains
     type(cpnlist),   intent(inout)  :: dpn
     type(uw_params), intent(inout)  :: Uw_p
     type(sounding),  intent(in)     :: sd
-    type(adicloud),  intent(inout)  :: ac
+    type(adicloud),  intent(in)     :: ac
     type(cclosure),  intent(in)     :: cc
     logical,         intent(in)     :: do_coldT
     logical,         intent(in)     :: do_ice
@@ -193,9 +192,7 @@ contains
     character(len=256), intent(out) :: ermesg
 
     real          :: zcldtop, wrel, cbmf0, cbmf_max, tmp
-    real          :: zs0, ps0, hl0, thc0
     integer       :: ksrc
-    real          :: zsrc, psrc, thcsrc, qctsrc, hlsrc
 
     ier = 0
     ermesg = ' '
@@ -208,7 +205,6 @@ contains
        return
     end if
     if (ac%cape .lt. dpc%cape_th) then
-       cbmf_deep = 0.; 
        ocode=7; return
     end if
 
@@ -217,7 +213,6 @@ contains
     call ct_clear_k(ct1);
     call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf0, wrel, zcldtop, Uw_p, ier, ermesg)
     if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
-       cbmf_deep = 0.; 
        ocode=8; return
     else
        call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
@@ -237,14 +232,9 @@ contains
     call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
 
     call ac_clear_k(ac1);
-
-    ksrc  = 1
-    zsrc  =sd1%zs (ksrc)
-    psrc  =sd1%ps (ksrc)
-    thcsrc=sd1%thc(ksrc)
-    qctsrc=sd1%qct(ksrc)
-    hlsrc =sd1%hl (ksrc)
-    call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd1, Uw_p, .false., do_ice, ac1)
+    ksrc=1
+    call adi_cloud_k(sd1%zs(ksrc), sd1%ps(ksrc), sd1%hl(ksrc), sd1%thc(ksrc), sd1%qct(ksrc), &
+         sd1, Uw_p, .false., do_ice, ac1)
 
     dcapedm=(ac%cape-ac1%cape)/cbmf0
 
@@ -267,9 +257,7 @@ contains
 
     call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, wrel, zcldtop, Uw_p, ier, ermesg)
     if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
-       cbmf_deep = 0.; ocode=11;
-       call ct_clear_k(ct1);
-       return
+       ocode=11; return
     else
        call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
     end if

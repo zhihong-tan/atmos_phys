@@ -30,8 +30,8 @@ private  cloud_clear_xfer
 !-------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: rotstayn_klein_mp.F90,v 20.0.2.1.2.1.4.1 2014/11/24 22:04:52 Chris.Golaz Exp $'
-Character(len=128) :: Tagname = '$Name: ulm_total_act_fix_cjg $'
+Character(len=128) :: Version = '$Id: rotstayn_klein_mp.F90,v 21.0 2014/12/15 21:46:11 fms Exp $'
+Character(len=128) :: Tagname = '$Name: ulm $'
 
 !-------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------
@@ -1417,37 +1417,21 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    calculate C_dt
 !------------------------------------------------------------------------
-          if (total_activation) then
-
-            if (rk_act_only_if_ql_gt_qmin) then
-              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
-                C_dt(:,:,k) = max( 0.,  &
-                                   drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
-                                   qa_upd(:,:,k) - qn_upd(:,:,k))
-              elsewhere
-                C_dt(:,:,k) = 0.
-              end where
-            else
-              C_dt(:,:,k) = max( 0.,  &
+          if (total_activation) then  ! cjg: total activation for RK
+             C_dt(:,:,k) = max( 0.,  &
                                  drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
-                                 qa_upd(:,:,k) - qn_upd(:,:,k))
-            end if
-
-          else
-
-            if (rk_act_only_if_ql_gt_qmin) then
-              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
-                C_dt(:,:,k) = max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
+                                         qa_upd(:,:,k) - qn_upd(:,:,k))
+          ELSEIF (    rk_act_only_if_ql_gt_qmin) THEN
+            where (ql_upd(:,:,k) .GT. Nml%qmin ) 
+              C_dt(:,:,k) = max (delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
+                                                      1.e6/airdens(:,:,k)
+            elsewhere
+              C_dt(:,:,k)=0.
+            end where
+          ELSE
+            C_dt(:,:,k)=max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
                                                        1.e6/airdens(:,:,k)
-              elsewhere
-                C_dt(:,:,k) = 0.
-              end where
-            else
-              C_dt(:,:,k) = max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
-                                                     1.e6/airdens(:,:,k)
-            end if
-
-          end if
+          END IF
 
 !------------------------------------------------------------------------
 !    set total tendency term and update cloud
