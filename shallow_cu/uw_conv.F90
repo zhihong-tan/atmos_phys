@@ -204,8 +204,6 @@ MODULE UW_CONV_MOD
   real    :: lofactor_d   = 1.0
   real    :: auto_th0_d   = 1.0e-3
   real    :: tcrit_d      = -120
-  real    :: peff_l_d     = 3.8e-5
-  real    :: peff_i_d     = 3.8e-5
   logical :: do_forcedlifting_d = .false.
   logical :: do_lod_rkm   = .false.
   logical :: do_lod_cfrac = .false.
@@ -215,8 +213,7 @@ MODULE UW_CONV_MOD
                  crh_th_ocean, crh_th_land, do_forcedlifting_d, frac_limit_d, &
                  cape_th, tau_dp, rpen_d, mixing_assumption_d, norder, &
                  do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, lofactor_d, dcapedm_th, &
-                 auto_th0_d, tcrit_d, do_lod_rkm, do_lod_cfrac, do_lod_tcrit,  &
-                 peff_l_d, peff_i_d
+                 auto_th0_d, tcrit_d, do_lod_rkm, do_lod_cfrac, do_lod_tcrit
 !========Option for deep convection=======================================
 
 !------------------------------------------------------------------------
@@ -718,7 +715,6 @@ contains
          qvten_d, qlten_d, qiten_d, qaten_d, qnten_d, cmf_d, cbu_d, pflx_d, hlflx_d, qtflx_d, qtten_d, &
          wuo_d, fero_d, fdro_d, fdrso_d, cldql_d, cldqi_d, cldqa_d, cldqn_d, tten_pevap_d, qvten_pevap_d
     real, dimension(size(tb,1),size(tb,2)) :: rain_d, snow_d, dcapedm_d, dwfn_d, denth_d, dting_d, dqtmp_d, cbmf_d
-    real, dimension(size(tracers,3),size(tracers,4)) :: trtend_t, trwet_t
 !========Option for deep convection=======================================
 
     real, dimension(size(tb,3)) :: am1, am2, am3, am4, am5, qntmp
@@ -862,8 +858,6 @@ contains
     dpc % lofactor_d          = lofactor_d
     dpc % auto_th0_d          = auto_th0_d
     dpc % tcrit_d             = tcrit_d
-    dpc % peff_l_d            = peff_l_d
-    dpc % peff_i_d            = peff_i_d
 !========Option for deep convection=======================================
     imax  = size( tb, 1 )
     jmax  = size( tb, 2 )
@@ -907,7 +901,6 @@ contains
     do j = 1, jmax
        do i=1, imax
 
-       	 trtend_t=0.; trwet_t=0.;
          do k=1,kmax
            pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
          enddo
@@ -996,7 +989,7 @@ contains
           end if
           call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),     &
                zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), tb(i,j,:),   &
-               qv(i,j,:), q(i,j,:,nql), q(i,j,:,nqi), q(i,j,:,nqa), qntmp,       &
+               q(i,j,:,nqv), q(i,j,:,nql), q(i,j,:,nqi), q(i,j,:,nqa), qntmp,       &
                am1(:), am2(:), am3(:), am4(:), tracers(i,j,:,:), sd, Uw_p)
 
 !========Finite volume intepolation==========================================
@@ -1160,10 +1153,6 @@ contains
 ! make sure the predicted tracer tendencies do not produce negative
 ! tracers due to convective tendencies. if necessary, adjust the 
 ! tendencies.
-        if (do_deep) then
-          trtend_t = ct%trten
-          trwet_t  = ct%trwet
-        else
           call check_tracer_realizability (kmax, size(trtend,4), delt, &
                                            cp%tr, ct%trten, ct%trwet) 
           do k = 1,cp%ltop
@@ -1173,8 +1162,6 @@ contains
                trwet(i,j,nk,n)  = ct%trwet(k,n)
              enddo
           enddo
-	end if
-
           snow  (i,j)  = ct%snow
           rain  (i,j)  = ct%rain
           denth (i,j)  = ct%denth
@@ -1184,7 +1171,7 @@ contains
 !========Option for deep convection=======================================
 100       if (do_deep) then
 	     cbmf_deep = 0.
-	     rkm_dp = dpc%rkm_dp1 
+	     rkm_dp = 0.
              tmp   = max(min (sd%crh, 1.0), 0.0)
 	     crh_th  = sd%land*dpc%crh_th_land+(1.-sd%land)*dpc%crh_th_ocean
 	     dcrh  = tmp - crh_th
@@ -1193,7 +1180,7 @@ contains
 	        dcrh = dcrh/dcrh0;
 	        dcrh = dcrh**norder
 	        rkm_dp       = dpc%rkm_dp1      + dcrh * (dpc%rkm_dp2      -dpc%rkm_dp1)
-	        !cbmf_dp_frac = dpc%cbmf_dp_frac1+ dcrh * (dpc%cbmf_dp_frac2-dpc%cbmf_dp_frac1)
+	        cbmf_dp_frac = dpc%cbmf_dp_frac1+ dcrh * (dpc%cbmf_dp_frac2-dpc%cbmf_dp_frac1)
 	        cbmf_deep    = 1. !%cbmf_dp_frac * cc%cbmf
                 lofactor     = 1. - sd%land * (1. - dpc%lofactor_d)
 	        if (do_lod_rkm) then
@@ -1212,8 +1199,6 @@ contains
              dpn % hcevap   = dpc % hcevap_d
              dpn % tcrit    = dpc % tcrit_d
              dpn % auto_th0 = dpc % auto_th0_d
-             dpn % peff_l   = dpc % peff_l_d
-             dpn % peff_i   = dpc % peff_i_d
              dpn % mixing_assumption = dpc % mixing_assumption_d
              dpn % do_forcedlifting  = dpc % do_forcedlifting_d
              if (idpchoice.eq.0) then
@@ -1229,7 +1214,7 @@ contains
              if (ier /= 0) then
                 call error_mesg ('uw_conv calling dpconv', ermesg, FATAL)
              endif
-
+             if(ocode(i,j).ge.6) cycle;
              do k = 1,kmax !cp1%ltop
                 nk = kmax+1-k
                 uten_d  (i,j,nk) = ct1%uten (k)
@@ -1265,17 +1250,6 @@ contains
              dqtmp_d (i,j)  = ct1%dqtmp
              !dwfn_d  (i,j)  = cc%dwfn
 
-             trtend_t = trtend_t+ct1%trten
-             trwet_t  = trwet_t +ct1%trwet
-             call check_tracer_realizability (kmax, size(trtend,4), delt, &
-                                              cp1%tr, trtend_t, trwet_t)
-             do k = 1,kmax!cp1%ltop
-               nk = kmax+1-k
-               do n = 1, size(trtend,4)
-                 trtend(i,j,nk,n) = trtend_t(k,n) + trwet_t(k,n)
-                 trwet(i,j,nk,n)  = trwet_t(k,n)
-	       enddo
-             enddo
 !========Option for deep convection=======================================
             
              uten  (i,j,:) = uten  (i,j,:) + uten_d  (i,j,:)
@@ -1417,7 +1391,7 @@ contains
             endif
     !rescaling to prevent negative specific humidity for each grid point
             if (do_rescale) then
-              qtin =  qv(i,j,k)
+              qtin =  q(i,j,k,nqv)
               dqt  =  qvten(i,j,k) * delt
               if ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 ) then
                 temp_1 = max( 0.0, -(qtin-1.e-10)/dqt )
@@ -1636,7 +1610,7 @@ contains
     type(ctend),    intent(inout) :: ct,ct1
 
     call ac_clear_k(ac); 
-    ac%klcl =0;  ac%klfc =0;  ac%klnb =0; ac%zlcl=0;
+    ac%klcl =0;  ac%klfc =0;  ac%klnb =0; 
 
     cc%wrel=0.; cc%ufrc=0.; cc%scaleh=0.;
 
