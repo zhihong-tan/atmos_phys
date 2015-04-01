@@ -1879,7 +1879,7 @@ logical, intent(out), dimension(:,:)     :: convect
    end if
 
    if ( id_ccb > 0 ) then
-     temp_2d = missing_value
+     temp_2d = CMOR_MISSING_VALUE
      do j = 1,jx
        do i = 1,ix
          if ( cldbot(i,j) > 0 ) temp_2d(i,j) = pfull(i,j,cldbot(i,j))
@@ -1901,7 +1901,7 @@ logical, intent(out), dimension(:,:)     :: convect
    end if
 
    if ( id_cct > 0 ) then
-     temp_2d = missing_value
+     temp_2d = CMOR_MISSING_VALUE
      do j = 1,jx
        do i = 1,ix
          if ( cldtop(i,j) > 0 ) temp_2d(i,j) = pfull(i,j,cldtop(i,j))
