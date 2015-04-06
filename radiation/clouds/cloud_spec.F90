@@ -154,7 +154,7 @@ logical :: use_cloud_tracers_in_radiation = .false.
                                ! only an issue when both lsc and conv
                                ! clouds are active (AM3)
 
-logical :: reproduce_older_version = .true. 
+logical :: reproduce_ulm = .true. 
 
 
 namelist /cloud_spec_nml / cloud_type_form, wtr_cld_reff,   &
@@ -164,7 +164,7 @@ namelist /cloud_spec_nml / cloud_type_form, wtr_cld_reff,   &
                            do_stochastic_clouds, &
                            ignore_donner_cells, &
                            use_cloud_tracers_in_radiation, &
-                           reproduce_older_version
+                           reproduce_ulm
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -1289,7 +1289,7 @@ subroutine dealloc_microphysics_type (Cldrad_control, Cloud_microphys)
 !----------------------------------------------------------------------
 
 type(cloudrad_control_type),           intent(in)    :: Cldrad_control
-type(microphysics_type), dimension(:), intent(inout) :: Cloud_microphys
+type(microphysics_type), dimension(:), intent(inout), allocatable :: Cloud_microphys
 
 !----------------------------------------------------------------------
 integer :: n
@@ -1351,6 +1351,9 @@ integer :: n
 
          Cloud_microphys(n)%scheme_name = ' '
       enddo ! n
+
+     ! finally deallocate the array of cloud types
+     deallocate(Cloud_microphys)
 
 !---------------------------------------------------------------------
 
@@ -1935,26 +1938,26 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !    fractions of all cloud schemes
 !---------------------------------------------------------------------
 
-      if (reproduce_older_version .and. ncld == 4) then
+      if (reproduce_ulm .and. ncld == 4) then
          Cld_spec%crndlw = Cloud_microphys(istrat)%cldamt + &
                            Cloud_microphys(icell)%cldamt + &
                            Cloud_microphys(imeso)%cldamt + &
                            Cloud_microphys(ishallow)%cldamt
 
-      else if (reproduce_older_version .and. ncld == 3) then
+      else if (reproduce_ulm .and. ncld == 3) then
          Cld_spec%crndlw = Cloud_microphys(1)%cldamt + &
                            Cloud_microphys(2)%cldamt + &
                            Cloud_microphys(3)%cldamt
 
-      else if (reproduce_older_version .and. ncld == 2) then
+      else if (reproduce_ulm .and. ncld == 2) then
          Cld_spec%crndlw = Cloud_microphys(1)%cldamt + &
                            Cloud_microphys(2)%cldamt
 
-      else if (reproduce_older_version .and. ncld == 1) then
+      else if (reproduce_ulm .and. ncld == 1) then
          Cld_spec%crndlw = Cloud_microphys(1)%cldamt
 
       else
-       ! general case: does not reproduce previous version
+       ! general case: does not reproduce ulm version
          Cld_spec%crndlw = 0.0
          do n = 1, ncld
             Cld_spec%crndlw = Cld_spec%crndlw + Cloud_microphys(n)%cldamt

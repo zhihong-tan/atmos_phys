@@ -599,7 +599,6 @@ type(radiative_gases_type), save :: Rad_gases_tv
 type(aerosolrad_control_type) ::  Aerosolrad_control
 type(cloudrad_control_type) :: Cldrad_control
 type(radiation_control_type) :: Rad_control
-logical :: need_aerosols, need_clouds, need_gases, need_basic
 integer :: radiation_clock
 
 !    miscellaneous control variables:
@@ -1557,16 +1556,16 @@ type(radiation_flux_control_type), intent(inout) :: Rad_flux_control
 !  radiative gas fields, and the basic atmospheric variable fields.
 !----------------------------------------------------------------------
  
-    call define_rad_times (Time, Time_next, Rad_time, &
-                           need_aerosols, need_clouds, &
-                           need_gases, need_basic)
+    call define_rad_times (Time, Time_next, Rad_time)
 
-    if (need_gases)    call radiative_gases_time_vary (Rad_time, gavg_rrv, &
-                                                   Rad_control, Rad_gases_tv)
+    if (do_rad) then
+       call radiative_gases_time_vary (Rad_time, gavg_rrv, Rad_control, Rad_gases_tv)
 
-    if (need_aerosols) call aerosolrad_driver_time_vary (Rad_time)
+       if (Aerosolrad_control%do_aerosol) &
+           call aerosolrad_driver_time_vary (Rad_time)
 
-    call sea_esf_rad_time_vary (Rad_time, Rad_gases_tv)
+       call sea_esf_rad_time_vary (Rad_time, Rad_gases_tv)
+    endif
 
     Rad_flux_control%do_rad = do_rad
 
@@ -1578,16 +1577,17 @@ end subroutine radiation_driver_time_vary
 
 subroutine radiation_driver_endts (is, js)
 
-integer,                       intent(in)  :: is,js
+integer, intent(in)  :: is,js
 
 !---------------------------------------------------------------------
 
-      if (need_gases)    call radiative_gases_endts (Rad_control, Rad_gases_tv)
-      if (need_aerosols) call aerosolrad_driver_endts
+      if (do_rad) then
+         call radiative_gases_endts (Rad_control, Rad_gases_tv)
+         if (Aerosolrad_control%do_aerosol) call aerosolrad_driver_endts
+         call sea_esf_rad_endts (Rad_gases_tv)
+      endif
 
       call radiation_driver_diag_endts (Rad_control)
-
-      call sea_esf_rad_endts (Rad_gases_tv)
 
 !---------------------------------------------------------------------
 !    complete radiation step. if this was a radiation step, set the 
@@ -1616,6 +1616,7 @@ integer,                       intent(in)  :: is,js
       Rad_control%do_lw_rad = do_lw_rad
       Rad_control%do_sw_rad = do_sw_rad
 
+!---------------------------------------------------------------------
  
 end subroutine radiation_driver_endts
 
@@ -1967,7 +1968,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    package and store them as components of the derived-type variable 
 !    Atmos_input.
 !---------------------------------------------------------------------
-      if (need_basic) then
+      if (do_rad) then
         call define_atmos_input_fields     &
                               (is, ie, js, je, p_full, p_half, t, q, &
                                t_surf_rad, r, gavg_rrv, Atmos_input, &
@@ -2012,7 +2013,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    obtain the values to be used for the radiatively-active gases and 
 !    place them in radiative_gases_type derived-type variable Rad_gases.
 !---------------------------------------------------------------------
-      if (need_gases) then
+      if (do_rad) then
 
 !--------------------------------------------------------------------
 !    fill the contents of the radiative_gases_type variable which
@@ -2030,7 +2031,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    an aerosol_type derived-type variable Aerosol.
 !---------------------------------------------------------------------
       call mpp_clock_begin (misc_clock)
-      if (need_aerosols) then
+      if (do_rad .and. Aerosolrad_control%do_aerosol) then
         call aerosolrad_driver (is, ie, js, je, Rad_time, &
                                 Astro%fracday, &
                                 Atmos_input%phalf, &
@@ -2053,7 +2054,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    also returned are cloud-radiative properties.
 !---------------------------------------------------------------------
       call mpp_clock_begin (clouds_clock)
-      if (need_clouds) then
+      if (do_rad) then
          call cloudrad_driver (is, ie, js, je,               &
                                Time, Time_next, Rad_time,    &
                                lat, Surface%land, Astro%cosz, &
@@ -2067,7 +2068,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
                                Moist_clouds_block, &
                                crndlw, cmxolw, emrndlw, emmxolw, &
                                camtsw, cldsctsw, cldextsw, cldasymmsw )
-      endif ! (need_clouds)
+      endif ! (do_rad)
       call mpp_clock_end (clouds_clock)
 
 !--------------------------------------------------------------------
@@ -2188,7 +2189,8 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    with stack-resident derived-type variables.
 !---------------------------------------------------------------------
         call deallocate_arrays (Astro, Astro_phys,    &
-                                Lw_output, Sw_output, &
+                                Sw_output, Lw_output, &
+                                Lw_diagnostics, &
                                 Aerosol, Aerosolrad_diags)
 
 !--------------------------------------------------------------------
@@ -2203,7 +2205,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    be requested when stochastic clouds are active.
 !---------------------------------------------------------------------
       if (Exch_ctrl%do_cosp .or. Exch_ctrl%do_modis_yim) then
-        if (need_basic) then
+        if (do_rad) then
 
 
 !---------------------------------------------------------------------
@@ -2227,13 +2229,13 @@ real, dimension(:,:,:,:), pointer :: r, rm
              Cosp_rad_block%daytime(:,:) = 0.0
           endwhere
 
-        endif ! (need_basic)
+        endif ! (do_rad)
 !--------------------------------------------------------------------
 ! define step_to_call_cosp to indicate that this is a radiation
 ! step and therefore one on which COSP should be called in 
 ! physics_driver_up.
 !--------------------------------------------------------------------
-        Cosp_rad_control%step_to_call_cosp = need_basic
+        Cosp_rad_control%step_to_call_cosp = do_rad
       endif ! (Exch_ctrl%do_cosp)
 
 !-------------------------------------------------------------------
@@ -2276,13 +2278,9 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    call routines to deallocate the components of the derived type 
 !    arrays input to radiation_driver.
 !---------------------------------------------------------------------
-      if (need_gases) then
+      if (do_rad) then
         call radiative_gases_dealloc (Rad_gases)
-      endif
-      if (need_clouds) then
         call cloud_spec_dealloc (Cldrad_control, Cld_spec)   !BW, Lsc_microphys)
-      endif
-      if (need_basic) then
         call atmos_input_dealloc (Atmos_input)
         call microphys_dealloc (Cldrad_control, Model_microphys)
       endif
@@ -2293,6 +2291,16 @@ real, dimension(:,:,:,:), pointer :: r, rm
       Surface%asfc_nir_dir => null()
       Surface%asfc_vis_dif => null()
       Surface%asfc_nir_dif => null()
+
+!   nullify pointers to input data
+      t => null()
+      r => null()
+      q => null()
+      p_full => null()
+      p_half => null()
+      z_full => null()
+      z_half => null()
+      gavg_rrv => null()
 
       call mpp_clock_end ( radiation_clock )
 
@@ -2317,9 +2325,7 @@ end subroutine radiation_driver
 !    need to be retrieved on the current step.
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call  define_rad_times (Time, Time_next, Rad_time_out,    &
-!                             need_aerosols, need_clouds, need_gases,  &
-!                             need_basic)
+!   call  define_rad_times (Time, Time_next, Rad_time_out)
 !  </TEMPLATE>
 !  <IN NAME="Time" TYPE="time_type">
 !   current model time
@@ -2332,23 +2338,9 @@ end subroutine radiation_driver
 !                     time-varying input fields to radiation should 
 !                     apply    
 !  </INOUT>
-!  <OUT NAME="need_aerosols" TYPE="logical">
-!   aersosol input data is needed on this step ?
-!  </OUT>
-!  <OUT NAME="need_clouds" TYPE="logical">
-!   cloud input data is needed on this step ?
-!  </OUT>
-!  <OUT NAME="need_gases" TYPE="logical">
-!   radiative gas input data is needed on this step ?
-!  </OUT>
-!  <OUT NAME="need_basic" TYPE="logical">
-!   atmospheric input fields are needed on this step ?
-!  </OUT>
 ! </SUBROUTINE>
 !
-subroutine define_rad_times (Time, Time_next, Rad_time_out,    &
-                             need_aerosols, need_clouds, need_gases,  &
-                             need_basic)
+subroutine define_rad_times (Time, Time_next, Rad_time_out)
 
 !--------------------------------------------------------------------
 !    subroutine define_rad_times determines whether radiation is to be 
@@ -2360,8 +2352,6 @@ subroutine define_rad_times (Time, Time_next, Rad_time_out,    &
 !---------------------------------------------------------------------
 type(time_type), intent(in)     ::  Time, Time_next
 type(time_type), intent(inout)  ::  Rad_time_out
-logical,         intent(out)    ::  need_aerosols, need_clouds,   &
-                                    need_gases, need_basic
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
@@ -2378,13 +2368,6 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
 !                     time-varying input fields to radiation should 
 !                     apply    
 !                     [ time_type, days and seconds]
-!
-!   intent(out) variables:
-!
-!     need_aerosols   aersosol input data is needed on this step ?
-!     need_clouds     cloud input data is needed on this step ?
-!     need_gases      radiative gas input data is needed on this step ?
-!     need_basic      atmospheric input fields are needed on this step ?
 !
 !---------------------------------------------------------------------
 
@@ -2525,46 +2508,6 @@ logical,         intent(out)    ::  need_aerosols, need_clouds,   &
         endif  ! (rsd)
       endif  ! (always_calculate)
 
-!---------------------------------------------------------------------
-!    set a logical variable indicating whether radiative gas input data
-!    is needed on this step.
-!--------------------------------------------------------------------
-      if (do_rad) then
-        need_gases = .true.
-      else
-        need_gases = .false.
-      endif
-
-!--------------------------------------------------------------------
-!    set a logical variable indicating whether aerosol input data
-!    is needed on this step.
-!--------------------------------------------------------------------
-      if (do_rad  .and. Aerosolrad_control%do_aerosol) then
-        need_aerosols = .true.
-      else
-        need_aerosols = .false.
-      endif
-
-!--------------------------------------------------------------------
-!    set a logical variable indicating whether cloud input data
-!    is needed on this step.
-!--------------------------------------------------------------------
-      if (do_rad) then
-        need_clouds = .true.
-      else
-        need_clouds = .false.
-      endif
-      
-!--------------------------------------------------------------------
-!    set a logical variable indicating whether atmospheric input data
-!    is needed on this step.
-!--------------------------------------------------------------------
-      if (need_clouds .or. need_aerosols .or. need_gases) then
-        need_basic = .true.
-      else
-        need_basic = .false.
-      endif
-   
 !---------------------------------------------------------------------
 !    place the time at which radiation is to be applied into an output
 !    variable.
@@ -2820,39 +2763,27 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
       endif
 
 !---------------------------------------------------------------------
-!    temperature, allocate memory if limits are to be applied
+!    allocate atmos input data arrays
 !---------------------------------------------------------------------
-        if (apply_temp_limits) then
-          allocate(Atmos_input%temp(size(t,1),size(t,2),kmax))
-          Atmos_input%temp = t
-        else
-          Atmos_input%temp => t
-        endif
+      allocate(Atmos_input%temp(size(t,1),size(t,2),kmax))
+      allocate(Atmos_input%rh2o(size(t,1),size(t,2),kmax))
+
+      Atmos_input%temp = t
 
 !---------------------------------------------------------------------
-!    surface temperature
+!    humidity, convert to mixing ratio
 !---------------------------------------------------------------------
-        Atmos_input%tsfc => ts
-
-!---------------------------------------------------------------------
-!    humidity, allocate memory if need to convert to mixing ratio or
-!    limits are to be applied
-!---------------------------------------------------------------------
-        if (.not.use_mixing_ratio .or. apply_vapor_limits) then
-          allocate(Atmos_input%rh2o(size(t,1),size(t,2),kmax))
-          Atmos_input%rh2o = q
-        else
-          Atmos_input%rh2o => q
-        endif
-        if (.not.use_mixing_ratio) then
+      Atmos_input%rh2o = q
+      if (.not.use_mixing_ratio) then
           Atmos_input%rh2o = Atmos_input%rh2o/(1.0-Atmos_input%rh2o)
-        endif
+      endif
 
 !---------------------------------------------------------------------
 !    pressure at model levels and layer interfaces
 !---------------------------------------------------------------------
-        Atmos_input%press => pfull
-        Atmos_input%phalf => phalf
+      Atmos_input%tsfc => ts
+      Atmos_input%press => pfull
+      Atmos_input%phalf => phalf
 
 !---------------------------------------------------------------------
 !    define values of surface pressure and temperature.
@@ -2862,74 +2793,51 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
 !---------------------------------------------------------------------
 !    define the cloudtemp component of Atmos_input. 
 !---------------------------------------------------------------------
+      allocate(Atmos_input%cloudtemp(size(t,1),size(t,2),kmax))
       if (present(cloudtemp)) then
-        if (apply_temp_limits) then
-          allocate(Atmos_input%cloudtemp(size(t,1),size(t,2),kmax))
-          Atmos_input%cloudtemp = cloudtemp
-        else
-          Atmos_input%cloudtemp => cloudtemp
-        endif
+         Atmos_input%cloudtemp = cloudtemp
       else
-        Atmos_input%cloudtemp => Atmos_input%temp
+         Atmos_input%cloudtemp = Atmos_input%temp
       endif
 
 !---------------------------------------------------------------------
 !    define the cloudvapor component of Atmos_input.
 !---------------------------------------------------------------------
+      allocate(Atmos_input%cloudvapor(size(t,1),size(t,2),kmax))
       if (present(cloudvapor)) then
-        if (apply_vapor_limits .or. .not.use_mixing_ratio) then
-          allocate(Atmos_input%cloudvapor(size(t,1),size(t,2),kmax))
-          if (use_mixing_ratio) then
-            Atmos_input%cloudvapor = cloudvapor
-          else
-            Atmos_input%cloudvapor = cloudvapor/(1.0-cloudvapor)
-          endif
-        else
-          Atmos_input%cloudvapor => cloudvapor
-        endif
+         Atmos_input%cloudvapor = cloudvapor
       else
-        Atmos_input%cloudvapor => Atmos_input%rh2o
+         Atmos_input%cloudvapor = Atmos_input%rh2o
       endif
 
 !---------------------------------------------------------------------
 !    define the aerosoltemp component of Atmos_input.
 !---------------------------------------------------------------------
+      allocate(Atmos_input%aerosoltemp(size(t,1),size(t,2),kmax))
       if (present(aerosoltemp)) then
-        if (apply_temp_limits) then
-          allocate(Atmos_input%aerosoltemp(size(t,1),size(t,2),kmax))
-          Atmos_input%aerosoltemp = aerosoltemp
-        else
-          Atmos_input%aerosoltemp => aerosoltemp
-        endif
+         Atmos_input%aerosoltemp = aerosoltemp
       else
-        Atmos_input%aerosoltemp => Atmos_input%temp
+         Atmos_input%aerosoltemp = Atmos_input%temp
       endif
 
 !---------------------------------------------------------------------
 !    define the aerosolvapor component of Atmos_input.
 !---------------------------------------------------------------------
+      allocate(Atmos_input%aerosolvapor(size(t,1),size(t,2),kmax))
       if (present(aerosolvapor)) then
-        if (apply_vapor_limits .or. .not.use_mixing_ratio) then
-          allocate(Atmos_input%aerosolvapor(size(t,1),size(t,2),kmax))
-          if (use_mixing_ratio) then
-            Atmos_input%aerosolvapor = aerosolvapor
-          else
-            Atmos_input%aerosolvapor = aerosolvapor/(1.0-aerosolvapor)
-          endif
-        else
-          Atmos_input%aerosolvapor => aerosolvapor
-        endif
+         Atmos_input%aerosolvapor = aerosolvapor
       else
-        Atmos_input%aerosolvapor => Atmos_input%rh2o
+         Atmos_input%aerosolvapor = Atmos_input%rh2o
       endif
 
 !------------------------------------------------------------------
 !    define the aerosolpress component of Atmos_input.
 !---------------------------------------------------------------------
+      allocate(Atmos_input%aerosolpress(size(t,1),size(t,2),kmax))
       if (present(aerosolpress)) then
-        Atmos_input%aerosolpress => aerosolpress
+        Atmos_input%aerosolpress = aerosolpress
       else
-        Atmos_input%aerosolpress => Atmos_input%press
+        Atmos_input%aerosolpress = pfull
       endif
  
 !------------------------------------------------------------------
@@ -3314,18 +3222,20 @@ type(atmos_input_type), intent(inout) :: Atmos_input
 !    deallocate components of atmos_input_type structure.
 !---------------------------------------------------------------------
 
+      ! variables always allocated
+         deallocate(Atmos_input%temp)
+         deallocate(Atmos_input%rh2o)
+         deallocate(Atmos_input%cloudtemp)
+         deallocate(Atmos_input%cloudvapor)
+         deallocate(Atmos_input%aerosoltemp)
+         deallocate(Atmos_input%aerosolvapor)
+         deallocate(Atmos_input%aerosolpress)
+
+      ! variables always using pointers
       Atmos_input%press => null()
       Atmos_input%phalf => null()
       Atmos_input%psfc  => null()
-
-      Atmos_input%temp => null()
-      Atmos_input%tsfc => null()
-      Atmos_input%rh2o => null()
-      Atmos_input%cloudtemp => null()
-      Atmos_input%cloudvapor => null()
-      Atmos_input%aerosoltemp => null()
-      Atmos_input%aerosolvapor => null()
-      Atmos_input%aerosolpress => null()
+      Atmos_input%tsfc  => null()
 
       ! auxiliary variables always allocated
       deallocate (Atmos_input%relhum     )
@@ -4664,7 +4574,8 @@ end subroutine radiation_calc
 ! </SUBROUTINE>
 !
 subroutine deallocate_arrays (Astro, Astro_phys,  &
-                              Lw_output, Sw_output, &
+                              Sw_output, Lw_output, &
+                              Lw_diagnostics, &
                               Aerosol, Aerosolrad_diags)
 
 !---------------------------------------------------------------------
@@ -4673,8 +4584,9 @@ subroutine deallocate_arrays (Astro, Astro_phys,  &
 !---------------------------------------------------------------------
 
 type(astronomy_type),              intent(inout)  :: Astro, Astro_phys
-type(lw_output_type),dimension(:), intent(inout)  :: Lw_output
 type(sw_output_type),dimension(:), intent(inout)  :: Sw_output
+type(lw_output_type),dimension(:), intent(inout)  :: Lw_output
+type(lw_diagnostics_type),         intent(inout)  :: Lw_diagnostics
 type(aerosol_type),                intent(inout)  :: Aerosol
 type(aerosolrad_diag_type),        intent(inout)  :: Aerosolrad_diags
 
@@ -4704,6 +4616,7 @@ type(aerosolrad_diag_type),        intent(inout)  :: Aerosolrad_diags
         do n = 1, Aerosolrad_control%indx_lwaf
           call longwave_dealloc(Lw_output(n))
         end do
+        call longwave_dealloc(Lw_diagnostics)
       endif
 
 !--------------------------------------------------------------------
@@ -4718,7 +4631,7 @@ type(aerosolrad_diag_type),        intent(inout)  :: Aerosolrad_diags
 !--------------------------------------------------------------------
 !    deallocate the window-resident variables in Aerosolrad_diags
 !--------------------------------------------------------------------
-      if (do_rad .and. Aerosolrad_control%do_aerosol) then  ! same as need_aerosols
+      if (do_rad .and. Aerosolrad_control%do_aerosol) then
         call aerosolrad_driver_dealloc (Aerosol, Aerosolrad_diags)
       endif
 

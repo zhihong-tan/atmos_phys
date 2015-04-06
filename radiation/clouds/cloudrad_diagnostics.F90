@@ -3714,15 +3714,30 @@ if (Time_diag > Time) then
 
       endif ! (do_stochastic_clouds)
 
-endif ! (Time_Diag > Time)
+      ! nullify pointers used
+      if (Cldrad_control%do_strat_clouds) then
+        Lsc_microphys => null()
+        Lscrad_props  => null()
+      endif
 
+      if (Cldrad_control%do_donner_deep_clouds) then
+        Cell_microphys => null()
+        Meso_microphys => null()
+        Cellrad_props  => null()
+        Mesorad_props  => null()
+      endif
+
+      if (Cldrad_control%do_uw_clouds) then
+        Shallow_microphys => null()
+        Shallowrad_props  => null()
+      endif
+
+endif ! (Time_Diag > Time)
 
 !---------------------------------------------------------------------
 
 
-
 end subroutine cloudrad_netcdf
-
 
 
 !#####################################################################
@@ -3771,9 +3786,13 @@ type(microphysics_type),     intent(inout) :: Model_microphys
       if ( associated(Model_microphys%cldamt) )         deallocate (Model_microphys%cldamt      )
       if ( associated(Model_microphys%droplet_number) ) deallocate (Model_microphys%droplet_number  )
       if ( associated(Model_microphys%ice_number) )     deallocate (Model_microphys%ice_number  )
+
+      if ( associated(Model_microphys%lsc_cldamt) )         deallocate (Model_microphys%lsc_cldamt)
+      if ( associated(Model_microphys%lsc_conc_drop) )      deallocate (Model_microphys%lsc_conc_drop)
+      if ( associated(Model_microphys%lsc_size_drop) )      deallocate (Model_microphys%lsc_size_drop)
+      if ( associated(Model_microphys%lsc_droplet_number) ) deallocate (Model_microphys%lsc_droplet_number)
        
 !------------------------------------------------------------------
-
 
 
 end subroutine model_micro_dealloc

@@ -1386,7 +1386,7 @@ subroutine lw_gases_stdtf_dealloc
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-      if (do_calcstdco2tfs .or. do_calcstdn2otfs .or.   &
+      if (do_calcstdco2tfs .or. do_calcstdco210umtfs .or. do_calcstdn2otfs .or.   &
           do_calcstdch4tfs) then
         deallocate (xa                )
         deallocate (ca                )
@@ -3903,8 +3903,11 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
       deallocate ( ftest1   )
       deallocate ( ftest2   )
       deallocate ( xx       )
-      deallocate ( xxlog   )
+      deallocate ( xxlog    )
       deallocate ( pa2      )
+
+      deallocate ( xx0      )
+      deallocate ( xxtest   )
 
 !--------------------------------------------------------------------
 
