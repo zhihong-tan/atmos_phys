@@ -22,6 +22,15 @@ module atmos_tracer_utilities_mod
 ! </DESCRIPTION>
 
 
+! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
+use mpp_mod,           only: input_nml_file
+use fms_mod,           only: open_namelist_file, fms_init, &
+                             mpp_pe, mpp_root_pe, stdlog, &
+                             file_exist, write_version_number, &
+                             check_nml_error, error_mesg, &
+                             FATAL, close_file
+! <---h1g,
+
 use            fms_mod, only : lowercase, &
                                write_version_number, &
                                stdlog, &
@@ -73,8 +82,8 @@ public  wet_deposition,    &
         sjl_fillz
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 20.0 2013/12/13 23:24:13 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id: atmos_tracer_utilities.F90,v 20.0.8.2 2015/03/16 21:07:01 Huan.Guo Exp $'
+character(len=128) :: tagname = '$Name: wetDep_scale_20150311_h1g $'
 
 logical :: module_is_initialized = .FALSE.
 
@@ -137,6 +146,11 @@ end type drydep_type
 type(drydep_type), dimension(:), allocatable :: Drydep
 
 
+! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
+real ::                scale_aerosol_wetdep =1.0
+real ::                scale_aerosol_wetdep_snow =1.0
+namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow
+! <---h1g,
 contains
 
 !
@@ -185,6 +199,11 @@ integer :: n, logunit
 character(len=128) :: name
 
 logical  :: flag
+
+! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
+!   local variables:
+      integer   :: unit, io, ierr
+! <---h1g,
 
 ! Make local copies of the local domain dimensions for use 
 ! in interp_emiss.
@@ -246,7 +265,23 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
            NOTE)
       end select
 
-    
+!-----------------------------------------------------------------------
+!    read namelist.
+!-----------------------------------------------------------------------
+#ifdef INTERNAL_FILE_NML
+      read (input_nml_file, nml=wetdep_nml, iostat=io)
+      ierr = check_nml_error(io,'wetdep_nml')
+#else   
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ( )
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=wetdep_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'wetdep_nml')
+        end do
+10      call close_file (unit)
+      endif
+#endif
+
       flag = query_method ('wet_deposition',MODEL_ATMOS,n, &
                             Wetdep(n)%text_in_scheme,Wetdep(n)%control)
       call get_wetdep_param(Wetdep(n)%text_in_scheme,  &
@@ -1713,14 +1748,28 @@ else if( trim(lowercase(text_in_scheme)) == 'aerosol' .or. &
       scheme                 = 'aerosol_below_noice'
    end if
    flag=parse(text_in_param,'frac_incloud',frac_in_cloud)
+! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
+   frac_in_cloud = frac_in_cloud * scale_aerosol_wetdep
+! <---h1g,
+
 
    flag=parse(text_in_param,'frac_incloud_snow',frac_in_cloud_snow)
    if (flag == 0) then
       frac_in_cloud_snow = frac_in_cloud
    end if
 
+! --->h1g, add a scale factor for aerosol wet deposition by snow, 2015-03-13
+   frac_in_cloud_snow = frac_in_cloud_snow * scale_aerosol_wetdep_snow
+! <---h1g,
+
+
+
    if (present(frac_in_cloud_uw)) then
       flag=parse(text_in_param,'frac_incloud_uw',frac_in_cloud_uw)
+! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
+      frac_in_cloud_uw = frac_in_cloud_uw * scale_aerosol_wetdep
+! <---h1g,
+
       if (flag == 0) then
          frac_in_cloud_uw = frac_in_cloud
       end if
@@ -1728,12 +1777,21 @@ else if( trim(lowercase(text_in_scheme)) == 'aerosol' .or. &
    if (present(frac_in_cloud_donner)) then
       flag=parse(text_in_param,'frac_incloud_donner',   &
                                                 frac_in_cloud_donner)
+! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
+      frac_in_cloud_donner = frac_in_cloud_donner * scale_aerosol_wetdep
+! <---h1g,
+
       if (flag == 0) then
          frac_in_cloud_donner = frac_in_cloud
       end if
    end if
    flag=parse(text_in_param,'alphar',alpha_r)
    flag=parse(text_in_param,'alphas',alpha_s)
+! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
+   alpha_r = alpha_r * scale_aerosol_wetdep
+   alpha_s = alpha_s * scale_aerosol_wetdep
+! <---h1g,
+
    Laerosol = .true.
 end if
 if( trim(lowercase(text_in_scheme)) == 'wdep_aerosol') scheme= 'wdep_aerosol'
