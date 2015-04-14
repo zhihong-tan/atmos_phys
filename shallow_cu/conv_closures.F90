@@ -16,8 +16,8 @@ MODULE CONV_CLOSURES_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_closures.F90,v 19.0 2012/01/06 20:25:26 fms Exp $'
-  character(len=128) :: tagname = '$Name: ulm $'
+  character(len=128) :: version = '$Id: conv_closures.F90,v 19.0.14.1 2015/02/25 22:59:26 Ming.Zhao Exp $'
+  character(len=128) :: tagname = '$Name: am4f3_20150225_miz $'
   logical            :: module_is_initialized=.false.  ! module initialized ?
 
 !---------------------------------------------------------------------
@@ -109,7 +109,8 @@ contains
     real,   intent(out), optional :: cbmf_unmod
     
     real    :: sigmaw, wcrit, erfarg, cbmf, wexp, ufrc, wtw
-    real    :: rmfk1=0.3, rmfk2=5.0, rmfk3=3.0
+    real    :: rmfk1=0.3, rmfk2=5.0, rmfk3=3.0, tmp
+    integer :: krel
 
     cc%cbmf=0.; cc%wrel=0.; cc%ufrc=0.;
     if(cc%igauss.eq.0)then     !Use cin and pbl tke
@@ -151,7 +152,14 @@ contains
 
     cc%cbmf=cbmf
     cc%wrel=min(cc%wrel, 50.)!cc%ufrc=min(cc%rmaxfrac, cc%ufrc)
+
     cbmf = (sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV
+    krel= max(max(ac%klcl, sd%kinv),1)
+    tmp = sd%ps(0)-sd%ps(krel)
+!    if (krel.gt.sd%kinv) then
+!       tmp = sd%ps(0)-sd%ps(sd%kinv)
+!    end if
+    cbmf = tmp * 0.25 / sd%delt / Uw_p%GRAV
     if (cc%cbmf .gt. cbmf) cc%cbmf = cbmf
     if (cc%wrel .gt. 0.) then
       cc%ufrc=cc%cbmf / cc%wrel /ac % rho0lcl

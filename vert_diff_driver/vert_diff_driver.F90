@@ -69,7 +69,7 @@ real, allocatable, dimension(:,:,:) :: dt_t_save, dt_q_save
 
 integer :: id_tdt_vdif, id_qdt_vdif, id_udt_vdif, id_vdt_vdif,  &
            id_sens_vdif, id_evap_vdif,                          &
-           id_tdt_diss_vdif, id_diss_heat_vdif
+           id_tdt_diss_vdif, id_diss_heat_vdif, id_qtflx_vdif !miz
 
 real :: missing_value = -999.
 
@@ -78,8 +78,8 @@ character(len=9), parameter :: mod_name = 'vert_diff'
 !-----------------------------------------------------------------------
 !---- version number ----
 
-character(len=128) :: version = '$Id: vert_diff_driver.F90,v 20.0 2013/12/13 23:22:29 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id: vert_diff_driver.F90,v 20.0.4.1 2015/02/25 23:44:40 Ming.Zhao Exp $'
+character(len=128) :: tagname = '$Name: am4f3_20150225_miz $'
 
 logical :: module_is_initialized = .false.
 
@@ -118,10 +118,13 @@ integer, intent(in), dimension(:,:),   optional :: kbot
 
 real, dimension(size(t,1),size(t,2),size(t,3)) :: tt, dpg, q_2
 real, dimension(size(t,1),size(t,2),size(t,3)) :: dissipative_heat
-integer :: k, ntp, tr
+integer :: k, ntp, tr, i, j !miz
 logical :: used
 real, dimension(size(t,1),size(t,2)) :: diag2
 integer :: ie, je
+
+real, dimension(size(dt_q,1),size(dt_q,2),size(dt_q,3))   :: qtflx_vdif  !miz
+real                                                      :: delp, dpsum !miz
 
 !-----------------------------------------------------------------------
 
@@ -180,6 +183,23 @@ integer :: ie, je
        used = send_data ( id_qdt_vdif, -2.*dt_q, Time, is, js, 1, &
                           rmask=mask )
     endif
+
+!miz
+    qtflx_vdif(:,:,:)=0;
+    do i=1, size(dt_q,1)
+       do j=1, size(dt_q,2)
+	  qtflx_vdif(i,j,1)=0
+	  do k=2, size(dt_q,3)
+             delp=(p_half(i,j,k+1)-p_half(i,j,k))/GRAV
+	     qtflx_vdif(i,j,k)=qtflx_vdif(i,j,k-1)+dt_q(i,j,k)*delp !&
+!                           +(dt_trs(i,j,k,2)+dt_trs(i,j,k,3))*delp
+	  enddo
+	enddo
+    enddo
+    if (id_qtflx_vdif > 0) then
+      used = send_data ( id_qtflx_vdif, -2.*qtflx_vdif, Time, is, js, 1, rmask=mask )
+    endif
+!miz
 
     ! store values of tracer tendencies before the vertical diffusion, if 
     ! requested -- availability of storage serves as an indicatior that 
@@ -298,11 +318,14 @@ integer :: ie, je
  real   , intent(in), dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:), optional :: kbot
 
- integer :: k, tr
+ integer :: k, tr, i, j !miz
  logical :: used
  real, dimension(size(p_half,1),size(p_half,2),size(p_half,3)-1) :: dpg
  real, dimension(size(p_half,1),size(p_half,2)) :: diag2
  integer :: ie, je
+
+ real, dimension(size(dt_q,1),size(dt_q,2),size(dt_q,3))   :: qtflx_vdif  !miz
+ real                                                      :: delp, dpsum !miz
 
 !-----------------------------------------------------------------------
     ie = is + size(p_half,1) -1
@@ -330,6 +353,23 @@ integer :: ie, je
        used = send_data ( id_qdt_vdif, 2.*dt_q, Time, is, js, 1, &
                           rmask=mask )
     endif
+
+!miz
+    qtflx_vdif(:,:,:)=0;
+    do i=1, size(dt_q,1)
+       do j=1, size(dt_q,2)
+	  qtflx_vdif(i,j,1)=0
+	  do k=2, size(dt_q,3)
+             delp=(p_half(i,j,k+1)-p_half(i,j,k))/GRAV
+	     qtflx_vdif(i,j,k)=qtflx_vdif(i,j,k-1)+dt_q(i,j,k)*delp !&
+!                           +(dt_trs(i,j,k,2)+dt_trs(i,j,k,3))*delp
+	  enddo
+	enddo
+    enddo
+    if (id_qtflx_vdif > 0) then
+      used = send_data ( id_qtflx_vdif, 2.*qtflx_vdif, Time, is, js, 1, rmask=mask )
+    endif
+!miz
 
 !------ preliminary calculations for vert integrals -----
     if ( id_sens_vdif > 0 .or. id_evap_vdif > 0 ) then
@@ -438,6 +478,11 @@ integer :: ie, je
    register_diag_field ( mod_name, 'qdt_vdif', axes(1:3), Time, &
                         'Spec humidity tendency from vert diff',&
                         'kg/kg/s', missing_value=missing_value  )
+
+   id_qtflx_vdif = &
+   register_diag_field ( mod_name, 'qtflx_vdif', axes(1:3), Time, &
+                        'Spec humidity flux from vert diff',&
+                        'kg/m2/s', missing_value=missing_value  )
 
    id_udt_vdif = &
    register_diag_field ( mod_name, 'udt_vdif', axes(1:3), Time, &

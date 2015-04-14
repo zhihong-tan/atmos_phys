@@ -105,8 +105,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 21.0 2014/12/15 21:43:31 fms Exp $'
-   character(len=128) :: tagname = '$Name: ulm $'
+   version = '$Id: moist_processes.F90,v 21.0.8.1 2015/03/03 18:33:26 Huan.Guo Exp $'
+   character(len=128) :: tagname = '$Name: am4f3_convect_fix_20150303_h1g $'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -434,8 +434,10 @@ integer :: area_id
 
 subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             phalf, pfull, zhalf, zfull, omega, diff_t, &
-                            radturbten, cush, cbmf,                    &
-                            pblht, ustar, bstar, qstar,                &
+                            radturbten, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &!miz
+			    hmint, cush, cbmf, cgust, tke, pblhto, rkmo, taudpo,     &!miz
+                            exist_shconv, exist_dpconv,                              &!miz
+                            pblht, ustar, bstar, qstar, shflx, lhflx,  &
                             t, q, r, u, v, w, tm, qm, rm, um, vm,      &
                             tdt, qdt, rdt, rdiag, udt, vdt, diff_cu_mo,&
                             convect, lprec, fprec, fl_lsrain,          &
@@ -560,8 +562,10 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
    integer,         intent(in)           :: is,ie,js,je
    type(time_type), intent(in)           :: Time
    real, intent(in)                      :: dt
-   real, intent(in) , dimension(:,:)     :: land, pblht, ustar, bstar, qstar
-   real, intent(inout), dimension(:,:)   :: cush, cbmf
+   real, intent(in) , dimension(:,:)     :: land, pblht, ustar, bstar, qstar, shflx, lhflx !miz
+   real, intent(inout), dimension(:,:)   :: cush, cbmf, hmint, cgust, tke, pblhto, rkmo, taudpo
+   integer, intent(inout), dimension(:,:,:) :: exist_shconv, exist_dpconv
+   real, intent(in),    dimension(:,:,:) :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn !miz
    real, intent(in) , dimension(:,:,:)   :: phalf, pfull, zhalf, zfull, omega, &
                                             diff_t, t, q, u, v, tm, qm, um, vm
    real, dimension(:,:,:), intent(in)    :: radturbten
@@ -630,6 +634,7 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(t,1),size(t,2),size(phalf,3)) :: snowclr3d
    real, dimension(size(t,1),size(t,2),size(t,3)+1) :: mc, m_cellup, mc_cmt
    real, dimension(size(t,1),size(t,2),size(pfull,3)) :: f_snow_berg
+   real, dimension(size(t,1),size(t,2),size(pfull,3)) :: tdt_dif, qdt_dif !miz
 
 
 !     sfc_sh_flux      sensible heat flux across the surface
@@ -773,6 +778,9 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    initialize local arrays which will hold sums.
 !---------------------------------------------------------------------
+      tdt_dif=tdt;                            !miz
+      qdt_dif=qdt+rdt(:,:,:,nql)+rdt(:,:,:,nqi);  !miz
+
       rdt_init  = rdt
       tdt_init  = tdt
       qdt_init  = qdt
@@ -929,8 +937,11 @@ logical, intent(out), dimension(:,:)     :: convect
       call moistproc_uw_conv(Time, is, ie, js, je, dt, tin, qin, &
                              uin, vin, tracer,    &
                              pfull, phalf, zfull, zhalf, omega, pblht,        &
-                             ustar, bstar, qstar, land, coldT, Aerosol,       &
-                             cush, cbmf, cmf, conv_calc_completed,            &
+                             ustar, bstar, qstar, shflx, lhflx,              &!miz
+                             land, coldT, Aerosol, tdt_rad,tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &!miz
+                             tdt_dif, qdt_dif, hmint, lat, lon, & !miz
+                             cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+                             cmf, conv_calc_completed,            &
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1575,8 +1586,11 @@ logical, intent(out), dimension(:,:)     :: convect
         call moistproc_uw_conv(Time, is, ie, js, je, dt, tin, qin, &
                                uin, vin, tracer,    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
-                               ustar, bstar, qstar, land, coldT, Aerosol,       &
-                               cush, cbmf, cmf, conv_calc_completed,            &
+                               ustar, bstar, qstar,  shflx, lhflx,               &!miz
+			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
+                               tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
+                               cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+                               cmf, conv_calc_completed,            &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1591,8 +1605,11 @@ logical, intent(out), dimension(:,:)     :: convect
         call moistproc_uw_conv(Time, is, ie, js, je, dt, tin_orig, qin_orig, &
                                uin, vin, tracer_orig,    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
-                               ustar, bstar, qstar, land, coldT, Aerosol,       &
-                               cush, cbmf, cmf, conv_calc_completed,            &
+                               ustar, bstar, qstar, shflx, lhflx,               &!miz
+			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
+                               tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
+                               cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+                               cmf, conv_calc_completed,                        &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1946,21 +1963,6 @@ logical, intent(out), dimension(:,:)     :: convect
 !-----------------------------------------------------------------------
    precip = lprec + fprec
 
-!-----------------------------------------------------------------------
-!    calculate convective gustiness, if desired.
-!-----------------------------------------------------------------------
-   if (do_gust_cv) then
-     where((precip) > 0.0)
-       gust_cv = gustmax*sqrt( precip/(gustconst + precip) )
-     end where
-   end if
-
-!---------------------------------------------------------------------
-!    save a diagnostic indicating whether or not convection has occurred
-!    within the column.
-!---------------------------------------------------------------------
-   where (precip > 0.) convect = .true.
-
 !---------------------------------------------------------------------
 !    apply changes resulting from uw_conv
 !---------------------------------------------------------------------
@@ -1993,7 +1995,28 @@ logical, intent(out), dimension(:,:)     :: convect
        tracer(:,:,:,nqni) = tracer(:,:,:,nqni) + qnitnd_uw(:,:,:)*dt
      endif
    endif !(uw_conv)
- 
+
+!-----------------------------------------------------------------------
+! Note: the following two blocks of code were moved from before to after 
+! the call to moistproc_scale_uw in order to account for UW convection 
+! contributions to 'precip'. This will change answers if UW is active
+! and do_gust_cv = .true. or entrain_nml:convect_shutoff = .true. (cjg)
+!
+!-----------------------------------------------------------------------
+!    calculate convective gustiness, if desired.
+!-----------------------------------------------------------------------
+   if (do_gust_cv) then
+     where((precip) > 0.0)
+       gust_cv = gustmax*sqrt( precip/(gustconst + precip) )
+     end where
+   end if
+
+!---------------------------------------------------------------------
+!    save a diagnostic indicating whether or not convection has occurred
+!    within the column.
+!---------------------------------------------------------------------
+   where (precip > 0.) convect = .true.
+
 !---------------------------------------------------------------------
 !    update tracer fields with tendencies due to convection and wet 
 !    deposition by convective precipitation.

@@ -168,8 +168,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 21.0 2014/12/15 21:43:46 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id: physics_driver.F90,v 21.0.2.1 2015/02/25 23:40:29 Ming.Zhao Exp $'
+character(len=128) :: tagname = '$Name: am4f3_20150225_miz $'
 
 
 !---------------------------------------------------------------------
@@ -359,7 +359,10 @@ integer, dimension(8) :: restart_versions = (/ 1, 2, 3, 4, 5, 6, 7, 8 /)
 !----------------------------------------------------------------------
 real,    dimension(:,:,:), allocatable :: diff_cu_mo, diff_t, diff_m
 real,    dimension(:,:,:), allocatable :: radturbten
-real,    dimension(:,:)  , allocatable :: pbltop, cush, cbmf
+real,    dimension(:,:)  , allocatable :: pbltop, cush, cbmf, hmint, cgust !miz 
+real,    dimension(:,:)  , allocatable :: tke, pblhto, rkmo, taudpo        !miz
+integer, dimension(:,:,:), allocatable :: exist_shconv, exist_dpconv       !miz
+
 logical, dimension(:,:)  , allocatable :: convect
 
 real,    dimension(:,:,:), allocatable ::       &
@@ -743,6 +746,14 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       allocate ( pbltop     (id, jd) )     ; pbltop     = -999.0
       allocate ( cush       (id, jd) )     ; cush=-1. !miz
       allocate ( cbmf       (id, jd) )     ; cbmf=0.0 !miz
+      allocate ( hmint      (id, jd) )     ; hmint=0. !miz
+      allocate ( cgust      (id, jd) )     ; cgust=0.0 !miz
+      allocate ( tke        (id, jd) )     ; tke  =0.0 !miz
+      allocate ( pblhto     (id, jd) )     ; pblhto=0.0 !miz
+      allocate ( rkmo       (id, jd) )     ; rkmo=15.0 !miz
+      allocate ( taudpo     (id, jd) )     ; taudpo=28800.    !miz
+      allocate ( exist_shconv(id, jd,48) ) ; exist_shconv = 0 !miz
+      allocate ( exist_dpconv(id, jd,48) ) ; exist_dpconv = 0 !miz
       allocate ( convect    (id, jd) )     ; convect = .false.
       allocate ( radturbten (id, jd, kd))  ; radturbten = 0.0
       allocate ( r_convect  (id, jd) )     ; r_convect   = 0.0
@@ -878,10 +889,20 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       write(outunit,100) 'pbltop                 ', mpp_chksum(pbltop                )
       write(outunit,100) 'cush                   ', mpp_chksum(cush                  )
       write(outunit,100) 'cbmf                   ', mpp_chksum(cbmf                  )
+      write(outunit,100) 'hmint                  ', mpp_chksum(hmint                 )
+      write(outunit,100) 'cgust                  ', mpp_chksum(cgust                 )
+      write(outunit,100) 'tke                    ', mpp_chksum(tke                   )
+      write(outunit,100) 'pblhto                 ', mpp_chksum(pblhto                )
+      write(outunit,100) 'rkmo                   ', mpp_chksum(rkmo                  )
+      write(outunit,100) 'taudpo                 ', mpp_chksum(taudpo                )
+      write(outunit,100) 'exist_shconv           ', mpp_chksum(exist_shconv          )
+      write(outunit,100) 'exist_dpconv           ', mpp_chksum(exist_dpconv          )
       write(outunit,100) 'diff_t                 ', mpp_chksum(diff_t                )
       write(outunit,100) 'diff_m                 ', mpp_chksum(diff_m                )
       write(outunit,100) 'r_convect              ', mpp_chksum(r_convect             )
+  if (doing_strat()) then
       write(outunit,100) 'radturbten             ', mpp_chksum(radturbten            )
+  endif
       if ( doing_donner ) then
          write(outunit,100) 'cell_cld_frac          ', mpp_chksum(Restart%cell_cld_frac         )
          write(outunit,100) 'cell_liq_amt           ', mpp_chksum(Restart%cell_liq_amt          )
@@ -1561,6 +1582,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 
       if (do_radiation) then
         radturbten(is:ie,js:je,:) = radturbten(is:ie,js:je,:) + Rad_flux_block%tdt_rad(:,:,:)
+	surf_diff%tdt_rad(is:ie,js:je,:)=Rad_flux_block%tdt_rad(:,:,:) !miz
       endif
 #ifdef SCM
 ! Option to add SCM radiative tendencies from forcing to Rad_flux_block%tdt_lw
@@ -1922,6 +1944,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                Physics_input_block,        &
                                frac_land,                  &
                                u_star, b_star, q_star,     &
+                               shflx, lhflx,               &!miz
                                Physics_tendency_block,     &
                                Moist_clouds_block,         &
                                Cosp_control, Cosp_block,   &
@@ -1939,7 +1962,7 @@ real,dimension(:,:),    intent(in)                :: lat, lon, area
 type(physics_control_type), intent(in)            :: Physics_control
 type(physics_input_block_type), intent(in)        :: Physics_input_block
 real,dimension(:,:),    intent(in)                :: frac_land
-real,dimension(:,:),    intent(in)                :: u_star, b_star, q_star
+real,dimension(:,:),    intent(in)                :: u_star, b_star, q_star, shflx, lhflx!miz
 type(physics_tendency_block_type), intent(inout)  :: Physics_tendency_block
 type(clouds_from_moist_block_type), intent(inout) :: Moist_clouds_block
 type(cosp_from_rad_control_type),   intent(in)    :: Cosp_control
@@ -2216,8 +2239,17 @@ real,dimension(:,:),    intent(inout)             :: gust
          call moist_processes (is, ie, js, je, Time_next, dt, &
            frac_land, p_half, p_full, z_half, z_full, omega,    &
            diff_t(is:ie,js:je,:), radturbten(is:ie,js:je,:),    &
-           cush(is:ie,js:je), cbmf(is:ie,js:je),   &!miz
-           pbltop(is:ie,js:je), u_star, b_star, q_star,  &!miz
+           surf_diff%tdt_rad(is:ie,js:je,:), &
+           surf_diff%tdt_dyn(is:ie,js:je,:), &
+           surf_diff%qdt_dyn(is:ie,js:je,:), &
+           surf_diff%dgz_dyn(is:ie,js:je,:), &
+           surf_diff%ddp_dyn(is:ie,js:je,:), &
+	   hmint(is:ie,js:je),               &
+           cush(is:ie,js:je), cbmf(is:ie,js:je), cgust(is:ie,js:je),  &!miz
+	   tke(is:ie,js:je),  pblhto(is:ie,js:je), rkmo(is:ie,js:je), &!miz
+	   taudpo(is:ie,js:je),                                       &!miz
+           exist_shconv(is:ie,js:je,:), exist_dpconv(is:ie,js:je,:),  &!miz
+           pbltop(is:ie,js:je), u_star, b_star, q_star, shflx, lhflx, &!miz
            t,   r(:,:,:,1),   r,    u,  v,  w,             &
            tm,  rm(:,:,:,1),  rm,   um, vm,                &
            tdt, rdt(:,:,:,1), rdt, rdiag, udt, vdt,    &
@@ -2262,10 +2294,23 @@ real,dimension(:,:),    intent(inout)             :: gust
                            p_half, p_full, z_half, z_full, omega,    &
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
+                           surf_diff%tdt_rad(is:ie,js:je,:), & !miz
+			   surf_diff%tdt_dyn(is:ie,js:je,:), & !miz
+			   surf_diff%qdt_dyn(is:ie,js:je,:), & !miz
+			   surf_diff%dgz_dyn(is:ie,js:je,:), & !miz
+			   surf_diff%ddp_dyn(is:ie,js:je,:), & !miz
+			   hmint(is:ie,js:je),               & !miz
                            cush           (is:ie,js:je),             &
-                          cbmf           (is:ie,js:je),             &
+                           cbmf           (is:ie,js:je),             &
+                           cgust          (is:ie,js:je),             &
+	                   tke            (is:ie,js:je),             &
+                           pblhto         (is:ie,js:je),             &!miz
+                           rkmo           (is:ie,js:je),             &!miz
+                           taudpo         (is:ie,js:je),             &!miz
+                           exist_shconv   (is:ie,js:je,:),           &
+                           exist_dpconv   (is:ie,js:je,:),           &
                             pbltop(is:ie,js:je),         &!miz
-                            u_star, b_star, q_star,          &!miz
+                            u_star, b_star, q_star, shflx, lhflx,    &!miz
                            t,   r(:,:,:,1),   r,    u,  v,  w,         &
                            tm,  rm(:,:,:,1),  rm,   um, vm,            &
                            tdt, rdt(:,:,:,1), rdt, rdiag, udt, vdt,    &
@@ -2308,10 +2353,23 @@ real,dimension(:,:),    intent(inout)             :: gust
                             p_half, p_full, z_half, z_full, omega,    &
                             diff_t(is:ie,js:je,:),                    &
                             radturbten(is:ie,js:je,:),                &
+                            surf_diff%tdt_rad(is:ie,js:je,:),         &!miz
+                            surf_diff%tdt_dyn(is:ie,js:je,:),         &!miz
+                            surf_diff%qdt_dyn(is:ie,js:je,:),         &!miz
+                            surf_diff%dgz_dyn(is:ie,js:je,:),         &!miz
+                            surf_diff%ddp_dyn(is:ie,js:je,:),         &!miz
+			    hmint(is:ie,js:je),                       &!miz
                             cush           (is:ie,js:je),             &!
                             cbmf           (is:ie,js:je),             &!
+                            cgust          (is:ie,js:je),             &!
+	                    tke            (is:ie,js:je),             &
+                            pblhto         (is:ie,js:je),             &!miz
+                            rkmo           (is:ie,js:je),             &!miz
+                            taudpo         (is:ie,js:je),             &!miz
+                            exist_shconv   (is:ie,js:je,:),           &!
+                            exist_dpconv   (is:ie,js:je,:),           &!
                             pbltop(is:ie,js:je),         &!miz
-                            u_star, b_star, q_star,          &!miz
+                            u_star, b_star, q_star, shflx, lhflx,     &!miz
                             t,   r(:,:,:,1),   r,    u,  v,  w,         &
                             tm,  rm(:,:,:,1),  rm,   um, vm,            &
                             tdt, rdt(:,:,:,1), rdt, rdiag, udt, vdt,    &
@@ -2346,10 +2404,23 @@ real,dimension(:,:),    intent(inout)             :: gust
                            p_half, p_full, z_half, z_full, omega,    &
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
-                           cush           (is:ie,js:je),          &!
-                        cbmf           (is:ie,js:je),             &!
+                           surf_diff%tdt_rad(is:ie,js:je,:),         &!miz
+                           surf_diff%tdt_dyn(is:ie,js:je,:), 	     &!miz
+                           surf_diff%qdt_dyn(is:ie,js:je,:), 	     &!miz
+                           surf_diff%dgz_dyn(is:ie,js:je,:), 	     &!miz
+                           surf_diff%ddp_dyn(is:ie,js:je,:), 	     &!miz
+			   hmint(is:ie,js:je),                       &!miz
+                           cush           (is:ie,js:je),             &!
+                           cbmf           (is:ie,js:je),             &!
+                           cgust          (is:ie,js:je),             &!
+	                   tke            (is:ie,js:je),             &
+                           pblhto         (is:ie,js:je),             &!miz
+                           rkmo           (is:ie,js:je),             &!miz
+                           taudpo         (is:ie,js:je),             &!miz
+                           exist_shconv   (is:ie,js:je,:),           &!
+                           exist_dpconv   (is:ie,js:je,:),           &!
                             pbltop(is:ie,js:je),         &!miz
-                            u_star, b_star, q_star,          &!miz
+                            u_star, b_star, q_star, shflx, lhflx,    &!miz
                             t,   r(:,:,:,1),   r,    u,  v,  w,         &
                             tm,  rm(:,:,:,1),  rm,   um, vm,            &
                             tdt, rdt(:,:,:,1), rdt, rdiag, udt, vdt,    &
@@ -2840,8 +2911,8 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !---------------------------------------------------------------------
 !    deallocate the module variables.
 !---------------------------------------------------------------------
-      deallocate (diff_cu_mo, diff_t, diff_m, pbltop, cush, cbmf,  &
-                  convect, radturbten, r_convect)
+      deallocate (diff_cu_mo, diff_t, diff_m, pbltop,  hmint, cush, cbmf, cgust, tke, pblhto,&
+                  rkmo, taudpo, exist_shconv, exist_dpconv, convect, radturbten, r_convect)
       deallocate (fl_lsrain, fl_lssnow, fl_lsgrpl, fl_ccrain, fl_ccsnow, &
                   fl_donmca_snow, fl_donmca_rain, &
                   temp_last, q_last)
@@ -3090,6 +3161,14 @@ subroutine physics_driver_register_restart (Restart)
   id_restart = register_restart_field(Til_restart, fname, 'pbltop',     pbltop)
   id_restart = register_restart_field(Til_restart, fname, 'cush',       cush, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'cbmf',       cbmf, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'hmint',      hmint, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'cgust',      cgust, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'tke',        tke, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'pblhto',     pblhto, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'rkmo',       rkmo, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'taudpo',     taudpo, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'exist_shconv', exist_shconv, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'exist_dpconv', exist_dpconv, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'diff_t',     diff_t)
   id_restart = register_restart_field(Til_restart, fname, 'diff_m',     diff_m)
   id_restart = register_restart_field(Til_restart, fname, 'convect',    r_convect) 
