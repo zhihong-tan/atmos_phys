@@ -41,8 +41,8 @@ public  moistproc_mca, moistproc_ras, moistproc_lscale_cond, &
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
-version = '$Id: moistproc_kernels.F90,v 21.0 2014/12/15 21:43:35 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+version = '$Id: moistproc_kernels.F90,v 21.0.2.1 2015/02/25 23:37:34 Ming.Zhao Exp $'
+character(len=128) :: tagname = '$Name: am4f3_20150225_miz $'
 
 contains
 
@@ -775,8 +775,10 @@ end subroutine moistproc_strat_cloud
 !#######################################################################
 subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,            &
                              pfull, phalf, zfull, zhalf, omega, pblht,        &
-                             ustar, bstar, qstar, land, coldT, Aerosol,       &
-                             cush, cbmf, cmf, conv_calc_completed,            &
+                             ustar, bstar, qstar, shflx, lhflx, land, coldT, Aerosol, &!miz
+                             tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint, lat, lon, &!miz
+                             cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+			     cmf, conv_calc_completed,                        &
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -795,11 +797,14 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
   logical, intent(in)           :: do_strat, do_limit_uw, do_liq_num
   logical, intent(in), dimension(:)       :: tracers_in_uw
   logical, intent(in), dimension(:,:)     :: coldT, conv_calc_completed
-  real, intent(in),    dimension(:,:)     :: land, ustar, bstar, qstar, pblht
+  real, intent(in),    dimension(:,:)     :: land, ustar, bstar, qstar, shflx, lhflx, pblht, lat, lon
   real, intent(in),    dimension(:,:,:)   :: pfull, phalf, zfull, zhalf, omega, &
                                              t, q, u, v, available_cf_for_uw
   real, intent(in),    dimension(:,:,:,:) :: tracer
-  real, intent(inout), dimension(:,:)     :: lprec, fprec, precip, cush, cbmf
+  real, intent(inout), dimension(:,:)     :: lprec, fprec, precip, cush, cbmf, hmint, cgust
+  real, intent(inout), dimension(:,:)     :: tke, pblhto, rkmo, taudpo
+  integer, intent(inout), dimension(:,:,:) :: exist_shconv, exist_dpconv
+  real, intent(in),    dimension(:,:,:)   :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif !miz
   real, intent(inout), dimension(:,:)     :: rain_uw, snow_uw
   real, intent(inout), dimension(:,:,:)   :: tdt, qdt, udt, vdt,   &
                                              ttnd_conv, qtnd_conv, cmf
@@ -840,15 +845,17 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
       end do
 
       call uw_conv (is, js, Time, t, q, u, v, pfull, phalf, zfull, zhalf, &
-                    tracer, omega, dt, pblht, ustar, bstar, qstar, land,  &
-                    coldT, Aerosol, cush, do_strat,  conv_calc_completed, &
+                    tracer, omega, dt, pblht, ustar, bstar, qstar, shflx, lhflx, land,  &
+                    coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, &!miz
+                    hmint, lat, lon, cush, do_strat,  conv_calc_completed,       &
                     available_cf_for_uw, ttnd_uw, qtnd_uw, qltnd_uw,      &
                     qitnd_uw, qatnd_uw, qntnd_uw, utnd_uw, vtnd_uw,       &
                     rain_uw, snow_uw, cmf,                                &
                     thlflx, qtflx, precflx, liq_precflx, ice_precflx,     &
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
-                    shallow_droplet_number, cbmf, trcr,                   &
-                    qtruw, uw_wetdep)
+                    shallow_droplet_number, cbmf, cgust, tke, pblhto,     &
+		    rkmo, taudpo, exist_shconv, exist_dpconv,             &
+                    trcr, qtruw, uw_wetdep)
 
 !-------------------------------------------------------------------------
 !    currently qnitnd_uw is the tendency due to detrainment proportional 

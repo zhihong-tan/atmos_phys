@@ -11,8 +11,8 @@ MODULE CONV_UTILITIES_k_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 20.0 2013/12/13 23:21:37 fms Exp $'
-  character(len=128) :: tagname = '$Name: ulm $'
+  character(len=128) :: version = '$Id: conv_utilities_k.F90,v 20.0.4.1 2015/02/25 22:59:26 Ming.Zhao Exp $'
+  character(len=128) :: tagname = '$Name: am4f3_20150225_miz $'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------
@@ -21,17 +21,24 @@ MODULE CONV_UTILITIES_k_MOD
              ac_end_k, qsat_k, qses_k, exn_k, exn_init_k, exn_end_k, &
              findt_k, findt_init_k, findt_end_k, uw_params_init_k, &
              conden_k, pack_sd_k, pack_sd_lsm_k, extend_sd_k,  &
-             adi_cloud_k, check_tracer_realizability, qt_parcel_k
-
+             adi_cloud_k, check_tracer_realizability, qt_parcel_k, &
+	     qt_parcel_deep_k, qt_parcel_cgust, erfccc
 
 
 
 
  public sounding
  type sounding
-    logical  :: coldT
-    integer  :: kmax, kinv, ktoppbl, ktopconv
-    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, tke
+    logical  :: coldT, do_gust_qt
+    integer  :: kmax, kinv, ktoppbl, ktopconv, ksrc, src_choice, gqt_choice
+    real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, plev_cin
+    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre
+    real     :: tke, cgust, cgust0, cgust_max, sigma0
+    real     :: dpsum, hmint, hm_vadv0
+    real     :: tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int
+    real     :: tdt_rad_pbl, tdt_dyn_pbl, tdt_dif_pbl, qdt_dyn_pbl, qdt_dif_pbl
+    real     :: tdt_rad_fre, tdt_dyn_fre, tdt_dif_fre, qdt_dyn_fre, qdt_dif_fre
+    real     :: tdt_tot_fre, tdt_tot_pbl, dgz_dyn_int, ddp_dyn_int
     real, _ALLOCATABLE :: t     (:)_NULL, qv   (:)_NULL, u     (:)_NULL
     real, _ALLOCATABLE :: v     (:)_NULL, ql   (:)_NULL, qi    (:)_NULL
     real, _ALLOCATABLE :: qa    (:)_NULL, thc  (:)_NULL, qct   (:)_NULL
@@ -44,8 +51,14 @@ MODULE CONV_UTILITIES_k_MOD
     real, _ALLOCATABLE :: thvtop(:)_NULL, qn   (:)_NULL, qs    (:)_NULL
     real, _ALLOCATABLE :: am1   (:)_NULL, am2  (:)_NULL, am3   (:)_NULL
     real, _ALLOCATABLE :: am4   (:)_NULL
+    real, _ALLOCATABLE :: tdt_rad(:)_NULL, tdt_dyn(:)_NULL, qdt_dyn(:)_NULL
+    real, _ALLOCATABLE :: tdt_dif(:)_NULL, qdt_dif(:)_NULL
     real, _ALLOCATABLE :: hl    (:)_NULL, sshl (:)_NULL, hm    (:)_NULL
-    real, _ALLOCATABLE :: hms   (:)_NULL
+    real, _ALLOCATABLE :: hms   (:)_NULL, omg  (:)_NULL, hm_vadv(:)_NULL
+    real, _ALLOCATABLE :: tdt   (:)_NULL, dgz_dyn(:)_NULL, ddp_dyn(:)_NULL
+    real, _ALLOCATABLE :: qtflx_up(:)_NULL, qtflx_dn(:)_NULL
+    real, _ALLOCATABLE :: omega_up(:)_NULL, omega_dn(:)_NULL
+
 !++++yim     
     real, _ALLOCATABLE :: tr    (:,:)_NULL, sstr(:,:)_NULL
  end type sounding
@@ -137,8 +150,13 @@ contains
     integer, intent(in) :: kd, num_tracers
     type(sounding), intent(inout) :: sd
     
+    sd%do_gust_qt = .false.
     sd%coldT    = .false.
     sd%kmax     = kd
+    sd%plev_cin = 0.0
+    sd%src_choice = 0
+    sd%gqt_choice = 0
+    sd%ksrc     = 1
     sd%kinv     = 0
     sd%ktoppbl  = 0
     sd%ktopconv = 0
@@ -152,6 +170,29 @@ contains
     sd%delt     = 0.0
     sd%crh      = 0.0
     sd%tke      = 0.0
+    sd%cgust    = 0.0
+    sd%dpsum    = 0.0
+    sd%hmint    = 0.0
+    sd%hm_vadv0 = 0.0
+    sd%tdt_tot_pbl = 0.0
+    sd%tdt_tot_fre = 0.0
+    sd%tdt_rad_int = 0.0
+    sd%tdt_dyn_int = 0.0
+    sd%tdt_dif_int = 0.0
+    sd%qdt_dyn_int = 0.0
+    sd%dgz_dyn_int = 0.0
+    sd%ddp_dyn_int = 0.0
+    sd%qdt_dif_int = 0.0
+    sd%tdt_rad_pbl = 0.0
+    sd%tdt_dyn_pbl = 0.0
+    sd%tdt_dif_pbl = 0.0
+    sd%qdt_dyn_pbl = 0.0
+    sd%qdt_dif_pbl = 0.0
+    sd%tdt_rad_fre = 0.0
+    sd%tdt_dyn_fre = 0.0
+    sd%tdt_dif_fre = 0.0
+    sd%qdt_dyn_fre = 0.0
+    sd%qdt_dif_fre = 0.0
     allocate ( sd%t     (1:kd)); sd%t     =0.;
     allocate ( sd%qv    (1:kd)); sd%qv    =0.;
     allocate ( sd%u     (1:kd)); sd%u     =0.;
@@ -190,6 +231,19 @@ contains
     allocate ( sd%hm    (1:kd)); sd%hm    =0.;
     allocate ( sd%hms   (1:kd)); sd%hms   =0.;
     allocate ( sd%sshl  (1:kd)); sd%sshl  =0.;
+    allocate ( sd%omg   (1:kd)); sd%omg   =0.;
+    allocate ( sd%hm_vadv(1:kd)); sd%hm_vadv=0.;
+    allocate ( sd%qtflx_up(1:kd)); sd%qtflx_up=0.;
+    allocate ( sd%qtflx_dn(1:kd)); sd%qtflx_dn=0.;
+    allocate ( sd%omega_up(1:kd)); sd%omega_up=0.;
+    allocate ( sd%omega_dn(1:kd)); sd%omega_dn=0.;
+    allocate ( sd%tdt_rad (1:kd)); sd%tdt_rad =0.;
+    allocate ( sd%tdt_dyn (1:kd)); sd%tdt_dyn =0.;
+    allocate ( sd%qdt_dyn (1:kd)); sd%qdt_dyn =0.;
+    allocate ( sd%dgz_dyn (1:kd)); sd%dgz_dyn =0.;
+    allocate ( sd%ddp_dyn (1:kd)); sd%ddp_dyn =0.;
+    allocate ( sd%tdt_dif (1:kd)); sd%tdt_dif =0.;
+    allocate ( sd%qdt_dif (1:kd)); sd%qdt_dif =0.;
 !++++yim
     allocate ( sd%tr  (1:kd,1:num_tracers)); sd%tr  =0.;
     allocate ( sd%sstr  (1:kd,1:num_tracers)); sd%sstr  =0.;
@@ -205,8 +259,24 @@ contains
     
     sd1% ktopconv = sd % ktopconv
     sd1% kmax = sd % kmax
+    sd1% plev_cin   = sd % plev_cin
+    sd1% src_choice = sd % src_choice
+    sd1% gqt_choice = sd % gqt_choice
+    sd1% ksrc = sd % ksrc
+    sd1% zsrc = sd % zsrc
+    sd1% psrc = sd % psrc
+    sd1% thcsrc = sd % thcsrc
+    sd1% qctsrc = sd % qctsrc
+    sd1% hlsrc  = sd % hlsrc
     sd1% land = sd % land
     sd1% coldT= sd % coldT
+    sd1% tke  = sd % tke
+    sd1% do_gust_qt= sd % do_gust_qt
+    sd1% cgust= sd % cgust
+    sd1% cgust0= sd % cgust0
+    sd1% cgust_max= sd % cgust_max
+    sd1% sigma0= sd % sigma0
+    sd1% delt = sd % delt
     sd1%p     = sd%p;    sd1%z     =sd%z;
     sd1%ps    = sd%ps;   sd1%zs    =sd%zs;
     sd1%t     = sd%t;    sd1%qv    =sd%qv;
@@ -217,6 +287,7 @@ contains
     sd1%am3   = sd%am3;  sd1%am4   =sd%am4;
     sd1%hl    = sd%hl;   sd1%sshl  =sd%sshl;
     sd1%hm    = sd%hm;   sd1%hms   =sd%hms;
+    sd1%omg   = sd%omg;
 !++++yim
     sd1%tr  =sd%tr
   end subroutine sd_copy_k
@@ -230,7 +301,8 @@ contains
          sd%thv, sd%rh, sd%p, sd%z, sd%dp, sd%dz, sd%rho, sd%nu, sd%leff,     &
          sd%exner, sd%ps, sd%exners, sd%zs, sd%ssthc, sd%ssqct, sd%dudp,      &
          sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, sd%am4,&
-         sd%qs, sd%hl, sd%hm, sd%hms, sd%sshl, sd%tr, sd%sstr)
+         sd%qs, sd%hl, sd%hm, sd%hms, sd%sshl, sd%tr, sd%sstr,                &
+         sd%omg, sd%qtflx_up, sd%qtflx_dn, sd%omega_up, sd%omega_dn, sd%hm_vadv)
   end subroutine sd_end_k
 
 !#####################################################################
@@ -294,18 +366,22 @@ contains
 !#####################################################################
 
   subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint, &
-                      u, v, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,&
-                        tracers, sd, Uw_p)
+                      u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,&
+             tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif,&
+	     src_choice, tracers, sd, Uw_p)
 
     real,    intent(in)              :: land
     logical, intent(in)              :: coldT
     real,    intent(in)              :: delt
+    integer, intent(in)              :: src_choice
     real, intent(in), dimension(:)   :: pmid, zmid !pressure&height@mid level
     real, intent(in), dimension(:)   :: pint, zint !pressure&height@ interface level
-    real, intent(in), dimension(:)   :: u, v       !wind profile (m/s)
+    real, intent(in), dimension(:)   :: u, v, omg  !wind profile (m/s)
     real, intent(in), dimension(:)   :: t, qv      !temperature and specific humidity
     real, intent(in), dimension(:)   :: ql, qi, qa, qn !cloud tracers
     real, intent(in), dimension(:)   :: am1, am2, am3, am4  ! aerosal species
+    real, intent(in), dimension(:)   :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn
+    real, intent(in), dimension(:)   :: tdt_dif, qdt_dif
     real, intent(in), dimension(:,:) :: tracers        !env. tracers    
     type(sounding), intent(inout)    :: sd
     type(uw_params), intent(inout)    :: Uw_p
@@ -316,6 +392,7 @@ contains
 
     !Pack environmental sounding; layers are numbered from bottom up!=
     sd % kmax   = size(t)
+    sd % src_choice = src_choice
     sd % land   = land
     sd % coldT  = coldT
     sd % delt   = delt
@@ -338,11 +415,19 @@ contains
        sd % qn    (k) = max(qn(nk), 0.)
        sd % u     (k) = u(nk)
        sd % v     (k) = v(nk)
+       sd % omg   (k) = omg(nk)
        !yim's aerosol
        sd % am1  (k) = am1(nk)
        sd % am2  (k) = am2(nk)
        sd % am3  (k) = am3(nk)
        sd % am4  (k) = am4(nk)
+       sd % tdt_rad (k) = tdt_rad(nk)
+       sd % tdt_dyn (k) = tdt_dyn(nk)
+       sd % qdt_dyn (k) = qdt_dyn(nk)
+       sd % dgz_dyn (k) = dgz_dyn(nk)
+       sd % ddp_dyn (k) = ddp_dyn(nk)
+       sd % tdt_dif (k) = tdt_dif(nk)
+       sd % qdt_dif (k) = qdt_dif(nk)
 !++++yim
        do m=1, size(tracers,2)
           sd % tr (k,m) = tracers (nk,m)
@@ -363,9 +448,11 @@ contains
     integer :: k, kl, ktoppbl
     real    :: sshl0a, sshl0b, ssthc0a, ssthc0b, ssqct0a, ssqct0b
     real    :: hl0bot, thc0bot, qct0bot, hl0top, thc0top, qct0top
-    real    :: thj, qvj, qlj, qij, qse, qs_sum, qt_sum, dpsum
+    real    :: thj, qvj, qlj, qij, qse, qs_sum, qt_sum, dpsum, tmp
     real, dimension(size(sd%tr,2)) :: sstr0a, sstr0b
-
+    real    :: x1, x2, x3, xx1, xx2, xx3, q1, q2
+    integer :: kp1, km1, ksrc
+  
     sd % exners(0) = exn_k(sd%ps(0),Uw_p);
     if (doice) then
        sd%nu(:)= max(min((268. - sd % t(:))/20.,1.0),0.0);
@@ -377,7 +464,7 @@ contains
     sd % hl  (:) = Uw_p%cp_air*sd%t(:)+Uw_p%grav*sd%z(:)-  &
                    sd%leff(:)*(sd%ql(:)+sd%qi(:))
     sd % qint = 0.
-    sd % crh = 0.; qs_sum=0.; qt_sum=0.; !dpsum=0.;
+    sd % crh = 0.; qs_sum=0.; qt_sum=0.; sd%dpsum=0.;
     do k=1, sd%ktopconv !sd%kmax
        sd % dp    (k) = sd%ps(k-1)-sd%ps(k)
        sd % dz    (k) = sd%zs(k)  -sd%zs(k-1)
@@ -393,7 +480,7 @@ contains
        sd % qint      =sd % qint + sd%qct(k)*sd%dp(k)
        qs_sum = qs_sum + sd % qs(k)  * sd%dp(k)
        qt_sum = qt_sum + sd % qct(k) * sd%dp(k)
-       !dpsum = dpsum + sd%dp(k)
+       sd%dpsum = sd%dpsum + sd%dp(k)
     end do
     sd % qint = sd % qint / Uw_p%grav
     sd % crh  = qt_sum / qs_sum
@@ -474,6 +561,138 @@ contains
     sd % zinv    = sd % zs    (sd % kinv-1) 
     sd % thvinv  = sd % thvbot(sd % kinv)
     sd % pblht   = pblht
+    if (pblht.le.0) sd%pblht=sd%zs(1)-sd%zs(0)
+
+    qs_sum=0.; qt_sum=0.; 
+    do k=sd%kinv, sd%ktopconv
+       qs_sum = qs_sum + sd % qs(k)  * sd%dp(k)
+       qt_sum = qt_sum + sd % qct(k) * sd%dp(k)
+    end do
+    sd % crh_fre  = qt_sum / qs_sum
+    sd % crh = sd%crh_fre
+
+!determine source air property based on max hm within PBL
+    if (sd%src_choice.eq.0) then
+       ksrc=1
+    else if (sd%src_choice.eq.1) then
+       ksrc=1
+       tmp=sd%hm(1)
+       do k=1, sd%kinv
+       	  if (sd%hm(k) .gt. tmp) then
+       	     tmp=sd%hm(k)
+       	     ksrc=k
+      	  end if
+       end do
+    else if (sd%src_choice.eq.2) then
+       ksrc=1
+       tmp=sd%hm(1)
+       do k=1, sd%kmax
+       	  if (sd%hm(k) .gt. tmp .and. sd%p(k) .gt. 60000) then
+       	     tmp=sd%hm(k)
+       	     ksrc=k
+      	  end if
+       end do
+    endif
+    sd%ksrc  =ksrc
+    sd%zsrc  =sd%zs (ksrc)
+    sd%psrc  =sd%ps (ksrc)
+    sd%hlsrc =sd%hl (ksrc)
+    sd%thcsrc=sd%thc(ksrc)
+    sd%qctsrc=sd%qct(ksrc)
+
+    if (sd%do_gust_qt) then
+       call qt_parcel_cgust(sd%qctsrc, sd%qs(ksrc), sd%cgust, sd%cgust0, sd%cgust_max, &
+                            sd%sigma0, sd%land, sd%gqt_choice)
+    endif
+
+!    dpsum=0.; sd%thcsrc=0.
+!    do k=1, sd%kinv-1
+!       sd%thcsrc = sd%thcsrc + sd%thc(k)*sd%dp(k)
+!       dpsum = dpsum + sd%dp(k)
+!    end do
+!    sd%thcsrc=sd%thcsrc/dpsum
+!    ksrc=sd%ksrc
+!    sd%zsrc  =sd%zs(ksrc)
+!    sd%psrc  =sd%ps(ksrc)
+!    sd%hlsrc =Uw_p%cp_air*sd%thcsrc*sd%exners(ksrc)+Uw_p%grav*sd%zsrc-&
+!                                 sd%leff(ksrc)*(sd%ql(ksrc)+sd%qi(ksrc))
+!    sd%qctsrc=sd%qct(ksrc)
+
+!MSE begin-------------------
+    dpsum=0.;
+    sd % tdt_rad_pbl = 0.; 
+    sd % tdt_dyn_pbl = 0.; 
+    sd % tdt_dif_pbl = 0.; 
+    sd % qdt_dyn_pbl = 0.; 
+    sd % qdt_dif_pbl = 0.; 
+    do k=1, sd%kinv-1
+       sd % tdt_rad_pbl = sd%tdt_rad_pbl + sd%tdt_rad(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
+       sd % tdt_dyn_pbl = sd%tdt_dyn_pbl + sd%tdt_dyn(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
+       sd % tdt_dif_pbl = sd%tdt_dif_pbl + sd%tdt_dif(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
+       sd % qdt_dyn_pbl = sd%qdt_dyn_pbl + sd%qdt_dyn(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
+       sd % qdt_dif_pbl = sd%qdt_dif_pbl + sd%qdt_dif(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
+       dpsum = dpsum + sd%dp(k)
+    end do
+
+    do k=1, sd%ktopconv !sd%kmax
+       sd%ddp_dyn(k) = sd%ddp_dyn(k)*sd%hm(k)/sd%dp(k)
+    end do
+
+    sd % hmint = 0.;       !W/m2
+    sd % tdt_rad_int = 0.; !W/m2
+    sd % tdt_dyn_int = 0.; !W/m2
+    sd % tdt_dif_int = 0.; !W/m2
+    sd % qdt_dyn_int = 0.; !W/m2
+    sd % qdt_dif_int = 0.; !W/m2
+    sd % dgz_dyn_int = 0.; !W/m2
+    sd % ddp_dyn_int = 0.; !Pa
+    do k=1, sd%ktopconv
+       sd % hmint     = sd%hmint + sd%hm(k)*sd%dp(k)/Uw_p%grav
+       sd % tdt_rad_int=sd%tdt_rad_int + sd%tdt_rad(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
+       sd % tdt_dyn_int=sd%tdt_dyn_int + sd%tdt_dyn(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
+       sd % tdt_dif_int=sd%tdt_dif_int + sd%tdt_dif(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
+       sd % qdt_dyn_int=sd%qdt_dyn_int + sd%qdt_dyn(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
+       sd % qdt_dif_int=sd%qdt_dif_int + sd%qdt_dif(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
+       sd % dgz_dyn_int=sd%dgz_dyn_int + sd%dgz_dyn(k)*sd%dp(k)/Uw_p%grav
+       sd % ddp_dyn_int=sd%ddp_dyn_int + sd%ddp_dyn(k)*sd%dp(k)/Uw_p%grav
+    end do
+ 
+    sd % tdt_rad_fre = sd % tdt_rad_int - sd % tdt_rad_pbl
+    sd % tdt_dyn_fre = sd % tdt_dyn_int - sd % tdt_dyn_pbl
+    sd % tdt_dif_fre = sd % tdt_dif_int - sd % tdt_dif_pbl
+    sd % qdt_dyn_fre = sd % qdt_dyn_int - sd % qdt_dyn_pbl
+    sd % qdt_dif_fre = sd % qdt_dif_int - sd % qdt_dif_pbl
+
+    sd % tdt_tot_fre = sd % tdt_rad_fre + sd % tdt_dyn_fre + sd % tdt_dif_fre
+    sd % tdt_tot_pbl = sd % tdt_rad_pbl + sd % tdt_dyn_pbl + sd % tdt_dif_pbl
+
+    do k = 2,sd%ktopconv !sd%kmax-1
+       km1 = k-1
+       kp1 = k+1
+       x1 =sd%ps(k)  -sd%p (kp1)
+       x2 =sd%p (k)  -sd%ps(k)
+       x3 =sd%p (k)  -sd%p (kp1)
+       xx1=sd%ps(km1)-sd%p (k)
+       xx2=sd%p (km1)-sd%ps(km1)
+       xx3=sd%p (km1)-sd%p (k)
+       q2=(sd%hm(k)   *x1  + sd%hm(kp1)*x2  )/x3
+       q1=(sd%hm(km1) *xx1 + sd%hm(k)  *xx2 )/xx3
+       sd%hm_vadv(k)= -sd%omg(k)/Uw_p%grav*(q1-q2)/(sd%ps(km1)-sd%ps(k))!W/m2/Pa
+       tmp = -sd%omg(k)/Uw_p%grav*sd%qct(k)             !kg/m2/s
+       sd%qtflx_up(k)= max(tmp,0.0)
+       sd%qtflx_dn(k)= min(tmp,0.0)
+       sd%omega_up(k)= min(sd%omg(k),0.0)
+       sd%omega_dn(k)= max(sd%omg(k),0.0)
+    enddo
+    sd % hm_vadv0 = 0.; !W/m2
+    do k=1,sd%ktopconv !sd%kmax
+       sd%hm_vadv0 = sd%hm_vadv0 + sd%hm_vadv(k)*sd%dp(k)
+!       if (sd%hm(k) .gt. 365000 .and. sd%p(k) .lt. 7000) then
+!      	  sd%hm (k)=365000
+!	  sd%hms(k)=365000
+!       end if
+     end do
+!MSE end---------------------
   end subroutine extend_sd_k
 
 !#####################################################################
@@ -495,7 +714,7 @@ contains
     real    :: cin, cinlcl, plfc, thvubot, thvutop
     real    :: thj, qvj, qlj, qij, qse, thvj
     real    :: cape, plnb, chi, tmp, rhtmp
-    real    :: alpha
+    real    :: alpha, cin_plev, plev_cin
 
     call ac_clear_k(ac);
     ac%klcl=0; ac%klfc=0; ac%klnb=0; 
@@ -544,7 +763,9 @@ contains
     ac % hlsrc  = hlsrc
     ac % thcsrc = thcsrc
     ac % qctsrc = qctsrc
-
+    ac % usrc   = sd%u(sd%ktoppbl)
+    ac % vsrc   = sd%v(sd%ktoppbl)
+ 
     hl0lcl  = sd%hl (klcl)+sd%sshl (klcl)*(ac%plcl-sd%p(klcl))
     thc0lcl = sd%thc(klcl)+sd%ssthc(klcl)*(ac%plcl-sd%p(klcl))
     qct0lcl = sd%qct(klcl)+sd%ssqct(klcl)*(ac%plcl-sd%p(klcl))
@@ -588,7 +809,8 @@ contains
     CIN = 0.
     cinlcl = 0.
     plfc   = 0.
-
+    plev_cin = sd%plev_cin
+    cin_plev = 0.
     !define CIN based on LFC  
     do k = sd % kinv, kl-1
        if(k.eq.klcl-1) then !klcl-1 < layer < klcl
@@ -599,19 +821,25 @@ contains
           thvubot=thvutop; thvutop=ac % thv (k+1)
           call getcin_k(ac%plcl,thv0lcl,sd%ps(k+1),sd%thvtop(k+1),  &
                         thvubot,thvutop,plfc,cin,Uw_p)
+          if (sd%p(k) .gt. plev_cin) cin_plev = cin
           if(plfc.gt.0. .and. plfc.lt.ac%plcl) exit
        else
           thvubot=ac % thv (k); thvutop=ac % thv (k+1)
           call getcin_k(sd%ps(k),sd%thvtop(k),sd%ps(k+1),  &
                         sd%thvtop(k+1),thvubot,thvutop,plfc, cin, Uw_p)
+          if (sd%p(k) .gt. plev_cin) cin_plev = cin
           if(plfc.gt.0. .and. plfc.lt.ac%plcl) exit
        endif
     enddo
- 
-    ac % cin =cin; !CIN has been estimated
-    ac % plfc=plfc;
+    if (plfc.ge.ac%plcl) plfc = 0.
 
-    if (dofast .and. (ac%plfc .lt. 500.) ) return; !miz
+    if (plfc.lt.plev_cin) then
+       cin = cin_plev
+    endif
+    ac % cin =max(cin,0.); !CIN has been estimated
+    ac % plfc=plfc;
+    
+    if (dofast .and. (ac%plfc .lt. 50000.) ) return; !miz
 
     !calculate cape=================
     if (ac%plfc.eq.0.0) then
@@ -629,9 +857,11 @@ contains
           thvubot=ac % thv (k); thvutop=ac % thv (k+1)
           call getcape_k(sd%ps(k),sd%thvtop(k),sd%ps(k+1),  &
                          sd%thvtop(k+1),thvubot,thvutop,plnb,cape,Uw_p)
-          if(plnb.gt.0.) exit
+          if(plnb.gt.0.) then
+	     ac%klnb=k; exit
+          endif
        enddo
-       ac%cape=cape
+       ac%cape=max(cape,0.)
        ac%plnb=plnb
     end if
 
@@ -1829,6 +2059,100 @@ subroutine qt_parcel_k (qs, qstar, pblht, tke, land, gama, pblht0, tke0, lofacto
     qt    = max(qt, min(qttmp, qs))
  
   end subroutine qt_parcel_k
+!#####################################################################
 
+!#####################################################################
+subroutine qt_parcel_k1 (qt, qs, cgust, cgust0, sigma0, land)
+    real,    intent(in)    :: qs, cgust, cgust0, sigma0, land
+    real,    intent(inout) :: qt
+    real   :: qttmp, fact, qtwidth_max, qtwidth, dqt, avg, tmp
+
+    if (cgust.gt.0) then
+       qtwidth_max = max(min(qs-qt, qt), 0.)
+       tmp=cgust/(cgust0+cgust)
+       tmp=(tmp-0.5)/sqrt(2.*sigma0*sigma0)
+       fact=1-0.5*erfccc(tmp)
+!    	fact = sqrt(cgust/(cgust0+cgust))
+       dqt  = qtwidth_max*fact*0.5
+       qttmp= qt + dqt * land
+       qt   = max(0.1*qt, min(qttmp, qs))
+    endif
+ 
+  end subroutine qt_parcel_k1
+!#####################################################################
+
+!#####################################################################
+subroutine qt_parcel_deep_k (qs, tke, land, gama, tke0, hgt0, qt)
+    real,    intent(in)    :: qs,tke, land, gama, tke0, hgt0
+    real,    intent(inout) :: qt
+    real   :: qttmp, fact, qtwidth_max, qtwidth, dqt
+
+    qtwidth_max = max(min(qs-qt, qt), 0.)
+    fact = max(tke/tke0, 0.)
+    fact = min(gama*sqrt(fact),1.)
+    qtwidth = qtwidth_max*fact
+    if (hgt0.ge.0.5) then
+        dqt=qtwidth*(1.-sqrt(2.*(1.-hgt0)))
+    else
+	dqt=qtwidth*(sqrt(2.*hgt0)-1.)
+    end if
+    qttmp = qt + dqt * land
+    qt    = max(0.1*qt, min(qttmp, qs))
+ 
+  end subroutine qt_parcel_deep_k
+!#####################################################################
+
+!#####################################################################
+subroutine qt_parcel_cgust (qt, qs, cgust, cgust0, cgust_max, sigma0, land, gqt_choice)
+    real,    intent(in)    :: qs, cgust, cgust0, cgust_max, sigma0, land
+    integer, intent(in)    :: gqt_choice
+    real,    intent(inout) :: qt
+    real   :: qttmp, gustf, qtwidth_max, qtwidth, dqt, tmp
+
+    qtwidth_max = max(sigma0*qt, 0.); !qtwidth_max = max(min(qs-qt, qt), 0.)
+    tmp  = (cgust-cgust0)/cgust_max; !tmp = cgust/(cgust0+cgust)
+    tmp  = max(min(tmp,1.),0.)
+    tmp  = (tmp-0.5)*4. !scale tmp from [0 1] to [-2 2]
+    gustf= 1.-0.5*erfccc(tmp) !0<gusf<1
+    dqt  = qtwidth_max*gustf
+
+    if (gqt_choice .eq. 0) then
+       qttmp= qt + dqt * land
+    else if (gqt_choice .eq. 1) then
+       qttmp= qt + dqt
+    endif
+    qt = qttmp
+    !qt = min(qttmp,qs); !qt=max(0.1*qt,min(qttmp, qs))
+
+  end subroutine qt_parcel_cgust
+!#####################################################################
+
+
+!#####################################################################
+!#####################################################################
+
+  function erfccc(x)
+    !--------------------------------------------------------------
+    ! This numerical recipes routine calculates the complementary
+    ! error function.
+    !--------------------------------------------------------------
+   
+    real :: erfccc
+    real, intent(in) :: x 
+    real :: t,z
+   
+    z=abs(x)      
+    t=1./(1.+0.5*z)
+   
+    erfccc=t*exp(-z*z-1.26551223+t*(1.00002368+t*(.37409196+t*      &
+         (.09678418+t*(-.18628806+t*(.27886807+t*(-1.13520398+t*    &
+         (1.48851587+t*(-.82215223+t*.17087277)))))))))
+    
+    if (x.lt.0.) erfccc=2.-erfccc
+    
+  end function erfccc
+
+!#####################################################################
+!#####################################################################
 
 end MODULE CONV_UTILITIES_k_MOD
