@@ -231,7 +231,8 @@ integer           :: id_wentr_rad, id_wentr_pbl, id_radf,id_parcelkick,&
                      id_vsurf,     id_vshear,    id_vrad,   id_zradml, &
                      id_k_t_troen, id_k_m_troen, id_radfq,  id_pblfq,  &
                      id_zradbase,  id_zradtop,   id_convpbl,id_radpbl, &
-                     id_svpcp,     id_zinv,      id_fqinv,  id_invstr
+                     id_svpcp,     id_zinv,      id_fqinv,  id_invstr, &
+                     id_convect
      
 !-----------------------------------------------------------------------
 !
@@ -247,8 +248,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 19.0 2012/01/06 20:09:20 fms Exp $'
-character(len=128) :: Tagname = '$Name: ulm $'
+character(len=128) :: Version = '$Id: entrain.F90,v 19.0.14.1 2015/02/12 20:36:04 Chris.Golaz Exp $'
+character(len=128) :: Tagname = '$Name: ulm_convect_fix_cjg $'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !
@@ -625,7 +626,10 @@ real                           :: dellat, dellon
             'Frequency of inversions at altitudes less than 3000 m',   &
             'fraction', missing_value=missing_value )
               
-                        
+       id_convect = register_diag_field (mod_name, 'convect',          &
+            axes(1:2), time,                                           &
+            'frequency of convective precipitation', 'none' )
+
 !-----------------------------------------------------------------------
 ! 
 !      subroutine end
@@ -1674,7 +1678,7 @@ character(len=16) :: mon
             id_zradbase   > 0 .or. id_radpbl    > 0 .or.               &
             id_zradtop    > 0 .or. id_zradml    > 0 .or.               &
             id_svpcp      > 0 .or. id_vsurf     > 0 .or.               &
-            id_vshear     > 0  ) then 
+            id_vshear     > 0 .or. id_convect   > 0 ) then 
 
           mask3(:,:,1:(nlev+1)) = 1.
           if (present(kbot)) then
@@ -1823,7 +1827,19 @@ character(len=16) :: mon
           if ( id_invstr > 0 ) then
                  used = send_data ( id_invstr, invstr, time, is, js )
           end if
-              
+             
+          !----------------------------------------------
+          !
+          ! Frequency of convective precipitation
+          !
+          if ( id_convect > 0 ) then
+               rtmp(:,:,1) = 0.0
+               where (convect)
+                 rtmp(:,:,1) = 1.0
+               end where
+               used = send_data ( id_convect, rtmp(:,:,1), time, is, js )
+          end if
+
        end if  ! do diagnostics if
        
 !-----------------------------------------------------------------------
