@@ -47,8 +47,13 @@ type surf_diff_type
                                    dflux_t => NULL(),   &
                                    delta_t => NULL(),   &
                                    delta_u => NULL(),   &
-                                   delta_v => NULL(), &
-                                   sst_miz => NULL()
+                                   delta_v => NULL()
+  real, pointer, dimension(:,:,:) :: tdt_dyn => NULL(), &
+  		 		     qdt_dyn => NULL(), &
+  		 		     dgz_dyn => NULL(), &
+  		 		     ddp_dyn => NULL(), &
+   				     tdt_rad => NULL()   !miz
+
   real, pointer, dimension(:,:,:) :: dflux_tr => NULL(),& ! tracer flux tendency
                                      delta_tr => NULL()   ! tracer tendency
 end type surf_diff_type
@@ -84,8 +89,8 @@ integer :: liq_wat, ice_wat, cld_amt, liq_drp, ice_num
 
 !--------------------- version number ---------------------------------
 
-character(len=128) :: version = '$Id: vert_diff.F90,v 21.0 2014/12/15 21:46:30 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id: vert_diff.F90,v 21.0.2.1 2015/03/03 20:07:40 Ming.Zhao Exp $'
+character(len=128) :: tagname = '$Name: am4f3_20150225_miz $'
 logical            :: module_is_initialized = .false.
 
 real, parameter :: d608 = (RVGAS-RDGAS)/RDGAS
@@ -180,7 +185,7 @@ subroutine vert_diff_init (Tri_surf, idim, jdim, kdim,    &
 
  endif
 
- call alloc_surf_diff_type ( Tri_surf, idim, jdim, ntprog )
+ call alloc_surf_diff_type ( Tri_surf, idim, jdim, kdim, ntprog )
  
  do_conserve_energy = do_conserve_energy_in
 
@@ -233,17 +238,21 @@ end subroutine vert_diff_init
 
 !#######################################################################
 
-subroutine alloc_surf_diff_type ( Tri_surf, idim, jdim, ntprog )
+subroutine alloc_surf_diff_type ( Tri_surf, idim, jdim, kdim, ntprog ) !miz
 
 type(surf_diff_type), intent(inout) :: Tri_surf
-integer,              intent(in)    :: idim, jdim, ntprog
+integer,              intent(in)    :: idim, jdim, kdim, ntprog !miz
 
     allocate( Tri_surf%dtmass    (idim, jdim) ) ; Tri_surf%dtmass  = 0.0
     allocate( Tri_surf%dflux_t   (idim, jdim) ) ; Tri_surf%dflux_t = 0.0
     allocate( Tri_surf%delta_t   (idim, jdim) ) ; Tri_surf%delta_t = 0.0
     allocate( Tri_surf%delta_u   (idim, jdim) ) ; Tri_surf%delta_u = 0.0
     allocate( Tri_surf%delta_v   (idim, jdim) ) ; Tri_surf%delta_v = 0.0
-    allocate( Tri_surf%sst_miz   (idim, jdim) ) ; Tri_surf%sst_miz = 280.0 !miz
+    allocate( Tri_surf%tdt_rad   (idim, jdim, kdim) ) ; Tri_surf%tdt_rad = 0.0 !miz
+    allocate( Tri_surf%tdt_dyn   (idim, jdim, kdim) ) ; Tri_surf%tdt_dyn = 0.0 !miz
+    allocate( Tri_surf%qdt_dyn   (idim, jdim, kdim) ) ; Tri_surf%qdt_dyn = 0.0 !miz
+    allocate( Tri_surf%dgz_dyn   (idim, jdim, kdim) ) ; Tri_surf%dgz_dyn = 0.0 !miz
+    allocate( Tri_surf%ddp_dyn   (idim, jdim, kdim) ) ; Tri_surf%ddp_dyn = 0.0 !miz
     allocate( Tri_surf%dflux_tr  (idim, jdim, ntprog) ) ; Tri_surf%dflux_tr = 0.0
     allocate( Tri_surf%delta_tr  (idim, jdim, ntprog) ) ; Tri_surf%delta_tr = 0.0
 
@@ -260,7 +269,11 @@ type(surf_diff_type), intent(inout) :: Tri_surf
       deallocate( Tri_surf%delta_t   )
       deallocate( Tri_surf%delta_u   )
       deallocate( Tri_surf%delta_v   )
-      deallocate( Tri_surf%sst_miz   )!miz
+      deallocate( Tri_surf%tdt_rad   )!miz
+      deallocate( Tri_surf%tdt_dyn   )!miz
+      deallocate( Tri_surf%qdt_dyn   )!miz
+      deallocate( Tri_surf%dgz_dyn   )!miz
+      deallocate( Tri_surf%ddp_dyn   )!miz
       deallocate( Tri_surf%dflux_tr  )
       deallocate( Tri_surf%delta_tr  )
 
