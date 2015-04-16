@@ -207,11 +207,6 @@ integer :: nqn           ! tracer index for cloud droplet number
 integer :: nqni          ! tracer index for ice crystal number
 integer :: nqr, nqs, nqg ! tracer index for rainwat, snowwat and graupel           
 
-!---------------------------------------------------------------------
-!     indices for cloud schemes
-!     Microphysics index (clouds actually used)
-
-integer :: istrat, icell, imeso, ishallow
 
 !----------------------------------------------------------------------
 !     miscellaneous variables:
@@ -764,6 +759,11 @@ type(clouds_from_moist_block_type), intent(in)       :: Moist_clouds_block
 ! locally define indices to make code more readable
       integer :: index_strat, index_cell, index_meso, index_shallow
 
+!     indices for cloud schemes
+!     Microphysics index (clouds actually used)
+
+integer :: istrat, icell, imeso, ishallow
+
 !---------------------------------------------------------------------
 !   local variables:
 !
@@ -1020,6 +1020,7 @@ type(clouds_from_moist_block_type), intent(in)       :: Moist_clouds_block
 !    ponding to no clouds, increment the points counter, and continue. 
 !----------------------------------------------------------------------
             else
+!$OMP ATOMIC UPDATE
               num_pts = num_pts + size(press,1)*size(press,2)
             endif
           endif
@@ -1925,6 +1926,7 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 
       integer :: i, j, k, n, ncld
       integer :: meso, cell
+      integer :: istrat, icell, imeso, ishallow
 
 !---------------------------------------------------------------------
 !    total-cloud specification properties need be defined only when
@@ -1932,6 +1934,18 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !---------------------------------------------------------------------
 
       ncld = size(Cloud_microphys,1)
+
+  ! indices for cloud types in microphysics type
+      istrat=0
+      icell=0
+      imeso=0
+      ishallow=0
+      do n = 1, ncld
+         if (trim(Cloud_microphys(n)%scheme_name) == 'strat_cloud') istrat = n
+         if (trim(Cloud_microphys(n)%scheme_name) == 'donner_meso') imeso  = n
+         if (trim(Cloud_microphys(n)%scheme_name) == 'donner_cell') icell  = n
+         if (trim(Cloud_microphys(n)%scheme_name) == 'uw_conv')     ishallow = n
+      enddo
 
 !----------------------------------------------------------------------
 !    define the random overlap cloud fraction as the sum of the
