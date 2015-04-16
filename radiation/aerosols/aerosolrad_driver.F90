@@ -182,8 +182,9 @@ end subroutine aerosolrad_driver_init
 
 !######################################################################
 
-subroutine aerosolrad_driver_time_vary (Rad_time)
-type(time_type),         intent(in)     :: Rad_time
+subroutine aerosolrad_driver_time_vary (Rad_time, Aerosolrad_control)
+type(time_type),               intent(in) :: Rad_time
+type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 
 !-------------------------------------------------------------------
 !    verify that this module has been initialized. if not, exit.
@@ -194,7 +195,7 @@ type(time_type),         intent(in)     :: Rad_time
 
 !-------------------------------------------------------------------
       call aerosol_time_vary (Rad_time, Aerosol_rad)
-      call aerosolrad_package_time_vary (Rad_time)
+      call aerosolrad_package_time_vary (Rad_time, Aerosolrad_control)
 !-------------------------------------------------------------------
 
 end subroutine aerosolrad_driver_time_vary
