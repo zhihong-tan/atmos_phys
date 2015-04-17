@@ -32,7 +32,7 @@
                                get_tracer_indices, &
                                query_method,       &
                                NO_TRACER
- use  rad_utilities_mod,  only : aerosol_type
+ use  aerosol_types_mod,  only : aerosol_type
  use  aer_ccn_act_mod,    only : aer_ccn_act, aer_ccn_act2
 !---------------------------------------------------------------------
  implicit none

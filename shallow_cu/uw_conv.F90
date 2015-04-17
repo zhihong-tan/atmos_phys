@@ -16,7 +16,7 @@ MODULE UW_CONV_MOD
   use  sat_vapor_pres_mod,only : sat_vapor_pres_init
   use atmos_tracer_utilities_mod, only : get_wetdep_param
 
-  use  rad_utilities_mod, only : aerosol_type
+  use  aerosol_types_mod, only : aerosol_type
   
   use  aer_ccn_act_mod, only :   aer_ccn_act_init
   use  conv_utilities_mod,only :   uw_params_init
