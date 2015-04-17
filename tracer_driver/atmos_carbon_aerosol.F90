@@ -29,7 +29,7 @@ use interpolator_mod,           only:  interpolate_type, interpolator_init, &
                                        unset_interpolator_time_flag, &
                                        interpolator, interpolator_end, &
                                        CONSTANT, INTERP_WEIGHTED_P
-use constants_mod,              only : PI, GRAV, RDGAS
+use constants_mod,              only : PI, GRAV, RDGAS, WTMAIR
 implicit none
 private
 !-----------------------------------------------------------------------
@@ -57,6 +57,8 @@ integer :: id_emisbb, id_omemisbb_col
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
 integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisoc
 integer :: id_bc_tau
+
+integer :: id_SOA_prod           = 0
 !----------------------------------------------------------------------
 !--- Interpolate_type variable containing all the information needed to
 ! interpolate the emission provided in the netcdf input file.
@@ -71,6 +73,8 @@ type(interpolate_type),save  ::ombf_aerosol_interp
 type(interpolate_type),save  ::omsh_aerosol_interp
 type(interpolate_type),save  ::omna_aerosol_interp
 type(interpolate_type),save  ::omss_aerosol_interp
+type(interpolate_type),save  ::soa_aerosol_interp
+
 ! Initial calendar time for model
 type(time_type) :: model_init_time
 
@@ -87,6 +91,7 @@ type(time_type), save :: ombf_offset
 type(time_type), save :: omsh_offset
 type(time_type), save :: omna_offset
 type(time_type), save :: omss_offset
+type(time_type), save :: soa_offset
 
 ! timeseries which is mapped to model initial time
 type(time_type), save :: bcff_entry
@@ -100,6 +105,7 @@ type(time_type), save :: ombf_entry
 type(time_type), save :: omsh_entry
 type(time_type), save :: omna_entry
 type(time_type), save :: omss_entry
+type(time_type), save :: soa_entry
 
 ! The model initial time is later than the XXX_dataset_entry time  ?
 logical, save    :: bcff_negative_offset
@@ -113,6 +119,7 @@ logical, save    :: ombf_negative_offset
 logical, save    :: omsh_negative_offset
 logical, save    :: omna_negative_offset
 logical, save    :: omss_negative_offset
+logical, save    :: soa_negative_offset
 
 integer, save    :: bcff_time_serie_type
 integer, save    :: bcbb_time_serie_type
@@ -125,6 +132,7 @@ integer, save    :: ombf_time_serie_type
 integer, save    :: omsh_time_serie_type
 integer, save    :: omna_time_serie_type
 integer, save    :: omss_time_serie_type
+integer, save    :: soa_time_serie_type
 !----------------------------------------------------------------------
 !-------- namelist  ---------
 character(len=80) :: bcff_filename = 'carbon_aerosol_emission.nc'
@@ -138,6 +146,7 @@ character(len=80) :: ombf_filename = 'carbon_aerosol_emission.nc'
 character(len=80) :: omsh_filename = 'carbon_aerosol_emission.nc'
 character(len=80) :: omna_filename = 'carbon_aerosol_emission.nc'
 character(len=80) :: omss_filename = 'gocart_emission.nc'
+character(len=80) :: soa_filename  = 'gas_conc_3D.nc'
 
 integer :: i
 character(len=80), save, dimension(1) :: bcff_emission_name = (/' '/)
@@ -163,6 +172,7 @@ character(len=80), dimension(1) :: ombf_input_name = (/' '/)
 character(len=80), dimension(1) :: omsh_input_name = (/' '/)
 character(len=80), dimension(1) :: omna_input_name = (/' '/)
 character(len=80), dimension(1) :: omss_input_name = (/' '/)
+character(len=80), dimension(1) :: gas_conc_name = (/' '/)
 ! Default values for carbon_aerosol_nml
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! FOSSIL FUEL source can be either:
@@ -236,6 +246,11 @@ integer, dimension(6) :: omna_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 character(len=80)     :: omss_source = ' '
 character(len=80)     :: omss_time_dependency_type = 'constant'
 integer, dimension(6) :: omss_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+!!!!
+character(len=80)     :: soa_source = ' '
+character(len=80)     :: soa_time_dependency_type = 'constant'
+integer, dimension(6) :: soa_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
+!!!
 real, save :: coef_omss_emis
 real :: omss_coef=-999.
 logical               :: do_dynamic_bc = .false.
@@ -277,7 +292,9 @@ namelist /carbon_aerosol_nml/ &
  do_dynamic_bc, bcage, bcageslow,            &
  do_dynamic_om, omage, omageslow,            &
  frac_bc_phobic, frac_bc_philic, frac_om_phobic, frac_om_philic, &
- frac_bcbb_philic, frac_bcbb_phobic
+ frac_bcbb_philic, frac_bcbb_phobic,&
+ soa_source, gas_conc_name,soa_filename, &
+ soa_time_dependency_type, soa_dataset_entry
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -300,8 +317,7 @@ type(time_type)                        :: ombf_time
 type(time_type)                        :: omsh_time
 type(time_type)                        :: omna_time
 type(time_type)                        :: omss_time
-
-
+type(time_type)                        :: soa_time
 
 contains
 
@@ -377,9 +393,12 @@ real, dimension(size(bcphob,1),size(bcphob,2)) ::          &
 real, dimension(size(omphob,1),size(omphob,2)) ::          &
    omemisbf, omemissh, omemisbg, dmso, omemisocean
 real,dimension(size(bcphob,1),size(bcphob,2)) :: bc_emis, om_emis
-real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::zzz1,  &
-                                                               oh_conc1
+real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::zzz1, &
+                                       oh_conc1, c4h10_conc, soa_chem, soa_dt
 !
+real, parameter                            :: wtm_C4H10 = 58.
+real, parameter                            :: yield_soa = 0.1
+
 !-----------------------------------------------------------------------
 !
       id=size(bcphob,1); jd=size(bcphob,2); kd=size(bcphob,3)
@@ -772,6 +791,20 @@ real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::zzz1,  &
         omphob_sink = 0.0
       endwhere
     endif
+!-------------------------------------
+    if (soa_source .ne. ' ') then 
+      C4H10_conc(:,:,:)=0.0
+      call interpolator( soa_aerosol_interp, soa_time, phalf, c4h10_conc, &
+                       trim(gas_conc_name(1)), is, js)
+      soa_dt(:,:,:) = 1.55E-11 * exp( -540./t(:,:,:) ) *yield_soa &
+                * C4H10_conc(:,:,:)*wtm_C4H10/wtmAIR*oh_conc1(:,:,:)
+      soa_chem(:,:,:)=soa_dt(:,:,:)*pwt(:,:,:)
+      if (id_soa_prod > 0) then
+        used = send_data ( id_soa_prod, &
+              soa_chem, diag_time,is_in=is,js_in=js,ks_in=1)
+      endif
+      omphil_emis= omphil_emis + soa_dt
+    endif
 
 !------- tendency ------------------
 
@@ -779,8 +812,6 @@ real,dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) ::zzz1,  &
       omphil_dt = omphil_emis + omphob_sink
 
 !-----------------------------------------------------------------
-
-
 !
 ! Send registered results to diag manager
 !
@@ -1041,6 +1072,99 @@ integer ::  unit, ierr, io, logunit
    endif
 
 30        format (A,' was initialized as tracer number ',i2)
+
+    if (soa_source .ne. ' ') then
+      n = get_tracer_index(MODEL_ATMOS,'SOA')
+      if (n>0) then
+        if (mpp_pe() == mpp_root_pe()) &
+          write (*,*) '***WARNING (atmos_carbonaceous): SOA is calculated twice!!!'
+        if (mpp_pe() == mpp_root_pe()) &
+          write (logunit,*) '***WARNING (atmos_carbonaceous): SOA is calculated twice!!!'
+      endif
+      soa_offset = set_time (0,0)
+      soa_entry = set_time (0,0)
+      soa_negative_offset = .false.
+      soa_time_serie_type = 1
+!    Set time for input file base on selected time dependency.
+!---------------------------------------------------------------------
+      if (trim(soa_time_dependency_type) == 'constant' ) then
+        soa_time_serie_type = 1
+        soa_offset = set_time(0, 0)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'soa are constant in atmos_carbon_aerosol module'
+        endif
+!---------------------------------------------------------------------
+!    a dataset entry point must be supplied when the time dependency
+!    for soa is selected.
+!---------------------------------------------------------------------
+      else if (trim(soa_time_dependency_type) == 'time_varying') then
+        soa_time_serie_type = 3
+        if (soa_dataset_entry(1) == 1 .and. &
+            soa_dataset_entry(2) == 1 .and. &
+            soa_dataset_entry(3) == 1 .and. &
+            soa_dataset_entry(4) == 0 .and. &
+            soa_dataset_entry(5) == 0 .and. &
+            soa_dataset_entry(6) == 0 ) then
+          soa_entry = model_init_time
+        else
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to soa_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+          soa_entry  = set_date (soa_dataset_entry(1), &
+                                  soa_dataset_entry(2), &
+                                  soa_dataset_entry(3), &
+                                  soa_dataset_entry(4), &
+                                  soa_dataset_entry(5), &
+                                  soa_dataset_entry(6))
+        endif
+        call print_date (soa_entry , str= &
+          'Data from soa timeseries at time:')
+        call print_date (model_init_time , str= &
+          'This data is mapped to model time:')
+        soa_offset = soa_entry - model_init_time
+        if (model_init_time > soa_entry) then
+          soa_negative_offset = .true.
+        else
+          soa_negative_offset = .false.
+        endif
+      else if (trim(soa_time_dependency_type) == 'fixed_year') then
+        soa_time_serie_type = 2
+        if (soa_dataset_entry(1) == 1 .and. &
+            soa_dataset_entry(2) == 1 .and. &
+            soa_dataset_entry(3) == 1 .and. &
+            soa_dataset_entry(4) == 0 .and. &
+            soa_dataset_entry(5) == 0 .and. &
+            soa_dataset_entry(6) == 0 ) then
+           call error_mesg ('atmos_carbon_aerosol_mod', &
+            'must set soa_dataset_entry when using fixed_year source', FATAL)
+        endif
+!----------------------------------------------------------------------
+!    define the offset from model base time (obtained from diag_table)
+!    to bcff_dataset_entry as a time_type variable.
+!----------------------------------------------------------------------
+        soa_entry  = set_date (soa_dataset_entry(1), &
+                                  2,1,0,0,0)
+        call error_mesg ('atmos_carbon_aerosol_mod', &
+           'soa is defined from a single annual cycle &
+                &- no interannual variation', NOTE)
+        if (mpp_pe() == mpp_root_pe() ) then
+          print *, 'soa correspond to year :', &
+                    soa_dataset_entry(1)
+        endif
+     endif
+     if (trim(gas_conc_name(1)) .eq. ' ') gas_conc_name(1)='C4H10'
+     call interpolator_init (soa_aerosol_interp, trim(soa_filename),  &
+                             lonb, latb,&
+                             data_out_of_bounds=  (/CONSTANT/), &
+                             data_names = gas_conc_name, &
+                             vert_interp=(/INTERP_WEIGHTED_P/) )
+
+      id_SOA_prod    = register_diag_field ( mod_name,       &
+                      'SOA_prod',axes(1:3),Time,            &
+                      'SOA production by C4H10 + OH',        &
+                      'kg/m2/s')
+    endif
 !
 !   Register Emissions as static fields (monthly)
 !
@@ -1141,6 +1265,7 @@ integer ::  unit, ierr, io, logunit
                     'bcphob aging lifetime', 'days' )
 
 !----------------------------------------------------------------------
+
 !    initialize namelist entries
 !----------------------------------------------------------------------
         bcff_offset = set_time (0,0)
@@ -2620,6 +2745,34 @@ type(time_type), intent(in) :: model_time
                                       (omss_aerosol_interp, omss_time)
   endif
 
+  if (soa_source .ne. ' ') then 
+    if(soa_time_serie_type .eq. 3) then
+       if (soa_negative_offset) then
+         soa_time = model_time - soa_offset
+       else
+         soa_time = model_time + soa_offset
+       endif
+     else
+       if(soa_time_serie_type .eq. 2 ) then
+         call get_date (soa_entry, yr, dum,dum,dum,dum,dum)
+         call get_date (model_time, mo_yr, mo, dy, hr, mn, sc)
+         if (mo ==2 .and. dy == 29) then
+           dayspmn = days_in_month(soa_entry)
+           if (dayspmn /= 29) then
+             soa_time = set_date (yr, mo, dy-1, hr, mn, sc)
+           else
+             soa_time = set_date (yr, mo, dy, hr, mn, sc)
+           endif
+         else
+           soa_time = set_date (yr, mo, dy, hr, mn, sc)
+         endif
+       else
+         soa_time = model_time
+       endif
+     endif
+    call obtain_interpolator_time_slices (soa_aerosol_interp, soa_time)
+  endif
+
 
 end subroutine atmos_carbon_aerosol_time_vary 
 
@@ -2673,6 +2826,10 @@ subroutine atmos_carbon_aerosol_endts
      call unset_interpolator_time_flag (omss_aerosol_interp)
   endif
 
+  if ( trim(soa_source).ne. ' ') then
+    call unset_interpolator_time_flag (soa_aerosol_interp)
+  endif
+
 
 end subroutine atmos_carbon_aerosol_endts 
 
@@ -2706,8 +2863,8 @@ end subroutine atmos_carbon_aerosol_endts
       call interpolator_end ( omsh_aerosol_interp)
       call interpolator_end ( omna_aerosol_interp)
       call interpolator_end ( omss_aerosol_interp)
+      call interpolator_end ( soa_aerosol_interp)  
       module_is_initialized = .FALSE.
-
  end subroutine atmos_carbon_aerosol_end
 !</SUBROUTINE>
 !#######################################################################
