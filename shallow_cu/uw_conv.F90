@@ -146,6 +146,10 @@ MODULE UW_CONV_MOD
   real    :: stime0 = 0.5
   real    :: dtime0 = 0.5
 
+  integer :: tracer_check_type = -999 !legacy
+  !<f1p: use legacy check when false, use sj's routines to fill in negative if true>
+
+
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin,  &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let,  &
@@ -155,7 +159,8 @@ MODULE UW_CONV_MOD
        do_debug, cush_choice, pcp_min, pcp_max, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel,&
-       do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice
+       do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
+	   tracer_check_type
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -294,7 +299,8 @@ MODULE UW_CONV_MOD
 
 
   integer, allocatable :: id_tracerdt_uwc(:), id_tracerdt_uwc_col(:), &
-                          id_tracerdtwet_uwc(:), id_tracerdtwet_uwc_col(:)
+                          id_tracerdtwet_uwc(:), id_tracerdtwet_uwc_col(:), &
+                          id_tracerdt_uwc_nc(:), id_tracerdt_uwc_col_nc(:), id_rn(:)
   integer, allocatable :: id_trevp_uwc(:), id_trevp_uwd(:)
 
 !========Option for deep convection=======================================
@@ -789,10 +795,18 @@ contains
 
     if ( ntracers>0 ) then
       allocate(id_tracerdt_uwc(ntracers), id_tracerdt_uwc_col(ntracers) )
-       allocate(id_tracerdtwet_uwc(ntracers), id_tracerdtwet_uwc_col(ntracers))
+      allocate(id_tracerdt_uwc_nc(ntracers), id_tracerdt_uwc_col_nc(ntracers)) 
+      allocate(id_rn(ntracers)) 
+      allocate(id_tracerdtwet_uwc(ntracers), id_tracerdtwet_uwc_col(ntracers))
        allocate(id_trevp_uwc(ntracers))
        allocate(id_trevp_uwd(ntracers))
       do nn = 1,ntracers
+         id_rn(nn) = &
+            register_diag_field (mod_name, trim(tracername(nn))//'_rscale', &
+                                    axes(1:3), Time, &
+                                  trim(tracername(nn)) //' correction', &
+                                  'none', missing_value=mv)
+
          id_tracerdt_uwc(nn) = &
             register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc', &
                                     axes(1:3), Time, &
@@ -802,6 +816,16 @@ contains
               register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc_col', &
                                      axes(1:2), Time, &
                                    trim(tracername(nn)) //' column tendency from uw_conv', &
+                                   trim(tracer_units(nn))//'*(kg/m2)/s', missing_value=mv)
+         id_tracerdt_uwc_nc(nn) = &
+            register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc_nc', &
+                                    axes(1:3), Time, &
+                                  trim(tracername(nn)) //' tendency from uw_conv before correction', &
+                                  trim(tracer_units(nn))//'/s', missing_value=mv)
+            id_tracerdt_uwc_col_nc(nn) = &
+              register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc_col_nc', &
+                                     axes(1:2), Time, &
+                                   trim(tracername(nn)) //' column tendency from uw_conv before correction', &
                                    trim(tracer_units(nn))//'*(kg/m2)/s', missing_value=mv)
            id_tracerdtwet_uwc(nn) = &
               register_diag_field (mod_name, trim(tracername(nn))//'dt_uwc_wet', &
@@ -968,6 +992,9 @@ contains
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw
     real :: qtin, dqt, temp_1
+    
+    !f1p
+    real, dimension(size(tracers,1), size(tracers,2), size(tracers,3), size(tracers,4)) :: trtend_nc, rn_diag
 
 !========Option for deep convection=======================================
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: uten_d, vten_d, tten_d, &
@@ -977,6 +1004,9 @@ contains
     real, dimension(size(tb,1),size(tb,2)) :: dcapedm_d, dcwfndm_d, denth_d, dting_d, dqtmp_d, cbmf_d
     real, dimension(size(tracers,1),size(tracers,2),size(tracers,3),size(tracers,4)) :: trevp_d, trevp_s
     real, dimension(size(tracers,3),size(tracers,4)) :: trtend_t, trwet_t
+!f1p
+    real, dimension(size(tracers,3),size(tracers,4)) :: trtend_t_nc, trwet_t_nc, rn
+!
     type(randomNumberStream), dimension(size(tb,1), size(tb,2)) :: streams
     real, dimension(size(tb,1),size(tb,2)) :: rand
     integer :: iseed
@@ -998,6 +1028,7 @@ contains
     integer ktop_tmp, kbot_tmp
     real :: tten_intg, qvten_intg, cp_inv, half_delt
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tten_forc, qten_forc
+    real, dimension(size(tb,3)) :: tten_tmp, qvten_tmp !f1p
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tten_rad
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: dissipative_heat
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tdt_dif_l
@@ -1623,8 +1654,11 @@ contains
             trtend_t = ct%trten
             trwet_t  = ct%trwet
           else
-            call check_tracer_realizability (kmax, size(trtend,4), delt, &
-                                           cp%tr, ct%trten, ct%trwet) 
+!f1p
+!            call check_tracer_realizability (kmax, size(trtend,4), delt, &
+!                                           cp%tr, ct%trten, ct%trwet) 
+             call check_tracer_realizability (kmax, size(trtend,4), delt, &
+                                           cp%tr, ct%trten, ct%trwet, pmass(i,j,:), tracer_check_type )
             do k = 1,cp%ltop
               nk = kmax+1-k
               do n = 1, size(trtend,4)
@@ -1778,13 +1812,24 @@ contains
 
              trtend_t = trtend_t+ct1%trten
              trwet_t  = trwet_t +ct1%trwet
+!<f1p
+             trtend_t_nc = trtend_t 
+             trwet_t_nc  = trwet_t
+!>
+!
+!             call check_tracer_realizability (kmax, size(trtend,4), delt, &
+!                                              cp1%tr, trtend_t, trwet_t)
              call check_tracer_realizability (kmax, size(trtend,4), delt, &
-                                              cp1%tr, trtend_t, trwet_t)
+                                              cp1%tr, trtend_t, trwet_t, pmass(i,j,:), tracer_check_type, rn = rn    )
              do k = 1,kmax!cp1%ltop
                nk = kmax+1-k
                do n = 1, size(trtend,4)
                  trtend(i,j,nk,n) = trtend_t(k,n) + trwet_t(k,n)
                  trwet(i,j,nk,n)  = trwet_t(k,n)
+!f1p
+                 trtend_nc(i,j,nk,n) = trtend_t_nc(k,n) + trwet_t_nc(k,n)
+                 rn_diag(i,j,nk,n) = rn(k,n)
+!>
 	       enddo
              enddo
             
@@ -2133,12 +2178,25 @@ contains
        used = send_data( id_qadet_uwc,  qadet*aday,  Time, is, js, 1)
        used = send_data( id_qtdt_uwc,(qvten+qlten+qiten)*aday,Time, is, js, 1)
     end if
+!f1p
+    if ( allocated(id_rn) ) then
+       do n = 1,size(id_rn)
+          used = send_data( id_rn(n), rn_diag(:,:,:,n), Time, is, js, 1)
+       end do
+    end if
 
     if ( allocated(id_tracerdt_uwc) ) then
        do n = 1,size(id_tracerdt_uwc)
           used = send_data( id_tracerdt_uwc(n), trtend(:,:,:,n), Time, is, js, 1)
        end do
     end if
+!f1p
+    if ( allocated(id_tracerdt_uwc_nc) ) then
+       do n = 1,size(id_tracerdt_uwc_nc)
+          used = send_data( id_tracerdt_uwc_nc(n), trtend_nc(:,:,:,n), Time, is, js, 1)
+       end do
+    end if
+
     if ( allocated(id_tracerdt_uwc_col) ) then
        do n = 1,size(id_tracerdt_uwc_col)
           if ( id_tracerdt_uwc_col(n) > 0 ) then
@@ -2150,24 +2208,63 @@ contains
           end if
        end do
     end if
+!f1p
+    if ( allocated(id_tracerdt_uwc_col_nc) ) then
+       do n = 1,size(id_tracerdt_uwc_col_nc)
+          if ( id_tracerdt_uwc_col_nc(n) > 0 ) then
+            tempdiag = 0.
+            do k = 1,kmax
+               tempdiag(:,:) = tempdiag(:,:) + trtend_nc(:,:,k,n) * pmass(:,:,k)
+            end do
+            used = send_data( id_tracerdt_uwc_col_nc(n), tempdiag(:,:), Time, is, js)
+          end if
+       end do
+    end if
+
     if ( allocated(id_tracerdtwet_uwc) ) then
        do n = 1,size(id_tracerdtwet_uwc)
           used = send_data( id_tracerdtwet_uwc(n), trwet(:,:,:,n), Time, is, js, 1)
        end do
     end if
-    if ( allocated(id_tracerdtwet_uwc_col) ) then
-       uw_wetdep = 0.
-       do n = 1,size(id_tracerdtwet_uwc_col)
-          if ( id_tracerdtwet_uwc_col(n) > 0 ) then
-             tempdiag = 0.
-             do k = 1,kmax
-               tempdiag(:,:) = tempdiag(:,:) + trwet(:,:,k,n) * pmass(:,:,k)
-            end do
-            used = send_data( id_tracerdtwet_uwc_col(n), tempdiag(:,:), Time, is, js)
-            uw_wetdep(:,:,n) = tempdiag(:,:)
-          end if
+
+!<<<fp
+!this means that uw_wetdep = 0 if wet_uwc_col is not requested for tracer n
+
+!     if ( allocated(id_tracerdtwet_uwc_col) ) then
+!        uw_wetdep = 0.
+!        do n = 1,size(id_tracerdtwet_uwc_col)
+!           if ( id_tracerdtwet_uwc_col(n) > 0 ) then
+!              tempdiag = 0.
+!              do k = 1,kmax
+!                tempdiag(:,:) = tempdiag(:,:) + trwet(:,:,k,n) * pmass(:,:,k)
+!             end do
+!             used = send_data( id_tracerdtwet_uwc_col(n), tempdiag(:,:), Time, is, js)
+!             uw_wetdep(:,:,n) = tempdiag(:,:)
+!           end if
+!        end do
+!     end if
+
+!now calculated uw for all tracers
+
+    uw_wetdep = 0.
+    do n=1,ntracers
+       tempdiag = 0.
+       do k = 1,kmax
+          tempdiag(:,:) = tempdiag(:,:) + trwet(:,:,k,n) * pmass(:,:,k)
        end do
-    end if
+       uw_wetdep(:,:,n) = tempdiag(:,:)       
+    end do
+
+     if ( allocated(id_tracerdtwet_uwc_col) ) then
+        do n = 1,size(id_tracerdtwet_uwc_col)
+           if ( id_tracerdtwet_uwc_col(n) > 0 ) then
+             used = send_data( id_tracerdtwet_uwc_col(n), uw_wetdep(:,:,n), Time, is, js)
+           end if
+        end do
+     end if
+
+!>>>
+
     if ( allocated(id_trevp_uwc) ) then
        do n = 1,size(id_trevp_uwc)
           used = send_data( id_trevp_uwc(n), trevp_s(:,:,:,n)+trevp_d(:,:,:,n), Time, is, js, 1)

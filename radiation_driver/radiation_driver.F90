@@ -8598,6 +8598,9 @@ type(aerosol_diagnostics_type), intent(inout)  :: Aerosol_diags
         deallocate (Aerosol_props%seasalt3_index)
         deallocate (Aerosol_props%seasalt4_index)
         deallocate (Aerosol_props%seasalt5_index)
+        deallocate (Aerosol_props%seasalt_aitken_index)
+        deallocate (Aerosol_props%seasalt_fine_index)
+        deallocate (Aerosol_props%seasalt_coarse_index)
       endif
 
 !--------------------------------------------------------------------

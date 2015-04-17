@@ -184,6 +184,9 @@ type aerosol_properties_type
      integer, dimension(:), pointer :: seasalt3_index=>NULL()
      integer, dimension(:), pointer :: seasalt4_index=>NULL()
      integer, dimension(:), pointer :: seasalt5_index=>NULL()
+     integer, dimension(:), pointer :: seasalt_aitken_index=>NULL()
+     integer, dimension(:), pointer :: seasalt_fine_index=>NULL()
+     integer, dimension(:), pointer :: seasalt_coarse_index=>NULL()
      integer                        :: sulfate_flag
      integer                        :: omphilic_flag
      integer                        :: bcphilic_flag
@@ -192,6 +195,9 @@ type aerosol_properties_type
      integer                        :: seasalt3_flag
      integer                        :: seasalt4_flag
      integer                        :: seasalt5_flag
+     integer                        :: seasalta_flag
+     integer                        :: seasaltf_flag
+     integer                        :: seasaltc_flag
 !yim
      integer                        :: bc_flag
 end type aerosol_properties_type
@@ -3415,6 +3421,9 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
      aerosol_props_out%seasalt3_index = aerosol_props_in%seasalt3_index
      aerosol_props_out%seasalt4_index = aerosol_props_in%seasalt4_index
      aerosol_props_out%seasalt5_index = aerosol_props_in%seasalt5_index
+     aerosol_props_out%seasalt_aitken_index = aerosol_props_in%seasalt_aitken_index
+     aerosol_props_out%seasalt_fine_index   = aerosol_props_in%seasalt_fine_index
+     aerosol_props_out%seasalt_coarse_index = aerosol_props_in%seasalt_coarse_index
     else
       call error_mesg ('=', 'index  ', FATAL)
    endif
@@ -3433,6 +3442,9 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
      aerosol_props_out%seasalt3_flag = aerosol_props_in%seasalt3_flag
      aerosol_props_out%seasalt4_flag = aerosol_props_in%seasalt4_flag
      aerosol_props_out%seasalt5_flag = aerosol_props_in%seasalt5_flag
+     aerosol_props_out%seasalta_flag = aerosol_props_in%seasalta_flag
+     aerosol_props_out%seasaltf_flag = aerosol_props_in%seasaltf_flag
+     aerosol_props_out%seasaltc_flag = aerosol_props_in%seasaltc_flag
      aerosol_props_out%bc_flag = aerosol_props_in%bc_flag
 
 

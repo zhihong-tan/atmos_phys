@@ -3489,7 +3489,8 @@ type(optical_path_type),       intent(inout) :: Optical
                           size(Aerosol%aerosol,2),  &
                           size(Aerosol%aerosol,3))  :: opt_index_v1, &
                           opt_index_v2, opt_index_v3, opt_index_v4, &
-                          opt_index_v5, opt_index_v6, opt_index_v7,opt_index_v8
+                          opt_index_v5, opt_index_v6, opt_index_v7,opt_index_v8, &
+                          opt_index_v9, opt_index_v10, opt_index_v11
 
       real, dimension (size(Aerosol%aerosol,3)+1) :: bsum
 
@@ -3553,6 +3554,12 @@ type(optical_path_type),       intent(inout) :: Optical
                                Aerosol_props%seasalt4_index( irh )
             opt_index_v8(i,j,k) =     &
                                Aerosol_props%seasalt5_index( irh )
+            opt_index_v9(i,j,k) =     &
+                               Aerosol_props%seasalt_aitken_index( irh )
+            opt_index_v10(i,j,k) =     &
+                               Aerosol_props%seasalt_fine_index( irh )
+            opt_index_v11(i,j,k) =     &
+                               Aerosol_props%seasalt_coarse_index( irh )
           end do
         end do
       end do
@@ -3771,6 +3778,63 @@ type(optical_path_type),       intent(inout) :: Optical
                    (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
                           Aerosol_props%aerextbandlw(n,opt_index)
                 if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasalta_flag ) then
+      do k = 1,kx
+        do j = 1,jx
+          do i = 1,ix
+            opt_index = opt_index_v9(i,j,k)
+                aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+                if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasaltf_flag ) then
+      do k = 1,kx
+        do j = 1,jx
+          do i = 1,ix
+              opt_index = opt_index_v10(i,j,k)
+              aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+              if (n == 1) then
+                  aerooptdepspec_cn(i,j,k,nsc) =    &
+                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+                        Aerosol_props%aerextbandlw_cn(n,opt_index)
+              endif
+            end do
+          end do
+        end do
+     else if (Aerosol_props%optical_index(nsc) ==  &
+                        Aerosol_props%seasaltc_flag ) then
+      do k = 1,kx
+        do j = 1,jx
+          do i = 1,ix
+              opt_index = opt_index_v11(i,j,k)
+              aerooptdepspec(i,j,k,nsc) =     &
+                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
+                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+                          Aerosol_props%aerextbandlw(n,opt_index)
+              if (n == 1) then
                   aerooptdepspec_cn(i,j,k,nsc) =    &
                      diffac*Aerosol%aerosol(i,j,k,nsc)*   &
                  (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&

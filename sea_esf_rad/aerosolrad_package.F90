@@ -256,6 +256,27 @@ integer, dimension(0:100) ::  seasalt5_indices = (/        &
                              0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
                              0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
                              0  /)
+integer, dimension(0:100) ::  seasalt_aitken_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  seasalt_fine_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
+integer, dimension(0:100) ::  seasalt_coarse_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
 integer, dimension(0:100) ::  sulfate_indices = (/      &
                            30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
                            30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
@@ -289,6 +310,9 @@ namelist / aerosolrad_package_nml /                          &
                                     seasalt3_indices, &
                                     seasalt4_indices, &
                                     seasalt5_indices, &
+                                    seasalt_aitken_indices, &
+                                    seasalt_fine_indices, &
+                                    seasalt_coarse_indices, &
                                     optical_filename   , &
                                     using_volcanic_sw_files, &
                                     using_volcanic_lw_files, &
@@ -370,6 +394,9 @@ integer, PARAMETER ::  SEASALT2_FLAG = -4
 integer, PARAMETER ::  SEASALT3_FLAG = -5
 integer, PARAMETER ::  SEASALT4_FLAG = -6
 integer, PARAMETER ::  SEASALT5_FLAG = -7
+integer, PARAMETER ::  SEASALTA_FLAG = -9
+integer, PARAMETER ::  SEASALTF_FLAG = -10
+integer, PARAMETER ::  SEASALTC_FLAG = -11
 !yim
 integer, PARAMETER ::  BC_FLAG = -8
 integer, PARAMETER ::  NOT_IN_USE = -2000
@@ -388,6 +415,9 @@ integer, dimension(:),   allocatable :: seasalt2_index
 integer, dimension(:),   allocatable :: seasalt3_index
 integer, dimension(:),   allocatable :: seasalt4_index
 integer, dimension(:),   allocatable :: seasalt5_index
+integer, dimension(:),   allocatable :: seasalt_aitken_index
+integer, dimension(:),   allocatable :: seasalt_fine_index
+integer, dimension(:),   allocatable :: seasalt_coarse_index
 
 !---------------------------------------------------------------------
 !    the following arrays related to sw aerosol effects are allocated 
@@ -1350,6 +1380,9 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props
         allocate (Aerosol_props%seasalt3_index(0:100))
         allocate (Aerosol_props%seasalt4_index(0:100))
         allocate (Aerosol_props%seasalt5_index(0:100))
+        allocate (Aerosol_props%seasalt_aitken_index(0:100))
+        allocate (Aerosol_props%seasalt_fine_index(0:100))
+        allocate (Aerosol_props%seasalt_coarse_index(0:100))
 
 !--------------------------------------------------------------------
 
@@ -1786,6 +1819,9 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props
         Aerosol_props%seasalt3_index =seasalt3_index
         Aerosol_props%seasalt4_index =seasalt4_index
         Aerosol_props%seasalt5_index =seasalt5_index
+        Aerosol_props%seasalt_aitken_index =seasalt_aitken_index
+        Aerosol_props%seasalt_fine_index =seasalt_fine_index
+        Aerosol_props%seasalt_coarse_index =seasalt_coarse_index
         Aerosol_props%sulfate_flag =   SULFATE_FLAG
         Aerosol_props%omphilic_flag =  OMPHILIC_FLAG
         Aerosol_props%bcphilic_flag =  BCPHILIC_FLAG
@@ -1794,6 +1830,9 @@ type(aerosol_properties_type), intent(inout) :: Aerosol_props
         Aerosol_props%seasalt3_flag =  SEASALT3_FLAG
         Aerosol_props%seasalt4_flag =  SEASALT4_FLAG
         Aerosol_props%seasalt5_flag =  SEASALT5_FLAG
+        Aerosol_props%seasalta_flag =  SEASALTA_FLAG
+        Aerosol_props%seasaltf_flag =  SEASALTF_FLAG
+        Aerosol_props%seasaltc_flag =  SEASALTC_FLAG
         if (Rad_control%using_im_bcsul) then
           Aerosol_props%bc_flag = BC_FLAG
         else
@@ -1856,6 +1895,10 @@ subroutine aerosolrad_package_end
       if (allocated(seasalt3_index)) deallocate(seasalt3_index)
       if (allocated(seasalt4_index)) deallocate(seasalt4_index)
       if (allocated(seasalt5_index)) deallocate(seasalt5_index)
+      if (allocated(seasalt_aitken_index)) deallocate(seasalt_aitken_index)
+      if (allocated(seasalt_fine_index)) deallocate(seasalt_fine_index)
+      if (allocated(seasalt_coarse_index)) deallocate(seasalt_coarse_index)
+      if (allocated(optical_index )) deallocate(optical_index )
       if (allocated(optical_index )) deallocate(optical_index )
 
       
@@ -2122,6 +2165,15 @@ integer                               :: index  ! function value
                                                SEASALT5_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt5_index( irh )
+      elseif (optical_index(naerosol) ==   SEASALTA_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = seasalt_aitken_index( irh )
+      elseif (optical_index(naerosol) ==  SEASALTF_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = seasalt_fine_index( irh )
+      elseif (optical_index(naerosol) ==  SEASALTC_FLAG ) then
+        irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
+        index = seasalt_coarse_index( irh )
       else
         index = optical_index(naerosol)
       endif
@@ -2252,7 +2304,11 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
                 seasalt2_index(0:100 ), &
                 seasalt3_index(0:100 ), &
                 seasalt4_index(0:100 ), &
-                seasalt5_index(0:100 ) )
+                seasalt5_index(0:100 ), &
+                seasalt_aitken_index(0:100 ), &
+                seasalt_fine_index(0:100 ), &
+                seasalt_coarse_index(0:100 ) )
+
       allocate (optical_index(nfields) )
       optical_index    = 0
       sulfate_index    = 0
@@ -2263,6 +2319,9 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
       seasalt3_index    = 0
       seasalt4_index    = 0
       seasalt5_index    = 0
+      seasalt_aitken_index    = 0
+      seasalt_fine_index    = 0
+      seasalt_coarse_index    = 0
 
 !----------------------------------------------------------------------
 !    match aerosol optical property indices with aerosol indices.
@@ -2300,6 +2359,12 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
             optical_index(n) = SEASALT4_FLAG
         else if (name_in == "seasalt5") then
             optical_index(n) = SEASALT5_FLAG
+        else if (name_in == "seasalt_aitken") then
+            optical_index(n) = SEASALTA_FLAG
+        else if (name_in == "seasalt_fine") then
+            optical_index(n) = SEASALTF_FLAG
+        else if (name_in == "seasalt_coarse") then
+            optical_index(n) = SEASALTC_FLAG
 !yim
         else if (name_in == "black_carbon" .and.   &
                               Rad_control%using_im_bcsul) then
@@ -2347,6 +2412,18 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
               target_name = "omphobic"
             case( "bcphobic", "bc_hydrophobic" )
               target_name = "bcphobic"
+            case( "dust_mode1_of_1" )
+              target_name = "dust_mode1_of_1"
+            case( "dust_mode1_of_2" )
+              target_name = "dust_mode1_of_2"
+            case( "dust_mode2_of_2" )
+              target_name = "dust_mode2_of_2"
+            case( "dust_mode1_of_3" )
+              target_name = "dust_mode1_of_3"
+            case( "dust_mode2_of_3" )
+              target_name = "dust_mode2_of_3"
+            case( "dust_mode3_of_3" )
+              target_name = "dust_mode3_of_3"
             case DEFAULT
               target_name = name_in
           end select  
@@ -2678,6 +2755,112 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
                                           TRIM( target_name), FATAL )
             endif
           end do
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt1 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt_aitken_indices(n) < 10) then
+              write (chind, '(i1)') seasalt_aitken_indices(n)
+            else if (seasalt_aitken_indices(n) == 100) then
+              write (chind, '(i3)') seasalt_aitken_indices(n)
+            else
+              write (chind, '(i2)') seasalt_aitken_indices(n)
+            endif
+            target_name = 'seasalt_aitken_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                seasalt_aitken_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (seasalt_aitken_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt1 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt_fine_indices(n) < 10) then
+              write (chind, '(i1)') seasalt_fine_indices(n)
+            else if (seasalt_fine_indices(n) == 100) then
+              write (chind, '(i3)') seasalt_fine_indices(n)
+            else
+              write (chind, '(i2)') seasalt_fine_indices(n)
+            endif
+            target_name = 'seasalt_fine_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                seasalt_fine_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (seasalt_fine_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt1 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+          do n=0,100
+            if (seasalt_coarse_indices(n) < 10) then
+              write (chind, '(i1)') seasalt_coarse_indices(n)
+            else if (seasalt_coarse_indices(n) == 100) then
+              write (chind, '(i3)') seasalt_coarse_indices(n)
+            else
+              write (chind, '(i2)') seasalt_coarse_indices(n)
+            endif
+            target_name = 'seasalt_coarse_' // trim(chind)  // '%'
+
+!---------------------------------------------------------------------
+!    associate an index value with each possible relative humidity.
+!---------------------------------------------------------------------
+            do noptical=1,naermodels
+              if (aerosol_optical_names(noptical) == target_name ) then
+                seasalt_coarse_index(n) = noptical
+                exit
+              endif
+            end do
+
+!---------------------------------------------------------------------
+!    if the  aerosol_optical name_is not included in the potential
+!    set listed above, exit with an error message.
+!---------------------------------------------------------------------
+            if (seasalt_coarse_index(n) == 0 ) then
+              call error_mesg( 'aerosolrad_package_mod', &
+                 'Cannot find aerosol optical model = ' // &
+                                          TRIM( target_name), FATAL )
+            endif
+          end do
+
 
           if ( .not. Rad_control%using_im_bcsul) then
 !-------------------------------------------------------------------
