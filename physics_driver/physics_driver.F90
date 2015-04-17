@@ -168,8 +168,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 21.0 2014/12/15 21:43:46 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 
 !---------------------------------------------------------------------
@@ -379,9 +379,9 @@ type(restart_file_type), pointer, save :: Phy_restart => NULL()
 type(restart_file_type), pointer, save :: Til_restart => NULL()
 logical                                :: in_different_file = .false.
 integer                                :: vers
-integer                                :: now_doing_strat  
-integer                                :: now_doing_entrain
-integer                                :: now_doing_edt
+integer                                :: now_doing_strat = 0
+integer                                :: now_doing_entrain = 0
+integer                                :: now_doing_edt = 0
 real, allocatable                      :: r_convect(:,:)
 
 type(aerosol_time_vary_type) :: Aerosol_cld
@@ -673,8 +673,9 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
     enddo
 
 !-----------------------------------------------------------------------
-      call mpp_clock_begin ( moist_processes_init_clock )
 !---------- initialize physics -------
+    if (do_moist_processes) then
+      call mpp_clock_begin ( moist_processes_init_clock )
       call moist_processes_init (id, jd, kd, lonb, latb, lon, lat, phalf, &
                                  Physics%glbl_qty%pref(:,1),&
                                  axes, Time, doing_donner,  &
@@ -688,6 +689,10 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
                                          include_donmca_in_cosp)
 
       call mpp_clock_end ( moist_processes_init_clock )
+    else
+      diff_cu_mo = 0.0
+      convect = .false.
+    endif
      
 !-----------------------------------------------------------------------
 !    initialize damping_driver_mod.
@@ -1148,9 +1153,11 @@ type(time_type),         intent(in)             :: Time
 type(time_type),         intent(in)             :: Time_next
 real,                    intent(in)             :: dt
 
+    if (do_moist_processes) then
       call aerosol_time_vary (Time, Aerosol_cld)
       call moist_processes_time_vary (dt)
-      if (do_cosp) call cosp_driver_time_vary (Time_next)
+    endif
+    if (do_cosp) call cosp_driver_time_vary (Time_next)
 
 !----------------------------------------------------------------------      
 
@@ -1163,9 +1170,11 @@ subroutine physics_driver_up_endts (is,js)
 
 integer, intent(in)  :: is,js
 
-      if (do_cosp) call cosp_driver_endts
+    if (do_cosp) call cosp_driver_endts
+    if (do_moist_processes) then
       call moist_processes_endts (is,js)
       call aerosol_endts (Aerosol_cld)
+    endif
 
 end subroutine physics_driver_up_endts
 
@@ -1327,18 +1336,6 @@ end subroutine physics_driver_up_endts
 !   Surface diffusion 
 !  </INOUT>
 !
-!  <IN NAME="diff_cum_mom" TYPE="real">
-!   OPTIONAL: present when do_moist_processes=.false.
-!    cu_mo_trans diffusion coefficients, which are passed through to vert_diff_down.
-!    Should not be present when do_moist_processes=.true., since these
-!    values are passed out from moist_processes.
-!  </IN>
-!
-!  <IN NAME="moist_convect" TYPE="real">
-!   OPTIONAL: present when do_moist_processes=.false.
-!    Should not be present when do_moist_processes=.true., since these
-!    values are passed out from moist_processes.
-!  </IN>
 ! </SUBROUTINE>
 !
 subroutine physics_driver_down (is, ie, js, je, npz,              &
@@ -1356,7 +1353,6 @@ subroutine physics_driver_down (is, ie, js, je, npz,              &
                                 gust,                             &
                                 Rad_flux_control,                 &
                                 Rad_flux_block,                   &
-                                diff_cum_mom, moist_convect,      &
                                 diffm, difft  )
 
 !---------------------------------------------------------------------
@@ -1383,8 +1379,6 @@ real,dimension(:,:),     intent(out)            :: gust
 type(surf_diff_type),    intent(inout)          :: Surf_diff
 type(radiation_flux_control_type),  intent(in)  :: Rad_flux_control
 type(radiation_flux_block_type),    intent(in)  :: Rad_flux_block
-real,  dimension(:,:,:), intent(in)   ,optional :: diff_cum_mom
-logical, dimension(:,:), intent(in)   ,optional :: moist_convect
 real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft 
 
 !-----------------------------------------------------------------------
@@ -1587,19 +1581,6 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
      call mpp_clock_end ( damping_clock )
 
 !---------------------------------------------------------------------
-!    If moist_processes is not called in physics_driver_down then values
-!    of convect must be passed in via the optional argument "moist_convect".
-!---------------------------------------------------------------------
-      if(.not.do_moist_processes) then
-        if(present(moist_convect)) then
-          convect(is:ie,js:je) = moist_convect
-        else
-          call error_mesg('physics_driver_down', &
-          'moist_convect be present when do_moist_processes=.false.',FATAL) 
-        endif
-      endif
-
-!---------------------------------------------------------------------
 !    call vert_turb_driver to calculate diffusion coefficients. save
 !    the planetary boundary layer height on return.
 !---------------------------------------------------------------------
@@ -1662,20 +1643,6 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                 Rad_flux_block%flux_sw_down_vis_dir, &
                                 Rad_flux_block%flux_sw_down_vis_dif)
       call mpp_clock_end ( tracer_clock )
-
-!-----------------------------------------------------------------------
-!    If moist_processes is not called in physics_driver_down then values
-!    of the cu_mo_trans diffusion coefficients must be passed in via
-!    the optional argument "diff_cum_mom".
-!-----------------------------------------------------------------------
-      if(.not.do_moist_processes) then
-        if(present(diff_cum_mom)) then
-          diff_cu_mo(is:ie,js:je,:) = diff_cum_mom          
-        else
-          call error_mesg('physics_driver_down', &
-          'diff_cum_mom must be present when do_moist_processes=.false.',FATAL)
-        endif
-      endif
 
 !-----------------------------------------------------------------------
 !    optionally use an implicit calculation of the vertical diffusion 
@@ -2184,7 +2151,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 
 !-----------------------------------------------------------------------
 ! to avoid a call to Aerosol when using do_grey_radiation (rif, 09/02/09)
-        if (.not. do_grey_radiation) then
+        if (.not. do_grey_radiation .and. do_moist_processes) then
         ! get aerosol mass concentrations
           pflux(:,:,1) = 0.0e+00
           do i=2,size(p_full,3)
@@ -2407,7 +2374,9 @@ real,dimension(:,:),    intent(inout)             :: gust
 
       endif ! do_moist_processes
 
-      call aerosol_dealloc (Aerosol)
+      if (do_moist_processes) then  
+        call aerosol_dealloc (Aerosol)
+      endif
       
       if (do_cosp) then
         call mpp_clock_begin ( cosp_clock )
@@ -2822,9 +2791,12 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
       if(do_grey_radiation) call grey_radiation_end 
       call mpp_clock_end ( grey_radiation_term_clock )
 
-      call mpp_clock_begin ( moist_processes_term_clock )
-      call moist_processes_end (clubb_term_clock)
-      call mpp_clock_end ( moist_processes_term_clock )
+      if (do_moist_processes) then  
+        call mpp_clock_begin ( moist_processes_term_clock )
+        call moist_processes_end (clubb_term_clock)
+        call mpp_clock_end ( moist_processes_term_clock )
+      endif
+
       call mpp_clock_begin ( tracer_term_clock )
       call atmos_tracer_driver_end
       call mpp_clock_end ( tracer_term_clock )
@@ -3051,23 +3023,24 @@ subroutine physics_driver_register_restart (Restart)
   character(len=64) :: fname, fname2
   integer           :: id_restart
 
-  
-  if(doing_strat()) then 
-     now_doing_strat = 1
-  else
-     now_doing_strat = 0
-  endif
+  if (do_moist_processes) then  
+    if(doing_strat()) then 
+       now_doing_strat = 1
+    else
+       now_doing_strat = 0
+    endif
 
-  if(doing_edt) then 
-     now_doing_edt = 1
-  else
-     now_doing_edt = 0
-  endif
+    if(doing_edt) then 
+       now_doing_edt = 1
+    else
+       now_doing_edt = 0
+    endif
 
-  if(doing_entrain) then 
-     now_doing_entrain = 1
-  else
-     now_doing_entrain = 0
+    if(doing_entrain) then 
+       now_doing_entrain = 1
+    else
+       now_doing_entrain = 0
+    endif
   endif
 
   fname = 'physics_driver.res.nc'
