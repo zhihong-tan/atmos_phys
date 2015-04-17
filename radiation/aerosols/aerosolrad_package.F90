@@ -1071,14 +1071,15 @@ end subroutine aerosolrad_package_init
 
 !##########################################################################
 
-subroutine aerosolrad_package_time_vary (Time)
+subroutine aerosolrad_package_time_vary (Time, Aerosolrad_control)
 
 !-------------------------------------------------------------------------
 !    aerosolrad_package_time_vary performs time-dependent, space-independent
 !    caluclations for this module
 !-------------------------------------------------------------------------
 
-type(time_type),         intent(in)   :: Time
+type(time_type),                intent(in) :: Time
+type(aerosolrad_control_type),  intent(in) :: Aerosolrad_control
 
 
       integer  :: yr, mo, dy, hr, mn, sc
@@ -1217,6 +1218,7 @@ type(time_type),         intent(in)   :: Time
           endif
         endif
 
+        if (do_lwaerosol .or. Aerosolrad_control%do_lwaerosol_forcing) then
           if (force_to_repro_quebec) then
             if (.not. band_calculation_completed) then
               aerextbandlw_MOD = 0.0
@@ -1246,6 +1248,7 @@ type(time_type),         intent(in)   :: Time
               band_calculation_completed = .true.
             endif
           endif
+        endif
 
 !---------------------------------------------------------------------------
 
@@ -1745,7 +1748,8 @@ real, dimension(:,:,:,:),      intent(out)   :: aerooptdep, aerooptdep_volc, &
                     (relhum, deltaz, &
                      Aerosol, ivol, &
                      Aerosolrad_control%volcanic_sw_aerosols, Aerosolrad_diags,  &
-                     .true., do_cmip_sw_diagnostics, &
+                     Aerosolrad_control%do_swaerosol, do_cmip_sw_diagnostics, &
+                !BW  .true., do_cmip_sw_diagnostics, &
                      daylight, aeroextopdep, aerosctopdep, aeroasymfac)
      !endif
 

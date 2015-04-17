@@ -970,6 +970,8 @@ type(radiation_control_type), intent(inout) :: Rad_control
         'co2 must be a tracer when predicted co2 desired for radiation.', FATAL)
       endif
 
+      lw_rad_time_step_saved = lw_rad_time_step
+
 !---------------------------------------------------------------------
 !    call check_tf_interval to verify that the namelist input variables
 !    related to co2 are consistent.

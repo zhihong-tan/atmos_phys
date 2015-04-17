@@ -49,7 +49,8 @@ use            fms_mod, only: mpp_pe, mpp_root_pe, stdlog, &
 
 use  field_manager_mod, only: MODEL_ATMOS
 
-use tracer_manager_mod, only: get_tracer_index
+use tracer_manager_mod, only: get_tracer_index, &
+                              get_number_tracers
 
 implicit none
 private
@@ -80,6 +81,7 @@ logical            :: module_is_initialized = .false.
 
  integer :: nql, nqi, nqa    !  tracer indices for stratiform clouds
  integer :: ntke             !  tracer index for TKE
+ integer :: ntp              !  number of prognostic tracers
 
  integer         :: outunit
 
@@ -152,7 +154,7 @@ subroutine vert_turb_driver (is, js, Time, Time_next, dt, tdtlw,       &
                              t_ref, q_ref,                             &  ! cjg: PBL depth mods
                              u_star, b_star, q_star, rough,            &
                              lat, convect,                             &
-                             u, v, t, q, r, um, vm, tm, qm, rm,        &
+                             u, v, t, q, r, um, vm, tm, qm, rm, rdiag, &
                              udt, vdt, tdt, qdt, rdt, diff_t, diff_m,  &
                              gust, z_pbl, mask, kbot                   )
 
@@ -167,8 +169,8 @@ logical, intent(in), dimension(:,:) :: convect
                                          z_half, z_full, &
                                          u, v, t, q, um, vm, tm, qm, &
                                          udt, vdt, tdt, qdt
-   real, intent(inout), dimension(:,:,:,:) :: r
-   real, intent(in),    dimension(:,:,:,:) :: rm, rdt
+   real, intent(in),    dimension(:,:,:,:) :: r, rm, rdt
+   real, intent(inout), dimension(:,:,:,ntp+1:) :: rdiag
    real, intent(out),   dimension(:,:,:) :: diff_t, diff_m
    real, intent(out),   dimension(:,:)   :: gust, z_pbl 
    real, intent(in),optional, dimension(:,:,:) :: mask
@@ -341,7 +343,7 @@ if (do_mellor_yamada .or. do_tke_turb) then
 
      call tke_turb (dt_tke, frac_land, p_half, p_full, z_half, z_full, &
                     uu, vv, thv, rough, u_star, b_star,                &
-                    r(:,:,:,ntke),                                     &
+                    rdiag(:,:,:,ntke),                                     &
                     el0, el, diff_m, diff_t, z_pbl)
 
 !-->cjg debug
@@ -752,6 +754,13 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
          call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
            'molecular diffusion with EDT', FATAL)
 
+
+!----------------------------------------------------
+!   get the number of prognostic tracers
+!   use later to determine prognostic vs. diagnostic
+!----------------------------------------------------
+      call get_number_tracers (MODEL_ATMOS, num_prog=ntp)
+
 !-----------------------------------------------------------------------
 ! -->h1g, 2012-07-16
     if (present(do_clubb_in)) then
@@ -785,6 +794,9 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
 
       if (do_tke_turb) then
         ntke = get_tracer_index ( MODEL_ATMOS, 'tke' )
+        ! tke must be a diagnostic tracer
+        if (ntke <= ntp) call error_mesg ('vert_turb_driver_mod', &
+                    'tke can not be a prognostic tracer', FATAL)
         call tke_turb_init ( )
       end if
 

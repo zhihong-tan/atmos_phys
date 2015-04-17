@@ -1589,7 +1589,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                              u_star, b_star, q_star, rough_mom,      &
                              lat, convect(is:ie,js:je),              &
                              u, v, t, r(:,:,:,1), r, um, vm,                  &
-                             tm, rm(:,:,:,1), rm,                             &
+                             tm, rm(:,:,:,1), rm, rdiag,                      &
                              udt, vdt, tdt, rdt(:,:,:,1), rdt,                &
                              diff_t_vert, diff_m_vert, gust, z_pbl)
      call mpp_clock_end ( turb_clock )
@@ -1902,7 +1902,7 @@ integer,                intent(in)                :: is, ie, js, je, npz
 type(time_type),        intent(in)                :: Time_prev, Time, Time_next
 real,dimension(:,:),    intent(in)                :: lat, lon, area
 type(physics_control_type), intent(in)            :: Physics_control
-type(physics_input_block_type), intent(in)        :: Physics_input_block
+type(physics_input_block_type), intent(inout)     :: Physics_input_block
 real,dimension(:,:),    intent(in)                :: frac_land
 real,dimension(:,:),    intent(in)                :: u_star, b_star, q_star
 type(physics_tendency_block_type), intent(inout)  :: Physics_tendency_block

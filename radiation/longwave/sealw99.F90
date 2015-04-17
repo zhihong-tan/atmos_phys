@@ -832,6 +832,15 @@ real,            intent(in) :: ch4_for_tf_calc, &
                                co2_for_tf_calc
 
 !---------------------------------------------------------------------------
+!    skip this routine if the tfs are not requested for all gases
+!---------------------------------------------------------------------------
+     if ( use_ch4_for_tf_calc .or. use_n2o_for_tf_calc .or. &
+          use_co2_for_tf_calc ) then
+     else
+        return
+     end if
+
+!---------------------------------------------------------------------------
 
       call lw_gases_stdtf_time_vary
 
