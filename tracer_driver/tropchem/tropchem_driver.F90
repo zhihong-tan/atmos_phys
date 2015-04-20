@@ -265,7 +265,7 @@ integer :: e90_ndx=0
 logical :: do_interactive_h2o = .false.         ! Include chemical sources/sinks of water vapor?
 real, parameter :: solarflux_min = 1.09082, &   ! solar minimum flux (band 18) [W/m2]
                    solarflux_max = 1.14694      ! solar maximum flux (band 18) [W/m2]
-integer :: num_solar_bands
+integer :: num_solar_bands = 0
 
 !-----------------------------------------------------------------------
 !     ... identification numbers for diagnostic fields
@@ -1981,11 +1981,6 @@ function tropchem_driver_init( r, mask, axes, Time, &
       
 
 !-----------------------------------------------------------------------
-!     ... initialize number of shortwave bands
-!-----------------------------------------------------------------------
-   call shortwave_number_of_bands (num_solar_bands)
-
-!-----------------------------------------------------------------------
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
 !  clock_id = mpp_clock_id('Chemistry')
@@ -2006,6 +2001,15 @@ type(time_type), intent(in) :: Time
 
       integer :: yr, mo,day, hr,min, sec
       integer :: n
+
+
+!-----------------------------------------------------------------------
+!     ... initialize number of shortwave bands
+!-----------------------------------------------------------------------
+      if (num_solar_bands == 0) then
+         call shortwave_number_of_bands (num_solar_bands)
+      endif
+
 
       do n=1, size(inter_emis,1)
         if (has_emis(n)) then
