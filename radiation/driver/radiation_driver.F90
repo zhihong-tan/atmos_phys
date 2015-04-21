@@ -2769,17 +2769,17 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
       allocate(Atmos_input%rh2o(size(t,1),size(t,2),kmax))
 
       Atmos_input%temp = t
+      Atmos_input%rh2o = q
 
 !---------------------------------------------------------------------
 !    humidity, convert to mixing ratio
 !---------------------------------------------------------------------
-      Atmos_input%rh2o = q
       if (.not.use_mixing_ratio) then
-          Atmos_input%rh2o = Atmos_input%rh2o/(1.0-Atmos_input%rh2o)
+         Atmos_input%rh2o = Atmos_input%rh2o/(1.0-Atmos_input%rh2o)
       endif
 
 !---------------------------------------------------------------------
-!    pressure at model levels and layer interfaces
+!    surface temp & pressure at model levels and layer interfaces
 !---------------------------------------------------------------------
       Atmos_input%tsfc => ts
       Atmos_input%press => pfull
@@ -2806,6 +2806,9 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
       allocate(Atmos_input%cloudvapor(size(t,1),size(t,2),kmax))
       if (present(cloudvapor)) then
          Atmos_input%cloudvapor = cloudvapor
+         if (.not.use_mixing_ratio) then
+            Atmos_input%cloudvapor = Atmos_input%cloudvapor/(1.0-Atmos_input%cloudvapor)
+         endif
       else
          Atmos_input%cloudvapor = Atmos_input%rh2o
       endif
@@ -2826,6 +2829,9 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
       allocate(Atmos_input%aerosolvapor(size(t,1),size(t,2),kmax))
       if (present(aerosolvapor)) then
          Atmos_input%aerosolvapor = aerosolvapor
+         if (.not.use_mixing_ratio) then
+            Atmos_input%aerosolvapor = Atmos_input%aerosolvapor/(1.0-Atmos_input%aerosolvapor)
+         endif
       else
          Atmos_input%aerosolvapor = Atmos_input%rh2o
       endif
@@ -2833,11 +2839,10 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
 !------------------------------------------------------------------
 !    define the aerosolpress component of Atmos_input.
 !---------------------------------------------------------------------
-      allocate(Atmos_input%aerosolpress(size(t,1),size(t,2),kmax))
       if (present(aerosolpress)) then
-        Atmos_input%aerosolpress = aerosolpress
+         Atmos_input%aerosolpress => aerosolpress
       else
-        Atmos_input%aerosolpress = pfull
+         Atmos_input%aerosolpress => Atmos_input%press
       endif
  
 !------------------------------------------------------------------
@@ -2855,18 +2860,14 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
 !BW   if (do_rad) then
       if (apply_vapor_limits) then
         Atmos_input%rh2o(:,:,ks:ke) = MAX(Atmos_input%rh2o(:,:,ks:ke), rh2o_lower_limit)
-        if (present(cloudvapor)) &
-          Atmos_input%cloudvapor(:,:,ks:ke) = MAX(Atmos_input%cloudvapor(:,:,ks:ke), rh2o_lower_limit)
-        if (present(aerosolvapor)) &
-          Atmos_input%aerosolvapor(:,:,ks:ke) = MAX(Atmos_input%aerosolvapor(:,:,ks:ke), rh2o_lower_limit)
+        Atmos_input%cloudvapor(:,:,ks:ke) = MAX(Atmos_input%cloudvapor(:,:,ks:ke), rh2o_lower_limit)
+        Atmos_input%aerosolvapor(:,:,ks:ke) = MAX(Atmos_input%aerosolvapor(:,:,ks:ke), rh2o_lower_limit)
       endif
 
       if (apply_temp_limits) then
         Atmos_input%temp(:,:,ks:ke) = MIN(MAX(Atmos_input%temp(:,:,ks:ke), temp_lower_limit), temp_upper_limit)
-        if (present(cloudtemp)) &
-          Atmos_input%cloudtemp(:,:,ks:ke) = MIN(MAX(Atmos_input%cloudtemp(:,:,ks:ke), temp_lower_limit), temp_upper_limit)
-        if (present(aerosoltemp)) &
-          Atmos_input%aerosoltemp(:,:,ks:ke) = MIN(MAX(Atmos_input%aerosoltemp(:,:,ks:ke), temp_lower_limit), temp_upper_limit)
+        Atmos_input%cloudtemp(:,:,ks:ke) = MIN(MAX(Atmos_input%cloudtemp(:,:,ks:ke), temp_lower_limit), temp_upper_limit)
+        Atmos_input%aerosoltemp(:,:,ks:ke) = MIN(MAX(Atmos_input%aerosoltemp(:,:,ks:ke), temp_lower_limit), temp_upper_limit)
       endif
 !BW   endif
 
@@ -3223,19 +3224,19 @@ type(atmos_input_type), intent(inout) :: Atmos_input
 !---------------------------------------------------------------------
 
       ! variables always allocated
-         deallocate(Atmos_input%temp)
-         deallocate(Atmos_input%rh2o)
-         deallocate(Atmos_input%cloudtemp)
-         deallocate(Atmos_input%cloudvapor)
-         deallocate(Atmos_input%aerosoltemp)
-         deallocate(Atmos_input%aerosolvapor)
-         deallocate(Atmos_input%aerosolpress)
+      deallocate(Atmos_input%temp)
+      deallocate(Atmos_input%rh2o)
+      deallocate(Atmos_input%cloudtemp)
+      deallocate(Atmos_input%cloudvapor)
+      deallocate(Atmos_input%aerosoltemp)
+      deallocate(Atmos_input%aerosolvapor)
 
       ! variables always using pointers
       Atmos_input%press => null()
       Atmos_input%phalf => null()
       Atmos_input%psfc  => null()
       Atmos_input%tsfc  => null()
+      Atmos_input%aerosolpress => null()
 
       ! auxiliary variables always allocated
       deallocate (Atmos_input%relhum     )
