@@ -27,7 +27,7 @@ use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
                              DIAG_FIELD_NOT_FOUND
 use diag_data_mod,     only: CMOR_MISSING_VALUE
-use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE
+use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE, pi
 
 !  radiation package shared modules:
 
@@ -128,6 +128,7 @@ integer, dimension(2)              :: id_absopdep_vlcno_column, &
                                       id_swasy_vlcno, id_sw_xcoeff_vlcno
 ! change by Xianglei Huang
 integer, dimension(7)              :: id_lw_bdyflx_clr, id_lw_bdyflx
+integer                            :: id_bT_Aqua31
 ! end of change
 integer, dimension(4)              :: id_sw_bdyflx_clr, id_sw_bdyflx
 integer                            :: id_swheat_vlcno
@@ -505,6 +506,9 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
       real, dimension (size(Atmos_input%press,1),    &
                        size(Atmos_input%press,2), 4)  :: &
                                 bdy_flx_mean, bdy_flx_clr_mean
+
+      real, dimension(size(Atmos_input%press,1),    &
+                       size(Atmos_input%press,2)) :: bT
 
       real, dimension(:,:,:),   allocatable :: aerosol_col
       real, dimension(:,:,:,:),   allocatable :: extopdep_col
@@ -1270,6 +1274,17 @@ type(aerosol_diagnostics_type), intent(in), optional :: Aerosol_diags
                             Time_diag, is,js)
         endif
      end do
+     if (id_bT_Aqua31 > 0) then
+        !Assumes band 3 is 800--900
+        !Aqua31 recieves between 885 and 925 cm**-1, using band 3
+        !Computation from http://pds-atmospheres.nmsu.edu/education_and_outreach/encyclopedia/planck_function.htm
+        !Note their planck function is in mW and bdy_flx is is W
+        !850 cm**-1 gives a characteristic wavenumber for this band, which is 100 cm**-1 wide
+        !Also, we divide by pi to convert the omni-directional flux into intensity
+        bT = 0.0000119*(850.**3)/((Lw_output%bdy_flx(:,:,3)/100.)*1000./pi + 1.)
+        bT = 1.438833*850./log(bT)
+        used = send_data ( id_bT_Aqua31, bT, Time_diag, is, js ) 
+     endif
 
 
         if (Rad_control%do_totcld_forcing) then
@@ -1994,6 +2009,9 @@ character(len=*), dimension(:), intent(in) :: names, family_names
                              Time, 'olr in 1200_1400 band', &
                       'W/m**2', missing_value=missing_value)
 
+      id_bT_Aqua31 = register_diag_field ( mod_name, 'bT_Aqua31', axes(1:2), &
+           Time, 'brightness temperature in Aqua 31 885_925 band', 'K', &
+           missing_value=missing_value)
 
 !-----------------------------------------------------------------------
 ! End of Change 
