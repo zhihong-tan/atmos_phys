@@ -168,6 +168,15 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
         if (.not. use_temp_for_seed) then
           id = size(lonb,1) - 1
           jd = size(latb,2) - 1
+!--------------------------------------------------------------------
+!    allocate and define arrays holding the processor's latitudes
+!    and longitudes
+!--------------------------------------------------------------------
+          allocate (lats(size(latb,1),size(latb,2)))
+          allocate (lons(size(lonb,1), size(lonb,2)))
+          lats(:,:) = latb(:,:)*RADIAN
+          lons(:,:) = lonb(:,:)*RADIAN
+
 
   jLoop:  do j=1,jd
             do i=1,id
@@ -199,17 +208,6 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
       else
         use_temp_for_seed = .true.
       endif
-
-!--------------------------------------------------------------------
-!    allocate and define arrays holding the processor's latitudes
-!    and longitudes
-!--------------------------------------------------------------------
-      if (.not.use_temp_for_seed) then
-        allocate (lats(size(latb,1),size(latb,2)))
-        allocate (lons(size(lonb,1), size(lonb,2)))
-        lats(:,:) = latb(:,:)*RADIAN
-        lons(:,:) = lonb(:,:)*RADIAN
-      end if
 
 !---------------------------------------------------------------------
 !    mark the module initialized.

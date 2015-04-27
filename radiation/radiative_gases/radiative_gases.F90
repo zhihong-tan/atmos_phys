@@ -1658,7 +1658,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
           Rad_gases_tv%ch4_for_tf_calc = Rad_gases_tv%rrvch4
           do_ch4_tf_calc = .false.
           do_ch4_tf_calc_init = .false.
-        else if (.not. Rad_control%do_ch4_lw) then
+        else if (.not. Rad_control%do_ch4_lw .or. .not.do_ch4_tf_calc) then
           Rad_gases_tv%use_ch4_for_tf_calc = .false.
           do_ch4_tf_calc = .false.
           do_ch4_tf_calc_init = .false.
@@ -1701,7 +1701,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
           Rad_gases_tv%n2o_for_tf_calc = Rad_gases_tv%rrvn2o
           do_n2o_tf_calc = .false.
           do_n2o_tf_calc_init = .false.
-        else if (.not. Rad_control%do_n2o_lw) then
+        else if (.not. Rad_control%do_n2o_lw .or. .not.do_n2o_tf_calc) then
           Rad_gases_tv%use_n2o_for_tf_calc = .false.
           do_n2o_tf_calc = .false.
           do_n2o_tf_calc_init = .false.
@@ -1764,7 +1764,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
                Rad_gases_tv%co2_for_tf_calc = Rad_gases_tv%rrvco2
                do_co2_tf_calc = .false.
                do_co2_tf_calc_init = .false.
-            else if (.not. Rad_control%do_co2_lw) then
+            else if (.not. Rad_control%do_co2_lw .or. .not.do_co2_tf_calc) then
                Rad_gases_tv%use_co2_for_tf_calc = .false.
                do_co2_tf_calc = .false.
                do_co2_tf_calc_init = .false.
@@ -1787,32 +1787,31 @@ subroutine radiative_gases_endts (Rad_control, Rad_gases_tv)
 type(radiation_control_type), intent(in)  :: Rad_control
 type(radiative_gases_type),   intent(inout)  :: Rad_gases_tv
 
-       if (Rad_gases_tv%time_varying_ch4) then
+      if (Rad_gases_tv%time_varying_ch4) then
          if (Rad_control%do_ch4_lw) then
            if (.not. calc_ch4_tfs_on_first_step) then
-             do_ch4_tf_calc = .true.
+              do_ch4_tf_calc = .true.
            endif
+         endif
+      endif
+
+      if (Rad_gases_tv%time_varying_n2o) then
+         if (Rad_control%do_n2o_lw) then
+           if (.not. calc_n2o_tfs_on_first_step) then
+             do_n2o_tf_calc = .true.
           endif
         endif
+      endif
 
-       if (Rad_gases_tv%time_varying_n2o) then
-         if (Rad_control%do_n2o_lw) then
-          if (.not. calc_n2o_tfs_on_first_step) then
-            do_n2o_tf_calc = .true.
-         endif
+      if (Rad_gases_tv%time_varying_co2) then
+        if (Rad_control%do_co2_lw) then
+          if (.not. calc_co2_tfs_on_first_step) then
+            do_co2_tf_calc = .true.
+          endif
         endif
       endif
 
-     if (Rad_gases_tv%time_varying_co2) then
-       if (Rad_control%do_co2_lw) then
-         if (.not. calc_co2_tfs_on_first_step) then
-           do_co2_tf_calc = .true.
-         endif
-       endif
-      endif
-
-
-     call ozone_endts
+      call ozone_endts
 
 
 end subroutine radiative_gases_endts
