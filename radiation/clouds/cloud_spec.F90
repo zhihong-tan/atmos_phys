@@ -144,7 +144,7 @@ logical :: ignore_donner_cells = .false.! when set to .true., the effects
                                         ! of donner cell clouds in the
                                         ! radiation code are ignored
 
-logical :: use_cloud_tracers_in_radiation = .false. 
+logical :: use_cloud_tracers_in_radiation = .true.
                                ! if true, use lsc cloud tracer fields
                                ! in radiation (these transported on
                                ! current step, will have non-realizable
