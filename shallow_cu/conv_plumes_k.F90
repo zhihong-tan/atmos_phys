@@ -44,7 +44,7 @@ MODULE CONV_PLUMES_k_MOD
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_weffect, do_qctflx_zero,do_detran_zero
-     logical :: use_new_let
+     logical :: use_new_let, do_subcloud_flx
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -540,8 +540,9 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.3) then
-          scaleh1 = cpn%t00*Uw_p%rdgas/Uw_p%grav*log(cp%p(1)/cp%p(k))
-          scaleh1 = max (1000., scaleh1)
+!          scaleh1 = cpn%t00*Uw_p%rdgas/Uw_p%grav*log(cp%p(1)/cp%p(k))
+!          scaleh1 = max (1000., scaleh1)
+          scaleh1 = 2000.*(cp%p(k)/cp%p(1))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),      &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
@@ -800,6 +801,7 @@ contains
     cp%ppti(ltop) = 0.
     cp%pptn(ltop) = 0.
     cp%peff(ltop) = 0.
+    cp%tru_dwet(ltop,:) = 0.
 
     cp%let    = let
     cp%ltop   = ltop
@@ -1760,9 +1762,52 @@ contains
        dpsum = dpsum + sd%dp(k)
     enddo
 
+   if (cpn%do_subcloud_flx) then
+      cp%umf(0)=0.
+      do k=sd%ksrc,krel-1
+         kp1 = k+1
+      	 cp%umf (k)   =cp%umf (krel-1)
+	 cp%hlu (k)   =cp%hlu (krel-1)
+	 cp%qctu(k)   =cp%qctu(krel-1)
+         cp%tru (k,:) =cp%tru (krel-1,:)
+	 cp%qlu (k)   =0.;
+	 cp%qiu (k)   =0.;
+	 cp%qnu (k)   =0.;
+	 cp%uu  (k)   =cp%uu(krel-1)
+	 cp%vu  (k)   =cp%vu(krel-1)
+         ct%hlflx(k)  =cp%umf(k)*(cp%hlu (k)-(cp%hl (kp1)+sd%sshl (kp1)*(sd%ps(k)-sd%p(kp1)))) 
+         ct%qctflx(k) =cp%umf(k)*(cp%qctu(k)-(cp%qct(kp1)+sd%ssqct(kp1)*(sd%ps(k)-sd%p(kp1))))
+         ct%trflx(k,:)=cp%umf(k)*(cp%tru(k,:)-(cp%tr(kp1,:)+sd%sstr(kp1,:)*(sd%ps(k)-sd%p(kp1))))
+         ct%umflx(k) =cp%umf(k)*(cp%uu(k) - cp%u(kp1))
+         ct%vmflx(k) =cp%umf(k)*(cp%vu(k) - cp%v(kp1))
+         ct%qlflx(k) =cp%umf(k)*(cp%qlu(k)- cp%ql(kp1))
+         ct%qiflx(k) =cp%umf(k)*(cp%qiu(k)- cp%qi(kp1))
+         ct%qaflx(k) =cp%umf(k)*(1        - cp%qa(kp1))
+         ct%qnflx(k) =cp%umf(k)*(cp%qnu(k)- cp%qn(kp1))
+       	 cp%pptr (k) =0.0; 
+       	 cp%ppti (k) =0.0;
+       	 cp%pptn (k) =0.0;
+         ct%qtflxu(k)=cp%umf(k)*cp%qctu(k)
+      enddo
+      do k=0,sd%ksrc-1
+         ct%hlflx(k)  =0.
+         ct%qctflx(k) =0.
+         ct%trflx(k,:)=0.
+         ct%umflx(k)  =0.
+         ct%vmflx(k)  =0.
+         ct%qlflx(k)  =0.
+         ct%qiflx(k)  =0.
+         ct%qaflx(k)  =0.
+         ct%qnflx(k)  =0.
+         ct%qtflxu(k) =0.
+      enddo
+
+   else
+
     qtdef = max(0.,cp%umf(krel)*(cp%qctu(krel) - cp%qct(krel)))
     qtdefu= max(0.,cp%umf(krel)*(cp%qctu(krel)))
-    trdef(:) = max(0.,cp%umf(krel)*(cp%tru(krel,:) - cp%tr(krel,:)))
+    !trdef(:) = max(0.,cp%umf(krel)*(cp%tru(krel,:) - cp%tr(krel,:)))
+    trdef(:) = cp%umf(krel)*(cp%tru(krel,:) - cp%tr(krel,:))
     !yy1  = min(0.,umf(krel)*(thcu(krel) - thc0(krel)))
     hldef = min(0.,cp%umf(krel)*(cp%hlu (krel) - cp%hl (krel)))
     do k=1,krel-1
@@ -1790,6 +1835,9 @@ contains
           ct%trflx (k,:)=0.;
        end do
     end if
+
+   end if
+
 
     do k = krel,ltop-1 !pzhu do k = krel,ltop
        kp1 = k+1
@@ -1976,7 +2024,7 @@ contains
           ct%qvten(:)=ct%qvten(:)+ct%qevap(:)
           ct%qctten(:)=ct%qctten(:)+ct%qevap (:)
           ct%pflx  (:)=ct%pflx  (:)-ct%pflx_e(:)
-          ct%trwet(:,:)=ct%trwet(:,:)+ct%trevp(:,:)
+          !ct%trwet(:,:)=ct%trwet(:,:)+ct%trevp(:,:)
          if (sd%coldT) then
              ct%snow  = ct%snow - dpevap
           else

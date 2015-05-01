@@ -122,6 +122,7 @@ MODULE UW_CONV_MOD
   logical :: do_stime  = .false.
   logical :: do_dtime  = .false.
   logical :: do_qctflx_zero = .false.
+  logical :: do_subcloud_flx = .false.
   logical :: do_detran_zero = .false.
   logical :: do_prog_tke  = .false.
   logical :: do_prog_gust = .false.
@@ -150,7 +151,7 @@ MODULE UW_CONV_MOD
   !<f1p: use legacy check when false, use sj's routines to fill in negative if true>
 
 
-  NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin,  &
+  NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let,  &
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, do_prog_tke, tau_tke, pblrat0, &
@@ -158,7 +159,7 @@ MODULE UW_CONV_MOD
        do_auto_aero, do_rescale, wrel_min, om_to_oc, sea_salt_scale, bfact, gfact, gfact3, gfact4, &
        do_debug, cush_choice, pcp_min, pcp_max, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
-       do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel,&
+       do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
 	   tracer_check_type
 
@@ -210,8 +211,10 @@ MODULE UW_CONV_MOD
   real    :: rkfre    = 0.05   ! vertical velocity variance as fraction of tke
   real    :: tau_sh   = 7200.  ! 
   real    :: wcrit_min= 0.
+  real    :: mass_fact= 0.25
+  logical :: do_old_cbmfmax = .true.
 
-  NAMELIST / uw_closure_nml / igauss, rkfre, tau_sh, wcrit_min
+  NAMELIST / uw_closure_nml / igauss, rkfre, tau_sh, wcrit_min, mass_fact, do_old_cbmfmax
 
 
 !========Option for deep convection=======================================
@@ -295,7 +298,7 @@ MODULE UW_CONV_MOD
        id_dgz_dyn_uwc, id_ddp_dyn_uwc, id_dgz_dyn_int, id_ddp_dyn_int, &
        id_hmint_uwc, id_hm_vadv0_uwc, id_hm_hadv0_uwc, id_hm_tot0_uwc, id_hm_total_uwc,&
        id_qtflx_up_uwc, id_qtflx_dn_uwc, id_omega_up_uwc, id_omega_dn_uwc, &
-       id_omgmc_up_uwc, id_rkm_uwc, id_stime_uwc, id_scale_uwc
+       id_omgmc_up_uwc, id_rkm_uwc, id_stime_uwc, id_scale_uwc, id_scaletr_uwc
 
 
   integer, allocatable :: id_tracerdt_uwc(:), id_tracerdt_uwc_col(:), &
@@ -683,6 +686,8 @@ contains
             'stime for shallow_conv', 's' )
     id_scale_uwc = register_diag_field (mod_name, 'scale_uwc', axes(1:2), Time, &
             'scale_uwc in shallow_conv', '' )
+    id_scaletr_uwc = register_diag_field (mod_name, 'scaletr_uwc', axes(1:2), Time, &
+            'scaletr_uwc in shallow_conv', '' )
     if ( do_strat ) then
        id_qldt_uwc= register_diag_field (mod_name,'qldt_uwc',axes(1:3),Time, &
             'Liquid water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
@@ -990,7 +995,7 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: wuo,fero,fdro,fdrso, tten_pevap, qvten_pevap
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, cfq, peo, hmo, hms, abu
 
-    real, dimension(size(tb,1),size(tb,2))            :: scale_uw
+    real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
     real :: qtin, dqt, temp_1
     
     !f1p
@@ -1057,6 +1062,7 @@ contains
     call ct_init_k(kd,ntracers,ct1)
     !pack namelist parameters into plume and closure structure
     cpn % do_qctflx_zero = do_qctflx_zero
+    cpn % do_subcloud_flx= do_subcloud_flx
     cpn % do_detran_zero = do_detran_zero
     cpn % rle       = rle
     cpn % rpen      = rpen
@@ -1141,8 +1147,10 @@ contains
     cc  % rkfre     = rkfre
     cc  % rmaxfrac  = rmaxfrac
     cc  % wcrit_min = wcrit_min
+    cc  % mass_fact = mass_fact
     cc  % rbuoy     = rbuoy
     cc  % tau_sh    = tau_sh
+    cc  % do_old_cbmfmax = do_old_cbmfmax
 !========Option for deep convection=======================================
     dpc % rkm_dp1             = rkm_dp1
     dpc % rkm_dp2             = rkm_dp2
@@ -1206,7 +1214,7 @@ contains
     tdt_rad_int=0.; tdt_dyn_int=0.; tdt_dif_int=0.; qdt_dyn_int=0.; qdt_dif_int=0.; 
     tdt_rad_pbl=0.; tdt_dyn_pbl=0.; tdt_dif_pbl=0.; qdt_dyn_pbl=0.; qdt_dif_pbl=0.; 
     tdt_rad_fre=0.; tdt_dyn_fre=0.; tdt_dif_fre=0.; qdt_dyn_fre=0.; qdt_dif_fre=0.; 
-    tdt_tot_pbl=0.; tdt_tot_fre=0.; cpool=0.; bflux=0.; scale_uw=1.; 
+    tdt_tot_pbl=0.; tdt_tot_fre=0.; cpool=0.; bflux=0.; scale_uw=1.; scale_tr=1.;
     dgz_dyn_int=0.; ddp_dyn_int=0.;
 
     cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; wuo=0.; peo=0.; 
@@ -1726,6 +1734,7 @@ contains
 	     endif
 
              dpn % do_ppen  = dpc % do_ppen_d
+	     dpn % rpen     = dpc % rpen_d
              dpn % do_pevap = dpc % do_pevap_d
              dpn % cfrac    = dpc % cfrac_d
              dpn % hcevap   = dpc % hcevap_d
@@ -2163,6 +2172,8 @@ contains
     used = send_data( id_fdp_uwc,  (fdp),              Time, is, js )
     used = send_data( id_rkm_uwc,  (rkm_s),            Time, is, js )
     used = send_data( id_stime_uwc,(stime),            Time, is, js )
+    used = send_data( id_scale_uwc,(scale_uw),         Time, is, js )
+    used = send_data( id_scaletr_uwc,(scale_tr),       Time, is, js )
 
     if ( do_uwcmt ) then
       used = send_data( id_tdt_diss_uwc,  dissipative_heat*aday , Time, is, js, 1)

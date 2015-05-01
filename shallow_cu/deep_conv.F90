@@ -89,6 +89,7 @@ contains
     type(cpnlist), intent(inout) :: dpn
 
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
+    dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen

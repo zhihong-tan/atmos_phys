@@ -238,7 +238,9 @@ integer, dimension(6) ::       &
                       ! initial time  (yr, mo, dy, hr, mn, sc)
 logical              :: time_varying_restart_bug = .false.
 logical              :: use_globally_uniform_co2 = .true.
-namelist /radiative_gases_nml/ verbose, &
+logical              :: do_NxCO2 = .false. !miz
+integer		     :: NNN = 1            !miz
+namelist /radiative_gases_nml/ verbose, do_NxCO2, NNN, &
         use_globally_uniform_co2, &
         gas_printout_freq, time_varying_restart_bug, &
         co2_dataset_entry, ch4_dataset_entry, n2o_dataset_entry,  &
@@ -1337,7 +1339,12 @@ type(radiative_gases_type), intent(inout)  :: Rad_gases_tv
                  if (Rad_control%calc_co2_tfs_on_first_step) then
                    co2_tfs_needed = .false.
                  endif
-
+!miz
+		 if (do_NxCO2) then
+	     	   rrvco2=NNN*rrvco2
+                   co2_for_next_tf_calc = NNN*co2_for_next_tf_calc
+	  	 endif
+!miz
 !---------------------------------------------------------------------
 !    if time-variation is desired, but it is not yet time to begin
 !    variation, define the co2 mixing ratio that was used for the last
