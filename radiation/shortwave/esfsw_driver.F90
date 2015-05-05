@@ -50,6 +50,11 @@ use esfsw_utilities_mod,  only:  esfsw_utilities_init, &
                                  esfsw_utilities_end, &
                                  sw_output_type, &
                                  assignment(=)
+
+use rad_utilities_mod,   only: atmos_input_type
+
+aerosol_types_mod, 	 only: aerosol_type
+
 !---------------------------------------------------------------------
 
 implicit none
