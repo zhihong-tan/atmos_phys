@@ -39,6 +39,8 @@ use lw_gases_stdtf_mod,  only: lw_gases_stdtf_init, cfc_exact,&
                                cfc_overod, cfc_overod_part,   &
                                cfc_exact_part
 
+use rad_utilities_mod,   only: atmos_input_type
+
 !--------------------------------------------------------------------
 
 implicit none
