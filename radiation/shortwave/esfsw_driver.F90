@@ -64,13 +64,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-<<<<<<< HEAD:sea_esf_rad/esfsw_driver.F90
-character(len=128)  :: version =  '$Id: esfsw_driver.F90,v 21.0.2.1 2015/01/23 22:18:43 Niki.Zadeh Exp $'
-character(len=128)  :: tagname =  '$Name: fix_debug_crash_Paynter_nnz $'
-=======
 character(len=128)  :: version =  '$Id$'
 character(len=128)  :: tagname =  '$Name$'
->>>>>>> origin/dev/master:radiation/shortwave/esfsw_driver.F90
 
 
 !---------------------------------------------------------------------
