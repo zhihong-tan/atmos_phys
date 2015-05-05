@@ -4,8 +4,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! $Id: isccp_cloud_types.F,v 20.0 2013/12/13 23:16:03 fms Exp $
-! $Name: ulm $
+! $Id$
+! $Name$
 ! cosp_version = 1.3.2
 
 #endif
@@ -85,7 +85,7 @@
 #endif
 
 #ifndef COSP_GFDL
-!$Id: isccp_cloud_types.F,v 20.0 2013/12/13 23:16:03 fms Exp $
+!$Id$
 #endif
 
 ! *****************************COPYRIGHT****************************

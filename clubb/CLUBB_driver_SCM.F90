@@ -119,7 +119,7 @@ use             fms_mod, only: write_version_number, open_file,                &
 use   field_manager_mod, only: MODEL_ATMOS
 use  tracer_manager_mod, only: get_number_tracers, get_tracer_index,           &
                                get_tracer_names
-use   rad_utilities_mod, only: aerosol_type
+use   aerosol_types_mod, only: aerosol_type
 use     aer_ccn_act_mod, only: aer_ccn_act_init, aer_ccn_act_end
 use   aer_ccn_act_k_mod, only: aer_ccn_act_k
 use        ice_nucl_mod, only: ice_nucl_wpdf_init, ice_nucl_wpdf_end
@@ -169,8 +169,8 @@ public :: clubb_setup, &
           clubb_end
 
 !--------------------- version number ----------------------------------
-character(len=128)   :: version = '$Id: CLUBB_driver_SCM.F90,v 21.0 2014/12/15 21:40:08 fms Exp $'
-character(len=128)   :: tagname = '$Name: ulm $'
+character(len=128)   :: version = '$Id$'
+character(len=128)   :: tagname = '$Name$'
 
 logical              :: module_is_initialized = .false.
 character(len=32)    :: tracer_units, tracer_name

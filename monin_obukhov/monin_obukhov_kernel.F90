@@ -1,7 +1,7 @@
 #include <fms_platform.h>
 
 ! -*-F90-*-
-! $Id: monin_obukhov_kernel.F90,v 13.0.22.1 2014/10/30 17:20:53 John.Dunne Exp $
+! $Id$
 
 !==============================================================================
 ! Kernel routine interface

@@ -17,8 +17,8 @@ public  simple_pdf, simple_pdf_init, simple_pdf_end
 
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
-Character(len=128) :: Version = '$Id: simple_pdf.F90,v 20.0 2013/12/13 23:22:07 fms Exp $'
-Character(len=128) :: Tagname = '$Name: ulm $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 
 

@@ -1,5 +1,5 @@
 #ifdef CLUBB
-!$Id: extrapolation.F90,v 20.0 2013/12/13 23:09:43 fms Exp $
+!$Id$
 module extrapolation
 
   implicit none

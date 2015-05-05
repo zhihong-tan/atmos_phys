@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: surface_varnce_module.F90,v 20.0 2013/12/13 23:10:30 fms Exp $
+! $Id$
 !===============================================================================
 module surface_varnce_module
 

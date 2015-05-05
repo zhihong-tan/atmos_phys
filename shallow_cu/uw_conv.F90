@@ -16,7 +16,7 @@ MODULE UW_CONV_MOD
   use  sat_vapor_pres_mod,only : sat_vapor_pres_init
   use atmos_tracer_utilities_mod, only : get_wetdep_param
 
-  use  rad_utilities_mod, only : aerosol_type
+  use  aerosol_types_mod, only : aerosol_type
   
   use  aer_ccn_act_mod, only :   aer_ccn_act_init
   use  conv_utilities_mod,only :   uw_params_init
@@ -49,8 +49,8 @@ MODULE UW_CONV_MOD
 !---------------------------------------------------------------------
 !----------- ****** VERSION NUMBER ******* ---------------------------
 
-  character(len=128) :: version = '$Id: uw_conv.F90,v 20.0.4.1.2.1 2015/02/25 22:59:26 Ming.Zhao Exp $'
-  character(len=128) :: tagname = '$Name: am4f3_20150225_miz $'
+  character(len=128) :: version = '$Id$'
+  character(len=128) :: tagname = '$Name$'
 
 !---------------------------------------------------------------------
 !-------  interfaces --------

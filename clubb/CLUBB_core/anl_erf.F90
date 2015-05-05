@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: anl_erf.F90,v 20.0 2013/12/13 23:09:30 fms Exp $
+! $Id$
 module anl_erf
 
   implicit none

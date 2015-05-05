@@ -248,8 +248,8 @@ real, parameter :: d608 = (rvgas-rdgas)/rdgas
 ! declare version number 
 !
 
-character(len=128) :: Version = '$Id: entrain.F90,v 19.0.14.1 2015/02/12 20:36:04 Chris.Golaz Exp $'
-character(len=128) :: Tagname = '$Name: ulm_convect_fix_cjg $'
+character(len=128) :: Version = '$Id$'
+character(len=128) :: Tagname = '$Name$'
 logical            :: module_is_initialized = .false.      
 !-----------------------------------------------------------------------
 !

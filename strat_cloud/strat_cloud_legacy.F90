@@ -143,7 +143,7 @@ module strat_cloud_legacy_mod
                                    cloud_generator_init, &
                                    compute_overlap_weighting
   
-  use  rad_utilities_mod,  only : aerosol_type
+  use  aerosol_types_mod, only : aerosol_type
 
 
   use strat_cloud_utilities_mod,  &
@@ -306,8 +306,8 @@ real :: U00, rthresh, var_limit, sea_salt_scale, om_to_oc,  N_land, &
   !       DECLARE VERSION NUMBER OF SCHEME
   !
 
-  Character(len=128) :: Version = '$Id: strat_cloud_legacy.F90,v 20.0 2013/12/13 23:22:13 fms Exp $'
-  Character(len=128) :: Tagname = '$Name: ulm $'
+  Character(len=128) :: Version = '$Id$'
+  Character(len=128) :: Tagname = '$Name$'
    logical            :: module_is_initialized = .false.
   integer, dimension(1) :: restart_versions = (/ 1 /)
   integer               :: vers

@@ -30,8 +30,8 @@ private  cloud_clear_xfer
 !-------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: rotstayn_klein_mp.F90,v 20.0.2.1.2.1.4.1 2014/11/24 22:04:52 Chris.Golaz Exp $'
-Character(len=128) :: Tagname = '$Name: ulm_total_act_fix_cjg $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 !-------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------

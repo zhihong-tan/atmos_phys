@@ -79,7 +79,7 @@ use diag_integral_mod,     only: diag_integral_field_init, &
                                  sum_diag_integral_field
 use cu_mo_trans_mod,       only: cu_mo_trans_init, cu_mo_trans, cu_mo_trans_end
 use moz_hook_mod,          only: moz_hook
-use rad_utilities_mod,     only: aerosol_type
+use aerosol_types_mod,     only: aerosol_type
 use moist_proc_utils_mod,  only: capecalcnew, tempavg, column_diag, rh_calc, pmass
 
 use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
@@ -107,8 +107,8 @@ private
 
 !--------------------- version number ----------------------------------
    character(len=128) :: &
-   version = '$Id: moist_processes.F90,v 21.0.8.1 2015/03/03 18:33:26 Huan.Guo Exp $'
-   character(len=128) :: tagname = '$Name: am4f3_convect_fix_20150303_h1g $'
+   version = '$Id$'
+   character(len=128) :: tagname = '$Name$'
 
    character(len=5), private :: mod_name = 'moist'
    logical            :: moist_allocated = .false.
@@ -1901,7 +1901,7 @@ logical, intent(out), dimension(:,:)     :: convect
    end if
 
    if ( id_ccb > 0 ) then
-     temp_2d = missing_value
+     temp_2d = CMOR_MISSING_VALUE
      do j = 1,jx
        do i = 1,ix
          if ( cldbot(i,j) > 0 ) temp_2d(i,j) = pfull(i,j,cldbot(i,j))
@@ -1923,7 +1923,7 @@ logical, intent(out), dimension(:,:)     :: convect
    end if
 
    if ( id_cct > 0 ) then
-     temp_2d = missing_value
+     temp_2d = CMOR_MISSING_VALUE
      do j = 1,jx
        do i = 1,ix
          if ( cldtop(i,j) > 0 ) temp_2d(i,j) = pfull(i,j,cldtop(i,j))

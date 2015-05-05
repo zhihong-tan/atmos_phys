@@ -1,5 +1,5 @@
 #ifdef CLUBB
-!$Id: calendar.F90,v 20.0 2013/12/13 23:09:32 fms Exp $
+!$Id$
 module calendar
 
   implicit none

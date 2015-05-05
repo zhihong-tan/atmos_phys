@@ -232,7 +232,7 @@ use mg_const_mod,         ONLY : mg_const_init, rhow, di_mg, ci_mg
 use  diag_manager_mod,    only:  diag_manager_init,    &
                                  register_diag_field, send_data
 use  time_manager_mod,    only:  time_type, time_manager_init
-use rad_utilities_mod,      only: aerosol_type
+use  aerosol_types_mod,   only:  aerosol_type
 
 implicit none
 private
@@ -256,8 +256,8 @@ private
 !---------------------------------------------------------------------
 !------------ version number for this module -------------------------
         
-character(len=128) :: version = '$Id: cloud_rad.F90,v 21.0 2014/12/15 21:39:58 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 
 !---------------------------------------------------------------------- 
