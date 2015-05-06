@@ -41,6 +41,10 @@ use lw_gases_stdtf_mod,  only: lw_gases_stdtf_init, cfc_exact,&
 
 use rad_utilities_mod,   only: atmos_input_type
 
+use aerosol_types_mod, 	 only: aerosol_type, &
+    			       aerosol_properties_type
+
+
 !--------------------------------------------------------------------
 
 implicit none

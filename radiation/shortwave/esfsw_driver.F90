@@ -53,7 +53,8 @@ use esfsw_utilities_mod,  only:  esfsw_utilities_init, &
 
 use rad_utilities_mod,   only: atmos_input_type
 
-use aerosol_types_mod, 	 only: aerosol_type
+use aerosol_types_mod, 	 only: aerosol_type, &
+    			       aerosol_properties_type
 
 !---------------------------------------------------------------------
 
