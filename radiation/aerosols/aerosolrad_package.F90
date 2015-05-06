@@ -2283,7 +2283,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
                 seasalt2_index_MOD(0:100 ), &
                 seasalt3_index_MOD(0:100 ), &
                 seasalt4_index_MOD(0:100 ), &
-                seasalt5_index_MOD(0:100 ) )
+                seasalt5_index_MOD(0:100 ), & 
                 seasalt_aitken_index_MOD(0:100 ), &
                 seasalt_fine_index_MOD(0:100 ), &
                 seasalt_coarse_index_MOD(0:100 ) )
