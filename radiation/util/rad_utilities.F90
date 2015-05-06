@@ -22,7 +22,10 @@
 use fms_mod,            only : fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                write_version_number, &
-                               error_mesg, FATAL, close_file
+                               error_mesg, FATAL, close_file, &
+                               lowercase
+use field_manager_mod,  only : parse
+use interpolator_mod,   only : interpolate_type
 use time_manager_mod,   only : time_type
 
 !--------------------------------------------------------------------
