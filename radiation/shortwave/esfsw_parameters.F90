@@ -30,6 +30,8 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              check_nml_error, error_mesg, &
                              FATAL, close_file
 
+use rad_utilities_mod, only: solar_spectrum_type
+
 !--------------------------------------------------------------------
 
 implicit none
@@ -136,10 +138,11 @@ logical :: module_is_initialized = .false.  ! module is initialized ?
 ! </SUBROUTINE>
 !
 subroutine esfsw_parameters_init (nbands, nfrqpts, nh2obands, &
-                                  nstreams, tot_wvnums)
+                                  nstreams, tot_wvnums, Solar_spect)
 
 integer, intent(out) :: nbands, nfrqpts, nh2obands, &
                         nstreams, tot_wvnums
+
 
 !------------------------------------------------------------------
 !    esfsw_parameters_init is the constructor for esfsw_parameters_mod.
@@ -230,6 +233,30 @@ integer, intent(out) :: nbands, nfrqpts, nh2obands, &
         write (logunit, nml=esfsw_parameters_nml)
       endif  
 
+!gbw merge cjg
+!-------------------------------------------------------------------
+!    indicate that visible_band_indx has not yet been defined.
+!-------------------------------------------------------------------
+      visible_band_indx = -10000000
+      visible_band_indx_iz = .false.
+
+!-------------------------------------------------------------------
+!    indicate that eight70_band_indx has not yet been defined.
+!-------------------------------------------------------------------
+      eight70_band_indx = -10000000
+      eight70_band_indx_iz = .false.
+
+!-------------------------------------------------------------------
+!    allocate space for the array components of the solar_spect_type
+!    variable.
+!-------------------------------------------------------------------
+      allocate( solflxband(nbands) )
+      allocate( solflxbandref(nbands) )
+      allocate( endwvnbands(0:nbands) )
+      allocate( solarfluxtoa(tot_wvnums) )
+
+
+
 !------------------------------------------------------------------
 !    mark the module as initialized.
 !------------------------------------------------------------------
@@ -276,6 +303,16 @@ subroutine esfsw_parameters_end
         call error_mesg ('esfsw_parameters_mod',   &
              'module has not been initialized', FATAL )
       endif
+
+!--------------------------------------------------------------------
+!    deallocate the components of the solar_spect_type variable.
+!---------------------------------------------------------------------
+      deallocate (solflxband, &
+                  solflxbandref, &
+                  endwvnbands, &
+                  solarfluxtoa)
+
+!------------------------------------------------
 
 !--------------------------------------------------------------------
 !    mark the module as uninitialized.

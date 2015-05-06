@@ -51,7 +51,10 @@ use esfsw_utilities_mod,  only:  esfsw_utilities_init, &
                                  sw_output_type, &
                                  assignment(=)
 
-use rad_utilities_mod,   only: atmos_input_type
+use rad_utilities_mod,   only: atmos_input_type, &
+    			       Sw_control, &
+			       Solar_spect, &
+			       Rad_control
 
 use aerosol_types_mod, 	 only: aerosol_type, &
     			       aerosol_properties_type, &
@@ -2292,7 +2295,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
 
       real        :: aerext_i, aerssalb_i, aerasymm_i
       integer     :: j, i, k, nband, nsc
-      integer     :: israd, jsrad, ierad, jerad, ksrad, kerad
+      integer     :: israd, jsrad, ierad, jerad, ksrad, kerad,naerosoltypes_used
 
 !-----------------------------------------------------------------------
 !     local variables:
@@ -2323,7 +2326,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
           if (daylight(i,j) .or. Sw_control%do_cmip_diagnostics) then
             deltaz(:) = Atmos_input%deltaz(i,j,:)
 
-            do nband = 1,Solar_spect%nbands
+            do nband = 1,nbands
               if (including_aerosols) then                           
                 aerext(:) = Aerosol_props%aerextband(nband,:)
                 aerssalb(:) = Aerosol_props%aerssalbband(nband,:)

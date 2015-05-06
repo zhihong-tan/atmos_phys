@@ -3945,7 +3945,7 @@ type(optical_path_type),       intent(inout) :: Optical
 !---------------------------------------------------------------------
 !    continuum band is the last indx:
 !---------------------------------------------------------------------
-      n_aerosol_bands = Lw_parameters%n_lwaerosol_bands
+      n_aerosol_bands = SIZE(Optical%totaerooptdep,4) !gbw
       if ( n == n_aerosol_bands) then
         Optical%aerooptdep_KE_15(:,:) = aerooptdep(:,:,kx)
       endif
