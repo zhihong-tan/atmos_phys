@@ -520,8 +520,8 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
                        size(press,2), 4)  :: &
                                 bdy_flx_mean, bdy_flx_clr_mean
 
-      real, dimension(size(Atmos_input%press,1),    &
-                       size(Atmos_input%press,2)) :: bT
+      real, dimension(size(press,1),    &
+                       size(press,2)) :: bT
 
       real, dimension(:,:,:),   allocatable :: aerosol_col
       real, dimension(:,:,:,:),   allocatable :: extopdep_col

@@ -551,33 +551,33 @@ end type gas_tf_type
 
 !------------------------------------------------------------------
 
-public longwave_control_type 
+!mv to Rad_control public longwave_control_type 
 
-type longwave_control_type
-    character(len=16) :: lw_form
-    character(len=16) :: continuum_form
-    character(len=16) :: linecatalog_form
-    logical           :: do_cfc
-    logical           :: do_lwaerosol
-    logical           :: do_ch4
-    logical           :: do_n2o
-    logical           :: do_ch4lbltmpint
-    logical           :: do_n2olbltmpint
-    logical           :: do_co2
-    logical           :: do_lwcldemiss
-    logical  :: do_h2o
-    logical  :: do_o3 
-    logical           :: do_cfc_iz
-    logical           :: do_lwaerosol_iz
-    logical           :: do_ch4_iz
-    logical           :: do_n2o_iz
-    logical           :: do_ch4lbltmpint_iz
-    logical           :: do_n2olbltmpint_iz
-    logical           :: do_co2_iz
-    logical           :: do_lwcldemiss_iz
-    logical           :: do_h2o_iz
-    logical           :: do_o3_iz 
-end type longwave_control_type
+!mv to Rad_control type longwave_control_type
+!mv to Rad_control     character(len=16) :: lw_form
+!mv to Rad_control     character(len=16) :: continuum_form
+!mv to Rad_control     character(len=16) :: linecatalog_form
+!mv to Rad_control     logical           :: do_cfc
+!mv to Rad_control     logical           :: do_lwaerosol
+!mv to Rad_control     logical           :: do_ch4
+!mv to Rad_control     logical           :: do_n2o
+!mv to Rad_control     logical           :: do_ch4lbltmpint
+!mv to Rad_control     logical           :: do_n2olbltmpint
+!mv to Rad_control     logical           :: do_co2
+!mv to Rad_control     logical           :: do_lwcldemiss
+!mv to Rad_control     logical  :: do_h2o
+!mv to Rad_control     logical  :: do_o3 
+!mv to Rad_control     logical           :: do_cfc_iz
+!mv to Rad_control     logical           :: do_lwaerosol_iz
+!mv to Rad_control     logical           :: do_ch4_iz
+!mv to Rad_control     logical           :: do_n2o_iz
+!mv to Rad_control     logical           :: do_ch4lbltmpint_iz
+!mv to Rad_control     logical           :: do_n2olbltmpint_iz
+!mv to Rad_control     logical           :: do_co2_iz
+!mv to Rad_control     logical           :: do_lwcldemiss_iz
+!mv to Rad_control     logical           :: do_h2o_iz
+!mv to Rad_control     logical           :: do_o3_iz 
+!mv to Rad_control end type longwave_control_type
 
 !---------------------------------------------------------------------
 
@@ -893,77 +893,102 @@ end type optical_path_type
 
 !------------------------------------------------------------------
 
+!mv to Rad_control public radiation_control_type
+!mv to Rad_control type radiation_control_type
+!mv to Rad_control     logical  :: do_totcld_forcing
+!mv to Rad_control     logical  :: do_aerosol
+!mv to Rad_control     integer  :: rad_time_step
+!mv to Rad_control     integer  :: lw_rad_time_step
+!mv to Rad_control     integer  :: sw_rad_time_step
+!mv to Rad_control     logical  :: do_sw_rad
+!mv to Rad_control     logical  :: do_lw_rad
+!mv to Rad_control     logical  :: hires_coszen
+!mv to Rad_control     integer  :: nzens
+!mv to Rad_control     real     :: co2_tf_calc_intrvl
+!mv to Rad_control     logical  :: use_current_co2_for_tf
+!mv to Rad_control     logical  :: calc_co2_tfs_on_first_step
+!mv to Rad_control     logical  :: calc_co2_tfs_monthly
+!mv to Rad_control     real     :: co2_tf_time_displacement
+!mv to Rad_control     real     :: ch4_tf_calc_intrvl
+!mv to Rad_control     logical  :: use_current_ch4_for_tf
+!mv to Rad_control     logical  :: calc_ch4_tfs_on_first_step
+!mv to Rad_control     logical  :: calc_ch4_tfs_monthly
+!mv to Rad_control     real     :: ch4_tf_time_displacement
+!mv to Rad_control     real     :: n2o_tf_calc_intrvl
+!mv to Rad_control     logical  :: use_current_n2o_for_tf
+!mv to Rad_control     logical  :: calc_n2o_tfs_on_first_step
+!mv to Rad_control     logical  :: calc_n2o_tfs_monthly
+!mv to Rad_control     real     :: n2o_tf_time_displacement
+!mv to Rad_control     integer  :: mx_spec_levs
+!mv to Rad_control     logical  :: time_varying_solar_constant
+!mv to Rad_control     logical  :: volcanic_sw_aerosols
+!mv to Rad_control     logical  :: volcanic_lw_aerosols
+!mv to Rad_control     logical  :: using_solar_timeseries_data
+!mv to Rad_control     logical  :: do_lwaerosol_forcing
+!mv to Rad_control     logical  :: do_swaerosol_forcing
+!mv to Rad_control     integer  :: indx_swaf
+!mv to Rad_control     integer  :: indx_lwaf
+!mv to Rad_control     logical  :: using_im_bcsul
+!mv to Rad_control     logical  :: do_totcld_forcing_iz
+!mv to Rad_control     logical  :: do_aerosol_iz
+!mv to Rad_control     logical  :: rad_time_step_iz
+!mv to Rad_control     logical  :: lw_rad_time_step_iz
+!mv to Rad_control     logical  :: sw_rad_time_step_iz
+!mv to Rad_control     logical  :: do_sw_rad_iz
+!mv to Rad_control     logical  :: do_lw_rad_iz
+!mv to Rad_control     logical  :: hires_coszen_iz
+!mv to Rad_control     logical  :: nzens_iz  
+!mv to Rad_control     logical  :: co2_tf_calc_intrvl_iz
+!mv to Rad_control     logical  :: use_current_co2_for_tf_iz
+!mv to Rad_control     logical  :: calc_co2_tfs_on_first_step_iz
+!mv to Rad_control     logical  :: calc_co2_tfs_monthly_iz
+!mv to Rad_control     logical  :: ch4_tf_calc_intrvl_iz
+!mv to Rad_control     logical  :: use_current_ch4_for_tf_iz
+!mv to Rad_control     logical  :: calc_ch4_tfs_on_first_step_iz
+!mv to Rad_control     logical  :: calc_ch4_tfs_monthly_iz
+!mv to Rad_control     logical  :: n2o_tf_calc_intrvl_iz
+!mv to Rad_control     logical  :: use_current_n2o_for_tf_iz
+!mv to Rad_control     logical  :: calc_n2o_tfs_on_first_step_iz
+!mv to Rad_control     logical  :: calc_n2o_tfs_monthly_iz
+!mv to Rad_control     logical  :: co2_tf_time_displacement_iz
+!mv to Rad_control     logical  :: ch4_tf_time_displacement_iz
+!mv to Rad_control     logical  :: n2o_tf_time_displacement_iz
+!mv to Rad_control     logical  :: mx_spec_levs_iz
+!mv to Rad_control     logical  :: time_varying_solar_constant_iz
+!mv to Rad_control     logical  :: volcanic_sw_aerosols_iz
+!mv to Rad_control     logical  :: volcanic_lw_aerosols_iz
+!mv to Rad_control     logical  :: using_solar_timeseries_data_iz
+!mv to Rad_control     logical  :: do_lwaerosol_forcing_iz
+!mv to Rad_control     logical  :: do_swaerosol_forcing_iz
+!mv to Rad_control     logical  :: indx_swaf_iz
+!mv to Rad_control     logical  :: indx_lwaf_iz
+!mv to Rad_control     logical  :: using_im_bcsul_iz
+!mv to Rad_control end type radiation_control_type
+
 public radiation_control_type
 
 type radiation_control_type
     logical  :: do_totcld_forcing
-    logical  :: do_aerosol
-    integer  :: rad_time_step
-    integer  :: lw_rad_time_step
-    integer  :: sw_rad_time_step
+    logical  :: using_restart_file
     logical  :: do_sw_rad
     logical  :: do_lw_rad
+    logical  :: renormalize_sw_fluxes
     logical  :: hires_coszen
     integer  :: nzens
-    real     :: co2_tf_calc_intrvl
-    logical  :: use_current_co2_for_tf
-    logical  :: calc_co2_tfs_on_first_step
-    logical  :: calc_co2_tfs_monthly
-    real     :: co2_tf_time_displacement
-    real     :: ch4_tf_calc_intrvl
-    logical  :: use_current_ch4_for_tf
-    logical  :: calc_ch4_tfs_on_first_step
-    logical  :: calc_ch4_tfs_monthly
-    real     :: ch4_tf_time_displacement
-    real     :: n2o_tf_calc_intrvl
-    logical  :: use_current_n2o_for_tf
-    logical  :: calc_n2o_tfs_on_first_step
-    logical  :: calc_n2o_tfs_monthly
-    real     :: n2o_tf_time_displacement
-    integer  :: mx_spec_levs
-    logical  :: time_varying_solar_constant
-    logical  :: volcanic_sw_aerosols
-    logical  :: volcanic_lw_aerosols
-    logical  :: using_solar_timeseries_data
-    logical  :: do_lwaerosol_forcing
-    logical  :: do_swaerosol_forcing
-    integer  :: indx_swaf
-    integer  :: indx_lwaf
-    logical  :: using_im_bcsul
-    logical  :: do_totcld_forcing_iz
-    logical  :: do_aerosol_iz
-    logical  :: rad_time_step_iz
-    logical  :: lw_rad_time_step_iz
-    logical  :: sw_rad_time_step_iz
-    logical  :: do_sw_rad_iz
-    logical  :: do_lw_rad_iz
-    logical  :: hires_coszen_iz
-    logical  :: nzens_iz  
-    logical  :: co2_tf_calc_intrvl_iz
-    logical  :: use_current_co2_for_tf_iz
-    logical  :: calc_co2_tfs_on_first_step_iz
-    logical  :: calc_co2_tfs_monthly_iz
-    logical  :: ch4_tf_calc_intrvl_iz
-    logical  :: use_current_ch4_for_tf_iz
-    logical  :: calc_ch4_tfs_on_first_step_iz
-    logical  :: calc_ch4_tfs_monthly_iz
-    logical  :: n2o_tf_calc_intrvl_iz
-    logical  :: use_current_n2o_for_tf_iz
-    logical  :: calc_n2o_tfs_on_first_step_iz
-    logical  :: calc_n2o_tfs_monthly_iz
-    logical  :: co2_tf_time_displacement_iz
-    logical  :: ch4_tf_time_displacement_iz
-    logical  :: n2o_tf_time_displacement_iz
-    logical  :: mx_spec_levs_iz
-    logical  :: time_varying_solar_constant_iz
-    logical  :: volcanic_sw_aerosols_iz
-    logical  :: volcanic_lw_aerosols_iz
-    logical  :: using_solar_timeseries_data_iz
-    logical  :: do_lwaerosol_forcing_iz
-    logical  :: do_swaerosol_forcing_iz
-    logical  :: indx_swaf_iz
-    logical  :: indx_lwaf_iz
-    logical  :: using_im_bcsul_iz
+  ! from longwave_control_type
+    logical  :: do_h2o
+    logical  :: do_o3 
+    logical  :: do_ch4_lw
+    logical  :: do_n2o_lw
+    logical  :: do_cfc_lw
+    logical  :: do_co2_lw
+    logical  :: do_co2_10um
+  ! from shortwave_control_type
+    logical  :: do_esfsw
+    logical  :: do_diurnal
+    logical  :: do_annual
+    logical  :: do_daily_mean
+    logical  :: do_cmip_sw_diagnostics
 end type radiation_control_type
 
 !------------------------------------------------------------------
@@ -1071,25 +1096,25 @@ end type rad_output_type
 
 !-------------------------------------------------------------------
 
-public shortwave_control_type
+!mv to Rad_control public shortwave_control_type
 
-type shortwave_control_type
-    logical  :: do_lhsw
-    logical  :: do_esfsw
-    logical  :: do_swaerosol
-    logical  :: do_diurnal
-    logical  :: do_annual
-    logical  :: do_daily_mean
-    logical  :: do_cmip_diagnostics
-    real     :: solar_constant
-    logical  :: do_lhsw_iz
-    logical  :: do_esfsw_iz
-    logical  :: do_swaerosol_iz
-    logical  :: do_diurnal_iz
-    logical  :: do_annual_iz
-    logical  :: do_daily_mean_iz
-    logical  :: do_cmip_diagnostics_iz
-end type shortwave_control_type
+!mv to Rad_control type shortwave_control_type
+!mv to Rad_control     logical  :: do_lhsw
+!mv to Rad_control     logical  :: do_esfsw
+!mv to Rad_control     logical  :: do_swaerosol
+!mv to Rad_control     logical  :: do_diurnal
+!mv to Rad_control     logical  :: do_annual
+!mv to Rad_control     logical  :: do_daily_mean
+!mv to Rad_control     logical  :: do_cmip_diagnostics
+!mv to Rad_control     real     :: solar_constant
+!mv to Rad_control     logical  :: do_lhsw_iz
+!mv to Rad_control     logical  :: do_esfsw_iz
+!mv to Rad_control     logical  :: do_swaerosol_iz
+!mv to Rad_control     logical  :: do_diurnal_iz
+!mv to Rad_control     logical  :: do_annual_iz
+!mv to Rad_control     logical  :: do_daily_mean_iz
+!mv to Rad_control     logical  :: do_cmip_diagnostics_iz
+!mv to Rad_control end type shortwave_control_type
 
 !---------------------------------------------------------------------
 
@@ -1237,25 +1262,25 @@ namelist / rad_utilities_nml /   &
 !------- public data ------
 
 
-type (longwave_control_type),  public   ::    &
-     Lw_control = longwave_control_type( '    ', '    ', '    ', &
-                                         .false., .false., .false.,  &
-                                         .false., .false., .false.,  &
-                                         .false., .false.,  &
-                                         .false., .false.,  &
-                                         .false., .false., .false.,  &
-                                         .false., .false.,  &
-                                         .false., .false.,  &
-                                         .false., .false., .false.   )
+!mv to Rad_control type (longwave_control_type),  public   ::    &
+!mv to Rad_control      Lw_control = longwave_control_type( '    ', '    ', '    ', &
+!mv to Rad_control                                          .false., .false., .false.,  &
+!mv to Rad_control                                          .false., .false., .false.,  &
+!mv to Rad_control                                          .false., .false.,  &
+!mv to Rad_control                                          .false., .false.,  &
+!mv to Rad_control                                          .false., .false., .false.,  &
+!mv to Rad_control                                          .false., .false.,  &
+!mv to Rad_control                                          .false., .false.,  &
+!mv to Rad_control                                          .false., .false., .false.   )
 
-type (shortwave_control_type), public   ::  &
-    Sw_control = shortwave_control_type( .false., .false., .false. , &
-                                         .false., .false., .false., &
-                                         .false., &
-                                         0.0, &
-                                         .false., .false., .false. , &
-                                         .false., &
-                                         .false., .false., .false.)
+!mv to Rad_control type (shortwave_control_type), public   ::  &
+!mv to Rad_control     Sw_control = shortwave_control_type( .false., .false., .false. , &
+!mv to Rad_control                                          .false., .false., .false., &
+!mv to Rad_control                                          .false., &
+!mv to Rad_control                                          0.0, &
+!mv to Rad_control                                          .false., .false., .false. , &
+!mv to Rad_control                                          .false., &
+!mv to Rad_control                                          .false., .false., .false.)
 
 type (radiation_control_type), public   ::  &
    Rad_control = radiation_control_type( .false., .false., 0, 0, 0, &

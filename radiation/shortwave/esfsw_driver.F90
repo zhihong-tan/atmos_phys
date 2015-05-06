@@ -52,9 +52,9 @@ use esfsw_utilities_mod,  only:  esfsw_utilities_init, &
                                  assignment(=)
 
 use rad_utilities_mod,   only: atmos_input_type, &
-    			       Sw_control, &
-			       Solar_spect, &
+			       solar_spectrum_type, &
 			       Rad_control
+			       !should be esfsw_parameters... Solar_spect
 
 use aerosol_types_mod, 	 only: aerosol_type, &
     			       aerosol_properties_type, &
@@ -147,6 +147,7 @@ namelist / esfsw_driver_nml /    &
 !---------------------------------------------------------------------
 !------- public data ------
 
+type(solar_spectrum_type),public,save :: Solar_spect
 
 !---------------------------------------------------------------------
 !------- private data ------
@@ -367,7 +368,7 @@ subroutine esfsw_driver_init
       integer   :: i
       integer   :: n
       real      :: input_flag = 1.0e-99
-
+      
 !---------------------------------------------------------------------
 !  local variables:
 !                                                                       
@@ -429,8 +430,12 @@ subroutine esfsw_driver_init
       call fms_init
       call constants_init
       call esfsw_utilities_init
+!XXX GBW       call esfsw_parameters_init (nbands, nfrqpts, &
+!XXX GBW                                   nh2obands, nstreams, tot_wvnums)
+!XXX GBW <control structure here>
       call esfsw_parameters_init (nbands, nfrqpts, &
-                                  nh2obands, nstreams, tot_wvnums)
+                                   nh2obands, nstreams, tot_wvnums, Solar_Spect)
+
 
 !-----------------------------------------------------------------------
 !    read namelist.
@@ -2323,7 +2328,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
 
       do j = JSRAD,JERAD
         do i = ISRAD,IERAD
-          if (daylight(i,j) .or. Sw_control%do_cmip_diagnostics) then
+          if (daylight(i,j) .or. Rad_control%do_cmip_sw_diagnostics) then
             deltaz(:) = Atmos_input%deltaz(i,j,:)
 
             do nband = 1,nbands
@@ -2577,8 +2582,8 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                     end do
                   endif
 
-                  if (Sw_control%do_cmip_diagnostics) then
-                    if (nband == Solar_spect%visible_band_indx) then
+                  if (Rad_control%do_cmip_sw_diagnostics) then
+                    if (nband == visible_band_indx) then
                       Aerosol_diags%extopdep(i,j,:,nsc,1) = arprod(:)
                       Aerosol_diags%absopdep(i,j,:,nsc,1) =    &
                                             arprod(:) - arprod2(:)
@@ -2643,7 +2648,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                                  Aerosol_props%sw_ssa(i,j,k,nband)*  &
                                  Aerosol_props%sw_ext(i,j,k,nband)*  &
                                  deltaz(k)
-                    if (Sw_control%do_cmip_diagnostics) then
+                    if (Rad_control%do_cmip_sw_diagnostics) then
                       if (nband == Solar_spect%visible_band_indx) then
                            Aerosol_diags%extopdep_vlcno(i,j,k,1) =   &
                                  Aerosol_props%sw_ext(i,j,k,nband)*  &

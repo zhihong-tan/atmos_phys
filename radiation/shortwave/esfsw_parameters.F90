@@ -97,6 +97,31 @@ namelist /esfsw_parameters_nml/    &
 !---------------------------------------------------------------------
 integer, parameter :: TOT_WVNUMS_LOCAL  = 57600
 
+!------------------------------------------------------------------
+!  variables: for cjg
+    real, dimension(:)		, allocatable, target  :: solarfluxtoa
+    real, dimension(:)		, allocatable, target  :: solflxband
+    real, dimension(:)		, allocatable, target  :: solflxbandref
+    real, dimension(:)		, allocatable, target  :: solflxband_lean_ann_1882
+    real, dimension(:)		, allocatable, target  :: solflxband_lean_ann_2000
+    real, dimension(:,:,:)	, allocatable, target  :: solflxband_lean
+    integer, dimension(:)	, allocatable, target  :: endwvnbands
+    integer         :: visible_band_indx
+    integer         :: one_micron_indx
+    integer         :: eight70_band_indx
+    logical         :: visible_band_indx_iz
+    logical	    :: one_micron_indx_iz
+    logical         :: eight70_band_indx_iz
+    integer         :: w340_band_indx
+    integer 	    :: w380_band_indx
+    integer	    :: w440_band_indx
+    integer 	    :: w670_band_indx
+    logical         :: w340_band_iz
+    logical	    :: w380_band_iz
+    logical	    :: w440_band_iz
+    logical	    :: w670_band_iz
+
+
 
 !-------------------------------------------------------------------
 !----- private data --------
@@ -139,10 +164,10 @@ logical :: module_is_initialized = .false.  ! module is initialized ?
 !
 subroutine esfsw_parameters_init (nbands, nfrqpts, nh2obands, &
                                   nstreams, tot_wvnums, Solar_spect)
+    integer, intent(out) :: nbands, nfrqpts, nh2obands, &
+                            nstreams, tot_wvnums
 
-integer, intent(out) :: nbands, nfrqpts, nh2obands, &
-                        nstreams, tot_wvnums
-
+    type(solar_spectrum_type), intent(out), optional :: Solar_spect
 
 !------------------------------------------------------------------
 !    esfsw_parameters_init is the constructor for esfsw_parameters_mod.
@@ -152,6 +177,31 @@ integer, intent(out) :: nbands, nfrqpts, nh2obands, &
 !  local variables:
 
       integer    ::  unit, ierr, io, logunit
+
+!------------------------------------------------------------------
+!  variables: for cjg
+    real, dimension(:)		, allocatable, target  :: solarfluxtoa
+    real, dimension(:)		, allocatable, target  :: solflxband
+    real, dimension(:)		, allocatable, target  :: solflxbandref
+    real, dimension(:)		, allocatable, target  :: solflxband_lean_ann_1882
+    real, dimension(:)		, allocatable, target  :: solflxband_lean_ann_2000
+    real, dimension(:,:,:)	, allocatable, target  :: solflxband_lean
+    integer, dimension(:)	, allocatable, target  :: endwvnbands
+    integer         :: visible_band_indx
+    integer         :: one_micron_indx
+    integer         :: eight70_band_indx
+    logical         :: visible_band_indx_iz
+    logical	    :: one_micron_indx_iz
+    logical         :: eight70_band_indx_iz
+    integer         :: w340_band_indx
+    integer 	    :: w380_band_indx
+    integer	    :: w440_band_indx
+    integer 	    :: w670_band_indx
+    logical         :: w340_band_iz
+    logical	    :: w380_band_iz
+    logical	    :: w440_band_iz
+    logical	    :: w670_band_iz
+
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -234,26 +284,61 @@ integer, intent(out) :: nbands, nfrqpts, nh2obands, &
       endif  
 
 !gbw merge cjg
-!-------------------------------------------------------------------
-!    indicate that visible_band_indx has not yet been defined.
-!-------------------------------------------------------------------
-      visible_band_indx = -10000000
-      visible_band_indx_iz = .false.
 
-!-------------------------------------------------------------------
-!    indicate that eight70_band_indx has not yet been defined.
-!-------------------------------------------------------------------
-      eight70_band_indx = -10000000
-      eight70_band_indx_iz = .false.
+    if ( present( Solar_spect ) ) then
 
-!-------------------------------------------------------------------
-!    allocate space for the array components of the solar_spect_type
-!    variable.
-!-------------------------------------------------------------------
-      allocate( solflxband(nbands) )
-      allocate( solflxbandref(nbands) )
-      allocate( endwvnbands(0:nbands) )
-      allocate( solarfluxtoa(tot_wvnums) )
+    !-------------------------------------------------------------------
+    !#    pack what we know
+    !-------------------------------------------------------------------
+
+	  Solar_spect%nbands	 = nbands
+	  Solar_spect%nfrqpts 	 = nfrqpts
+	  Solar_spect%nh2obands  = nh2obands
+	  Solar_spect%nstreams 	 = nstreams
+	  Solar_spect%tot_wvnums = tot_wvnums
+
+    !-------------------------------------------------------------------
+    !#    fill what was defined in cjg's work
+    !-------------------------------------------------------------------
+       
+    !-------------------------------------------------------------------
+    !    indicate that visible_band_indx has not yet been defined.
+    !-------------------------------------------------------------------
+          visible_band_indx = -10000000
+	  Solar_spect%visible_band_indx = visible_band_indx
+
+          visible_band_indx_iz = .false.
+	  Solar_spect%visible_band_indx_iz = visible_band_indx_iz
+    
+    !-------------------------------------------------------------------
+    !    indicate that eight70_band_indx has not yet been defined.
+    !-------------------------------------------------------------------
+          eight70_band_indx = -10000000
+	  Solar_spect%eight70_band_indx = eight70_band_indx
+
+          eight70_band_indx_iz = .false.
+	  Solar_spect%eight70_band_indx_iz = eight70_band_indx_iz
+    
+    !-------------------------------------------------------------------
+    !    allocate space for the array components of the solar_spect_type
+    !    variable.
+    !-------------------------------------------------------------------
+    ! then associate the " "pointers" "
+    !-------------------------------------------------------------------
+
+          allocate( solflxband(nbands) )
+	  Solar_spect%solflxband => solflxband
+
+          allocate( solflxbandref(nbands) )
+	  Solar_spect%solflxbandref => solflxbandref
+
+          allocate( endwvnbands(0:nbands) )
+	  Solar_spect%endwvnbands => endwvnbands
+
+          allocate( solarfluxtoa(tot_wvnums) )
+	  Solar_spect%solarfluxtoa => solarfluxtoa
+	  
+    endif
 
 
 
