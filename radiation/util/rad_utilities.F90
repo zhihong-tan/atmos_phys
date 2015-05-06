@@ -1282,36 +1282,60 @@ namelist / rad_utilities_nml /   &
 !mv to Rad_control                                          .false., &
 !mv to Rad_control                                          .false., .false., .false.)
 
+!mv to Rad_control type (radiation_control_type), public   ::  &
+!mv to Rad_control    Rad_control = radiation_control_type( .false., .false., 0, 0, 0, &
+!mv to Rad_control                                          .false., .false., &
+!mv to Rad_control                                          .false., 1, &
+!mv to Rad_control                                          0.0,  .true.,  .false.,&
+!mv to Rad_control                                          .false.,  0.0, &
+!mv to Rad_control                                          0.0, .true., .false.,  &
+!mv to Rad_control                                          .false.,  0.0,  &
+!mv to Rad_control                                          0.0, .true., .false.,   &
+!mv to Rad_control                                          .false., 0.0, &
+!mv to Rad_control                                          0, .false., .false.,   &
+!mv to Rad_control                                          .false., .false.,&
+!mv to Rad_control                                          .false., .false.,      &
+!mv to Rad_control                                          0, 0, .false., &
+!mv to Rad_control ! _iz variables:
+!mv to Rad_control                                          .false., .false., .false., &
+!mv to Rad_control                                          .false., .false., .true., &
+!mv to Rad_control                                          .true.,  &
+!mv to Rad_control                                          .false., .false., &
+!mv to Rad_control                                          .false., .false., &
+!mv to Rad_control                                          .false., .false., .false., &
+!mv to Rad_control                                          .false., .false., .false., &
+!mv to Rad_control                                          .false., .false., &
+!mv to Rad_control                                          .false., .false., &
+!mv to Rad_control                                          .false., .false., &
+!mv to Rad_control                                          .false.,          &
+!mv to Rad_control                                          .false., .false., .false.,  &
+!mv to Rad_control                                          .false., .false.,   &
+!mv to Rad_control                                          .false., .false., &
+!mv to Rad_control                                          .false., .false., .false.)
+
 type (radiation_control_type), public   ::  &
-   Rad_control = radiation_control_type( .false., .false., 0, 0, 0, &
-                                         .false., .false., &
-                                         .false., 1, &
-                                         0.0,  .true.,  .false.,&
-                                         .false.,  0.0, &
-                                         0.0, .true., .false.,  &
-                                         .false.,  0.0,  &
-                                         0.0, .true., .false.,   &
-                                         .false., 0.0, &
-                                         0, .false., .false.,   &
-                                         .false., .false.,&
-                                         .false., .false.,      &
-                                         0, 0, .false., &
-! _iz variables:
-                                         .false., .false., .false., &
-                                         .false., .false., .true., &
-                                         .true.,  &
-                                         .false., .false., &
-                                         .false., .false., &
-                                         .false., .false., .false., &
-                                         .false., .false., .false., &
-                                         .false., .false., &
-                                         .false., .false., &
-                                         .false., .false., &
-                                         .false.,          &
-                                         .false., .false., .false.,  &
-                                         .false., .false.,   &
-                                         .false., .false., &
-                                         .false., .false., .false.)
+	     Rad_control = radiation_control_type( .false. , &
+	     		   			   .false. , &
+						   .false. , &
+						   .false. , &
+						   .false. , &
+						   .false. , &
+						   1 , &
+		!from lw
+						   .false. , &
+						   .false. , &
+						   .false. , &
+						   .false. , &
+						   .false. , &		   
+						   .false. , &
+						   .false. , &
+                !from sw
+						   .false. , &
+						   .false. , &
+						   .false. , &
+						   .false. , &
+						   .false. )
+
 
 
 type (cloudrad_control_type), public    ::   &
@@ -1449,83 +1473,83 @@ subroutine check_derived_types
 !    derived-type module variables have been initialized.
 !--------------------------------------------------------------------
 
-!---------------------------------------------------------------------
-!    check the components of Lw_control.
-!--------------------------------------------------------------------
-      if (Lw_control%do_cfc_iz .and. &
-          Lw_control%do_lwaerosol_iz .and. &
-          Lw_control%do_ch4_iz .and. &
-          Lw_control%do_n2o_iz .and. &
-          Lw_control%do_ch4lbltmpint_iz .and. &
-          Lw_control%do_n2olbltmpint_iz .and. &
-          Lw_control%do_co2_iz .and. &
-          Lw_control%do_h2o_iz .and. &
-          Lw_control%do_o3_iz .and. &
-          Lw_control%do_lwcldemiss_iz ) then  
-      else
-        call error_mesg ('rad_utilities_mod', &
-             ' at least one component of Lw_control has not been '//&
-                                     'initialized', FATAL)
-      endif
+!deprecated !---------------------------------------------------------------------
+!deprecated !    check the components of Lw_control.
+!deprecated !--------------------------------------------------------------------
+!deprecated       if (Lw_control%do_cfc_iz .and. &
+!deprecated           Lw_control%do_lwaerosol_iz .and. &
+!deprecated           Lw_control%do_ch4_iz .and. &
+!deprecated           Lw_control%do_n2o_iz .and. &
+!deprecated           Lw_control%do_ch4lbltmpint_iz .and. &
+!deprecated           Lw_control%do_n2olbltmpint_iz .and. &
+!deprecated           Lw_control%do_co2_iz .and. &
+!deprecated           Lw_control%do_h2o_iz .and. &
+!deprecated           Lw_control%do_o3_iz .and. &
+!deprecated           Lw_control%do_lwcldemiss_iz ) then  
+!deprecated       else
+!deprecated         call error_mesg ('rad_utilities_mod', &
+!deprecated              ' at least one component of Lw_control has not been '//&
+!deprecated                                      'initialized', FATAL)
+!deprecated       endif
 
-!---------------------------------------------------------------------
-!    check the components of Sw_control.
-!--------------------------------------------------------------------
-      if (Sw_control%do_lhsw_iz .and. &
-          Sw_control%do_esfsw_iz .and. &
-          Sw_control%do_swaerosol_iz .and. &
-          Sw_control%do_diurnal_iz .and. &
-          Sw_control%do_annual_iz .and. &
-          Sw_control%do_cmip_diagnostics_iz .and. &
-          Sw_control%do_daily_mean_iz ) then  
-      else
-        call error_mesg ('rad_utilities_mod', &
-             ' at least one component of Sw_control has not been '//&
-                                     'initialized', FATAL)
-      endif
+!deprecated !---------------------------------------------------------------------
+!deprecated !    check the components of Sw_control.
+!deprecated !--------------------------------------------------------------------
+!deprecated       if (Sw_control%do_lhsw_iz .and. &
+!deprecated           Sw_control%do_esfsw_iz .and. &
+!deprecated           Sw_control%do_swaerosol_iz .and. &
+!deprecated           Sw_control%do_diurnal_iz .and. &
+!deprecated           Sw_control%do_annual_iz .and. &
+!deprecated           Sw_control%do_cmip_diagnostics_iz .and. &
+!deprecated           Sw_control%do_daily_mean_iz ) then  
+!deprecated       else
+!deprecated         call error_mesg ('rad_utilities_mod', &
+!deprecated              ' at least one component of Sw_control has not been '//&
+!deprecated                                      'initialized', FATAL)
+!deprecated       endif
 
-!---------------------------------------------------------------------
-!    check the components of Rad_control.
-!--------------------------------------------------------------------
-      if (Rad_control%do_totcld_forcing_iz .and. &
-          Rad_control%do_lwaerosol_forcing_iz .and.  &
-          Rad_control%do_swaerosol_forcing_iz .and.  &
-          Rad_control%indx_lwaf_iz .and.   &
-          Rad_control%indx_swaf_iz .and.   &
-          Rad_control%using_im_bcsul_iz .and. &
-          Rad_control%volcanic_sw_aerosols_iz .and. &
-          Rad_control%volcanic_lw_aerosols_iz .and. &
-          Rad_control%time_varying_solar_constant_iz .and. &
-          Rad_control%using_solar_timeseries_data_iz .and. &
-          Rad_control%do_aerosol_iz .and.     &
-          Rad_control%mx_spec_levs_iz .and.   &
-          Rad_control%use_current_co2_for_tf_iz .and. &
-          Rad_control%co2_tf_calc_intrvl_iz .and. &
-          Rad_control%calc_co2_tfs_on_first_step_iz .and. &
-          Rad_control%calc_co2_tfs_monthly_iz .and. &
-          Rad_control%co2_tf_time_displacement_iz .and. &
-          Rad_control%use_current_ch4_for_tf_iz .and. &
-          Rad_control%ch4_tf_calc_intrvl_iz .and. &
-          Rad_control%calc_ch4_tfs_on_first_step_iz .and. &
-          Rad_control%calc_ch4_tfs_monthly_iz .and. &
-          Rad_control%ch4_tf_time_displacement_iz .and. &
-          Rad_control%use_current_n2o_for_tf_iz .and. &
-          Rad_control%n2o_tf_calc_intrvl_iz .and. &
-          Rad_control%calc_n2o_tfs_on_first_step_iz .and. &
-          Rad_control%calc_n2o_tfs_monthly_iz .and. &
-          Rad_control%n2o_tf_time_displacement_iz .and. &
-          Rad_control%do_lw_rad_iz .and. &
-          Rad_control%do_sw_rad_iz .and. &
-          Rad_control%nzens_iz .and. &
-          Rad_control%hires_coszen_iz .and. &
-          Rad_control%lw_rad_time_step_iz .and.  &
-          Rad_control%sw_rad_time_step_iz .and.  &
-          Rad_control%rad_time_step_iz ) then
-      else
-        call error_mesg ('rad_utilities_mod', &
-          ' at least one component of Rad_control has not been '//&
-                                     'initialized', FATAL)
-      endif
+!deprecated !---------------------------------------------------------------------
+!deprecated !    check the components of Rad_control.
+!deprecated !--------------------------------------------------------------------
+!deprecated       if (Rad_control%do_totcld_forcing_iz .and. &
+!deprecated           Rad_control%do_lwaerosol_forcing_iz .and.  &
+!deprecated           Rad_control%do_swaerosol_forcing_iz .and.  &
+!deprecated           Rad_control%indx_lwaf_iz .and.   &
+!deprecated           Rad_control%indx_swaf_iz .and.   &
+!deprecated           Rad_control%using_im_bcsul_iz .and. &
+!deprecated           Rad_control%volcanic_sw_aerosols_iz .and. &
+!deprecated           Rad_control%volcanic_lw_aerosols_iz .and. &
+!deprecated           Rad_control%time_varying_solar_constant_iz .and. &
+!deprecated           Rad_control%using_solar_timeseries_data_iz .and. &
+!deprecated           Rad_control%do_aerosol_iz .and.     &
+!deprecated           Rad_control%mx_spec_levs_iz .and.   &
+!deprecated           Rad_control%use_current_co2_for_tf_iz .and. &
+!deprecated           Rad_control%co2_tf_calc_intrvl_iz .and. &
+!deprecated           Rad_control%calc_co2_tfs_on_first_step_iz .and. &
+!deprecated           Rad_control%calc_co2_tfs_monthly_iz .and. &
+!deprecated           Rad_control%co2_tf_time_displacement_iz .and. &
+!deprecated           Rad_control%use_current_ch4_for_tf_iz .and. &
+!deprecated           Rad_control%ch4_tf_calc_intrvl_iz .and. &
+!deprecated           Rad_control%calc_ch4_tfs_on_first_step_iz .and. &
+!deprecated           Rad_control%calc_ch4_tfs_monthly_iz .and. &
+!deprecated           Rad_control%ch4_tf_time_displacement_iz .and. &
+!deprecated           Rad_control%use_current_n2o_for_tf_iz .and. &
+!deprecated           Rad_control%n2o_tf_calc_intrvl_iz .and. &
+!deprecated           Rad_control%calc_n2o_tfs_on_first_step_iz .and. &
+!deprecated           Rad_control%calc_n2o_tfs_monthly_iz .and. &
+!deprecated           Rad_control%n2o_tf_time_displacement_iz .and. &
+!deprecated           Rad_control%do_lw_rad_iz .and. &
+!deprecated           Rad_control%do_sw_rad_iz .and. &
+!deprecated           Rad_control%nzens_iz .and. &
+!deprecated           Rad_control%hires_coszen_iz .and. &
+!deprecated           Rad_control%lw_rad_time_step_iz .and.  &
+!deprecated           Rad_control%sw_rad_time_step_iz .and.  &
+!deprecated           Rad_control%rad_time_step_iz ) then
+!deprecated       else
+!deprecated         call error_mesg ('rad_utilities_mod', &
+!deprecated           ' at least one component of Rad_control has not been '//&
+!deprecated                                      'initialized', FATAL)
+!deprecated       endif
 
 !---------------------------------------------------------------------
 !    check the components of Cldrad_control.
@@ -1576,18 +1600,18 @@ subroutine check_derived_types
                                      'initialized', FATAL)
       endif
 
-!---------------------------------------------------------------------
-!    check for consistency between band structure and cfc and lwaerosol
-!    effects.
-!---------------------------------------------------------------------
-      if (Lw_parameters%nbtrge == 0) then
-        if (Lw_control%do_cfc .or. Lw_control%do_lwaerosol) then
-          call error_mesg ('rad_utilities_mod', &
-             'when do_cfc and / or do_lwaerosol is .true., must set &
-              &sealw99_nml variable no_h2o_bands_1200_1400 > 0 ', FATAL)
-        endif
-      endif
-!--------------------------------------------------------------------
+!deprecated !---------------------------------------------------------------------
+!deprecated !    check for consistency between band structure and cfc and lwaerosol
+!deprecated !    effects.
+!deprecated !---------------------------------------------------------------------
+!deprecated       if (Lw_parameters%nbtrge == 0) then
+!deprecated         if (Rad_control%do_cfc .or. Rad_control%do_lwaerosol) then
+!deprecated           call error_mesg ('rad_utilities_mod', &
+!deprecated              'when do_cfc and / or do_lwaerosol is .true., must set &
+!deprecated               &sealw99_nml variable no_h2o_bands_1200_1400 > 0 ', FATAL)
+!deprecated         endif
+!deprecated       endif
+!deprecated !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
 
@@ -3394,7 +3418,7 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
     else
       call error_mesg ('=', 'extbandlw', FATAL)
    endif
-  if (Rad_control%volcanic_sw_aerosols) then
+!deprecated  if (Rad_control%volcanic_sw_aerosols) then
    if (ASSOCIATED(aerosol_props_in%sw_ext)) then
      aerosol_props_out%sw_ext        = aerosol_props_in%sw_ext     
      aerosol_props_out%sw_ssa          = aerosol_props_in%sw_ssa       
@@ -3402,8 +3426,8 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
     else
       call error_mesg ('=', 'sw volc', FATAL)
    endif
-  endif
-  if (Rad_control%volcanic_lw_aerosols) then
+!deprecated  endif
+!deprecated  if (Rad_control%volcanic_lw_aerosols) then
    if (ASSOCIATED(aerosol_props_in%lw_ext)) then
      aerosol_props_out%lw_ext        = aerosol_props_in%lw_ext     
      aerosol_props_out%lw_ssa          = aerosol_props_in%lw_ssa       
@@ -3411,7 +3435,7 @@ subroutine aerosol_props_type_eq(aerosol_props_out,aerosol_props_in)
     else
       call error_mesg ('=', 'lw volc', FATAL)
    endif
-  endif
+!deprecated  endif
    if (ASSOCIATED(aerosol_props_in%sulfate_index)) then
      aerosol_props_out%sulfate_index = aerosol_props_in%sulfate_index
      aerosol_props_out%optical_index = aerosol_props_in%optical_index
