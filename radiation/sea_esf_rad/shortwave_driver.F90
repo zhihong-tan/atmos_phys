@@ -182,7 +182,7 @@ subroutine shortwave_driver_init (Rad_control)
 !---------------------------------------------------------------------
 !    shortwave_driver_init is the constructor for shortwave_driver_mod.
 !---------------------------------------------------------------------
-GBW type(radiation_control_type), intent(inout) :: Rad_control
+type(radiation_control_type), intent(inout) :: Rad_control
 
 
 !---------------------------------------------------------------------

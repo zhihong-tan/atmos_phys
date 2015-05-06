@@ -3712,25 +3712,25 @@ type(optical_path_type),       intent(inout) :: Optical
 !yim
      else if (Aerosol_props%optical_index(nsc) ==  &
                         Aerosol_props%bcphilic_flag ) then
-      if (Rad_control%using_im_bcsul) then
-      do k = 1,kx         
-        do j = 1,jx         
-          do i = 1,ix           
-            opt_index = opt_index_v1(i,j,k)
-                aerooptdepspec(i,j,k,nsc) =     &
-                   diffac*Aerosol%aerosol(i,j,k,nsc)*&
-                   (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
-                          Aerosol_props%aerextbandlw(n,opt_index)
-                if (n == 1) then
-                  aerooptdepspec_cn(i,j,k,nsc) =    &
-                     diffac*Aerosol%aerosol(i,j,k,nsc)*   &
-                 (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
-                        Aerosol_props%aerextbandlw_cn(n,opt_index)
-              endif
-            end do
-          end do
-        end do
-      else ! (using_im_bcsul)
+!deprecated       if (Rad_control%using_im_bcsul) then
+!deprecated       do k = 1,kx         
+!deprecated         do j = 1,jx         
+!deprecated           do i = 1,ix           
+!deprecated             opt_index = opt_index_v1(i,j,k)
+!deprecated                 aerooptdepspec(i,j,k,nsc) =     &
+!deprecated                    diffac*Aerosol%aerosol(i,j,k,nsc)*&
+!deprecated                    (1.0 - Aerosol_props%aerssalbbandlw(n,opt_index))* &
+!deprecated                           Aerosol_props%aerextbandlw(n,opt_index)
+!deprecated                 if (n == 1) then
+!deprecated                   aerooptdepspec_cn(i,j,k,nsc) =    &
+!deprecated                      diffac*Aerosol%aerosol(i,j,k,nsc)*   &
+!deprecated                  (1.0 - Aerosol_props%aerssalbbandlw_cn(n,opt_index))*&
+!deprecated                         Aerosol_props%aerextbandlw_cn(n,opt_index)
+!deprecated               endif
+!deprecated             end do
+!deprecated           end do
+!deprecated         end do
+!deprecated       else ! (using_im_bcsul)
       do k = 1,kx         
         do j = 1,jx         
           do i = 1,ix           
@@ -3748,7 +3748,7 @@ type(optical_path_type),       intent(inout) :: Optical
             end do
           end do
         end do
-      endif  ! (using_im_bcsul)
+!deprecated       endif  ! (using_im_bcsul)
      else if (Aerosol_props%optical_index(nsc) ==  &
                         Aerosol_props%seasalt1_flag ) then
       do k = 1,kx         

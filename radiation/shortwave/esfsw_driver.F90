@@ -2441,20 +2441,20 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                     end do
                   else if (Aerosol_props%optical_index(nsc) == &
                                   Aerosol_props%bcphilic_flag) then
-                    if (Rad_control%using_im_bcsul) then
-                      do k = KSRAD,KERAD
-                        arprod(k) = aerext(opt_index_v3(k)) *    &
-                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
-                        arprod2(k) = aerssalb(opt_index_v3(k))*arprod(k)
-                        asymm(k)   = aerasymm(opt_index_v3(k))
-                        sum_ext(k) = sum_ext(k) + arprod(k)
-                        sum_sct(k) = sum_sct(k) + &
-                                     aerssalb(opt_index_v3(k))*arprod(k)
-                        sum_g_omega_tau(k) = sum_g_omega_tau(k) +  &
-                               aerasymm(opt_index_v3(k)) * &
-                                  (aerssalb(opt_index_v3(k))*arprod(k))
-                      end do
-                    else  ! (using_im_bcsul)
+!deprecated                    if (Rad_control%using_im_bcsul) then
+!deprecated                      do k = KSRAD,KERAD
+!deprecated                        arprod(k) = aerext(opt_index_v3(k)) *    &
+!deprecated                                   (1.e3 * Aerosol%aerosol(i,j,k,nsc))
+!deprecated                        arprod2(k) = aerssalb(opt_index_v3(k))*arprod(k)
+!deprecated                        asymm(k)   = aerasymm(opt_index_v3(k))
+!deprecated                        sum_ext(k) = sum_ext(k) + arprod(k)
+!deprecated                        sum_sct(k) = sum_sct(k) + &
+!deprecated                                     aerssalb(opt_index_v3(k))*arprod(k)
+!deprecated                        sum_g_omega_tau(k) = sum_g_omega_tau(k) +  &
+!deprecated                               aerasymm(opt_index_v3(k)) * &
+!deprecated                                  (aerssalb(opt_index_v3(k))*arprod(k))
+!deprecated                      end do
+!deprecated                    else  ! (using_im_bcsul)
                       do k = KSRAD,KERAD
                         arprod(k) = aerext(opt_index_v5(k)) *    &
                                    (1.e3 * Aerosol%aerosol(i,j,k,nsc))
@@ -2467,7 +2467,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                               aerasymm(opt_index_v5(k)) * &
                                  (aerssalb(opt_index_v5(k))*arprod(k))
                       end do
-                    endif  !(using_im_bcsul)
+!deprecated                    endif  !(using_im_bcsul)
                   else if (Aerosol_props%optical_index(nsc) == &
                                 Aerosol_props%seasalt1_flag) then
                     do k = KSRAD,KERAD
