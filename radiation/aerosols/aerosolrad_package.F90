@@ -2080,11 +2080,11 @@ integer                               :: index  ! function value
       if (optical_index_MOD(naerosol) == SULFATE_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim no vol info is passed here now. Set 0 for now.
-        index = sulfate_index( irh, 0 )
+        index = sulfate_index_MOD( irh, 0 )
       elseif (optical_index_MOD(naerosol) == BC_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim no vol info is passed here now. Set 0 for now.
-        index = sulfate_index( irh, 0 )
+        index = sulfate_index_MOD( irh, 0 )
       elseif (optical_index_MOD(naerosol) == &
                                                OMPHILIC_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
@@ -2093,7 +2093,7 @@ integer                               :: index  ! function value
                   BCPHILIC_FLAG .and. using_im_bcsul ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim
-        index = sulfate_index( irh, 0 )
+        index = sulfate_index_MOD( irh, 0 )
       elseif (optical_index_MOD(naerosol) == BCPHILIC_FLAG  &
                         .and. .not. using_im_bcsul ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
