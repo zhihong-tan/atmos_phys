@@ -55,5 +55,89 @@ end type aerosol_time_vary_type
 
 !------------------------------------------------------------------
 
+!------------------------------------------------------------------
+
+public   aerosol_properties_type
+
+!    aerextband
+!    aerssalbband
+!    aerasymmband
+!    aerextbandlw
+!    aerssalbbandlw
+!    sulfate_index
+!    optical_index
+
+type aerosol_properties_type
+     integer, dimension(:,:,:), pointer  :: ivol=>NULL()
+     real, dimension(:,:), pointer  :: aerextband=>NULL(),   &
+                                       aerssalbband=>NULL(), &
+                                       aerasymmband=>NULL(), &
+                                       aerextbandlw=>NULL(), &
+                                       aerssalbbandlw=>NULL(), &
+                                       aerextbandlw_cn=>NULL(), &
+                                       aerssalbbandlw_cn=>NULL()
+     real, dimension(:,:,:,:), pointer :: sw_ext=>NULL(), &
+                                          sw_ssa=>NULL(), &
+                                          sw_asy=>NULL(), &
+                                          lw_ext=>NULL(), &
+                                          lw_ssa=>NULL(), &
+                                          lw_asy=>NULL()
+!yim
+     integer, dimension(:,:), pointer :: sulfate_index=>NULL()
+     integer, dimension(:), pointer :: optical_index=>NULL()
+     integer, dimension(:), pointer :: omphilic_index=>NULL()
+     integer, dimension(:), pointer :: bcphilic_index=>NULL()
+     integer, dimension(:), pointer :: seasalt1_index=>NULL()
+     integer, dimension(:), pointer :: seasalt2_index=>NULL()
+     integer, dimension(:), pointer :: seasalt3_index=>NULL()
+     integer, dimension(:), pointer :: seasalt4_index=>NULL()
+     integer, dimension(:), pointer :: seasalt5_index=>NULL()
+     integer, dimension(:), pointer :: seasalt_aitken_index=>NULL()
+     integer, dimension(:), pointer :: seasalt_fine_index=>NULL()
+     integer, dimension(:), pointer :: seasalt_coarse_index=>NULL()
+     integer                        :: sulfate_flag
+     integer                        :: omphilic_flag
+     integer                        :: bcphilic_flag
+     integer                        :: seasalt1_flag
+     integer                        :: seasalt2_flag
+     integer                        :: seasalt3_flag
+     integer                        :: seasalt4_flag
+     integer                        :: seasalt5_flag
+     integer                        :: seasalta_flag
+     integer                        :: seasaltf_flag
+     integer                        :: seasaltc_flag
+!yim
+     integer                        :: bc_flag
+end type aerosol_properties_type
+
+
+
+!------------------------------------------------------------------
+
+public   aerosol_diagnostics_type
+
+!    extopdep
+!    absopdep
+!    extopdep_vlcno
+!    absopdep_vlcno
+!    lw_extopdep_vlcno
+!    lw_absopdep_vlcno
+!    sw_heating_vlcno
+
+type aerosol_diagnostics_type
+     real, dimension(:,:,:,:),   pointer :: sw_heating_vlcno=>NULL()
+     real, dimension(:,:,:,:,:), pointer :: extopdep=>NULL(), &
+                                            absopdep=>NULL()
+     real, dimension(:,:,:,:,:), pointer :: asymdep=>NULL()
+
+     real, dimension(:,:,:,:),   pointer :: extopdep_vlcno=>NULL(), &
+                                            absopdep_vlcno=>NULL(), &
+                                            lw_extopdep_vlcno=>NULL(), &
+                                            lw_absopdep_vlcno=>NULL()
+end type aerosol_diagnostics_type
+
+!------------------------------------------------------------------
+
+
 end module aerosol_types_mod
 
