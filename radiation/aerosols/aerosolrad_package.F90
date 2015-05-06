@@ -2066,7 +2066,7 @@ integer                               :: index  ! function value
 !---------------------------------------------------------------------
 !    be sure the desired aerosol index is valid.
 !---------------------------------------------------------------------
-      nfields = size(optical_index(:),1)
+      nfields = size(optical_index_MOD(:),1)
       if (naerosol > nfields) then
         call error_mesg( 'aerosolrad_package_mod', &
            'aerosol index exceeds number of aerosol fields', FATAL )
@@ -2077,59 +2077,59 @@ integer                               :: index  ! function value
 !    If the aerosol is hydrophilic, then the optical propeties 
 !    index will depend on the relative humidity.
 !---------------------------------------------------------------------
-      if (optical_index(naerosol) == SULFATE_FLAG ) then
+      if (optical_index_MOD(naerosol) == SULFATE_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim no vol info is passed here now. Set 0 for now.
         index = sulfate_index( irh, 0 )
-      elseif (optical_index(naerosol) == BC_FLAG ) then
+      elseif (optical_index_MOD(naerosol) == BC_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim no vol info is passed here now. Set 0 for now.
         index = sulfate_index( irh, 0 )
-      elseif (optical_index(naerosol) == &
+      elseif (optical_index_MOD(naerosol) == &
                                                OMPHILIC_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = omphilic_index( irh )
-      elseif (optical_index(naerosol) ==   &
-                  BCPHILIC_FLAG .and. Rad_control%using_im_bcsul ) then
+      elseif (optical_index_MOD(naerosol) ==   &
+                  BCPHILIC_FLAG .and. using_im_bcsul ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim
         index = sulfate_index( irh, 0 )
-      elseif (optical_index(naerosol) == BCPHILIC_FLAG  &
-                        .and. .not. Rad_control%using_im_bcsul ) then
+      elseif (optical_index_MOD(naerosol) == BCPHILIC_FLAG  &
+                        .and. .not. using_im_bcsul ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
 !yim
         index = bcphilic_index( irh )
-      elseif (optical_index(naerosol) ==    &
+      elseif (optical_index_MOD(naerosol) ==    &
                                                SEASALT1_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt1_index( irh )
-      elseif (optical_index(naerosol) ==  &            
+      elseif (optical_index_MOD(naerosol) ==  &            
                                                SEASALT2_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt2_index( irh )
-      elseif (optical_index(naerosol) ==  &            
+      elseif (optical_index_MOD(naerosol) ==  &            
                                                SEASALT3_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt3_index( irh )
-      elseif (optical_index(naerosol) ==  &           
+      elseif (optical_index_MOD(naerosol) ==  &           
                                                SEASALT4_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt4_index( irh )
-      elseif (optical_index(naerosol) ==  &           
+      elseif (optical_index_MOD(naerosol) ==  &           
                                                SEASALT5_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt5_index( irh )
-      elseif (optical_index(naerosol) ==   SEASALTA_FLAG ) then
+      elseif (optical_index_MOD(naerosol) ==   SEASALTA_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt_aitken_index( irh )
-      elseif (optical_index(naerosol) ==  SEASALTF_FLAG ) then
+      elseif (optical_index_MOD(naerosol) ==  SEASALTF_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt_fine_index( irh )
-      elseif (optical_index(naerosol) ==  SEASALTC_FLAG ) then
+      elseif (optical_index_MOD(naerosol) ==  SEASALTC_FLAG ) then
         irh = MIN( 100, MAX( 0, NINT(100.*rh) ) )
         index = seasalt_coarse_index( irh )
       else
-        index = optical_index(naerosol)
+        index = optical_index_MOD(naerosol)
       endif
 
 !---------------------------------------------------------------------
