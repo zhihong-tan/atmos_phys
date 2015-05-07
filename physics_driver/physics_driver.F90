@@ -862,8 +862,9 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       write(outunit,100) 'diff_t                 ', mpp_chksum(diff_t                )
       write(outunit,100) 'diff_m                 ', mpp_chksum(diff_m                )
       write(outunit,100) 'r_convect              ', mpp_chksum(r_convect             )
-  if (doing_strat()) then
+  if ( doing_strat ) then
       write(outunit,100) 'radturbten             ', mpp_chksum(radturbten            )
+  endif
       do nc = 1, size(Restart%Cloud_data,1)
         ! NOTE: the order of the checksums in stdout will be different
         if ( trim(Restart%Cloud_data(nc)%scheme_name).eq.'donner_cell' ) then
