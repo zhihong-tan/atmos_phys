@@ -568,7 +568,7 @@ subroutine write_namelist_values (unit, ntrace)
 !
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
-                           u_star, landmask, dsinku, tracer, Time, &
+                           u_star, landfrac, dsinku, tracer, Time, &
                            Time_next, lon, half_day, drydep_data)
 ! When formulation of dry deposition is resolved perhaps use the following?
 !                           landfr, seaice_cn, snow_area, & 
@@ -630,7 +630,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !</DESCRIPTION>
 !<TEMPLATE>
 ! call dry_deposition( n, is, js, u, v, T, pwt, pfull, dz,
-!                      u_star, landmask, dsinku, tracer, Time, drydep_data)
+!                      u_star, landfrac, dsinku, tracer, Time, drydep_data)
 !</TEMPLATE>
 !
 !  <IN NAME="n" TYPE="integer">
@@ -660,7 +660,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !  <IN NAME="lon" TYPE="real" DIM="(:,:)">
 !     Longitude.
 !  </IN>
-!  <IN NAME="landmask" TYPE="logical">
+!  <IN NAME="landfrac" TYPE="real">
 !     Land - sea mask.
 !  </IN>
 !  <INOUT NAME="drydep_data" TYPE="interpolate_type">
@@ -674,7 +674,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 integer, intent(in)                 :: n, is, js
 real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
 real, intent(in), dimension(:,:)    :: lon, half_day
-logical, intent(in), dimension(:,:) :: landmask
+real, intent(in), dimension(:,:) :: landfrac
 ! When formulation of dry deposition is resolved perhaps use the following?
 !real, intent(in), dimension(:,:)    :: landfr, z_pbl, b_star, rough_mom
 !real, intent(in), dimension(:,:)    :: seaice_cn, snow_area, vegn_cover,  &
@@ -818,7 +818,7 @@ id=size(pfull,1); jd=size(pfull,2)
 ! layer and using a simple dry deposition velocity times the 
 ! timestep, idt, calculate the fraction of the lowest layer which 
 ! deposits.
-       where (landmask(:,:))
+       where (landfrac(:,:)> 0.5 )
 ! dry dep value over the land surface
          drydep_vel(:,:) = land_dry_dep_vel
       elsewhere
