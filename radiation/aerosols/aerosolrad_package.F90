@@ -2428,8 +2428,8 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
         endif  ! (name_in ==)
       end do  ! (n=1,nfields)
 
-      select case(trim(aerosol_data_set))
-        case ('Ginoux_Reddy') 
+  select case(trim(aerosol_data_set))
+    case ('Ginoux_Reddy') 
 
      if (using_im_bcsul) then
 
@@ -2518,338 +2518,189 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !-------------------------------------------------------------------
      call optical_property_index ('seasalt5', seasalt5_indices, seasalt5_index_MOD)
 
+! now call optical_property_index
+! !---------------------------------------------------------------------
+! !    set up RH-dependent seasalt1 aerosol optical property indices.
+! !    define the optical properties type for all possible values of 
+! !    relative humidity.
+! !-------------------------------------------------------------------
+!           do n=0,100
+!             if (seasalt_aitken_indices(n) < 10) then
+!               write (chind, '(i1)') seasalt_aitken_indices(n)
+!             else if (seasalt_aitken_indices(n) == 100) then
+!               write (chind, '(i3)') seasalt_aitken_indices(n)
+!             else
+!               write (chind, '(i2)') seasalt_aitken_indices(n)
+!             endif
+!             target_name = 'seasalt_aitken_' // trim(chind)  // '%'
+
+! !---------------------------------------------------------------------
+! !    associate an index value with each possible relative humidity.
+! !---------------------------------------------------------------------
+!             do noptical=1,naermodels
+!               if (aerosol_optical_names(noptical) == target_name ) then
+!                 seasalt_aitken_index_MOD(n) = noptical
+!                 exit
+!               endif
+!             end do !noptical
+
+! !---------------------------------------------------------------------
+! !    if the  aerosol_optical name_is not included in the potential
+! !    set listed above, exit with an error message.
+! !---------------------------------------------------------------------
+!             if (seasalt_aitken_index_MOD(n) == 0 ) then
+!               call error_mesg( 'aerosolrad_package_mod', &
+!                  'Cannot find aerosol optical model = ' // &
+!                                           TRIM( target_name), FATAL )
+!             endif
+!           end do !n
+
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt1 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+
+     call optical_property_index('seasalt_aitken',seasalt_aitken_indices,seasalt_aitken_index_MOD)
+
+
+! !---------------------------------------------------------------------
+! !    set up RH-dependent seasalt1 aerosol optical property indices.
+! !    define the optical properties type for all possible values of 
+! !    relative humidity.
+! !-------------------------------------------------------------------
+!           do n=0,100
+!             if (seasalt_fine_indices(n) < 10) then
+!               write (chind, '(i1)') seasalt_fine_indices(n)
+!             else if (seasalt_fine_indices(n) == 100) then
+!               write (chind, '(i3)') seasalt_fine_indices(n)
+!             else
+!               write (chind, '(i2)') seasalt_fine_indices(n)
+!             endif
+!             target_name = 'seasalt_fine_' // trim(chind)  // '%'
+
+! !---------------------------------------------------------------------
+! !    associate an index value with each possible relative humidity.
+! !---------------------------------------------------------------------
+!             do noptical=1,naermodels
+!               if (aerosol_optical_names(noptical) == target_name ) then
+!                 seasalt_fine_index_MOD(n) = noptical
+!                 exit
+!               endif
+!             end do !noptical
+
+! !---------------------------------------------------------------------
+! !    if the  aerosol_optical name_is not included in the potential
+! !    set listed above, exit with an error message.
+! !---------------------------------------------------------------------
+!             if (seasalt_fine_index_MOD(n) == 0 ) then
+!               call error_mesg( 'aerosolrad_package_mod', &
+!                  'Cannot find aerosol optical model = ' // &
+!                                           TRIM( target_name), FATAL )
+!             endif
+!           end do !n
+
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt1 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+
+     call optical_property_index('seasalt_fine', seasalt_fine_indices ,seasalt_fine_index_MOD )
+
+! !---------------------------------------------------------------------
+! !    set up RH-dependent seasalt1 aerosol optical property indices.
+! !    define the optical properties type for all possible values of 
+! !    relative humidity.
+! !-------------------------------------------------------------------
+!           do n=0,100
+!             if (seasalt_coarse_indices(n) < 10) then
+!               write (chind, '(i1)') seasalt_coarse_indices(n)
+!             else if (seasalt_coarse_indices(n) == 100) then
+!               write (chind, '(i3)') seasalt_coarse_indices(n)
+!             else
+!               write (chind, '(i2)') seasalt_coarse_indices(n)
+!             endif
+!             target_name = 'seasalt_coarse_' // trim(chind)  // '%'
+
+! !---------------------------------------------------------------------
+! !    associate an index value with each possible relative humidity.
+! !---------------------------------------------------------------------
+!             do noptical=1,naermodels
+!               if (aerosol_optical_names(noptical) == target_name ) then
+!                 seasalt_coarse_index_MOD(n) = noptical
+!                 exit
+!               endif
+!             end do !noptical
+
+! !---------------------------------------------------------------------
+! !    if the  aerosol_optical name_is not included in the potential
+! !    set listed above, exit with an error message.
+! !---------------------------------------------------------------------
+!             if (seasalt_coarse_index_MOD(n) == 0 ) then
+!               call error_mesg( 'aerosolrad_package_mod', &
+!                  'Cannot find aerosol optical model = ' // &
+!                                           TRIM( target_name), FATAL )
+!             endif
+!           end do !n
+
+!---------------------------------------------------------------------
+!    set up RH-dependent seasalt1 aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+
+     call optical_property_index('seasalt_course', seasalt_coarse_indices ,seasalt_coarse_index_MOD )
+
+
+
+!           if ( .not. using_im_bcsul) then
+! !-------------------------------------------------------------------
+! !    set up RH-dependent bcphilic aerosol optical property indices.
+! !    define the optical properties type for all possible values of 
+! !    relative humidity.
+! !-------------------------------------------------------------------
+!            do n=0,100
+!              if (bcphilic_indices(n) < 10) then
+!                write (chind, '(i1)') bcphilic_indices(n)
+!              else if (bcphilic_indices(n) == 100) then
+!                write (chind, '(i3)') bcphilic_indices(n)
+!              else
+!                write (chind, '(i2)') bcphilic_indices(n)
+!              endif
+!              target_name = 'bcphilic_' // trim(chind)  // '%'
+
+! !---------------------------------------------------------------------
+! !    associate an index value with each possible relative humidity.
+! !---------------------------------------------------------------------
+!              do noptical=1,naermodels
+!                if (aerosol_optical_names(noptical) == target_name ) then
+!                  bcphilic_index_MOD(n) = noptical
+!                  exit
+!                endif
+!              end do !noptical
+
+! !---------------------------------------------------------------------
+! !    if the  aerosol_optical name_is not included in the potential
+! !    set listed above, exit with an error message.
+! !---------------------------------------------------------------------
+!              if (bcphilic_index_MOD(n) == 0 ) then
+!                call error_mesg( 'aerosolrad_package_mod', &
+!                   'Cannot find aerosol optical model = ' // &
+!                                            TRIM( target_name), FATAL )
+!              endif
+!            end do !n
+!           endif !using_im_bc_sul
+
 !-------------------------------------------------------------------
 !    set up RH-dependent bcphilic aerosol optical property indices.
 !    define the optical properties type for all possible values of 
 !    relative humidity.
 !-------------------------------------------------------------------
-     call optical_property_index ('bcphilic', bcphilic_indices, bcphilic_index_MOD)
+     if ( .not. using_im_bcsul )  then
+          call optical_property_index ('bcphilic', bcphilic_indices, bcphilic_index_MOD)
+     endif
 
-
-!XXX   case ('shettle_fenn')
-!GBW
-!GBW    if (using_im_bcsul) then
-!GBW !----------------------------------------------------------------------
-!GBW !    set up RH-dependent sulfate aerosol optical property indices.
-!GBW !    define the optical properties type for all possible values of 
-!GBW !    relative humidity.
-!GBW !-------------------------------------------------------------------
-!GBW           do n=0,100
-!GBW           do m=0,100
-!GBW             chind = integer_string(sulfate_indices(n))
-!GBW             chind2 = integer_string(sulfate_vol_indices(m))
-!GBW !yim format sulfate_10%_10% (RH + volume fraction)
-!GBW             target_name = 'sulfate_' // trim(chind)  // '%_' // trim(chind2)// '%'
-
-!GBW !---------------------------------------------------------------------
-!GBW !    associate an index value with each possible relative humidity.
-!GBW !---------------------------------------------------------------------
-!GBW         do noptical=1,naermodels
-!GBW           if (aerosol_optical_names(noptical) == target_name ) then
-!GBW             sulfate_index_MOD(n,m) = noptical
-!GBW             exit
-!GBW           end if
-!GBW         end do !noptical
-
-!GBW !---------------------------------------------------------------------
-!GBW !    if the  aerosol_optical name_is not included in the potential
-!GBW !    set listed above, exit with an error message.
-!GBW !---------------------------------------------------------------------
-!GBW             if (seasalt1_index_MOD(n) == 0 ) then
-!GBW               call error_mesg( 'aerosolrad_package_mod', &
-!GBW                  'Cannot find aerosol optical model = ' // &
-!GBW                                           TRIM( target_name), FATAL )
-!GBW             endif
-!GBW            end do !m
-!GBW 	  end do !n
-
-!GBW !---------------------------------------------------------------------
-!GBW !    set up RH-dependent seasalt2 aerosol optical property indices.
-!GBW !    define the optical properties type for all possible values of 
-!GBW !    relative humidity.
-!GBW !-------------------------------------------------------------------
-!GBW           do n=0,100
-!GBW             if (seasalt2_indices(n) < 10) then
-!GBW               write (chind, '(i1)') seasalt2_indices(n)
-!GBW             else if (seasalt2_indices(n) == 100) then
-!GBW               write (chind, '(i3)') seasalt2_indices(n)
-!GBW             else
-!GBW               write (chind, '(i2)') seasalt2_indices(n)
-!GBW             endif
-!GBW             target_name = 'seasalt2_' // trim(chind)  // '%'
-
-!GBW !---------------------------------------------------------------------
-!GBW !    associate an index value with each possible relative humidity.
-!GBW !---------------------------------------------------------------------
-!GBW             do noptical=1,naermodels
-!GBW               if (aerosol_optical_names(noptical) == target_name ) then
-!GBW                 seasalt2_index_MOD(n) = noptical
-!GBW                 exit
-!GBW               endif
-!GBW             end do !noptical
-
-!GBW !---------------------------------------------------------------------
-!GBW !    if the  aerosol_optical name_is not included in the potential
-!GBW !    set listed above, exit with an error message.
-!GBW !---------------------------------------------------------------------
-!GBW             if (seasalt2_index_MOD(n) == 0 ) then
-!GBW               call error_mesg( 'aerosolrad_package_mod', &
-!GBW                  'Cannot find aerosol optical model = ' // &
-!GBW                                           TRIM( target_name), FATAL )
-!GBW             endif
-!GBW           end do !n
-
-!GBW !---------------------------------------------------------------------
-!GBW !    set up RH-dependent seasalt3 aerosol optical property indices.
-!GBW !    define the optical properties type for all possible values of 
-!GBW !    relative humidity.
-!GBW !-------------------------------------------------------------------
-!GBW           do n=0,100
-!GBW             if (seasalt3_indices(n) < 10) then
-!GBW               write (chind, '(i1)') seasalt3_indices(n)
-!GBW             else if (seasalt3_indices(n) == 100) then
-!GBW               write (chind, '(i3)') seasalt3_indices(n)
-!GBW             else
-!GBW               write (chind, '(i2)') seasalt3_indices(n)
-!GBW             endif
-!GBW             target_name = 'seasalt3_' // trim(chind)  // '%'
-
-!GBW !---------------------------------------------------------------------
-!GBW !    associate an index value with each possible relative humidity.
-!GBW !---------------------------------------------------------------------
-!GBW             do noptical=1,naermodels
-!GBW               if (aerosol_optical_names(noptical) == target_name ) then
-!GBW                 seasalt3_index_MOD(n) = noptical
-!GBW                 exit
-!GBW               endif
-!GBW             end do !noptical
-
-!GBW !---------------------------------------------------------------------
-!GBW !    if the  aerosol_optical name_is not included in the potential
-!GBW !    set listed above, exit with an error message.
-!GBW !---------------------------------------------------------------------
-!GBW             if (seasalt3_index_MOD(n) == 0 ) then
-!GBW               call error_mesg( 'aerosolrad_package_mod', &
-!GBW                  'Cannot find aerosol optical model = ' // &
-!GBW                                           TRIM( target_name), FATAL )
-!GBW             endif
-!GBW           end do !n
- 
-!GBW !---------------------------------------------------------------------
-!GBW !    set up RH-dependent seasalt4 aerosol optical property indices.
-!GBW !    define the optical properties type for all possible values of 
-!GBW !    relative humidity.
-!GBW !-------------------------------------------------------------------
-!GBW           do n=0,100
-!GBW             if (seasalt4_indices(n) < 10) then
-!GBW               write (chind, '(i1)') seasalt4_indices(n)
-!GBW             else if (seasalt4_indices(n) == 100) then
-!GBW               write (chind, '(i3)') seasalt4_indices(n)
-!GBW             else
-!GBW               write (chind, '(i2)') seasalt4_indices(n)
-!GBW             endif
-!GBW             target_name = 'seasalt4_' // trim(chind)  // '%'
-
-!GBW !---------------------------------------------------------------------
-!GBW !    associate an index value with each possible relative humidity.
-!GBW !---------------------------------------------------------------------
-!GBW             do noptical=1,naermodels
-!GBW               if (aerosol_optical_names(noptical) == target_name ) then
-!GBW                 seasalt4_index_MOD(n) = noptical
-!GBW                 exit
-!GBW               endif
-!GBW             end do !noptical
-
-!GBW !---------------------------------------------------------------------
-!GBW !    if the  aerosol_optical name_is not included in the potential
-!GBW !    set listed above, exit with an error message.
-!GBW !---------------------------------------------------------------------
-!GBW             if (seasalt4_index_MOD(n) == 0 ) then
-!GBW               call error_mesg( 'aerosolrad_package_mod', &
-!GBW                  'Cannot find aerosol optical model = ' // &
-!GBW                                           TRIM( target_name), FATAL )
-!GBW             endif
-!GBW           end do !n
-
-!GBW !-------------------------------------------------------------------
-!GBW !    set up RH-dependent seasalt5 aerosol optical property indices.
-!GBW !    define the optical properties type for all possible values of 
-!GBW !    relative humidity.
-!GBW !-------------------------------------------------------------------
-!GBW           do n=0,100
-!GBW             if (seasalt5_indices(n) < 10) then
-!GBW               write (chind, '(i1)') seasalt5_indices(n)
-!GBW             else if (seasalt5_indices(n) == 100) then
-!GBW               write (chind, '(i3)') seasalt5_indices(n)
-!GBW             else
-!GBW               write (chind, '(i2)') seasalt5_indices(n)
-!GBW             endif
-!GBW             target_name = 'seasalt5_' // trim(chind)  // '%'
-
-!GBW !---------------------------------------------------------------------
-!GBW !    associate an index value with each possible relative humidity.
-!GBW !---------------------------------------------------------------------
-!GBW             do noptical=1,naermodels
-!GBW               if (aerosol_optical_names(noptical) == target_name ) then
-!GBW                 seasalt5_index_MOD(n) = noptical
-!GBW                 exit
-!GBW               endif
-!GBW             end do !noptical
-
-!GBW !---------------------------------------------------------------------
-!GBW !    if the  aerosol_optical name_is not included in the potential
-!GBW !    set listed above, exit with an error message.
-!GBW !---------------------------------------------------------------------
-!GBW             if (seasalt5_index_MOD(n) == 0 ) then 
-!GBW               call error_mesg( 'aerosolrad_package_mod', &
-!GBW                  'Cannot find aerosol optical model = ' // &
-!GBW                                           TRIM( target_name), FATAL )
-!GBW             endif
-!GBW           end do !n
-!---------------------------------------------------------------------
-!    set up RH-dependent seasalt1 aerosol optical property indices.
-!    define the optical properties type for all possible values of 
-!    relative humidity.
-!-------------------------------------------------------------------
-          do n=0,100
-            if (seasalt_aitken_indices(n) < 10) then
-              write (chind, '(i1)') seasalt_aitken_indices(n)
-            else if (seasalt_aitken_indices(n) == 100) then
-              write (chind, '(i3)') seasalt_aitken_indices(n)
-            else
-              write (chind, '(i2)') seasalt_aitken_indices(n)
-            endif
-            target_name = 'seasalt_aitken_' // trim(chind)  // '%'
-
-!---------------------------------------------------------------------
-!    associate an index value with each possible relative humidity.
-!---------------------------------------------------------------------
-            do noptical=1,naermodels
-              if (aerosol_optical_names(noptical) == target_name ) then
-                seasalt_aitken_index_MOD(n) = noptical
-                exit
-              endif
-            end do !noptical
-
-!---------------------------------------------------------------------
-!    if the  aerosol_optical name_is not included in the potential
-!    set listed above, exit with an error message.
-!---------------------------------------------------------------------
-            if (seasalt_aitken_index_MOD(n) == 0 ) then
-              call error_mesg( 'aerosolrad_package_mod', &
-                 'Cannot find aerosol optical model = ' // &
-                                          TRIM( target_name), FATAL )
-            endif
-          end do !n
-!---------------------------------------------------------------------
-!    set up RH-dependent seasalt1 aerosol optical property indices.
-!    define the optical properties type for all possible values of 
-!    relative humidity.
-!-------------------------------------------------------------------
-          do n=0,100
-            if (seasalt_fine_indices(n) < 10) then
-              write (chind, '(i1)') seasalt_fine_indices(n)
-            else if (seasalt_fine_indices(n) == 100) then
-              write (chind, '(i3)') seasalt_fine_indices(n)
-            else
-              write (chind, '(i2)') seasalt_fine_indices(n)
-            endif
-            target_name = 'seasalt_fine_' // trim(chind)  // '%'
-
-!---------------------------------------------------------------------
-!    associate an index value with each possible relative humidity.
-!---------------------------------------------------------------------
-            do noptical=1,naermodels
-              if (aerosol_optical_names(noptical) == target_name ) then
-                seasalt_fine_index_MOD(n) = noptical
-                exit
-              endif
-            end do !noptical
-
-!---------------------------------------------------------------------
-!    if the  aerosol_optical name_is not included in the potential
-!    set listed above, exit with an error message.
-!---------------------------------------------------------------------
-            if (seasalt_fine_index_MOD(n) == 0 ) then
-              call error_mesg( 'aerosolrad_package_mod', &
-                 'Cannot find aerosol optical model = ' // &
-                                          TRIM( target_name), FATAL )
-            endif
-          end do !n
-!---------------------------------------------------------------------
-!    set up RH-dependent seasalt1 aerosol optical property indices.
-!    define the optical properties type for all possible values of 
-!    relative humidity.
-!-------------------------------------------------------------------
-          do n=0,100
-            if (seasalt_coarse_indices(n) < 10) then
-              write (chind, '(i1)') seasalt_coarse_indices(n)
-            else if (seasalt_coarse_indices(n) == 100) then
-              write (chind, '(i3)') seasalt_coarse_indices(n)
-            else
-              write (chind, '(i2)') seasalt_coarse_indices(n)
-            endif
-            target_name = 'seasalt_coarse_' // trim(chind)  // '%'
-
-!---------------------------------------------------------------------
-!    associate an index value with each possible relative humidity.
-!---------------------------------------------------------------------
-            do noptical=1,naermodels
-              if (aerosol_optical_names(noptical) == target_name ) then
-                seasalt_coarse_index_MOD(n) = noptical
-                exit
-              endif
-            end do !noptical
-
-!---------------------------------------------------------------------
-!    if the  aerosol_optical name_is not included in the potential
-!    set listed above, exit with an error message.
-!---------------------------------------------------------------------
-            if (seasalt_coarse_index_MOD(n) == 0 ) then
-              call error_mesg( 'aerosolrad_package_mod', &
-                 'Cannot find aerosol optical model = ' // &
-                                          TRIM( target_name), FATAL )
-            endif
-          end do !n
-
-
-          if ( .not. using_im_bcsul) then
-!-------------------------------------------------------------------
-!    set up RH-dependent bcphilic aerosol optical property indices.
-!    define the optical properties type for all possible values of 
-!    relative humidity.
-!-------------------------------------------------------------------
-           do n=0,100
-             if (bcphilic_indices(n) < 10) then
-               write (chind, '(i1)') bcphilic_indices(n)
-             else if (bcphilic_indices(n) == 100) then
-               write (chind, '(i3)') bcphilic_indices(n)
-             else
-               write (chind, '(i2)') bcphilic_indices(n)
-             endif
-             target_name = 'bcphilic_' // trim(chind)  // '%'
-
-!---------------------------------------------------------------------
-!    associate an index value with each possible relative humidity.
-!---------------------------------------------------------------------
-             do noptical=1,naermodels
-               if (aerosol_optical_names(noptical) == target_name ) then
-                 bcphilic_index_MOD(n) = noptical
-                 exit
-               endif
-             end do !noptical
-
-!---------------------------------------------------------------------
-!    if the  aerosol_optical name_is not included in the potential
-!    set listed above, exit with an error message.
-!---------------------------------------------------------------------
-             if (bcphilic_index_MOD(n) == 0 ) then
-               call error_mesg( 'aerosolrad_package_mod', &
-                  'Cannot find aerosol optical model = ' // &
-                                           TRIM( target_name), FATAL )
-             endif
-           end do !n
-          endif !using_im_bc_sul
 
   case ('shettle_fenn')
 
