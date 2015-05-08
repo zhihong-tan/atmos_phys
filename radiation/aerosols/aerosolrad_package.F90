@@ -2650,7 +2650,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
 !    relative humidity.
 !-------------------------------------------------------------------
 
-     call optical_property_index('seasalt_course', seasalt_coarse_indices ,seasalt_coarse_index_MOD )
+     call optical_property_index('seasalt_coarse', seasalt_coarse_indices ,seasalt_coarse_index_MOD )
 
 
 
