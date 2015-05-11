@@ -107,6 +107,11 @@ real        :: phi0n = 30., phi0s = -30., dphin = 5., dphis = -5.
 
 logical     :: calculate_ked=.false. 
                                   ! calculate ked diagnostic ?
+logical     :: dump_flux=.false. 
+                                  ! deposit remaining flux at the model top ?
+logical     :: do_conserve_energy=.false. 
+                                  ! conserve total energy?
+
 integer     :: num_diag_pts_ij=0  ! number of diagnostic columns specif-
                                   ! ied by global (i,j) coordinates
 integer     :: num_diag_pts_latlon=0 
@@ -137,7 +142,8 @@ namelist / cg_drag_nml /         &
                           num_diag_pts_ij, num_diag_pts_latlon, &
                           i_coords_gl, j_coords_gl,   &
                           lat_coords_gl, lon_coords_gl, &
-                          phi0n,phi0s,dphin,dphis
+                          phi0n,phi0s,dphin,dphis,      &
+                          dump_flux, do_conserve_energy
 
 !--------------------------------------------------------------------
 !-------- public data  -----
@@ -555,7 +561,7 @@ end subroutine cg_drag_endts
 !####################################################################
 
 subroutine cg_drag_calc (is, js, lat, pfull, zfull, temp, uuu, vvv,  &
-                         Time, delt, gwfcng_x, gwfcng_y)
+                         Time, delt, gwfcng_x, gwfcng_y, dtemp)
 !--------------------------------------------------------------------  
 !    cg_drag_calc defines the arrays needed to calculate the convective
 !    gravity wave forcing, calls gwfc to calculate the forcing, returns 
@@ -571,6 +577,7 @@ real, dimension(:,:,:), intent(in)      :: pfull, zfull, temp, uuu, vvv
 type(time_type),        intent(in)      :: Time
 real           ,        intent(in)      :: delt
 real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
+real, dimension(:,:,:), intent(out)     :: dtemp 
 
 !-------------------------------------------------------------------
 !    intent(in) variables:
@@ -592,6 +599,8 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
 !                [ m/s^2 ]
 !       gwfcng_y time tendency for v eqn due to gravity-wave forcing
 !                [ m/s^2 ]
+!       dtemp    time tendency of the temperature in K/s due to gravity-wave forcing
+!                [ K/s ]
 !
 !-------------------------------------------------------------------
 
@@ -603,7 +612,7 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
 
       real,    dimension (size(uuu,1),size(uuu,2), 0:size(uuu,3)) ::  &
                                          zzchm, zu, zv, zden, zbf,    &
-                                         gwd_xtnd, ked_xtnd, &
+                                         gwd_xtnd, ked_xtnd,          &
                                          gwd_ytnd, ked_ytnd
 
       integer           :: iz0
@@ -841,6 +850,19 @@ real, dimension(:,:,:), intent(out)     :: gwfcng_x, gwfcng_y
      endif  ! (cgdrag_alarm <= 0)
 
 !--------------------------------------------------------------------
+
+
+
+! CALCULATE HEATING TO CONSERVE TOTAL ENERGY
+
+  if (do_conserve_energy) then
+     dtemp = -((uuu + 0.5*delt*gwfcng_x)*gwfcng_x                           &
+             + (vvv + 0.5*delt*gwfcng_y)*gwfcng_y)/Cp_Air
+  else
+     dtemp = 0.0
+  endif
+
+
 
 
 
@@ -1259,6 +1281,22 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
                 endif   ! (msk == 1)
               end do  ! phase speed loop
 
+
+    if( dump_flux ) then 
+!   optional upper boundary
+!           Dump remaining flux in the top model level. 
+             if ( k == 0  )  then
+                do n= 1, nc
+                    if ( msk(n)==1 )  then
+                          fm= fm + B0(n)
+                          fe = fe + c0mu(k)*B0(n)
+                    endif
+                enddo 
+             endif 
+    endif 
+
+
+
 !----------------------------------------------------------------------
 !    compute the gravity wave momentum flux forcing and eddy 
 !    diffusion coefficient obtained across the entire wave spectrum
@@ -1276,7 +1314,8 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
                 wv_frcng(iz0) = 0.0
                 diff_coeff(iz0) = 0.0
               endif
-            end do  ! (k loop)               
+            end do  ! (k loop)   
+       
 
 !---------------------------------------------------------------------
 !    increment the total forcing at each point with that obtained from
@@ -1285,7 +1324,20 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
             do k=0,iz0      
               gwf(i,j,k) = gwf(i,j,k) + wv_frcng(k)
               ked(i,j,k) = ked(i,j,k) + diff_coeff(k)
-            end do              
+            end do  
+
+
+
+#ifdef SKIP
+!   optional upper boundary
+!           Dump remaining flux in the top model level. 
+     k=1;
+     fm= sum( msk .*B0 ) * sqrt(rho(k)*rho(k+1))  * eps / dz(k);
+     wv_frcng(1)= 0.5*( fm + wv_frcng(1) );
+
+     gwf(1)= 0.5* ( fm + gwf(1) );
+#endif
+            
           end do   ! wavelength loop
         end do  ! i loop                      
       end do   ! j loop                 

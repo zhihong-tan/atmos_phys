@@ -51,10 +51,12 @@ module damping_driver_mod
    logical  :: do_topo_drag = .false., use_topo_drag = .true.
    logical  :: do_conserve_energy = .false.
 
-   namelist /damping_driver_nml/  trayfric,   nlev_rayfric,  &
-                                  do_cg_drag, do_topo_drag, &
+   integer  :: kstart = 0.0         ! rjw 
+
+   namelist /damping_driver_nml/  trayfric, nlev_rayfric,  &
+                                  do_cg_drag, do_topo_drag,  &
                                   do_mg_drag, do_conserve_energy, &
-                                  use_topo_drag                      !stg
+                                  use_topo_drag, kstart               !stg
 
 !
 !   trayfric = damping time in seconds for rayleigh damping momentum
@@ -79,7 +81,8 @@ integer :: id_udt_rdamp,  id_vdt_rdamp,   &
 
 integer :: id_tdt_diss_rdamp,  id_diss_heat_rdamp, &
            id_tdt_diss_gwd,    id_diss_heat_gwd,   &
-           id_tdt_diss_topo,   id_diss_heat_topo
+           id_tdt_diss_topo,   id_diss_heat_topo,  &
+           id_mom_flux,  id_diss_heat_cgwd                 !stg
 
 integer :: id_udt_topo,   id_vdt_topo,    &
            id_taubx_topo, id_tauby_topo,  &
@@ -128,7 +131,7 @@ contains
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real, dimension(:,:), intent(in)           :: z_pbl, area
+ real, dimension(:,:), intent(in)           :: z_pbl, area 
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -138,7 +141,7 @@ contains
  real, dimension(size(udt,1),size(udt,2),size(udt,3)) :: taus
  real, dimension(size(udt,1),size(udt,2),size(udt,3)) :: utnd, vtnd, &
                                                          ttnd, pmass, &
-                                                         p2
+                                                         p2, uxv            !stg
  integer :: k
  logical :: used
 
@@ -242,22 +245,30 @@ contains
    if (do_cg_drag) then
 
      call cg_drag_calc (is, js, lat, pfull, zfull, t, u, v, Time,    &
-                        delt, utnd, vtnd)
+                        delt, utnd, vtnd, ttnd )
 
      udt =  udt + utnd
      vdt =  vdt + vtnd
+     tdt =  tdt + ttnd  
 
 !----- diagnostics -----
 
-     if ( id_udt_cgwd > 0 ) then
-        used = send_data ( id_udt_cgwd, utnd, Time, is, js, 1, &
-                          rmask=mask )
-     endif
-      if ( id_vdt_cgwd > 0 ) then
-        used = send_data ( id_vdt_cgwd, vtnd, Time, is, js, 1, &
-                          rmask=mask )
-     endif
+       if ( id_udt_cgwd > 0 ) then
+          used = send_data ( id_udt_cgwd, utnd, Time, is, js, 1, &
+                            rmask=mask )
+       endif
+       if ( id_vdt_cgwd > 0 ) then
+          used = send_data ( id_vdt_cgwd, vtnd, Time, is, js, 1, &
+                            rmask=mask )
+       endif
 
+       if ( id_diss_heat_cgwd > 0 ) then
+           do k = 1,size(u,3)
+             pmass(:,:,k) = phalf(:,:,k+1)-phalf(:,:,k)
+           enddo
+           diag2 = cp_air/grav * sum(ttnd*pmass,3)
+           used = send_data ( id_diss_heat_cgwd, diag2, Time, is, js )
+       endif
 
    endif
 
@@ -269,7 +280,14 @@ contains
      call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf,  &
                       utnd, vtnd, ttnd, taubx, tauby, taus, kbot )
 
-     if (use_topo_drag) then
+     if (use_topo_drag) then  
+         if ( kstart > 0 ) then
+           do k = kstart, size(u,3)
+                utnd(:,:,k)= 0.0*utnd(:,:,k)
+                vtnd(:,:,k)= 0.0*vtnd(:,:,k)
+           enddo
+         endif 
+
        udt = udt + utnd
        vdt = vdt + vtnd
      endif
@@ -313,6 +331,20 @@ contains
      endif
 
  endif
+
+
+!rjw         Save vertically-integrated momemtum flux 
+     uxv = u*v   !stg
+!!!     vxt = v*t   !rjw 
+
+     if ( id_mom_flux > 0 ) then      !stg
+          do k = 1,size(u,3)
+            pmass(:,:,k) = phalf(:,:,k+1)-phalf(:,:,k)
+          enddo
+          diag2 = sum(uxv*pmass,3)/grav
+          used = send_data ( id_mom_flux, diag2, Time, is, js )
+     endif
+
 
 !-----------------------------------------------------------------------
 
@@ -472,6 +504,10 @@ endif
                  'v wind tendency for cg gravity wave drag', 'm/s2', &
                       missing_value=missing_value               )
 
+   id_diss_heat_cgwd = &
+   register_diag_field ( mod_name, 'diss_heat_cgwd', axes(1:2), Time,      &
+                'Integrated dissipative heating from convective gravity wave drag',  &
+                                 'W/m2' )
 
    endif
 
@@ -522,7 +558,16 @@ endif
                          'Integrated dissipative heating from topo wave drag', &
                          'W/m2' )
 
+
  endif
+
+! rjw     Save vertically-integrated momentum flux 
+
+   id_mom_flux = &                                                            !stg
+   register_diag_field ( mod_name, 'mom_flux', axes(1:2), Time,                         &
+                'Integrated meridional flux of zonal momentum from topo wave drag',     &
+                  'J/m2' )
+
 
 
 !-----------------------------------------------------------------------
