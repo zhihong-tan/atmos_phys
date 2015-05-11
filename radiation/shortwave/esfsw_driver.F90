@@ -607,13 +607,14 @@ subroutine esfsw_driver_init
       read(iounit,104) ( powph2o(nband), nband=1,NH2OBANDS )
       read(iounit,104) ( p0h2o(nband), nband=1,NH2OBANDS )
 
-      if (nbands == 18 .and. nfrqpts == 38) then
-      read(iounit,105) ( c1co2(nband), nband=1,NH2OBANDS )
-      read(iounit,105) ( c1co2str(nband), nband=1,NH2OBANDS )
-      read(iounit,105) ( c2co2(nband), nband=1,NH2OBANDS )
-      read(iounit,105) ( c2co2str(nband), nband=1,NH2OBANDS )
-      read(iounit,105) ( c3co2(nband), nband=1,NH2OBANDS )
-      read(iounit,105) ( c3co2str(nband), nband=1,NH2OBANDS )
+      !if (nbands == 18 .and. nfrqpts == 38) then  
+      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+            read(iounit,105) ( c1co2(nband), nband=1,NH2OBANDS )
+      	    read(iounit,105) ( c1co2str(nband), nband=1,NH2OBANDS )
+	    read(iounit,105) ( c2co2(nband), nband=1,NH2OBANDS )
+	    read(iounit,105) ( c2co2str(nband), nband=1,NH2OBANDS )
+	    read(iounit,105) ( c3co2(nband), nband=1,NH2OBANDS )
+      	    read(iounit,105) ( c3co2str(nband), nband=1,NH2OBANDS )
       else
         read(iounit,102) NCO2BANDS
         read(iounit,102) ( nfreqptsco2(nband), nband=1,NCO2BANDS )
@@ -643,7 +644,8 @@ subroutine esfsw_driver_init
       read(iounit,105) ( c3n2o(nband), nband=1,NH2OBANDS )
       read(iounit,105) ( c3n2ostr(nband), nband=1,NH2OBANDS )
       
-      if (nbands == 18 .and. nfrqpts == 38) then  
+      !if (nbands == 18 .and. nfrqpts == 38) then  
+      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
       else 
         do nband = 1,NCO2BANDS
         do nf = 1,nfreqptsco2(nband)
@@ -653,15 +655,16 @@ subroutine esfsw_driver_init
    206  format(1p,2e16.6,16x,l16)
       endif 
 
-      if (nbands == 18 .and. nfrqpts == 38) then
+      !if (nbands == 18 .and. nfrqpts == 38) then
+      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
         if (do_sw_continuum) then   
-       do nf = 1,nfrqpts
-       read(iounit,1066) wtfreq(nf),kh2o(nf),ko3(nf),kctms(nf),kctmf(nf),strterm(nf)    
-       end do
+       	   do nf = 1,nfrqpts
+       	      read(iounit,1066) wtfreq(nf),kh2o(nf),ko3(nf),kctms(nf),kctmf(nf),strterm(nf)    
+           end do
        else 
-       do nf = 1,nfrqpts
-            read(iounit,106) wtfreq(nf),kh2o(nf),ko3(nf),strterm (nf)
-          end do
+           do nf = 1,nfrqpts
+              read(iounit,106) wtfreq(nf),kh2o(nf),ko3(nf),strterm (nf)
+           end do
         endif
       else
         do nf = 1,nfrqpts
@@ -745,7 +748,8 @@ subroutine esfsw_driver_init
       kh2o = kh2o *1.0E-01   ! cgs to mks
       ko3  = ko3 *1.0E-01    ! cgs to mks
 
-      if (nbands == 18 .and. nfrqpts == 38) then
+      !if (nbands == 18 .and. nfrqpts == 38) then
+      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
       else
          p0co2(1:NCO2BANDS) = 1.0E-2/p0co2(1:NCO2BANDS)
       endif
@@ -756,7 +760,8 @@ subroutine esfsw_driver_init
 
       do n=1,NH2OBANDS
 
-        if (nbands == 18 .and. nfrqpts == 38) then  
+        !if (nbands == 18 .and. nfrqpts == 38) then  
+        if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
           if (do_co2_sw_effects      .and.  &
               c1co2(n) /= input_flag .and.  &
             c2co2(n) /= input_flag .and.  &
@@ -3019,7 +3024,8 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
 !    note: for large zenith angles, alpha can exceed 1. In this case,a
 !    the optical depths are set to the previous layer values.          
 !-------------------------------------------------------------------
-                  if (nbands == 18 .and. nfrqpts == 38) then
+                 !if (nbands == 18 .and. nfrqpts == 38) then
+		 if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
                   if ( c1co2(nband).ne.1.0E-99 ) then
                     do k = KSRAD+1,KERAD+1
                       if (totco2(k) < totco2max(nband) .and.  &
