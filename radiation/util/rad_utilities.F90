@@ -1153,19 +1153,23 @@ type solar_spectrum_type
     real, dimension(:),    pointer   :: solflxband_lean_ann_2000=>NULL()
     real, dimension(:,:,:),pointer   :: solflxband_lean=>NULL()
     integer, dimension(:), pointer   :: endwvnbands=>NULL()
-    integer         :: tot_wvnums
-    integer         :: nbands
-    integer         :: nfrqpts
-    integer         :: nstreams
-    integer         :: nh2obands
-    integer         :: visible_band_indx, one_micron_indx
-    integer         :: eight70_band_indx
-    logical         :: visible_band_indx_iz, one_micron_indx_iz
-    logical         :: eight70_band_indx_iz
-    integer         :: w340_band_indx, w380_band_indx,  &
-                       w440_band_indx, w670_band_indx
-    logical         :: w340_band_iz, w380_band_iz, &
-                       w440_band_iz, w670_band_iz
+    integer,pointer         :: tot_wvnums=>NULL()
+    integer,pointer         :: nbands=>NULL()
+    integer,pointer         :: nfrqpts=>NULL()
+    integer,pointer         :: nstreams=>NULL()
+    integer,pointer         :: nh2obands=>NULL()
+    integer,pointer         :: visible_band_indx, one_micron_indx=>NULL()
+    integer,pointer         :: eight70_band_indx=>NULL()
+    logical,pointer         :: visible_band_indx_iz, one_micron_indx_iz=>NULL()
+    logical,pointer         :: eight70_band_indx_iz=>NULL()
+    integer,pointer         :: w340_band_indx=>NULL()
+    integer,pointer	    :: w380_band_indx=>NULL()
+    integer,pointer	    :: w440_band_indx=>NULL()
+    integer,pointer	    :: w670_band_indx=>NULL()
+    logical,pointer         :: w340_band_iz=>NULL()
+    logical,pointer	    :: w380_band_iz=>NULL()
+    logical,pointer         :: w440_band_iz=>NULL()
+    logical,pointer	    :: w670_band_iz=>NULL()
 end type solar_spectrum_type
 
 !---------------------------------------------------------------------
