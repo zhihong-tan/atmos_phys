@@ -581,12 +581,18 @@ subroutine esfsw_driver_init
 !    strengths.
 !---------------------------------------------------------------------
       if (nbands == 18 .and. nfrqpts == 38) then
-   if (do_sw_continuum) then
-        file_name = 'INPUT/esf_sw_input_data_n38b18ctm'
-      else
-          file_name = 'INPUT/esf_sw_input_data_n38b18'
-      endif
-   else    
+         if (do_sw_continuum) then
+      	   file_name = 'INPUT/esf_sw_input_data_n38b18ctm'
+      	 else
+           file_name = 'INPUT/esf_sw_input_data_n38b18'
+   	 endif
+      else if (nbands == 18 .and. nfrqpts == 74) then
+         if (do_sw_continuum) then
+      	   file_name = 'INPUT/esf_sw_input_data_n74b18ctm'
+      	 else
+           file_name = 'INPUT/esf_sw_input_data_n74b18'
+   	 endif
+      else    
          file_name = 'INPUT/esf_sw_input_data'
       endif      
       
