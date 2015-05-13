@@ -580,21 +580,24 @@ subroutine esfsw_driver_init
 !    read input file for band positions, solar fluxes and band
 !    strengths.
 !---------------------------------------------------------------------
-      if (nbands == 18 .and. nfrqpts == 38) then
-         if (do_sw_continuum) then
-      	   file_name = 'INPUT/esf_sw_input_data_n38b18ctm'
-      	 else
-           file_name = 'INPUT/esf_sw_input_data_n38b18'
-   	 endif
-      else if (nbands == 18 .and. nfrqpts == 74) then
-         if (do_sw_continuum) then
-      	   file_name = 'INPUT/esf_sw_input_data_n74b18ctm'
-      	 else
-           file_name = 'INPUT/esf_sw_input_data_n74b18'
-   	 endif
-      else    
+      if (nh2obands == 9 ) then
+         ! Ulm/CJG esf_sw_input_data
+      	 if (nbands == 18 .and. nfrqpts == 38) then
+            if (do_sw_continuum) then
+      	       file_name = 'INPUT/esf_sw_input_data_n38b18ctm'
+	    else
+	       file_name = 'INPUT/esf_sw_input_data_n38b18'
+   	    endif
+         else if (nbands == 18 .and. nfrqpts == 74) then
+            if (do_sw_continuum) then
+      	       file_name = 'INPUT/esf_sw_input_data_n74b18ctm'
+      	    else
+               file_name = 'INPUT/esf_sw_input_data_n74b18'
+   	    endif
+         endif
+      else  !nh20bands
          file_name = 'INPUT/esf_sw_input_data'
-      endif      
+      endif !nh20bands
       
       call error_mesg ( 'esfsw_driver_mod', &
           'reading solar band data from file '//trim(file_name), NOTE)
@@ -607,8 +610,7 @@ subroutine esfsw_driver_init
       read(iounit,104) ( powph2o(nband), nband=1,NH2OBANDS )
       read(iounit,104) ( p0h2o(nband), nband=1,NH2OBANDS )
 
-      !if (nbands == 18 .and. nfrqpts == 38) then  
-      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
             read(iounit,105) ( c1co2(nband), nband=1,NH2OBANDS )
       	    read(iounit,105) ( c1co2str(nband), nband=1,NH2OBANDS )
 	    read(iounit,105) ( c2co2(nband), nband=1,NH2OBANDS )
@@ -644,8 +646,7 @@ subroutine esfsw_driver_init
       read(iounit,105) ( c3n2o(nband), nband=1,NH2OBANDS )
       read(iounit,105) ( c3n2ostr(nband), nband=1,NH2OBANDS )
       
-      !if (nbands == 18 .and. nfrqpts == 38) then  
-      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
       else 
         do nband = 1,NCO2BANDS
         do nf = 1,nfreqptsco2(nband)
@@ -655,8 +656,7 @@ subroutine esfsw_driver_init
    206  format(1p,2e16.6,16x,l16)
       endif 
 
-      !if (nbands == 18 .and. nfrqpts == 38) then
-      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
         if (do_sw_continuum) then   
        	   do nf = 1,nfrqpts
        	      read(iounit,1066) wtfreq(nf),kh2o(nf),ko3(nf),kctms(nf),kctmf(nf),strterm(nf)    
@@ -748,8 +748,7 @@ subroutine esfsw_driver_init
       kh2o = kh2o *1.0E-01   ! cgs to mks
       ko3  = ko3 *1.0E-01    ! cgs to mks
 
-      !if (nbands == 18 .and. nfrqpts == 38) then
-      if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
       else
          p0co2(1:NCO2BANDS) = 1.0E-2/p0co2(1:NCO2BANDS)
       endif
@@ -760,8 +759,7 @@ subroutine esfsw_driver_init
 
       do n=1,NH2OBANDS
 
-        !if (nbands == 18 .and. nfrqpts == 38) then  
-        if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+        if (nbands == 18 .and. nh2obands == 9  .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
           if (do_co2_sw_effects      .and.  &
               c1co2(n) /= input_flag .and.  &
             c2co2(n) /= input_flag .and.  &
@@ -3025,7 +3023,7 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
 !    the optical depths are set to the previous layer values.          
 !-------------------------------------------------------------------
                  !if (nbands == 18 .and. nfrqpts == 38) then
-		 if (nbands == 18 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+		 if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
                   if ( c1co2(nband).ne.1.0E-99 ) then
                     do k = KSRAD+1,KERAD+1
                       if (totco2(k) < totco2max(nband) .and.  &
