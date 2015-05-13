@@ -1,4 +1,5 @@
 module atmos_tracer_utilities_mod
+
 ! <CONTACT EMAIL="William.Cooke@noaa.gov">
 !   William Cooke
 ! </CONTACT>
@@ -42,10 +43,10 @@ use   time_manager_mod, only : time_type
 use   diag_manager_mod, only : send_data, &
                                register_diag_field
 use tracer_manager_mod, only : query_method, &
-                               get_tracer_names, &
+                               get_tracer_names, get_tracer_index, &
                                get_number_tracers, &
                                MAX_TRACER_FIELDS
-use  field_manager_mod, only : MODEL_ATMOS, parse
+use  field_manager_mod, only : MODEL_ATMOS, MODEL_LAND, parse
 use   horiz_interp_mod, only : horiz_interp_type, horiz_interp_init, &
                                horiz_interp_new, horiz_interp, horiz_interp_del
 use  monin_obukhov_mod, only : mo_profile
@@ -60,7 +61,9 @@ use      constants_mod, only : GRAV, &     ! acceleration due to gravity [m/s2]
 use   interpolator_mod, only : interpolator,  &
                                obtain_interpolator_time_slices, &
                                unset_interpolator_time_flag, &
-                               interpolate_type
+                               interpolate_type, &
+                               interpolator_init, & !f1p
+                               CONSTANT, INTERP_WEIGHTED_P !f1p
 use      astronomy_mod, only : universal_time
 
 implicit none
@@ -70,6 +73,7 @@ private
 
 public  wet_deposition,    &
         dry_deposition,    &
+        dry_deposition_init,         & !f1p
         dry_deposition_time_vary,    &
         dry_deposition_endts,        &
         interp_emiss,      &
@@ -127,7 +131,7 @@ type wetdep_type
    real  :: frac_in_cloud_snow
    real  :: alpha_r
    real  :: alpha_s
-   logical :: Lwetdep, Lgas, Laerosol, Lice
+   logical :: Lwetdep, Lgas, Laerosol, Lice, so2_so4_evap, is_so2
 end type wetdep_type
 
 type(wetdep_type), dimension(:), allocatable :: Wetdep
@@ -140,6 +144,9 @@ type drydep_type
    real  :: ice_dry_dep_vel
    real  :: snow_dry_dep_vel
    real  :: vegn_dry_dep_vel
+   logical :: land_does_drydep ! if true, then land model handles dry deposition ,
+       ! over land surfaces and therefore this module should scale down the deposition
+       ! it calculates by 1 - fraction of land
    logical :: Ldrydep
 end type drydep_type
 
@@ -149,7 +156,8 @@ type(drydep_type), dimension(:), allocatable :: Drydep
 ! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
 real ::                scale_aerosol_wetdep =1.0
 real ::                scale_aerosol_wetdep_snow =1.0
-namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow
+character(len=64)  :: file_dry = 'depvel.nc'  ! NetCDF file for dry deposition velocities
+namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry
 ! <---h1g,
 contains
 
@@ -293,15 +301,33 @@ call get_tracer_names(MODEL_ATMOS,n,tracer_names(n),tracer_longnames(n),tracer_u
                             Wetdep(n)%frac_in_cloud_snow, &
                             Wetdep(n)%alpha_r, Wetdep(n)%alpha_s, &
                             Wetdep(n)%Lwetdep, Wetdep(n)%Lgas, &
-                            Wetdep(n)%Laerosol, Wetdep(n)%Lice )
+                            Wetdep(n)%Laerosol, Wetdep(n)%Lice, &
+                            so2_so4_evap = Wetdep(n)%so2_so4_evap )
+
+       if ( lowercase(trim(tracer_names(n))) .eq. "so2" .or. lowercase(trim(tracer_names(n))) .eq. "simpleso2" ) then
+          Wetdep(n)%is_so2 = .true.
+       else
+          Wetdep(n)%is_so2 = .false.
+       end if
+
 
       Drydep(n)%Ldrydep = query_method ('dry_deposition', MODEL_ATMOS,&
                                   n,Drydep(n)%name, Drydep(n)%control)
 
 
       call get_drydep_param(Drydep(n)%name,Drydep(n)%control,  &
-                         Drydep(n)%scheme,Drydep(n)%land_dry_dep_vel,  &
-                                             Drydep(n)%sea_dry_dep_vel)
+                 Drydep(n)%scheme, Drydep(n)%land_does_drydep, &
+                 Drydep(n)%land_dry_dep_vel, Drydep(n)%sea_dry_dep_vel)
+      ! check that the corresonding land tracer is present in the land if the 
+      ! dry deposition is done on the land side
+      if (Drydep(n)%land_does_drydep) then
+         if (get_tracer_index(MODEL_LAND,tracer_names(n))<=0) then
+             call error_mesg('atmos_tracer_utilities_init', &
+               'Dry deposition of atmospheric tracer //"'//trim(Drydep(n)%name)//&
+               '" is done on land side, but corresponding land tracer is not defined in the field table.',&
+               FATAL)
+         endif
+      endif
 ! When formulation of dry deposition is resolved perhaps use the following?
 !      call get_drydep_param    &
 !           (Drydep(n)%name, Drydep(n)%control, Drydep(n)%scheme,  &
@@ -428,17 +454,64 @@ subroutine dry_deposition_time_vary (drydep_data, Time)
 type(time_type), intent(in) :: Time
 type(interpolate_type), dimension(:), intent(inout) :: drydep_data
 
-      integer :: n
+integer :: n
 
+do n=1,size(drydep_data,1)
+   if (Drydep(n)%Ldrydep .and. Drydep(n)%scheme == 'file') then
+      call obtain_interpolator_time_slices (drydep_data(n), Time)
+   endif
+end do
 
-      do n=1,size(drydep_data,1)
-        if (Drydep(n)%Ldrydep .and. Drydep(n)%scheme == 'file') then
-          call obtain_interpolator_time_slices (drydep_data(n), Time)
-        endif
-      end do
+end subroutine dry_deposition_time_vary
 
-end subroutine dry_deposition_time_vary 
+!f1p
+subroutine dry_deposition_init( n, &
+                                 lonb_mod, latb_mod, &
+                                 drydep_data )
 
+!-----------------------------------------------------------------------
+
+   real,                   intent(in),  dimension(:,:) :: lonb_mod, latb_mod
+   type(interpolate_type), intent(out)                 :: drydep_data
+   integer               , intent(in)                  :: n
+
+!-----------------------------------------------------------------------
+
+   integer :: flag_file, flag_spec
+   character(len=64) :: filename,specname, dry_file, dry_name
+   character(len=64) :: name='', control=''
+   integer           :: logunit
+
+   logunit = stdlog()
+
+!---------- Set interpolator type for dry deposition
+   if( query_method('dry_deposition',MODEL_ATMOS,n,name,control) )then
+      if(lowercase(trim(name(1:4))).eq.'file') then
+         flag_file = parse(control, 'file',filename)
+         flag_spec = parse(control, 'name',specname)
+         if(flag_file > 0 ) then
+            dry_file = trim(filename)
+         else
+            dry_file = file_dry
+         end if
+         call interpolator_init( drydep_data, dry_file, lonb_mod, latb_mod,&
+                 data_out_of_bounds=(/CONSTANT/), &
+                 vert_interp=(/INTERP_WEIGHTED_P/))
+         
+         if(flag_spec >0) then
+            dry_name  = trim(specname)
+         else
+            dry_name  = trim(lowercase(tracer_names(n)))
+         end if
+
+         write(logunit,*)'Dry deposition velocity from file: ',trim(dry_file), &
+              ' with the name of '//trim(dry_name)
+         
+      end if
+
+   end if
+
+ end subroutine dry_deposition_init
 
 
 !####################################################################
@@ -492,7 +565,7 @@ subroutine write_namelist_values (unit, ntrace)
 !
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
-                           u_star, landmask, dsinku, tracer, Time, &
+                           u_star, landfrac, dsinku, tracer, Time, &
                            Time_next, lon, half_day, drydep_data)
 ! When formulation of dry deposition is resolved perhaps use the following?
 !                           landfr, seaice_cn, snow_area, & 
@@ -554,7 +627,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !</DESCRIPTION>
 !<TEMPLATE>
 ! call dry_deposition( n, is, js, u, v, T, pwt, pfull, dz,
-!                      u_star, landmask, dsinku, tracer, Time, drydep_data)
+!                      u_star, landfrac, dsinku, tracer, Time, drydep_data)
 !</TEMPLATE>
 !
 !  <IN NAME="n" TYPE="integer">
@@ -584,8 +657,8 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !  <IN NAME="lon" TYPE="real" DIM="(:,:)">
 !     Longitude.
 !  </IN>
-!  <IN NAME="landmask" TYPE="logical">
-!     Land - sea mask.
+!  <IN NAME="landfrac" TYPE="logical">
+!     Fraction of land in a grid cell.
 !  </IN>
 !  <INOUT NAME="drydep_data" TYPE="interpolate_type">
 !     Dry deposition data interpolated from input file.
@@ -598,7 +671,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 integer, intent(in)                 :: n, is, js
 real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
 real, intent(in), dimension(:,:)    :: lon, half_day
-logical, intent(in), dimension(:,:) :: landmask
+real, intent(in), dimension(:,:)    :: landfrac
 ! When formulation of dry deposition is resolved perhaps use the following?
 !real, intent(in), dimension(:,:)    :: landfr, z_pbl, b_star, rough_mom
 !real, intent(in), dimension(:,:)    :: seaice_cn, snow_area, vegn_cover,  &
@@ -653,8 +726,8 @@ id=size(pfull,1); jd=size(pfull,2)
         frictv=u_star
         resisa=hwindv/(u_star*u_star)
         where (frictv .lt. 0.1) frictv=0.1
-        dsinku = (1./(surfr/frictv + resisa))/dz
-        drydep_vel(:,:) = 0.
+        drydep_vel(:,:) = (1./(surfr/frictv + resisa))
+        dsinku = drydep_vel(:,:)/dz(:,:)
 
 !    case('sfc_dependent_wind_driven')
 !! Calculate horizontal wind velocity and aerodynamic resistance:
@@ -742,7 +815,7 @@ id=size(pfull,1); jd=size(pfull,2)
 ! layer and using a simple dry deposition velocity times the 
 ! timestep, idt, calculate the fraction of the lowest layer which 
 ! deposits.
-       where (landmask(:,:))
+       where (landfrac(:,:)>0.5)
 ! dry dep value over the land surface
          drydep_vel(:,:) = land_dry_dep_vel
       elsewhere
@@ -803,6 +876,11 @@ id=size(pfull,1); jd=size(pfull,2)
         drydep_vel(:,:) = 0.
   end select
 
+  if (Drydep(n)%land_does_drydep) then
+     ! land handles dry deposition, so we need to scale the calculated values of
+     ! sink by the fraction of the non-land in the grid cell
+     dsinku = dsinku*(1-landfrac)  
+  endif
 dsinku(:,:) = MAX(dsinku(:,:), 0.0E+00)
 where(tracer>0)
   dsinku=dsinku*tracer
@@ -866,7 +944,7 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
                            rain, snow, qdt, cloud, cloud_frac, &
                            f_snow_berg, rain3d, snow3d, &
                            tracer, tracer_dt, Time, cloud_param, &
-                           is, js, dt, sum_wdep_out )
+                           is, js, dt, sum_wdep_out, so2_so4_out )
 !      
 !<OVERVIEW>
 ! Routine to calculate the fraction of tracer removed by wet deposition
@@ -976,7 +1054,8 @@ type (time_type), intent(in)                     :: Time
 real,             intent(out), dimension(:,:,:)  :: tracer_dt
 real,             intent(in)                     :: dt
 real,             intent(in),  dimension(:,:,:)  :: rain3d, snow3d
-real,             intent(out),  dimension(:,:), optional :: sum_wdep_out
+real,             intent(out),  dimension(:,:),   optional :: sum_wdep_out
+real,             intent(out),  dimension(:,:,:), optional :: so2_so4_out
 
 !-----------------------------------------------------------------------
 !     ... local variables
@@ -1482,6 +1561,18 @@ do k = 1,kd
 end do
 !--lwh
 !
+
+
+if ( present(so2_so4_out) )then
+   so2_so4_out = 0.
+   if ( wetdep(n)%is_so2 ) then
+      if ( wetdep(n)%so2_so4_evap ) then
+         so2_so4_out = reevap_diag / pwt
+      end if
+   end if
+end if
+
+
 endif ! End branching pag/lwh
 !
 ! Output diagnostics in kg/m2/s (if MMR) or mole/m2/s (if VMR)
@@ -1548,7 +1639,8 @@ end subroutine wet_deposition
 !
 !#######################################################################
 !
-subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_dry_dep_vel,sea_dry_dep_vel)
+subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep, &
+                            land_dry_dep_vel,sea_dry_dep_vel)
 !subroutine get_drydep_param(text_in_scheme, text_in_param, scheme,  &
 !                            land_dry_dep_vel, sea_dry_dep_vel, &
 !                            ice_dry_dep_vel, snow_dry_dep_vel,  &
@@ -1571,6 +1663,7 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_dry_dep_vel
 !
 character(len=*), intent(in)    :: text_in_scheme, text_in_param
 character(len=*), intent(out)   :: scheme
+logical,          intent(out)   :: land_does_drydep ! if true, LM3 hadles dry deposition over land surfaces
 real, intent(out)               :: land_dry_dep_vel, sea_dry_dep_vel!, &
 !                                   ice_dry_dep_vel, snow_dry_dep_vel, &
 !                                   vegn_dry_dep_vel
@@ -1625,6 +1718,9 @@ if(lowercase(trim(text_in_scheme(1:4))).eq.'file') then
    scheme = 'file'
 endif
 
+! if LM3 or lm3 is present anywhere in the scheme, land model handles the dry 
+! deposition over land surfaces
+land_does_drydep = (index(lowercase(text_in_scheme),'land:lm3')>0)
 end subroutine get_drydep_param
 !
 !#######################################################################
@@ -1640,7 +1736,7 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
                             frac_in_cloud, frac_in_cloud_snow,  &
                             alpha_r,alpha_s, &
                             Lwetdep, Lgas, Laerosol, Lice, &
-                            frac_in_cloud_uw, frac_in_cloud_donner)
+                            frac_in_cloud_uw, frac_in_cloud_donner, so2_so4_evap)
 !<OVERVIEW>
 ! Routine to initialize the parameters for the wet deposition scheme.
 !</OVERVIEW>
@@ -1698,7 +1794,7 @@ real, intent(out)               :: frac_in_cloud, frac_in_cloud_snow
 real, intent(out)               :: alpha_r, alpha_s
 logical, intent(out)            :: Lwetdep, Lgas, Laerosol, Lice
 real, intent(out), optional     :: frac_in_cloud_uw, frac_in_cloud_donner
-
+logical, intent(out), optional  :: so2_so4_evap
 integer :: flag
 
 !Default
@@ -1713,6 +1809,10 @@ Lwetdep = .false.
 Lgas = .false.
 Laerosol = .false.
 
+if ( present(so2_so4_evap) ) then
+   so2_so4_evap = .false.
+end if
+
 if (present(frac_in_cloud_uw))     frac_in_cloud_uw = 0.
 if (present(frac_in_cloud_donner)) frac_in_cloud_donner = 0.
 
@@ -1721,6 +1821,8 @@ if( trim(lowercase(text_in_scheme)) == 'fraction' ) then
 else if( trim(lowercase(text_in_scheme)) == 'henry' .or. &
          trim(lowercase(text_in_scheme)) == 'henry_below' .or. &
          trim(lowercase(text_in_scheme)) == 'henry_noice' .or. &
+         trim(lowercase(text_in_scheme)) == 'henry_below_noice_so2' .or. &
+         trim(lowercase(text_in_scheme)) == 'henry_below_so2' .or. &
          trim(lowercase(text_in_scheme)) == 'henry_below_noice' ) then
    if( trim(lowercase(text_in_scheme)) == 'henry' ) then
       scheme                 = 'henry'
@@ -1730,6 +1832,12 @@ else if( trim(lowercase(text_in_scheme)) == 'henry' .or. &
       scheme                 = 'henry_noice'
    else if ( trim(lowercase(text_in_scheme)) == 'henry_below_noice' ) then
       scheme                 = 'henry_below_noice'
+   else if ( trim(lowercase(text_in_scheme)) == 'henry_below_noice_so2' ) then  
+      scheme                 = 'henry_below_noice'
+      if ( present(so2_so4_evap) )  so2_so4_evap           = .true.
+   else if ( trim(lowercase(text_in_scheme)) == 'henry_below_so2' ) then  
+      scheme                 = 'henry_below'
+      if ( present(so2_so4_evap) )  so2_so4_evap           = .true.
    end  if
    flag=parse(text_in_param,'henry',     henry_constant)
    flag=parse(text_in_param,'dependence',henry_temp    )

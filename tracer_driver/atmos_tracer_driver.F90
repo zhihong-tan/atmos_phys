@@ -116,7 +116,8 @@ use tracer_manager_mod,    only : get_tracer_index,   &
                                   adjust_positive_def
 use field_manager_mod,     only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only :                     &
-                                  dry_deposition,     &
+                                  dry_deposition,          &
+                                  dry_deposition_init,     &
                                   dry_deposition_time_vary, &
                                   dry_deposition_endts,     &
                                   atmos_tracer_utilities_init, &
@@ -297,7 +298,10 @@ integer, allocatable :: local_indices(:)
 ! This is the array of indices for the local model. 
 ! local_indices(1) = 5 implies that the first local tracer is the fifth
 ! tracer in the tracer_manager.
-  
+
+!<f1p
+integer, dimension(:), allocatable :: id_tracer_diag
+!>  
 integer :: id_landfr, id_seaicefr, id_snowfr, id_vegnfr, id_vegnlai
 integer :: id_om_ddep, id_bc_ddep, id_ssalt_ddep, id_dust_ddep, &
            id_nh4_ddep_cmip
@@ -349,7 +353,7 @@ contains
 !     Latitude of the centre of the model gridcells
 !   </IN>
 !   <IN NAME="land" TYPE="logical" DIM="(:,:)">
-!     Land/sea mask.
+!     fraction of land in grid cell.
 !   </IN>
 !   <IN NAME="phalf" TYPE="real" DIM="(:,:,:)">
 !     Pressures on the model half levels.
@@ -404,8 +408,8 @@ contains
 !   </IN>
  subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat,  &
                            area, z_pbl, rough_mom, &
-                           frac_open_sea, &
-                           land, phalf, pfull,     &
+                           frac_open_sea,land,&
+                           phalf, pfull,           &
                            u, v, t, q, r,          &
                            rm, rdt, rdiag, dt,            &
                            u_star, b_star, q_star, &
@@ -462,6 +466,7 @@ real :: rrsun
 real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
 real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
+real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
 real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_settl, dust_settl              
@@ -588,6 +593,7 @@ logical :: used
         lwc(:,:,:) = 0.0
       endif
       if (nql > 0) lwc(:,:,:) = lwc(:,:,:) + max(tracer(:,:,:,nql),0.) 
+      fliq = max(tracer(:,:,:,nql),0.)/max(lwc(:,:,:),1.e-10)
 !-----------------------------------------------------------------------
 !--------- Cloud fraction -----------------------------
 !-----------------------------------------------------------------------
@@ -649,7 +655,7 @@ logical :: used
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
-                                 (land > 0.5), dsinku(:,:,n), &
+                                 land, dsinku(:,:,n), &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n))!, frland, frice, frsnow, &
@@ -1097,13 +1103,24 @@ logical :: used
              Time, Time_next, is,ie,js,je,kbot)
       rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
       rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
-      call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, &
-                jday,hour,minute,second,lat,lon,    &
-                tracer(:,:,:,nSO2), tracer(:,:,:,nSO4), tracer(:,:,:,nDMS), &
-                tracer(:,:,:,nMSA), tracer(:,:,:,nH2O2), &
-                tracer(:,:,:,noh), &
-                rtndso2, rtndso4, rtnddms, rtndmsa, rtndh2o2, &
-                Time,Time_next, is,ie,js,je,kbot)
+!      call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, &
+!                jday,hour,minute,second,lat,lon,    &
+!                tracer(:,:,:,nSO2), tracer(:,:,:,nSO4), tracer(:,:,:,nDMS), &
+!                tracer(:,:,:,nMSA), tracer(:,:,:,nH2O2), &
+!                tracer(:,:,:,noh), &
+!                rtndso2, rtndso4, rtnddms, rtndmsa, rtndh2o2, &
+!                Time,Time_next, is,ie,js,je,kbot)
+
+!f1p
+     call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, fliq, cldf, &
+               jday,hour,minute,second,lat,lon,    &
+               tracer(:,:,:,nSO2), tracer(:,:,:,nSO4), tracer(:,:,:,nDMS), &
+               tracer(:,:,:,nMSA), tracer(:,:,:,nH2O2), &
+               tracer(:,:,:,noh), &
+               rtndso2, rtndso4, rtnddms, rtndmsa, rtndh2o2, &
+               Time,Time_next, is,ie,js,je,kbot)
+
+
       rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
       rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
       rdt(:,:,:,nDMS) = rdt(:,:,:,nDMS) + rtnddms(:,:,:)
@@ -1244,7 +1261,10 @@ type(time_type), intent(in)                                :: Time
 ! Local variables
 !-----------------------------------------------------------------------
       integer :: nbr_layers
-      integer :: unit, ierr, io, logunit
+      integer :: unit, ierr, io, logunit, n
+!<f1p
+      character(len=32) :: tracer_units, tracer_name
+!>
   
 !-----------------------------------------------------------------------
 !
@@ -1330,6 +1350,11 @@ type(time_type), intent(in)                                :: Time
 !------------------------------------------------------------------------
       allocate( drydep_data(nt) )
       do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf,drydep_data)
+      if ( .not. do_tropchem ) then
+          do n = 1,ntp
+             call dry_deposition_init(n,lonb,latb,drydep_data(n))
+          end do
+       end if
       tropchem_clock = mpp_clock_id( 'Tracer: Tropospheric chemistry', &
            grain=CLOCK_MODULE )
 
@@ -1529,6 +1554,26 @@ type(time_type), intent(in)                                :: Time
           'dms_cmipv2', axes(1:3), Time, &
           'DMS', 'kg/m3')
 
+!<f1p: tracer diagnostics
+      allocate( id_tracer_diag(nt) )
+      id_tracer_diag(:) = 0
+
+      do n = 1,nt
+         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+              units = tracer_units)
+
+         if ( tracer_units .eq. "vmr" ) then
+            id_tracer_diag(n)  = register_diag_field (mod_name, &
+                 tracer_name, axes(1:3), Time, &
+                 tracer_name, 'mole/m3')
+         elseif ( tracer_units .eq. "mmr" ) then
+            id_tracer_diag(n)  = register_diag_field (mod_name, &
+                 tracer_name, axes(1:3), Time, &
+                 tracer_name, 'kg/m3')
+         end if
+            
+      end do
+!>
       module_is_initialized = .TRUE.
 
  end subroutine atmos_tracer_driver_init
@@ -1649,6 +1694,7 @@ integer :: logunit
       endif
       call atmos_age_tracer_end      
       call atmos_co2_end
+      deallocate( id_tracer_diag ) !f1p
 
       module_is_initialized = .FALSE.
 
