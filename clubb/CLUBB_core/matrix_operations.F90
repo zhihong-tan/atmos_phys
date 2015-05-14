@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: matrix_operations.F90,v 20.0 2013/12/13 23:09:56 fms Exp $
+! $Id$
 module matrix_operations
 
   implicit none

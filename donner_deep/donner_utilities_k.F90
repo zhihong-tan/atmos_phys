@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_utilities_k.F90,v 19.0 2012/01/06 20:08:36 fms Exp $
+!  $Id$
 
 !module donner_utilities_inter_mod
 

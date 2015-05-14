@@ -41,7 +41,7 @@ private
 
 ! version information 
  
-character(len=128) :: version='$Id: two_stream_gray_rad.F90,v 20.0 2013/12/13 23:22:23 fms Exp $'
+character(len=128) :: version='$Id$'
 character(len=128) :: tag='Two-stream gray atmosphere'
 
 !==================================================================================

@@ -4,8 +4,8 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! $Id: prec_scops.F,v 20.0 2013/12/13 23:16:08 fms Exp $
-! $Name: ulm $
+! $Id$
+! $Name$
 ! cosp_version = 1.3.2
  
 #endif

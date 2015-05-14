@@ -39,8 +39,8 @@ public  microphysics, microphysics_init, microphysics_end
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-character(len=128) :: version = '$Id: microphysics.F90,v 21.0 2014/12/15 21:46:05 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 !--------------------------------------------------------------------------
 !---namelist---------------------------------------------------------------

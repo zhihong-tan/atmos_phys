@@ -7,7 +7,7 @@
 #endif
 
 !-----------------------------------------------------------------------
-! $Id: variables_prognostic_module.F90,v 20.0 2013/12/13 23:10:32 fms Exp $
+! $Id$
 module variables_prognostic_module
 
 !       This module contains definitions of all prognostic

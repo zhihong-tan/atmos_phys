@@ -1,6 +1,6 @@
 #ifdef CLUBB
 !-------------------------------------------------------------------------------
-! $Id: parameters_radiation.F90,v 20.0 2013/12/13 23:10:12 fms Exp $
+! $Id$
 module parameters_radiation
 
 ! Description:

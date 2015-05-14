@@ -1,6 +1,6 @@
 #ifdef CLUBB
 !-----------------------------------------------------------------------
-! $Id: lapack_wrap.F90,v 20.0 2013/12/13 23:09:54 fms Exp $
+! $Id$
 module lapack_wrap
 
 ! Description:

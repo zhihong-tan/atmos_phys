@@ -2,6 +2,8 @@ module physics_radiation_exch_mod
 #include <fms_platform.h>
 !---------------------------------------------------------------------
 
+use fms_mod,            only: lowercase, error_mesg, FATAL
+
 !---- module data ----
 use block_control_mod,  only: block_control_type
 
@@ -10,12 +12,14 @@ use block_control_mod,  only: block_control_type
 !---Exch_ctrl
  public exchange_control_type
  type  exchange_control_type
+     logical           :: doing_strat
      logical           :: doing_donner
      logical           :: doing_uw_conv
      logical           :: do_cosp
      logical           :: do_modis_yim
      logical           :: donner_meso_is_largescale
      integer           :: ncol
+     integer           :: ncld
      character(len=16) :: cloud_type_form  ! indicator of radiatively active clouds
  end type  exchange_control_type
 
@@ -55,36 +59,32 @@ use block_control_mod,  only: block_control_type
 
 
 !---
+!--- Cloud Scheme data type
+public cloud_scheme_data_type
+type cloud_scheme_data_type
+     character(len=16) :: scheme_name
+     real,  dimension(:,:,:), _ALLOCATABLE :: cloud_area     _NULL, & ! cell, meso, lsc, shallow
+                                              liquid_amt     _NULL, & ! cell, meso, lsc, shallow
+                                              ice_amt        _NULL, & ! cell, meso, lsc, shallow
+                                              droplet_number _NULL, & ! cell, meso, lsc, shallow
+                                              ice_number     _NULL, & ! lsc, shallow
+                                              rain           _NULL, & ! lsc
+                                              snow           _NULL, & ! lsc
+                                              rain_size      _NULL, & ! lsc
+                                              snow_size      _NULL, & ! lsc
+                                              liquid_size    _NULL, & ! cell, meso
+                                              ice_size       _NULL    ! cell, meso
+     integer, dimension(:,:), _ALLOCATABLE :: nsum_out       _NULL    ! cell, meso
+end type cloud_scheme_data_type
+
 !--- Moist Clouds block type
  public clouds_from_moist_block_type
  type clouds_from_moist_block_type
-     real, dimension(:,:,:), _ALLOCATABLE :: cell_cld_frac           _NULL, &
-                                             cell_liq_amt            _NULL, &
-                                             cell_liq_size           _NULL, &
-                                             cell_ice_amt            _NULL, &
-                                             cell_ice_size           _NULL, &
-                                             cell_droplet_number     _NULL, &
-                                             meso_cld_frac           _NULL, &
-                                             meso_liq_amt            _NULL, &
-                                             meso_liq_size           _NULL, &
-                                             meso_ice_amt            _NULL, &
-                                             meso_ice_size           _NULL, &
-                                             meso_droplet_number     _NULL, &
-                                             lsc_cloud_area          _NULL, &
-                                             lsc_liquid              _NULL, &
-                                             lsc_ice                 _NULL, &
-                                             lsc_droplet_number      _NULL, &
-                                             lsc_ice_number          _NULL, &
-                                             lsc_rain                _NULL, &
-                                             lsc_snow                _NULL, &
-                                             lsc_rain_size           _NULL, &
-                                             lsc_snow_size           _NULL, &
-                                             shallow_cloud_area      _NULL, &
-                                             shallow_liquid          _NULL, &
-                                             shallow_ice             _NULL, &
-                                             shallow_droplet_number  _NULL, &
-                                             shallow_ice_number      _NULL
-    integer, dimension(:,:), _ALLOCATABLE :: nsum_out                _NULL
+     integer           :: index_strat
+     integer           :: index_donner_meso
+     integer           :: index_donner_cell
+     integer           :: index_uw_conv
+     type(cloud_scheme_data_type), dimension(:), _ALLOCATABLE :: Cloud_data _NULL
  end type clouds_from_moist_block_type
 
 !--- Moist_clouds type definition
@@ -306,6 +306,7 @@ contains
 !--- local variables
    integer :: n, nb, npz
    integer :: ix, jx
+   integer :: nc
 
    npz = Atm_block%npz
 !-----------------------------------------------------------------------
@@ -317,122 +318,173 @@ contains
       do nb = 1, Atm_block%nblks
         ix = Atm_block%ibe(nb) - Atm_block%ibs(nb) + 1
         jx = Atm_block%jbe(nb) - Atm_block%jbs(nb) + 1
-        allocate (Moist_clouds(n)%block(nb)%lsc_cloud_area     (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_liquid         (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_ice            (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_droplet_number (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_ice_number     (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_rain           (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_snow           (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_rain_size      (ix,jx,npz), &
-                  Moist_clouds(n)%block(nb)%lsc_snow_size      (ix,jx,npz)  )
-        Moist_clouds(n)%block(nb)%lsc_cloud_area      = -99.
-        Moist_clouds(n)%block(nb)%lsc_liquid          = -99.
-        Moist_clouds(n)%block(nb)%lsc_ice             = -99.
-        Moist_clouds(n)%block(nb)%lsc_droplet_number  = -99.
-        Moist_clouds(n)%block(nb)%lsc_ice_number      = -99.
-        Moist_clouds(n)%block(nb)%lsc_rain = 0.
-        Moist_clouds(n)%block(nb)%lsc_snow = 0.
-        Moist_clouds(n)%block(nb)%lsc_rain_size = 0.
-        Moist_clouds(n)%block(nb)%lsc_snow_size = 0.
+
+        allocate(Moist_clouds(n)%block(nb)%Cloud_data(Exch_ctrl%ncld)) ! may want to compute locally from flag in Exch_ctrl
+        nc = 0
+
+        if (Exch_ctrl%doing_strat) then
+           nc = nc+1
+           Moist_clouds(n)%block(nb)%index_strat = nc
+           call alloc_cloud_scheme_data_type('strat_cloud',ix,jx,npz,Moist_clouds(n)%block(nb)%Cloud_data(nc))
+        endif
 
         if (Exch_ctrl%doing_donner) then
-           allocate (Moist_clouds(n)%block(nb)%cell_cld_frac       (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%cell_liq_amt        (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%cell_liq_size       (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%cell_ice_amt        (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%cell_ice_size       (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%cell_droplet_number (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%meso_cld_frac       (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%meso_liq_amt        (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%meso_liq_size       (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%meso_ice_amt        (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%meso_ice_size       (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%meso_droplet_number (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%nsum_out            (ix,jx)      )
-           Moist_clouds(n)%block(nb)%cell_cld_frac = 0.
-           Moist_clouds(n)%block(nb)%cell_liq_amt  = 0.
-           Moist_clouds(n)%block(nb)%cell_liq_size = 0.
-           Moist_clouds(n)%block(nb)%cell_ice_amt  = 0.
-           Moist_clouds(n)%block(nb)%cell_ice_size = 0.
-           Moist_clouds(n)%block(nb)%cell_droplet_number = 0.
-           Moist_clouds(n)%block(nb)%meso_cld_frac = 0.
-           Moist_clouds(n)%block(nb)%meso_liq_amt  = 0.
-           Moist_clouds(n)%block(nb)%meso_liq_size = 0.
-           Moist_clouds(n)%block(nb)%meso_ice_amt  = 0.
-           Moist_clouds(n)%block(nb)%meso_ice_size = 0.
-           Moist_clouds(n)%block(nb)%meso_droplet_number = 0.
-           Moist_clouds(n)%block(nb)%nsum_out = 1
+           ! cell
+           nc = nc+1
+           Moist_clouds(n)%block(nb)%index_donner_cell = nc
+           call alloc_cloud_scheme_data_type('donner_cell',ix,jx,npz,Moist_clouds(n)%block(nb)%Cloud_data(nc))
+           ! meso
+           nc = nc+1
+           Moist_clouds(n)%block(nb)%index_donner_meso = nc
+           call alloc_cloud_scheme_data_type('donner_meso',ix,jx,npz,Moist_clouds(n)%block(nb)%Cloud_data(nc))
         endif
 
         if (Exch_ctrl%doing_uw_conv) then
-           allocate (Moist_clouds(n)%block(nb)%shallow_cloud_area     (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%shallow_liquid         (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%shallow_ice            (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%shallow_droplet_number (ix,jx,npz), &
-                     Moist_clouds(n)%block(nb)%shallow_ice_number     (ix,jx,npz)  )
-           Moist_clouds(n)%block(nb)%shallow_cloud_area      = 0.
-           Moist_clouds(n)%block(nb)%shallow_liquid          = 0.
-           Moist_clouds(n)%block(nb)%shallow_ice             = 0.
-           Moist_clouds(n)%block(nb)%shallow_droplet_number  = 0.
-           Moist_clouds(n)%block(nb)%shallow_ice_number      = 0.
+           nc = nc+1
+           Moist_clouds(n)%block(nb)%index_uw_conv = nc
+           call alloc_cloud_scheme_data_type('uw_conv',ix,jx,npz,Moist_clouds(n)%block(nb)%Cloud_data(nc))
         endif
       enddo
     enddo
 
  end subroutine alloc_clouds_from_moist_type
 
+!######################################################################
 
+ subroutine alloc_cloud_scheme_data_type (scheme, id, jd, kd, Cloud_data )
+   character(len=*),              intent(in)    :: scheme
+   integer,                       intent(in)    :: id, jd, kd
+   type (cloud_scheme_data_type), intent(inout) :: Cloud_data
+
+   logical :: done_allocation = .false.
+
+!-----------------------------------------------------------------------
+!    allocate derived-type that stores cloud properties
+!    return from moist processes
+!-----------------------------------------------------------------------
+
+     ! properties common to all cloud schemes
+      allocate (Cloud_data%cloud_area     (id, jd, kd) )
+      allocate (Cloud_data%liquid_amt     (id, jd, kd) )
+      allocate (Cloud_data%ice_amt        (id, jd, kd) )
+      allocate (Cloud_data%droplet_number (id, jd, kd) )
+     !Cloud_data%cloud_area     = 0.0
+     !Cloud_data%liquid_amt     = 0.0
+     !Cloud_data%ice_amt        = 0.0
+     !Cloud_data%droplet_number = 0.0
+
+     ! properties specific to large-scale/stratiform clouds
+      if (lowercase(trim(scheme)) .eq. 'strat_cloud') then
+
+          allocate (Cloud_data%ice_number     (id, jd, kd) )
+          allocate (Cloud_data%rain           (id, jd, kd) )
+          allocate (Cloud_data%snow           (id, jd, kd) )
+          allocate (Cloud_data%rain_size      (id, jd, kd) )
+          allocate (Cloud_data%snow_size      (id, jd, kd) )
+          Cloud_data%cloud_area      = -99.
+          Cloud_data%liquid_amt      = -99.
+          Cloud_data%ice_amt         = -99.
+          Cloud_data%droplet_number  = -99.
+          Cloud_data%ice_number = -99.
+          Cloud_data%rain = 0.
+          Cloud_data%snow = 0.
+          Cloud_data%rain_size = 0.
+          Cloud_data%snow_size = 0.
+          Cloud_data%scheme_name = lowercase(trim(scheme))
+          done_allocation = .true.
+      else
+          Cloud_data%cloud_area      = 0.
+          Cloud_data%liquid_amt      = 0.
+          Cloud_data%ice_amt         = 0.
+          Cloud_data%droplet_number  = 0.
+      end if
+
+      ! properties specific to donner deep clouds (both cell and meso)
+      if (lowercase(trim(scheme)) .eq. 'donner_cell' .or. &
+          lowercase(trim(scheme)) .eq. 'donner_meso') then
+
+          allocate (Cloud_data%liquid_size (id, jd, kd) )
+          allocate (Cloud_data%ice_size    (id, jd, kd) )
+          allocate (Cloud_data%nsum_out    (id, jd) )
+          Cloud_data%liquid_size = 0.
+          Cloud_data%ice_size    = 0.
+          Cloud_data%nsum_out    = 1
+          Cloud_data%scheme_name = lowercase(trim(scheme))
+          done_allocation = .true.
+      endif
+
+      ! properties specific to uw shallow convective clouds
+      if (lowercase(trim(scheme)) .eq. 'uw_conv') then
+
+          allocate (Cloud_data%ice_number (id, jd, kd) )
+          Cloud_data%ice_number = 0.
+          Cloud_data%scheme_name = lowercase(trim(scheme))
+          done_allocation = .true.
+      endif
+
+      ! verify that the arrays were allocated
+      if (.not.done_allocation) then
+          call error_mesg ('physics_radiation_exch_mod', &
+                           'invalid cloud scheme name', FATAL)
+      endif
+
+!----------------------------------------------------------------------
+
+end subroutine alloc_cloud_scheme_data_type
+
+!######################################################################
 
  subroutine dealloc_clouds_from_moist_type (Moist_clouds, Exch_ctrl)
    type (clouds_from_moist_type), intent(inout) :: Moist_clouds(:)
    type (exchange_control_type),  intent(in)    :: Exch_ctrl
 !--- local variables
-   integer :: n, nb
+   integer :: n, nb, nc
 !--------------------------------------------------------------------
 !    deallocate variables
 !--------------------------------------------------------------------
     do n=1,size(Moist_clouds,1)
       do nb = 1, size(Moist_clouds(n)%block,1)
-        deallocate (Moist_clouds(n)%block(nb)%lsc_cloud_area,     &
-                    Moist_clouds(n)%block(nb)%lsc_liquid,         &
-                    Moist_clouds(n)%block(nb)%lsc_ice,            &
-                    Moist_clouds(n)%block(nb)%lsc_droplet_number, &
-                    Moist_clouds(n)%block(nb)%lsc_ice_number,     &
-                    Moist_clouds(n)%block(nb)%lsc_snow,           &
-                    Moist_clouds(n)%block(nb)%lsc_rain,           &
-                    Moist_clouds(n)%block(nb)%lsc_snow_size,      &
-                    Moist_clouds(n)%block(nb)%lsc_rain_size       )
-        if (Exch_ctrl%doing_donner) then
-          deallocate (Moist_clouds(n)%block(nb)%cell_cld_frac,       &
-                      Moist_clouds(n)%block(nb)%cell_liq_amt,        &
-                      Moist_clouds(n)%block(nb)%cell_liq_size,       &
-                      Moist_clouds(n)%block(nb)%cell_ice_amt,        &
-                      Moist_clouds(n)%block(nb)%cell_ice_size,       &
-                      Moist_clouds(n)%block(nb)%cell_droplet_number, &
-                      Moist_clouds(n)%block(nb)%meso_cld_frac,       &
-                      Moist_clouds(n)%block(nb)%meso_liq_amt,        &
-                      Moist_clouds(n)%block(nb)%meso_liq_size,       &
-                      Moist_clouds(n)%block(nb)%meso_ice_amt,        &
-                      Moist_clouds(n)%block(nb)%meso_ice_size,       &
-                      Moist_clouds(n)%block(nb)%meso_droplet_number, &
-                      Moist_clouds(n)%block(nb)%nsum_out             )
-        endif
-        if (Exch_ctrl%doing_uw_conv) then
-          deallocate (Moist_clouds(n)%block(nb)%shallow_cloud_area,     &
-                      Moist_clouds(n)%block(nb)%shallow_liquid,         &
-                      Moist_clouds(n)%block(nb)%shallow_ice,            &
-                      Moist_clouds(n)%block(nb)%shallow_droplet_number, &
-                      Moist_clouds(n)%block(nb)%shallow_ice_number      )
-        endif
+        do nc = 1, size(Moist_clouds(n)%block(nb)%Cloud_data,1)
+
+          ! deallocate arrays common to all cloud schemes
+          deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%cloud_area    )
+          deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%liquid_amt    )
+          deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%ice_amt       )
+          deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%droplet_number)
+
+          ! properties specific to large-scale/stratiform clouds
+          if (trim(Moist_clouds(n)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'strat_cloud') then
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%ice_number)
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%rain      )
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%snow      )
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%rain_size )
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%snow_size )
+          endif
+
+          ! properties specific to donner deep clouds (both cell and meso)
+          if (trim(Moist_clouds(n)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_cell' .or. &
+              trim(Moist_clouds(n)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_meso') then
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%liquid_size)
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%ice_size   )
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%nsum_out   )
+          endif
+
+          ! properties specific to uw shallow convective clouds
+          if (trim(Moist_clouds(n)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'uw_conv') then
+            deallocate (Moist_clouds(n)%block(nb)%Cloud_data(nc)%ice_number)
+          endif
+
+          Moist_clouds(n)%block(nb)%Cloud_data(nc)%scheme_name = ' '
+
+        enddo
+        deallocate (Moist_clouds(n)%block(nb)%Cloud_data)
       enddo
       deallocate (Moist_clouds(n)%block)
     enddo
 
  end subroutine dealloc_clouds_from_moist_type
 
-
-
+!######################################################################
 
 ! update radiation flux states
  subroutine exch_rad_phys_state (Moist_clouds, Cosp_rad, Rad_flux, Exch_ctrl)
@@ -474,39 +526,38 @@ contains
          Cosp_rad(1)%block(nb)%daytime          = Cosp_rad(2)%block(nb)%daytime 
        endif
 
-       Moist_clouds(2)%block(nb)%lsc_cloud_area     = Moist_clouds(1)%block(nb)%lsc_cloud_area
-       Moist_clouds(2)%block(nb)%lsc_liquid         = Moist_clouds(1)%block(nb)%lsc_liquid   
-       Moist_clouds(2)%block(nb)%lsc_ice            = Moist_clouds(1)%block(nb)%lsc_ice     
-       Moist_clouds(2)%block(nb)%lsc_droplet_number = Moist_clouds(1)%block(nb)%lsc_droplet_number
-       Moist_clouds(2)%block(nb)%lsc_ice_number     = Moist_clouds(1)%block(nb)%lsc_ice_number   
-       Moist_clouds(2)%block(nb)%lsc_rain           = Moist_clouds(1)%block(nb)%lsc_rain        
-       Moist_clouds(2)%block(nb)%lsc_snow           = Moist_clouds(1)%block(nb)%lsc_snow       
-       Moist_clouds(2)%block(nb)%lsc_rain_size      = Moist_clouds(1)%block(nb)%lsc_rain_size 
-       Moist_clouds(2)%block(nb)%lsc_snow_size      = Moist_clouds(1)%block(nb)%lsc_snow_size
+       do nc = 1, size(Moist_clouds(1)%block(nb)%Cloud_data,1)
 
-       if (Exch_ctrl%doing_donner) then
-          Moist_clouds(2)%block(nb)%cell_cld_frac       = Moist_clouds(1)%block(nb)%cell_cld_frac
-          Moist_clouds(2)%block(nb)%cell_liq_amt        = Moist_clouds(1)%block(nb)%cell_liq_amt
-          Moist_clouds(2)%block(nb)%cell_liq_size       = Moist_clouds(1)%block(nb)%cell_liq_size
-          Moist_clouds(2)%block(nb)%cell_ice_amt        = Moist_clouds(1)%block(nb)%cell_ice_amt
-          Moist_clouds(2)%block(nb)%cell_ice_size       = Moist_clouds(1)%block(nb)%cell_ice_size
-          Moist_clouds(2)%block(nb)%cell_droplet_number = Moist_clouds(1)%block(nb)%cell_droplet_number
-          Moist_clouds(2)%block(nb)%meso_cld_frac       = Moist_clouds(1)%block(nb)%meso_cld_frac     
-          Moist_clouds(2)%block(nb)%meso_liq_amt        = Moist_clouds(1)%block(nb)%meso_liq_amt     
-          Moist_clouds(2)%block(nb)%meso_liq_size       = Moist_clouds(1)%block(nb)%meso_liq_size   
-          Moist_clouds(2)%block(nb)%meso_ice_amt        = Moist_clouds(1)%block(nb)%meso_ice_amt   
-          Moist_clouds(2)%block(nb)%meso_ice_size       = Moist_clouds(1)%block(nb)%meso_ice_size 
-          Moist_clouds(2)%block(nb)%meso_droplet_number = Moist_clouds(1)%block(nb)%meso_droplet_number 
-          Moist_clouds(2)%block(nb)%nsum_out            = Moist_clouds(1)%block(nb)%nsum_out     
-       endif
+         ! common to all cloud schemes
+         Moist_clouds(2)%block(nb)%Cloud_data(nc)%cloud_area     = Moist_clouds(1)%block(nb)%Cloud_data(nc)%cloud_area
+         Moist_clouds(2)%block(nb)%Cloud_data(nc)%liquid_amt     = Moist_clouds(1)%block(nb)%Cloud_data(nc)%liquid_amt
+         Moist_clouds(2)%block(nb)%Cloud_data(nc)%ice_amt        = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_amt
+         Moist_clouds(2)%block(nb)%Cloud_data(nc)%droplet_number = Moist_clouds(1)%block(nb)%Cloud_data(nc)%droplet_number
+         Moist_clouds(2)%block(nb)%Cloud_data(nc)%scheme_name    = Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name
 
-        if (Exch_ctrl%doing_uw_conv) then
-          Moist_clouds(2)%block(nb)%shallow_cloud_area     = Moist_clouds(1)%block(nb)%shallow_cloud_area   
-          Moist_clouds(2)%block(nb)%shallow_liquid         = Moist_clouds(1)%block(nb)%shallow_liquid      
-          Moist_clouds(2)%block(nb)%shallow_ice            = Moist_clouds(1)%block(nb)%shallow_ice        
-          Moist_clouds(2)%block(nb)%shallow_droplet_number = Moist_clouds(1)%block(nb)%shallow_droplet_number
-          Moist_clouds(2)%block(nb)%shallow_ice_number     = Moist_clouds(1)%block(nb)%shallow_ice_number
-        endif
+         ! properties specific to large-scale/stratiform clouds
+         if (trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'strat_cloud') then
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%ice_number = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_number
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%rain       = Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%snow       = Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%rain_size  = Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain_size
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%snow_size  = Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow_size
+         endif
+
+         ! properties specific to donner deep clouds (both cell and meso)
+         if (trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_cell' .or. &
+             trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_meso') then
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%liquid_size = Moist_clouds(1)%block(nb)%Cloud_data(nc)%liquid_size
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%ice_size    = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_size
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%nsum_out    = Moist_clouds(1)%block(nb)%Cloud_data(nc)%nsum_out
+         endif
+
+         ! properties specific to uw shallow convective clouds
+         if (trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'uw_conv') then
+           Moist_clouds(2)%block(nb)%Cloud_data(nc)%ice_number = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_number
+         endif
+
+       enddo
      enddo
 
  end subroutine exch_rad_phys_state

@@ -1,6 +1,6 @@
 
 !VERSION NUMBER:
-!  $Id: donner_meso_k.F90,v 19.0 2012/01/06 20:08:00 fms Exp $
+!  $Id$
 
 !module donner_meso_inter_mod
 

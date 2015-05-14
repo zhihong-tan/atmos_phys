@@ -29,8 +29,8 @@ private compute_qs_x2
 
 !-------------------------------------------------------------------------
 !----version number-------------------------------------------------------
-Character(len=128) :: Version = '$Id: polysvp.F90,v 20.0 2013/12/13 23:22:03 fms Exp $'
-Character(len=128) :: Tagname = '$Name: ulm $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 
 !---------------------------------------------------------------------

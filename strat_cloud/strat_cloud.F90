@@ -116,7 +116,7 @@ use constants_mod,             only : rdgas, rvgas, hlv, hls, hlf, cp_air, grav
 use cloud_rad_mod,             only : cloud_rad_init
 use diag_manager_mod,          only : register_diag_field, send_data
 use time_manager_mod,          only : time_type, get_date, get_time
-use rad_utilities_mod,         only : aerosol_type
+use aerosol_types_mod,         only : aerosol_type
 use microphysics_mod,          only : microphysics_init, microphysics, &
                                       microphysics_end
 use nc_cond_mod,               only:  nc_cond, nc_cond_init,  nc_cond_end
@@ -199,8 +199,8 @@ private fill_nml_variable, strat_debug, impose_realizability, strat_alloc,&
 !------------------------------------------------------------------------
 !---version number-------------------------------------------------------
 
-Character(len=128) :: Version = '$Id: strat_cloud.F90,v 21.0 2014/12/15 21:46:14 fms Exp $'
-Character(len=128) :: Tagname = '$Name: ulm $'
+Character(len=128) :: Version = '$Id$'
+Character(len=128) :: Tagname = '$Name$'
 
 !------------------------------------------------------------------------
 !---namelist-------------------------------------------------------------

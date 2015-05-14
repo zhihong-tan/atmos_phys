@@ -7,7 +7,7 @@
 
 
 !-------------------------------------------------------------------------------
-! $Id: clubb_precision.F90,v 20.0 2013/12/13 23:09:36 fms Exp $
+! $Id$
 module clubb_precision
 
   implicit none

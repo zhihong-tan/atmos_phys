@@ -24,7 +24,7 @@ use rh_clouds_mod,              only: rh_clouds_sum
 use cu_mo_trans_mod,            only: cu_mo_trans
 use atmos_tracer_utilities_mod, only: wet_deposition
 use moz_hook_mod,               only: moz_hook
-use rad_utilities_mod,          only: aerosol_type
+use aerosol_types_mod,          only: aerosol_type
 use moist_proc_utils_mod,       only: rh_calc
 use detr_ice_num_mod ,          only: detr_ice_num
 
@@ -41,8 +41,8 @@ public  moistproc_mca, moistproc_ras, moistproc_lscale_cond, &
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
-version = '$Id: moistproc_kernels.F90,v 21.0 2014/12/15 21:43:35 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 contains
 

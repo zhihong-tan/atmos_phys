@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: output_netcdf.F90,v 20.0 2013/12/13 23:10:08 fms Exp $
+! $Id$
 !-------------------------------------------------------------------------------
 #ifdef NO_NETCDF
 #undef NETCDF

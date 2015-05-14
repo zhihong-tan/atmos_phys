@@ -1,6 +1,6 @@
 #ifdef CLUBB
 !-----------------------------------------------------------------------
-! $Id: stats_zm.F90,v 20.0 2013/12/13 23:10:28 fms Exp $
+! $Id$
 module stats_zm
 
   implicit none

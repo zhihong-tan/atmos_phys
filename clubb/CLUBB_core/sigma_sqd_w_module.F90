@@ -1,5 +1,5 @@
 #ifdef CLUBB
-! $Id: sigma_sqd_w_module.F90,v 20.0 2013/12/13 23:10:18 fms Exp $
+! $Id$
 module sigma_sqd_w_module
 
   implicit none

@@ -73,7 +73,7 @@ use fms_mod,                 only: mpp_clock_id, mpp_clock_begin,   &
                                    file_exist, error_mesg, FATAL,   &
                                    WARNING, NOTE, check_nml_error, &
                                    close_file, mpp_pe, mpp_root_pe, &
-                                   mpp_error, mpp_chksum
+                                   mpp_error, mpp_chksum, string
 use fms_io_mod,              only: restore_state, &
                                    register_restart_field, restart_file_type, &
                                    save_restart, get_mosaic_tile_file
@@ -83,8 +83,8 @@ use diag_manager_mod,        only: register_diag_field, send_data
 
 !    shared radiation package modules:
 
-use rad_utilities_mod,       only: aerosol_type, aerosol_time_vary_type, &
-                                   rad_utilities_init
+use rad_utilities_mod,       only: rad_utilities_init
+use aerosol_types_mod,       only: aerosol_type, aerosol_time_vary_type
 
 use physics_radiation_exch_mod, only: exchange_control_type, &
                                       clouds_from_moist_type, &
@@ -94,7 +94,8 @@ use physics_radiation_exch_mod, only: exchange_control_type, &
                                       cosp_from_rad_block_type, &
                                       radiation_flux_control_type, & 
                                       radiation_flux_block_type, & 
-                                      alloc_clouds_from_moist_type
+                                      alloc_clouds_from_moist_type, &
+                                      alloc_cloud_scheme_data_type
 
 use physics_types_mod,       only: alloc_physics_tendency_type, &
                                    physics_tendency_type, & 
@@ -118,9 +119,7 @@ use  moist_processes_mod,    only: moist_processes,    &
                                    set_cosp_precip_sources, &
                                    moist_processes_time_vary, &
                                    moist_processes_endts, &
-                                   moist_processes_end,  &
-                                   doing_strat!,          &
-!                                   moist_processes_restart
+                                   moist_processes_end
 
 use vert_turb_driver_mod,    only: vert_turb_driver,  &
                                    vert_turb_driver_init,  &
@@ -168,8 +167,8 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module -------------------
 
-character(len=128) :: version = '$Id: physics_driver.F90,v 21.0 2014/12/15 21:43:46 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 
 !---------------------------------------------------------------------
@@ -379,9 +378,9 @@ type(restart_file_type), pointer, save :: Phy_restart => NULL()
 type(restart_file_type), pointer, save :: Til_restart => NULL()
 logical                                :: in_different_file = .false.
 integer                                :: vers
-integer                                :: now_doing_strat  
-integer                                :: now_doing_entrain
-integer                                :: now_doing_edt
+integer                                :: now_doing_strat = 0
+integer                                :: now_doing_entrain = 0
+integer                                :: now_doing_edt = 0
 real, allocatable                      :: r_convect(:,:)
 
 type(aerosol_time_vary_type) :: Aerosol_cld
@@ -402,6 +401,7 @@ logical   :: module_is_initialized = .false.
                                       ! module has been initialized ?
 logical   :: doing_edt                ! edt_mod has been activated ?
 logical   :: doing_entrain            ! entrain_mod has been activated ?
+logical   :: doing_strat              ! stratiform clouds has been activated ?
 logical   :: doing_donner             ! donner_deep_mod has been 
                                       ! activated ?
 logical   :: doing_uw_conv            ! uw_conv shallow cu mod has been 
@@ -412,7 +412,6 @@ integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
 integer   :: ncol                     ! number of stochastic columns
  
-logical   :: do_strat
 integer   :: num_uw_tracers
 
 
@@ -437,7 +436,7 @@ integer, dimension(:), allocatable :: id_tracer_phys,         &
                                       id_tracer_phys_turb,    &
                                       id_tracer_phys_moist
 
-type (clouds_from_moist_block_type) :: RESTART
+type (clouds_from_moist_block_type) :: Restart
 
 
                             contains
@@ -529,7 +528,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 
       integer :: nb, ibs, ibe, jbs, jbe
       real, dimension (size(lonb,1)-1, size(latb,2)-1) :: sgsmtn
-      integer          ::  id, jd, kd, n, k
+      integer          ::  id, jd, kd, n, k, nc
       integer          ::  ierr, io, unit, logunit, outunit
       integer          ::  ndum
       character(len=16)::  cosp_precip_sources_modified
@@ -673,21 +672,26 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
     enddo
 
 !-----------------------------------------------------------------------
-      call mpp_clock_begin ( moist_processes_init_clock )
 !---------- initialize physics -------
+    if (do_moist_processes) then
+      call mpp_clock_begin ( moist_processes_init_clock )
       call moist_processes_init (id, jd, kd, lonb, latb, lon, lat, phalf, &
                                  Physics%glbl_qty%pref(:,1),&
                                  axes, Time, doing_donner,  &
                                  doing_uw_conv,  &
-                                 num_uw_tracers, do_strat, &
-                                 do_cosp_in=do_cosp, &
+                                 num_uw_tracers, doing_strat, &
                                  do_clubb_in=do_clubb, &
+                                 do_cosp_in=do_cosp, &
                                  donner_meso_is_largescale_in= &
                                          donner_meso_is_largescale, &
                                  include_donmca_in_cosp_out = &
                                          include_donmca_in_cosp)
 
       call mpp_clock_end ( moist_processes_init_clock )
+    else
+      diff_cu_mo = 0.0
+      convect = .false.
+    endif
      
 !-----------------------------------------------------------------------
 !    initialize damping_driver_mod.
@@ -782,16 +786,24 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 !-----------------------------------------------------------------------
 !--- store some control variables for radiation and cosp
 !-----------------------------------------------------------------------
+      Exch_ctrl%doing_strat               = doing_strat
       Exch_ctrl%doing_donner              = doing_donner
       Exch_ctrl%doing_uw_conv             = doing_uw_conv
       Exch_ctrl%donner_meso_is_largescale = donner_meso_is_largescale
       Exch_ctrl%do_cosp                   = do_cosp
       Exch_ctrl%do_modis_yim              = do_modis_yim
 
+      ! count the number of cloud schemes
+      Exch_ctrl%ncld = 0
+      if (Exch_ctrl%doing_strat)   Exch_ctrl%ncld = Exch_ctrl%ncld + 1
+      if (Exch_ctrl%doing_donner)  Exch_ctrl%ncld = Exch_ctrl%ncld + 2
+      if (Exch_ctrl%doing_uw_conv) Exch_ctrl%ncld = Exch_ctrl%ncld + 1
 !-----------------------------------------------------------------------
 !    allocate derived-type that stores cloud properties
 !    return from moist processes
 !-----------------------------------------------------------------------
+     call error_mesg('physics_driver_mod', 'number of cloud schemes found = '//trim(string(Exch_ctrl%ncld)), NOTE)
+
      call alloc_clouds_from_moist_type(Moist_clouds, Exch_ctrl, Atm_block)
 
 !--------------------------------------------------------------------
@@ -799,64 +811,14 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 !    variables. Also register restart fields to be ready for intermediate 
 !    restart.
 !--------------------------------------------------------------------
-      allocate (Restart%lsc_cloud_area     (id,jd,kd), &
-                Restart%lsc_liquid         (id,jd,kd), &
-                Restart%lsc_ice            (id,jd,kd), &
-                Restart%lsc_droplet_number (id,jd,kd), &
-                Restart%lsc_ice_number     (id,jd,kd), &
-                Restart%lsc_rain           (id,jd,kd), &
-                Restart%lsc_snow           (id,jd,kd), &
-                Restart%lsc_rain_size      (id,jd,kd), &
-                Restart%lsc_snow_size      (id,jd,kd)  )
-      Restart%lsc_cloud_area     = -99.
-      Restart%lsc_liquid         = -99.
-      Restart%lsc_ice            = -99.
-      Restart%lsc_droplet_number = -99.
-      Restart%lsc_ice_number     = -99.
-      Restart%lsc_rain           = 0.
-      Restart%lsc_snow           = 0.
-      Restart%lsc_rain_size      = 0.
-      Restart%lsc_snow_size      = 0.
-      if (doing_donner) then
-        allocate (Restart%cell_cld_frac       (id,jd,kd), &
-                  Restart%cell_liq_amt        (id,jd,kd), &
-                  Restart%cell_liq_size       (id,jd,kd), &
-                  Restart%cell_ice_amt        (id,jd,kd), &
-                  Restart%cell_ice_size       (id,jd,kd), &
-                  Restart%cell_droplet_number (id,jd,kd), &
-                  Restart%meso_cld_frac       (id,jd,kd), &
-                  Restart%meso_liq_amt        (id,jd,kd), &
-                  Restart%meso_liq_size       (id,jd,kd), &
-                  Restart%meso_ice_amt        (id,jd,kd), &
-                  Restart%meso_ice_size       (id,jd,kd), &
-                  Restart%meso_droplet_number (id,jd,kd), &
-                  Restart%nsum_out            (id,jd)      )
-        Restart%cell_cld_frac       = 0.
-        Restart%cell_liq_amt        = 0.
-        Restart%cell_liq_size       = 0.
-        Restart%cell_ice_amt        = 0.
-        Restart%cell_ice_size       = 0.
-        Restart%cell_droplet_number = 0.
-        Restart%meso_cld_frac       = 0.
-        Restart%meso_liq_amt        = 0.
-        Restart%meso_liq_size       = 0.
-        Restart%meso_ice_amt        = 0.
-        Restart%meso_ice_size       = 0.
-        Restart%meso_droplet_number = 0.
-        Restart%nsum_out            = 0
-      endif
-      if (doing_uw_conv) then
-        allocate (Restart%shallow_cloud_area     (id,jd,kd), &
-                  Restart%shallow_liquid         (id,jd,kd), &
-                  Restart%shallow_ice            (id,jd,kd), &
-                  Restart%shallow_droplet_number (id,jd,kd), &
-                  Restart%shallow_ice_number     (id,jd,kd)  )
-        Restart%shallow_cloud_area     = 0.
-        Restart%shallow_liquid         = 0.
-        Restart%shallow_ice            = 0.
-        Restart%shallow_droplet_number = 0.
-        Restart%shallow_ice_number     = 0.
-      endif
+      allocate(Restart%Cloud_data(Exch_ctrl%ncld))
+
+      do nc = 1, Exch_ctrl%ncld
+        ! restart values allocated on the full domain
+        call alloc_cloud_scheme_data_type( Moist_clouds(1)%block(1)%Cloud_data(nc)%scheme_name, &
+                                           id, jd, kd, Restart%Cloud_data(nc))
+      enddo
+
       call physics_driver_register_restart (Restart)
       if(file_exist('INPUT/physics_driver.res.nc')) then
          call restore_state(Phy_restart)
@@ -882,80 +844,88 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       write(outunit,100) 'diff_m                 ', mpp_chksum(diff_m                )
       write(outunit,100) 'r_convect              ', mpp_chksum(r_convect             )
       write(outunit,100) 'radturbten             ', mpp_chksum(radturbten            )
-      if ( doing_donner ) then
-         write(outunit,100) 'cell_cld_frac          ', mpp_chksum(Restart%cell_cld_frac         )
-         write(outunit,100) 'cell_liq_amt           ', mpp_chksum(Restart%cell_liq_amt          )
-         write(outunit,100) 'cell_liq_size          ', mpp_chksum(Restart%cell_liq_size         )
-         write(outunit,100) 'cell_ice_amt           ', mpp_chksum(Restart%cell_ice_amt          )
-         write(outunit,100) 'cell_ice_size          ', mpp_chksum(Restart%cell_ice_size         )
-         write(outunit,100) 'meso_cld_frac          ', mpp_chksum(Restart%meso_cld_frac         )
-         write(outunit,100) 'meso_liq_amt           ', mpp_chksum(Restart%meso_liq_amt          )
-         write(outunit,100) 'meso_liq_size          ', mpp_chksum(Restart%meso_liq_size         )
-         write(outunit,100) 'meso_ice_amt           ', mpp_chksum(Restart%meso_ice_amt          )
-         write(outunit,100) 'meso_ice_size          ', mpp_chksum(Restart%meso_ice_size         )
-         write(outunit,100) 'meso_droplet_number    ', mpp_chksum(Restart%meso_droplet_number   )
-         write(outunit,100) 'nsum_out               ', mpp_chksum(Restart%nsum_out              )
-      endif
-      if ( doing_uw_conv ) then
-         write(outunit,100) 'shallow_cloud_area     ', mpp_chksum(Restart%shallow_cloud_area    )
-         write(outunit,100) 'shallow_liquid         ', mpp_chksum(Restart%shallow_liquid        )
-         write(outunit,100) 'shallow_ice            ', mpp_chksum(Restart%shallow_ice           )
-         write(outunit,100) 'shallow_droplet_number ', mpp_chksum(Restart%shallow_droplet_number)
-         write(outunit,100) 'shallow_ice_number     ', mpp_chksum(Restart%shallow_ice_number    )
-      endif
-      write(outunit,100) 'lsc_cloud_area         ', mpp_chksum(Restart%lsc_cloud_area        )
-      write(outunit,100) 'lsc_liquid             ', mpp_chksum(Restart%lsc_liquid            )
-      write(outunit,100) 'lsc_ice                ', mpp_chksum(Restart%lsc_ice               )
-      write(outunit,100) 'lsc_droplet_number     ', mpp_chksum(Restart%lsc_droplet_number    )
-      write(outunit,100) 'lsc_ice_number         ', mpp_chksum(Restart%lsc_ice_number        )
-      write(outunit,100) 'lsc_snow               ', mpp_chksum(Restart%lsc_snow              )
-      write(outunit,100) 'lsc_rain               ', mpp_chksum(Restart%lsc_rain              )
-      write(outunit,100) 'lsc_snow_size          ', mpp_chksum(Restart%lsc_snow_size         )
-      write(outunit,100) 'lsc_rain_size          ', mpp_chksum(Restart%lsc_rain_size         )
+      do nc = 1, size(Restart%Cloud_data,1)
+        ! NOTE: the order of the checksums in stdout will be different
+        if ( trim(Restart%Cloud_data(nc)%scheme_name).eq.'donner_cell' ) then
+          write(outunit,100) 'cell_cld_frac          ', mpp_chksum(Restart%Cloud_data(nc)%cloud_area )
+          write(outunit,100) 'cell_liq_amt           ', mpp_chksum(Restart%Cloud_data(nc)%liquid_amt )
+          write(outunit,100) 'cell_liq_size          ', mpp_chksum(Restart%Cloud_data(nc)%liquid_size)
+          write(outunit,100) 'cell_ice_amt           ', mpp_chksum(Restart%Cloud_data(nc)%ice_amt    )
+          write(outunit,100) 'cell_ice_size          ', mpp_chksum(Restart%Cloud_data(nc)%ice_size   )
+        endif
+        if ( trim(Restart%Cloud_data(nc)%scheme_name).eq.'donner_meso' ) then
+          write(outunit,100) 'meso_cld_frac          ', mpp_chksum(Restart%Cloud_data(nc)%cloud_area )
+          write(outunit,100) 'meso_liq_amt           ', mpp_chksum(Restart%Cloud_data(nc)%liquid_amt )
+          write(outunit,100) 'meso_liq_size          ', mpp_chksum(Restart%Cloud_data(nc)%liquid_size)
+          write(outunit,100) 'meso_ice_amt           ', mpp_chksum(Restart%Cloud_data(nc)%ice_amt    )
+          write(outunit,100) 'meso_ice_size          ', mpp_chksum(Restart%Cloud_data(nc)%ice_size   )
+          write(outunit,100) 'nsum_out               ', mpp_chksum(Restart%Cloud_data(nc)%nsum_out   )
+        endif
+        if ( trim(Restart%Cloud_data(nc)%scheme_name).eq.'uw_conv' ) then
+          write(outunit,100) 'shallow_cloud_area     ', mpp_chksum(Restart%Cloud_data(nc)%cloud_area    )
+          write(outunit,100) 'shallow_liquid         ', mpp_chksum(Restart%Cloud_data(nc)%liquid_amt    )
+          write(outunit,100) 'shallow_ice            ', mpp_chksum(Restart%Cloud_data(nc)%ice_amt       )
+          write(outunit,100) 'shallow_droplet_number ', mpp_chksum(Restart%Cloud_data(nc)%droplet_number)
+          write(outunit,100) 'shallow_ice_number     ', mpp_chksum(Restart%Cloud_data(nc)%ice_number    )
+        endif
+        if ( trim(Restart%Cloud_data(nc)%scheme_name).eq.'strat_cloud' ) then
+          write(outunit,100) 'lsc_cloud_area         ', mpp_chksum(Restart%Cloud_data(nc)%cloud_area    )
+          write(outunit,100) 'lsc_liquid             ', mpp_chksum(Restart%Cloud_data(nc)%liquid_amt    )
+          write(outunit,100) 'lsc_ice                ', mpp_chksum(Restart%Cloud_data(nc)%ice_amt       )
+          write(outunit,100) 'lsc_droplet_number     ', mpp_chksum(Restart%Cloud_data(nc)%droplet_number)
+          write(outunit,100) 'lsc_ice_number         ', mpp_chksum(Restart%Cloud_data(nc)%ice_number    )
+          write(outunit,100) 'lsc_snow               ', mpp_chksum(Restart%Cloud_data(nc)%snow          )
+          write(outunit,100) 'lsc_rain               ', mpp_chksum(Restart%Cloud_data(nc)%rain          )
+          write(outunit,100) 'lsc_snow_size          ', mpp_chksum(Restart%Cloud_data(nc)%snow_size     )
+          write(outunit,100) 'lsc_rain_size          ', mpp_chksum(Restart%Cloud_data(nc)%rain_size     )
+        endif
+      enddo ! nc
 
       do nb = 1, Atm_block%nblks
         ibs = Atm_block%ibs(nb)-Atm_block%isc+1
         ibe = Atm_block%ibe(nb)-Atm_block%isc+1
         jbs = Atm_block%jbs(nb)-Atm_block%jsc+1
         jbe = Atm_block%jbe(nb)-Atm_block%jsc+1
-        Moist_clouds(1)%block(nb)%lsc_cloud_area     = Restart%lsc_cloud_area(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_liquid         = Restart%lsc_liquid(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_ice            = Restart%lsc_ice(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_droplet_number = Restart%lsc_droplet_number(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_ice_number     = Restart%lsc_ice_number(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_rain           = Restart%lsc_rain(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_snow           = Restart%lsc_snow(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_rain_size      = Restart%lsc_rain_size(ibs:ibe,jbs:jbe,:)
-        Moist_clouds(1)%block(nb)%lsc_snow_size      = Restart%lsc_snow_size(ibs:ibe,jbs:jbe,:)
- 
-        if (doing_donner) then
-          Moist_clouds(1)%block(nb)%cell_cld_frac       = Restart%cell_cld_frac(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%cell_liq_amt        = Restart%cell_liq_amt(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%cell_liq_size       = Restart%cell_liq_size(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%cell_ice_amt        = Restart%cell_ice_amt(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%cell_ice_size       = Restart%cell_ice_size(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%cell_droplet_number = Restart%cell_droplet_number(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%meso_cld_frac       = Restart%meso_cld_frac(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%meso_liq_amt        = Restart%meso_liq_amt(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%meso_liq_size       = Restart%meso_liq_size(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%meso_ice_amt        = Restart%meso_ice_amt(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%meso_ice_size       = Restart%meso_ice_size(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%meso_droplet_number = Restart%meso_droplet_number(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%nsum_out            = Restart%nsum_out(ibs:ibe,jbs:jbe)
-        endif
 
-         if (doing_uw_conv) then
-          Moist_clouds(1)%block(nb)%shallow_cloud_area     = Restart%shallow_cloud_area(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%shallow_liquid         = Restart%shallow_liquid(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%shallow_ice            = Restart%shallow_ice(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%shallow_droplet_number = Restart%shallow_droplet_number(ibs:ibe,jbs:jbe,:)
-          Moist_clouds(1)%block(nb)%shallow_ice_number     = Restart%shallow_ice_number(ibs:ibe,jbs:jbe,:)
-         endif
-!--- return trs to the blocked data structure
-         Physics%block(nb)%q = trs(ibs:ibe,jbs:jbe,:,1:ntp)
-         Physics_tendency%block(nb)%qdiag = trs(ibs:ibe,jbs:jbe,:,ntp+1:nt)
-       enddo
-       deallocate (trs, phalf)
+        !-- copy cloud data from restart
+        do nc = 1, size(Restart%Cloud_data,1)
+
+          ! common to all cloud schemes
+          Moist_clouds(1)%block(nb)%Cloud_data(nc)%cloud_area     = Restart%Cloud_data(nc)%cloud_area    (ibs:ibe,jbs:jbe,:)
+          Moist_clouds(1)%block(nb)%Cloud_data(nc)%liquid_amt     = Restart%Cloud_data(nc)%liquid_amt    (ibs:ibe,jbs:jbe,:)
+          Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_amt        = Restart%Cloud_data(nc)%ice_amt       (ibs:ibe,jbs:jbe,:)
+          Moist_clouds(1)%block(nb)%Cloud_data(nc)%droplet_number = Restart%Cloud_data(nc)%droplet_number(ibs:ibe,jbs:jbe,:)
+          Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name    = Restart%Cloud_data(nc)%scheme_name
+
+          ! properties specific to large-scale/stratiform clouds
+          if (trim(Restart%Cloud_data(nc)%scheme_name) .eq. 'strat_cloud') then
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_number = Restart%Cloud_data(nc)%ice_number (ibs:ibe,jbs:jbe,:)
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain       = Restart%Cloud_data(nc)%rain       (ibs:ibe,jbs:jbe,:)
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow       = Restart%Cloud_data(nc)%snow       (ibs:ibe,jbs:jbe,:)
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain_size  = Restart%Cloud_data(nc)%rain_size  (ibs:ibe,jbs:jbe,:)
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow_size  = Restart%Cloud_data(nc)%snow_size  (ibs:ibe,jbs:jbe,:)
+          endif
+  
+          ! properties specific to donner deep clouds (both cell and meso)
+          if (trim(Restart%Cloud_data(nc)%scheme_name) .eq. 'donner_cell' .or. &
+              trim(Restart%Cloud_data(nc)%scheme_name) .eq. 'donner_meso') then
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%liquid_size = Restart%Cloud_data(nc)%liquid_size (ibs:ibe,jbs:jbe,:)
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_size    = Restart%Cloud_data(nc)%ice_size    (ibs:ibe,jbs:jbe,:)
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%nsum_out    = Restart%Cloud_data(nc)%nsum_out    (ibs:ibe,jbs:jbe)
+          endif
+
+          ! properties specific to uw shallow convective clouds
+          if (trim(Restart%Cloud_data(nc)%scheme_name) .eq. 'uw_conv') then
+            Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_number = Restart%Cloud_data(nc)%ice_number (ibs:ibe,jbs:jbe,:)
+          endif
+
+        enddo
+
+        !--- return trs to the blocked data structure
+        Physics%block(nb)%q = trs(ibs:ibe,jbs:jbe,:,1:ntp)
+        Physics_tendency%block(nb)%qdiag = trs(ibs:ibe,jbs:jbe,:,ntp+1:nt)
+      enddo
+      deallocate (trs, phalf)
 
       vers = restart_versions(size(restart_versions(:)))
 
@@ -1148,9 +1118,11 @@ type(time_type),         intent(in)             :: Time
 type(time_type),         intent(in)             :: Time_next
 real,                    intent(in)             :: dt
 
+    if (do_moist_processes) then
       call aerosol_time_vary (Time, Aerosol_cld)
       call moist_processes_time_vary (dt)
-      if (do_cosp) call cosp_driver_time_vary (Time_next)
+    endif
+    if (do_cosp) call cosp_driver_time_vary (Time_next)
 
 !----------------------------------------------------------------------      
 
@@ -1163,9 +1135,11 @@ subroutine physics_driver_up_endts (is,js)
 
 integer, intent(in)  :: is,js
 
-      if (do_cosp) call cosp_driver_endts
+    if (do_cosp) call cosp_driver_endts
+    if (do_moist_processes) then
       call moist_processes_endts (is,js)
       call aerosol_endts (Aerosol_cld)
+    endif
 
 end subroutine physics_driver_up_endts
 
@@ -1327,18 +1301,6 @@ end subroutine physics_driver_up_endts
 !   Surface diffusion 
 !  </INOUT>
 !
-!  <IN NAME="diff_cum_mom" TYPE="real">
-!   OPTIONAL: present when do_moist_processes=.false.
-!    cu_mo_trans diffusion coefficients, which are passed through to vert_diff_down.
-!    Should not be present when do_moist_processes=.true., since these
-!    values are passed out from moist_processes.
-!  </IN>
-!
-!  <IN NAME="moist_convect" TYPE="real">
-!   OPTIONAL: present when do_moist_processes=.false.
-!    Should not be present when do_moist_processes=.true., since these
-!    values are passed out from moist_processes.
-!  </IN>
 ! </SUBROUTINE>
 !
 subroutine physics_driver_down (is, ie, js, je, npz,              &
@@ -1356,7 +1318,6 @@ subroutine physics_driver_down (is, ie, js, je, npz,              &
                                 gust,                             &
                                 Rad_flux_control,                 &
                                 Rad_flux_block,                   &
-                                diff_cum_mom, moist_convect,      &
                                 diffm, difft  )
 
 !---------------------------------------------------------------------
@@ -1383,8 +1344,6 @@ real,dimension(:,:),     intent(out)            :: gust
 type(surf_diff_type),    intent(inout)          :: Surf_diff
 type(radiation_flux_control_type),  intent(in)  :: Rad_flux_control
 type(radiation_flux_block_type),    intent(in)  :: Rad_flux_block
-real,  dimension(:,:,:), intent(in)   ,optional :: diff_cum_mom
-logical, dimension(:,:), intent(in)   ,optional :: moist_convect
 real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft 
 
 !-----------------------------------------------------------------------
@@ -1587,19 +1546,6 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
      call mpp_clock_end ( damping_clock )
 
 !---------------------------------------------------------------------
-!    If moist_processes is not called in physics_driver_down then values
-!    of convect must be passed in via the optional argument "moist_convect".
-!---------------------------------------------------------------------
-      if(.not.do_moist_processes) then
-        if(present(moist_convect)) then
-          convect(is:ie,js:je) = moist_convect
-        else
-          call error_mesg('physics_driver_down', &
-          'moist_convect be present when do_moist_processes=.false.',FATAL) 
-        endif
-      endif
-
-!---------------------------------------------------------------------
 !    call vert_turb_driver to calculate diffusion coefficients. save
 !    the planetary boundary layer height on return.
 !---------------------------------------------------------------------
@@ -1624,7 +1570,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                              u_star, b_star, q_star, rough_mom,      &
                              lat, convect(is:ie,js:je),              &
                              u, v, t, r(:,:,:,1), r, um, vm,                  &
-                             tm, rm(:,:,:,1), rm,                             &
+                             tm, rm(:,:,:,1), rm, rdiag,                      &
                              udt, vdt, tdt, rdt(:,:,:,1), rdt,                &
                              diff_t_vert, diff_m_vert, gust, z_pbl)
      call mpp_clock_end ( turb_clock )
@@ -1662,20 +1608,6 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                 Rad_flux_block%flux_sw_down_vis_dir, &
                                 Rad_flux_block%flux_sw_down_vis_dif)
       call mpp_clock_end ( tracer_clock )
-
-!-----------------------------------------------------------------------
-!    If moist_processes is not called in physics_driver_down then values
-!    of the cu_mo_trans diffusion coefficients must be passed in via
-!    the optional argument "diff_cum_mom".
-!-----------------------------------------------------------------------
-      if(.not.do_moist_processes) then
-        if(present(diff_cum_mom)) then
-          diff_cu_mo(is:ie,js:je,:) = diff_cum_mom          
-        else
-          call error_mesg('physics_driver_down', &
-          'diff_cum_mom must be present when do_moist_processes=.false.',FATAL)
-        endif
-      endif
 
 !-----------------------------------------------------------------------
 !    optionally use an implicit calculation of the vertical diffusion 
@@ -1937,7 +1869,7 @@ integer,                intent(in)                :: is, ie, js, je, npz
 type(time_type),        intent(in)                :: Time_prev, Time, Time_next
 real,dimension(:,:),    intent(in)                :: lat, lon, area
 type(physics_control_type), intent(in)            :: Physics_control
-type(physics_input_block_type), intent(in)        :: Physics_input_block
+type(physics_input_block_type), intent(inout)     :: Physics_input_block
 real,dimension(:,:),    intent(in)                :: frac_land
 real,dimension(:,:),    intent(in)                :: u_star, b_star, q_star
 type(physics_tendency_block_type), intent(inout)  :: Physics_tendency_block
@@ -2039,6 +1971,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       integer :: kmax
       logical :: used
       logical :: hydrostatic, phys_hydrostatic
+      integer :: istrat, icell, imeso, ishallow
 
 ! save the temperature and moisture tendencies from sensible and latent heat fluxes
       real, dimension(ie-is+1, je-js+1) :: tdt_shf,  qdt_lhf
@@ -2184,7 +2117,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 
 !-----------------------------------------------------------------------
 ! to avoid a call to Aerosol when using do_grey_radiation (rif, 09/02/09)
-        if (.not. do_grey_radiation) then
+        if (.not. do_grey_radiation .and. do_moist_processes) then
         ! get aerosol mass concentrations
           pflux(:,:,1) = 0.0e+00
           do i=2,size(p_full,3)
@@ -2212,6 +2145,14 @@ real,dimension(:,:),    intent(inout)             :: gust
           endif
         endif
 
+       ! NOTE: moist_processes is always called with strat
+       ! do_strat_will always have to be activated
+       ! (or at least Cloud_data allocated for it)
+       istrat   = Moist_clouds_block%index_strat
+       icell    = Moist_clouds_block%index_donner_cell
+       imeso    = Moist_clouds_block%index_donner_meso
+       ishallow = Moist_clouds_block%index_uw_conv
+
        if (doing_donner .and. doing_uw_conv) then
          call moist_processes (is, ie, js, je, Time_next, dt, &
            frac_land, p_half, p_full, z_half, z_full, omega,    &
@@ -2225,37 +2166,39 @@ real,dimension(:,:),    intent(inout)             :: gust
            fprec, fl_lsrain(is:ie,js:je,:), fl_lssnow(is:ie,js:je,:),  &
            fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
            fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
-           gust_cv, area, lon, lat, Moist_clouds_block%lsc_cloud_area,  &
-           Moist_clouds_block%lsc_liquid, Moist_clouds_block%lsc_ice, &
-           Moist_clouds_block%lsc_droplet_number,   &
-           Moist_clouds_block%lsc_ice_number, &
+           gust_cv, area, lon, lat, &
+           Moist_clouds_block%Cloud_data(istrat)%cloud_area,  &
+           Moist_clouds_block%Cloud_data(istrat)%liquid_amt,  &
+           Moist_clouds_block%Cloud_data(istrat)%ice_amt,     &
+           Moist_clouds_block%Cloud_data(istrat)%droplet_number,   &
+           Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
       ! snow, rain
-           Moist_clouds_block%lsc_snow , &
-           Moist_clouds_block%lsc_rain, &
-           Moist_clouds_block%lsc_snow_size,  &
-           Moist_clouds_block%lsc_rain_size, &
+           Moist_clouds_block%Cloud_data(istrat)%snow,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
            diff_t_clubb =diff_t_clubb,                       &
            tdt_shf = tdt_shf,                                  &
            qdt_lhf = qdt_lhf,                                  &
            Aerosol=Aerosol, &
-           shallow_cloud_area=Moist_clouds_block%shallow_cloud_area, &
-           shallow_liquid=Moist_clouds_block%shallow_liquid, &
-           shallow_ice= Moist_clouds_block%shallow_ice,   &
-           shallow_droplet_number= Moist_clouds_block%shallow_droplet_number, &
-           shallow_ice_number= Moist_clouds_block%shallow_ice_number, &
-           cell_cld_frac= Moist_clouds_block%cell_cld_frac, &
-           cell_liq_amt=Moist_clouds_block%cell_liq_amt, &
-           cell_liq_size=Moist_clouds_block%cell_liq_size, &
-           cell_ice_amt= Moist_clouds_block%cell_ice_amt,     &
-           cell_ice_size= Moist_clouds_block%cell_ice_size,   &
-           cell_droplet_number= Moist_clouds_block%cell_droplet_number, &
-           meso_cld_frac= Moist_clouds_block%meso_cld_frac,   &
-           meso_liq_amt=Moist_clouds_block%meso_liq_amt, &
-           meso_liq_size=Moist_clouds_block%meso_liq_size, &
-           meso_ice_amt= Moist_clouds_block%meso_ice_amt,  &
-           meso_ice_size= Moist_clouds_block%meso_ice_size,  &
-           meso_droplet_number= Moist_clouds_block%meso_droplet_number, &
-           nsum_out= Moist_clouds_block%nsum_out,   &
+           shallow_cloud_area    =Moist_clouds_block%Cloud_data(ishallow)%cloud_area, &
+           shallow_liquid        =Moist_clouds_block%Cloud_data(ishallow)%liquid_amt, &
+           shallow_ice           =Moist_clouds_block%Cloud_data(ishallow)%ice_amt,    &
+           shallow_droplet_number=Moist_clouds_block%Cloud_data(ishallow)%droplet_number, &
+           shallow_ice_number    =Moist_clouds_block%Cloud_data(ishallow)%ice_number, &
+           cell_cld_frac      =Moist_clouds_block%Cloud_data(icell)%cloud_area,  &
+           cell_liq_amt       =Moist_clouds_block%Cloud_data(icell)%liquid_amt,  &
+           cell_liq_size      =Moist_clouds_block%Cloud_data(icell)%liquid_size, &
+           cell_ice_amt       =Moist_clouds_block%Cloud_data(icell)%ice_amt,     &
+           cell_ice_size      =Moist_clouds_block%Cloud_data(icell)%ice_size,    &
+           cell_droplet_number=Moist_clouds_block%Cloud_data(icell)%droplet_number, &
+           meso_cld_frac      =Moist_clouds_block%Cloud_data(imeso)%cloud_area,  &
+           meso_liq_amt       =Moist_clouds_block%Cloud_data(imeso)%liquid_amt,  &
+           meso_liq_size      =Moist_clouds_block%Cloud_data(imeso)%liquid_size, &
+           meso_ice_amt       =Moist_clouds_block%Cloud_data(imeso)%ice_amt,     &
+           meso_ice_size      =Moist_clouds_block%Cloud_data(imeso)%ice_size,    &
+           meso_droplet_number=Moist_clouds_block%Cloud_data(imeso)%droplet_number, &
+           nsum_out           =Moist_clouds_block%Cloud_data(imeso)%nsum_out,   &
            hydrostatic=hydrostatic, phys_hydrostatic=phys_hydrostatic  )
        else if (doing_donner) then
         call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
@@ -2274,33 +2217,33 @@ real,dimension(:,:),    intent(inout)             :: gust
             fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
             fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
                            gust_cv, area, lon, lat,  &
-                           Moist_clouds_block%lsc_cloud_area, &
-                           Moist_clouds_block%lsc_liquid, &
-                           Moist_clouds_block%lsc_ice, &
-                           Moist_clouds_block%lsc_droplet_number, &
-                           Moist_clouds_block%lsc_ice_number, &
-                 ! snow, rain
-                           Moist_clouds_block%lsc_snow , &
-                           Moist_clouds_block%lsc_rain, &
-                           Moist_clouds_block%lsc_snow_size,  &
-                           Moist_clouds_block%lsc_rain_size, &
+           Moist_clouds_block%Cloud_data(istrat)%cloud_area,  &
+           Moist_clouds_block%Cloud_data(istrat)%liquid_amt,  &
+           Moist_clouds_block%Cloud_data(istrat)%ice_amt,     &
+           Moist_clouds_block%Cloud_data(istrat)%droplet_number,   &
+           Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
+      ! snow, rain
+           Moist_clouds_block%Cloud_data(istrat)%snow,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
                            diff_t_clubb   =diff_t_clubb,                                           &
                            tdt_shf = tdt_shf,                                                      &
                            qdt_lhf = qdt_lhf,                                                      &
                            Aerosol=Aerosol,       &
-                           cell_cld_frac= Moist_clouds_block%cell_cld_frac, &
-                           cell_liq_amt=Moist_clouds_block%cell_liq_amt, &
-                           cell_liq_size=Moist_clouds_block%cell_liq_size, &
-                           cell_ice_amt= Moist_clouds_block%cell_ice_amt,   &
-                           cell_ice_size= Moist_clouds_block%cell_ice_size, &
-              cell_droplet_number= Moist_clouds_block%cell_droplet_number, &
-                           meso_cld_frac= Moist_clouds_block%meso_cld_frac, &
-                           meso_liq_amt=Moist_clouds_block%meso_liq_amt, &
-                           meso_liq_size=Moist_clouds_block%meso_liq_size, &
-                           meso_ice_amt= Moist_clouds_block%meso_ice_amt,  &
-                           meso_ice_size= Moist_clouds_block%meso_ice_size, &
-                      meso_droplet_number= Moist_clouds_block%meso_droplet_number, &
-                           nsum_out= Moist_clouds_block%nsum_out,    &
+           cell_cld_frac      =Moist_clouds_block%Cloud_data(icell)%cloud_area,  &
+           cell_liq_amt       =Moist_clouds_block%Cloud_data(icell)%liquid_amt,  &
+           cell_liq_size      =Moist_clouds_block%Cloud_data(icell)%liquid_size, &
+           cell_ice_amt       =Moist_clouds_block%Cloud_data(icell)%ice_amt,     &
+           cell_ice_size      =Moist_clouds_block%Cloud_data(icell)%ice_size,    &
+           cell_droplet_number=Moist_clouds_block%Cloud_data(icell)%droplet_number, &
+           meso_cld_frac      =Moist_clouds_block%Cloud_data(imeso)%cloud_area,  &
+           meso_liq_amt       =Moist_clouds_block%Cloud_data(imeso)%liquid_amt,  &
+           meso_liq_size      =Moist_clouds_block%Cloud_data(imeso)%liquid_size, &
+           meso_ice_amt       =Moist_clouds_block%Cloud_data(imeso)%ice_amt,     &
+           meso_ice_size      =Moist_clouds_block%Cloud_data(imeso)%ice_size,    &
+           meso_droplet_number=Moist_clouds_block%Cloud_data(imeso)%droplet_number, &
+           nsum_out           =Moist_clouds_block%Cloud_data(imeso)%nsum_out,   &
            hydrostatic=hydrostatic, phys_hydrostatic=phys_hydrostatic  )
                           
        else if (doing_uw_conv) then
@@ -2320,26 +2263,25 @@ real,dimension(:,:),    intent(inout)             :: gust
                fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
            fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
                             gust_cv, area, lon, lat,   &
-                           Moist_clouds_block%lsc_cloud_area,  &
-                           Moist_clouds_block%lsc_liquid,  &
-                           Moist_clouds_block%lsc_ice, &
-                           Moist_clouds_block%lsc_droplet_number, &
-                           Moist_clouds_block%lsc_ice_number, &
-                 ! snow, rain
-                           Moist_clouds_block%lsc_snow , &
-                           Moist_clouds_block%lsc_rain, &
-                           Moist_clouds_block%lsc_snow_size,  &
-                           Moist_clouds_block%lsc_rain_size, &
+           Moist_clouds_block%Cloud_data(istrat)%cloud_area,  &
+           Moist_clouds_block%Cloud_data(istrat)%liquid_amt,  &
+           Moist_clouds_block%Cloud_data(istrat)%ice_amt,     &
+           Moist_clouds_block%Cloud_data(istrat)%droplet_number,   &
+           Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
+      ! snow, rain
+           Moist_clouds_block%Cloud_data(istrat)%snow,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
                            diff_t_clubb   =diff_t_clubb,                       &
                            tdt_shf = tdt_shf,                                  &
                            qdt_lhf = qdt_lhf,                                  &
                            Aerosol=Aerosol, &
-                  shallow_cloud_area= Moist_clouds_block%shallow_cloud_area, &
-                  shallow_liquid=Moist_clouds_block%shallow_liquid,  &
-                  shallow_ice= Moist_clouds_block%shallow_ice,   &
-                  shallow_droplet_number=    &
-                                Moist_clouds_block%shallow_droplet_number,    &
-                  shallow_ice_number = Moist_clouds_block%shallow_ice_number, &
+           shallow_cloud_area    =Moist_clouds_block%Cloud_data(ishallow)%cloud_area, &
+           shallow_liquid        =Moist_clouds_block%Cloud_data(ishallow)%liquid_amt, &
+           shallow_ice           =Moist_clouds_block%Cloud_data(ishallow)%ice_amt,    &
+           shallow_droplet_number=Moist_clouds_block%Cloud_data(ishallow)%droplet_number, &
+           shallow_ice_number    =Moist_clouds_block%Cloud_data(ishallow)%ice_number, &
                            hydrostatic=hydrostatic, phys_hydrostatic=phys_hydrostatic  )
        else
         call moist_processes (is, ie, js, je, Time_next, dt, frac_land, &
@@ -2358,16 +2300,16 @@ real,dimension(:,:),    intent(inout)             :: gust
                fl_ccrain(is:ie,js:je,:), fl_ccsnow(is:ie,js:je,:),    &
            fl_donmca_rain(is:ie,js:je,:), fl_donmca_snow(is:ie,js:je,:), &
                            gust_cv, area, lon, lat,   &
-                           Moist_clouds_block%lsc_cloud_area,  &
-                           Moist_clouds_block%lsc_liquid,  &
-                           Moist_clouds_block%lsc_ice, &
-                           Moist_clouds_block%lsc_droplet_number, &
-                           Moist_clouds_block%lsc_ice_number, &
-             ! snow, rain
-                           Moist_clouds_block%lsc_snow , &
-                           Moist_clouds_block%lsc_rain, &
-                           Moist_clouds_block%lsc_snow_size,  &
-                           Moist_clouds_block%lsc_rain_size, &
+           Moist_clouds_block%Cloud_data(istrat)%cloud_area,  &
+           Moist_clouds_block%Cloud_data(istrat)%liquid_amt,  &
+           Moist_clouds_block%Cloud_data(istrat)%ice_amt,     &
+           Moist_clouds_block%Cloud_data(istrat)%droplet_number,   &
+           Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
+      ! snow, rain
+           Moist_clouds_block%Cloud_data(istrat)%snow,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
+           Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
                            diff_t_clubb   =diff_t_clubb,                                           &
                            tdt_shf = tdt_shf,                                                      &
                            qdt_lhf = qdt_lhf,                                                      &
@@ -2407,7 +2349,9 @@ real,dimension(:,:),    intent(inout)             :: gust
 
       endif ! do_moist_processes
 
-      call aerosol_dealloc (Aerosol)
+      if (do_moist_processes) then  
+        call aerosol_dealloc (Aerosol)
+      endif
       
       if (do_cosp) then
         call mpp_clock_begin ( cosp_clock )
@@ -2710,7 +2654,7 @@ type(block_control_type), intent(in) :: Atm_block
 !      Time      current time [ time_type(days, seconds) ]
 !
 !--------------------------------------------------------------------
-integer :: n, nb, ibs, ibe, jbs, jbe
+integer :: n, nb, nc, ibs, ibe, jbs, jbe
 integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
            diff_term_clock, aerosol_term_clock, clubb_term_clock, &
            grey_radiation_term_clock, tracer_term_clock, cosp_term_clock
@@ -2756,41 +2700,40 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
         ibe = Atm_block%ibe(nb)-Atm_block%isc+1
         jbs = Atm_block%jbs(nb)-Atm_block%jsc+1
         jbe = Atm_block%jbe(nb)-Atm_block%jsc+1
-        Restart%lsc_cloud_area(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_cloud_area
-        Restart%lsc_liquid(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_liquid
-        Restart%lsc_ice(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_ice
-        Restart%lsc_droplet_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_droplet_number
-        Restart%lsc_ice_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_ice_number
-        Restart%lsc_rain(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_rain
-        Restart%lsc_snow(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_snow
-        Restart%lsc_rain_size(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_rain_size
-        Restart%lsc_snow_size(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%lsc_snow_size
 
-        if (doing_donner) then
-          Restart%cell_cld_frac(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%cell_cld_frac
-          Restart%cell_liq_amt(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%cell_liq_amt
-          Restart%cell_liq_size(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%cell_liq_size
-          Restart%cell_ice_amt(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%cell_ice_amt
-          Restart%cell_ice_size(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%cell_ice_size
-          Restart%cell_droplet_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%cell_droplet_number
-          Restart%meso_cld_frac(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%meso_cld_frac
-          Restart%meso_liq_amt(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%meso_liq_amt
-          Restart%meso_liq_size(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%meso_liq_size
-          Restart%meso_ice_amt(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%meso_ice_amt
-          Restart%meso_ice_size(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%meso_ice_size
-          Restart%meso_droplet_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%meso_droplet_number
-          Restart%nsum_out(ibs:ibe,jbs:jbe) = Moist_clouds(1)%block(nb)%nsum_out
-        endif     
-      
-         if (doing_uw_conv) then
-          Restart%shallow_cloud_area(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%shallow_cloud_area
-          Restart%shallow_liquid(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%shallow_liquid
-          Restart%shallow_ice(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%shallow_ice
-          Restart%shallow_droplet_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%shallow_droplet_number
-          Restart%shallow_ice_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%shallow_ice_number
-         endif
-       enddo
+        do nc = 1, size(Moist_clouds(1)%block(nb)%Cloud_data,1)
 
+          ! common to all cloud schemes
+          Restart%Cloud_data(nc)%cloud_area    (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%cloud_area
+          Restart%Cloud_data(nc)%liquid_amt    (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%liquid_amt
+          Restart%Cloud_data(nc)%ice_amt       (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_amt
+          Restart%Cloud_data(nc)%droplet_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%droplet_number
+          Restart%Cloud_data(nc)%scheme_name                       = Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name
+
+          ! properties specific to large-scale/stratiform clouds
+          if (trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'strat_cloud') then
+            Restart%Cloud_data(nc)%ice_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_number
+            Restart%Cloud_data(nc)%rain      (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain
+            Restart%Cloud_data(nc)%snow      (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow
+            Restart%Cloud_data(nc)%rain_size (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain_size
+            Restart%Cloud_data(nc)%snow_size (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow_size
+          endif
+ 
+          ! properties specific to donner deep clouds (both cell and meso)
+          if (trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_cell' .or. &
+              trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_meso') then
+            Restart%Cloud_data(nc)%liquid_size(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%liquid_size
+            Restart%Cloud_data(nc)%ice_size   (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_size
+            Restart%Cloud_data(nc)%nsum_out   (ibs:ibe,jbs:jbe)   = Moist_clouds(1)%block(nb)%Cloud_data(nc)%nsum_out
+          endif
+
+          ! properties specific to uw shallow convective clouds
+          if (trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'uw_conv') then
+            Restart%Cloud_data(nc)%ice_number(ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%ice_number
+          endif
+
+        enddo
+      enddo
 
       call physics_driver_netcdf
 
@@ -2822,9 +2765,12 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
       if(do_grey_radiation) call grey_radiation_end 
       call mpp_clock_end ( grey_radiation_term_clock )
 
-      call mpp_clock_begin ( moist_processes_term_clock )
-      call moist_processes_end (clubb_term_clock)
-      call mpp_clock_end ( moist_processes_term_clock )
+      if (do_moist_processes) then  
+        call mpp_clock_begin ( moist_processes_term_clock )
+        call moist_processes_end (clubb_term_clock)
+        call mpp_clock_end ( moist_processes_term_clock )
+      endif
+
       call mpp_clock_begin ( tracer_term_clock )
       call atmos_tracer_driver_end
       call mpp_clock_end ( tracer_term_clock )
@@ -3050,24 +2996,28 @@ subroutine physics_driver_register_restart (Restart)
   type(clouds_from_moist_block_type), intent(inout), target :: Restart
   character(len=64) :: fname, fname2
   integer           :: id_restart
+  integer           :: nc
+  logical           :: reproduce_ulm_restart = .true.
+  integer           :: index_strat
 
-  
-  if(doing_strat()) then 
-     now_doing_strat = 1
-  else
-     now_doing_strat = 0
-  endif
+  if (do_moist_processes) then  
+    if(doing_strat) then 
+       now_doing_strat = 1
+    else
+       now_doing_strat = 0
+    endif
 
-  if(doing_edt) then 
-     now_doing_edt = 1
-  else
-     now_doing_edt = 0
-  endif
+    if(doing_edt) then 
+       now_doing_edt = 1
+    else
+       now_doing_edt = 0
+    endif
 
-  if(doing_entrain) then 
-     now_doing_entrain = 1
-  else
-     now_doing_entrain = 0
+    if(doing_entrain) then 
+       now_doing_entrain = 1
+    else
+       now_doing_entrain = 0
+    endif
   endif
 
   fname = 'physics_driver.res.nc'
@@ -3096,38 +3046,64 @@ subroutine physics_driver_register_restart (Restart)
   if (do_clubb > 0) then
     id_restart = register_restart_field(Til_restart, fname, 'diff_t_clubb', diff_t_clubb, mandatory = .false.)
   end if
-  if (doing_strat()) then
+  if (doing_strat) then
     id_restart = register_restart_field(Til_restart, fname, 'radturbten',       radturbten)
   endif
-  if (doing_donner) then
-    id_restart = register_restart_field(Til_restart, fname, 'cell_cloud_frac',  Restart%cell_cld_frac, mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_amt',  Restart%cell_liq_amt,  mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_size', Restart%cell_liq_size, mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'cell_ice_amt',     Restart%cell_ice_amt,  mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'cell_ice_size',    Restart%cell_ice_size, mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'meso_cloud_frac',  Restart%meso_cld_frac, mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_amt',  Restart%meso_liq_amt,  mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_size', Restart%meso_liq_size, mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'meso_ice_amt',     Restart%meso_ice_amt,  mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'meso_ice_size',    Restart%meso_ice_size, mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'nsum',             Restart%nsum_out,      mandatory = .false.)
-  endif
-  if (doing_uw_conv) then
-    id_restart = register_restart_field(Til_restart, fname, 'shallow_cloud_area',     Restart%shallow_cloud_area,     mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'shallow_liquid',         Restart%shallow_liquid,         mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'shallow_ice',            Restart%shallow_ice,            mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'shallow_droplet_number', Restart%shallow_droplet_number, mandatory = .false.)
-    id_restart = register_restart_field(Til_restart, fname, 'shallow_ice_number',     Restart%shallow_ice_number,     mandatory = .false.)
-  endif
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_cloud_area',     Restart%lsc_cloud_area,     mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_liquid',         Restart%lsc_liquid ,        mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice',            Restart%lsc_ice,            mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number', Restart%lsc_droplet_number, mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_ice_number',     Restart%lsc_ice_number,     mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow',           Restart%lsc_snow,           mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_rain',           Restart%lsc_rain,           mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_snow_size',      Restart%lsc_snow_size,      mandatory = .false.)
-  id_restart = register_restart_field(Til_restart, fname, 'lsc_rain_size',      Restart%lsc_rain_size,      mandatory = .false.)
+
+  index_strat = 0
+  do nc = 1, size(Restart%Cloud_data,1)
+    if (trim(Restart%Cloud_data(nc)%scheme_name).eq.'strat_cloud' .and. .not. reproduce_ulm_restart) then
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_cloud_area',     Restart%Cloud_data(nc)%cloud_area,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_liquid',         Restart%Cloud_data(nc)%liquid_amt,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_ice',            Restart%Cloud_data(nc)%ice_amt,        mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number', Restart%Cloud_data(nc)%droplet_number, mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_ice_number',     Restart%Cloud_data(nc)%ice_number,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_snow',           Restart%Cloud_data(nc)%snow,           mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_rain',           Restart%Cloud_data(nc)%rain,           mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_snow_size',      Restart%Cloud_data(nc)%snow_size,      mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_rain_size',      Restart%Cloud_data(nc)%rain_size,      mandatory = .false.)
+    endif
+    if (trim(Restart%Cloud_data(nc)%scheme_name).eq.'strat_cloud' .and. reproduce_ulm_restart) index_strat = nc
+
+    if (trim(Restart%Cloud_data(nc)%scheme_name).eq.'donner_cell') then
+      id_restart = register_restart_field(Til_restart, fname, 'cell_cloud_frac',  Restart%Cloud_data(nc)%cloud_area,  mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_amt',  Restart%Cloud_data(nc)%liquid_amt,  mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'cell_liquid_size', Restart%Cloud_data(nc)%liquid_size, mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'cell_ice_amt',     Restart%Cloud_data(nc)%ice_amt,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'cell_ice_size',    Restart%Cloud_data(nc)%ice_size,    mandatory = .false.)
+    endif
+
+    if (trim(Restart%Cloud_data(nc)%scheme_name).eq.'donner_meso') then
+      id_restart = register_restart_field(Til_restart, fname, 'meso_cloud_frac',  Restart%Cloud_data(nc)%cloud_area,  mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_amt',  Restart%Cloud_data(nc)%liquid_amt,  mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'meso_liquid_size', Restart%Cloud_data(nc)%liquid_size, mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'meso_ice_amt',     Restart%Cloud_data(nc)%ice_amt,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'meso_ice_size',    Restart%Cloud_data(nc)%ice_size,    mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'nsum',             Restart%Cloud_data(nc)%nsum_out,    mandatory = .false.)
+    endif
+
+    if (trim(Restart%Cloud_data(nc)%scheme_name).eq.'uw_conv') then
+      id_restart = register_restart_field(Til_restart, fname, 'shallow_cloud_area',     Restart%Cloud_data(nc)%cloud_area,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'shallow_liquid',         Restart%Cloud_data(nc)%liquid_amt,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'shallow_ice',            Restart%Cloud_data(nc)%ice_amt,        mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'shallow_droplet_number', Restart%Cloud_data(nc)%droplet_number, mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'shallow_ice_number',     Restart%Cloud_data(nc)%ice_number,     mandatory = .false.)
+    endif
+  enddo
+
+    ! save large-scale clouds last to reproduce ulm code
+    if (index_strat > 0) then
+      nc = index_strat
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_cloud_area',     Restart%Cloud_data(nc)%cloud_area,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_liquid',         Restart%Cloud_data(nc)%liquid_amt,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_ice',            Restart%Cloud_data(nc)%ice_amt,        mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_droplet_number', Restart%Cloud_data(nc)%droplet_number, mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_ice_number',     Restart%Cloud_data(nc)%ice_number,     mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_snow',           Restart%Cloud_data(nc)%snow,           mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_rain',           Restart%Cloud_data(nc)%rain,           mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_snow_size',      Restart%Cloud_data(nc)%snow_size,      mandatory = .false.)
+      id_restart = register_restart_field(Til_restart, fname, 'lsc_rain_size',      Restart%Cloud_data(nc)%rain_size,      mandatory = .false.)
+    endif
 
 end subroutine physics_driver_register_restart
 ! </SUBROUTINE>    

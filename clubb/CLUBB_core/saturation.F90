@@ -6,7 +6,7 @@
 #define GFDL
 #endif
 
-!$Id: saturation.F90,v 20.0 2013/12/13 23:10:17 fms Exp $
+!$Id$
 !-----------------------------------------------------------------------
 module saturation
 

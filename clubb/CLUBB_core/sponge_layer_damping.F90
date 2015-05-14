@@ -1,5 +1,5 @@
 #ifdef CLUBB
-!$Id: sponge_layer_damping.F90,v 20.0 2013/12/13 23:10:19 fms Exp $
+!$Id$
 module sponge_layer_damping
 ! Description:
 !   This module is used for damping variables in upper altitudes of the grid.
