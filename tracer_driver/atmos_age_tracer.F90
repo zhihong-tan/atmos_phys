@@ -75,8 +75,8 @@ real, parameter :: sec_per_day = 86400., &
                    k_aging = 1./(days_per_year*sec_per_day) ! increase age at 1 yr/yr (convert to yr/sec)
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_age_tracer.F90,v 19.0 2012/01/06 20:29:08 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
 
 contains

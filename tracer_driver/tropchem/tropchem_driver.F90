@@ -96,7 +96,8 @@ use           mo_chem_utls_mod, only : get_spc_ndx
 use          atmos_sulfate_mod, only : atmos_sulfate_init, &
                                        atmos_sulfate_time_vary, &
                                        atmos_DMS_emission
-use       esfsw_parameters_mod, only: Solar_spect, esfsw_parameters_init 
+use       shortwave_driver_mod, only : shortwave_number_of_bands, &
+                                       get_solar_flux_by_band
 use astronomy_mod,         only : diurnal_solar, universal_time
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp
@@ -172,6 +173,10 @@ logical            :: do_fastjx_photo = .false.         ! use fastjx routine ?
 character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen in fastjx calculation; may currently be 'none' or 'lsc_only' (default)
 logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
 real               :: e90_tropopause_vmr = 9.e-8        ! e90 tropopause concentration
+
+! namelist to fix solar flux bug
+! if set to true then solar flux will vary with time
+logical :: solar_flux_bugfix = .false.  ! reproduce original behavior
  
 namelist /tropchem_driver_nml/    &
                                relaxed_dt, &
@@ -216,6 +221,7 @@ namelist /tropchem_driver_nml/    &
                                do_fastjx_photo, &
                                clouds_in_fastjx, &
                                check_convergence, &
+                               solar_flux_bugfix, &
                                e90_tropopause_vmr
                               
 
@@ -259,6 +265,7 @@ integer :: e90_ndx=0
 logical :: do_interactive_h2o = .false.         ! Include chemical sources/sinks of water vapor?
 real, parameter :: solarflux_min = 1.09082, &   ! solar minimum flux (band 18) [W/m2]
                    solarflux_max = 1.14694      ! solar maximum flux (band 18) [W/m2]
+integer :: num_solar_bands = 0
 
 !-----------------------------------------------------------------------
 !     ... identification numbers for diagnostic fields
@@ -320,8 +327,8 @@ type (horiz_interp_type), save :: Interp
 
 
 !---- version number ---------------------------------------------------
-character(len=128), parameter :: version     = '$Id: tropchem_driver.F90,v 21.0 2014/12/15 21:48:04 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: ulm $'
+character(len=128), parameter :: version     = '$Id$'
+character(len=128), parameter :: tagname     = '$Name$'
 !-----------------------------------------------------------------------
 
 contains
@@ -490,6 +497,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real, dimension(size(r,1),size(r,2),size(r,3)) :: imp_slv_nonconv
    real, dimension(size(r,1),size(r,2),size(r,3)):: e90_vmr 
    real :: solar_phase
+   real :: solflxband(num_solar_bands)
    type(psc_type) :: psc
    type(time_type) :: lbc_Time
 !-----------------------------------------------------------------------
@@ -865,7 +873,12 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 !-----------------------------------------------------------------------
 !     ... get solar cycle phase (use radiation band #18)
 !-----------------------------------------------------------------------
-      solar_phase = Solar_spect%solflxbandref(Solar_spect%nbands)
+      if (solar_flux_bugfix) then
+         call get_solar_flux_by_band(solflxband)
+      else
+         call get_solar_flux_by_band(solflxband, ref=.true.)
+      endif
+      solar_phase = solflxband(num_solar_bands)
       solar_phase = (solar_phase-solarflux_min)/(solarflux_max-solarflux_min)
 
 !-----------------------------------------------------------------------
@@ -1968,11 +1981,6 @@ function tropchem_driver_init( r, mask, axes, Time, &
       
 
 !-----------------------------------------------------------------------
-!     ... initialize esfsw_parameters
-!-----------------------------------------------------------------------
-   call esfsw_parameters_init
-
-!-----------------------------------------------------------------------
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
 !  clock_id = mpp_clock_id('Chemistry')
@@ -1993,6 +2001,15 @@ type(time_type), intent(in) :: Time
 
       integer :: yr, mo,day, hr,min, sec
       integer :: n
+
+
+!-----------------------------------------------------------------------
+!     ... initialize number of shortwave bands
+!-----------------------------------------------------------------------
+      if (num_solar_bands == 0) then
+         call shortwave_number_of_bands (num_solar_bands)
+      endif
+
 
       do n=1, size(inter_emis,1)
         if (has_emis(n)) then

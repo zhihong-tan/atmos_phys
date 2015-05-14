@@ -1,8 +1,8 @@
       module MO_SETINV_MOD
 
 implicit none
-character(len=128), parameter :: version     = '$Id: mo_setinv.F90,v 19.0 2012/01/06 20:34:06 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: ulm $'
+character(len=128), parameter :: version     = '$Id$'
+character(len=128), parameter :: tagname     = '$Name$'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

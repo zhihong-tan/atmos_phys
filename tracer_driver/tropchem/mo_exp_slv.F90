@@ -20,8 +20,8 @@
       logical ::  class_hist_prod = .false.
       logical ::  class_hist_loss = .false.
 
-character(len=128), parameter :: version     = '$Id: mo_exp_slv.F90,v 21.0 2014/12/15 21:47:46 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: ulm $'
+character(len=128), parameter :: version     = '$Id$'
+character(len=128), parameter :: tagname     = '$Name$'
 logical                       :: module_is_initialized = .false.
 
       CONTAINS

@@ -17,8 +17,8 @@
       real :: epsilon(max(1,clscnt5))
       real :: err_wghts(max(1,clscnt5))
 
-character(len=128), parameter :: version     = '$Id: mo_rodas_slv.F90,v 19.0 2012/01/06 20:34:04 fms Exp $'
-character(len=128), parameter :: tagname     = '$Name: ulm $'
+character(len=128), parameter :: version     = '$Id$'
+character(len=128), parameter :: tagname     = '$Name$'
 logical                       :: module_is_initialized = .false.
 
       contains

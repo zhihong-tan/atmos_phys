@@ -80,8 +80,8 @@ real :: coef_emis =-999.
 namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
 
 !---- version number -----
-character(len=128) :: version = '$Id: atmos_dust.F90,v 20.0 2013/12/13 23:23:54 fms Exp $'
-character(len=128) :: tagname = '$Name: ulm $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
 
 contains
