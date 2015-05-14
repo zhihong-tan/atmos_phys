@@ -595,9 +595,9 @@ subroutine esfsw_driver_init
                file_name = 'INPUT/esf_sw_input_data_n74b18'
    	    endif
          endif
-      else  !nh20bands
+      else  !nh2obands
          file_name = 'INPUT/esf_sw_input_data'
-      endif !nh20bands
+      endif !nh2obands
       
       call error_mesg ( 'esfsw_driver_mod', &
           'reading solar band data from file '//trim(file_name), NOTE)
@@ -768,25 +768,25 @@ subroutine esfsw_driver_init
           c4co2str(n) = c1co2str(n) * c2co2str(n) ** c3co2str(n)
           totco2max(n) = ( (1.0/c1co2(n) ) + c2co2(n) ** c3co2(n) ) ** &
                        (1.0/c3co2(n) ) - c2co2(n)
-          if (nbands == 18) then
-            if ( n /= 4) then
+            if (nbands == 18) then
+              if ( n /= 4) then
+                totco2strmax(n) = ( (1.0/c1co2str(n) ) + c2co2str(n) ** &
+                                 c3co2str(n) ) ** (1.0/c3co2str(n) ) - &
+                                c2co2str(n)
+              else 
+                totco2strmax(n) = HUGE (c4o2strschrun) 
+              endif
+            else
               totco2strmax(n) = ( (1.0/c1co2str(n) ) + c2co2str(n) ** &
                                  c3co2str(n) ) ** (1.0/c3co2str(n) ) - &
                                 c2co2str(n)
-            else 
-              totco2strmax(n) = HUGE (c4o2strschrun) 
             endif
-          else
-              totco2strmax(n) = ( (1.0/c1co2str(n) ) + c2co2str(n) ** &
-                                 c3co2str(n) ) ** (1.0/c3co2str(n) ) - &
-                                c2co2str(n)
+          else !nbands
+            c4co2(n) = 0.0                              
+            c4co2str(n) = 0.0
+            totco2max(n) = 0.0                                            
+            totco2strmax(n) = 0.0
           endif
-        else
-          c4co2(n) = 0.0                              
-          c4co2str(n) = 0.0
-          totco2max(n) = 0.0                                            
-          totco2strmax(n) = 0.0
-        endif
        
         endif
 
@@ -808,12 +808,12 @@ subroutine esfsw_driver_init
             c3o2str(n) /= input_flag ) then
           c4o2str(n) = c1o2str(n) * c2o2str(n) ** c3o2str(n)
                             if (c3o2str(n) > 3.3E-3) then
-              toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
-                                c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
-                                c2o2str(n)
-          else
-              toto2strmax(n) = HUGE (c4o2strschrun) 
-          endif
+                                toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
+                                  c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
+                                  c2o2str(n)
+                            else
+                               toto2strmax(n) = HUGE (c4o2strschrun) 
+                           endif
         else
           c4o2str(n) = 0.0
           toto2strmax(n) = 0.0
@@ -859,7 +859,7 @@ subroutine esfsw_driver_init
         endif
      endif
 
-      end do
+   end do
 
       c4o2strschrun = c1o2strschrun * c2o2strschrun ** c3o2strschrun
       toto2strmaxschrun = ( (1.0/c1o2strschrun) + c2o2strschrun ** &
