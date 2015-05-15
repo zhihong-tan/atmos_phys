@@ -138,7 +138,8 @@ logical                       :: module_is_initialized = .false.
                          do_interactive_h2o, solar_phase, imp_slv_nonconv, &
                          plonl, prod_ox, loss_ox, retain_cm3_bugs, e90_vmr, &
                          e90_tropopause_vmr, &
-                         check_convergence )
+                         check_convergence,  &
+                         co2 )
 !-----------------------------------------------------------------------
 !     ... Chem_solver advances the volumetric mixing ratio
 !         forward one time step via a combination of explicit,
@@ -184,6 +185,7 @@ logical                       :: module_is_initialized = .false.
       integer, intent(in) ::  j_ndx             
       logical, intent(in) ::  do_fastjx_photo         ! true = use fastjx photo
       logical, intent(in) ::  use_lsc_in_fastjx        ! true = use lsc clouds in fastjx calc
+      real, intent(in)    ::  co2(:,:)
       real, intent(in)    ::  r(:,:,:)                ! the original r species
       real, dimension(:), intent(in) :: &
                               ps, &                   ! surface press ( pascals )
@@ -630,7 +632,7 @@ logical                       :: module_is_initialized = .false.
          call setsox( pmid, plonl, delt, tfld, sh, &
 !                     nrain, nevapr, cmfdqr, &
                       cwat, invariants(:,:,indexm), &
-                      vmr, retain_cm3_bugs )
+                      vmr, retain_cm3_bugs, co2 )
       end if
 !-----------------------------------------------------------------------      
 !         ... Check for negative values and reset to zero

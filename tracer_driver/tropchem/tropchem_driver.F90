@@ -173,6 +173,14 @@ character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen 
 logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
 real               :: e90_tropopause_vmr = 9.e-8        ! e90 tropopause concentration
  
+
+!co2
+real*8             :: co2_fixed_value   = 330e-6
+!character(len=64)  :: co2_filename = 'co2_gblannualdata'
+character(len=64)  :: co2_filename = 'no_file'
+real               :: co2_scale_factor = 1.e-6             
+real               :: co2_fixed_year   = -999
+
 namelist /tropchem_driver_nml/    &
                                relaxed_dt, &
                                relaxed_dt_lbc, &
@@ -206,6 +214,10 @@ namelist /tropchem_driver_nml/    &
                                set_min_h2o_strat, &
                                ch4_filename, &
                                ch4_scale_factor, &
+                               co2_fixed_value, &
+                               co2_fixed_year, &
+                               co2_filename, &
+                               co2_scale_factor, &                               
                                cfc_lbc_filename, &
                                time_varying_cfc_lbc, &
                                cfc_lbc_dataset_entry, &
@@ -219,6 +231,7 @@ namelist /tropchem_driver_nml/    &
                                e90_tropopause_vmr
                               
 
+integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
 real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
                    m2_to_cm2  = 1.e4,     & !conversion factor (cm2/m2)
@@ -297,6 +310,15 @@ type :: lb_type
 end type lb_type
 type(lb_type), dimension(pcnstm1) :: lb
 
+type :: co2_type
+   logical                                :: use_fix_value
+   real                                   :: fixed_value   
+   real,dimension(:), pointer             :: gas_value
+   type(time_type), dimension(:), pointer :: gas_time
+   logical                                :: use_fix_time
+   type(time_type)                        :: fixed_entry
+end type co2_type
+type(co2_type) :: co2_t
 type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
@@ -474,8 +496,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    integer :: inv_index
    integer :: plonl
    logical :: used
-   real :: scale_factor, frac
-   real,  dimension(size(r,1),size(r,3)) :: pdel, h2so4, h2o_temp, qlocal, cloud_water
+   real :: scale_factor, frac, ico2
+   real,  dimension(size(r,1),size(r,3)) :: pdel, h2so4, h2o_temp, qlocal, cloud_water, co2_2d
    real, dimension(size(r,1),size(r,2),size(r,3),pcnstm1)  :: r_temp, r_in, emis_source, r_ub, airc_emis
    real, dimension(size(r,1),size(r,2),size(r,3)) :: tend_tmp, extra_h2o
    real, dimension(pcnstm1) :: r_lb
@@ -492,6 +514,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real :: solar_phase
    type(psc_type) :: psc
    type(time_type) :: lbc_Time
+   type(time_type) :: co2_time
 !-----------------------------------------------------------------------
 
 !<ERROR MSG="tropchem_driver_init must be called first." STATUS="FATAL">
@@ -819,12 +842,35 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    end if
 
    r_temp(:,:,:,:) = MAX(r_temp(:,:,:,:),small)
-  
+
+!set CO2
+   if (nco2>0) then
+      if (mpp_pe() == mpp_root_pe()) then
+         call error_mesg ('tropchem_driver', 'CO2 is active',NOTE)
+      endif
+   else
+      if (co2_t%use_fix_value) then
+         co2_2d(:,:) = co2_t%fixed_value
+      else
+         if (co2_t%use_fix_time) then
+            co2_time = co2_t%fixed_entry
+         else
+            co2_time = Time
+         end if
+         call time_interp( co2_time, co2_t%gas_time(:), frac, index1, index2 )
+         ico2 = co2_t%gas_value(index1) + & 
+              frac*( co2_t%gas_value(index2) - co2_t%gas_value(index1) )
+         co2_2d(:,:) = ico2
+      end if
+   end if
    do j = 1,jd
       do k = 1,kd
          pdel(:,k) = phalf(:,j,k+1) - phalf(:,j,k)
       end do
       qlocal(:,:) = q(:,j,:)
+      if (nco2>0) then
+         co2_2d(:,:) = r(:,j,:,nco2)
+      end if
       
 !-----------------------------------------------------------------------
 !     ... get stratospheric h2so4
@@ -925,7 +971,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                   retain_cm3_bugs,             & 
                   e90_vmr(:,j,:),              & ! e90 concentrations
                   e90_tropopause_vmr,          & ! e90 tropopause threshold
-                  check_convergence ) 
+                  check_convergence,           &
+                  co2_2d ) 
 
       call strat_chem_destroy_psc( psc )
 
@@ -1485,6 +1532,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
    end do
 30 format (A,' was initialized as tracer number ',i3)
 
+   nco2 = get_tracer_index(MODEL_ATMOS, 'co2' )
    cl_ndx     = get_spc_ndx('Cl')
    clo_ndx    = get_spc_ndx('ClO')
    hcl_ndx    = get_spc_ndx('HCl')
@@ -1670,6 +1718,38 @@ function tropchem_driver_init( r, mask, axes, Time, &
          end if
       end if
 
+!fp
+!CO2           
+      if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
+         co2_t%use_fix_value  = .false.
+         !read from file
+         flb = open_namelist_file( 'INPUT/' // trim(co2_filename) )
+         read(flb,FMT='(i12)') series_length
+         allocate( co2_t%gas_value(series_length), co2_t%gas_time(series_length) )
+         do n = 1,series_length
+            read (flb, FMT = '(2f12.4)') input_time, co2_t%gas_value(n)
+            year = INT(input_time)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
+            co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
+         end do
+         call close_file(flb)
+         if (co2_scale_factor .gt. 0) then
+            co2_t%gas_value = co2_t%gas_value * co2_scale_factor
+         end if
+         if (co2_fixed_year .gt. 0) then
+            co2_t%use_fix_time = .true.
+            year = INT(fixed_year)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (fixed_year - year)*diy*SECONDS_PER_DAY 
+            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
+         end if
+      else
+         co2_t%use_fix_value  = .true.
+         co2_t%fixed_value    = co2_fixed_value
+      end if
 !-----------------------------------------------------------------------
 !     ... Initial conditions
 !-----------------------------------------------------------------------

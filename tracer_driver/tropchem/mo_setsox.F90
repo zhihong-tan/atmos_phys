@@ -9,7 +9,7 @@ logical                       :: module_is_initialized = .false.
 
       subroutine setsox( press, plonl, dtime, tfld, qfld, &
                          lwc, xhnm, &
-                         qin, retain_cm3_bugs )
+                         qin, retain_cm3_bugs, xco2 )
 
 !-----------------------------------------------------------------------      
 !          ... Compute heterogeneous reactions of SOX
@@ -35,6 +35,7 @@ logical                       :: module_is_initialized = .false.
       integer, intent(in)  ::    plonl               ! number of local longitude points
       real, intent(in)     ::    dtime               ! time step (sec)
       real, intent(inout)  ::    qin(:,:,:)          ! xported species ( vmr )
+      real, intent(in)     ::    xco2(:,:)!co2 (vmr), cloud
       real, intent(in)     ::    xhnm(:,:)           ! total atms density ( /cm**3)
       real, dimension(:,:), intent(in) ::  &
                                tfld, &               ! temperature
@@ -73,7 +74,7 @@ logical                       :: module_is_initialized = .false.
       real       ::      xph0, xk, xe, x2
       real       ::      tz, xl, px, qz, pz, es, qs, patm
       real       ::      Eso2, Eso4, Ehno3, Eco2, Eh2o, Enh3
-      real       ::      hno3g, nh3g, so2g, h2o2g, co2g, o3g
+      real       ::      hno3g, nh3g, so2g, h2o2g, o3g
       real       ::      rah2o2, rao3, pso4, ccc
       real       ::      xx0, yy1, xkp
       real       ::      cnh3, chno3, com, com1, com2, xra
@@ -108,6 +109,7 @@ logical                       :: module_is_initialized = .false.
 
 !      ox_ndx = get_spc_ndx( 'OX' )
 ! for ox budget (jmao, 1/7/2011)
+
     if (retain_cm3_bugs) then
       ox_ndx = get_spc_ndx( 'OX' )
     else
@@ -265,10 +267,9 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
 !        ... co2 effects
 !-----------------------------------------------------------------
-                  co2g = 330.e-6                            !330 ppm = 330.e-6 atm
                   xk = 3.1e-2*EXP( 2423.*t_fac(i) )
                   xe = 4.3e-7*EXP(-913. *t_fac(i) )
-                  Eco2 = xk*xe*co2g  *patm
+                   Eco2 = xk*xe*xco2(i,k)  *patm  !<f1p now use actual CO2 >
 !-----------------------------------------------------------------
 !        ... PH cal
 !-----------------------------------------------------------------
