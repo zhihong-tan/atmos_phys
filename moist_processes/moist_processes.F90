@@ -79,7 +79,7 @@ use diag_integral_mod,     only: diag_integral_field_init, &
                                  sum_diag_integral_field
 use cu_mo_trans_mod,       only: cu_mo_trans_init, cu_mo_trans, cu_mo_trans_end
 use moz_hook_mod,          only: moz_hook
-use rad_utilities_mod,     only: aerosol_type
+use aerosol_types_mod,     only: aerosol_type
 use moist_proc_utils_mod,  only: capecalcnew, tempavg, column_diag, rh_calc, pmass
 
 use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
@@ -88,6 +88,8 @@ use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
                                  moistproc_scale_uw, moistproc_scale_donner
 ! atmos_shared modules
 use atmos_tracer_utilities_mod, only : wet_deposition
+use atmos_dust_mod, only : atmos_dust_init, dust_tracers, n_dust_tracers, do_dust
+use atmos_sea_salt_mod, only : atmos_sea_salt_init,seasalt_tracers,n_seasalt_tracers,do_seasalt
 
 implicit none
 private
@@ -358,7 +360,7 @@ integer :: id_max_enthalpy_imbal, id_max_water_imbal
 integer :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
 integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
-           id_wetdep_NH4NO3, id_wetdep_salt, id_wetdep_dust
+           id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust
 integer :: id_f_snow_berg, id_f_snow_berg_cond, id_f_snow_berg_wtd
 
 integer, dimension(:), allocatable :: id_tracerdt_conv,  &
@@ -368,7 +370,10 @@ integer, dimension(:), allocatable :: id_tracerdt_conv,  &
                                       id_tracerdt_mcadon, &
                                       id_tracerdt_mcadon_col, &
                                       id_wetdep, &
-                                      id_wet_deposition
+                                      id_wet_deposition, &
+                                      id_wetdep_uw,id_wetdep_donner,id_wetdepc_donner,id_wetdepm_donner  !f1p
+
+real, dimension(:), allocatable    :: conv_wetdep !f1p
 real :: missing_value = -999.
 integer :: area_id
 
@@ -385,22 +390,13 @@ integer :: area_id
    integer :: nbcphilic =0
    integer :: nomphobic =0
    integer :: nomphilic =0
-   integer :: nsalt1 =0
-   integer :: nsalt2 =0
-   integer :: nsalt3 =0
-   integer :: nsalt4 =0
-   integer :: nsalt5 =0
-   integer :: ndust1    =0
-   integer :: ndust2    =0
-   integer :: ndust3    =0
-   integer :: ndust4    =0
-   integer :: ndust5    =0
    integer :: nDMS      =0
    integer :: nSO2      =0
    integer :: nSO4      =0
    integer :: nSOA      =0
    integer :: nNH4NO3   =0
    integer :: nNH4      =0
+   integer :: nH2O2     =0
    
 
 !------------------- other global variables and parameters -------------
@@ -434,8 +430,10 @@ integer :: area_id
 
 subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             phalf, pfull, zhalf, zfull, omega, diff_t, &
-                            radturbten, cush, cbmf,                    &
-                            pblht, ustar, bstar, qstar,                &
+                            radturbten, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &!miz
+			    hmint, cush, cbmf, cgust, tke, pblhto, rkmo, taudpo,     &!miz
+                            exist_shconv, exist_dpconv,                              &!miz
+                            pblht, ustar, bstar, qstar, shflx, lhflx,  &
                             t, q, r, u, v, w, tm, qm, rm, um, vm,      &
                             tdt, qdt, rdt, rdiag, udt, vdt, diff_cu_mo,&
                             convect, lprec, fprec, fl_lsrain,          &
@@ -560,8 +558,10 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
    integer,         intent(in)           :: is,ie,js,je
    type(time_type), intent(in)           :: Time
    real, intent(in)                      :: dt
-   real, intent(in) , dimension(:,:)     :: land, pblht, ustar, bstar, qstar
-   real, intent(inout), dimension(:,:)   :: cush, cbmf
+   real, intent(in) , dimension(:,:)     :: land, pblht, ustar, bstar, qstar, shflx, lhflx !miz
+   real, intent(inout), dimension(:,:)   :: cush, cbmf, hmint, cgust, tke, pblhto, rkmo, taudpo
+   integer, intent(inout), dimension(:,:,:) :: exist_shconv, exist_dpconv
+   real, intent(in),    dimension(:,:,:) :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn !miz
    real, intent(in) , dimension(:,:,:)   :: phalf, pfull, zhalf, zfull, omega, &
                                             diff_t, t, q, u, v, tm, qm, um, vm
    real, dimension(:,:,:), intent(in)    :: radturbten
@@ -608,7 +608,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !-----------------------------------------------------------------------
    integer :: secs, days
    integer :: n, nn, i, j, k, ix, jx, kx, nt, tr
-   integer :: m, mm
+   integer :: m, mm, nbin_dust, nbin_seasalt
    logical :: used, avgbl
    real    :: dtinv
 
@@ -621,7 +621,8 @@ logical, intent(out), dimension(:,:)     :: convect
                                            rain_ras, snow_ras, &
                                            rain_donmca, snow_donmca
    real, dimension(size(t,1),size(t,2)) :: bmflag, klzbs, invtaubmt, invtaubmq
-   real, dimension(size(t,1),size(t,2)) :: scale
+   real, dimension(size(t,1),size(t,2)) :: scale, scale_donner
+
    real, dimension(size(t,1),size(t,2)) :: freq_count
    real, dimension(size(t,1),size(t,2)) :: enthint, lcondensint, enthdiffint,  &
                                            vaporint, condensint, precipint, diffint
@@ -630,6 +631,7 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(t,1),size(t,2),size(phalf,3)) :: snowclr3d
    real, dimension(size(t,1),size(t,2),size(t,3)+1) :: mc, m_cellup, mc_cmt
    real, dimension(size(t,1),size(t,2),size(pfull,3)) :: f_snow_berg
+   real, dimension(size(t,1),size(t,2),size(pfull,3)) :: tdt_dif, qdt_dif !miz
 
 
 !     sfc_sh_flux      sensible heat flux across the surface
@@ -640,11 +642,14 @@ logical, intent(out), dimension(:,:)     :: convect
 !                      [ kg(tracer) / (m**2 sec) ]
    real, dimension(size(t,1),size(t,2)) :: sfc_sh_flux, sfc_vapor_flux
    real, dimension(size(t,1),size(t,2),num_donner_tracers) :: tr_flux  
-   real, dimension(size(t,1),size(t,2),num_donner_tracers) :: donner_wetdep
+   real, dimension(size(t,1),size(t,2),num_donner_tracers) :: donner_wetdep, donner_wetdepm, donner_wetdepc !f1p
    real, dimension(size(t,1),size(t,2),num_uw_tracers) :: uw_wetdep
    real, dimension(size(t,1),size(t,2),size(rdt,4)   ) :: total_wetdep
+   real, dimension(size(t,1),size(t,2))                :: total_wetdep_dust
+   real, dimension(size(t,1),size(t,2))                :: total_wetdep_seasalt
    real, dimension(size(t,1),size(t,2),size(rdt,4)   ) :: total_wetdep_uw
-   real, dimension(size(t,1),size(t,2),size(rdt,4)   ) :: total_wetdep_donner
+   real, dimension(size(t,1),size(t,2),size(rdt,4)   ) :: total_wetdep_donner,&
+                                               total_wetdepc_donner, total_wetdepm_donner !f1p
    real, dimension(size(t,1),size(t,2),size(rdt,4)   ) :: ls_wetdep
    real, dimension(size(t,1),size(t,2),size(t,3) ) :: total_conv_cloud,&
                            conv_cld_frac, tot_conv_liq, tot_conv_ice
@@ -670,7 +675,12 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(t,1),size(t,2)) :: tca2
    real, dimension(size(t,1),size(t,2),size(t,3)) :: total_cloud_area
    real, dimension(size(t,1),size(t,2),size(t,3)) :: temp_3d1, temp_3d2, temp_3d3
+!for unit conversion
+  character(len=32) :: tracer_units, tracer_name
+  real :: wetdep_diag_conv
+  real, dimension(size(t,1),size(t,2),size(t,3))          :: so2_so4_evap, so2_so4
 
+ !> 
 ! ---> h1g, 2010-08-23
    real                                 ::       current_total_sec
    integer                              ::       current_sec, current_days
@@ -773,6 +783,9 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    initialize local arrays which will hold sums.
 !---------------------------------------------------------------------
+      tdt_dif=tdt;                            !miz
+      qdt_dif=qdt+rdt(:,:,:,nql)+rdt(:,:,:,nqi);  !miz
+
       rdt_init  = rdt
       tdt_init  = tdt
       qdt_init  = qdt
@@ -929,8 +942,11 @@ logical, intent(out), dimension(:,:)     :: convect
       call moistproc_uw_conv(Time, is, ie, js, je, dt, tin, qin, &
                              uin, vin, tracer,    &
                              pfull, phalf, zfull, zhalf, omega, pblht,        &
-                             ustar, bstar, qstar, land, coldT, Aerosol,       &
-                             cush, cbmf, cmf, conv_calc_completed,            &
+                             ustar, bstar, qstar, shflx, lhflx,              &!miz
+                             land, coldT, Aerosol, tdt_rad,tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &!miz
+                             tdt_dif, qdt_dif, hmint, lat, lon, & !miz
+                             cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+                             cmf, conv_calc_completed,            &
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1173,11 +1189,11 @@ logical, intent(out), dimension(:,:)     :: convect
       call moistproc_scale_donner(is,ie,js,je,qin, delta_temp, delta_q, &
                                   precip_returned, total_precip, lheat_precip, liquid_precip,    &
                                   frozen_precip, num_tracers, tracers_in_donner,&
-                                  delta_ql, delta_qi, delta_qa, qlin, qiin, qtr, scale)
-      used = send_data (id_scale_donner, scale, Time, is, js )
+                                  delta_ql, delta_qi, delta_qa, qlin, qiin, qtr, scale_donner)
+      used = send_data (id_scale_donner, scale_donner, Time, is, js )
     else
-      scale = 1.0
-      used = send_data (id_scale_donner, scale, Time, is, js )
+      scale_donner = 1.0
+      used = send_data (id_scale_donner, scale_donner, Time, is, js )
     end if ! (do_strat and do_limit_donner)
 
 !---------------------------------------------------------------------
@@ -1575,8 +1591,11 @@ logical, intent(out), dimension(:,:)     :: convect
         call moistproc_uw_conv(Time, is, ie, js, je, dt, tin, qin, &
                                uin, vin, tracer,    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
-                               ustar, bstar, qstar, land, coldT, Aerosol,       &
-                               cush, cbmf, cmf, conv_calc_completed,            &
+                               ustar, bstar, qstar,  shflx, lhflx,               &!miz
+			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
+                               tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
+                               cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+                               cmf, conv_calc_completed,            &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1591,8 +1610,11 @@ logical, intent(out), dimension(:,:)     :: convect
         call moistproc_uw_conv(Time, is, ie, js, je, dt, tin_orig, qin_orig, &
                                uin, vin, tracer_orig,    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
-                               ustar, bstar, qstar, land, coldT, Aerosol,       &
-                               cush, cbmf, cmf, conv_calc_completed,            &
+                               ustar, bstar, qstar, shflx, lhflx,               &!miz
+			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
+                               tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
+                               cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+                               cmf, conv_calc_completed,                        &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1946,21 +1968,6 @@ logical, intent(out), dimension(:,:)     :: convect
 !-----------------------------------------------------------------------
    precip = lprec + fprec
 
-!-----------------------------------------------------------------------
-!    calculate convective gustiness, if desired.
-!-----------------------------------------------------------------------
-   if (do_gust_cv) then
-     where((precip) > 0.0)
-       gust_cv = gustmax*sqrt( precip/(gustconst + precip) )
-     end where
-   end if
-
-!---------------------------------------------------------------------
-!    save a diagnostic indicating whether or not convection has occurred
-!    within the column.
-!---------------------------------------------------------------------
-   where (precip > 0.) convect = .true.
-
 !---------------------------------------------------------------------
 !    apply changes resulting from uw_conv
 !---------------------------------------------------------------------
@@ -1993,7 +2000,28 @@ logical, intent(out), dimension(:,:)     :: convect
        tracer(:,:,:,nqni) = tracer(:,:,:,nqni) + qnitnd_uw(:,:,:)*dt
      endif
    endif !(uw_conv)
- 
+
+!-----------------------------------------------------------------------
+! Note: the following two blocks of code were moved from before to after 
+! the call to moistproc_scale_uw in order to account for UW convection 
+! contributions to 'precip'. This will change answers if UW is active
+! and do_gust_cv = .true. or entrain_nml:convect_shutoff = .true. (cjg)
+!
+!-----------------------------------------------------------------------
+!    calculate convective gustiness, if desired.
+!-----------------------------------------------------------------------
+   if (do_gust_cv) then
+     where((precip) > 0.0)
+       gust_cv = gustmax*sqrt( precip/(gustconst + precip) )
+     end where
+   end if
+
+!---------------------------------------------------------------------
+!    save a diagnostic indicating whether or not convection has occurred
+!    within the column.
+!---------------------------------------------------------------------
+   where (precip > 0.) convect = .true.
+
 !---------------------------------------------------------------------
 !    update tracer fields with tendencies due to convection and wet 
 !    deposition by convective precipitation.
@@ -2517,6 +2545,7 @@ logical, intent(out), dimension(:,:)     :: convect
       cloud_wet = 0.5e-3
       cloud_frac = 1.
     end if
+    so2_so4_evap=0.
      ls_wetdep = 0.
     do n=1,size(rdt,4)
       if ( n /= nsphum ) then
@@ -2528,15 +2557,26 @@ logical, intent(out), dimension(:,:)     :: convect
                                cloud_frac, f_snow_berg, &
                                rain3d, snow3d, &
                                tracer(:,:,:,n), wetdeptnd, Time, 'lscale',     &
-                  is, js, dt, sum_wdep_out=ls_wetdep(:,:,n) )
+                  is, js, dt, sum_wdep_out=ls_wetdep(:,:,n), so2_so4_out = so2_so4(:,:,:)  )
           rdt (:,:,:,n) = rdt(:,:,:,n) - wetdeptnd(:,:,:)
           wet_data(:,:,:,n) = wet_data(:,:,:,n) + wetdeptnd(:,:,:)
+
+          if ( n .eq. nso2 ) then
+             so2_so4_evap = so2_so4
+          end if
 
           used = send_data( id_wet_deposition(n), wet_data(:,:,:,n), &
                             Time,is_in=is,js_in=js )
         end if
       end if
     end do
+   !correct so2 and so4 tendency
+    !so2 is converted to so4
+    if ( nso2 .gt. 0 .and. nso4 .gt. 0 ) then
+       rdt(:,:,:,nso2) = rdt(:,:,:,nso2) - so2_so4_evap
+       rdt(:,:,:,nso4) = rdt(:,:,:,nso4) + so2_so4_evap
+    end if
+
 
 !---------------------------------------------------------------------
 !    output diagnostics associated with the large-scale condensation
@@ -2691,6 +2731,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !--------------------------------------------------------------------
 
      total_wetdep(:,:,:) = 0.
+     total_wetdep_dust(:,:) = 0.
+     total_wetdep_seasalt(:,:) = 0.
      total_wetdep_donner(:,:,:) = 0.
      total_wetdep_uw    (:,:,:) = 0.
      m=1
@@ -2700,6 +2742,8 @@ logical, intent(out), dimension(:,:)     :: convect
          total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
                                                 donner_wetdep(:,:,m)
          total_wetdep_donner(:,:,n) = donner_wetdep(:,:,m)
+         total_wetdepc_donner(:,:,n) = donner_wetdepc(:,:,m)    
+         total_wetdepm_donner(:,:,n) = donner_wetdepm(:,:,m)
          m=m+1
        endif
        if (tracers_in_uw(n) .and. do_uw_conv) then
@@ -2708,6 +2752,7 @@ logical, intent(out), dimension(:,:)     :: convect
          total_wetdep_uw    (:,:,n) = uw_wetdep(:,:,mm)
          mm=mm+1
        endif
+       total_wetdep(:,:,n) = conv_wetdep(n)*total_wetdep(:,:,n)
      end do
      if (do_strat) then
        total_wetdep = total_wetdep + ls_wetdep
@@ -2718,6 +2763,35 @@ logical, intent(out), dimension(:,:)     :: convect
                                                           Time, is, js)
        endif
      end do
+
+     do n=1, size(rdt,4)
+       if (id_wetdep_donner(n) > 0) then
+         used = send_data (id_wetdep_donner(n), total_wetdep_donner(:,:,n)*conv_wetdep(n),  &
+                                                          Time, is, js)
+       endif
+     end do
+
+     do n=1, size(rdt,4)
+       if (id_wetdepm_donner(n) > 0) then
+         used = send_data (id_wetdepm_donner(n), total_wetdepm_donner(:,:,n)*conv_wetdep(n),  &
+                                                          Time, is, js)
+       endif
+     end do
+
+     do n=1, size(rdt,4)
+       if (id_wetdepc_donner(n) > 0) then
+         used = send_data (id_wetdepc_donner(n), total_wetdepc_donner(:,:,n)*conv_wetdep(n),  &
+                                                          Time, is, js)
+       endif
+     end do
+
+     do n=1, size(rdt,4)
+       if (id_wetdep_uw(n) > 0) then
+         used = send_data (id_wetdep_uw(n), total_wetdep_uw(:,:,n)*conv_wetdep(n),  &
+                                                          Time, is, js)
+       endif
+     end do
+
      if (id_wetdep_om > 0) then
        used = send_data (id_wetdep_om,  &
                total_wetdep       (:,:,nomphilic) + &
@@ -2764,21 +2838,19 @@ logical, intent(out), dimension(:,:)     :: convect
        if( do_strat )       temp_2d = temp_2d + 0.018*(ls_wetdep(:,:,nNH4NO3) + ls_wetdep(:,:,nNH4))
        used = send_data (id_wetdep_NH4NO3, temp_2d, Time, is,js)
      endif
-     if (id_wetdep_salt   > 0) then
-       used = send_data (id_wetdep_salt  ,  &
-               ( total_wetdep(:,:,nsalt1) + &
-                 total_wetdep(:,:,nsalt2) + &
-                 total_wetdep(:,:,nsalt3) + &
-                 total_wetdep(:,:,nsalt4) + &
-                 total_wetdep(:,:,nsalt5)),  Time, is,js)
+     if (id_wetdep_seasalt   > 0) then
+       do n=1, n_seasalt_tracers
+         nbin_seasalt=seasalt_tracers(n)%tr
+         total_wetdep_seasalt(:,:)=total_wetdep_seasalt(:,:)+total_wetdep(:,:,nbin_seasalt)
+       enddo
+       used = send_data (id_wetdep_seasalt  , total_wetdep_seasalt,  Time, is,js) 
      endif
      if (id_wetdep_dust   > 0) then
-       used = send_data (id_wetdep_dust  ,  &
-               ( total_wetdep(:,:,ndust1) + &
-                 total_wetdep(:,:,ndust2) + &
-                 total_wetdep(:,:,ndust3) + &
-                 total_wetdep(:,:,ndust4) + &
-                 total_wetdep(:,:,ndust5)),  Time, is,js)
+       do n=1, n_dust_tracers
+         nbin_dust=dust_tracers(n)%tr
+         total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
+       enddo
+       used = send_data (id_wetdep_dust  , total_wetdep_dust,  Time, is,js) 
      endif
 
 !---------------------------------------------------------------------
@@ -3757,21 +3829,18 @@ integer            :: k
       nbcphilic = get_tracer_index(MODEL_ATMOS,'bcphil')
       nomphobic = get_tracer_index(MODEL_ATMOS,'omphob')
       nomphilic = get_tracer_index(MODEL_ATMOS,'omphil')
-      ndust1    = get_tracer_index(MODEL_ATMOS,'dust1')
-      ndust2    = get_tracer_index(MODEL_ATMOS,'dust2')
-      ndust3    = get_tracer_index(MODEL_ATMOS,'dust3')
-      ndust4    = get_tracer_index(MODEL_ATMOS,'dust4')
-      ndust5    = get_tracer_index(MODEL_ATMOS,'dust5')
-      nsalt1 = get_tracer_index(MODEL_ATMOS,'ssalt1')
-      nsalt2 = get_tracer_index(MODEL_ATMOS,'ssalt2')
-      nsalt3 = get_tracer_index(MODEL_ATMOS,'ssalt3')
-      nsalt4 = get_tracer_index(MODEL_ATMOS,'ssalt4')
-      nsalt5 = get_tracer_index(MODEL_ATMOS,'ssalt5')
+      call atmos_dust_init (lonb, latb, axes, Time )
+      call atmos_sea_salt_init (lonb, latb, axes, Time )
 
       nDMS      = get_tracer_index(MODEL_ATMOS,'simpleDMS')
       if (nDMS == NO_TRACER) then
         nDMS      = get_tracer_index(MODEL_ATMOS,'dms')
       endif
+
+      nH2O2      = get_tracer_index(MODEL_ATMOS,'simpleH2O2')
+      if ( nH2O2 == NO_TRACER ) THEN
+         nH2O2     = get_tracer_index(MODEL_ATMOS,'H2O2')
+      end if
 
       nSO2      = get_tracer_index(MODEL_ATMOS,'simpleSO2')
       if (nSO2 == NO_TRACER) then
@@ -4079,7 +4148,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
   integer, intent(in) :: num_tracers
 
   character(len=32) :: tracer_units, tracer_name
-  character(len=128) :: diaglname
+  character(len=128) :: diaglname, diaglname_uw,diaglname_donner
   integer, dimension(3) :: half = (/1,2,4/)
   integer   :: n, nn
 
@@ -4985,13 +5054,22 @@ endif
       allocate (id_tracerdt_conv_col(num_tracers))
       allocate (id_wet_deposition(num_tracers))
       allocate (id_wetdep       (num_tracers))
+      allocate (id_wetdep_uw    (num_tracers))
+      allocate (id_wetdep_donner(num_tracers))
+      allocate (id_wetdepc_donner(num_tracers))
+      allocate (id_wetdepm_donner(num_tracers))
       allocate (id_conv_tracer           (num_tracers))
       allocate (id_conv_tracer_col(num_tracers))
+      allocate (conv_wetdep(num_tracers))
 
       id_tracerdt_conv = -1
       id_tracerdt_conv_col = -1
       id_wet_deposition = -1
       id_wetdep = -1
+      id_wetdep_donner = -1
+      id_wetdepc_donner = -1
+      id_wetdepm_donner = -1
+      id_wetdep_uw = -1
       id_conv_tracer = -1
       id_conv_tracer_col = -1
       
@@ -5052,7 +5130,7 @@ endif
                          'kg/m2/s',  &
                          missing_value=missing_value)
 
-      id_wetdep_salt   =  &
+      id_wetdep_seasalt   =  &
                          register_diag_field ( mod_name, &
                          'ssalt_wet_dep',  &
                          axes(1:2), Time,  &
@@ -5104,12 +5182,96 @@ endif
 
           diaglname = trim(tracer_name)//  &
                         ' wet deposition from all precip'
-          id_wetdep(n) = &
-                       register_diag_field ( mod_name, &
+
+          diaglname_uw = trim(tracer_name)//  &
+                        ' wet deposition from uw'
+
+          diaglname_donner = trim(tracer_name)//  &
+                        ' wet deposition from donner'
+
+          if ( tracer_units .eq. "vmr" ) then
+            id_wetdep(n) = &
+                          register_diag_field ( mod_name, &
                           TRIM(tracer_name)//'_wet_depo',  &
                           axes(1:2), Time, trim(diaglname), &
-                          TRIM(tracer_units)//'/s',  &
+                          'mole/m2/s',  &
                           missing_value=missing_value)
+
+             id_wetdep_uw(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_uw',  &
+                          axes(1:2), Time, trim(diaglname_uw), &
+                          'mole/m2/s',  &
+                          missing_value=missing_value)
+
+             id_wetdep_donner(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_donner',  &
+                          axes(1:2), Time, trim(diaglname_donner), &
+                          'mole/m2/s',  &
+                          missing_value=missing_value)
+             id_wetdepm_donner(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_m_donner',  &
+                          axes(1:2), Time, trim(diaglname_donner)//" meso", &
+                          'mole/m2/s',  &
+                          missing_value=missing_value)
+             id_wetdepc_donner(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_c_donner',  &
+                          axes(1:2), Time, trim(diaglname_donner)//" deep ", &
+                          'mole/m2/s',  &
+                          missing_value=missing_value)
+
+             conv_wetdep(n) = 1d3/WTMAIR
+
+          elseif ( tracer_units.eq. "mmr" ) then
+            id_wetdep(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo',  &
+                          axes(1:2), Time, trim(diaglname), &
+                          'kg/m2/s',  &
+                          missing_value=missing_value)
+
+             id_wetdep_uw(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_uw',  &
+                          axes(1:2), Time, trim(diaglname_uw), &
+                          'kg/m2/s',  &
+                          missing_value=missing_value)
+
+             id_wetdep_donner(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_donner',  &
+                          axes(1:2), Time, trim(diaglname_donner), &
+                          'kg/m2/s',  &
+                          missing_value=missing_value)
+             id_wetdepm_donner(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_m_donner',  &
+                          axes(1:2), Time, trim(diaglname_donner)//" meso", &
+                          'kg/m2/s',  &
+                          missing_value=missing_value)
+             id_wetdepc_donner(n) = &
+                          register_diag_field ( mod_name, &
+                          TRIM(tracer_name)//'_wet_depo_c_donner',  &
+                          axes(1:2), Time, trim(diaglname_donner)//" deep ", &
+                          'kg/m2/s',  &
+                          missing_value=missing_value)
+
+
+             conv_wetdep(n) = 1
+
+          else  
+             if ( mpp_pe() == mpp_root_pe() ) then
+                   print*,   "unsupported tracer",tracer_name,tracer_units
+             end if
+             conv_wetdep(n) = 0
+
+          end if
+
+
+
 
           diaglname = trim(tracer_name)//  &
                         ' total tendency from moist convection'

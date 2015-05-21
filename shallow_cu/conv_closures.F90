@@ -33,8 +33,9 @@ MODULE CONV_CLOSURES_MOD
   type cclosure
      real    :: cbmf, wrel, ufrc, scaleh, dcin, dcape, dwfn, wfn
      integer :: igauss
-     real    :: rkfre, rmaxfrac, rbuoy, tau_sh, tau_dp, wcrit_min
+     real    :: rkfre, rmaxfrac, rbuoy, tau_sh, tau_dp, wcrit_min, mass_fact
      real    :: maxcldfrac
+     logical :: do_old_cbmfmax
   end type cclosure
  
 contains
@@ -108,8 +109,9 @@ contains
     type(cclosure), intent(inout) :: cc
     real,   intent(out), optional :: cbmf_unmod
     
-    real    :: sigmaw, wcrit, erfarg, cbmf, wexp, ufrc, wtw
-    real    :: rmfk1=0.3, rmfk2=5.0, rmfk3=3.0
+    real    :: sigmaw, wcrit, erfarg, cbmf, wexp, ufrc, wtw, cbmf_max
+    real    :: rmfk1=0.3, rmfk2=5.0, rmfk3=3.0, tmp
+    integer :: krel
 
     cc%cbmf=0.; cc%wrel=0.; cc%ufrc=0.;
     if(cc%igauss.eq.0)then     !Use cin and pbl tke
@@ -151,8 +153,24 @@ contains
 
     cc%cbmf=cbmf
     cc%wrel=min(cc%wrel, 50.)!cc%ufrc=min(cc%rmaxfrac, cc%ufrc)
+
+   if (cc%do_old_cbmfmax) then
     cbmf = (sd%ps(0) - ac%plcl ) * 0.25 / sd%delt / Uw_p%GRAV
+    krel= max(max(ac%klcl, sd%kinv),1)
+    tmp = sd%ps(0)-sd%ps(krel)
+    cbmf = tmp * 0.25 / sd%delt / Uw_p%GRAV
     if (cc%cbmf .gt. cbmf) cc%cbmf = cbmf
+   else
+    cbmf_max = (sd%ps(0) - ac%plcl ) * cc%mass_fact / sd%delt / Uw_p%GRAV
+    krel= max(max(ac%klcl, sd%kinv),1)
+    tmp = sd%ps(0)-sd%ps(krel)
+    cbmf_max = tmp * cc%mass_fact / sd%delt / Uw_p%GRAV
+    cbmf_max = sd%dp(sd%ksrc) * cc%mass_fact / sd%delt / Uw_p%GRAV
+    if (cc%cbmf .gt. cbmf_max) then
+       cc%cbmf = cbmf_max
+    end if
+   end if
+
     if (cc%wrel .gt. 0.) then
       cc%ufrc=cc%cbmf / cc%wrel /ac % rho0lcl
     else
