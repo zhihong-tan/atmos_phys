@@ -10,6 +10,7 @@ module MO_SETSOX_MOD
   use field_manager_mod,     only: parse
 
   use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1p
+  use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA
 
   implicit none
 
@@ -616,64 +617,8 @@ CONTAINS
              !>         
           end if
 
-
-          !-----------------------------------------------------------------
-          !       ... Formation of NH4+ + SO4=
-          !           to balance 1 SO4= should take 2 NH4+
-          !           According to Dentener and Crutzen (1994) JAC 331
-          !           the neutralization of sulfuric acid by NH3
-          !           is (NH4)1.5 H0.5(SO4)
-          !-----------------------------------------------------------------
-
-          !-----------------------------------------------------------------
-          !       ... Formation of AMMONIUM NITRATE (ANT)
-          !           Calculate reaction coefficient NH3(g)+HNO3(g)=NH4(+)NO3(-) 
-          !                                                   Kp(ppb**2)
-          !      * Kp is calculated according to
-          !        Stelson and Seinfeld Atm. Env 16 983, 1982
-          !        Seinfeld (1986) 
-          !-----------------------------------------------------------------
-          qz = qfld(i,k)             ! H2O mass mxing ratio Kg/Kg
-          pz = .01*press(i,k)        ! pressure in mb
-
-          !-----------------------------------------------------------------
-          !        ... Calculate RH
-          !-----------------------------------------------------------------
-          wrk = tz - 273.
-          RH100 = rh*100
-
-          xx0 = xa0 + xb0*RH100
-
-          if( RH100 >= 90. ) then
-             yy1 = xa1*EXP( xb1/xx0 )
-          else
-             yy1 = xa2*EXP( xb2/xx0 )
-          end if
-
-          xkp = yy1*(xa3*EXP( xb3*tz )/.7) &    ! ppb**2
-               * 1.e-18                      ! mixing ratio
-
-          cnh3 = xnh3(i,k)
-          chno3 = xhno3(i,k)
-          com = cnh3*chno3
-
-          com1 = (cnh3 + chno3)**2 - 4.*(cnh3*chno3 - xkp)
-          com1 = MAX( com1,1.e-30 )
-
-          if ( com >= xkp ) then   ! NH4NO3 is formed
-             xra = .5*(cnh3 + chno3 - SQRT(com1))
-             !-----------------------------------------------------------------
-             !        ... xra =0.0 for not forming ANT
-             !-----------------------------------------------------------------
-             !               xra = 0.
-
-             xant(i,k) = MAX( xant(i,k) + xra, small_value )
-             xnh3(i,k) = MAX( xnh3(i,k) - xra, small_value )
-             xhno3(i,k)= MAX( xhno3(i,k)- xra, small_value )
-          end if
-
-
-
+          call aerosol_thermo( trop_option%aerosol_thermo, min(rh,trop_option%max_rh_aerosol), tz, press(i,k), xso4(i,k), xnh3(i,k), xnh4(i,k), xhno3(i,k), xant(i,k))
+          
           !-----------------------------------------------------------------
           !      ... Washout SO2, SO4 and NH3
           !-----------------------------------------------------------------
@@ -741,7 +686,6 @@ CONTAINS
     nh3_ndx     = get_spc_ndx( 'NH3' )
     hcooh_ndx   = get_spc_ndx( 'HCOOH' )
     ch3cooh_ndx = get_spc_ndx( 'CH3COOH' )
-    nh4no3_ndx  = get_spc_ndx( 'NH4NO3' )
     ho2_ndx     = get_spc_ndx( 'HO2' )
     nh4_ndx     = get_spc_ndx( 'NH4' )
     n2o5_ndx    = get_spc_ndx( 'N2O5' )
@@ -759,15 +703,6 @@ CONTAINS
     flag=parse(text_in_param,'frac_incloud_snow',frac_ic_so4_snow)
     if (flag == 0) then
        frac_ic_so4_snow = frac_ic_so4
-    end if
-
-    flag = query_method ('wet_deposition',MODEL_ATMOS,&
-         get_tracer_index(MODEL_ATMOS,'nh4no3'), &
-         text_in_scheme,text_in_param)
-    flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
-    flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
-    if (flag == 0) then
-       frac_ic_no3_snow = frac_ic_no3
     end if
 
     flag = query_method ('wet_deposition',MODEL_ATMOS,&
@@ -793,6 +728,36 @@ CONTAINS
        write(*,'(a,2e18.3)') 'frac_ic_no3',frac_ic_no3,frac_ic_no3_snow
        write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
     endif
+
+    if ( trop_option%aerosol_thermo .eq. AERO_LEGACY ) then
+       nh4no3_ndx  = get_spc_ndx( 'NH4NO3' )
+       if ( nh4no3_ndx .gt. 0 ) then
+          flag = query_method ('wet_deposition',MODEL_ATMOS,&
+               get_tracer_index(MODEL_ATMOS,'nh4no3'), &
+               text_in_scheme,text_in_param)
+          flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
+          flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
+          if (flag == 0) then
+             frac_ic_no3_snow = frac_ic_no3
+          end if
+       else
+          call error_mesg ('setsox','nh4no3 must be definedx.', FATAL)
+       end if
+    ELSEIF ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
+       nh4no3_ndx  = get_spc_ndx( 'ANO3' )
+       if ( nh4no3_ndx .gt. 0 ) then
+          flag = query_method ('wet_deposition',MODEL_ATMOS,&
+               get_tracer_index(MODEL_ATMOS,'ano3'), &
+               text_in_scheme,text_in_param)
+          flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
+          flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
+          if (flag == 0) then
+             frac_ic_no3_snow = frac_ic_no3
+          end if
+       else
+          call error_mesg ('setsox','ano3 needs to be defined', FATAL)
+       end if
+    END IF
 
 
   end subroutine setsox_init
