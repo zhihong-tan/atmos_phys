@@ -2237,6 +2237,7 @@ trop_option%frac_aerosol_incloud = frac_aerosol_incloud
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
 !  clock_id = mpp_clock_id('Chemistry')
+   call setsox_init(trop_option)
    call chemdr_init(trop_option)
 
 !initialize diag array

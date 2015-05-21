@@ -6,7 +6,7 @@ module tropchem_types_mod
 
   public
 
-  real, parameter :: small_value = 1.e-50
+  real, parameter :: small_value = 1.e-20
 
   type tropchem_diag
 
