@@ -77,6 +77,7 @@ use           interpolator_mod, only : interpolate_type,     &
                                        INTERP_WEIGHTED_P  
 use            time_interp_mod, only : time_interp_init, time_interp
 use              mo_chemdr_mod, only : chemdr, chemdr_init
+use              mo_setsox_mod, only : setsox_init
 use             mo_chemini_mod, only : chemini
 use             M_TRACNAME_MOD, only : tracnam         
 use                MO_GRID_MOD, only : pcnstm1 
@@ -1609,6 +1610,7 @@ end if
 
 if ( trim(cloud_chem_type) == 'legacy' ) then
    trop_option%cloud_chem = cloud_chem_legacy
+   if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacy_cloud'
 elseif ( trim(cloud_chem_type) == 'f1p' ) then
    trop_option%cloud_chem = cloud_chem_f1p
 end if
@@ -1618,6 +1620,7 @@ end if
 
 if ( trim(cloud_chem_pH_solver) == 'am3' ) then
    trop_option%cloud_chem_pH_solver  = CLOUD_CHEM_PH_LEGACY
+      if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacypH'
 elseif ( trim(cloud_chem_pH_solver) == 'bisection' ) then
    trop_option%cloud_chem_pH_solver   = CLOUD_CHEM_PH_BISECTION
 elseif ( trim(cloud_chem_pH_solver) == 'cubic' ) then
@@ -1631,6 +1634,8 @@ if ( cloud_pH .lt. 0 ) then
 else
    trop_option%cloud_H = 10**(-cloud_pH)
 end if
+
+   if(mpp_pe() == mpp_root_pe()) write(*,*) 'cloud_H',trop_option%cloud_H
 
 
 
@@ -3750,7 +3755,7 @@ subroutine tropchem_drydep_init( dry_files, dry_names, &
       dry_files(i) = ''
       dry_names(i) = ''
       if( query_method('dry_deposition',MODEL_ATMOS,indices(i),name,control) )then
-         if( trim(name) == 'file' ) then
+         if( trim(name(1:4)) == 'file' ) then
             flag_file = parse(control, 'file',filename)
             flag_spec = parse(control, 'name',specname)
             if(flag_file > 0 .and. trim(filename) /= trim(file_dry)) then
