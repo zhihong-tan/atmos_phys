@@ -103,7 +103,7 @@ use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
 use fms_io_mod, only: read_data
 
 
-implicit none
+!implicit none
 
 private
 
@@ -226,6 +226,7 @@ real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
 real, parameter :: emis_cons = WTMAIR * g_to_kg * m2_to_cm2 / AVOGNO
 logical, dimension(pcnstm1) :: has_emis = .false., &      ! does tracer have surface emissions?
                                has_emis3d = .false., &    ! does tracer have 3-D emissions?
+                               land_does_emission = .false., &    ! surface emission in land
                                has_xactive_emis = .false., & ! does tracer have interactive emissions?
                                diurnal_emis = .false., &   ! diurnally varying emissions?
                                diurnal_emis3d = .false.    ! diurnally varying 3-D emissions?
@@ -534,6 +535,9 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                                  emis_field_names(n)%field_names, &
                                  diurnal_emis(n), coszen, half_day, lon, &
                                  is, js, id_emis(n) )
+         if ( land_does_emission(n) ) then
+            emis = emis * ( 1. - land )
+         end if
          if (tracnam(n) == 'NO') then
            emisz(:,:,n) = emis(:,:)
            if (id_no_emis_cmip > 0) then
@@ -1572,7 +1576,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
       nc_file = trim(file_emis_1)//lowercase(trim(tracnam(i)))//trim(file_emis_2)
       call init_emis_data( inter_emis(i), MODEL_ATMOS, 'emissions', indices(i), nc_file, &
                            lonb_mod, latb_mod, emis_field_names(i), &
-                           has_emis(i), diurnal_emis(i), axes, Time )
+                           has_emis(i), diurnal_emis(i), axes, Time, land_does_emission(i) )
       if( has_emis(i) ) emis_files(i) = trim(nc_file)
         
 !-----------------------------------------------------------------------
@@ -1763,6 +1767,14 @@ function tropchem_driver_init( r, mask, axes, Time, &
          end if
          if(has_emis(i)) then
             write(logunit,*)'Emissions from file: ',trim(emis_files(i))
+            if ( land_does_emission(i) ) then
+               if (get_tracer_index(MODEL_LAND,tracnam(i))<=0) then
+                  call error_mesg('atmos_tracer_utilities_init', &
+                       'Emission of atmospheric tracer //"'//trim(tracnam(i))//&
+                       '" is done on land side, but corresponding land tracer is not defined in the field table.', FATAL)
+                  write(logunit,*) 'Emissions done in land'    
+               endif
+            end if
          end if
          if(has_emis3d(i)) then
             write(logunit,*)'3-D Emissions from file: ',trim(emis3d_files(i))
@@ -2329,17 +2341,18 @@ end subroutine calc_xactive_emis
 !                          lonb_mod, latb_mod, field_type, flag, diurnal )
 !   </TEMPLATE>
 
-subroutine init_emis_data( emis_type, model, method_type, index, file_name, &
+subroutine init_emis_data( emis_type, model, method_type, pos, file_name, &
                            lonb_mod, latb_mod, field_type, flag, diurnal, &
-                           axes, Time )
+                           axes, Time, land_does_emis )
     
    type(interpolate_type),intent(inout) :: emis_type
-   integer, intent(in) :: model,index
+   integer, intent(in) :: model,pos
    character(len=*),intent(in) :: method_type
    character(len=*),intent(inout) ::file_name
    real,intent(in),dimension(:,:) :: lonb_mod,latb_mod
    type(field_init_type),intent(out) :: field_type
    logical, intent(out) :: flag, diurnal
+   logical, intent(out), optional :: land_does_emis
    integer        , intent(in)  :: axes(4)
    type(time_type), intent(in)  :: Time
     
@@ -2347,16 +2360,17 @@ subroutine init_emis_data( emis_type, model, method_type, index, file_name, &
    integer :: nfields
    integer :: flag_name, flag_file, flag_diurnal
    character(len=64) :: emis_name, emis_file, control_diurnal
-
+   
    flag = .false.
    diurnal = .false.
    control = ''
-   if( query_method(trim(method_type),model,index,name,control) ) then
+   if( query_method(trim(method_type),model,pos,name,control) ) then
       if( trim(name) == 'file' ) then
          flag = .true.
          flag_file = parse(control, 'file', emis_file)
          flag_name = parse(control, 'name', emis_name)
          flag_diurnal = parse(control, 'diurnal', control_diurnal)
+         if ( present(land_does_emis) )  land_does_emis  = (index(lowercase(control),'land:lm3')>0)
          if(flag_file > 0) then
             file_name = emis_file
          else if (flag_name > 0) then
