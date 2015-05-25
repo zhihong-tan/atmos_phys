@@ -28,21 +28,6 @@ module MO_SETSOX_MOD
   private
   !>
 
-  real, parameter ::  xa0 = 11.,   &
-       xb0 = -.1,   &
-       xa1 = 1.053, &
-       xb1 = -4.368,&
-       xa2 = 1.016, &
-       xb2 = -2.54, &
-       xa3 = .816e-32, &
-       xb3 = .259
-!      real, parameter ::  kh0 = 9.e3, &           ! HO2(g)          -> Ho2(a)
-!                          kh1 = 2.05e-5, &        ! HO2(a)          -> H+ + O2-
-!                          kh2 = 8.6e5,   &        ! HO2(a) + ho2(a) -> h2o2(a) + o2
-!                          kh3 = 1.e8,    &        ! HO2(a) + o2-    -> h2o2(a) + o2
-!                          Ra = 8314./101325., &   ! universal constant   (atm)/(M-K)
-!                          xkw = 1.e-14            ! water acidity
-
 CONTAINS
 
   subroutine setsox( press, plonl, dtime, tfld, qfld, &
@@ -730,15 +715,15 @@ CONTAINS
        if( nh4no3_ndx > 0 ) then
           qin(:,k,nh4no3_ndx) =  MAX( xant(:,k), small_value )
        end if
-!       if (nh4_ndx > 0 ) then !<f1p>
-!          qin(:,k,nh4_ndx) =  MAX( xnh4(:,k), small_value ) 
-!       end if
+       if (nh4_ndx > 0 .and. trop_option%aerosol_thermo .ne. AERO_LEGACY) then
+          qin(:,k,nh4_ndx) =  MAX( xnh4(:,k), small_value ) 
+       end if
        if( hno3_ndx > 0 ) then
           qin(:,k,hno3_ndx) =  MAX( xhno3(:,k), small_value )
        end if
-!       if( ox_ndx > 0 ) then !<f1p>
-!          qin(:,k,ox_ndx) =  MAX( xo3(:,k), small_value )
-!       end if
+       if( ox_ndx > 0 .and. trop_option%cloud_chem .ne. cloud_chem_legacy ) then
+          qin(:,k,ox_ndx) =  MAX( xo3(:,k), small_value )
+       end if
     end do
 
   end subroutine SETSOX

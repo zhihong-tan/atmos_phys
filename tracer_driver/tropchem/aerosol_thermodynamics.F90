@@ -54,7 +54,6 @@ contains
          xa3 = .816e-32, &
          xb3 = .259
 
-    RH  = rhn*100.  
     xx0 = xa0 + xb0*RH
 
     if( RH >= 90. ) then
@@ -158,7 +157,7 @@ contains
     wi(8)    = max( tmg,  small_value )
 
     !relative humidity
-    rhi      = rh
+    rhi      = rh/100
     rhi      = max( 0.01, rhi )
 !    rhi      = min( 0.98, rhi )
 
