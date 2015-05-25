@@ -90,7 +90,7 @@ CONTAINS
     !           xhno3 ... in mixing ratio
     !-----------------------------------------------------------------------      
     integer, parameter :: itermax = 20
-    real, parameter ::  const0 = 1.e3/6.0221413e23
+    real, parameter ::  const0 = 1.e3/6.023e23
     real, parameter ::  kh0 = 9.e3, &           ! HO2(g)          -> Ho2(a)
          kh1 = 2.05e-5, &        ! HO2(a)          -> H+ + O2-
          kh2 = 8.6e5,   &        ! HO2(a) + ho2(a) -> h2o2(a) + o2
@@ -104,15 +104,15 @@ CONTAINS
     real       ::      xk, xe, x2
     real       ::      tz, xl, px, qz, pz, es, qs, patm
     real       ::      Eso2, Eso4, Ehno3, Eco2, Eh2o, Enh3
-    real       ::      hno3g, nh3g, so2g, h2o2g, co2g, o3g
+    real       ::      hno3g, nh3g, so2g, h2o2g, o3g
     real       ::      rah2o2, rao3, ccc
     real       ::      cnh3, chno3, com, com1, com2, xra
-    real       ::      RH,RH100
+    real       ::      RH
     !<f1p
     real, parameter ::  xH0 = 1.e-5
-    real, parameter ::  Mw_air_over_Na = 28.97/6.0221413e23     
+    real, parameter ::  Mw_air_over_Na = 1.e6*1.38e-23/287.*1.e-3                     ! /m3(a) Kg(a)/m3(a)  Kg(a)/L(a)  !28.97/6.0221413e23  
     integer    ::      n
-    real       ::      thno3, tnh3,  rso2_o3,rso2_h2o2, pso4_o3,pso4_h2o2
+    real       ::      thno3, tnh3,  rso2_o3,rso2_h2o2, pso4_o3,pso4_h2o2, pso4
     real       ::      exp_factor, EF, so2_after, ratio
     real       ::      correction
 
@@ -170,18 +170,20 @@ CONTAINS
     !           The values of so2, so4 are after (1) SLT, and CHEM
     !-----------------------------------------------------------------
 
-    do k = 1,plev
-       !        precip(:,k) = cmfdqr(:,k) + rain(:,k) - evapr(:,k)
-    end do
+    !do k = 1,plev
+    !        precip(:,k) = cmfdqr(:,k) + rain(:,k) - evapr(:,k)
+    !end do
 
     do k = 1,plev
-       cfact(1:,k) = xhnm(1:,k) * Mw_air_over_Na
+       cfact(1:,k) = xhnm(1:,k)             &
+                            * 1.e6          &             ! /m3(a)
+                            * 1.38e-23/287. &             ! Kg(a)/m3(a)
+                            * 1.e-3                       ! Kg(a)/L(a)
     end do
 
     frac_ic_so4_eff   = 0.
     frac_ic_no3_eff   = 0.
     frac_ic_nh4_eff   = 0.
-
 
     do k = 1,plev
        xH(:,k) = xH0                                    ! initial PH value
@@ -276,15 +278,14 @@ CONTAINS
           wrk = tz - 273.
           es = 6.11*10.**(7.63*wrk/(241.9 + wrk))            ! Magnus EQ
           qs = .622*es/pz                                    ! sat mass mix (H2O)
-          rh = qz/qs
-          rh = min(1.,max(rh,0.)) 
+          RH = 100.*qz/qs                                    ! relative huminity(%)
+          RH = MIN( 100.,MAX( RH,0. ) )
           patm = pz/1013.           
 
           if( xl >= trop_option%min_lwc_for_cloud_chem ) then
 
              pso4_o3   = 0.
              pso4_h2o2 = 0.                
-
 
              if (trop_option%cloud_chem .eq. CLOUD_CHEM_LEGACY) then
 
@@ -409,12 +410,14 @@ CONTAINS
                 !-----------------------------------------------------------------
                 !         ... so2
                 !-----------------------------------------------------------------
-                xk = 1.23  *EXP( 3120.*t_fac(i) )
-                xe = 1.7e-2*EXP( 2090.*t_fac(i) )
-                x2 = 6.0e-8*EXP( 1120.*t_fac(i) )
+!                xk = 1.23  *EXP( 3120.*t_fac(i) )
+!                xe = 1.7e-2*EXP( 2090.*t_fac(i) )
+!                x2 = 6.0e-8*EXP( 1120.*t_fac(i) )
 
-                wrk = xe/xH(i,k)
-                heso2(i,k)  = xk*(1. + wrk*(1. + x2/xH(i,k)))
+!                wrk = xe/xH(i,k)
+!                heso2(i,k)  = xk*(1. + wrk*(1. + x2/xH(i,k)))
+
+                heso2(i,k) = 1.e2
 
                 !-----------------------------------------------------------------
                 !          ... nh3
@@ -431,6 +434,7 @@ CONTAINS
                 !Here I commented out this part because we don't want to convert HO2
                 !to H2O2 in aqueous phase (Jingqiu Mao, 11/30/2011)
                 if ( trop_option%cloud_ho2_h2o2 ) then !for reproducibility (f1)
+                   xam  = press(i,k)/(1.38e-23*tz)
                    !------------------------------------------------------------------------
                    !       ... for Ho2(g) -> H2o2(a) formation 
                    !           schwartz JGR, 1984, 11589
@@ -469,6 +473,10 @@ CONTAINS
                 !           SO2 + H2O2 -> SO4
                 !           SO2 + O3   -> SO4
                 !-----------------------------------------------
+
+                !------------------------------------------------------------------------
+                !       ... S(IV) (HSO3) + H2O2
+                !------------------------------------------------------------------------
                 rah2o2 = 8.e4 * EXP( -3650.*t_fac(i) )  &
                      / (.1 + xH(i,k))
 
@@ -491,28 +499,57 @@ CONTAINS
                 !           (2) Benkovitz
                 !-----------------------------------------------------------------
 
-                !-----------------------------------------------------------------
-                !       ... S(IV) + H2O2 = S(VI)
-                !-----------------------------------------------------------------
-                pso4_h2o2 = rah2o2 * heh2o2(i,k)*h2o2g  &
+
+                pso4 = rah2o2 * heh2o2(i,k)*h2o2g  &
                      * heso2(i,k) *so2g             ! [M/s]
+                pso4 = pso4       &                          ! [M/s] =  [mole/L(w)/s]
+                     * xlwc(i,k)  &                          ! [mole/L(a)/s]
+                     / const0     &                          ! [/L(a)/s]
+                     / xhnm(i,k)                             ! [mixing ratio/s]
+                
+                ccc = pso4*dtime                               
+                ccc = MAX( MIN( ccc, xso2(i,k), xh2o2(i,k) ), 0. )
+                xso4(i,k)  = xso4(i,k)  + ccc
+                xh2o2(i,k) = MAX( xh2o2(i,k) - ccc, small_value )
+                xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )
 
                 !-----------------------------------------------
                 !       ... S(IV) + O3 = S(VI)
                 !-----------------------------------------------
-                pso4_o3 = rao3 * heo3(i,k)*o3g * heso2(i,k)*so2g       ! [M/s]
+                pso4 = rao3 * heo3(i,k)*o3g * heso2(i,k)*so2g       ! [M/s]
+                pso4 = pso4        &                                ! [M/s] =  [mole/L(w)/s]
+                     * xlwc(i,k)   &                                ! [mole/L(a)/s]
+                     / const0      &                                ! [/L(a)/s]
+                     / xhnm(i,k)                                    ! [mixing ratio/s]
+                
+                ccc = pso4*dtime
 
-                pso4_h2o2 = pso4_h2o2  &                            ! [M/s] =  [mole/L(w)/s]
-                     * xl              &                            ! [mole/L(a)/s]
-                     / const0          &                            ! [/L(a)/s]
-                     / xhnm(i,k)       &                            ! [mixing ratio/s]
-                     * dtime                                        !  VMR
+                ccc = MAX( MIN( ccc, xso2(i,k) ), 0. )
+                xso4(i,k)  = xso4(i,k)  + ccc
+                xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )
 
-                pso4_o3 = pso4_o3      &                            ! [M/s] =  [mole/L(w)/s]
-                     * xl              &                            ! [mole/L(a)/s]
-                     / const0          &                            ! [/L(a)/s]
-                     / xhnm(i,k)       &                            ! [mixing ratio/s]
-                     * dtime                                        ! VMR
+!                 !-----------------------------------------------------------------
+!                 !       ... S(IV) + H2O2 = S(VI)
+!                 !-----------------------------------------------------------------
+!                 pso4_h2o2 = rah2o2 * heh2o2(i,k)*h2o2g  &
+!                      * heso2(i,k) *so2g             ! [M/s]
+
+!                 !-----------------------------------------------
+!                 !       ... S(IV) + O3 = S(VI)
+!                 !-----------------------------------------------
+!                 pso4_o3 = rao3 * heo3(i,k)*o3g * heso2(i,k)*so2g       ! [M/s]
+
+!                 pso4_h2o2 = pso4_h2o2  &                            ! [M/s] =  [mole/L(w)/s]
+!                      * xl              &                            ! [mole/L(a)/s]
+!                      / const0          &                            ! [/L(a)/s]
+!                      / xhnm(i,k)       &                            ! [mixing ratio/s]
+!                      * dtime                                        !  VMR
+
+!                 pso4_o3 = pso4_o3      &                            ! [M/s] =  [mole/L(w)/s]
+!                      * xl              &                            ! [mole/L(a)/s]
+!                      / const0          &                            ! [/L(a)/s]
+!                      / xhnm(i,k)       &                            ! [mixing ratio/s]
+!                      * dtime                                        ! VMR
 
                 !<f1p: new cloud chemistry
              elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1p ) then
@@ -574,46 +611,87 @@ CONTAINS
                    pso4_o3   = pso4_o3*cldfr(i,k)
                    pso4_h2o2 = pso4_h2o2*cldfr(i,k)
 
+                   ccc = pso4_h2o2
+                   ccc = MAX( MIN( ccc, xso2(i,k), xh2o2(i,k) ), 0. )
+
+                   if (trop_diag%ind_pso4_h2o2>0) &
+                        trop_diag_array(i,k,trop_diag%ind_pso4_h2o2)   = ccc/dtime
+
+                   xso4(i,k)  = xso4(i,k)  + ccc
+                   xh2o2(i,k) = MAX( xh2o2(i,k) - ccc, small_value )
+                   xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )
+
+                   !O3
+                   ccc = pso4_o3
+                   ccc = MAX( MIN( ccc,xo3(i,k),xso2(i,k) ), 0. )
+
+                   if (trop_diag%ind_pso4_o3>0) &
+                        trop_diag_array(i,k,trop_diag%ind_pso4_o3)   = ccc/dtime
+
+                   xso4(i,k)  = xso4(i,k)  + ccc
+                   xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )                 
+                   xo3(i,k)   = MAX( xo3(i,k)   - ccc, small_value )                 
+
+                   !<f1p diag
+                   if (trop_diag%ind_pH>0)      trop_diag_array(i,k,trop_diag%ind_pH)     =-log10(xH(i,k))*xlwc(i,k)
+                   if (trop_diag%ind_cH>0)      trop_diag_array(i,k,trop_diag%ind_cH)     = xH(i,k)*xlwc(i,k)
+                   if (trop_diag%ind_lwc>0)     trop_diag_array(i,k,trop_diag%ind_lwc)    = xlwc(i,k)
+                   if (trop_diag%ind_eno3>0)    trop_diag_array(i,k,trop_diag%ind_eno3)   = ediag(1) *xlwc(i,k)
+                   if (trop_diag%ind_ehcoo>0)   trop_diag_array(i,k,trop_diag%ind_ehcoo)  = ediag(2) *xlwc(i,k)
+                   if (trop_diag%ind_ech3coo>0) trop_diag_array(i,k,trop_diag%ind_ech3coo)= ediag(3) *xlwc(i,k)
+                   if (trop_diag%ind_ehso3>0)   trop_diag_array(i,k,trop_diag%ind_ehso3)  = ediag(4) *xlwc(i,k)
+                   if (trop_diag%ind_eso3>0)    trop_diag_array(i,k,trop_diag%ind_eso3)   = ediag(5) *xlwc(i,k)
+                   if (trop_diag%ind_ehco3>0)   trop_diag_array(i,k,trop_diag%ind_ehco3)  = ediag(6) *xlwc(i,k)
+                   if (trop_diag%ind_eco3>0)    trop_diag_array(i,k,trop_diag%ind_eco3)   = ediag(7) *xlwc(i,k)
+                   if (trop_diag%ind_eso4>0)    trop_diag_array(i,k,trop_diag%ind_eso4)   = ediag(8) *xlwc(i,k)
+                   if (trop_diag%ind_enh4>0)    trop_diag_array(i,k,trop_diag%ind_enh4)   = ediag(9) *xlwc(i,k)
+                   if (trop_diag%ind_eoh>0)     trop_diag_array(i,k,trop_diag%ind_eoh)    = ediag(10)*xlwc(i,k)
+                   if (trop_diag%ind_ealk>0)    trop_diag_array(i,k,trop_diag%ind_ealk)   = ediag(11)*xlwc(i,k)
+
+
                 end if
 
              end if
 
-             ccc = pso4_h2o2
-             ccc = MAX( MIN( ccc, xso2(i,k), xh2o2(i,k) ), 0. )
 
-             if (trop_diag%ind_pso4_h2o2>0) &
-                  trop_diag_array(i,k,trop_diag%ind_pso4_h2o2)   = ccc/dtime
+!              ccc = pso4_h2o2
+!              ccc = MAX( MIN( ccc, xso2(i,k), xh2o2(i,k) ), 0. )
 
-             xso4(i,k)  = xso4(i,k)  + ccc
-             xh2o2(i,k) = MAX( xh2o2(i,k) - ccc, small_value )
-             xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )
+!              if (trop_diag%ind_pso4_h2o2>0) &
+!                   trop_diag_array(i,k,trop_diag%ind_pso4_h2o2)   = ccc/dtime
 
-             !O3
-             ccc = pso4_o3
-             ccc = MAX( MIN( ccc,xo3(i,k),xso2(i,k) ), 0. )
+!              xso4(i,k)  = xso4(i,k)  + ccc
+!              xh2o2(i,k) = MAX( xh2o2(i,k) - ccc, small_value )
+!              xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )
 
-             if (trop_diag%ind_pso4_o3>0) &
-                  trop_diag_array(i,k,trop_diag%ind_pso4_o3)   = ccc/dtime
+!              !O3
+!              ccc = pso4_o3
+!              ccc = MAX( MIN( ccc,xo3(i,k),xso2(i,k) ), 0. )
 
-             xso4(i,k)  = xso4(i,k)  + ccc
-             xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )                 
-             xo3(i,k)   = MAX( xo3(i,k)   - ccc, small_value )                 
+!              if (trop_diag%ind_pso4_o3>0) &
+!                   trop_diag_array(i,k,trop_diag%ind_pso4_o3)   = ccc/dtime
 
-             !<f1p diag
-             if (trop_diag%ind_pH>0)      trop_diag_array(i,k,trop_diag%ind_pH)     =-log10(xH(i,k))*xlwc(i,k)
-             if (trop_diag%ind_cH>0)      trop_diag_array(i,k,trop_diag%ind_cH)     = xH(i,k)*xlwc(i,k)
-             if (trop_diag%ind_lwc>0)     trop_diag_array(i,k,trop_diag%ind_lwc)    = xlwc(i,k)
-             if (trop_diag%ind_eno3>0)    trop_diag_array(i,k,trop_diag%ind_eno3)   = ediag(1) *xlwc(i,k)
-             if (trop_diag%ind_ehcoo>0)   trop_diag_array(i,k,trop_diag%ind_ehcoo)  = ediag(2) *xlwc(i,k)
-             if (trop_diag%ind_ech3coo>0) trop_diag_array(i,k,trop_diag%ind_ech3coo)= ediag(3) *xlwc(i,k)
-             if (trop_diag%ind_ehso3>0)   trop_diag_array(i,k,trop_diag%ind_ehso3)  = ediag(4) *xlwc(i,k)
-             if (trop_diag%ind_eso3>0)    trop_diag_array(i,k,trop_diag%ind_eso3)   = ediag(5) *xlwc(i,k)
-             if (trop_diag%ind_ehco3>0)   trop_diag_array(i,k,trop_diag%ind_ehco3)  = ediag(6) *xlwc(i,k)
-             if (trop_diag%ind_eco3>0)    trop_diag_array(i,k,trop_diag%ind_eco3)   = ediag(7) *xlwc(i,k)
-             if (trop_diag%ind_eso4>0)    trop_diag_array(i,k,trop_diag%ind_eso4)   = ediag(8) *xlwc(i,k)
-             if (trop_diag%ind_enh4>0)    trop_diag_array(i,k,trop_diag%ind_enh4)   = ediag(9) *xlwc(i,k)
-             if (trop_diag%ind_eoh>0)     trop_diag_array(i,k,trop_diag%ind_eoh)    = ediag(10)*xlwc(i,k)
-             if (trop_diag%ind_ealk>0)    trop_diag_array(i,k,trop_diag%ind_ealk)   = ediag(11)*xlwc(i,k)
+!              xso4(i,k)  = xso4(i,k)  + ccc
+!              xso2(i,k)  = MAX( xso2(i,k)  - ccc, small_value )                 
+!              xo3(i,k)   = MAX( xo3(i,k)   - ccc, small_value )                 
+
+!              !<f1p diag
+!              if (trop_diag%ind_pH>0)      trop_diag_array(i,k,trop_diag%ind_pH)     =-log10(xH(i,k))*xlwc(i,k)
+!              if (trop_diag%ind_cH>0)      trop_diag_array(i,k,trop_diag%ind_cH)     = xH(i,k)*xlwc(i,k)
+!              if (trop_diag%ind_lwc>0)     trop_diag_array(i,k,trop_diag%ind_lwc)    = xlwc(i,k)
+!              if (trop_diag%ind_eno3>0)    trop_diag_array(i,k,trop_diag%ind_eno3)   = ediag(1) *xlwc(i,k)
+!              if (trop_diag%ind_ehcoo>0)   trop_diag_array(i,k,trop_diag%ind_ehcoo)  = ediag(2) *xlwc(i,k)
+!              if (trop_diag%ind_ech3coo>0) trop_diag_array(i,k,trop_diag%ind_ech3coo)= ediag(3) *xlwc(i,k)
+!              if (trop_diag%ind_ehso3>0)   trop_diag_array(i,k,trop_diag%ind_ehso3)  = ediag(4) *xlwc(i,k)
+!              if (trop_diag%ind_eso3>0)    trop_diag_array(i,k,trop_diag%ind_eso3)   = ediag(5) *xlwc(i,k)
+!              if (trop_diag%ind_ehco3>0)   trop_diag_array(i,k,trop_diag%ind_ehco3)  = ediag(6) *xlwc(i,k)
+!              if (trop_diag%ind_eco3>0)    trop_diag_array(i,k,trop_diag%ind_eco3)   = ediag(7) *xlwc(i,k)
+!              if (trop_diag%ind_eso4>0)    trop_diag_array(i,k,trop_diag%ind_eso4)   = ediag(8) *xlwc(i,k)
+!              if (trop_diag%ind_enh4>0)    trop_diag_array(i,k,trop_diag%ind_enh4)   = ediag(9) *xlwc(i,k)
+!              if (trop_diag%ind_eoh>0)     trop_diag_array(i,k,trop_diag%ind_eoh)    = ediag(10)*xlwc(i,k)
+!              if (trop_diag%ind_ealk>0)    trop_diag_array(i,k,trop_diag%ind_ealk)   = ediag(11)*xlwc(i,k)
+
+
              !>         
           end if
 
@@ -624,11 +702,11 @@ CONTAINS
           !-----------------------------------------------------------------
           xso4(i,k)  = MAX( xso4(i,k),  small_value )
           xant(i,k)  = MAX( xant(i,k),  small_value )
-          xnh4(i,k)  = MAX( xnh4(i,k),  small_value ) !<f1p>
+          !xnh4(i,k)  = MAX( xnh4(i,k),  small_value ) !<f1p>
           xnh3(i,k)  = MAX( xnh3(i,k),  small_value )
           xso2(i,k)  = MAX( xso2(i,k),  small_value )
-          xo3(i,k)   = MAX( xo3(i,k),   small_value ) !<f1p>
-          xhno3(i,k) = MAX( xhno3(i,k), small_value ) !<f1p>
+          !xo3(i,k)   = MAX( xo3(i,k),   small_value ) !<f1p>
+          !xhno3(i,k) = MAX( xhno3(i,k), small_value ) !<f1p>
 
        end do
     end do
@@ -652,15 +730,15 @@ CONTAINS
        if( nh4no3_ndx > 0 ) then
           qin(:,k,nh4no3_ndx) =  MAX( xant(:,k), small_value )
        end if
-       if (nh4_ndx > 0 ) then !<f1p>
-          qin(:,k,nh4_ndx) =  MAX( xnh4(:,k), small_value ) 
-       end if
+!       if (nh4_ndx > 0 ) then !<f1p>
+!          qin(:,k,nh4_ndx) =  MAX( xnh4(:,k), small_value ) 
+!       end if
        if( hno3_ndx > 0 ) then
           qin(:,k,hno3_ndx) =  MAX( xhno3(:,k), small_value )
        end if
-       if( ox_ndx > 0 ) then !<f1p>
-          qin(:,k,ox_ndx) =  MAX( xo3(:,k), small_value )
-       end if
+!       if( ox_ndx > 0 ) then !<f1p>
+!          qin(:,k,ox_ndx) =  MAX( xo3(:,k), small_value )
+!       end if
     end do
 
   end subroutine SETSOX
@@ -759,6 +837,7 @@ CONTAINS
        end if
     END IF
 
+    module_is_initialized = .true.
 
   end subroutine setsox_init
   !>
