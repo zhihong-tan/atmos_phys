@@ -35,13 +35,11 @@ contains
   end subroutine aerosol_thermo
 
   !do_old_am3
-  subroutine old_am3_interface(rhn,tz,xnh3,xhno3,xant)
+  subroutine old_am3_interface(rh,tz,xnh3,xhno3,xant)
 
-    real, intent(in)  :: rhn !RH unitless
+    real, intent(in)  :: rh
     real, intent(inout)  :: xnh3, xhno3, xant
     real, intent(in) :: tz !T in K
-
-    real              :: rh  !RH in %
     real              :: xx0, yy1, com, com1, xkp, xra
     real              :: cnh3, chno3
 

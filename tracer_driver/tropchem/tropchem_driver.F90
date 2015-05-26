@@ -191,7 +191,7 @@ real               :: min_lwc_for_cloud_chem     = 1.e-8
 real               :: frac_dust_incloud          = 0
 real               :: frac_aerosol_incloud       = 1
 real               :: cloud_pH                   = -999  !<0 do not force
-real               :: max_rh_aerosol             = 1.0      !max rh used for aerosol thermo
+real               :: max_rh_aerosol             = 9999      !max rh used for aerosol thermo (to make sure no filter)
 logical            :: limit_no3                  = .true.   !for isorropia/stratosphere
 
 character(len=64)  :: aerosol_thermo_method = 'legacy'               ! other choice isorropia
@@ -1621,7 +1621,7 @@ end if
 
 if ( trim(cloud_chem_pH_solver) == 'am3' ) then
    trop_option%cloud_chem_pH_solver  = CLOUD_CHEM_PH_LEGACY
-      if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacypH'
+   if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacypH'
 elseif ( trim(cloud_chem_pH_solver) == 'bisection' ) then
    trop_option%cloud_chem_pH_solver   = CLOUD_CHEM_PH_BISECTION
 elseif ( trim(cloud_chem_pH_solver) == 'cubic' ) then
@@ -1661,6 +1661,7 @@ trop_option%frac_aerosol_incloud = frac_aerosol_incloud
 !aerosol thermo
 if    ( trim(aerosol_thermo_method)   == 'legacy' ) then
    trop_option%aerosol_thermo = AERO_LEGACY
+   if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacy no3'
 elseif ( trim(aerosol_thermo_method)   == 'isorropia' ) then
    trop_option%aerosol_thermo = AERO_ISORROPIA
 else
