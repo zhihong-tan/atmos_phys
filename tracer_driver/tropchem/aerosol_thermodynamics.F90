@@ -129,12 +129,7 @@ contains
 
     tso4 = so4*air_den
     tno3 = (no3+hno3)*air_den
-
-    if ( ltracer_nit ) then
-       tnh3 = (nh3+nh4)*air_den
-    else
-       tnh3 = (nh3+nh4+no3)*air_den
-    end if
+    tnh3 = (nh3+nh4)*air_den
 
     !for now no na, cl, mg, ca, k
     tna  = 0.e0
