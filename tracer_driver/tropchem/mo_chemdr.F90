@@ -1,12 +1,25 @@
 
       module mo_chemdr_mod
 
+!<f1p
+      use fms_mod,            only : FATAL, error_mesg, mpp_pe, mpp_root_pe
+      use tropchem_types_mod, only : tropchem_opt,tropchem_diag, small_value
+      use mo_chem_utls_mod,   only : get_spc_ndx      
+      use tracer_manager_mod, only : get_tracer_index        
+      use field_manager_mod,  only : MODEL_ATMOS
+!>
       implicit none
 
+ !<f1p
+      integer :: nh4no3_ndx, hno3_ndx
+      integer :: nh4_ndx, nh3_ndx
+      integer :: so2_ndx, so4_ndx
+      integer :: ox_ndx, o3s_ndx
+      integer  :: o3s_e90_ndx, e90_ndx, e90_trop
+!>
       private
       public :: chemdr
-
-!     save
+      public :: chemdr_init !<f1p>
 
 character(len=128), parameter :: version     = '$Id: mo_chemdr.F90,v 21.0 2014/12/15 21:47:43 fms Exp $'
 character(len=128), parameter :: tagname     = '$Name: ulm $'
@@ -124,21 +137,20 @@ logical                       :: module_is_initialized = .false.
                          r, &
                          phalf,&
                          pwt , &
-                         do_fastjx_photo,&      
-                         use_lsc_in_fastjx, &
                          j_ndx, &
                          Time, &
                          lat, lon, &
                          delt, &
                          ps, ptop, pmid, pdel, &
                          zma, zi, &
-                         cldfr, cwat, tfld, inv_data, sh, &
+                         cldfr, cwat, fliq, tfld, inv_data, sh, &
                          albedo, coszen, esfact, &
                          prod_out, loss_out, jvals_out, rate_const_out, sulfate, psc, &
                          do_interactive_h2o, solar_phase, imp_slv_nonconv, &
-                         plonl, prod_ox, loss_ox, retain_cm3_bugs, e90_vmr, &
+                         plonl, prod_ox, loss_ox, e90_vmr, &
                          e90_tropopause_vmr, &
-                         check_convergence )
+                         co2, &
+                         trop_diag_array, trop_option,trop_diag) !>
 !-----------------------------------------------------------------------
 !     ... Chem_solver advances the volumetric mixing ratio
 !         forward one time step via a combination of explicit,
@@ -159,16 +171,9 @@ logical                       :: module_is_initialized = .false.
       use mo_phtadj_mod,    only : phtadj
       use mo_setsox_mod,    only : setsox
       use mo_fphoto_mod,    only : fphoto
-      use mo_chem_utls_mod, only : inti_mr_xform, adjh2o, negtrc, mmr2vmr, vmr2mmr, &
-                                   get_spc_ndx, get_grp_mem_ndx
+      use mo_chem_utls_mod, only : inti_mr_xform, adjh2o, negtrc, mmr2vmr, vmr2mmr !<f1p get_spc_ndx, get_grp_mem_ndx >
       use time_manager_mod, only : time_type
       use strat_chem_utilities_mod, only : psc_type
-
-      use tracer_manager_mod, only : get_tracer_index,     &
-                                     query_method
-      use field_manager_mod, only : MODEL_ATMOS,          &
-                                    parse
-      use mpp_mod,           only : mpp_pe, mpp_root_pe
 
 
       implicit none
@@ -182,9 +187,10 @@ logical                       :: module_is_initialized = .false.
       real,    intent(in) ::  delt                    ! timestep in seconds
       real, intent(inout) ::  vmr(:,:,:)              ! transported species ( vmr )
       integer, intent(in) ::  j_ndx             
-      logical, intent(in) ::  do_fastjx_photo         ! true = use fastjx photo
-      logical, intent(in) ::  use_lsc_in_fastjx        ! true = use lsc clouds in fastjx calc
       real, intent(in)    ::  r(:,:,:)                ! the original r species
+      real, intent(in)    ::  co2(:,:)
+      real, intent(inout) ::  trop_diag_array(:,:,:)
+!>
       real, dimension(:), intent(in) :: &
                               ps, &                   ! surface press ( pascals )
                               ptop, &                 ! model top pressure (pascals)
@@ -203,7 +209,8 @@ logical                       :: module_is_initialized = .false.
 !                             nrain, &                ! release of strt precip ( 1/s )
 !                             nevapr, &               ! evap precip ( 1/s )
                               cwat, &                 ! total cloud water (kg/kg)
-                              tfld, &                 ! midpoint temperature
+                              fliq, &                 !liquid fraction
+	                          tfld, &                 ! midpoint temperature
                               sh, &                   ! specific humidity ( kg/kg )
                               sulfate, &              ! sulfate aerosol
                               phalf,   &              ! pressure at boundaries (Pa)
@@ -229,20 +236,20 @@ logical                       :: module_is_initialized = .false.
       real, dimension(:,:), intent(out) :: &
                               imp_slv_nonconv         ! flag for implicit solver non-convergence (fraction)
       logical, intent(in) ::  do_interactive_h2o      ! include h2o sources/sinks
-      logical, intent(in) ::  retain_cm3_bugs        ! retain cm3 bugs ?
       real, dimension(:,:), intent(in) :: &
                               e90_vmr                ! e90 conc 
       real,    intent(in) ::  e90_tropopause_vmr     ! e90 tropopause threshold 
 
-      logical, intent(in) ::  check_convergence      ! check convergence of implicit solver solution ?
+!<f1p
+      type(tropchem_opt),  intent(in) :: trop_option
+      type(tropchem_diag), intent(in) :: trop_diag
+!>
 
 !-----------------------------------------------------------------------
 !             ... Local variables
 !-----------------------------------------------------------------------
       integer, parameter :: inst = 1, avrg = 2
-      integer  ::  k
-      integer  :: i
-      integer  :: ox_ndx, o3s_ndx
+      integer  :: k,i,n
       integer  :: troplev(plonl)
       real, parameter    :: ztrop_low = 5.  
                                      ! lowest tropopause level allowed (km)
@@ -253,16 +260,16 @@ logical                       :: module_is_initialized = .false.
       real     :: dt
       real, dimension(plonl,SIZE(vmr,2))    :: k_loss_ox   
                                        ! Loss rate coefficient of Ox (s-1)
-!     integer  ::  ox_ndx, o3_ndx
-      integer  :: o3s_e90_ndx, e90_ndx, e90_tropk
       integer,dimension(plonl,SIZE(vmr,2)) :: strate90 
-      integer  ::  so2_ndx, so4_ndx
       real     ::  invariants(plonl,SIZE(vmr,2),max(1,nfs))
       real     ::  col_dens(plonl,SIZE(vmr,2),max(1,ncol_abs))                  ! column densities (molecules/cm^2)
       real     ::  col_delta(plonl,0:SIZE(vmr,2),max(1,ncol_abs))               ! layer column densities (molecules/cm^2)
       real     ::  het_rates(plonl,SIZE(vmr,2),max(1,hetcnt))
       real     ::  extfrc(plonl,SIZE(vmr,2),max(1,extcnt))
       real     ::  reaction_rates(plonl,SIZE(vmr,2),rxntot)
+
+
+      integer   :: e90_tropk
       real, dimension(plonl,SIZE(vmr,2)) :: &
                    h2ovmr, &             ! water vapor volume mixing ratio
                    mbar, &               ! mean wet atmospheric mass ( amu )
@@ -377,13 +384,12 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------      
 !             ... Calculate the photodissociation rates
 !-----------------------------------------------------------------------      
-         if (.not. do_fastjx_photo) then
+!<f1p: replace cwat by cliq+cice
+         if (.not. trop_option%do_fastjx_photo) then
            call photo( reaction_rates(:,:,:phtcnt), pmid, pdel, tfld, zmid, &
                      col_dens, &
-!                    zen_angle, albs, &
                      coszen, albedo, &
                      cwat, cldfr, &
-!                    sunon, sunoff, &
                      esfact, solar_phase, plonl )
          else    
             call fphoto( reaction_rates(:,:,:phtcnt), &
@@ -395,7 +401,7 @@ logical                       :: module_is_initialized = .false.
                          cwat, &
                          cldfr,  &
                          esfact, solar_phase, plonl,&           
-                         use_lsc_in_fastjx, &
+                         trop_option%use_lsc_in_fastjx, &
                          phalf,&
                          zi,&
                          pwt , &
@@ -530,7 +536,7 @@ logical                       :: module_is_initialized = .false.
                        nstep, delt, &
 !                      invariants(1,1,indexm), &
                        lat, lon, &
-                       prod_out, loss_out, check_convergence, &
+                       prod_out, loss_out, trop_option%check_convergence, &
                        imp_slv_nonconv, &
                        plonl, plnplv, &
                        prod_ox, loss_ox)
@@ -550,8 +556,6 @@ logical                       :: module_is_initialized = .false.
 !       ... Assign O3strat to O3 at and above the tropopause and 
 !           let it undergo loss processes below the tropopause
 !-----------------------------------------------------------------------
-      ox_ndx = get_spc_ndx( 'O3' )
-      o3s_ndx = get_spc_ndx( 'O3S' )
       do i = 1,plonl
         do k = plev-1,2,-1
            if (zmid(i,k) < ztrop_low ) then
@@ -622,16 +626,15 @@ logical                       :: module_is_initialized = .false.
    end if
 
 !-----------------------------------------------------------------------
-!       ... Heterogeneous chemistry
+!       ... Heterogeneous+cloud chemistry
 !-----------------------------------------------------------------------
-      so2_ndx = get_spc_ndx( 'SO2' )
-      so4_ndx = get_spc_ndx( 'SO4' )
       if( so2_ndx > 0 .and. so4_ndx > 0 ) then
          call setsox( pmid, plonl, delt, tfld, sh, &
-!                     nrain, nevapr, cmfdqr, &
-                      cwat, invariants(:,:,indexm), &
-                      vmr, retain_cm3_bugs )
+                      cwat, fliq, cldfr, invariants(:,:,indexm), &
+                      vmr, co2, &
+                      trop_diag_array,trop_option,trop_diag)
       end if
+
 !-----------------------------------------------------------------------      
 !         ... Check for negative values and reset to zero
 !-----------------------------------------------------------------------      
@@ -690,4 +693,26 @@ logical                       :: module_is_initialized = .false.
       end subroutine chemdr
 !</SUBROUTINE>
 
+!</SUBROUTINE>
+!<f1p
+      subroutine chemdr_init(trop_option)
+
+        type(tropchem_opt), intent(in) :: trop_option        
+
+        integer :: n
+        real    :: nit_scale_factor
+
+        nh4no3_ndx   = get_spc_ndx('NH4NO3')
+        nh4_ndx      = get_spc_ndx('NH4')
+        nh3_ndx      = get_spc_ndx('NH3')
+        hno3_ndx     = get_spc_ndx('HNO3')
+        so2_ndx      = get_spc_ndx( 'SO2' )
+        so4_ndx      = get_spc_ndx( 'SO4' )
+        ox_ndx       = get_spc_ndx( 'O3' )
+        o3s_ndx      = get_spc_ndx( 'O3S' )
+
+        module_is_initialized = .true.
+     
+      end subroutine chemdr_init
+!>
       end module mo_chemdr_mod

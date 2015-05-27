@@ -38,6 +38,7 @@ use                    fms_mod, only : file_exist,   &
                                        FATAL, &
                                        WARNING, &
                                        NOTE
+use         tropchem_types_mod, only : tropchem_opt, tropchem_diag, tropchem_types_init
 use           time_manager_mod, only : time_type, &
                                        get_date, &
                                        set_date, &
@@ -74,7 +75,8 @@ use           interpolator_mod, only : interpolate_type,     &
                                        CONSTANT,             &
                                        INTERP_WEIGHTED_P  
 use            time_interp_mod, only : time_interp_init, time_interp
-use              mo_chemdr_mod, only : chemdr
+use              mo_chemdr_mod, only : chemdr, chemdr_init
+use              mo_setsox_mod, only : setsox_init
 use             mo_chemini_mod, only : chemini
 use             M_TRACNAME_MOD, only : tracnam         
 use                MO_GRID_MOD, only : pcnstm1 
@@ -101,8 +103,9 @@ use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp
 use fms_io_mod, only: read_data
 
-
-!implicit none
+use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1p, CLOUD_CHEM_LEGACY
+use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY
+implicit none
 
 private
 
@@ -172,6 +175,47 @@ character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen 
 logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
 real               :: e90_tropopause_vmr = 9.e-8        ! e90 tropopause concentration
  
+
+!co2
+real*8             :: co2_fixed_value   = 330e-6
+!character(len=64)  :: co2_filename = 'co2_gblannualdata'
+character(len=64)  :: co2_filename = 'no_file'
+real               :: co2_scale_factor = 1.e-6             
+real               :: co2_fixed_year   = -999
+
+character(len=64)  :: cloud_chem_pH_solver     = 'bisection'
+character(len=64)  :: cloud_chem_type          = 'legacy'
+logical            :: het_chem_fine_aerosol_only = .false.
+real               :: min_lwc_for_cloud_chem     = 1.e-8
+real               :: frac_dust_incloud          = 0
+real               :: frac_aerosol_incloud       = 1
+real               :: cloud_pH                   = -999  !<0 do not force
+real               :: max_rh_aerosol             = 1.0      !max rh used for aerosol thermo
+logical            :: limit_no3                  = .true.   !for isorropia/stratosphere
+
+character(len=64)  :: aerosol_thermo_method = 'legacy'               ! other choice isorropia
+real               :: gN2O5                 = 0.1
+real               :: gNO2                  = 1e-4
+real               :: gSO2                  = 0.
+real               :: gSO2_dust             = 0.
+integer            :: gSO2_dynamic          = 0
+real               :: gNH3                  = 0.04
+real               :: gHNO3_dust            = 0.
+real               :: gNO3_dust             = 0.
+real               :: gN2O5_dust            = 0.
+integer            :: gHNO3_dust_dynamic    = 0
+real               :: gH2SO4_dust           = 0.
+logical            :: do_h2so4_nucleation   = .false.
+logical            :: cloud_ho2_h2o2        = .true.
+real               :: gNO3                  = 0.1
+real               :: gHO2                  = 1.
+real               :: small_value           = 1.e-20 !too big for isorropia
+
+
+
+type(tropchem_diag),  save :: trop_diag
+type(tropchem_opt),   save :: trop_option
+
 namelist /tropchem_driver_nml/    &
                                relaxed_dt, &
                                relaxed_dt_lbc, &
@@ -205,6 +249,10 @@ namelist /tropchem_driver_nml/    &
                                set_min_h2o_strat, &
                                ch4_filename, &
                                ch4_scale_factor, &
+                               co2_fixed_value, &
+                               co2_fixed_year, &
+                               co2_filename, &
+                               co2_scale_factor, &                               
                                cfc_lbc_filename, &
                                time_varying_cfc_lbc, &
                                cfc_lbc_dataset_entry, &
@@ -215,9 +263,21 @@ namelist /tropchem_driver_nml/    &
                                do_fastjx_photo, &
                                clouds_in_fastjx, &
                                check_convergence, &
-                               e90_tropopause_vmr
+                               e90_tropopause_vmr, &
+                               aerosol_thermo_method, &
+			                   gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
+                               do_h2so4_nucleation, &
+                               check_convergence, &
+                               cloud_chem_pH_solver, &
+                               cloud_chem_type, &
+                               min_lwc_for_cloud_chem, &
+                               het_chem_fine_aerosol_only, &
+                               cloud_pH, &
+                               frac_dust_incloud, frac_aerosol_incloud, &
+                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2, small_value
                               
 
+integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
 real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
                    m2_to_cm2  = 1.e4,     & !conversion factor (cm2/m2)
@@ -274,6 +334,10 @@ logical :: use_lsc_in_fastjx
 integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_emis, id_emis3d, id_xactive_emis, &
                                id_ub, id_lb, id_airc
+!new diagnostics (f1p)
+integer, dimension(pcnstm1) :: id_prod_mol, id_loss_mol
+integer :: id_ch, id_lwc,id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d
+!
 integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
 integer :: id_co_emis_cmip2, id_no_emis_cmip2
@@ -297,6 +361,15 @@ type :: lb_type
 end type lb_type
 type(lb_type), dimension(pcnstm1) :: lb
 
+type :: co2_type
+   logical                                :: use_fix_value
+   real                                   :: fixed_value   
+   real,dimension(:), pointer             :: gas_value
+   type(time_type), dimension(:), pointer :: gas_time
+   logical                                :: use_fix_time
+   type(time_type)                        :: fixed_entry
+end type co2_type
+type(co2_type) :: co2_t
 type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
@@ -474,8 +547,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    integer :: inv_index
    integer :: plonl
    logical :: used
-   real :: scale_factor, frac
-   real,  dimension(size(r,1),size(r,3)) :: pdel, h2so4, h2o_temp, qlocal, cloud_water
+   real :: scale_factor, frac, ico2
+   real,  dimension(size(r,1),size(r,3)) :: pdel, h2so4, h2o_temp, qlocal, cloud_water, co2_2d, frac_liq, s_down
    real, dimension(size(r,1),size(r,2),size(r,3),pcnstm1)  :: r_temp, r_in, emis_source, r_ub, airc_emis
    real, dimension(size(r,1),size(r,2),size(r,3)) :: tend_tmp, extra_h2o
    real, dimension(pcnstm1) :: r_lb
@@ -492,6 +565,10 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real :: solar_phase
    type(psc_type) :: psc
    type(time_type) :: lbc_Time
+   !f1p
+   !trop diag arrays
+   real, dimension(size(r,1),size(r,2),size(r,3),trop_diag%nb_diag) :: trop_diag_array
+   type(time_type) :: co2_time
 !-----------------------------------------------------------------------
 
 !<ERROR MSG="tropchem_driver_init must be called first." STATUS="FATAL">
@@ -503,6 +580,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    ntp = size(r,4)
    plonl = size(r,1)
 
+!initialize diagnostic array
+   trop_diag_array(:,:,:,:) = 0.
    where(land(:,:) >= 0.5)
       oro(:,:) = 1.
    elsewhere
@@ -828,12 +907,35 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    end if
 
    r_temp(:,:,:,:) = MAX(r_temp(:,:,:,:),small)
-  
+
+!set CO2
+   if (nco2>0) then
+      if (mpp_pe() == mpp_root_pe()) then
+         call error_mesg ('tropchem_driver', 'CO2 is active',NOTE)
+      endif
+   else
+      if (co2_t%use_fix_value) then
+         co2_2d(:,:) = co2_t%fixed_value
+      else
+         if (co2_t%use_fix_time) then
+            co2_time = co2_t%fixed_entry
+         else
+            co2_time = Time
+         end if
+         call time_interp( co2_time, co2_t%gas_time(:), frac, index1, index2 )
+         ico2 = co2_t%gas_value(index1) + & 
+              frac*( co2_t%gas_value(index2) - co2_t%gas_value(index1) )
+         co2_2d(:,:) = ico2
+      end if
+   end if
    do j = 1,jd
       do k = 1,kd
          pdel(:,k) = phalf(:,j,k+1) - phalf(:,j,k)
       end do
       qlocal(:,:) = q(:,j,:)
+      if (nco2>0) then
+         co2_2d(:,:) = r(:,j,:,nco2)
+      end if
       
 !-----------------------------------------------------------------------
 !     ... get stratospheric h2so4
@@ -849,6 +951,12 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          h2o_temp(:,:) = qlocal(:,:) * WTMAIR/WTMH2O
       end if
       cloud_water(:,:) = MAX(r(:,j,:,inql)+r(:,j,:,inqi),0.)
+      where ( cloud_water(:,:) .gt. 0 ) 
+	  frac_liq(:,:) =  MAX( r(:,j,:,inql) , 0.)/cloud_water
+      elsewhere
+      frac_liq(:,:) = 1. 
+      endwhere
+
       if (repartition_water_tracers) then
          h2o_temp(:,:) = h2o_temp(:,:) + cloud_water(:,:) * WTMAIR/WTMH2O
       end if
@@ -870,6 +978,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       end if
       qlocal(:,:) = h2o_temp(:,:) * WTMH2O/WTMAIR
       r_in(:,j,:,:) = r_temp(:,j,:,:)
+
+!NEED TO BE MERGED
+!!!!!!!
+!!!!!!!
+!      where( cloud_liq(:,:)+cloud_ice(:,:) .gt. small )
+!         s_down(:,:)    = cloud_water(:,:)/(cloud_liq(:,:)+cloud_ice(:,:))
+!         cloud_liq(:,:) = cloud_liq(:,:)*s_down(:,:)
+!         cloud_ice(:,:) = cloud_ice(:,:)*s_down(:,:)
+!      end where
+!!!!!!
+!!!!!!
 
 !-----------------------------------------------------------------------
 !     ... get solar cycle phase (use radiation band #18)
@@ -895,10 +1014,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                   r(:,j,:,:),                  &
                   phalf(:,j,:),                & ! pressure at boundaries (Pa)
                   pwt(:,j,:) ,                 & ! column air density (Kg/m2)  
-                  do_fastjx_photo,             & ! true = use fastjx photo
-                  use_lsc_in_fastjx,           & ! use lsc clouds in fastjx
                   j,                           & ! j
-!                 0,                           & ! time step index
                   Time_next,                   & ! time
                   lat(:,j),                    & ! latitude
                   lon(:,j),                    & ! longitude
@@ -907,12 +1023,11 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                   phalf(:,j,1),                & ! model top pressure (pascals)
                   pfull(:,j,:),                & ! midpoint press ( pascals )
                   pdel,                        & ! delta press across midpoints
-!                 oro(:,j),                    & ! surface orography flag
-!                 tsurf(:,j),                  & ! surface temperature
                   z_full(:,j,:),               & ! height at midpoints ( m )
                   z_half(:,j,:),               & ! height at interfaces ( m )
                   MAX(r(:,j,:,inqa),0.),       & ! cloud fraction
                   cloud_water(:,:),            & ! total cloud water (kg/kg)
+                  frac_liq(:,:),               & ! fraction of liquid water
                   t(:,j,:),                    & ! temperature
                   inv_data(:,j,:,:),           & ! invariant species
                   qlocal(:,:),                 & ! specific humidity ( kg/kg )
@@ -931,10 +1046,12 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                   plonl,                       & ! number of longitudes
                   prodox(:,j,:),               & ! production of ox(jmao,1/1/2011)
                   lossox(:,j,:),               & ! loss of ox(jmao,1/1/2011)
-                  retain_cm3_bugs,             & 
                   e90_vmr(:,j,:),              & ! e90 concentrations
                   e90_tropopause_vmr,          & ! e90 tropopause threshold
-                  check_convergence ) 
+                  co2_2d,                      &
+                  trop_diag_array(:,j,:,:),    &
+                  trop_option,                 &
+                  trop_diag) 
 
       call strat_chem_destroy_psc( psc )
 
@@ -956,6 +1073,14 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       end if
       if(id_loss(n)>0) then
          used = send_data(id_loss(n),loss(:,:,:,n),Time_next,is_in=is,js_in=js)
+      end if
+      if(id_prod_mol(n)>0) then
+         used = send_data(id_prod_mol(n),prod(:,:,:,n)*pwt(:,:,:)*1.e3/WTMAIR, &
+              Time_next,is_in=is,js_in=js)
+      end if
+      if(id_loss_mol(n)>0) then
+         used = send_data(id_loss_mol(n),loss(:,:,:,n)*pwt(:,:,:)*1.e3/WTMAIR, &
+              Time_next,is_in=is,js_in=js)
       end if
       
       if (n == sphum_ndx) then
@@ -1052,6 +1177,42 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          used = send_data(id_srf_o3, r_temp(:,:,size(r_temp,3),o3_ndx), Time_next, is_in=is, js_in=js)
       end if
 
+!f1p diagnostics
+   if (id_pso4_h2o2>0 .and. trop_diag%ind_pso4_h2o2>0) then
+      used = send_data(id_pso4_h2o2,trop_diag_array(:,:,:,trop_diag%ind_pso4_h2o2)*pwt(:,:,:)/(WTMAIR*1e-3), &
+           Time_next,is_in=is,js_in=js)
+   end if
+   if (id_pso4_o3>0 .and. trop_diag%ind_pso4_o3>0) then
+      used = send_data(id_pso4_o3,trop_diag_array(:,:,:,trop_diag%ind_pso4_o3)*pwt(:,:,:)/(WTMAIR*1e-3), &
+           Time_next,is_in=is,js_in=js)
+   end if  
+   if (id_cH>0 .and. trop_diag%ind_cH>0) then
+      used = send_data(id_cH,trop_diag_array(:,:,:,trop_diag%ind_cH),Time_next,is_in=is,js_in=js)
+   end if
+   if (id_lwc>0 .and. trop_diag%ind_lwc>0) then
+      used = send_data(id_lwc,trop_diag_array(:,:,:,trop_diag%ind_lwc),Time_next,is_in=is,js_in=js)
+   end if   
+   do n=1,5
+      if (id_phno3_d(n) >0) then
+         !phno3_d is in VMR/s convert to mole/m2/s
+         used = send_data(id_phno3_d(n),trop_diag_array(:,:,:,trop_diag%ind_phno3_d(n))*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
+      end if
+   end do
+   do n=1,5
+      if (id_pso4_d(n) >0) then
+         !phno3_d is in VMR/s convert to mole/m2/s
+         used = send_data(id_pso4_d(n),trop_diag_array(:,:,:,trop_diag%ind_pso4_d(n))*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
+      end if
+   end do
+   if (id_ghno3_d>0) then
+      used = send_data(id_ghno3_d,trop_diag_array(:,:,:,trop_diag%ind_ghno3_d),Time_next,is_in=is,js_in=js)
+   end if
+   if (id_phno3_g_d>0) then
+      used = send_data(id_phno3_g_d,trop_diag_array(:,:,:,trop_diag%ind_phno3_g_d)*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
+   end if
+   if (id_pso4_g_d>0) then
+      used = send_data(id_pso4_g_d,trop_diag_array(:,:,:,trop_diag%ind_pso4_g_d)*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
+   end if   
    
 !-----------------------------------------------------------------------
 !     ... special case(nox = no + no2)
@@ -1452,6 +1613,65 @@ function tropchem_driver_init( r, mask, axes, Time, &
                      ' invalid string for clouds_in_fastjx', FATAL)
    endif
 
+
+if ( (gNO3_dust .gt. 0. .or. gN2O5_dust .gt. 0.) .and. .not. het_chem_fine_aerosol_only ) then
+   call error_mesg ('tropchem_driver_init', 'uptake on dust + all aerosol => double counting', FATAL )      
+end if
+
+if ( trim(cloud_chem_type) == 'legacy' ) then
+   trop_option%cloud_chem = cloud_chem_legacy
+elseif ( trim(cloud_chem_type) == 'f1p' ) then
+   trop_option%cloud_chem = cloud_chem_f1p
+end if
+
+!cloud chem pH solver
+
+
+if ( trim(cloud_chem_pH_solver) == 'am3' ) then
+   trop_option%cloud_chem_pH_solver  = CLOUD_CHEM_PH_LEGACY
+elseif ( trim(cloud_chem_pH_solver) == 'bisection' ) then
+   trop_option%cloud_chem_pH_solver   = CLOUD_CHEM_PH_BISECTION
+elseif ( trim(cloud_chem_pH_solver) == 'cubic' ) then
+   trop_option%cloud_chem_pH_solver   = CLOUD_CHEM_PH_CUBIC
+else
+   call error_mesg ('tropchem_driver_init', 'undefined cloud chem', FATAL )      
+end if
+
+if ( cloud_pH .lt. 0 ) then
+   trop_option%cloud_H = -999
+else
+   trop_option%cloud_H = 10**(-cloud_pH)
+end if
+
+
+
+
+
+
+!gammas to be added when het chem is working
+
+trop_option%retain_cm3_bugs = retain_cm3_bugs
+trop_option%do_fastjx_photo = do_fastjx_photo
+trop_option%min_lwc_for_cloud_chem = min_lwc_for_cloud_chem
+trop_optioN%check_convergence = check_convergence
+trop_optioN%use_lsc_in_fastjx = use_lsc_in_fastjx
+trop_option%het_chem_fine_aerosol_only = het_chem_fine_aerosol_only
+trop_option%cloud_ho2_h2o2 = cloud_ho2_h2o2
+trop_option%max_rh_aerosol = max_rh_aerosol
+trop_option%limit_no3      = limit_no3
+trop_option%frac_aerosol_incloud = frac_aerosol_incloud
+
+
+
+!aerosol thermo
+if    ( trim(aerosol_thermo_method)   == 'legacy' ) then
+   trop_option%aerosol_thermo = AERO_LEGACY
+elseif ( trim(aerosol_thermo_method)   == 'isorropia' ) then
+   trop_option%aerosol_thermo = AERO_ISORROPIA
+else
+   call error_mesg ('tropchem_driver_init', 'undefined aerosol thermo', FATAL )      
+end if
+
 !-----------------------------------------------------------------------
 !     ... Setup sulfate input/interpolation
 !-----------------------------------------------------------------------
@@ -1494,6 +1714,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
    end do
 30 format (A,' was initialized as tracer number ',i3)
 
+   nco2 = get_tracer_index(MODEL_ATMOS, 'co2' )
    cl_ndx     = get_spc_ndx('Cl')
    clo_ndx    = get_spc_ndx('ClO')
    hcl_ndx    = get_spc_ndx('HCl')
@@ -1679,6 +1900,38 @@ function tropchem_driver_init( r, mask, axes, Time, &
          end if
       end if
 
+!fp
+!CO2           
+      if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
+         co2_t%use_fix_value  = .false.
+         !read from file
+         flb = open_namelist_file( 'INPUT/' // trim(co2_filename) )
+         read(flb,FMT='(i12)') series_length
+         allocate( co2_t%gas_value(series_length), co2_t%gas_time(series_length) )
+         do n = 1,series_length
+            read (flb, FMT = '(2f12.4)') input_time, co2_t%gas_value(n)
+            year = INT(input_time)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
+            co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
+         end do
+         call close_file(flb)
+         if (co2_scale_factor .gt. 0) then
+            co2_t%gas_value = co2_t%gas_value * co2_scale_factor
+         end if
+         if (co2_fixed_year .gt. 0) then
+            co2_t%use_fix_time = .true.
+            year = INT(fixed_year)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (fixed_year - year)*diy*SECONDS_PER_DAY 
+            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
+         end if
+      else
+         co2_t%use_fix_value  = .true.
+         co2_t%fixed_value    = co2_fixed_value
+      end if
 !-----------------------------------------------------------------------
 !     ... Initial conditions
 !-----------------------------------------------------------------------
@@ -1900,6 +2153,11 @@ function tropchem_driver_init( r, mask, axes, Time, &
         Time, 'Ox_prod','VMR/s')
    id_lossox = register_diag_field( module_name, 'Ox_loss', axes(1:3), &
         Time, 'Ox_loss','VMR/s')
+!f1p
+   id_cH          = register_diag_field( module_name, 'cHw',axes(1:3), Time, 'cH x lwc','none')
+   id_lwc         = register_diag_field( module_name, 'lwc',axes(1:3), Time, 'lwc','L(water)/L(air)')
+   id_pso4_h2o2   = register_diag_field( module_name, 'PSO4_H2O2',axes(1:3), Time, 'PSO4_H2O2','mole/m2/s')
+   id_pso4_o3     = register_diag_field( module_name, 'PSO4_O3',axes(1:3), Time, 'PSO4_O3','mole/m2/s')
 
    do i=1,pcnstm1
       id_chem_tend(i) = register_diag_field( module_name, trim(tracnam(i))//'_chem_dt', axes(1:3), &
@@ -1908,6 +2166,10 @@ function tropchem_driver_init( r, mask, axes, Time, &
                                         Time, trim(tracnam(i))//'_prod','VMR/s')
       id_loss(i) = register_diag_field( module_name, trim(tracnam(i))//'_loss', axes(1:3), &
                                         Time, trim(tracnam(i))//'_loss','VMR/s')
+      id_prod_mol(i) = register_diag_field( module_name, trim(tracnam(i))//'_prodm', axes(1:3), &
+                                        Time, trim(tracnam(i))//'_prodm','mole/m2/s')
+      id_loss_mol(i) = register_diag_field( module_name, trim(tracnam(i))//'_lossm', axes(1:3), &
+                                        Time, trim(tracnam(i))//'_lossm','mole/m2/s')
       if( has_emis(i) ) then
          id_emis(i) = register_diag_field( module_name, trim(tracnam(i))//'_emis', axes(1:2), &
                                            Time, trim(tracnam(i))//'_emis', 'molec/cm2/s')
@@ -1993,6 +2255,51 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
 !  clock_id = mpp_clock_id('Chemistry')
+   call setsox_init(trop_option)
+   call chemdr_init(trop_option)
+
+!initialize diag array
+   call tropchem_types_init(trop_diag,small_value)
+   if ( id_pso4_h2o2 > 0 ) then
+      trop_diag%nb_diag       = trop_diag%nb_diag + 1
+      trop_diag%ind_pso4_h2o2 = trop_diag%nb_diag
+   end if
+   if ( id_pso4_o3 > 0 ) then
+      trop_diag%nb_diag       = trop_diag%nb_diag + 1
+      trop_diag%ind_pso4_o3   = trop_diag%nb_diag
+   end if
+   if ( id_lwc > 0 ) then
+      trop_diag%nb_diag       = trop_diag%nb_diag + 1
+      trop_diag%ind_lwc       = trop_diag%nb_diag
+   end if
+   if ( id_cH > 0 ) then
+      trop_diag%nb_diag       = trop_diag%nb_diag + 1
+      trop_diag%ind_cH       = trop_diag%nb_diag
+   end if
+   if ( id_phno3_g_d > 0 ) then
+      trop_diag%nb_diag          = trop_diag%nb_diag + 1
+      trop_diag%ind_phno3_g_d    = trop_diag%nb_diag
+   end if
+   if ( id_pso4_g_d > 0 ) then
+      trop_diag%nb_diag          = trop_diag%nb_diag + 1
+      trop_diag%ind_pso4_g_d     = trop_diag%nb_diag
+   end if
+   if ( id_ghno3_d > 0 ) then
+      trop_diag%nb_diag          = trop_diag%nb_diag + 1
+      trop_diag%ind_ghno3_d      = trop_diag%nb_diag
+   end if
+   do i=1,5
+      if ( id_phno3_d(i) > 0 ) then
+         trop_diag%nb_diag          = trop_diag%nb_diag + 1
+         trop_diag%ind_phno3_d(i)   = trop_diag%nb_diag   
+      end if
+   end do
+   do i=1,5
+      if ( id_pso4_d(i) > 0 ) then
+         trop_diag%nb_diag          = trop_diag%nb_diag + 1
+         trop_diag%ind_pso4_d(i)   = trop_diag%nb_diag   
+      end if
+   end do
       
    module_is_initialized = .true.
       
