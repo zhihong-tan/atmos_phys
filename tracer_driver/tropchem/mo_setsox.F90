@@ -132,7 +132,6 @@ CONTAINS
     real, dimension(plonl)  :: t_fac
     real    :: ediag(cloud_nb_diag)
     real    :: xso4_tmp, xnh4_tmp, xant_tmp, xnh3_tmp, xhno3_tmp
-
     logical :: converged
 
     if ( .not. module_is_initialized ) then
@@ -681,6 +680,16 @@ CONTAINS
           end if
 
           call aerosol_thermo( trop_option%aerosol_thermo, min(rh,trop_option%max_rh_aerosol), tz, press(i,k), xso4(i,k), xnh3(i,k), xnh4(i,k), xhno3(i,k), xant(i,k))
+
+          if ( trop_option%limit_no3 .and. trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
+             if (  (xnh4(i,k)+xant(i,k) .gt. small_value) .and. xant(i,k) / ( xnh4(i,k) + xant(i,k)) .gt. 0.75 ) then
+                !force xant to be no more than xnh4
+                correction = max(xnh4(i,k) - 2*xso4(i,k),0.)
+                xhno3(i,k) = xhno3(i,k) + xant(i,k) - correction
+                xant(i,k)  = correction
+             end if
+          end if
+
           
           !-----------------------------------------------------------------
           !      ... Washout SO2, SO4 and NH3
@@ -752,6 +761,7 @@ CONTAINS
     ho2_ndx     = get_spc_ndx( 'HO2' )
     nh4_ndx     = get_spc_ndx( 'NH4' )
     n2o5_ndx    = get_spc_ndx( 'N2O5' )
+    nh4no3_ndx  = get_spc_ndx( 'NH4NO3' )
 
     frac_ic_nh4     = 0.
     frac_ic_no3     = 0.
@@ -792,35 +802,33 @@ CONTAINS
        write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
     endif
 
-    if ( trop_option%aerosol_thermo .eq. AERO_LEGACY ) then
-       nh4no3_ndx  = get_spc_ndx( 'NH4NO3' )
-       if ( nh4no3_ndx .gt. 0 ) then
-          flag = query_method ('wet_deposition',MODEL_ATMOS,&
-               get_tracer_index(MODEL_ATMOS,'nh4no3'), &
-               text_in_scheme,text_in_param)
-          flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
-          flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
-          if (flag == 0) then
-             frac_ic_no3_snow = frac_ic_no3
-          end if
-       else
-          call error_mesg ('setsox','nh4no3 must be definedx.', FATAL)
+    if ( nh4no3_ndx .gt. 0 ) then
+       flag = query_method ('wet_deposition',MODEL_ATMOS,&
+            get_tracer_index(MODEL_ATMOS,'nh4no3'), &
+            text_in_scheme,text_in_param)
+       flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
+       flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
+       if (flag == 0) then
+          frac_ic_no3_snow = frac_ic_no3
        end if
-    ELSEIF ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
-       nh4no3_ndx  = get_spc_ndx( 'ANO3' )
-       if ( nh4no3_ndx .gt. 0 ) then
-          flag = query_method ('wet_deposition',MODEL_ATMOS,&
-               get_tracer_index(MODEL_ATMOS,'ano3'), &
-               text_in_scheme,text_in_param)
-          flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
-          flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
-          if (flag == 0) then
-             frac_ic_no3_snow = frac_ic_no3
-          end if
-       else
-          call error_mesg ('setsox','ano3 needs to be defined', FATAL)
-       end if
-    END IF
+    else
+       call error_mesg ('setsox','nh4no3 must be definedx.', FATAL)
+    end if
+ ! ELSEIF ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
+!        nh4no3_ndx  = get_spc_ndx( 'ANO3' )
+!        if ( nh4no3_ndx .gt. 0 ) then
+!           flag = query_method ('wet_deposition',MODEL_ATMOS,&
+!                get_tracer_index(MODEL_ATMOS,'ano3'), &
+!                text_in_scheme,text_in_param)
+!           flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
+!           flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
+!           if (flag == 0) then
+!              frac_ic_no3_snow = frac_ic_no3
+!           end if
+!        else
+!           call error_mesg ('setsox','ano3 needs to be defined', FATAL)
+!        end if
+!     END IF
 
     module_is_initialized = .true.
 
