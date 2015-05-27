@@ -55,8 +55,7 @@ use         tracer_manager_mod, only : get_tracer_index,     &
                                        query_method,         &
                                        check_if_prognostic,  &
                                        NO_TRACER
-use          field_manager_mod, only : MODEL_ATMOS,          &
-                                       parse
+use          field_manager_mod, only : MODEL_ATMOS, MODEL_LAND, parse
 use atmos_tracer_utilities_mod, only : dry_deposition
 use              constants_mod, only : grav, rdgas, WTMAIR, WTMH2O, AVOGNO, &
                                        PI, DEG_TO_RAD, SECONDS_PER_DAY
@@ -534,10 +533,16 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          call read_2D_emis_data( inter_emis(n), emis, Time, Time_next, &
                                  emis_field_names(n)%field_names, &
                                  diurnal_emis(n), coszen, half_day, lon, &
-                                 is, js, id_emis(n) )
+                                 is, js)
          if ( land_does_emission(n) ) then
             emis = emis * ( 1. - land )
          end if
+
+         if (id_emis(n) > 0) then
+            used = send_data(id_emis(n),emis,Time_next,is_in=is,js_in=js)
+         end if
+
+
          if (tracnam(n) == 'NO') then
            emisz(:,:,n) = emis(:,:)
            if (id_no_emis_cmip > 0) then
@@ -1768,7 +1773,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
          if(has_emis(i)) then
             write(logunit,*)'Emissions from file: ',trim(emis_files(i))
             if ( land_does_emission(i) ) then
-               if (get_tracer_index(MODEL_LAND,tracnam(i))<=0) then
+               if (get_tracer_index(MODEL_LAND,trim(tracnam(i)))<=0) then
                   call error_mesg('atmos_tracer_utilities_init', &
                        'Emission of atmospheric tracer //"'//trim(tracnam(i))//&
                        '" is done on land side, but corresponding land tracer is not defined in the field table.', FATAL)
@@ -2139,7 +2144,7 @@ end subroutine tropchem_driver_end
 subroutine read_2D_emis_data( emis_type, emis, Time, Time_next, &
                               field_names, &
                               Ldiurnal, coszen, half_day, lon, &
-                              is, js, id_emis_diag )
+                              is, js )
     
    type(interpolate_type),intent(inout) :: emis_type
    real, dimension(:,:),intent(out) :: emis
@@ -2148,8 +2153,6 @@ subroutine read_2D_emis_data( emis_type, emis, Time, Time_next, &
    logical, intent(in) :: Ldiurnal
    real, dimension(:,:), intent(in) :: coszen, half_day, lon
    integer, intent(in) :: is, js
-   integer, intent(in),optional :: id_emis_diag ! id for diagnostic
-
 
    integer :: i, j, k
    logical :: used
@@ -2190,11 +2193,6 @@ subroutine read_2D_emis_data( emis_type, emis, Time, Time_next, &
       end do
    end if
 
-   if (present(id_emis_diag)) then
-      if (id_emis_diag > 0) then
-         used = send_data(id_emis_diag,emis,Time_next,is_in=is,js_in=js)
-      end if
-   end if
 end subroutine read_2D_emis_data
 !</SUBROUTINE>
 
@@ -2365,12 +2363,11 @@ subroutine init_emis_data( emis_type, model, method_type, pos, file_name, &
    diurnal = .false.
    control = ''
    if( query_method(trim(method_type),model,pos,name,control) ) then
-      if( trim(name) == 'file' ) then
+      if( trim(name(1:4)) == 'file' ) then
          flag = .true.
          flag_file = parse(control, 'file', emis_file)
          flag_name = parse(control, 'name', emis_name)
          flag_diurnal = parse(control, 'diurnal', control_diurnal)
-         if ( present(land_does_emis) )  land_does_emis  = (index(lowercase(control),'land:lm3')>0)
          if(flag_file > 0) then
             file_name = emis_file
          else if (flag_name > 0) then
@@ -2391,6 +2388,7 @@ subroutine init_emis_data( emis_type, model, method_type, pos, file_name, &
          allocate(field_type%field_names(nfields))
          call query_interpolator(emis_type,field_names=field_type%field_names)
       end if
+      if ( present(land_does_emis) )  land_does_emis  = (index(lowercase(name),'land:lm3')>0)
    end if
 end subroutine init_emis_data
 !</SUBROUTINE>
@@ -3458,7 +3456,7 @@ subroutine tropchem_drydep_init( dry_files, dry_names, &
       dry_files(i) = ''
       dry_names(i) = ''
       if( query_method('dry_deposition',MODEL_ATMOS,indices(i),name,control) )then
-         if( trim(name) == 'file' ) then
+         if( trim(name(1:4)) == 'file' ) then
             flag_file = parse(control, 'file',filename)
             flag_spec = parse(control, 'name',specname)
             if(flag_file > 0 .and. trim(filename) /= trim(file_dry)) then
