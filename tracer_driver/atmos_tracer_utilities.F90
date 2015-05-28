@@ -157,7 +157,8 @@ type(drydep_type), dimension(:), allocatable :: Drydep
 real ::                scale_aerosol_wetdep =1.0
 real ::                scale_aerosol_wetdep_snow =1.0
 character(len=64)  :: file_dry = 'depvel.nc'  ! NetCDF file for dry deposition velocities
-namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry
+logical :: drydep_exp = .false.
+namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp
 ! <---h1g,
 contains
 
@@ -565,7 +566,7 @@ subroutine write_namelist_values (unit, ntrace)
 !
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
-                           u_star, landfrac, dsinku, tracer, Time, &
+                           u_star, landfrac, dsinku, dt, tracer, Time, &
                            Time_next, lon, half_day, drydep_data)
 ! When formulation of dry deposition is resolved perhaps use the following?
 !                           landfr, seaice_cn, snow_area, & 
@@ -678,6 +679,7 @@ real, intent(in), dimension(:,:)    :: landfrac
 !                                       vegn_lai
 type(time_type), intent(in)         :: Time, Time_next
 type(interpolate_type),intent(inout)  :: drydep_data
+real, intent(in)                   :: dt
 real, intent(out), dimension(:,:)   :: dsinku
 
 real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel
@@ -882,11 +884,19 @@ id=size(pfull,1); jd=size(pfull,2)
      dsinku = dsinku*(1-landfrac)  
   endif
 dsinku(:,:) = MAX(dsinku(:,:), 0.0E+00)
-where(tracer>0)
-  dsinku=dsinku*tracer
-elsewhere
-  dsinku=0.0
-endwhere
+if ( drydep_exp ) then
+   where(tracer>0)
+      dsinku=tracer*(1. - exp(-dsinku*dt))/dt
+   elsewhere
+      dsinku=0.0
+   endwhere
+else
+   where(tracer>0)
+      dsinku=dsinku*tracer
+   elsewhere
+      dsinku=0.0
+   endwhere
+end if
 
 ! Now save the dry deposition to the diagnostic manager
 ! delta z = dp/(rho * grav)

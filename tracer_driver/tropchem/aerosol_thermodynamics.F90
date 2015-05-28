@@ -4,7 +4,7 @@ module aerosol_thermodynamics
 
   private
   public :: aerosol_thermo
-  public :: AERO_ISORROPIA, AERO_LEGACY
+  public :: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 
   integer :: AERO_LEGACY    = 1
   integer :: AERO_ISORROPIA = 2
