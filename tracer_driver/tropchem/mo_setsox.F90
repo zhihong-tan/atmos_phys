@@ -24,6 +24,8 @@ module MO_SETSOX_MOD
   real       ::      frac_ic_so4, frac_ic_no3, frac_ic_nh4
   real       ::      frac_ic_so4_snow, frac_ic_no3_snow, frac_ic_nh4_snow
 
+  logical    ::      nh4no3_is_no3
+
   public     ::      setsox, setsox_init
   private
   !>
@@ -541,13 +543,17 @@ CONTAINS
                 if ( cldfr(i,k) .gt. 1.e-10 .and. xso2(i,k) .gt. 0. ) then
                    xl = xl/cldfr(i,k)
 
-
-                   tnh3 = xnh3(i,k) &
-                        + frac_ic_nh4_eff(i,k)*xnh4(i,k) &
-                        + frac_ic_no3_eff(i,k)*xant(i,k)
+                   if ( nh4no3_is_no3 ) then
+                      tnh3 = xnh3(i,k) +  frac_ic_nh4_eff(i,k)*xnh4(i,k)
+                   else
+                      tnh3 = xnh3(i,k) &
+                           + frac_ic_nh4_eff(i,k)*xnh4(i,k) &
+                           + frac_ic_no3_eff(i,k)*xant(i,k)
+                   end if
 
                    thno3= frac_liq(i,k) * xhno3(i,k) &                !for acids partioning between ice and liquid
                         + frac_ic_no3_eff(i,k)*xant(i,k)
+                   
 
                    if (trop_option%cloud_H .lt. 0.) then                   
                       call cloud_pH(thno3,xso2(i,k),tnh3,xhcooh(i,k)*frac_liq(i,k),xch3cooh(i,k)*frac_liq(i,k),xso4(i,k)*frac_ic_so4_eff(i,k),xco2(i,k),xalk(i,k),tfld(i,k),patm,xl,xhnm(i,k),trop_option%cloud_chem_ph_solver,xH(i,k),ediag)
@@ -813,6 +819,13 @@ CONTAINS
        end if
     else
        call error_mesg ('setsox','nh4no3 must be definedx.', FATAL)
+    end if
+
+
+    if ( trop_option%aerosol_thermo .eq. AERO_LEGACY ) then
+       nh4no3_is_no3 = .false.
+    elseif ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
+       nh4no3_is_no3 = .true.
     end if
  ! ELSEIF ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
 !        nh4no3_ndx  = get_spc_ndx( 'ANO3' )
