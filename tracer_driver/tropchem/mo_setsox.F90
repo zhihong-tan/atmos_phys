@@ -10,7 +10,7 @@ module MO_SETSOX_MOD
   use field_manager_mod,     only: parse
 
   use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1p
-  use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA
+  use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA, NO_AERO
 
   implicit none
 
@@ -822,7 +822,7 @@ CONTAINS
     end if
 
 
-    if ( trop_option%aerosol_thermo .eq. AERO_LEGACY ) then
+    if ( trop_option%aerosol_thermo .eq. AERO_LEGACY .or. trop_option%aerosol_thermo .eq. NO_AERO ) then
        nh4no3_is_no3 = .false.
     elseif ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
        nh4no3_is_no3 = .true.

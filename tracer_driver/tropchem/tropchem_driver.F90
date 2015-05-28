@@ -104,7 +104,7 @@ use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
 use fms_io_mod, only: read_data
 
 use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1p, CLOUD_CHEM_LEGACY
-use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY
+use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 implicit none
 
 private
@@ -1673,6 +1673,8 @@ if    ( trim(aerosol_thermo_method)   == 'legacy' ) then
    if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacy no3'
 elseif ( trim(aerosol_thermo_method)   == 'isorropia' ) then
    trop_option%aerosol_thermo = AERO_ISORROPIA
+else ( trim(aerosol_thermo_method)   == 'no_thermo' ) then
+   trop_option%aerosol_thermo = NO_AERO
 else
    call error_mesg ('tropchem_driver_init', 'undefined aerosol thermo', FATAL )      
 end if

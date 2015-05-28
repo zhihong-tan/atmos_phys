@@ -566,7 +566,7 @@ subroutine write_namelist_values (unit, ntrace)
 !
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
-                           u_star, landfrac, dsinku, tracer, Time, &
+                           u_star, landfrac, dsinku, dt, tracer, Time, &
                            Time_next, lon, half_day, drydep_data)
 ! When formulation of dry deposition is resolved perhaps use the following?
 !                           landfr, seaice_cn, snow_area, & 
@@ -679,6 +679,7 @@ real, intent(in), dimension(:,:)    :: landfrac
 !                                       vegn_lai
 type(time_type), intent(in)         :: Time, Time_next
 type(interpolate_type),intent(inout)  :: drydep_data
+real, intent(in)                   :: dt
 real, intent(out), dimension(:,:)   :: dsinku
 
 real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel
@@ -883,15 +884,20 @@ id=size(pfull,1); jd=size(pfull,2)
      dsinku = dsinku*(1-landfrac)  
   endif
 dsinku(:,:) = MAX(dsinku(:,:), 0.0E+00)
-where(tracer>0)
-   if ( drydep_exp ) then
+if ( drydep_exp ) then
+   where(tracer>0)
       dsinku=tracer*(1. - exp(-dsinku*dt))/dt
-   else
+   elsewhere
+      dsinku=0.0
+   endwhere
+else
+   where(tracer>0)
       dsinku=dsinku*tracer
-   end if
-elsewhere
-  dsinku=0.0
-endwhere
+   elsewhere
+      dsinku=0.0
+   endwhere
+end if
+
 
 ! Now save the dry deposition to the diagnostic manager
 ! delta z = dp/(rho * grav)

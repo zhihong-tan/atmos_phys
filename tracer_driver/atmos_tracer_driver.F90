@@ -655,7 +655,7 @@ character(len=32) :: tracer_units, tracer_name
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
-                                 land, dsinku(:,:,n), &
+                                 land, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n))!, frland, frice, frsnow, &
