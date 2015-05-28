@@ -35,13 +35,11 @@ contains
   end subroutine aerosol_thermo
 
   !do_old_am3
-  subroutine old_am3_interface(rhn,tz,xnh3,xhno3,xant)
+  subroutine old_am3_interface(rh,tz,xnh3,xhno3,xant)
 
-    real, intent(in)  :: rhn !RH unitless
+    real, intent(in)  :: rh
     real, intent(inout)  :: xnh3, xhno3, xant
     real, intent(in) :: tz !T in K
-
-    real              :: rh  !RH in %
     real              :: xx0, yy1, com, com1, xkp, xra
     real              :: cnh3, chno3
 
@@ -54,7 +52,6 @@ contains
          xa3 = .816e-32, &
          xb3 = .259
 
-    RH  = rhn*100.  
     xx0 = xa0 + xb0*RH
 
     if( RH >= 90. ) then
@@ -132,12 +129,7 @@ contains
 
     tso4 = so4*air_den
     tno3 = (no3+hno3)*air_den
-
-    if ( ltracer_nit ) then
-       tnh3 = (nh3+nh4)*air_den
-    else
-       tnh3 = (nh3+nh4+no3)*air_den
-    end if
+    tnh3 = (nh3+nh4)*air_den
 
     !for now no na, cl, mg, ca, k
     tna  = 0.e0
@@ -158,7 +150,7 @@ contains
     wi(8)    = max( tmg,  small_value )
 
     !relative humidity
-    rhi      = rh
+    rhi      = rh/100
     rhi      = max( 0.01, rhi )
 !    rhi      = min( 0.98, rhi )
 

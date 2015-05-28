@@ -15,7 +15,7 @@
       integer :: nh4_ndx, nh3_ndx
       integer :: so2_ndx, so4_ndx
       integer :: ox_ndx, o3s_ndx
-      integer  :: o3s_e90_ndx, e90_ndx, e90_trop
+      integer  :: o3s_e90_ndx, e90_ndx
 !>
       private
       public :: chemdr
@@ -278,6 +278,11 @@ logical                       :: module_is_initialized = .false.
                    zint                  ! interface geopotential in km
       integer :: plev, plevp, plnplv, num_invar
       integer :: nstep
+
+      if ( .not. module_is_initialized ) then
+         call error_mesg ('chemdr','chemdr_init must be called first.', FATAL)
+      end if
+      
 
       plev = SIZE(vmr,2)
       plevp = SIZE(zi,2)
@@ -710,6 +715,9 @@ logical                       :: module_is_initialized = .false.
         so4_ndx      = get_spc_ndx( 'SO4' )
         ox_ndx       = get_spc_ndx( 'O3' )
         o3s_ndx      = get_spc_ndx( 'O3S' )
+
+        e90_ndx = get_tracer_index( MODEL_ATMOS,'e90' )
+        o3s_e90_ndx = get_spc_ndx( 'O3S_E90' )
 
         module_is_initialized = .true.
      
