@@ -1755,6 +1755,8 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
                   Rad_gases_tv%co2_for_tf_calc = Rad_gases_tv%co2_for_last_tf_calc
                   Rad_gases_tv%use_co2_for_tf_calc = .true.
                   do_co2_tf_calc_init = .false.
+               else 
+                  Rad_gases_tv%use_co2_for_tf_calc = .false.
                endif
             endif
          else  !(Rad_gases_tv%use_model_supplied_co2)
