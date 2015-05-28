@@ -190,7 +190,7 @@ real               :: min_lwc_for_cloud_chem     = 1.e-8
 real               :: frac_dust_incloud          = 0
 real               :: frac_aerosol_incloud       = 1
 real               :: cloud_pH                   = -999  !<0 do not force
-real               :: max_rh_aerosol             = 1.0      !max rh used for aerosol thermo
+real               :: max_rh_aerosol             = 9999      !max rh used for aerosol thermo
 logical            :: limit_no3                  = .true.   !for isorropia/stratosphere
 
 character(len=64)  :: aerosol_thermo_method = 'legacy'               ! other choice isorropia
@@ -265,7 +265,7 @@ namelist /tropchem_driver_nml/    &
                                check_convergence, &
                                e90_tropopause_vmr, &
                                aerosol_thermo_method, &
-			                   gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
+			       gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
                                do_h2so4_nucleation, &
                                check_convergence, &
                                cloud_chem_pH_solver, &
