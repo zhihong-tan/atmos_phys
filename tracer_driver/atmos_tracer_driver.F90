@@ -483,7 +483,7 @@ integer :: nqa  ! index of cloud amount
 integer :: n, nnn
 logical :: used
 
-
+character(len=32) :: tracer_units, tracer_name
 !-----------------------------------------------------------------------
 
 !   <ERROR MSG="tracer_driver_init must be called first." STATUS="FATAL">
@@ -1204,6 +1204,25 @@ logical :: used
    if (nt > ntp) then
       rdiag(:,:,:,ntp+1:nt) = tracer(:,:,:,ntp+1:nt)
    end if
+
+
+   !save tracer diagnostics
+   do n=1,nt
+      if ( id_tracer_diag(n) .gt. 0 ) then
+         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+              units = tracer_units)
+         if ( tracer_units .eq. "vmr" ) then
+            used  = send_data (id_tracer_diag(n),     &
+                 1.e3*rho(:,:,:)/WTMAIR * (tracer(:,:,:,n)+rdt(:,:,:,n)), &
+                 Time, is_in=is, js_in=js, ks_in=1)               
+         else
+            used  = send_data (id_tracer_diag(n),     &
+                 rho(:,:,:) * (tracer(:,:,:,n)+rdt(:,:,:,n)), &
+                 Time, is_in=is, js_in=js, ks_in=1)               
+         end if
+      end if
+   end do
+
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
