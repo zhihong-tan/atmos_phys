@@ -157,7 +157,8 @@ type(drydep_type), dimension(:), allocatable :: Drydep
 real ::                scale_aerosol_wetdep =1.0
 real ::                scale_aerosol_wetdep_snow =1.0
 character(len=64)  :: file_dry = 'depvel.nc'  ! NetCDF file for dry deposition velocities
-namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry
+logical :: drydep_exp = .false.
+namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp
 ! <---h1g,
 contains
 
@@ -883,7 +884,11 @@ id=size(pfull,1); jd=size(pfull,2)
   endif
 dsinku(:,:) = MAX(dsinku(:,:), 0.0E+00)
 where(tracer>0)
-  dsinku=dsinku*tracer
+   if ( drydep_exp ) then
+      dsinku=tracer*(1. - exp(-dsinku*dt))/dt
+   else
+      dsinku=dsinku*tracer
+   end if
 elsewhere
   dsinku=0.0
 endwhere
