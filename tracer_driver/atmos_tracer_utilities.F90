@@ -898,7 +898,6 @@ else
    endwhere
 end if
 
-
 ! Now save the dry deposition to the diagnostic manager
 ! delta z = dp/(rho * grav)
 ! delta z *rho  = dp/g

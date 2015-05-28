@@ -1673,7 +1673,7 @@ if    ( trim(aerosol_thermo_method)   == 'legacy' ) then
    if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacy no3'
 elseif ( trim(aerosol_thermo_method)   == 'isorropia' ) then
    trop_option%aerosol_thermo = AERO_ISORROPIA
-else ( trim(aerosol_thermo_method)   == 'no_thermo' ) then
+elseif ( trim(aerosol_thermo_method)   == 'no_thermo' ) then
    trop_option%aerosol_thermo = NO_AERO
 else
    call error_mesg ('tropchem_driver_init', 'undefined aerosol thermo', FATAL )      
