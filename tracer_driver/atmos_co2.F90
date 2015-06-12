@@ -508,6 +508,10 @@ if ( .not. module_is_initialized) then
       logunit=stdlog()
       write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
     endif
+    ind_sphum = get_tracer_index(MODEL_ATMOS,'sphum')
+    if (ind_sphum .le. 0) then
+      call error_mesg (trim(error_header), ' Could not find index for sphum', FATAL)
+    endif
   endif
   module_is_initialized = .TRUE.
 endif
