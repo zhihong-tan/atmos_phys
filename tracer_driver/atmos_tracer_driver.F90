@@ -206,13 +206,13 @@ public  atmos_tracer_driver,            &
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
-logical :: prevent_flux_through_ice = .false.  
+logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! when true, tracers will only be fluxed 
                                ! through the non-ice-covered portions of
                                ! ocean grid boxes
                                              
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -353,7 +353,7 @@ contains
 !     Latitude of the centre of the model gridcells
 !   </IN>
 !   <IN NAME="land" TYPE="logical" DIM="(:,:)">
-!     Land/sea mask.
+!     fraction of land in grid cell.
 !   </IN>
 !   <IN NAME="phalf" TYPE="real" DIM="(:,:,:)">
 !     Pressures on the model half levels.
@@ -408,8 +408,8 @@ contains
 !   </IN>
  subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat,  &
                            area, z_pbl, rough_mom, &
-                           frac_open_sea, &
-                           land, phalf, pfull,     &
+                           frac_open_sea,land,&
+                           phalf, pfull,           &
                            u, v, t, q, r,          &
                            rm, rdt, rdiag, dt,            &
                            u_star, b_star, q_star, &
@@ -467,7 +467,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
 real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
 real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
-real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer
+real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl         
 real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction
@@ -481,7 +481,7 @@ integer :: nqa  ! index of cloud amount
 integer :: n, nnn
 logical :: used
 
-
+character(len=32) :: tracer_units, tracer_name
 !-----------------------------------------------------------------------
 
 !   <ERROR MSG="tracer_driver_init must be called first." STATUS="FATAL">
@@ -563,6 +563,8 @@ logical :: used
         end do
       end if
 !--lwh
+
+      tracer_orig = tracer
 
 !------------------------------------------------------------------------
 ! Rediagnose meteoroligical variables. Note these parameterizations
@@ -651,13 +653,16 @@ logical :: used
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
-                                 land, dsinku(:,:,n), &
+                                 land, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n))!, frland, frice, frsnow, &
 !                                 vegn_cover, vegn_lai, &
 !                                 b_star, z_pbl, rough_mom)
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
+            if ( step_update_tracer ) then 
+               tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
+            end if
          end if
       enddo
 
@@ -757,6 +762,9 @@ logical :: used
          call atmos_radon_sourcesink (lon,lat,land,pwt,tracer(:,:,:,nradon(nnn)),  &
                                  rtnd, Time, kbot)
        rdt(:,:,:,nradon(nnn))=rdt(:,:,:,nradon(nnn))+rtnd(:,:,:)
+       if ( step_update_tracer ) then
+          tracer(:,:,:,nradon(nnn)) = tracer(:,:,:,nradon(nnn)) + rtnd(:,:,:)*dt
+       end if
     endif
  
    end do
@@ -794,6 +802,10 @@ logical :: used
 ! chemistry to the radiation
 ! 
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,1:ntp) 
+      if (step_update_tracer) then
+         tracer(:,:,:,1:ntp) = tracer(:,:,:,1:ntp) + chem_tend(:,:,:,1:ntp)*dt
+      end if
+
       if(nt.gt.(ntp+1))  then
 ! Modify the diagnostic tracers.
         tracer(:,:,:,no3)      = ozone(:,:,:) 
@@ -1045,6 +1057,25 @@ logical :: used
    if (nt > ntp) then
       rdiag(:,:,:,ntp+1:nt) = tracer(:,:,:,ntp+1:nt)
    end if
+
+
+   !save tracer diagnostics
+   do n=1,nt
+      if ( id_tracer_diag(n) .gt. 0 ) then
+         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+              units = tracer_units)
+         if ( tracer_units .eq. "vmr" ) then
+            used  = send_data (id_tracer_diag(n),     &
+                 1.e3*rho(:,:,:)/WTMAIR * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 Time, is_in=is, js_in=js, ks_in=1)               
+         else
+            used  = send_data (id_tracer_diag(n),     &
+                 rho(:,:,:) * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 Time, is_in=is, js_in=js, ks_in=1)               
+         end if
+      end if
+   end do
+
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
