@@ -198,13 +198,13 @@ public  atmos_tracer_driver,            &
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
-logical :: prevent_flux_through_ice = .false.  
+logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! when true, tracers will only be fluxed 
                                ! through the non-ice-covered portions of
                                ! ocean grid boxes
                                              
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -467,7 +467,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
 real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
 real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
-real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer
+real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_settl, dust_settl              
 real, dimension(size(r,1),size(r,2),5) ::  ssalt_emis, dust_emis                
@@ -568,6 +568,8 @@ character(len=32) :: tracer_units, tracer_name
       end if
 !--lwh
 
+      tracer_orig = tracer
+
 !------------------------------------------------------------------------
 ! Rediagnose meteoroligical variables. Note these parameterizations
 ! are not consistent with those used elsewhere in the GCM
@@ -662,6 +664,9 @@ character(len=32) :: tracer_units, tracer_name
 !                                 vegn_cover, vegn_lai, &
 !                                 b_star, z_pbl, rough_mom)
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
+            if ( step_update_tracer ) then 
+               tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
+            end if
          end if
       enddo
 
@@ -761,6 +766,9 @@ character(len=32) :: tracer_units, tracer_name
          call atmos_radon_sourcesink (lon,lat,land,pwt,tracer(:,:,:,nradon(nnn)),  &
                                  rtnd, Time, kbot)
        rdt(:,:,:,nradon(nnn))=rdt(:,:,:,nradon(nnn))+rtnd(:,:,:)
+       if ( step_update_tracer ) then
+          tracer(:,:,:,nradon(nnn)) = tracer(:,:,:,nradon(nnn)) + rtnd(:,:,:)*dt
+       end if
     endif
  
    end do
@@ -798,6 +806,10 @@ character(len=32) :: tracer_units, tracer_name
 ! chemistry to the radiation
 ! 
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,1:ntp) 
+      if (step_update_tracer) then
+         tracer(:,:,:,1:ntp) = tracer(:,:,:,1:ntp) + chem_tend(:,:,:,1:ntp)*dt
+      end if
+
       if(nt.gt.(ntp+1))  then
 ! Modify the diagnostic tracers.
         tracer(:,:,:,no3)      = ozone(:,:,:) 
@@ -1213,11 +1225,11 @@ character(len=32) :: tracer_units, tracer_name
               units = tracer_units)
          if ( tracer_units .eq. "vmr" ) then
             used  = send_data (id_tracer_diag(n),     &
-                 1.e3*rho(:,:,:)/WTMAIR * (tracer(:,:,:,n)+rdt(:,:,:,n)), &
+                 1.e3*rho(:,:,:)/WTMAIR * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
                  Time, is_in=is, js_in=js, ks_in=1)               
          else
             used  = send_data (id_tracer_diag(n),     &
-                 rho(:,:,:) * (tracer(:,:,:,n)+rdt(:,:,:,n)), &
+                 rho(:,:,:) * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
                  Time, is_in=is, js_in=js, ks_in=1)               
          end if
       end if

@@ -151,8 +151,8 @@ contains
 
     !relative humidity
     rhi      = rh/100
-    rhi      = max( 0.01, rhi )
-!    rhi      = min( 0.98, rhi )
+    rhi      = max( 0.01,  rhi )
+    rhi      = min( 0.995, rhi )
 
     ! perform aerosol thermodynamic equilibrium 
     ! isoropia can be found in isoropiaiicode.f
