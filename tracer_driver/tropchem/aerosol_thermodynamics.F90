@@ -8,6 +8,7 @@ module aerosol_thermodynamics
 
   integer :: AERO_LEGACY    = 1
   integer :: AERO_ISORROPIA = 2
+  integer :: NO_AERO        = 3
 
 contains
 
