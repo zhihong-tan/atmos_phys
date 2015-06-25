@@ -57,6 +57,8 @@ logical :: include_adjustment_for_wetdep = .true.  ! account for large-scale
                                                    ! deposition and saturation
                                                    ! adjustment when calculating
 						   ! Bergeron fraction for wetdep
+						   ! (to test compatability with
+						   ! treatment in strat_cloud_legacy)
 
 namelist / rotstayn_klein_mp_nml /   rk_alt_adj_opt, &
                                      rk_act_only_if_ql_gt_qmin, &
