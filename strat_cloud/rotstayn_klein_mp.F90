@@ -2620,14 +2620,12 @@ INTEGER,                             INTENT(IN)   :: otun
          do k=1,kdim
          do j=1,jdim
          do i=1,idim
-               qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
-                          sum_freeze(i,j,k)
+               qldt_sum = sum_berg(i,j,k) + sum_freeze(i,j,k) + sum_rime(i,j,k)
 	       if (qldt_sum > 0.)  then
                  if (include_homogeneous_for_wetdep) then
                     f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k))/qldt_sum
                  else
-                    f_snow_berg(i,j,k) = (sum_berg(i,j,k) + &
-                                sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
+                    f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
 	         endif
                else
                  f_snow_berg(i,j,k) = 0.
