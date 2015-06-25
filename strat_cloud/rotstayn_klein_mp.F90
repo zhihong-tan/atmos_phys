@@ -50,10 +50,19 @@ logical :: use_inconsistent_lh = .true.         ! use the legacy latent
                                                 ! (this is non-entropy-
                                                 ! conserving and physically
                                                 ! unrealistic ??)
+logical :: include_homogeneous_for_wetdep = .true. ! treat homogeneous freezing
+                                                   ! as Bergeron process for
+						   ! wetdep
+logical :: include_adjustment_for_wetdep = .true.  ! account for large-scale
+                                                   ! deposition and saturation
+                                                   ! adjustment when calculating
+						   ! Bergeron fraction for wetdep
 
 namelist / rotstayn_klein_mp_nml /   rk_alt_adj_opt, &
                                      rk_act_only_if_ql_gt_qmin, &
-                                     use_inconsistent_lh
+                                     use_inconsistent_lh, &
+				     include_homogeneous_for_wetdep, &
+				     include_adjustment_for_wetdep
 
 
 !-------------------------------------------------------------------------
@@ -2584,21 +2593,47 @@ INTEGER,                             INTENT(IN)   :: otun
                   
 !-----------------------------------------------------------------------
 !  Used for BC aerosol in-cloud scavenging:
-      do k=1,kdim
-        do j=1,jdim
-          do i=1,idim
-            qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
-                       sum_ice_adj(i,j,k) + sum_cond(i,j,k) +   &
-                       sum_freeze(i,j,k)
-            if (qldt_sum > 0.)  then
-              f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k) + &
-                          sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum 
-            else
-              f_snow_berg(i,j,k) = 0.
-            endif
-          end do
-        end do
-      end do
+      if (include_adjustment_for_wetdep) then
+         do k=1,kdim
+         do j=1,jdim
+         do i=1,idim
+               qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
+                          sum_ice_adj(i,j,k) + sum_cond(i,j,k) +   &
+                          sum_freeze(i,j,k)
+	       if (qldt_sum > 0.)  then
+                  if (include_homogeneous_for_wetdep) then
+                     f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k) + &
+                                 sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
+                  else
+                     f_snow_berg(i,j,k) = (sum_berg(i,j,k) + &
+                                 sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
+	          endif
+               else
+                 f_snow_berg(i,j,k) = 0.
+               endif
+         end do
+         end do
+         end do
+      else
+         do k=1,kdim
+         do j=1,jdim
+         do i=1,idim
+               qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
+                          sum_freeze(i,j,k)
+	       if (qldt_sum > 0.)  then
+                 if (include_homogeneous_for_wetdep) then
+                    f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k))/qldt_sum
+                 else
+                    f_snow_berg(i,j,k) = (sum_berg(i,j,k) + &
+                                sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
+	         endif
+               else
+                 f_snow_berg(i,j,k) = 0.
+               endif
+         end do
+         end do
+         end do
+      endif
         
 
 
