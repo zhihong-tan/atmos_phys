@@ -137,8 +137,8 @@ public :: &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-character(len=128) :: Version = '$Id$'
-character(len=128) :: Tagname = '$Name$'
+character(len=128) :: Version = '$Id: micro_mg.F90,v 1.1.2.2.2.1 2014/05/16 14:50:42 Huan.Guo Exp $'
+character(len=128) :: Tagname = '$Name:  $'
 #endif
  
 #ifndef GFDL_COMPATIBLE_MICROP
@@ -185,12 +185,12 @@ real(r8), parameter :: ninst = 0.1e6_r8     ! ice num concentration when nicons=
 ! For now, just setting it as a parameter here
 #ifndef GFDL_COMPATIBLE_MICROP
 real(r8), parameter :: rhosn = 250._r8  ! bulk density snow
+real(r8), parameter :: rhoi = 500._r8   ! bulk density ice
 #else
 !  rhosn is in nml used by GFDL code. see below.
 !  this was added in nml because Marc Salzmann used a value of 100 
 !  with his model, while MG use a value of 250., as seen here.
 #endif
-real(r8), parameter :: rhoi = 500._r8   ! bulk density ice
 real(r8), parameter :: rhow = 1000._r8  ! bulk density liquid
 
 ! fall speed parameters, V = aD^b (V is in m/s)
@@ -314,7 +314,7 @@ logical    :: rho_factor_in_max_vt = .true.
 real       :: max_rho_factor_in_vt = 1.0
 real       :: lowest_temp_for_sublimation = 180._r8
 real       :: rhosn = 100._r8
-
+real       :: rhoi  = 500._r8
 ! switch for specification rather than prediction of droplet and crystal number
 ! note: number will be adjusted as needed to keep mean size within bounds,
 ! even when specified droplet or ice number is used
@@ -355,6 +355,37 @@ logical           :: liu_in = .false.
                              ! True = Liu et al 2007 Ice nucleation
                              ! False = cooper fixed ice nucleation (MG2008)
 
+logical           :: use_Meyers = .false.
+! Ni (/m3) = 1000 * exp( (12.96* [(esl-esi)/esi]) - 0.639 )
+!  Figure 9.3 of Rogers and Yau (1998) shows the nearly linear
+!       variation of [(esl-esi)/esi] from 0. at 273.16K to 0.5 at 
+!       233.16K.  Analytically this is parameterized as (tfreeze-T)/80.
+!
+!  Ni (/m3) = 1000 * exp( 12.96* (tfreeze-T)/80 - 0.639 )
+
+
+!---> h1g, 2014-05-19
+logical           :: CldFallNew  = .true.
+logical           :: SedBugFix   = .true.
+logical           :: ActNew      = .true.
+real              :: tc_cooper   = -35.0
+real              :: IceFallFac  = 1.0
+real              :: SnowFallFac = 1.0
+logical           :: use_K2013_auto = .false.
+logical           :: use_K2013_accr = .false.
+logical           :: use_const_accretion_scale = .false.
+logical           :: include_contact_freeze_in_berg = .false.
+real              :: Bergeron_fac = 1.0
+logical           :: include_homo_freez_in_qn = .true.      ! h1g, 2014-07-22
+logical           :: include_contact_freez_in_qn = .true.   ! h1g, 2014-07-23
+logical           :: include_immersion_freez_in_qn = .true. ! h1g, 2014-07-23
+real              :: r_cri  = 0.0
+real              :: q_cri
+logical           :: use_RK_auto = .false.
+logical           :: use_RK_accr = .false.
+!<--- h1g, 2014-05-19
+
+
 namelist / micro_mg_nml /   &
                  dcs, min_diam_ice,  &
                  allow_all_cldtop_collection, &
@@ -363,15 +394,24 @@ namelist / micro_mg_nml /   &
 !--> cjg: modifications incorporated from Huan's code
                  allow_rain_num_evap, accretion_scale, &
 !<--cjg
-                 rhosn,               &  ! h1g
+                 rhosn,  rhoi,                 &  ! h1g
                  nccons, ncnst,                &  ! cjg
                  nicons, ninst,                &  ! cjg
                  liu_in,                       &  ! h1g
                  use_qcvar_in_accretion,       &  ! h1g
                  qcvar_min4accr,               &  ! h1g
                  qcvar_max4accr,               &  ! h1g
-                 accretion_scale_max              ! h1g
+                 accretion_scale_max,          &  ! h1g
+                 CldFallNew, SedBugFix, ActNew, use_Meyers, tc_cooper,      & !h1g
+                 IceFallFac, SnowFallFac, use_K2013_auto, use_K2013_accr,   & !h1g
+                 use_const_accretion_scale, include_contact_freeze_in_berg, & !h1g
+                 Bergeron_fac,                                              & !h1g  
+                 include_homo_freez_in_qn,                                  & !h1g
+                 include_contact_freez_in_qn,                               & !h1g
+                 include_immersion_freez_in_qn, r_cri,                      & !h1g
+                 use_RK_auto,  use_RK_accr
 #endif
+
 
 ! Generic interface for packing routines
 interface pack_array
@@ -1452,10 +1492,22 @@ if (present(qcvar_clubbin)) &
   rhof = MIN (rhof, max_rho_factor_in_vt)
 #endif
 
+! --->h1g, add namelist variables, 2014-07-01
+! Zhao et al., ACP 2013, Table 1, 
+! ai: 350-1400 (s^-1);     as: 5.86-23.44 (m^0.59 s^-1)  
+! IceFallFac: 0.5 -- 2;    SnowFallFac: 0.5 -- 2
   arn=ar*rhof
-  asn=as*rhof
-  acn=g*rhow/(18._r8*mu)
-  ain=ai*(rhosu/rho)**0.35_r8
+  asn=as*rhof * SnowFallFac
+
+  if( CldFallNew ) then
+    acn=g*rhow/(18._r8*mu)
+    ain=ai * IceFallFac *(rhosu/rho)**0.35_r8
+  else
+    acn = ac * rhof
+    ain = ai * rhof * IceFallFac
+  endif 
+! <---h1g, 2014-07-01
+
 
   !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
   ! Get humidity and saturation vapor pressures
@@ -1507,6 +1559,12 @@ if (present(qcvar_clubbin)) &
 ! define particles available on this step (dum2a).
     if ( liu_in ) then
        dum2a(i,k) = naai(i,k)
+! --->h1g, 2014-05-30 add Meyers ice nucleation formula (Only temperature dependent)
+    elseif ( use_Meyers ) then
+       dum2a(i,k) =  (exp(12.96* (tmelt -t(i,k))/80 - 0.639)) *1000._r8
+       dum2a(i,k)= ( dum2a(i,k) )/rho(i,k) ! convert from m-3 to kg-1
+! <--- h1g,  2014-05-30 
+   
     elseif ( Nml%do_ice_nucl_wpdf ) THEN
       if (total_activation) then
         if (Nml%activate_all_ice_always) then
@@ -1527,7 +1585,7 @@ if (present(qcvar_clubbin)) &
       dum2a(i,k)=0.005_r8*exp(0.304_r8*(tmelt -t(i,k)))*1000._r8
 ! put limit on number of nucleated crystals, set to number at T=-30 C
 ! cooper (limit to value at -35 C)
-      dum2a(i,k)=min(dum2a(i,k),208.9e3_r8)/rho(i,k) ! convert from m-3 to kg-1
+      dum2a(i,k)=min(dum2a(i,k),5.0_r8*exp(0.304_r8*(-tc_cooper)) )/rho(i,k) ! convert from m-3 to kg-1
     endif
   end do
   end do
@@ -1587,6 +1645,12 @@ if (present(qcvar_clubbin)) &
 
             if ( liu_in) then
                dum2i(i,k) = naai(i,k)
+! --->h1g, 2014-05-30 add Meyers ice nucleation formula (Only temperature dependent)
+            elseif ( use_Meyers ) then
+               dum2i(i,k) =  (exp(12.96* (tmelt -t(i,k))/80 - 0.639)) *1000._r8
+               dum2i(i,k)= ( dum2i(i,k) )/rho(i,k) ! convert from m-3 to kg-1
+! <--- h1g,  2014-05-30 
+
             elseif ( Nml%do_ice_nucl_wpdf ) THEN
  
 ! if aerosols interact with ice set number of activated ice nuclei
@@ -1600,7 +1664,7 @@ if (present(qcvar_clubbin)) &
               dum2i(i,k)=0.005_r8*exp(0.304_r8*(tmelt    -t(i,k)))*1000._r8
 ! put limit on number of nucleated crystals, set to number at T=-30 C
 ! cooper (limit to value at -35 C)
-            dum2i(i,k)=min(dum2i(i,k),208.9e3_r8)/rho(i,k) ! convert from
+            dum2i(i,k)=min(dum2i(i,k),5.0_r8*exp(0.304_r8*(-tc_cooper)))/rho(i,k) ! convert from
 !                                                            ! m-3 to kg-1
             endif
           else
@@ -1836,11 +1900,16 @@ if (present(qcvar_clubbin)) &
 #ifdef GFDL_COMPATIBLE_MICROP
 !  Note that ice nucleation calculated later on in code for 
 !  Tiedtke macrophysics case.
-            if (.not. tiedtke_macrophysics) then
 
-     if (do_cldice) then
-      
-      if( liu_in ) then
+
+if ( ActNew ) then
+  
+  if (.not. tiedtke_macrophysics) then
+    if (do_cldice) then
+
+! --->h1g, 2014-05-30 add Meyers ice nucleation option
+      if( liu_in .or. use_Meyers ) then
+! <--- h1g,  2014-05-30 
         where (dum2i > 0._r8 .and. t < icenuct .and. &
           relhum*esl/esi > rhmini+0.05_r8)
                   nnuccd = (dum2i - ni/icldm)/deltat*icldm
@@ -1850,6 +1919,7 @@ if (present(qcvar_clubbin)) &
            nimax = 0._r8
            mnuccd = 0._r8
         end where
+
       elseif (total_activation) then
         where (dum2i > 0._r8 .and. t < icenuct .and. &
           relhum*esl/esi > rhmini+0.05_r8)
@@ -1865,8 +1935,7 @@ if (present(qcvar_clubbin)) &
            mnuccd = 0._r8
         end where
 
-
-     else if (dqa_activation) then
+      else if (dqa_activation) then
         where (dum2i > 0._r8 .and. t < icenuct .and. &
           relhum*esl/esi > rhmini+0.05_r8)
 
@@ -1879,30 +1948,98 @@ if (present(qcvar_clubbin)) &
            nimax = 0._r8
            mnuccd = 0._r8
         end where
-      endif
-           nimax = dum2i*icldm
 
-         if (.not. dqa_activation) then
-           !Calc mass of new particles using new crystal mass...
-           !also this will be multiplied by mtime as nnuccd is...
-
-           mnuccd = nnuccd * mi0
-
-           !  add mnuccd to cmei....
-           cmei = cmei + mnuccd
-        
-           !  limit cmei
-           !-------------------------------------------------------
-           cmei = min(cmei,(q-qvi)/calc_ab(t, qvi, xxls)/deltat)
-
-           ! limit for roundoff error
-           cmei = cmei * omsm
-         else
+!---> h1g, for cooper nucleation, 2014-05-29
+      else
+        where (dum2i > 0._r8 .and. t < icenuct .and. &
+          relhum*esl/esi > rhmini+0.05_r8)
+                  nnuccd = (dum2i - ni/icldm)/deltat*icldm
+                  nnuccd = max(nnuccd, 0._r8)
+        elsewhere
+           nnuccd = 0._r8
+           nimax = 0._r8
            mnuccd = 0._r8
-         endif
+        end where
+!<--- h1g, 2014-05-29
+      endif ! liu_in .or. use_Meyers 
+      nimax = dum2i*icldm
 
-     end if  ! do_cldice
-     end if  ! .not. tiedtke
+      if (.not. dqa_activation) then
+       !Calc mass of new particles using new crystal mass...
+       !also this will be multiplied by mtime as nnuccd is...
+        mnuccd = nnuccd * mi0
+
+       !  add mnuccd to cmei....
+        cmei = cmei + mnuccd
+        
+       !  limit cmei
+       !-------------------------------------------------------
+        cmei = min(cmei,(q-qvi)/calc_ab(t, qvi, xxls)/deltat)
+
+       ! limit for roundoff error
+        cmei = cmei * omsm
+      else
+        mnuccd = 0._r8
+      endif ! dqa_activation
+    end if  ! do_cldice
+  end if  ! .not. tiedtke
+
+
+
+else !use cldwat2m_micro.F90 activation
+  do k = 1, nlev
+    do i = 1, mgncol
+
+      if( .not. tiedtke_macrophysics) then
+        if (do_cldice) then
+          if (dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct       .and. &
+                    relhum(i,k)*esl(i,k)/esi(i,k).gt. rhmini+0.05_r8) then
+            if( liu_in .or. use_Meyers ) then
+              nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
+                                                                icldm(i,k)
+              nnuccd(i,k) = max(nnuccd(i,k), 0._r8)
+            elseif (total_activation) then
+              nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/mtime*  &
+                                                                icldm(i,k)
+              nnuccd(i,k) = max(nnuccd(i,k), 0._r8)
+            else if (dqa_activation) then
+              nnuccd(i,k) = max(delta_cf(i,k),0._r8) *dum2i(i,k)/deltatin
+            else  ! for cooper nucleation, 2014-05-29
+              nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*  &
+                                                                icldm(i,k)
+              nnuccd(i,k) = max(nnuccd(i,k), 0._r8)
+            endif !  liu_in .or. use_Meyers
+            nimax(i,k) = dum2i(i,k)*icldm(i,k)
+
+            if (.not. dqa_activation) then
+            !Calc mass of new particles using new crystal mass...
+            !also this will be multiplied by mtime as nnuccd is...
+              mnuccd(i,k) = nnuccd(i,k) * mi0
+            !  add mnuccd to cmei....
+              cmei(i,k) = cmei(i,k) + mnuccd(i,k)
+            !  limit cmei
+            !-------------------------------------------------------
+              cmei(i,k) = min(cmei(i,k),(q(i,k)-qvi(i,k))/calc_ab(t(i,k), qvi(i,k), xxls)/deltat)
+
+            ! limit for roundoff error
+              cmei(i,k) = cmei(i,k) * omsm
+            else
+              mnuccd(i,k) = 0._r8
+            endif ! dqa_activation
+
+          else ! NOT (  dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct  ... )                    
+            nnuccd(i,k) = 0._r8
+            nimax(i,k)  = 0._r8
+            mnuccd(i,k) = 0._r8
+          end if  ! (  dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct  ... )    
+        end if  ! do_cldice
+      end if  ! .not. tiedtke
+
+    enddo ! do i = 1, mgncol
+  enddo ! do k = 1, nlev
+
+endif !ActNew
+
 #else
      ! ice nucleation if activated nuclei exist at t<-5C AND rhmini + 5%
      !-------------------------------------------------------
@@ -2152,13 +2289,13 @@ if (present(qcvar_clubbin)) &
          npccn2(i,k) = max (delta_cf(i,k), 0._r8)*dum2l  (i,k)/deltatin
        END IF
         ncmax(i,k) = dum2l  (i,k)*cldm(i,k)
-       endif ! (clubb_active)
-    else
+      endif ! (clubb_active)
+     else
        npccn2(i,k)=0._r8
        ncmax(i,k) = 0._r8
-    end if  
-      end do
-      end do
+     end if  
+    end do
+   end do
 #endif
 
      !=========================================================
@@ -2529,17 +2666,25 @@ if (present(qcvar_clubbin)) &
            else
              accr_scale = accretion_scale
            endif
-        call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), &
+        call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), rho(i,k), umr(i,k), &
             qcvar_clubb(i,k), accr_scale      , pra(i,k), npra(i,k))
         end do
        else
         do i=1,mgncol
-        call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), &
-             relvar(i,k), accre_enhan(i,k), pra(i,k), npra(i,k))
+! ---> h1g, boost accretion in MG, 2014-07-17 
+         if( use_const_accretion_scale ) then
+          call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), rho(i,k), umr(i,k), &
+               relvar(i,k), accretion_scale, pra(i,k), npra(i,k))
+         else
+          call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), rho(i,k), umr(i,k), &
+               relvar(i,k), accre_enhan(i,k), pra(i,k), npra(i,k))
+         endif 
+! <--- h1g, 2014-07-17
+
         end do
        endif
 #else
-        call accrete_cloud_water_rain(qric(:,k), qcic(:,k), ncic(:,k), &
+        call accrete_cloud_water_rain(qric(:,k), qcic(:,k), ncic(:,k), rho(i,k), umr(i,k), &
              relvar(:,k), accre_enhan(:,k), pra(:,k), npra(:,k))
 #endif
 
@@ -3628,6 +3773,15 @@ if (present(qcvar_clubbin)) &
            dumc(i,k) = dumc(i,k)-faltndc*deltat/nstep
            dumnc(i,k) = dumnc(i,k)-faltndnc*deltat/nstep
 
+! ---> h1g, 2014-05-23 keep the sedimentation bugs in previous MG versions
+           if( .not. SedBugFix ) then   !sedimentation increases with pressure (or decreases with altitude)     
+             Fni(K) = MAX(Fni(K)/pdel(i,K), Fni(K-1)/pdel(i,K-1))*pdel(i,K)
+             FI(K) = MAX(FI(K)/pdel(i,K), FI(K-1)/pdel(i,K-1))*pdel(i,K)
+             fnc(k) = max(fnc(k)/pdel(i,k), fnc(k-1)/pdel(i,k-1))*pdel(i,k)
+             Fc(K) = MAX(Fc(K)/pdel(i,K), Fc(K-1)/pdel(i,K-1))*pdel(i,K)
+           endif  ! SedBugFix 
+! <--- h1g, 2014-05-23
+
         end do   !! k loop
 
         ! units below are m/s
@@ -3779,6 +3933,7 @@ if (present(qcvar_clubbin)) &
                  nitend(i,k)=nitend(i,k)+dum*3._r8*dumc(i,k)/(4._r8*3.14_r8*1.563e-14_r8* &
                       500._r8)/deltat
                  qctend(i,k)=((1._r8-dum)*dumc(i,k)-qc(i,k))/deltat
+                 if ( include_homo_freez_in_qn ) &        ! h1g, 2014-07-22
                  nctend(i,k)=((1._r8-dum)*dumnc(i,k)-nc(i,k))/deltat
                  tlat(i,k)=tlat(i,k)+xlf*dum*dumc(i,k)/deltat
 
@@ -4503,10 +4658,20 @@ if (present(qcvar_clubbin)) &
                      sum_ice_adj(i,k) + MAX(sum_bergs(i,k), 0.0) + &
                      sum_freeze(i,k) + sum_freeze2(i,k) + sum_splinter(i,k)
           if (ABS(qldt_sum) > 0.0            ) then
+! ---> h1g, 2014-07-18, add option of including contact freeze in bergeron
+           if( include_contact_freeze_in_berg ) then
             f_snow_berg_l(i,k) = (sum_berg(i,k) + sum_cond(i,k) +   &
-                                sum_ice_adj(i,k) +    &
-                                MAX( sum_bergs(i,k), 0.0) +     &
-                                sum_freeze (i,k))/qldt_sum        
+                                  sum_ice_adj(i,k) +    &
+                                  MAX( sum_bergs(i,k), 0.0) +     &
+                                  sum_freeze (i,k) + sum_freeze2(i,k) )/qldt_sum
+           else
+            f_snow_berg_l(i,k) = (sum_berg(i,k) + sum_cond(i,k) +   &
+                                  sum_ice_adj(i,k) +    &
+                                  MAX( sum_bergs(i,k), 0.0) +     &
+                                  sum_freeze (i,k) + mnuccctot(i,k) )/qldt_sum  ! h1g 2015-06-05
+
+           endif
+! <--- h1g, 2014-07-18
           else
             f_snow_berg_l(i,k) = 0._r8
           endif
@@ -4621,24 +4786,27 @@ elemental subroutine size_dist_param_ice(qiic, niic, lami, n0i)
   real(r8), intent(out) :: lami
   real(r8), intent(out) :: n0i
 
+
+  ! local parameters
+#ifdef GFDL_COMPATIBLE_MICROP
+  real(r8)            :: lammini 
+  real(r8)            :: lammaxi 
+  real(r8)            :: ci
+#else
+  real(r8), parameter :: lammaxi = 1._r8/10.e-6_r8
+  real(r8), parameter :: lammini = 1._r8/(2._r8*dcs)
   ! particle mass-diameter relationship
   ! currently we assume spherical particles for cloud ice/snow
   ! m = cD^d
   ! cloud ice mass-diameter relationship
   real(r8), parameter :: ci = rhoi*pi/6._r8
 
-  ! local parameters
-#ifdef GFDL_COMPATIBLE_MICROP
-  real(r8)            :: lammini 
-  real(r8)            :: lammaxi 
-#else
-  real(r8), parameter :: lammaxi = 1._r8/10.e-6_r8
-  real(r8), parameter :: lammini = 1._r8/(2._r8*dcs)
 #endif
 
 #ifdef GFDL_COMPATIBLE_MICROP
   lammini = 1._r8/(2._r8*dcs)
   lammaxi = 1._r8/min_diam_ice
+  ci = rhoi*pi/6._r8
 #endif
 
   if (qiic > qsmall) then
@@ -4959,7 +5127,7 @@ elemental subroutine ice_deposition_sublimation_init(deltat, t, q, qc, qi, ni, &
 #endif
                  
         ! calculate Bergeron process
-        berg = epsi*(qvl-qvi)/ab
+        berg = epsi*(qvl-qvi)/ab * Bergeron_fac  ! h1g, 2014-07-20
                  
         ! multiply by cloud fraction
         berg = berg*min(icldm,lcldm)
@@ -5058,7 +5226,7 @@ elemental subroutine ice_deposition_sublimation_init(deltat, t, q, qc, qi, ni, &
           ! max berg is val which removes all ice supersaturation from vapor phase. 
           cmei=min(cmei,(q-qvl*esi/esl)/ab/deltat)
 #ifdef GFDL_COMPATIBLE_MICROP
-    endif
+    endif ! .not. tiedtke_macrophysics
 #endif
 #ifdef GFDL_COMPATIBLE_MICROP
 ! Marc includes a restriction on berg at T < -40C
@@ -5146,7 +5314,10 @@ elemental subroutine kk2000_liq_autoconversion(qcic, ncic, rho, relvar, &
      nprc_denom = cons22
   end if
 
-  if (qcic .ge. icsmall) then
+  q_cri = 4._r8/3._r8*pi*rhow*(r_cri**3) * ncic 
+  q_cri = max (icsmall, q_cri)
+
+  if (qcic .ge. q_cri) then
 
      ! nprc is increase in rain number conc due to autoconversion
      ! nprc1 is decrease in cloud droplet conc due to autoconversion
@@ -5154,9 +5325,16 @@ elemental subroutine kk2000_liq_autoconversion(qcic, ncic, rho, relvar, &
      ! assume exponential sub-grid distribution of qc, resulting in additional
      ! factor related to qcvar below
      ! hm switch for sub-columns, don't include sub-grid qc
-     
+    if ( use_K2013_auto ) then
+     prc = prc_coef * &
+          7.98e10_r8 * qcic**4.22_r8 * (ncic/1.e6_r8*rho)**(-3.01_r8)
+    elseif ( use_RK_auto ) then
+     prc =  &
+          32681 * qcic**2.33_r8 * (ncic*rho*rhow)**(-0.33_r8)
+    else 
      prc = prc_coef * &
           1350._r8 * qcic**2.47_r8 * (ncic/1.e6_r8*rho)**(-1.79_r8)
+    endif
      nprc = prc/nprc_denom
      nprc1 = prc/(qcic/ncic)
 
@@ -5571,9 +5749,9 @@ end subroutine heterogeneous_rain_freezing
 ! gravitational collection kernel, droplet fall speed neglected
 
 #ifdef GFDL_COMPATIBLE_MICROP
-          subroutine accrete_cloud_water_rain(qric, qcic, ncic, &
+          subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, umr, &
 #else
-elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, &
+elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, umr, &
 #endif
                      relvar, accre_enhan, pra, npra)
 
@@ -5588,6 +5766,13 @@ elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, &
   real(r8), intent(in) :: relvar
   real(r8), intent(in) :: accre_enhan
 
+  ! air density
+  real(r8), intent(in) :: rho_air
+  ! Fallspeeds
+  ! mass-weighted
+  real(r8), intent(in) :: umr ! rain
+
+
   ! Output tendencies
   real(r8), intent(out) :: pra  ! MMR
   real(r8), intent(out) :: npra ! Number
@@ -5595,6 +5780,11 @@ elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, &
   ! Coefficient that varies for subcolumns
   real(r8) :: pra_coef
 
+  real(r8) :: rad_liq
+
+  rad_liq = (0.75*qcic/ncic /pi /rhow)**(1.0/3.0)
+  rad_liq = rad_liq*1.e6
+ 
   if (microp_uniform) then
      pra_coef = 1._r8
   else
@@ -5605,8 +5795,15 @@ elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, &
 
      
      ! include sub-grid distribution of cloud water
+    if ( use_K2013_accr ) then
+     ! Kogan, JAS 2013, PP1423-1436
+     pra = pra_coef * 8.51_r8*(qcic**1.05_r8)*(qric**0.98_r8)
+    elseif ( use_RK_accr ) then
+     pra =  65.772565* (rad_liq**2) / (rad_liq**2 + 20.5)* &
+           ((qric*rho_air*umr/rhow)**(7.0/9.0)) * qcic
+    else
      pra = pra_coef * 67._r8*(qcic*qric)**1.15_r8
-
+    endif
      npra = pra/(qcic/ncic)
 
   else
@@ -5945,7 +6142,7 @@ elemental subroutine bergeron_process(t, rho, dv, mu, sc, qvl, qvi, asn, &
           f2s*(asn*rho/mu)**0.5_r8* &
           sc**(1._r8/3._r8)*cons14/ &
           (lams**(5._r8/2._r8+bs/2._r8)))
-     bergs = eps*(qvl-qvi)/ab
+     bergs = eps*(qvl-qvi)/ab * Bergeron_fac  ! h1g, 2014-07-20
   else
      bergs = 0._r8
   end if
