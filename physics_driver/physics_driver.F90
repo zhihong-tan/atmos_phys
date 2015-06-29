@@ -143,7 +143,7 @@ use grey_radiation_mod,       only: grey_radiation_init, grey_radiation, &
                                     grey_radiation_end
 
 use clubb_driver_mod,         only: clubb_init, clubb, clubb_end
-
+use monin_obukhov_mod,        only: monin_obukhov_init
 #ifdef SCM
 ! Option to add SCM radiative tendencies from forcing to lw_tendency
 ! and radturbten
@@ -1047,6 +1047,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 
       end do
 
+      call monin_obukhov_init
 !---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
