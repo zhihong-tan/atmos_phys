@@ -50,9 +50,18 @@
   real    :: b_louis      = 9.4
   real    :: cmstar_louis = 7.4
   real    :: chstar_louis = 5.3
-       
+
+! add by danli
+  real    :: pr           = 1
+  real    :: lRi          = 0.5
+  real    :: alsm_HBC     = 7
+  logical :: do_stable_HBC = .false.
+
+
+
   NAMELIST / stable_bl_turb_nml / akmax, alpha, alsm, alsh, fmin, &
-                                  hpbl_cap, diff_min, ri_crit
+                                  hpbl_cap, diff_min, ri_crit, &
+                                  pr, lRi, alsm_HBC, do_stable_HBC
 
 !---------------------------------------------------------------------
 ! DIAGNOSTICS FIELDS 
@@ -199,7 +208,7 @@ real :: missing_value = -999.
         dsdzh, shear, buoync, Ri, Ritmp, fm, fh, lm, lh, xxm1, xxm2, &
         phi, zfunc, cmtmp, chtmp, fmtmp, fhtmp
 
-  real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3))  :: mask, hleff
+  real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3))  :: mask, hleff, akm_hbc
   real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3))  :: zfull_ag, slv
   real, dimension(SIZE(um,1),SIZE(um,2),SIZE(um,3)+1):: zhalf_ag
 
@@ -221,6 +230,7 @@ real :: missing_value = -999.
 ! --- Zero out output arrays
     akm(:,:,:) = 0.0
     akh(:,:,:) = 0.0
+    akm_hbc(:,:,:) = 0.0
   z_sbl(:,:)   = 0.0
   f_sbl(:,:)   = 0.0
   
@@ -414,15 +424,39 @@ real :: missing_value = -999.
 
   shear(:,:,:) = SQRT( shear(:,:,:) )
 
+
 ! --- Momentum
-  xxm1(:,:,:)    = lm(:,:,:) * lm(:,:,:) * fm(:,:,:)
+   xxm1(:,:,:)    = lm(:,:,:) * lm(:,:,:) * fm(:,:,:)
    akm(:,:,2:kx) = xxm1(:,:,1:kxm) * shear(:,:,1:kxm) 
-  where (akm .lt. diff_min) akm = 0.0
-  where (akm .gt. akmax) akm = akmax
-  
 ! --- Heat and Moisture
   xxm1(:,:,:)    = lh(:,:,:) * lh(:,:,:) * fh(:,:,:)
    akh(:,:,2:kx) = xxm1(:,:,1:kxm) * shear(:,:,1:kxm)
+
+! the following code is modified by danli
+! note the modifications only occur in the atmospheric boundary layer
+! above the atmopsheric boundary layer, no modifications 
+
+
+  if (do_stable_HBC) then
+
+
+	where ( Ri .gt. 0.)
+
+        akm(:,:,2:kx) =  (1.0 / (  1.0 / (vonkarm*zhalf_ag(:,:,2:kx)) + 1.0/alsm_HBC + Ri(:,:,1:kxm) / lRi) ) **2 * shear(:,:,1:kxm)
+	akh(:,:,2:kx) =  akm(:,:,2:kx)/pr 
+	
+        end where
+
+  endif   
+
+
+       
+
+
+
+
+  where (akm .lt. diff_min) akm = 0.0
+  where (akm .gt. akmax) akm = akmax
   where (akh .lt. diff_min) akh = 0.0
   where (akh .gt. akmax) akh = akmax
 
@@ -555,4 +589,5 @@ subroutine STABLE_BL_TURB_END
  end subroutine STABLE_BL_TURB_END
 
 !#######################################################################
-  end MODULE STABLE_BL_TURB_MOD
+  end MODULE STABLE_BL_TURB_MOD        
+
