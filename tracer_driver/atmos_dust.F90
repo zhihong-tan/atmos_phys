@@ -610,6 +610,7 @@ end subroutine atmos_dust_endts
     if (do_emission) &
          call interpolator_end (dust_source_interp)
     module_is_initialized = .FALSE.
+    if(.not. do_dust) return
     do_dust = .FALSE.
     do i = 1,n_dust_tracers
        deallocate(dust_tracers(i)%dust_setl)

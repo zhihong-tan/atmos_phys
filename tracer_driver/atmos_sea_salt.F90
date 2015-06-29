@@ -241,8 +241,6 @@ subroutine atmos_seasalt_sourcesink1 ( &
   real, dimension(size(pfull,3))  :: vdep, seasalt_conc0, seasalt_conc1
   integer :: logunit, istep, nstep
 
-  logunit = stdlog()
-
   id=size(seasalt,1); jd=size(seasalt,2); kd=size(seasalt,3)
 
   seasalt_emis(:,:) = 0.0
@@ -260,7 +258,10 @@ subroutine atmos_seasalt_sourcesink1 ( &
               endif
               if (ocn_flx_fraction (i,j).gt.critical_sea_fraction) then
                 if (seasaltra .lt. 0.01e-6 .and. mpp_pe() == mpp_root_pe()) then
+!$OMP critical (SEA_SALT_WRITE_LOG)
+                  logunit = stdlog()
                   write (logunit,*) "***WARNING (atmos_sea_salt): lowest radius of seasalt aerosol should be greater than 0.01E-6 m"
+!$OMP end critical (SEA_SALT_WRITE_LOG)
                 endif
                 r=seasaltra
                 dr= (seasaltrb - seasaltra)/float(nr)
@@ -703,6 +704,9 @@ subroutine atmos_sea_salt_end
  
     integer :: i
     module_is_initialized = .FALSE.
+
+    if(.not.do_seasalt) return
+    
     do_seasalt = .FALSE.
     deallocate(seasalt_tracers)
 end subroutine atmos_sea_salt_end

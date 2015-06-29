@@ -241,7 +241,6 @@ integer :: co2_clock = 0
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
 logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
 
-integer, dimension(6) :: itime   ! JA's time (simpler than model time) 
 integer :: nsphum  ! Specific humidity parameter
 
 integer :: no3 = 0
@@ -480,6 +479,7 @@ integer :: nqi  ! index of cloud ice water specific humidity
 integer :: nqa  ! index of cloud amount
 integer :: n, nnn
 logical :: used
+integer, dimension(6) :: itime   ! JA's time (simpler than model time) 
 
 character(len=32) :: tracer_units, tracer_name
 !-----------------------------------------------------------------------
