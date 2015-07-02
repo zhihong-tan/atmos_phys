@@ -1676,7 +1676,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         nfamilies = size(family_names(:))
         allocate (id_aerosol_fam(nfamilies))
         allocate (id_aerosol_fam_column(nfamilies)) 
-        allocate (aerosol_fam_column_names(naerosol))
+        allocate (aerosol_fam_column_names(nfamilies))
         do n=1,nfamilies      
           aerosol_fam_column_names(n) = TRIM(family_names(n) ) // "_col"
         end do
@@ -1698,14 +1698,14 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         allocate (id_extopdep_fam_column(nfamilies, N_DIAG_BANDS))
         allocate (id_absopdep_fam(nfamilies, N_DIAG_BANDS))
         allocate (id_absopdep_fam_column(nfamilies, N_DIAG_BANDS))
-        allocate (extopdep_fam_names(naerosol))
-        allocate (extopdep_fam_column_names(naerosol))
-        allocate (absopdep_fam_names(naerosol))
-        allocate (absopdep_fam_column_names(naerosol))
+        allocate (extopdep_fam_names(nfamilies))
+        allocate (extopdep_fam_column_names(nfamilies))
+        allocate (absopdep_fam_names(nfamilies))
+        allocate (absopdep_fam_column_names(nfamilies))
         allocate (id_asymdep_fam(nfamilies, N_DIAG_BANDS))
         allocate (id_asymdep_fam_column(nfamilies, N_DIAG_BANDS))
-        allocate (asymdep_fam_names(naerosol))
-        allocate (asymdep_fam_column_names(naerosol))
+        allocate (asymdep_fam_names(nfamilies))
+        allocate (asymdep_fam_column_names(nfamilies))
    do nl=1,N_DIAG_BANDS
         do n=1,nfamilies      
           extopdep_fam_names(n) =   &

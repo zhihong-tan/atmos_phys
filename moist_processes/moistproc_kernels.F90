@@ -629,8 +629,27 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
         tracer(:,:,:,nqs) = tracer(:,:,:,nqs) + q_tnd(:,:,:,nqs)*dt
         tracer(:,:,:,nqg) = tracer(:,:,:,nqg) + q_tnd(:,:,:,nqg)*dt
   else
-      if (do_liq_num) then 
-        if ( do_legacy_strat_cloud ) then
+      if (do_liq_num) then
+        if ( do_clubb > 0 ) then
+         call MG_microp_3D( Time, is, ie, js, je, lon, lat, dt,                                 &
+                            pfull, phalf, zhalf, land,                                          &
+                            t, q, tracer(:,:,:,nql), tracer(:,:,:,nqi), tracer(:,:,:,nqa),      &
+                            tracer(:,:,:,nqn), tracer(:,:,:,nqni), convective_humidity_area,    &
+                            dcond_ls_liquid, dcond_ls_ice,                                      &
+                            Ndrop_act_CLUBB, Icedrop_act_CLUBB,                                 &
+                            ndust, rbar_dust,                                                   &
+                            ttnd, qtnd, q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi), q_tnd(:,:,:,nqa),   &
+                            q_tnd(:,:,:,nqn), q_tnd(:,:,:,nqni), f_snow_berg,                   & ! h1g, 2014-07-18
+                            rain3d, snow3d, rain, snow,                                         &
+                            do_clubb=do_clubb, qcvar_clubb = qcvar_clubb,                       &
+                            MASK3d=mask,  &
+                            lsc_snow = lsc_snow,    &
+                            lsc_rain = lsc_rain, &
+                            lsc_snow_size = lsc_snow_size,   &
+                            lsc_rain_size = lsc_rain_size )
+
+ 
+        elseif ( do_legacy_strat_cloud ) then
           call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,    & 
                             radturbten, t, q, tracer(:,:,:,nql),         &
                             tracer(:,:,:,nqi), tracer(:,:,:,nqa),        &
@@ -684,9 +703,9 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                                   lsc_rain = lsc_rain, &
                                   lsc_snow_size = lsc_snow_size,   &
                                   lsc_rain_size = lsc_rain_size )
-          end if
-        end if
-      else
+          end if ! if do_ice_num
+        end if   ! if do_clubb, legacy_strat_cloud
+      else       ! not do_liq_num
         call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,     &
                           radturbten, t, q, tracer(:,:,:,nql),        &
                           tracer(:,:,:,nqi), tracer(:,:,:,nqa),      &
@@ -697,8 +716,8 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                           rain, snow, convective_humidity_ratio,  &
                           convective_humidity_area, &
                           limit_conv_cloud_frac, mask=mask)
-      endif
-  endif
+      endif     ! if do_liq_num
+  endif         ! if do_lin_cld_microphys
 !----------------------------------------------------------------------
 !    upon return from strat_cloud, update the cloud liquid, ice and area.
 !    update the temperature and specific humidity fields.
