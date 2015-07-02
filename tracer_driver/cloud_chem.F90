@@ -6,11 +6,21 @@ module cloud_chem
 
   public :: cloud_ph, cloud_so2_chem, cloud_nb_diag
 
+  public :: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, CLOUD_CHEM_PH_CUBIC
+  public :: CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P
+
   private
 
   real*8, parameter      ::  ra = 8314./101325.   ! universal constant   (atm)/(m-k)
   integer                ::  n_h2o2, n_hno3, n_hcooh, n_ch3cooh, n_so2, n_nh3 !tracer indices
   integer, parameter     ::  cloud_nb_diag = 11
+
+  integer, parameter     :: CLOUD_CHEM_PH_LEGACY    = 1
+  integer, parameter     :: CLOUD_CHEM_PH_BISECTION = 2
+  integer, parameter     :: CLOUD_CHEM_PH_CUBIC     = 3
+
+  integer, parameter     :: CLOUD_CHEM_LEGACY    = 1
+  integer, parameter     :: CLOUD_CHEM_F1P       = 2
   
 
 contains
@@ -32,11 +42,11 @@ contains
     real*8, intent(out),optional, dimension(cloud_nb_diag)  :: diagnostics
 
 
-    if ( cloud_solver .eq. 1 ) then
+    if ( cloud_solver .eq. cloud_chem_ph_legacy ) then
        call cloud_pH_am3(ihno3,iso2,inh3,ihcooh,ich3cooh,iso4,ico2,tk,patm,xlw,air_dens,ch,diagnostics)
-    elseif ( cloud_solver .eq. 2 ) then
+    elseif ( cloud_solver .eq. cloud_chem_ph_cubic ) then
        call cloud_pH_cubic(ihno3,iso2,inh3,ihcooh,ich3cooh,iso4,ico2,tk,patm,xlw,air_dens,ch,diagnostics)
-    elseif  ( cloud_solver .eq. 3 ) then
+    elseif  ( cloud_solver .eq. cloud_chem_ph_bisection ) then
        call cloud_pH_bisection(ihno3,iso2,inh3,ihcooh,ich3cooh,iso4,ico2,ialk,tk,patm,xlw,air_dens,ch,diagnostics)
     end if
 

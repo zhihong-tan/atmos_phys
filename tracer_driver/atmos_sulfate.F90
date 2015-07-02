@@ -53,7 +53,7 @@ use           interpolator_mod, only:  interpolate_type, interpolator_init, &
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR
 
 !f1p
-use cloud_chem, only : cloud_so2_chem
+use cloud_chem, only : cloud_so2_chem, cloud_chem_legacy, cloud_chem_f1p
 
 implicit none
 
@@ -240,9 +240,6 @@ real :: so2_aircraft_EI = 1.e-3  ! kg of SO2/kg of fuel
 character(len=80)  :: cloud_chem_solver = 'legacy' !f1p
 real               :: pH_cloud = -999. !f1p
 real               :: H_cloud
-
-integer, parameter :: cloud_legacy = 1
-integer, parameter :: cloud_f1p    = 2
 
 
 namelist /simple_sulfate_nml/  &
@@ -819,9 +816,9 @@ integer :: n, m, nsulfate
 
 !cloud chemistry
    if ( lowercase(trim(cloud_chem_solver)) .eq. "legacy" ) then
-      cloud_chem_type = cloud_legacy
+      cloud_chem_type = cloud_chem_legacy
    elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p" ) then
-      cloud_chem_type = cloud_f1p
+      cloud_chem_type = cloud_chem_f1p
    else
       call error_mesg ('atmos_sulfate_mod', &
            'unknown cloud chem solver', FATAL)
@@ -2032,9 +2029,9 @@ end subroutine atmos_SOx_emission
        xhnm  = rho_air * f
        O2    = xhnm * 0.21
 !f1p
-       if ( cloud_chem_type .eq. cloud_legacy ) then
+       if ( cloud_chem_type .eq. cloud_chem_legacy ) then
           xlwc  = lwc(i,j,k)*rho_air *1.e-3 !L(water)/L(air)
-       elseif ( cloud_chem_type .eq. cloud_f1p ) then
+       elseif ( cloud_chem_type .eq. cloud_chem_f1p ) then
           xlwc  = lwc(i,j,k)*min(max(fliq(i,j,k),0.),1.)*rho_air *1.e-3 !only liquid water
        end if
        DMS_0 = max(0.,DMS(i,j,k))
@@ -2114,7 +2111,7 @@ end subroutine atmos_SOx_emission
 ! ****************************************************************************
        xso4 = SO4_0 + LSO2*xso2 * dt
 !f1p
-       if ( cloud_chem_type .eq. 1 ) then
+       if ( cloud_chem_type .eq. cloud_chem_legacy ) then
 
 ! ****************************************************************************
 ! < Cloud chemistry (above 258K): >
@@ -2230,7 +2227,7 @@ end subroutine atmos_SOx_emission
             xso4 = xso4 + ccc2                           ! mozart2
             xso2 = max(xso2 - ccc2, small_value)         ! mozart2
        end if
-       elseif ( cloud_chem_type .eq. 2 ) then
+       elseif ( cloud_chem_type .eq. cloud_chem_f1p ) then
 !f1p cloud chem
        !calculate in cloud-production   
           !first calculate in-cloud liquid

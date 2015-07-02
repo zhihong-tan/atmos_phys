@@ -74,10 +74,12 @@ real :: coef_emis_coarse=-999.
 real :: critical_sea_fraction = 0.0   ! sea-salt aerosol production
                                       ! occurs in grid cells with
                                       ! ocn_flx_fraction .gt. this value
+logical :: ulm_ssalt_deposition=.false.  ! Ulm backward compatibility flag
+                                         ! to be removed at Verona
 
 namelist /ssalt_nml/  scheme, coef_emis1, coef_emis2, &
                       coef_emis_fine, coef_emis_coarse, &
-                      critical_sea_fraction
+                      critical_sea_fraction, ulm_ssalt_deposition
 
 !-----------------------------------------------------------------------
 integer, parameter :: nrh= 65   ! number of RH in look-up table
@@ -232,13 +234,12 @@ subroutine atmos_seasalt_sourcesink1 ( &
   real, parameter :: ptmb = 0.01  ! pascal to mb
   integer, parameter :: nstep_max = 5  !Maximum number of cyles for settling
   real :: rhb, rcm,step,rwet
+  real :: viscosity, free_path, C_c
   real :: ratio_r, rho_wet_seasalt, seasalt_flux
   real :: rho_air
   real :: a1, a2, Bcoef, r, dr, rmid
   real, dimension(size(pfull,3))  :: vdep, seasalt_conc0, seasalt_conc1
   integer :: logunit, istep, nstep
-
-  logunit = stdlog()
 
   id=size(seasalt,1); jd=size(seasalt,2); kd=size(seasalt,3)
 
@@ -257,7 +258,10 @@ subroutine atmos_seasalt_sourcesink1 ( &
               endif
               if (ocn_flx_fraction (i,j).gt.critical_sea_fraction) then
                 if (seasaltra .lt. 0.01e-6 .and. mpp_pe() == mpp_root_pe()) then
+!$OMP critical (SEA_SALT_WRITE_LOG)
+                  logunit = stdlog()
                   write (logunit,*) "***WARNING (atmos_sea_salt): lowest radius of seasalt aerosol should be greater than 0.01E-6 m"
+!$OMP end critical (SEA_SALT_WRITE_LOG)
                 endif
                 r=seasaltra
                 dr= (seasaltrb - seasaltra)/float(nr)
@@ -357,7 +361,17 @@ subroutine atmos_seasalt_sourcesink1 ( &
         irh=max0(1,int(rhb*100.-34.))
         rho_wet_seasalt=rho_table(irh)*1000. !Density of wet sea-salt [kg/m3]
         rwet=seasaltref*growth_table(irh) ! Radius of wet sea-salt [m]
-        vdep(k)= sedimentation_velocity(t(i,j,k),pfull(i,j,k),rwet,rho_wet_seasalt) ! Settling velocity [m/s]
+        if(ulm_ssalt_deposition) then   ! Default is .false.
+           ! Old claculation left inlined to make it easier to remove
+           viscosity = 1.458E-6 * t(i,j,k)**1.5/(t(i,j,k)+110.4)
+           free_path=6.6e-8*t(i,j,k)/293.15*(PSTD_MKS/pfull(i,j,k))
+           C_c=1. + free_path/seasaltref* &            ! Slip correction [none]
+             (1.257+0.4*exp(-1.1*seasaltref/free_path))
+           vdep(k)=2./9.*C_c*GRAV*rho_wet_seasalt*rwet**2./viscosity
+        else
+          ! New calculation drops effective radius seasaltref in favor of rwet
+          vdep(k)= sedimentation_velocity(t(i,j,k),pfull(i,j,k),rwet,rho_wet_seasalt) ! Settling velocity [m/s]
+        endif
         step = (zhalf(i,j,k)-zhalf(i,j,k+1)) / vdep(k) / 2.
         nstep = max(nstep, int( dt/ step) )
 !!! To avoid spending too much time on cycling the settling in case
@@ -690,6 +704,9 @@ subroutine atmos_sea_salt_end
  
     integer :: i
     module_is_initialized = .FALSE.
+
+    if(.not.do_seasalt) return
+    
     do_seasalt = .FALSE.
     deallocate(seasalt_tracers)
 end subroutine atmos_sea_salt_end
