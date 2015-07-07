@@ -2607,8 +2607,7 @@ INTEGER,                             INTENT(IN)   :: otun
                      f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k) + &
                                  sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
                   else
-                     f_snow_berg(i,j,k) = (sum_berg(i,j,k) + &
-                                 sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
+                     f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
 	          endif
                else
                  f_snow_berg(i,j,k) = 0.
