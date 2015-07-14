@@ -1955,7 +1955,7 @@ real,                    intent(in)     :: dt
 real, dimension(kmax,ntr), &
                          intent(in)     :: tracers        
 real,dimension(kmax,ntr),intent(inout)  :: trten, trwet
-real,dimension(kmax,ntr),intent(inout), optional :: rn
+real,dimension(kmax,ntr),intent(inout)  :: rn
 
 !<f1p
 real,    dimension(kmax),   intent(in)     :: dpi
