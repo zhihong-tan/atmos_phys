@@ -151,7 +151,7 @@ MODULE UW_CONV_MOD
   !< select realizability checks to be applied to tracers
   !! -999 (default): apply min/max checks (with scaling of tendencies), no filling
   !!              1: omit min/max checks, apply filling (using sjl_fillz), no scaling
-  !!              2: no min/max checks, no filling (apply scaling to avoid negatives)
+  !!              2: omit min/max checks, no filling (apply scaling to avoid negatives)
 
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, &
@@ -860,10 +860,10 @@ contains
 
     select case (tracer_check_type)
        case(1)
-          call error_mesg ('uw_conv', 'tracer checks: no min/max check, no filling', NOTE)
-       case(2)
           call error_mesg ('uw_conv', &
 	     'tracer checks: no min/max check, yes filling (WARNING! non-conservative)', NOTE)
+       case(2)
+          call error_mesg ('uw_conv', 'tracer checks: no min/max check, no filling', NOTE)
        case DEFAULT
           call error_mesg ('uw_conv', 'tracer checks: DEFAULT = min/max check, no filling', NOTE)
     end select
