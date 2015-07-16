@@ -1399,40 +1399,31 @@ end SUBROUTINE nc_cond_nopdf_super
 
 !#########################################################################
 
-SUBROUTINE nc_cond_pdf (idim, jdim, kdim, Nml, Constants, Atmos_state,  &
+SUBROUTINE nc_cond_pdf (idim, jdim, kdim, Nml, Constants, Atmos_state,   &
                         Cloud_state, ST, SQ, Cloud_processes, Particles, &
                         n_diag_4d, diag_4d, diag_id, diag_pt, otun, SA)  
 
 !----------------------------------------------------------------------!
 !                                                                      !
-!                                                                      !
-!                                                                      !
-!                 NON-CONVECTIVE CONDENSATION                          !
-!                                                                      !
-!                                                                      !
-!                                                                      !
-!                         METHOD 2                                     !
-!                                                                      !
-!                                                                      !
-!                STATISTICAL CLOUD FRACTION                            !
-!                                                                      !
+!                     STATISTICAL CLOUD SCHEME                         !
 !                                                                      !
 !-----------------------------------------------------------------------
-INTEGER,                           INTENT(IN )   :: idim, jdim, kdim     
+
+integer,                           intent(in)    :: idim, jdim, kdim     
 type(strat_nml_type),              intent(in)    :: Nml
 type(atmos_state_type),            intent(inout) :: Atmos_state
 type(cloud_state_type),            intent(inout) :: Cloud_state
 type(cloud_processes_type),        intent(inout) :: Cloud_processes
 type(particles_type),              intent(inout) :: Particles
 type(strat_constants_type),        intent(inout) :: Constants  
-REAL, dimension(idim,jdim,kdim),   INTENT(IN )   :: ST, SQ
-REAL, dimension(idim,jdim,kdim),   INTENT(INout) :: SA
-INTEGER,                           INTENT(IN )   :: n_diag_4d
-REAL, dimension( idim, jdim, kdim, 0:n_diag_4d ),         &
-                                   INTENT(INOUT )::  diag_4d
-TYPE(diag_id_type),                intent(in)    :: diag_id
-TYPE(diag_pt_type),                intent(in)    :: diag_pt
-INTEGER,                           INTENT(IN )   :: otun
+real, dimension(idim,jdim,kdim),   intent(in)    :: ST, SQ
+real, dimension(idim,jdim,kdim),   intent(inout) :: SA
+integer,                           intent(in)    :: n_diag_4d
+real, dimension(idim,jdim,kdim,0:n_diag_4d),         &
+                                   intent(inout) :: diag_4d
+type(diag_id_type),                intent(in)    :: diag_id
+type(diag_pt_type),                intent(in)    :: diag_pt
+integer,                           intent(in)    :: otun
 
 !-----------------------------------------------------------------------
 !-----local variables---------------------------------------------------
@@ -1474,96 +1465,45 @@ INTEGER,                           INTENT(IN )   :: otun
 !       qtmin          the minimum value to the total  kg water /
 !                      sub-grid scale distribution     kg air
 !
-      real, dimension(idim, jdim,kdim)   :: qa1, qa0, qabar, qcg, qag,  &
-                                            qa_t, tmp0, tmp1, tmp2
-      real, dimension(4,idim, jdim,kdim) :: qta4,qtqsa4
+      real, dimension(idim,jdim,kdim)    :: qa1, qa0, qcg, qag
+      real, dimension(idim,jdim,kdim)    :: qta, qtqsa
       real, dimension(idim,jdim)         :: qagtmp, qcgtmp, qvgtmp, qtbar,&
                                             deltaQ, qtmin, qs_norm     
-      real                               :: icbp, icbp1, pnorm, eslt, qvs,&
-                                            qs_d, qvi, esit, ul, ttmp,  &
-                                            qtmp, qs_t, dqsdT1, qvmax, &
-                                            esat0, gamma1, tmp1s,  &
-                                            qs_l, qs_i
-      INTEGER                            :: ns, id
-      INTEGER                            :: i,j,k
-
+      real                               :: icbp, icbp1
+      integer                            :: i,j,k
  
 !-----------------------------------------------------------------------
-!       a sub-vertical grid scale distribution is going to be needed.  
-!       do ppm fits.
+!     Compute total water and excess saturation
 !-----------------------------------------------------------------------
-      IF (Nml%pdf_org) THEN
-        qta4(1,:,:,:) = max(Nml%qmin, Atmos_state%qv_in +  &
+
+      if (Nml%pdf_org) then
+        qta(:,:,:) = max(Nml%qmin, Atmos_state%qv_in +  &
                                      Cloud_state%ql_in + Cloud_state%qi_in)
-      ELSE
-        qta4(1,:,:,:) = max(Nml%qmin,Atmos_State%qv_in + SQ +  &
-                             Cloud_state%ql_upd + Cloud_state%qi_upd)
-      END IF
-
-      qtqsa4(1,:,:,:) = qta4(1,:,:,:) - Atmos_state%qs
-        
-      if (Nml%nsublevels .gt. 1) then
-        do j=1,jdim
-          call ppm2m_sak (qta4(:,:,j,:), Atmos_state%delp(:,:,:), kdim,&
-                          Nml%kmap, 1, idim, 0, Nml%kord)
-          call ppm2m_sak (qtqsa4(:,:,j,:), Atmos_state%delp(:,:,:),   &
-                          kdim, Nml%kmap, 1, idim, 0, Nml%kord)
-        end do
       else
-        qta4(2,:,:,:) = qta4(1,:,:,:)
-        qta4(3,:,:,:) = qta4(1,:,:,:)
-        qta4(4,:,:,:) = 0.
-        qtqsa4(2,:,:,:) = qtqsa4(1,:,:,:)
-        qtqsa4(3,:,:,:) = qtqsa4(1,:,:,:)
-        qtqsa4(4,:,:,:) = 0.   
-      end if
-
-      qcg(:,:,:) = 0.
-      Cloud_processes%qvg(:,:,:) = 0.
-      qag(:,:,:) = 0.
+        qta(:,:,:) = max(Nml%qmin, Atmos_State%qv_in + SQ +  &
+                                     Cloud_state%ql_upd + Cloud_state%qi_upd)
+      endif
+      qtqsa(:,:,:) = qta(:,:,:) - Atmos_state%qs
        
 !-----------------------------------------------------------------------
-!    set Tiedtke erosion term to zero.
+!     Set Tiedtke erosion term to zero.
 !-----------------------------------------------------------------------
+
       Cloud_processes%D_eros = 0.
         
 !-----------------------------------------------------------------------
-!    compute pdf cloud fraction and condensate
+!     Compute pdf cloud fraction and condensate
 ! 
-!    Note that the SYMMETRIC beta distribution is used here.
+!     Note that the SYMMETRIC beta distribution is used here.
 !
-!
-!    Initialize grid-box mean values of cloud fraction (qag),
-!    cloud condensate(qcg), and clear sky water vapor (qvg)
+!     qag: cloud fraction
+!     qcg: cloud condensate
+!     qvg: clear sky water vapor
 !-----------------------------------------------------------------------
-     ks_loop: DO k=1,kdim
-       !! qcg(:,k) = 0.
-        ! qvg(:,k) = 0.
-        !!qag (:,k)= 0.
-        
-        !Create loop over sub-levels within a grid box
-   
-        sublevel_loop: do ns = 1, Nml%nsublevels
-        
-             !calculate normalized vertical level
-             ! 0. = top of gridbox
-             ! 1. = bottom of gridbox
-        
-             pnorm =  (real(ns) - 0.5 )/real(Nml%nsublevels)
-        
-             !First step is to calculating the minimum (qtmin)
-             !of the total water distribution and 
-             !the width of the qt distribution (deltaQ)
-             !
-             !For diagnostic variance this is set to (1.-qthalfwidth)*qtbar
-             !and 2*qthalfwidth*qtbar, respectively, where qtbar is the
-             !mean total water in the grid box.        
-             !
-             !
 
-             qtbar = qta4(2,:,:,k) + pnorm*((qta4(3,:,:,k) -   &
-                                qta4(2,:,:,k)) + qta4(4,:,:,k)*(1-pnorm) )
-             
+      ks_loop: do k= 1,kdim
+        
+             qtbar = qta(:,:,k)
              qtbar  = max(Nml%qmin ,qtbar )
              deltaQ  = 2.*Nml%qthalfwidth *qtbar
              qtmin = (1.-Nml%qthalfwidth )*qtbar 
@@ -1578,10 +1518,7 @@ INTEGER,                           INTENT(IN )   :: otun
              !Note that if qs_norm > 1., the grid box is fully clear.
              !If qs_norm < 0., the grid box is fully cloudy.
         
-             qs_norm = qtqsa4(2,:,:,k)+  &
-                       pnorm*( (qtqsa4(3,:,:,k)-qtqsa4(2,:,:,k)) + &
-                       qtqsa4(4,:,:,k)*(1-pnorm) )
-      
+             qs_norm = qtqsa(:,:,k)
              qs_norm = 0.5 - ( qs_norm/deltaQ )
              
              !Calculation of cloud fraction (qagtmp), cloud condensate 
@@ -1608,141 +1545,91 @@ INTEGER,                           INTENT(IN )   :: otun
              ! is equal to (p/(p+q)).
              !
 
-             do j=1,jdim
-             
-             do id = 1,idim
+             do j = 1,jdim
+             do i = 1,idim
         
-             if (qs_norm(id,j).le.1.) then
+               if (qs_norm(i,j).le.1.) then
                  
-                 icbp = incomplete_beta(max(0.,qs_norm(id,j)), &
+                 icbp = incomplete_beta(max(0.,qs_norm(i,j)), &
                                       p = Nml%betaP    , q = Nml%betaP)
-                 icbp1= incomplete_beta(max(0.,qs_norm(id,j)), &
+                 icbp1= incomplete_beta(max(0.,qs_norm(i,j)), &
                                       p = Nml%betaP + 1, q = Nml%betaP)
-                 qagtmp(id,j) = 1.-icbp
-                 qcgtmp(id,j) = (qtbar(id,j)-qtmin(id,j))*(1.-icbp1)&
-                               - qs_norm(id,j)*deltaQ(id,j)*(1.-icbp)    
-                 qcgtmp(id,j) = qcgtmp(id,j)/   &
-                                          (1.+Atmos_state%gamma(id,j,k))
-                 qvgtmp(id,j) = qtmin(id,j) + &
-                               0.5*(icbp1/max(icbp,Nml%qmin))*deltaQ(id,j)
+                 qagtmp(i,j) = 1.-icbp
+                 qcgtmp(i,j) = (qtbar(i,j)-qtmin(i,j))*(1.-icbp1)&
+                               - qs_norm(i,j)*deltaQ(i,j)*(1.-icbp)    
+                 qcgtmp(i,j) = qcgtmp(i,j)/   &
+                                          (1.+Atmos_state%gamma(i,j,k))
+                 qvgtmp(i,j) = qtmin(i,j) + &
+                               0.5*(icbp1/max(icbp,Nml%qmin))*deltaQ(i,j)
              
                  !bound very very small cloud fractions which may
                  !cause negative cloud condensates due to roundoff 
                  !errors or similar errors in the beta table lookup.
-                 if((qagtmp(id,j).lt.0.).or.(qcgtmp(id,j).le.0.))then
-                      qagtmp(id,j) = 0.
-                      qcgtmp(id,j) = 0.
-                      qvgtmp(id,j) = qtbar(id,j)
+                 if ((qagtmp(i,j).lt.0.).or.(qcgtmp(i,j).le.0.)) then
+                      qagtmp(i,j) = 0.
+                      qcgtmp(i,j) = 0.
+                      qvgtmp(i,j) = qtbar(i,j)
                  end if
                  
-             else             
-                 qagtmp(id,j) = 0.
-                 qcgtmp(id,j) = 0.
-                 qvgtmp(id,j) = qtbar(id,j)             
-             end if
+               else             
+                 qagtmp(i,j) = 0.
+                 qcgtmp(i,j) = 0.
+                 qvgtmp(i,j) = qtbar(i,j)             
+               end if
              
              enddo
              enddo
               
-             !sum vertically
-             !
-             !note special averaging of clear-sky water vapor
-             !this is weighting clear-sky relative humidity by the 
-             !clear-sky fraction
-         
-             qag(:,:,k) = qag(:,:,k) + qagtmp
-             qcg(:,:,k) = qcg(:,:,k) + qcgtmp
-             Cloud_processes%qvg(:,:,k) =    &
-                     Cloud_processes%qvg(:,:,k)+ &
-                               (1.-qagtmp)*min(max(qvgtmp/max(Nml%qmin, &
-                                   (qtbar+((qs_norm-0.5)*deltaQ))),0.),1.)
-             
-        enddo sublevel_loop!for number of sublevels loop
-        
-
-
-        !compute grid-box average cloud fraction, cloud condensate
-        !and water vapor
-        
-        if (Nml%nsublevels.gt.1) then
-             qag (:,:,k)= qag(:,:,k) / real(Nml%nsublevels)
-             qcg(:,:,k) = qcg(:,:,k) / real(Nml%nsublevels)
-             
-             !note special averaging of clear-sky water vapor
-            
-             do j = 1,jdim
-             do id = 1,idim
-                  if ((1.-qag(id,j,k)).gt.Nml%qmin) then
-                    Cloud_processes%qvg(id,j,k) =  &
-                       Cloud_processes%qvg(id,j,k)/real(Nml%nsublevels)/&
-                                                        (1.-qag(id,j,k))
-                    Cloud_processes%qvg(id,j,k) =  &
-                              Cloud_processes%qvg(id,j,k)*   &
-                                                 Atmos_state%qs(id,j,k)
-                  else
-                    Cloud_processes%qvg(id,j,k) =   &
-                                                Atmos_state%qs(id,j,k)
-                  end if
-             enddo
-             enddo
-          
-             
-        else
-             ! for nsublevels = 1, qag and qcg already hold their
-             ! final values
+             qag(:,:,k) = qagtmp
+             qcg(:,:,k) = qcgtmp
              Cloud_processes%qvg(:,:,k) = qvgtmp
-        end if
      
-       
-   END DO ks_loop
+      enddo ks_loop
         
-        !do adjustment of cloud fraction
-        qa0 = Cloud_state%qa_in
-        qa1 = qag
+      !do adjustment of cloud fraction
+      qa0 = Cloud_state%qa_in
+      qa1 = qag
 
-        !set total tendency term and update cloud fraction    
-        SA   = (SA   + qa1) - qa0
-!       Cloud_state%SA3d   = (Cloud_state%SA3d   + qa1) - qa0
-        Cloud_state%qa_upd     = qa1
+      !set total tendency term and update cloud fraction    
+      SA   = (SA   + qa1) - qa0
+      Cloud_state%qa_upd     = qa1
 
+      !define da_ls and tmp5 needed when do_liq_num = .true. (cjg)
+      Cloud_processes%da_ls = max(qa1-qa0,0.)
+      Cloud_processes%delta_cf = max(qa1-qa0,0.)
+
+      !compute large-scale condensation / evaporation
+      Cloud_processes%dcond_ls = qcg -    &
+                              (Cloud_state%ql_upd + Cloud_state%qi_upd)
+
+      if ( .not. Nml%pdf_org ) then
+      !!!! INVESTIGATE!!!
+      ! make sure super/subsat is not created here
+      ! this is different from the original PDF assumption
+      ! (as is saturation adjustment) 
+
+        Cloud_processes%dcond_ls = MAX( ((Atmos_state%qv_in + SQ -  &
+                Atmos_State%qs)/(1.+Atmos_state%gamma)),    &
+                                               Cloud_processes%dcond_ls)
+       
+      end if
+
+!-----------------------------------------------------------------------
+!     Diagnostics
+!-----------------------------------------------------------------------
 
       if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
           diag_4d(:,:,:,diag_pt%qadt_lsform ) =  max(qa1 - qa0, 0.)*  &
                                                      Constants%inv_dtcloud 
-        end if
-        if ( diag_id%qadt_lsdiss + diag_id%qa_lsdiss_col > 0 ) then
+      end if
+      if (diag_id%qadt_lsdiss + diag_id%qa_lsdiss_col > 0) then
           diag_4d(:,:,:,diag_pt%qadt_lsdiss ) =  max(qa0 - qa1, 0.)* &
-                                                      Constants%inv_dtcloud
-         end if
-        !define da_ls and tmp5 needed when do_liq_num = .true. (cjg)
-        Cloud_processes%da_ls = max(qa1-qa0,0.)
-        Cloud_processes%delta_cf = max(qa1-qa0,0.)
-
-        !compute large-scale condensation / evaporation
-        Cloud_processes%dcond_ls = qcg -    &
-                              (Cloud_state%ql_upd + Cloud_state%qi_upd)
-
-
-
-   IF ( .NOT. Nml%pdf_org ) THEN
-   !!!! INVESTIGATE!!!
-   !make sure super/subsat is not created here
-   ! this is different from the original PDF assumption
-   !  (as is saturation adjustment) 
-
-     Cloud_processes%dcond_ls = MAX( ((Atmos_state%qv_in + SQ -  &
-                Atmos_State%qs)/(1.+Atmos_state%gamma)),    &
-                                               Cloud_processes%dcond_ls)
-       
-      
-   END IF
+                                                     Constants%inv_dtcloud
+      end if
 
 !------------------------------------------------------------------------
- 
-
 
 end SUBROUTINE nc_cond_pdf 
-
 
 !########################################################################
 
