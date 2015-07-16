@@ -92,6 +92,7 @@ MODULE UW_CONV_MOD
   logical :: use_sub_seasalt = .true.
   logical :: do_auto_aero = .false.
   logical :: do_rescale   = .false.
+  logical :: do_rescale_t = .false.
   logical :: do_debug     = .false.
 !miz
   logical :: do_imposing_forcing = .false.
@@ -156,7 +157,7 @@ MODULE UW_CONV_MOD
        do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let,  &
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, do_prog_tke, tau_tke, pblrat0, &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, tke0, lofactor0, lochoice, &
-       do_auto_aero, do_rescale, wrel_min, om_to_oc, sea_salt_scale, bfact, gfact, gfact3, gfact4, &
+       do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, bfact, gfact, gfact3, gfact4, &
        do_debug, cush_choice, pcp_min, pcp_max, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
@@ -180,6 +181,7 @@ MODULE UW_CONV_MOD
   logical :: do_pmadjt= .false.
   logical :: do_emmax = .false.
   logical :: do_pnqv  = .false.
+  logical :: do_tten_max = .false.
   real    :: rad_crit = 14.0   ! critical droplet radius
   real    :: emfrac_max = 1.0
   integer :: mixing_assumption = 0
@@ -200,7 +202,7 @@ MODULE UW_CONV_MOD
   real    :: t00        = 295
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc, ffldep, &
-       auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, rad_crit, emfrac_max, &
+       auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
        mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, pblfac,&
        do_weffect, weffect, peff_l, peff_i, t00
   !namelist parameters for UW convective closure
@@ -996,7 +998,7 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, cfq, peo, hmo, hms, abu
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
-    real :: qtin, dqt, temp_1
+    real :: tnew, qtin, dqt, temp_1
     
     !f1p
     real, dimension(size(tracers,1), size(tracers,2), size(tracers,3), size(tracers,4)) :: trtend_nc, rn_diag
@@ -1078,6 +1080,7 @@ contains
     cpn % do_pmadjt = do_pmadjt
     cpn % do_emmax  = do_emmax
     cpn % do_pnqv   = do_pnqv
+    cpn % do_tten_max   = do_tten_max
     cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
@@ -1983,6 +1986,19 @@ contains
     !scaling factor for each column is the minimum value within that column
               scale_uw(i,j) = min( temp_1, scale_uw(i,j))
             endif
+    !rescaling to prevent excessive temperature tendencies
+            if (do_rescale_t) then
+              tnew  =  tb(i,j,k) + tten(i,j,k) * delt
+              if ( tnew > 363.15 ) then
+                temp_1 = 0.0
+                print *, 'WARNING: setting scale_uw to zero to prevent large T tendencies in UW'
+              else
+                temp_1 = 1.0
+              endif
+    !scaling factor for each column is the minimum value within that column
+              scale_uw(i,j) = min( temp_1, scale_uw(i,j))
+            endif
+
           enddo
         enddo
       enddo
@@ -1991,7 +2007,7 @@ contains
 !        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
 !     end where
 
-      if (do_rescale) then
+      if (do_rescale .or. do_rescale_t) then
       !scale tendencies
         do k=1,kmax
           do j=1,jmax

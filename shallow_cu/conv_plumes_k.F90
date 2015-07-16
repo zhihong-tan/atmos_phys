@@ -43,7 +43,7 @@ MODULE CONV_PLUMES_k_MOD
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep,  &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
-     logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_weffect, do_qctflx_zero,do_detran_zero
+     logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
@@ -2097,6 +2097,35 @@ contains
 !     end do
 !    ct%mslcl=(sd%ps(0)-sd%ps(cp%krel))/Uw_p%grav  !unit:kg/m2
 !    ct%cpool=-ct%cpool/ct%mslcl                   !unit:J/kg/s or m2/s2/s
+
+
+!   Add check to zero out tendencies if total UW causes the
+!   temperature to become unrealistically large
+    if (cpn%do_tten_max) then
+      i = 0
+      do k = 1,sd%kmax
+        if (ct%tten(k)*sd%delt+sd%t(k) > 363.15) then
+          i = i + 1
+        end if
+      end do
+      if (i > 0) then
+        print *, 'WARNING: zeroing out large T tendencies in UW'
+        ct%tten = 0
+        ct%qvten = 0
+        ct%qlten = 0
+        ct%qiten = 0
+        ct%qaten = 0
+        ct%qnten = 0
+        ct%uten  = 0
+        ct%qctten = 0
+        ct%pflx = 0
+        ct%trwet = 0
+        ct%snow = 0
+        ct%rain = 0
+        cp%umf = 0
+        cp%emf = 0
+      end if
+    end if  ! end maximum temperature tendency check
 
 
   end subroutine cumulus_tend_k
