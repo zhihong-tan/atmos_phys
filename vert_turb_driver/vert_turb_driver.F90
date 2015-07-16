@@ -269,7 +269,7 @@ real   , dimension(size(diff_t,1),size(diff_t,2), &
    vspblcap = 0.0   
    
 !-----------------------------------------------------------------------
-if (do_mellor_yamada .or. do_tke_turb) then
+if (do_mellor_yamada) then
 
 !    ----- virtual temp ----------
      ape(:,:,:)=(p_full(:,:,:)*p00inv)**(-kappa)
@@ -320,17 +320,17 @@ if (do_mellor_yamada .or. do_tke_turb) then
 !-->cjg debug
 !100 format("BEFORE TURB:",A32," = ",Z20)
 !  outunit = stdout()
-!  write(outunit,100) 't                ', mpp_chksum(t)
-!  write(outunit,100) 'q                ', mpp_chksum(q)
-!  write(outunit,100) 'z_full           ', mpp_chksum(z_full)
-!  write(outunit,100) 'z_half           ', mpp_chksum(z_half)
-!  write(outunit,100) 'qa               ', mpp_chksum(r(:,:,:,nqa))
-!  write(outunit,100) 'tke              ', mpp_chksum(r(:,:,:,ntke))
-!  write(outunit,100) 'el0              ', mpp_chksum(el0)
-!  write(outunit,100) 'el               ', mpp_chksum(el)
-!  write(outunit,100) 'diff_m           ', mpp_chksum(diff_m)
-!  write(outunit,100) 'diff_t           ', mpp_chksum(diff_t)
-!  write(outunit,100) 'z_pbl            ', mpp_chksum(z_pbl)
+! write(outunit,100) 't                ', mpp_chksum(t)
+! write(outunit,100) 'q                ', mpp_chksum(q)
+! write(outunit,100) 'z_full           ', mpp_chksum(z_full)
+! write(outunit,100) 'z_half           ', mpp_chksum(z_half)
+! write(outunit,100) 'qa               ', mpp_chksum(rdiag(:,:,:,nqa))
+! write(outunit,100) 'tke              ', mpp_chksum(rdiag(:,:,:,ntke))
+! write(outunit,100) 'el0              ', mpp_chksum(el0)
+! write(outunit,100) 'el               ', mpp_chksum(el)
+! write(outunit,100) 'diff_m           ', mpp_chksum(diff_m)
+! write(outunit,100) 'diff_t           ', mpp_chksum(diff_t)
+! write(outunit,100) 'z_pbl            ', mpp_chksum(z_pbl)
 !<--cjg debug
 
 !    ----- time step for prognostic tke calculation -----
@@ -341,25 +341,26 @@ if (do_mellor_yamada .or. do_tke_turb) then
 !    ---- compute tke, master length scale (el0),  -------------
 !    ---- length scale (el), and vert mix coeffs (diff_t,diff_m) ----
 
-     call tke_turb (dt_tke, frac_land, p_half, p_full, z_half, z_full, &
-                    uu, vv, thv, rough, u_star, b_star,                &
-                    rdiag(:,:,:,ntke),                                     &
+     call tke_turb (is, ie, js, je, Time_next, dt_tke, frac_land,      &
+                    p_half, p_full, z_half, z_full,                    &
+                    tt, qq, qlin, qiin, uu, vv, rough, u_star, b_star, &
+                    rdiag(:,:,:,ntke),                                 &
                     el0, el, diff_m, diff_t, z_pbl)
 
 !-->cjg debug
-!101 format("AFTER TURB:",A32," = ",Z20)
+!101 format("AFTER TURB: ",A32," = ",Z20)
 !  outunit = stdout()
-!  write(outunit,101) 't                ', mpp_chksum(t)
-!  write(outunit,101) 'q                ', mpp_chksum(q)
-!  write(outunit,101) 'z_full           ', mpp_chksum(z_full)
-!  write(outunit,101) 'z_half           ', mpp_chksum(z_half)
-!  write(outunit,101) 'qa               ', mpp_chksum(r(:,:,:,nqa))
-!  write(outunit,101) 'tke              ', mpp_chksum(r(:,:,:,ntke))
-!  write(outunit,101) 'el0              ', mpp_chksum(el0)
-!  write(outunit,101) 'el               ', mpp_chksum(el)
-!  write(outunit,101) 'diff_m           ', mpp_chksum(diff_m)
-!  write(outunit,101) 'diff_t           ', mpp_chksum(diff_t)
-!  write(outunit,101) 'z_pbl            ', mpp_chksum(z_pbl)
+! write(outunit,101) 't                ', mpp_chksum(t)
+! write(outunit,101) 'q                ', mpp_chksum(q)
+! write(outunit,101) 'z_full           ', mpp_chksum(z_full)
+! write(outunit,101) 'z_half           ', mpp_chksum(z_half)
+! write(outunit,101) 'qa               ', mpp_chksum(rdiag(:,:,:,nqa))
+! write(outunit,101) 'tke              ', mpp_chksum(rdiag(:,:,:,ntke))
+! write(outunit,101) 'el0              ', mpp_chksum(el0)
+! write(outunit,101) 'el               ', mpp_chksum(el)
+! write(outunit,101) 'diff_m           ', mpp_chksum(diff_m)
+! write(outunit,101) 'diff_t           ', mpp_chksum(diff_t)
+! write(outunit,101) 'z_pbl            ', mpp_chksum(z_pbl)
 !<--cjg debug
 
 !---------------------------
@@ -797,7 +798,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
         ! tke must be a diagnostic tracer
         if (ntke <= ntp) call error_mesg ('vert_turb_driver_mod', &
                     'tke can not be a prognostic tracer', FATAL)
-        call tke_turb_init ( )
+        call tke_turb_init (lonb, latb, axes, Time, id, jd, kd)
       end if
 
       if (do_shallow_conv)  call shallow_conv_init (kd)

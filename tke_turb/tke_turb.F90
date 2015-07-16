@@ -9,14 +9,23 @@ module tke_turb_mod
 !  Modified by Chris Golaz
 !=======================================================================
 
- use mpp_mod,           only : input_nml_file
- use fms_mod,           only : file_exist, open_namelist_file,       &
-                               error_mesg, FATAL, close_file, note,  &
-                               check_nml_error, mpp_pe, mpp_root_pe, &
-                               write_version_number, stdlog, stdout, &
-                               mpp_chksum
- use constants_mod,     only : grav, vonkarm
+ use           mpp_mod, only: input_nml_file
 
+ use           fms_mod, only: file_exist, open_namelist_file,       &
+                              error_mesg, FATAL, close_file, note,  &
+                              check_nml_error, mpp_pe, mpp_root_pe, &
+                              write_version_number, stdlog, stdout, &
+                              mpp_chksum
+
+ use     constants_mod, only: rdgas, rvgas, kappa, grav, vonkarm,   &
+                              cp_air, hlv, hls, tfreeze
+
+ use monin_obukhov_mod, only: mo_diff
+
+ use  diag_manager_mod, only: register_diag_field, send_data
+
+ use  time_manager_mod, only: time_type
+ 
 !---------------------------------------------------------------------
   implicit none
   private
@@ -29,6 +38,12 @@ module tke_turb_mod
 !---------------------------------------------------------------------
 ! --- Constants
 !---------------------------------------------------------------------
+
+ real, parameter :: p00    = 1000.0e2
+ real, parameter :: p00inv = 1./p00
+ real, parameter :: d622   = rdgas/rvgas
+ real, parameter :: d378   = 1.-d622
+ real, parameter :: d608   = d378/d622
 
  real :: ckm1,  ckm2,  ckm3, ckm4, ckm5, ckm6, ckm7, ckm8
  real :: ckh1,  ckh2,  ckh3, ckh4
@@ -47,22 +62,33 @@ module tke_turb_mod
 ! --- Namelist
 !---------------------------------------------------------------------
 
- real    :: tkemax       =  5.0
- real    :: tkemin       =  0.0
- real    :: tkecrit      =  0.05
- real    :: akmax        =  1.0e4
- real    :: akmin_land   =  5.0
- real    :: akmin_sea    =  0.0
- integer :: nk_lim       =  2
- real    :: el0max       =  1.0e6
- real    :: el0min       =  0.0
- real    :: alpha_land   =  0.10
- real    :: alpha_sea    =  0.10
+ real    :: tkemax           =  5.0
+ real    :: tkemin           =  0.0
+ integer :: pbl_depth_option =  0
+ real    :: tkecrit          =  0.05
+ real    :: parcel_buoy      =  1.0
+ real    :: akmax            =  1.0e4
+ real    :: akmin_land       =  5.0
+ real    :: akmin_sea        =  0.0
+ integer :: nk_lim           =  2
+ real    :: el0max           =  1.0e6
+ real    :: el0min           =  0.0
+ real    :: alpha_land       =  0.10
+ real    :: alpha_sea        =  0.10
 
  namelist / tke_turb_nml /                            &
-         tkemax,   tkemin,     tkecrit,               &
+         pbl_depth_option, tkecrit, parcel_buoy,      &
+         tkemax,   tkemin,                            &
          akmax,    akmin_land, akmin_sea, nk_lim,     &
          el0max,   el0min,  alpha_land,  alpha_sea
+
+!---------------------------------------------------------------------
+!--- Diagnostic fields       
+!---------------------------------------------------------------------
+
+character(len=10) :: mod_name = 'tke_turb'
+real              :: missing_value = 0.
+integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
 !---------------------------------------------------------------------
 
@@ -70,31 +96,39 @@ module tke_turb_mod
 
 !#######################################################################
 
- subroutine tke_turb( delt, fracland, phalf, pfull, zhalf, zfull,  &
-                      um, vm, thetav, z0, ustar, bstar,            &
+ subroutine tke_turb( is, ie, js, je, time, delt, fracland,        &
+                      phalf, pfull, zhalf, zfull,                  &
+                      tt, qv, ql, qi, um, vm, z0, ustar, bstar,    &
                       tr_tke,                                      & 
                       el0, el, akm, akh, h )
 
 !=======================================================================
 !---------------------------------------------------------------------
 ! Arguments (Intent in)
-!   delt     -  Time step in seconds
-!   fracland -  Fractional amount of land beneath a grid box
-!   phalf    -  Pressure at half levels
-!   pfull    -  Pressure at full levels
-!   zhalf    -  Height at half levels
-!   zfull    -  Height at full levels
-!   um, vm   -  Wind components
-!   thetav   -  Virtual potential temperature
-!   z0       -  Roughness length
-!   ustar    -  Friction velocity (m/sec)
-!   bstar    -  Buoyancy scale (m/sec**2)
+!   is,ie,js,je - i,j indices marking the slab of model working on
+!   time        - variable needed for netcdf diagnostics
+!   delt        - time step in seconds
+!   fracland    - fractional amount of land beneath a grid box
+!   phalf       - pressure at half levels
+!   pfull       - pressure at full levels
+!   zhalf       - height at half levels
+!   zfull       - height at full levels
+!   tt          - temperature
+!   qv          - water vapor
+!   ql          - liquid water
+!   qi          - ice water
+!   um, vm      - wind components
+!   z0          - roughness length
+!   ustar       - friction velocity (m/sec)
+!   bstar       - buoyancy scale (m/sec**2)
 !---------------------------------------------------------------------
 
+  integer,         intent(in)           :: is,ie,js,je
+  type(time_type), intent(in)           :: time
   real,    intent(in)                   :: delt 
   real,    intent(in), dimension(:,:)   :: fracland
   real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
-  real,    intent(in), dimension(:,:,:) :: um, vm, thetav
+  real,    intent(in), dimension(:,:,:) :: tt, qv, ql, qi, um, vm
   real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
 
 !---------------------------------------------------------------------
@@ -121,12 +155,14 @@ module tke_turb_mod
 !  (Intent local)
 !---------------------------------------------------------------------
 
+  logical used
   integer outunit
   integer :: ix, jx, kx, i, j, k
   integer :: kxp, kxm, klim
   real    :: cvfqdt, dvfqdt
 
-  real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin
+  real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
+        pblh_tke, pblh_parcel
 
   real, dimension(size(um,1),size(um,2),size(um,3)-1) ::     &
         dsdzh, shear, buoync, qm2,  qm3, qm4, el2,           &
@@ -134,7 +170,7 @@ module tke_turb_mod
         xxm1,  xxm2,  xxm3,   xxm4, xxm5
 
   real, dimension(size(um,1),size(um,2),size(um,3)) ::       &
-        dsdz, qm,  xx1, xx2
+        thetav, tmp, dsdz, qm, xx1, xx2
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke
 
@@ -159,6 +195,13 @@ module tke_turb_mod
   tke(:,:,1) = tkemin
   tke(:,:,2:kx) = tr_tke(:,:,1:kxm)
   tke(:,:,kxp) = bcq * ustar * ustar
+
+!====================================================================
+! --- Compute virtual potential temperature
+!====================================================================
+
+  tmp(:,:,:) = (pfull(:,:,:)*p00inv)**(-kappa)
+  thetav(:,:,:) = tt(:,:,:)*(qv(:,:,:)*d608+1.0)*tmp
 
 !====================================================================
 ! --- Surface height     
@@ -393,7 +436,18 @@ module tke_turb_mod
 ! --- Compute PBL depth
 !====================================================================
 
-  call tke_pbl_depth(zsfc,zhalf,tke,h)
+  if ( pbl_depth_option == 0 .or. id_pblh_tke > 0) then
+    call tke_pbl_depth(zsfc,zhalf,tke,bstar,pblh_tke)
+  end if
+  if ( pbl_depth_option == 1 .or. id_pblh_parcel > 0) then
+    call parcel_pbl_depth(zsfc,zfull,tt,qv,ql,qi,ustar,bstar,pblh_parcel)
+  end if
+
+  if ( pbl_depth_option == 0 ) then
+    h = pblh_tke
+  else if ( pbl_depth_option == 1 ) then
+    h = pblh_parcel
+  end if
 
 !====================================================================
 ! --- Copy output tke back to tracer array
@@ -402,15 +456,39 @@ module tke_turb_mod
   tr_tke(:,:,:) = tke(:,:,2:kxp)
 
 !====================================================================
+! --- Diagnostics
+!====================================================================
+
+  if ( id_h > 0 ) then
+    used = send_data ( id_h, h, time, is, js )
+  end if
+  if ( id_pblh_tke > 0 ) then
+    used = send_data ( id_pblh_tke, pblh_tke, time, is, js )
+  end if
+  if ( id_pblh_parcel > 0 ) then
+    used = send_data ( id_pblh_parcel, pblh_parcel, time, is, js )
+  end if
+
   end subroutine tke_turb 
 
 !#######################################################################
 
-  subroutine tke_turb_init( )
+  subroutine tke_turb_init(lonb, latb, axes, time, idim, jdim, kdim)
 
 !=======================================================================
 ! --- Initialize tke module
 !=======================================================================
+!---------------------------------------------------------------------
+! Arguments (Intent in)
+!---------------------------------------------------------------------
+!   latb, lonb       - latitudes and longitudes at grid box corners
+!   axes, time       - variables needed for netcdf diagnostics
+!   idim, jdim, kdim - size of the first 3 dimensions 
+
+ integer,              intent(in) :: idim, jdim, kdim, axes(4)
+ type(time_type),      intent(in) :: time
+ real, dimension(:,:), intent(in) :: lonb, latb
+
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
@@ -470,9 +548,19 @@ module tke_turb_mod
     cvfq2 = 1.0 / bb1
       bcq = 0.5 * ( bb1**(2.0/3.0) )
 
-!-------------------------------------------------------------------
-      module_is_initialized = .true.
 !---------------------------------------------------------------------
+!--- Register diagnostic fields       
+!---------------------------------------------------------------------
+
+  id_h = register_diag_field (mod_name, 'zpbl', axes(1:2),     &
+       time, 'diagnosed PBL depth', 'meters',                  &
+       missing_value=missing_value )
+
+!---------------------------------------------------------------------
+!--- Done with initialization
+!---------------------------------------------------------------------
+
+  module_is_initialized = .true.
 
 !=====================================================================
   end subroutine tke_turb_init
@@ -493,7 +581,7 @@ module tke_turb_mod
 
 !#######################################################################
 
-  subroutine tke_pbl_depth(zsfc,zhalf,tke,h)
+  subroutine tke_pbl_depth(zsfc,zhalf,tke,bstar,h)
 
 !=======================================================================
 ! --- Estimate PBL depth from tke
@@ -501,6 +589,7 @@ module tke_turb_mod
  
   real,    intent(in), dimension(:,:)   :: zsfc
   real,    intent(in), dimension(:,:,:) :: zhalf, tke
+  real,    intent(in), dimension(:,:)   :: bstar
   real,    intent(out),dimension(:,:)   :: h
 
 !=======================================================================
@@ -521,9 +610,9 @@ module tke_turb_mod
   !     first falls beneath a critical value tkecrit.
   do j=1,jx
     do i=1,ix
-      if (tke(i,j,nlev) .gt. tkecrit) then
+      if (bstar(i,j).gt.0. .and. tke(i,j,nlev).gt.tkecrit) then
         k = nlev
-        do while (k.gt. 2 .and. tke(i,j,k-1).gt.tkecrit)
+        do while (k.gt.2 .and. tke(i,j,k-1).gt.tkecrit)
           k = k-1
         enddo
         h(i,j) = zhalf_ag(i,j,k) + &
@@ -538,6 +627,77 @@ module tke_turb_mod
 !=====================================================================
 
   end subroutine tke_pbl_depth
+
+!#######################################################################
+
+  subroutine parcel_pbl_depth(zsfc,zfull,t,qv,ql,qi,ustar,bstar,h)
+
+!=======================================================================
+! --- Estimate PBL depth by parcel lifting
+!=======================================================================
+ 
+  real,    intent(in), dimension(:,:)   :: zsfc
+  real,    intent(in), dimension(:,:,:) :: zfull, t, qv, ql, qi
+  real,    intent(in), dimension(:,:)   :: ustar, bstar
+  real,    intent(out),dimension(:,:)   :: h
+
+!=======================================================================
+
+  real, dimension(size(zfull,1),size(zfull,2),size(zfull,3)) :: &
+    zfull_ag, slv, hleff
+  real, dimension(size(zfull,1),size(zfull,2)) :: &
+    svp, h1, ws, k_t_ref, parcelkick
+  integer:: i,j,k,ix,jx,nlev
+  
+  ! --- dimensions
+  ix = size( zfull, 1 )
+  jx = size( zfull, 2 )
+  nlev = size( zfull, 3 )
+
+  ! --- compute heights relative to surface
+  do k = 1,nlev
+    zfull_ag(:,:,k) = zfull(:,:,k) - zsfc(:,:)
+  end do
+
+  ! --- compute slv
+  hleff = (min(1.,max(0.,0.05*(t       -tfreeze+20.)))*hlv + &
+           min(1.,max(0.,0.05*(tfreeze -t          )))*hls)
+     
+  slv = cp_air*t + grav*zfull_ag - hleff*(ql + qi)
+  slv = slv*(1+d608*(qv+ql+qi))
+  slv = slv / cp_air
+
+
+  ! --- surface parcel properties
+  svp  = slv(:,:,nlev)
+  h1   = zfull_ag(:,:,nlev)
+  call mo_diff(h1, ustar, bstar, ws, k_t_ref)
+  ws = max(small,ws/vonkarm/h1)
+  svp  = svp*(1.+(parcel_buoy*ustar*bstar/grav/ws) )
+  parcelkick = svp*parcel_buoy*ustar*bstar/grav/ws
+
+  ! --- Determine pbl depth
+  do j=1,jx
+    do i=1,ix
+
+      if (bstar(i,j).gt.0. .and. svp(i,j).gt.slv(i,j,nlev)) then
+        k = nlev
+        do while (k.gt.2 .and. svp(i,j).gt.slv(i,j,k-1))
+          k = k-1
+        enddo
+        h(i,j) = zfull_ag(i,j,k) + &
+                 (zfull_ag(i,j,k-1)-zfull_ag(i,j,k)) &
+                 *(slv(i,j,k)-svp(i,j))/(slv(i,j,k)-slv(i,j,k-1))
+      else
+        h(i,j) = 0.                      
+      end if
+
+    enddo
+  enddo
+
+!=====================================================================
+
+  end subroutine parcel_pbl_depth
 
 !#######################################################################
 
