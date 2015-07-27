@@ -1324,6 +1324,7 @@ contains
             tkep(i,j) = MAX (tkemin, tkep(i,j))
        	 endif
 
+         cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
            ocode(i,j) = 6
            go to 100
@@ -1551,7 +1552,6 @@ contains
 
 	  rkm_s(i,j) = rkm_shallow
 
-          cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
           if (do_fast) then
              if (ac%klcl.eq.0 .or. ac%plcl.eq.sd%ps(1) .or. ac%plcl.lt.20000.) then
                 ocode(i,j)=1; cbmf_shallow=0.; goto 100
