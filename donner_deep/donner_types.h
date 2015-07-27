@@ -32,9 +32,9 @@ type donner_monitor_type
    character(len=32)                  :: name
    character(len=32)                  :: units
    integer                            :: index
+   integer                            :: limit_type
    integer                            :: tracer_index
    real                               :: initial_value
-   integer                            :: limit_type
    real                               :: threshold
    real,    dimension(:,:,:), pointer :: extrema=>NULL()
    real,    dimension(:,:,:), pointer :: hits=>NULL()
@@ -47,12 +47,12 @@ end type donner_monitor_type
 type donner_wetdep_type
 
    character(len=200) :: scheme, units
-   real :: Henry_constant
-   real :: Henry_variable
-   real :: frac_in_cloud
-   real :: frac_in_cloud_snow
    real :: alpha_r
    real :: alpha_s
+   real :: frac_in_cloud
+   real :: frac_in_cloud_snow
+   real :: Henry_constant
+   real :: Henry_variable
    logical :: Lwetdep, Lgas, Laerosol, Lice
 
 end type donner_wetdep_type
@@ -84,16 +84,16 @@ type donner_initialized_type
 !                               specified via nml will be used
 
 
-logical  :: do_donner_tracer
-logical  :: do_input_cell_liquid_size
-logical  :: do_bower_cell_liquid_size
-logical  :: do_input_cell_ice_size
-logical  :: do_default_cell_ice_size
 logical  :: coldstart
-logical  :: monitor_output
-logical  :: using_unified_closure
+logical  :: do_bower_cell_liquid_size
 logical  :: do_conservation_checks
+logical  :: do_default_cell_ice_size
+logical  :: do_donner_tracer
+logical  :: do_input_cell_ice_size
+logical  :: do_input_cell_liquid_size
+logical  :: monitor_output
 logical  :: use_constant_rmuz_for_closure
+logical  :: using_unified_closure
 
 integer  :: conv_alarm
 integer  :: physics_dt
@@ -177,23 +177,23 @@ type donner_save_type
 !   tracer_units   units associated with each tracer
  
 
-real, dimension(:,:,:),          pointer  ::  cemetf=>NULL()
-real, dimension(:,:,:),          pointer  ::  lag_temp=>NULL()
-real, dimension(:,:,:),          pointer  ::  lag_vapor=>NULL()
-real, dimension(:,:,:),          pointer  ::  lag_press=>NULL()
-real, dimension(:,:,:),          pointer  ::  cememf=>NULL()
-real, dimension(:,:,:),          pointer  ::  mass_flux=>NULL()
-real, dimension(:,:,:),          pointer  ::  mflux_up=>NULL()
 real, dimension(:,:,:),          pointer  ::  cell_up_mass_flux=>NULL()
+real, dimension(:,:,:),          pointer  ::  cememf=>NULL()
+real, dimension(:,:,:),          pointer  ::  cemetf=>NULL()
 real, dimension(:,:,:),          pointer  ::  det_mass_flux=>NULL()
-real, dimension(:,:,:),          pointer  ::  dql_strat=>NULL()
-real, dimension(:,:,:),          pointer  ::  dqi_strat=>NULL()
 real, dimension(:,:,:),          pointer  ::  dqa_strat=>NULL()
+real, dimension(:,:,:),          pointer  ::  dqi_strat=>NULL()
+real, dimension(:,:,:),          pointer  ::  dql_strat=>NULL()
 real, dimension(:,:,:),          pointer  ::  humidity_area=>NULL()
 real, dimension(:,:,:),          pointer  ::  humidity_factor=>NULL()
-real, dimension(:,:,:,:),        pointer  ::  tracer_tends=>NULL()
+real, dimension(:,:,:),          pointer  ::  lag_press=>NULL()
+real, dimension(:,:,:),          pointer  ::  lag_temp=>NULL()
+real, dimension(:,:,:),          pointer  ::  lag_vapor=>NULL()
+real, dimension(:,:,:),          pointer  ::  mass_flux=>NULL()
+real, dimension(:,:,:),          pointer  ::  mflux_up=>NULL()
 real, dimension(:,:),            pointer  ::  parcel_disp=>NULL()
 real, dimension(:,:),            pointer  ::  tprea1=>NULL()
+real, dimension(:,:,:,:),        pointer  ::  tracer_tends=>NULL()
 character(len=32), dimension(:), pointer  :: tracername=>NULL()
 character(len=32), dimension(:), pointer  :: tracer_units=>NULL()
 
@@ -237,19 +237,19 @@ type donner_rad_type
 !                       radiation package is desired
 
 
+integer, dimension(:,:)  , pointer      :: nsum=>NULL()
 real,    dimension(:,:,:), pointer      :: cell_cloud_frac=>NULL()
-real,    dimension(:,:,:), pointer      :: cell_liquid_amt=>NULL()
-real,    dimension(:,:,:), pointer      :: cell_liquid_size=>NULL()
+real,    dimension(:,:,:), pointer      :: cell_droplet_number=>NULL()
 real,    dimension(:,:,:), pointer      :: cell_ice_amt=>NULL()
 real,    dimension(:,:,:), pointer      :: cell_ice_size=>NULL()
-real,    dimension(:,:,:), pointer      :: cell_droplet_number=>NULL()
+real,    dimension(:,:,:), pointer      :: cell_liquid_amt=>NULL()
+real,    dimension(:,:,:), pointer      :: cell_liquid_size=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_cloud_frac=>NULL()
-real,    dimension(:,:,:), pointer      :: meso_liquid_amt=>NULL()
-real,    dimension(:,:,:), pointer      :: meso_liquid_size=>NULL()
+real,    dimension(:,:,:), pointer      :: meso_droplet_number=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_ice_amt=>NULL()
 real,    dimension(:,:,:), pointer      :: meso_ice_size=>NULL()
-real,    dimension(:,:,:), pointer      :: meso_droplet_number=>NULL()
-integer, dimension(:,:)  , pointer      :: nsum=>NULL()
+real,    dimension(:,:,:), pointer      :: meso_liquid_amt=>NULL()
+real,    dimension(:,:,:), pointer      :: meso_liquid_size=>NULL()
 
 end type donner_rad_type
 
@@ -261,18 +261,18 @@ type donner_budgets_type
 
 
 
-integer              :: n_water_budget
 integer              :: n_enthalpy_budget
 integer              :: n_precip_paths 
 integer              :: n_precip_types
+integer              :: n_water_budget
 
-real,    dimension(:,:,:,:), pointer      :: water_budget=>NULL()
-real,    dimension(:,:,:,:), pointer      :: enthalpy_budget=>NULL()
-real,    dimension(:,:,:,:,:), pointer      :: precip_budget=>NULL()
-real,    dimension(:,:), pointer      :: lheat_precip=>NULL()
-real,    dimension(:,:), pointer      :: vert_motion=>NULL()
-real,    dimension(:,:,:), pointer      :: liq_prcp   =>NULL()
-real,    dimension(:,:,:), pointer      :: frz_prcp   =>NULL()
+real,    dimension(:,:,:,:),   pointer :: enthalpy_budget=>NULL()
+real,    dimension(:,:,:),     pointer :: frz_prcp   =>NULL()
+real,    dimension(:,:),       pointer :: lheat_precip=>NULL()
+real,    dimension(:,:,:),     pointer :: liq_prcp   =>NULL()
+real,    dimension(:,:,:,:,:), pointer :: precip_budget=>NULL()
+real,    dimension(:,:),       pointer :: vert_motion=>NULL()
+real,    dimension(:,:,:,:),   pointer :: water_budget=>NULL()
 
 end type donner_budgets_type
 
@@ -287,73 +287,74 @@ type donner_nml_type
 !    section of donner_deep.f90. they exist for the duration of the run.
 !************************************************************************
 
-
-integer             ::  model_levels_in_sfcbl
-integer             ::  parcel_launch_level  
-logical             ::  allow_mesoscale_circulation
-logical             ::  do_hires_cape_for_closure
-logical             ::  do_donner_cape
-logical             ::  do_donner_plume
-logical             ::  do_donner_closure
-logical             ::  do_dcape
-logical             ::  do_lands
-real                ::  gama
-real                ::  tau
-real                ::  cape0
-real                ::  rhavg0
-real                ::  plev0
-logical             ::  do_rh_trig
-logical             ::  do_capetau_land
-real                ::  pblht0
-real                ::  tke0
-real                ::  lofactor0
-real                ::  deephgt0
-integer             ::  deep_closure
-integer             ::  lochoice
-logical             ::  do_ice
-real                ::  atopevap
-logical             ::  do_donner_lscloud
-logical             ::  use_llift_criteria
-logical             ::  use_pdeep_cv
-real                ::  auto_rate
-real                ::  auto_th
-real                ::  frac
-real                ::  ttend_max
-real                ::  mesofactor
-integer             ::  donner_deep_freq
-character(len=32)   ::  entrainment_constant_source
-character(len=16)   ::  cell_liquid_size_type
-character(len=16)   ::  cell_ice_size_type 
-real                ::  cell_liquid_eff_diam_input
-real                ::  cell_ice_geneff_diam_input
-real                ::  meso_liquid_eff_diam_input
-logical             ::  do_average
-logical             ::  use_memphis_size_limits
-real                ::  wmin_ratio
-logical             :: do_freezing_for_cape
-real                :: tfre_for_cape
-real                :: dfre_for_cape
-real                :: rmuz_for_cape
-logical             :: do_freezing_for_closure
-real                :: tfre_for_closure
-real                :: dfre_for_closure
-real                :: rmuz_for_closure
+integer             :: deep_closure
+integer             :: donner_deep_freq
+integer             :: lochoice
+integer             :: model_levels_in_sfcbl
+integer             :: parcel_launch_level
+logical             :: allow_mesoscale_circulation
+logical             :: do_average
 logical             :: do_budget_analysis
-logical             :: frc_internal_enthalpy_conserv
+logical             :: do_capetau_land
+logical             :: do_dcape
+logical             :: do_donner_cape
+logical             :: do_donner_closure
+logical             :: do_donner_lscloud
+logical             :: do_donner_plume
 logical             :: do_ensemble_diagnostics
+logical             :: do_freezing_for_cape
+logical             :: do_freezing_for_closure
+logical             :: do_hires_cape_for_closure
+logical             :: do_ice
+logical             :: do_lands
+logical             :: do_most_unstable_layer
+logical             :: do_rh_trig
+logical             :: frc_internal_enthalpy_conserv
 logical             :: limit_pztm_to_tropo
-character(len=16)   :: entrainment_scheme_for_closure
 logical             :: modify_closure_plume_condensate
+logical             :: use_llift_criteria
+logical             :: use_memphis_size_limits
+logical             :: use_pdeep_cv
+real                :: anvil_precip_efficiency
+real                :: atopevap
+real                :: auto_rate
+real                :: auto_th
+real                :: cape0
+real                :: cdeep_cv
+real                :: cell_ice_geneff_diam_input
+real                :: cell_liquid_eff_diam_input
 real                :: closure_plume_condensate
-real             :: evap_in_downdrafts
-real             :: evap_in_environ
-real             :: entrained_into_meso
-real             :: anvil_precip_efficiency
-real             :: meso_down_evap_fraction
-real             :: meso_up_evap_fraction
-real             :: cdeep_cv
+real                :: deephgt0
+real                :: dfre_for_cape
+real                :: dfre_for_closure
+real                :: entrained_into_meso
+real                :: evap_in_downdrafts
+real                :: evap_in_environ
+real                :: frac
+real                :: gama
+real                :: lofactor0
+real                :: meso_down_evap_fraction
+real                :: mesofactor
+real                :: meso_liquid_eff_diam_input
+real                :: meso_up_evap_fraction
+real                :: pblht0
+real                :: plev0
+real                :: rhavg0
+real                :: rmuz_for_cape
+real                :: rmuz_for_closure
+real                :: tau
+real                :: tfre_for_cape
+real                :: tfre_for_closure
+real                :: tke0
+real                :: ttend_max
+real                :: wmin_ratio
 real, dimension(:), pointer :: arat=>NULL()
 real, dimension(:), pointer :: ensemble_entrain_factors_gate=>NULL()
+character(len=16)   :: cell_ice_size_type 
+character(len=16)   :: cell_liquid_size_type
+character(len=16)   :: entrainment_scheme_for_closure
+character(len=32)   :: entrainment_constant_source
+
 
 end type donner_nml_type
 
@@ -367,68 +368,68 @@ type donner_param_type
 !    section of donner_deep.f90.
 !***********************************************************************
 
-
+integer          :: anvil_levels
 integer          :: istart
-real             :: cp_vapor
-real             :: cp_air  
-real             :: rdgas     
-real             :: rvgas     
-real             :: parcel_dp
-real             :: upper_limit_for_lfc
-real             :: pstop
-real             :: grav
-real             :: kappa
-real             :: dens_h2o
-real             :: pie
-real             :: seconds_per_day
-real             :: hlv
-real             :: hls
-real             :: hlf 
-real             :: kelvin
-real             :: cld_base_vert_vel
-real             :: dp_of_cloud_model
-real             :: cloud_base_radius
-real             :: wdet
-real             :: rbound
-real             :: wbound 
-real             :: freeze_fraction 
-real             :: virt_mass_co 
-real             :: pdeep_mc 
-real             :: tr_insert_time 
+integer          :: kpar
+real             :: anvil_precip_efficiency
 real             :: autoconv_rate 
 real             :: autoconv_threshold 
-real             :: tfre 
-real             :: dfre
-real             :: evap_in_downdrafts 
-real             :: evap_in_environ    
-real             :: entrained_into_meso 
-real             :: d622
-real             :: d608
-real             :: upper_limit_for_lcl
-real             :: tmin
-real             :: anvil_precip_efficiency
-real             :: meso_lifetime
-real             :: meso_ref_omega
-real             :: tprime_meso_updrft
-real             :: meso_sep 
-real             :: ref_press
-real             :: meso_down_evap_fraction
-real             :: meso_up_evap_fraction
-integer          :: kpar
-real             :: pdeep_cv
 real             :: cdeep_cv
-real             :: max_entrainment_constant_gate
-real             :: max_entrainment_constant_kep
-real             :: r_conv_land
-real             :: r_conv_ocean
-real             :: N_land
-real             :: N_ocean
+real             :: cell_ice_geneff_diam_def
+real             :: cell_liquid_eff_diam_def
+real             :: cld_base_vert_vel
+real             :: cloud_base_radius
+real             :: cp_air  
+real             :: cp_vapor
+real             :: d608
+real             :: d622
 real             :: delz_land
 real             :: delz_ocean
-real             :: cell_liquid_eff_diam_def
-real             :: cell_ice_geneff_diam_def
-integer          :: anvil_levels
-  
+real             :: dens_h2o
+real             :: dfre
+real             :: dp_of_cloud_model
+real             :: entrained_into_meso 
+real             :: evap_in_downdrafts 
+real             :: evap_in_environ    
+real             :: freeze_fraction 
+real             :: grav
+real             :: hlf 
+real             :: hls
+real             :: hlv
+real             :: kappa
+real             :: kelvin
+real             :: max_entrainment_constant_gate
+real             :: max_entrainment_constant_kep
+real             :: meso_down_evap_fraction
+real             :: meso_lifetime
+real             :: meso_ref_omega
+real             :: meso_sep 
+real             :: meso_up_evap_fraction
+real             :: most_unstable_depth
+real             :: N_land
+real             :: N_ocean
+real             :: parcel_dp
+real             :: pdeep_cv
+real             :: pdeep_mc 
+real             :: pie
+real             :: pstop
+real             :: rbound
+real             :: r_conv_land
+real             :: r_conv_ocean
+real             :: rdgas     
+real             :: ref_press
+real             :: rvgas     
+real             :: seconds_per_day
+real             :: tfre 
+real             :: tmin
+real             :: tprime_meso_updrft
+real             :: tr_insert_time 
+real             :: upper_limit_for_lcl
+real             :: upper_limit_for_lfc
+real             :: virt_mass_co 
+real             :: wbound 
+real             :: wdet
+
 real, dimension(:), pointer :: arat=>NULL()
 real, dimension(:), pointer :: ensemble_entrain_factors_gate=>NULL()
 real, dimension(:), pointer :: ensemble_entrain_factors_kep=>NULL()
@@ -464,14 +465,14 @@ type donner_column_diag_type
 
 
 logical                         :: in_diagnostics_window
-integer                         :: num_diag_pts
-integer                         :: ncols_in_window
 integer                         :: kstart
+integer                         :: ncols_in_window
+integer                         :: num_diag_pts
 integer, dimension(:), pointer  :: i_dc=>NULL()
-integer, dimension(:), pointer  :: j_dc=>NULL()
-integer, dimension(:), pointer  :: unit_dc=>NULL()
 integer, dimension(:), pointer  :: igl_dc=>NULL()
+integer, dimension(:), pointer  :: j_dc=>NULL()
 integer, dimension(:), pointer  :: jgl_dc=>NULL()
+integer, dimension(:), pointer  :: unit_dc=>NULL()
    
 end type donner_column_diag_type
 
@@ -598,8 +599,8 @@ real, dimension(:,:,:), pointer  ::           &
                  cememf_mod=>NULL(),               &
                  cemfc=>NULL(),                    &
                  cmus=>NULL(),                     &
-                 conv_temp_forcing=>NULL(),        &
                  conv_moist_forcing=>NULL(),       &
+                 conv_temp_forcing=>NULL(),        &
                  cual=>NULL(),                     &
                  cuqi=>NULL(),                     &
                  cuql=>NULL(),                     &
@@ -625,10 +626,10 @@ real, dimension(:,:,:,:), pointer ::          &
                  qtmes1=>NULL(),                   &
                  qtren1=>NULL(),                   &
                  temptr=>NULL(),                   &
-                 wtp1=>NULL(),                     &
                  wetdepc=>NULL(),                  &
                  wetdepm=>NULL(),                  &
-                 wetdept=>NULL()
+                 wetdept=>NULL(),                  &
+                 wtp1=>NULL()
 real, dimension(:,:),   pointer  ::           &
                  a1=>NULL(),                       &
                  amax=>NULL(),                     &
@@ -695,27 +696,36 @@ type donner_cape_type
 !                  moisture profile used in cape calculation [ kg/kg ]
 !   model_t        temperature profile used to define
 !                  temperature profile used in cape calculation [ K ]
+!   thetae         Equivalent Potential Temperature in the lower
+!                  atmosphere. [ K ]
+!   launch_level   The model level at which parcels are launched to calculate CAPE/CIN.
+!   Tthetae        Maximum Equivalent Potential Temperature. [ K ]
 
-
+integer, dimension(:,:), pointer ::          &
+                         launch_level=>NULL()
 real, dimension(:,:), pointer ::          &
-                         coin=>NULL(),         &
-                         plcl=>NULL(),         &
-                         plfc=>NULL(),         &
-                         plzb=>NULL(),         &
-                         qint=>NULL(),         &
-                         qint_lag=>NULL(),     &
-                         xcape_lag=>NULL(),    &
-                         xcape=>NULL()
+                         coin        =>NULL(), &
+                         plcl        =>NULL(), &
+                         plfc        =>NULL(), &
+                         plzb        =>NULL(), &
+                         Pthetae     =>NULL(), &
+                         qint_lag    =>NULL(), &
+                         qint        =>NULL(), &
+                         tlcl        =>NULL(), &
+                         Tthetae     =>NULL(), &
+                         xcape_lag   =>NULL(), &
+                         xcape       =>NULL()
 real, dimension(:,:,:), pointer ::        &
-                         cape_p=>NULL(),       &
-                         env_r=>NULL(),        &
-                         env_t=>NULL(),        &
-                         parcel_r=>NULL(),     &
-                         parcel_t=>NULL()
+                         cape_p      =>NULL(), &
+                         env_r       =>NULL(), &
+                         env_t       =>NULL(), &
+                         parcel_r    =>NULL(), &
+                         parcel_t    =>NULL()
 real, dimension (:,:,:), pointer ::       &
-                         model_p=>NULL(),      &
-                         model_r=>NULL(),      &
-                         model_t=>NULL()
+                         model_p     =>NULL(), &
+                         model_r     =>NULL(), &
+                         model_t     =>NULL(), &
+                         thetae      =>NULL()
 
 end type donner_cape_type
 
@@ -787,28 +797,28 @@ type donner_cem_type
 
 
 real, dimension(:,:,:), pointer  ::            &
-                 pfull=>NULL(),                   &
-                 zfull=>NULL(),                   &
-                 temp=>NULL(),                    &
-                 mixing_ratio=>NULL()
+                 mixing_ratio=>NULL(),         &
+                 pfull=>NULL(),                &
+                 temp=>NULL(),                 &
+                 zfull=>NULL()
 
 real, dimension(:,:,:), pointer  ::            &
-                 phalf=>NULL(),                   &
+                 phalf=>NULL(),                &
                  zhalf=>NULL()
 
 real, dimension(:,:,:), pointer  ::            &
-                 cell_precip=>NULL(),             &
-                 pb=>NULL(),                      &
+                 cell_precip=>NULL(),          &
+                 pb=>NULL(),                   &
                  ptma=>NULL()
 
 real, dimension(:,:,:,:), pointer  ::          &
                  h1=>NULL()
 
 real, dimension(:,:,:,:), pointer  ::          &
-                 qlw=>NULL(),                     &
-                 cfracice=>NULL(),                &
-                 wv=>NULL(),                      &
-                 rcl=>NULL()
+                 cfracice=>NULL(),             &
+                 qlw=>NULL(),                  &
+                 rcl=>NULL(),                  &
+                 wv=>NULL()
 
 real, dimension(:,:), pointer  ::              &
                  a1=>NULL(),                   &

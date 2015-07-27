@@ -381,11 +381,14 @@ integer,                               intent(out)   :: error
 !    pheric sounding to be used to evaluate cape.
 !--------------------------------------------------------------------
             call don_c_generate_cape_sounding_k &
-                 (nlev_lsm, nlev_hires, temperature(i,j,:),   &
+                 (nlev_lsm, nlev_hires, Param, Nml, temperature(i,j,:),   &
                   mixing_ratio(i,j,:), pfull(i,j,:),   &
                   Don_cape%model_t(i,j,:), Don_cape%model_r(i,j,:), &
                   Don_cape%model_p(i,j,:), Don_cape%cape_p(i,j,:), &
-                  Don_cape%env_t(i,j,:), Don_cape%env_r(i,j,:), ermesg, error)
+                  Don_cape%env_t(i,j,:), Don_cape%env_r(i,j,:), &
+                  Don_cape%launch_level(i,j), &
+                  Don_cape%Tthetae(i,j),   Don_cape%Pthetae(i,j), &
+                  ermesg, error)
  
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -1218,8 +1221,11 @@ end subroutine don_c_calculate_cape_k
 !######################################################################
 
 subroutine don_c_generate_cape_sounding_k   &
-         (nlev_lsm, nlev_hires, temp, mixing_ratio, pfull, model_t, &
-          model_r, model_p, cape_p, env_t, env_r, ermesg, error)  
+         (nlev_lsm, nlev_hires, Param, Nml, temp, mixing_ratio, pfull, &
+          model_t, model_r, model_p, cape_p, env_t, env_r, &
+          launch_level_for_cape, Tmaxthetae, Pmaxthetae, ermesg, error)  
+
+use donner_types_mod, only : donner_param_type, donner_nml_type
 
 implicit none
 
@@ -1237,9 +1243,13 @@ implicit none
 !-------------------------------------------------------------------
 
 integer,                     intent(in)  :: nlev_lsm, nlev_hires
+type(donner_param_type),     intent(in)  :: Param
+type(donner_nml_type),       intent(in)  :: Nml   
 real, dimension(nlev_lsm),   intent(in)  :: temp, mixing_ratio, pfull
 real, dimension(nlev_lsm),   intent(out) :: model_t, model_r, model_p
 real, dimension(nlev_hires), intent(out) :: cape_p, env_t, env_r
+integer,                     intent(out) :: launch_level_for_cape
+real,                        intent(out) :: Tmaxthetae, Pmaxthetae
 character(len=*),            intent(out) :: ermesg
 integer,                     intent(out) :: error
 
@@ -1272,6 +1282,9 @@ integer,                     intent(out) :: error
 !      env_r            high-resolution vapor mixing ratio profile used
 !                       for cape calculation. index 1 nearest thea
 !                       surface. [ kg(h2o) / kg(dry air) ]
+!      launch_level_for_cape
+!                       The level, in the low-resolution model, to use
+!                       as the base of the CAPE pressure grid.
 !
 !---------------------------------------------------------------------
 
@@ -1291,20 +1304,37 @@ integer,                     intent(out) :: error
 !    be non-negative.
 !--------------------------------------------------------------------
       do k=1,nlev_lsm
-        model_r(nlev_lsm+1-k) = amax1 (mixing_ratio(k), 0.0e00)
+        model_r(nlev_lsm+1-k) = amax1 (mixing_ratio(k), 1.0e-20)
         model_t(nlev_lsm+1-k) = temp (k)
         model_p(nlev_lsm+1-k) = pfull(k)
       end do
+
+!--------------------------------------------------------------------
+!     Options for launch level
+! 1) Use lowest full level pressure from model grid as base of CAPE pressure grid.
+!--------------------------------------------------------------------
+      launch_level_for_cape = Param%istart
+
+!--------------------------------------------------------------------
+! 2) Use pressure level of maximum Equivalent Potential Temperature (in the 
+!    lower atmosphere ) from inverted model grid as base of CAPE pressure grid.
+!--------------------------------------------------------------------
+      if ( Nml%do_most_unstable_layer ) then
+        call don_c_calc_thetae_k(nlev_lsm, model_t, model_r, model_p, &
+                                 Param%most_unstable_depth,        &
+                                 launch_level_for_cape,   &
+                                 Tmaxthetae, Pmaxthetae)
+      endif
 
 !-------------------------------------------------------------------
 !   define the vertical resolution of the convection parameterization
 !   grid. define the top level pressure in that grid to be zero.
 !   interpolate to define the pressure levels of that grid.
 !-------------------------------------------------------------------
-      dp = (model_p(1) - model_p(nlev_lsm))/real(nlev_hires-1)
+      dp = (model_p(launch_level_for_cape) - model_p(nlev_lsm))/real(nlev_hires-1)
       cape_p(nlev_hires) = 0.
       do k=1,nlev_hires-1
-        cape_p(k) = model_p(1) - real(k-1)*dp
+        cape_p(k) = model_p(launch_level_for_cape) - real(k-1)*dp
       end do
 
 !--------------------------------------------------------------------
@@ -1635,3 +1665,86 @@ end subroutine don_c_calculate_lcl_k
 !#####################################################################
 
 
+SUBROUTINE don_c_calc_thetae_k(nlev, temp_c, mixing_ratio_c, pfull_c, &
+                               most_unstable_depth,                   &
+                               maxTe_level, Tmax_theta, Pmax_theta)
+integer,                  intent(in)  :: nlev
+real,    dimension(nlev), intent(in)  :: temp_c,   &
+                                         mixing_ratio_c,   &
+                                         pfull_c
+real,                     intent(in)  :: most_unstable_depth
+integer,                  intent(out) :: maxTe_level
+real,                     intent(out) :: Tmax_theta, Pmax_theta
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+! 
+!     nlev           Number of levels being input/output
+!     temp_c         Temperature field at model full levels [ deg K ]
+!     mixing_ratio_c Vapor mixing ratio at model full levels 
+!                     [ kg(h2o) / kg(dry air) ]
+!     pfull_c        Pressure field at large-scale model full levels 
+!                     [ Pa ]
+!     most_unstable_depth  
+!                    Depth of layer to scan over to calculate Max Thetae
+!                     [ Pa , typically 300 hPa ] 
+!
+!   intent(out) variables:
+!     
+!     thetae         The Equivalent Potential Temperature. [ deg K ]
+!     MaxTe_level    The level of maximum Equivalent Potential 
+!                    Temperature in the area of interest. [ none]
+!     Tmax_theta     Model full level Temperature at level of MaxThetae
+!     Pmax_theta     Model full level Pressure at level of MaxThetae
+!
+!---------------------------------------------------------------------
+
+   integer :: i, j, k, klayer
+   real    :: max_thetae
+   real    ::  Tlcl
+   real    :: tmp, theta
+   real, dimension(nlev) :: thetae
+!--------------------------------------------------------------------
+!     Use equation 43 from Bolton (Mon. Wea. Rev. 1046-1053, 1980) to 
+!     define Thetae.
+!     Thetae = T*(1000/P)^(0.2854*(1-0.28e-3*r))           (r in g/kg)
+!               * exp((3.376/Tlcl - 0.00254)*r*(1+0.81e-3r)) 
+!--------------------------------------------------------------------
+
+   thetae(:) = 0.0
+   maxTe_level = 1
+   max_thetae = -999.9
+   do k= 1, nlev
+     if ( (pfull_c(1) - pfull_c(k)) < most_unstable_depth ) then
+       klayer = k
+     else
+       exit
+     endif
+   enddo
+   do k= 1, klayer
+     tmp = 0.2854*(1.0-0.28*mixing_ratio_c(k)) !mixing_ratio here is kg/kg
+     theta = temp_c(k)*(100000.0/pfull_c(k))**tmp
+     ! Get vapor pressure (eqn 16 Bolton, 1980)
+     tmp = pfull_c(k)/100.0 * mixing_ratio_c(k)/(0.622 + mixing_ratio_c(k))
+     ! Get LCL temperature from eqn 21 Bolton 1980
+     Tlcl = 2840.0/(3.5*log(temp_c(k)) - log(tmp) -4.805) + 55.0
+     tmp = mixing_ratio_c(k)*1000.0*(1.0 + 0.81* mixing_ratio_c(k))
+     thetae(k) = theta* exp((3.376/Tlcl - 0.00254)*tmp)
+
+     !Pressure level 1 is nearest the surface
+       if ( thetae(k) > max_thetae) then
+         maxTe_level = k
+         Tmax_theta  = temp_c(k)
+         Pmax_theta  = pfull_c(k)
+         max_thetae  = thetae(k)
+       endif
+   enddo
+
+! NB : thetae is on inverted ( surface=1 ) pressure grid here. If you need
+! to output thetae as a diagnostic, call the routine calc_thetae in 
+! moist_processes_utis from moist_processes. [non]fms_donner does not have
+! an inverted pressure grid to use as an axis.
+
+END SUBROUTINE don_c_calc_thetae_k
+
+!#####################################################################

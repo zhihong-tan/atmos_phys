@@ -13,23 +13,23 @@
 
 subroutine don_d_donner_deep_k   &
          (is, ie, js, je, isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
-          cloud_tracers_present, cbmf,  &
-          dt, Param, Nml, temp, mixing_ratio, pfull, phalf,   &
-          zfull, zhalf, omega, pblht, tkemiz, qstar, cush, coldT, qlin,&!miz
-          qiin, qain, land, sfc_sh_flux, sfc_vapor_flux, tr_flux,  &
+          cloud_tracers_present, cbmf,  dt, Param, Nml, &
+          temp, mixing_ratio, pfull, phalf, zfull, zhalf, &
+          omega, pblht, tkemiz, qstar, cush, coldT, qlin, qiin, qain, &
+          land, sfc_sh_flux, sfc_vapor_flux, tr_flux,  &
           tracers, cell_cld_frac, cell_liq_amt, cell_liq_size,  &
           cell_ice_amt, cell_ice_size, cell_droplet_number, &
-          meso_cld_frac, meso_liq_amt,  &
-          meso_liq_size, meso_ice_amt, meso_ice_size,    &
-          meso_droplet_number, nsum, & 
-          precip, delta_temp, delta_vapor, detf, uceml_inter, mtot,   &
-          mfluxup, &
+          meso_cld_frac, meso_liq_amt, meso_liq_size, &
+          meso_ice_amt, meso_ice_size, meso_droplet_number, &
+          nsum, maxTe_launch_level, &
+          precip, delta_temp, delta_vapor, detf, uceml_inter, mtot, mfluxup, &
           donner_humidity_area, donner_humidity_factor, total_precip,  &
           temperature_forcing, moisture_forcing, parcel_rise, &
-          delta_ql, delta_qi, delta_qa, qtrtnd, calc_conv_on_this_step, &
-          mhalf_3d, &
-          ermesg, error, Initialized, Col_diag, Don_rad, Don_conv, Don_cape, &
-          Don_cem, Don_save, sd, Uw_p, ac, cp, ct, Don_budgets)
+          delta_ql, delta_qi, delta_qa, qtrtnd, &
+          calc_conv_on_this_step, mhalf_3d, ermesg, error, &
+          Initialized, Col_diag, &
+          Don_rad, Don_conv, Don_cape, Don_cem, Don_save, &
+          sd, Uw_p, ac, cp, ct, Don_budgets)
                         
 !-------------------------------------------------------------------
 !    subroutine don_d_donner_deep_k is the primary kernel sub-
@@ -64,8 +64,7 @@ real, dimension(isize,jsize,nlev_lsm),                                  &
                                            cell_cld_frac,  cell_liq_amt,&
                                            cell_liq_size, cell_ice_amt, &
                                            cell_ice_size,  &
-                                           cell_droplet_number, &
-                                           meso_cld_frac,&
+                                           cell_droplet_number, meso_cld_frac,&
                                            meso_liq_amt, meso_liq_size, &
                                            meso_ice_amt, meso_ice_size,&
                                            meso_droplet_number
@@ -80,8 +79,8 @@ real,    dimension(isize,jsize,ntr),                                 &
 real,    dimension(isize,jsize,nlev_lsm,ntr),                         &
                          intent(in)     :: tracers 
 integer, dimension(isize,jsize),                                     &
-                         intent(in)     :: nsum      
-real,    dimension(isize,jsize),                                     & 
+                         intent(in)     :: nsum, maxTe_launch_level
+real,    dimension(isize,jsize),                                     &
                          intent(out)    :: precip      
 real, dimension(isize,jsize,nlev_lsm),                                 &
                          intent(out)    :: delta_temp, delta_vapor,&
@@ -485,16 +484,20 @@ type(ctend),             intent(inout)  :: ct
 !--------------------------------------------------------------------- 
         call don_d_convection_driver_k   &
              (isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
-              cloud_tracers_present, cbmf, dt, Nml, &
-              Initialized, Param, Col_diag, temp, mixing_ratio,  &
-              pfull, zfull, zhalf, pblht, tkemiz, qstar, cush, coldT,  &!miz
-              qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,    &
-              lag_cape_press, phalf, current_displ, land, sfc_sh_flux, &
-              sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
-              Don_rad, Don_cem, temperature_forcing, moisture_forcing,  &
-              total_precip, donner_humidity_factor, donner_humidity_area,&
-              dql, dqi, dqa, mhalf_3d_local, exit_flag, ermesg, error, sd, Uw_p, ac, cp, ct, &
-              Don_budgets)
+              cloud_tracers_present, dt, Param, Col_diag, &
+              temp, mixing_ratio,  pfull, phalf, zfull, zhalf, &
+              qlin, qiin, qain, &
+              lag_cape_temp, lag_cape_vapor, lag_cape_press, &
+              current_displ, pblht, tkemiz, qstar, cush, coldT, land, &
+              sfc_sh_flux, sfc_vapor_flux, tr_flux, tracers, &
+              Nml, Initialized, &
+              Don_cape, Don_conv, Don_budgets, Don_rad, Don_cem, &
+              sd, Uw_p, ac, cp, ct, &
+              cbmf, &
+              temperature_forcing, moisture_forcing, total_precip, &
+              donner_humidity_factor, donner_humidity_area,&
+              dql, dqi, dqa, mhalf_3d_local, &
+              exit_flag, ermesg, error)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -1048,6 +1051,10 @@ integer,                         intent(out)   :: error
       allocate (Don_cape%model_p    (isize, jsize, nlev_lsm) )
       allocate (Don_cape%model_r    (isize, jsize, nlev_lsm) )
       allocate (Don_cape%model_t    (isize, jsize, nlev_lsm) )
+      allocate (Don_cape%launch_level(isize, jsize) )
+      allocate (Don_cape%Tthetae     (isize, jsize) )
+      allocate (Don_cape%Pthetae     (isize, jsize) )
+      allocate (Don_cape%thetae     (isize, jsize, nlev_lsm) )
 
 !---------------------------------------------------------------------
 !    initialize the components of the donner_cape_type variable Don_cape.
@@ -1068,6 +1075,11 @@ integer,                         intent(out)   :: error
       Don_cape%model_p     = 0.0
       Don_cape%model_r     = 0.0
       Don_cape%model_t     = 0.0
+
+      Don_cape%launch_level = Param%ISTART
+      Don_cape%Tthetae      = 0.0
+      Don_cape%Pthetae      = 0.0
+      Don_cape%thetae       = 0.0
 
 !---------------------------------------------------------------------
 !    allocate the components of the donner_rad_type variable Don_rad.
@@ -1312,17 +1324,20 @@ end subroutine don_d_column_input_fields_k
 
 subroutine don_d_convection_driver_k    &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me,  &
-          cloud_tracers_present, cbmf, dt, Nml,    &
-          Initialized, Param, Col_diag, temp, mixing_ratio,  &
-          pfull, zfull, zhalf, pblht, tkemiz, qstar, cush, coldT,  &!miz
-          qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,  &
-          lag_cape_press, phalf, current_displ, land, sfc_sh_flux,  &
-          sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
-          Don_rad, Don_cem, temperature_forcing, moisture_forcing, &
-          total_precip, &
-          donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
-          mhalf_3d, &
-          exit_flag, ermesg, error, sd, Uw_p, ac, cp, ct, Don_budgets)
+          cloud_tracers_present, dt, Param, Col_diag, &
+          temp, mixing_ratio, pfull, phalf, zfull, zhalf, &
+          qlin, qiin, qain, &
+          lag_cape_temp, lag_cape_vapor, lag_cape_press, &
+          current_displ, pblht, tkemiz, qstar, cush, coldT, land, &
+          sfc_sh_flux, sfc_vapor_flux, tr_flux, tracers, &
+          Nml, Initialized, &
+          Don_cape, Don_conv, Don_budgets, Don_rad, Don_cem, &
+          sd, Uw_p, ac, cp, ct, &
+          cbmf, &
+          temperature_forcing, moisture_forcing, total_precip, &
+          donner_humidity_factor, donner_humidity_area, &
+          dql, dqi, dqa, mhalf_3d, &
+          exit_flag, ermesg, error)
 
 use donner_types_mod, only : donner_initialized_type, donner_rad_type, &
                              donner_param_type, donner_conv_type, &
@@ -1347,56 +1362,56 @@ implicit none
 integer,                         intent(in) :: isize, jsize, nlev_lsm,  &
                                                nlev_hires,    ntr, me
 logical,                         intent(in) :: cloud_tracers_present
-real, dimension(isize,jsize),    intent(inout) :: cbmf
 real,                            intent(in) :: dt 
-type(donner_nml_type),           intent(inout) :: Nml
-type(donner_initialized_type),   intent(inout) :: Initialized
 type(donner_param_type),         intent(in) :: Param
 type(donner_column_diag_type),   intent(in) :: Col_diag
 real,    dimension(isize,jsize,nlev_lsm),              &
-                              intent(in)    :: temp, mixing_ratio,  &
+                                 intent(in) :: temp, mixing_ratio,  &
                                                pfull, zfull, qlin, &
                                                qiin, qain,   &
                                                lag_cape_temp, &
                                                lag_cape_vapor, &
                                                lag_cape_press
 real,    dimension(isize,jsize,nlev_lsm+1),                       &
-                              intent(in)    ::  phalf, zhalf                  
+                                 intent(in) ::  phalf, zhalf                  
 real,    dimension(isize,jsize),                                     &
-                              intent(in)    :: current_displ, pblht, &
+                                 intent(in) :: current_displ, pblht, &
                                                tkemiz, qstar, cush, land, &
                                                sfc_sh_flux,   &
                                                sfc_vapor_flux
 logical, dimension(isize,jsize), intent(in) :: coldT
 real,    dimension(isize,jsize,ntr),                             &
-                              intent(in)    :: tr_flux        
+                                 intent(in) :: tr_flux        
 real,    dimension(isize,jsize,nlev_lsm,ntr),                      &
-                              intent(in)    :: tracers        
+                                 intent(in) :: tracers        
+
+type(donner_nml_type),        intent(inout) :: Nml
+type(donner_initialized_type),intent(inout) :: Initialized
 type(donner_cape_type),       intent(inout) :: Don_cape
 type(donner_conv_type),       intent(inout) :: Don_conv
-type(donner_budgets_type),       intent(inout) :: Don_budgets
+type(donner_budgets_type),    intent(inout) :: Don_budgets
 type(donner_rad_type),        intent(inout) :: Don_rad
 type(donner_cem_type),        intent(inout) :: Don_cem
-real,    dimension(isize,jsize,nlev_lsm),                           &
+type(sounding),               intent(inout) :: sd
+type(uw_params),              intent(inout) :: Uw_p
+type(adicloud),               intent(inout) :: ac
+type(cplume),                 intent(inout) :: cp
+type(ctend),                  intent(inout) :: ct
+real, dimension(isize,jsize), intent(inout) :: cbmf
+
+real, dimension(isize,jsize,nlev_lsm),                           &
                               intent(out)   :: temperature_forcing,&
                                                moisture_forcing
-real,    dimension(isize,jsize),                                  &
-                              intent(out)   :: total_precip
+real, dimension(isize,jsize), intent(out)   :: total_precip
 real,    dimension(isize,jsize,nlev_lsm),                              &
                               intent(out)   :: donner_humidity_factor, &
                                                donner_humidity_area, &
                                                dql, dqi, dqa
 real,    dimension(isize,jsize,nlev_lsm+1),                          &
-                              intent(out)   :: mhalf_3d  
-character(len=*),             intent(out)   :: ermesg
-integer,                      intent(out)   :: error
-logical, dimension(isize,jsize),                                &
-                              intent(out)   :: exit_flag
-type(sounding),               intent(inout) :: sd
-type(uw_params),               intent(inout) :: Uw_p
-type(adicloud),               intent(inout) :: ac
-type(cplume),                 intent(inout) :: cp
-type(ctend),                  intent(inout) :: ct
+                                intent(out) :: mhalf_3d  
+character(len=*),               intent(out) :: ermesg
+integer,                        intent(out) :: error
+logical, dimension(isize,jsize),intent(out) :: exit_flag
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -1564,14 +1579,16 @@ type(ctend),                  intent(inout) :: ct
 !    forcing.
 !---------------------------------------------------------------------
       call don_d_cupar_k     &
-           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
-            Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux, &
-            sfc_vapor_flux, temp, mixing_ratio, pblht, tkemiz, qstar, &
-            cush, land, coldT, pfull, phalf,&
-            zfull, zhalf, sd, Uw_p, ac, cp, ct, tr_flux, tracers,    &
-            Don_conv, Don_cape, Don_cem, temperature_forcing, &
-            moisture_forcing, &
-            total_precip, Don_budgets, ermesg, error, exit_flag)
+           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, &
+            Col_diag, Param, Nml, current_displ, sfc_sh_flux, sfc_vapor_flux, &
+            temp, mixing_ratio, pblht, tkemiz, qstar, cush, land, coldT, &
+            pfull, phalf, zfull, zhalf, &
+            tr_flux, tracers,    &
+            Initialized, cbmf, &
+            sd, Uw_p, ac, cp, ct, &
+            Don_conv, Don_budgets, Don_cape, Don_cem, &
+            temperature_forcing, moisture_forcing, total_precip, &
+            ermesg, error, exit_flag)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -1644,7 +1661,7 @@ type(ctend),                  intent(inout) :: ct
                qlw_wd = Don_conv%xice(i,j,k)
 ! convert precip from kg/kg/timestep to kg/m3/timestep
                tv_wd = temp(i,j,k) &
-                       * ( 1 + Param%D608*mixing_ratio(i,j,k)/(1+mixing_ratio(i,j,k)) )
+                       * ( 1.0 + Param%D608*mixing_ratio(i,j,k)/(1.0+mixing_ratio(i,j,k)) )
                air_density_wd = 0.5*(press0+press1)/(Param%rdgas*tv_wd)
                qrw_wd = qrw_col_wd * air_density_wd
                do n = 1,size(Don_conv%temptr,4)
@@ -1770,16 +1787,17 @@ end subroutine don_d_convection_driver_k
 !######################################################################
 
 subroutine don_d_cupar_k     &
-         (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
-          Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux,   &
-          sfc_vapor_flux,                                        &
+         (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, &
+          Col_diag, Param, Nml, current_displ, sfc_sh_flux, sfc_vapor_flux, &
           temp, mixing_ratio, pblht, tkemiz, qstar, cush, land, coldT, & !miz 
           pfull, phalf, zfull, zhalf,  &
-          sd, Uw_p, ac,cp, ct, & !miz
           tr_flux, tracers, &
-          Don_conv, Don_cape, Don_cem, temperature_forcing, &
-          moisture_forcing,  &
-          total_precip, Don_budgets, &
+!intent(inout)
+          Initialized, cbmf, &
+          sd, Uw_p, ac,cp, ct, & !miz
+          Don_conv, Don_budgets, Don_cape, Don_cem, &
+!intent(out)
+          temperature_forcing, moisture_forcing, total_precip, &
           ermesg, error, exit_flag)
 
 !----------------------------------------------------------------------
@@ -1807,33 +1825,34 @@ real,                              intent(in)    :: dt
 type(donner_column_diag_type),     intent(in)    :: Col_diag
 type(donner_param_type),           intent(in)    :: Param
 type(donner_nml_type),             intent(in)    :: Nml
-type(donner_initialized_type),     intent(inout) :: Initialized
-type(sounding),                    intent(inout) :: sd
-type(uw_params),                   intent(inout) :: Uw_p
-type(adicloud),                    intent(inout) :: ac
-type(cplume),                      intent(inout) :: cp
-type(ctend),                       intent(inout) :: ct
-real,    dimension(isize,jsize),   intent(in)    :: pblht, tkemiz, &
-                                                    qstar, cush, land
-logical, dimension(isize,jsize),   intent(in)    :: coldT
-
-real,    dimension(isize,jsize),   intent(inout)    :: cbmf
 real,    dimension(isize,jsize),   intent(in)    :: current_displ, &
                                                     sfc_sh_flux,  &
                                                     sfc_vapor_flux
 real,    dimension(isize,jsize,nlev_lsm),                      &
-                                   intent(in)    :: pfull, temp, &
-                                                    mixing_ratio, zfull
+                                   intent(in)    :: temp, mixing_ratio, &
+                                                    pfull, zfull
+real,    dimension(isize,jsize),   intent(in)    :: pblht, tkemiz, &
+                                                    qstar, cush, land
+logical, dimension(isize,jsize),   intent(in)    :: coldT
 real,    dimension(isize,jsize,nlev_lsm+1),                    &  
                                    intent(in)    :: phalf, zhalf
 real,    dimension(isize,jsize,ntr),                           &
                                    intent(in)    :: tr_flux
 real,    dimension(isize,jsize,nlev_lsm,ntr),               &
                                    intent(in)    :: tracers
+
+type(donner_initialized_type),     intent(inout) :: Initialized
+type(sounding),                    intent(inout) :: sd
+type(uw_params),                   intent(inout) :: Uw_p
+type(adicloud),                    intent(inout) :: ac
+type(cplume),                      intent(inout) :: cp
+type(ctend),                       intent(inout) :: ct
 type(donner_conv_type),            intent(inout) :: Don_conv
-type(donner_budgets_type),            intent(inout) :: Don_budgets
+type(donner_budgets_type),         intent(inout) :: Don_budgets
 type(donner_cape_type),            intent(inout) :: Don_cape
 type(donner_cem_type),             intent(inout) :: Don_cem
+real,    dimension(isize,jsize),   intent(inout)    :: cbmf
+
 real,    dimension(isize,jsize,nlev_lsm),                      &
                                    intent(out)   :: temperature_forcing,&
                                                     moisture_forcing
@@ -2014,18 +2033,16 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !    cloud area at cloud base level a_1(p_b).
 !---------------------------------------------------------------------
       call don_d_mulsub_k   &
-           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param,   &
-!++lwh
-            Nml, Col_diag,   &
-            Initialized,   &
-            temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT,  &
+           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param, Nml, &
+            Col_diag, Initialized,   &
+            temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT, &
             phalf, pfull, zhalf, zfull,  &
+            sfc_vapor_flux, sfc_sh_flux, sfc_tracer_flux, &
+            xgcm_v, &
             sd, Uw_p, ac, cp, ct, &
-           sfc_vapor_flux, sfc_sh_flux, &
-!--lwh
-            sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, Don_cem, exit_flag,  &
+            Don_cape, Don_conv, Don_cem, Don_budgets, exit_flag,  &
             total_precip, temperature_forcing, moisture_forcing, &
-            Don_budgets, ermesg, error)
+            ermesg, error)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2394,7 +2411,7 @@ integer,                          intent(out)   :: error
 !----------------------------------------------------------------------
 !    case of no upward motion at lowest level:    
 !----------------------------------------------------------------------
-            if (current_displ(idiag,jdiag) == 0) then
+            if (current_displ(idiag,jdiag) == 0.0) then
               write (unitdiag, '(a)')   &
                     'no upward motion at lowest level'
             else 
@@ -2494,17 +2511,19 @@ end subroutine don_d_check_for_deep_conv_k
 !#####################################################################
 
 subroutine don_d_mulsub_k   &
+!intent in
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param, Nml, &
-!++lwh
           Col_diag, Initialized,   &
-          temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT, & !miz
-          phalf, pfull, zhalf, zfull, sd,  &
-           Uw_p, ac,         cp, ct, &
-          sfc_vapor_flux, sfc_sh_flux, &
-!--lwh
-          sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, Don_cem, exit_flag, &
+          temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT, &
+          phalf, pfull, zhalf, zfull, &
+          sfc_vapor_flux, sfc_sh_flux, sfc_tracer_flux, &
+          xgcm_v, &
+!intent inout
+          sd,  Uw_p, ac, cp, ct, &
+          Don_cape, Don_conv, Don_cem, Don_budgets, exit_flag, &
+!intent out
           total_precip, temperature_forcing, moisture_forcing,  &
-          Don_budgets, ermesg, error)
+          ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine don_d_mulsub_k calculates the thermal and moisture
@@ -2538,34 +2557,33 @@ type(donner_param_type),      intent(in)     ::  Param
 type(donner_nml_type),        intent(in)     ::  Nml  
 type(donner_column_diag_type),                           &
                               intent(in)     ::  Col_diag
-!++lwh
-type(donner_initialized_type), intent(in)    :: Initialized
-!--lwh
+type(donner_initialized_type), intent(in)    ::  Initialized
 real,    dimension(isize,jsize,nlev_lsm+1),                    &
                               intent(in)     ::  phalf, zhalf
 real,    dimension(isize,jsize,nlev_lsm),                      &
                               intent(in)     ::  pfull, zfull, temp, mixing_ratio
-type(sounding),               intent(inout)  ::  sd
-type(uw_params),               intent(inout)  ::  Uw_p
-type(adicloud),               intent(inout)  ::  ac
-type(cplume),                 intent(inout)  ::  cp
-type(ctend),                  intent(inout)  ::  ct
 real, dimension(isize,jsize), intent(in)     ::  pblht, tkemiz, qstar, &
-                                                 cush, cbmf, land
-logical, dimension(isize,jsize), intent(in)  ::  coldT
-real,    dimension(isize,jsize),                                &
-                              intent(in)     ::  sfc_vapor_flux,  &
+                                                 cush, cbmf, land,  &
+                                                 sfc_vapor_flux,  &
                                                  sfc_sh_flux
+logical, dimension(isize,jsize), intent(in)  ::  coldT
 real,    dimension(isize,jsize,ntr),                              &
                               intent(in)     ::  sfc_tracer_flux       
 real,    dimension(isize,jsize,nlev_lsm,ntr),               &
                               intent(in)     ::  xgcm_v
+
+type(sounding),               intent(inout)  ::  sd
+type(uw_params),              intent(inout)  ::  Uw_p
+type(adicloud),               intent(inout)  ::  ac
+type(cplume),                 intent(inout)  ::  cp
+type(ctend),                  intent(inout)  ::  ct
 type(donner_cape_type),       intent(inout)  ::  Don_cape
 type(donner_conv_type),       intent(inout)  ::  Don_conv
 type(donner_cem_type),        intent(inout)  ::  Don_cem
-type(donner_budgets_type),       intent(inout)  ::  Don_budgets
+type(donner_budgets_type),    intent(inout)  ::  Don_budgets
 logical, dimension(isize,jsize),                            &
                               intent(inout)  ::  exit_flag
+
 real,    dimension(isize,jsize),                          &
                               intent(out)    ::  total_precip        
 real,    dimension(isize,jsize,nlev_lsm),                        &
@@ -2982,7 +3000,8 @@ integer,                      intent(out)    ::  error
                  Don_cape%model_p(i,j,:), phalf_c, xgcm_v(i,j,:,:), &
                  sfc_sh_flux(i,j), sfc_vapor_flux(i,j), &
                  sfc_tracer_flux(i,j,:), Don_cape%plzb(i,j), &
-                 exit_flag(i,j),  ensmbl_precip, ensmbl_cond,       &
+                 Don_cape%launch_level(i,j), exit_flag(i,j), &
+                 ensmbl_precip, ensmbl_cond,       &
                  ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
                  ensmbl_anvil_cond_ice, pb,  &
                  pt_ens, ampta1, Don_conv%amax(i,j), emsm, rlsm,  &
@@ -3306,7 +3325,8 @@ integer,                      intent(out)    ::  error
                  Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
                  Don_cape%env_r(i,j,:), Don_cape%parcel_t(i,j,:), &
                  Don_cape%parcel_r(i,j,:), Don_cape%cape_p(i,j,:), &
-                 exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
+                 Don_cape%xcape(i,j), exit_flag(i,j), &
+                 Don_conv%amos(i,j), Don_conv%a1(i,j),&
                  ermesg, error)
             else  ! (do_donner_closure)
 ! these paths used by donner_lite parameterization:
@@ -3434,13 +3454,13 @@ end subroutine don_d_mulsub_k
 
 subroutine don_d_integ_cu_ensemble_k             &
          (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
-          lofactor, Param, Col_diag, Nml, Initialized, temp_c, &
-          mixing_ratio_c, pfull_c, phalf_c,   &
-          tracers_c, sfc_sh_flux_c, sfc_vapor_flux_c,   &
-          sfc_tracer_flux_c, plzb_c, exit_flag_c, ensmbl_precip,    &
-          ensmbl_cond, ensmbl_anvil_cond_liq,  &
-          ensmbl_anvil_cond_liq_frz, &
-          ensmbl_anvil_cond_ice, pb, pt_ens, ampta1, amax, &
+          lofactor, Param, Col_diag, Nml, Initialized, &
+          temp_c, mixing_ratio_c, pfull_c, phalf_c, tracers_c,  &
+          sfc_sh_flux_c, sfc_vapor_flux_c,   &
+          sfc_tracer_flux_c, plzb_c, parcel_launch_level, exit_flag_c, &
+          ensmbl_precip, ensmbl_cond, ensmbl_anvil_cond_liq,  &
+          ensmbl_anvil_cond_liq_frz, ensmbl_anvil_cond_ice, &
+          pb, pt_ens, ampta1, amax, &
           emsm, rlsm, cld_press, ensmbl_melt, ensmbl_melt_meso, &
           ensmbl_freeze, ensmbl_freeze_meso, ensmbl_wetc, &
           disb, disc_liq, disc_ice, dism_liq, dism_liq_frz, &
@@ -3454,22 +3474,20 @@ subroutine don_d_integ_cu_ensemble_k             &
           i, j, Don_cem)
 
 !----------------------------------------------------------------------
-!    subroutine integrate_cumulus_ensemble works on a single model 
-!    column. all profile arrays used in this subroutine and below have 
-!    index 1 nearest the surface. it first determines the lifting conden-
-!    sation level (if one exists) of a parcel moving from the specified 
-!    parcel_launch_level. if an lcl is found, subroutine 
-!    donner_cloud_model_cloud_model is called to determine the behavior
-!    of each of kpar cloud ensemble mem-
-!    bers assumed present in the column (each ensemble member is ass-
-!    umed to have a different entrainment rate). if all ensemble members
-!    produce deep convection, the ensemble statistics are produced for 
-!    use in the large-scale model; otherwise deep convection is not seen
-!    in the large-scale model in this grid column. if the ensemble will 
-!    support a mesoscale circulation, its impact on the large-scale model
-!    fields is also determined. upon completion, the appropriate output 
-!    fields needed by the large-scale model are returned to the calling 
-!    routine.
+!    subroutine integrate_cumulus_ensemble works on a single model  column. All
+!    profile arrays used in this subroutine and below have  index 1 nearest the
+!    surface. It first determines the lifting condensation level (if one exists)
+!    of a parcel moving from the specified  parcel_launch_level. If an lcl is
+!    found, subroutine  donner_cloud_model_cloud_model is called to determine 
+!    the behavior of each of kpar cloud ensemble members assumed present in the
+!    column (each ensemble member is assumed to have a different entrainment
+!    rate). If all ensemble members produce deep convection, the ensemble
+!    statistics are produced for  use in the large-scale model; otherwise deep
+!    convection is not seen in the large-scale model in this grid column. If the
+!    ensemble will  support a mesoscale circulation, its impact on the
+!    large-scale model fields is also determined. upon completion, the
+!    appropriate output fields needed by the large-scale model are returned to
+!    the calling routine.
 !----------------------------------------------------------------------
 use donner_types_mod, only : donner_param_type, &
                              donner_nml_type, donner_column_diag_type, &
@@ -3496,6 +3514,7 @@ real,                              intent(in)    :: sfc_sh_flux_c,   &
 real,    dimension(ntr),           intent(in)    :: sfc_tracer_flux_c 
 real,                              intent(in)    :: plzb_c
 real,                              intent(in)    :: lofactor
+integer,                           intent(in)    :: parcel_launch_level
 logical,                           intent(inout) :: exit_flag_c  
 real,                              intent(out)   ::    &
                      ensmbl_precip, ensmbl_cond,                    &
@@ -3969,10 +3988,13 @@ type(donner_cem_type),             intent(inout) :: Don_cem
                    ca_liq, ca_ice, apt, &
                    tb, alpp,   &
                    pcsave, ensmbl_cld_top_area  
-      real     ::  meso_frac, precip_frac, frz_frac_non_precip,  &
+      real    ::   meso_frac, precip_frac, frz_frac_non_precip,  &
                    bak, meso_frz_frac, pmelt_lsm, precip_melt_frac, &
                    ecei_liq,  ci_liq_cond, ci_ice_cond
      
+      real,    dimension (nlev_lsm)       :: thetae
+      integer ::   local_launch_level
+      real    ::   theta
 
 !----------------------------------------------------------------------
 !   local variables:
@@ -4010,10 +4032,17 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !    isfactory lcl is not reached for this parcel, the logical variable 
 !    lcl_reached will be set to .false..
 !--------------------------------------------------------------------
+
+      local_launch_level = 2 ! Original AM3 code.
+! Eventually use the same level as calculated when determining CAPE.
+      !
+      if ( Nml%do_most_unstable_layer ) then
+        local_launch_level = parcel_launch_level 
+      endif
       call don_cm_lcl_k    &
-           (Param, temp_c (Nml%parcel_launch_level),    &
-            pfull_c       (Nml%parcel_launch_level),    &
-            mixing_ratio_c(Nml%parcel_launch_level),   &
+           (Param, temp_c (local_launch_level),    &
+            pfull_c       (local_launch_level),    &
+            mixing_ratio_c(local_launch_level),   &
             tb, pb, mrb, lcl_reached, ermesg, error)     
 
 !---------------------------------------------------------------------
@@ -5933,14 +5962,14 @@ integer,                            intent(out)   :: error
 !    if in diagnostics column, output the profile of the entropy flux
 !    convergence on the lo-res grid, at levels where it is non-zero.
 !---------------------------------------------------------------------
-      do k=1,nlev_lsm
-        if (debug_ijt) then
+      if (debug_ijt) then
+        do k=1,nlev_lsm
           if (h1_2(k) /= 0.0) then
             write (diag_unit, '(a, i4, e20.12)')  &
                                  'in mulsub: JK,H1= ', k, h1_2(k)
           endif
-        endif
-      end do
+        end do
+      endif
 
 !----------------------------------------------------------------------
 
@@ -8596,7 +8625,7 @@ subroutine don_d_determine_cloud_area_k            &
           Initialized, Nml, lofactor, &
           max_depletion_rate, dcape, amax, dise_v, disa_v, pfull_c,  &
           temp_c, mixing_ratio_c, env_t, env_r, parcel_t, parcel_r, &
-          cape_p, exit_flag, amos, a1, ermesg, error)
+          cape_p, xcape_deep, exit_flag, amos, a1, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine determine_cloud_area defines the convective cloud area
@@ -8625,6 +8654,7 @@ real, dimension(nlev_lsm),    intent(in)    :: dise_v, disa_v, &
                                                mixing_ratio_c 
 real, dimension(nlev_hires),  intent(in)    :: env_t, env_r, parcel_t,  &
                                                parcel_r, cape_p
+real,                         intent(in)    :: xcape_deep
 logical,                      intent(inout) :: exit_flag
 real,                         intent(out)   :: amos, a1
 character(len=*),             intent(out)   :: ermesg
@@ -8762,7 +8792,7 @@ integer,                      intent(out)   :: error
            (nlev_hires, diag_unit, debug_ijt, Param, Initialized, &
             Nml, lofactor, dcape, &
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
-            rl_v, parcel_r, env_t, parcel_t, a1, ermesg, error)     
+            rl_v, parcel_r, env_t, parcel_t, xcape_deep, a1, ermesg, error)     
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine. 
@@ -9418,6 +9448,10 @@ integer,                        intent(out)   :: error
       deallocate (Don_cape%model_t    )
       deallocate (Don_cape%qint       )     
       deallocate (Don_cape%qint_lag   ) 
+      deallocate (Don_cape%launch_level)
+      deallocate (Don_cape%Tthetae)
+      deallocate (Don_cape%Pthetae)
+      deallocate (Don_cape%thetae      )
 
 !----------------------------------------------------------------------
 !    deallocate the components of the donner_rad_type variable.

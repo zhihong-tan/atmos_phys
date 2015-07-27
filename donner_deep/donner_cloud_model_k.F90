@@ -480,6 +480,8 @@ integer,                            intent(out)   :: error
       real, dimension( size(xclo,2) ) :: delta_xclo0, delta_xclo1, dwet
       integer :: n
 !--lwh
+      real :: displ
+      integer :: indx
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -602,9 +604,14 @@ integer,                            intent(out)   :: error
 !    call gcm_to_cm to obtain the large-scale model moisture, temper-
 !    ature, and tracer field values at the cloud base pressure to be
 !    used as the environmental values in the cloud model.
+!
+!    call don_u_lo1d_to_hi0d_log_fast_k to determine the index and 
+!    displacement needed to be used on all interpolated variables 
+!    (mre, te, tracers)
 !--------------------------------------------------------------------
-      call don_u_lo1d_to_hi0d_log_k             &
-           (nlev_lsm, mixing_ratio_c, sig, psfc, pb, mre(1), ermesg, error)
+      call don_u_lo1d_to_hi0d_log_fast_k             &
+           (nlev_lsm, sig, psfc, pb,  &
+            indx, displ, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -612,27 +619,15 @@ integer,                            intent(out)   :: error
 !----------------------------------------------------------------------
       if (error /= 0 ) return
 
-      call don_u_lo1d_to_hi0d_log_k             &
-           (nlev_lsm, temp_c, sig, psfc, pb, te(1), ermesg, error )
- 
-!----------------------------------------------------------------------
-!    determine if an error message was returned from the kernel routine.
-!    if so, return to calling program where it will be processed.
-!----------------------------------------------------------------------
-      if (error /= 0 ) return
-
+      mre(1) = mixing_ratio_c(indx) + &
+              (mixing_ratio_c(indx+1) - mixing_ratio_c(indx))*displ
+      te(1) = temp_c(indx) + &
+              (temp_c(indx+1) - temp_c(indx))*displ
 
       if (do_donner_tracer) then
         do ktr=1,ntr          
-          call don_u_lo1d_to_hi0d_log_k             &
-               (nlev_lsm, tracers_c(:,ktr), sig, psfc, pb,   &
-                xtrae(1,ktr), ermesg, error)
-
-!----------------------------------------------------------------------
-!    determine if an error message was returned from the kernel routine.
-!    if so, return to calling program where it will be processed.
-!----------------------------------------------------------------------
-          if (error /= 0 ) return
+          xtrae(1,ktr) = tracers_c(indx,ktr) + &
+                (tracers_c(indx+1,ktr) - tracers_c(indx,ktr))*displ
         end do
       endif
 
@@ -678,10 +673,14 @@ integer,                            intent(out)   :: error
 !    call gcm_to_cm to obtain the large-scale model moisture, temper-
 !    ature, and tracer field values at cloud model pressure level to be
 !    used as the environmental values in the cloud model.
+!
+!    call don_u_lo1d_to_hi0d_log_fast_k to determine the index and 
+!    displacement needed to be used on all interpolated variables 
+!    (mre, te, tracers)
 !--------------------------------------------------------------------
-        call don_u_lo1d_to_hi0d_log_k             &
-             (nlev_lsm, mixing_ratio_c, sig, psfc, cld_press(k+1),  &
-              mre(k+1), ermesg, error)
+        call don_u_lo1d_to_hi0d_log_fast_k             &
+             (nlev_lsm, sig, psfc, cld_press(k+1),  &
+              indx, displ, ermesg, error)
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
@@ -689,27 +688,16 @@ integer,                            intent(out)   :: error
 !----------------------------------------------------------------------
         if (error /= 0 ) return
 
-        call don_u_lo1d_to_hi0d_log_k             &
-             (nlev_lsm, temp_c, sig, psfc, cld_press(k+1),   &
-              te(k+1), ermesg, error )
+        mre(k+1) = mixing_ratio_c(indx) + &
+                  (mixing_ratio_c(indx+1) - mixing_ratio_c(indx))*displ
 
-!----------------------------------------------------------------------
-!    determine if an error message was returned from the kernel routine.
-!    if so, return to calling program where it will be processed.
-!----------------------------------------------------------------------
-        if (error /= 0 ) return
+        te(k+1) = temp_c(indx) + &
+                 (temp_c(indx+1) - temp_c(indx))*displ
 
         if (do_donner_tracer) then
           do ktr=1, ntr           
-            call don_u_lo1d_to_hi0d_log_k             &
-                 (nlev_lsm, tracers_c(:,ktr), sig, psfc,   &
-                  cld_press(k+1), xtrae(k+1,ktr), ermesg, error)
-
-!----------------------------------------------------------------------
-!    determine if an error message was returned from the kernel routine.
-!    if so, return to calling program where it will be processed.
-!----------------------------------------------------------------------
-            if (error /= 0 ) return
+            xtrae(k+1,ktr) = tracers_c(indx,ktr) + &
+                            (tracers_c(indx+1,ktr) - tracers_c(indx,ktr))*displ
           end do
         endif
 
@@ -3043,10 +3031,19 @@ integer,                      intent(out)   :: error
 !    (cell_precip) and condensation rates (cu) in units of mm per day.
 !---------------------------------------------------------------------
       if (debug_ijt) then
-        write (diag_unit, '(a, 3e20.12,a)')   &
-             'in mulsub: summel,rc,cu= ',    &
-        -(summel*cell_precip/cu)*Param%seconds_per_day,cell_precip,cu, &
+        write (diag_unit, '(a, 2e20.12,a)')   &
+             'in mulsub: rc,cu= ',    &
+        cell_precip,cu, &
                                             'mm/day'
+        if ( cu .ne. 0.0 ) then
+          write (diag_unit, '(a, e20.12,a)')   &
+             'in mulsub: summel = ',    &
+        -(summel*cell_precip/cu)*Param%seconds_per_day, 'mm/day'
+        else
+          write (diag_unit, '(a)')   &
+             'in mulsub: summel = undefined due to cu = 0'
+        endif
+
       endif
 
 !---------------------------------------------------------------------

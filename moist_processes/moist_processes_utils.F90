@@ -27,7 +27,7 @@ private
 
 !------------------ private and public data/interfaces -----------------
 
-public   capecalcnew, tempavg, column_diag, rh_calc
+public   capecalcnew, tempavg, column_diag, rh_calc, calc_thetae
 
 private  column_diag_1, column_diag_2, column_diag_3
 
@@ -109,7 +109,7 @@ real, public, allocatable, dimension(:,:,:) :: pmass
 !cape calculation.
                                                                                 
 subroutine capecalcnew(kx,p,phalf,cp,rdgas,rvgas,hlv,kappa,tin,rin,&
-                                avgbl,cape,cin)
+                                avgbl, cape, cin, tp, rp, klcl, klfc, klzb)
                                                                                 
 !
 !    Input:
@@ -146,10 +146,12 @@ subroutine capecalcnew(kx,p,phalf,cp,rdgas,rvgas,hlv,kappa,tin,rin,&
       real, intent(in), dimension(:)         :: p, phalf, tin, rin
       real, intent(in)                       :: rdgas, rvgas, hlv, kappa, cp
       real, intent(out)                      :: cape, cin
+      real,    intent(out), dimension(:) :: tp, rp
+      integer, intent(out)               :: klcl, klfc, klzb
                                                                                 
-      integer            :: k, klcl, klfc, klzb
+      integer            :: k!, klcl, klfc, klzb
       logical            :: nocape
-      real, dimension(kx)   :: tp, rp
+!      real, dimension(kx)   :: tp, rp
       real                  :: t0, r0, es, rs, theta0, pstar, value, tlcl, &
                                a, b, dtdlnp, &
                                plcl, plzb
@@ -193,9 +195,9 @@ subroutine capecalcnew(kx,p,phalf,cp,rdgas,rvgas,hlv,kappa,tin,rin,&
 ! The right hand side of this is only a function of temperature, therefore
 ! this is put into a lookup table to solve for temperature.
          if (r0.gt.0.) then
-            value = log(theta0**(-1/kappa)*r0*pstar*rvgas/rdgas) 
+            value = log(theta0**(-1./kappa)*r0*pstar*rvgas/rdgas) 
             call lcltabl(value,tlcl)
-            plcl = pstar*(tlcl/theta0)**(1/kappa)
+            plcl = pstar*(tlcl/theta0)**(1./kappa)
 ! just in case plcl is very high up
             if (plcl.lt.p(1)) then
                plcl = p(1)
@@ -533,7 +535,7 @@ subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK, do_cmip)
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: esat
       
         real, parameter :: d622 = RDGAS/RVGAS
-        real, parameter :: d378 = 1.-d622
+!        real, parameter :: d378 = 1.-d622
 
 ! because Betts-Miller uses a simplified scheme for calculating the relative humidity
         if (do_simple) then
@@ -556,6 +558,71 @@ subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK, do_cmip)
         IF (present(MASK)) RH(:,:,:)=MASK(:,:,:)*RH(:,:,:)
 
 END SUBROUTINE rh_calc
+
+!#######################################################################
+
+SUBROUTINE calc_thetae(temp_c, mixing_ratio_c, pfull_c, thetae, maxTe_level)
+real,    dimension(:,:,:), intent(in)  :: temp_c,   &
+                                          mixing_ratio_c,   &
+                                          pfull_c
+real,    dimension(:,:,:), intent(out) :: thetae
+integer, dimension(:,:),   intent(out) :: maxTe_level
+
+!---------------------------------------------------------------------
+!   intent(in) variables:
+! 
+!     temp_c         Temperature field at model full levels [ deg K ]
+!     mixing_ratio_c Vapor mixing ratio at model full levels 
+!                     [ kg(h2o) / kg(dry air) ]
+!     pfull_c        Pressure field at large-scale model full levels 
+!                     [ Pa ]
+!
+!   intent(out) variables:
+!     
+!     thetae         The Equivalent Potential Temperature. [ deg K ]
+!     MaxTe_level    The level of maximum Equivalent Potential 
+!                    Temperature in the lowest 300hPa of the atmosphere. [ none]
+!
+!---------------------------------------------------------------------
+
+   integer :: i, j, k, kmax
+   real    :: max_thetae
+   real ::  Tlcl
+   real :: tmp, theta
+!--------------------------------------------------------------------
+!     Use equation 43 from Bolton (Mon. Wea. Rev. 1046-1053, 1980) to 
+!     define Thetae.
+!     Thetae = T*(1000/P)^(0.2854*(1-0.28e-3*r))           (r in g/kg)
+!               * exp((3.376/Tlcl - 0.00254)*r*(1+0.81e-3r)) 
+!--------------------------------------------------------------------
+
+   thetae(:,:,:) = 0.0
+   maxTe_level = 1
+   kmax = size(temp_c,3)
+   do j=1,size(temp_c,2)
+     do i=1,size(temp_c,1)
+       max_thetae = -999.9
+       do k= kmax,1,-1
+         tmp = 0.2854*(1.0-0.28*mixing_ratio_c(i,j,k)) !mixing_ratio here is kg/kg
+         theta = temp_c(i,j,k)*(100000.0/pfull_c(i,j,k))**tmp
+         ! Get vapor pressure (eqn 16 Bolton, 1980)
+         tmp = pfull_c(i,j,k)/100.0 * mixing_ratio_c(i,j,k)/(0.622 + mixing_ratio_c(i,j,k))
+         ! Get LCL temperature from eqn 21 Bolton 1980
+         Tlcl = 2840.0/(3.5*log(temp_c(i,j,k)) - log(tmp) -4.805) + 55.0
+         tmp = mixing_ratio_c(i,j,k)*1000.0*(1.0 + 0.81* mixing_ratio_c(i,j,k))
+         thetae(i,j,k) = theta* exp((3.376/Tlcl - 0.00254)*tmp)
+         if ( (pfull_c(i,j,kmax) - pfull_c(i,j,k)) < 30000.0 ) then
+           if ( thetae(i,j,k) > max_thetae) then
+             maxTe_level(i,j) = k
+             max_thetae       = thetae(i,j,k)
+           endif
+         endif
+       enddo
+     enddo
+   enddo
+        
+
+END SUBROUTINE calc_thetae
 
 
 !#######################################################################
