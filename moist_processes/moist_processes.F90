@@ -80,8 +80,7 @@ use diag_integral_mod,     only: diag_integral_field_init, &
 use cu_mo_trans_mod,       only: cu_mo_trans_init, cu_mo_trans, cu_mo_trans_end
 use moz_hook_mod,          only: moz_hook
 use aerosol_types_mod,     only: aerosol_type
-use moist_proc_utils_mod,  only: capecalcnew, tempavg, column_diag, rh_calc, &
-                                 pmass, calc_thetae
+use moist_proc_utils_mod,  only: capecalcnew, tempavg, column_diag, rh_calc, pmass
 
 use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
                                  moistproc_lscale_cond, moistproc_strat_cloud, &
@@ -289,7 +288,6 @@ integer :: convection_clock, largescale_clock, donner_clock, mca_clock, ras_cloc
 ! ---> h1g, dump cell and neso cloud fraction from donner-deep, 2011-08-08
 integer :: id_cell_cld_frac,  id_meso_cld_frac, id_donner_humidity_area
 ! <--- h1g, dump cell and neso cloud fraction from donner-deep, 2011-08-08
-integer :: id_thetae, id_Maxthetae
 
 integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_snow_tot, id_tot_cld_amt, id_conv_freq, &
@@ -1233,10 +1231,10 @@ logical, intent(out), dimension(:,:)     :: convect
 ! there is not enough water available to beg/borrow/steal from, we need to zero
 ! out the various tendencies. i.e. donner_deep will not contribute to changing 
 ! the column 
-           write (warn_mesg,'(2i4,2e12.4)') i,j,precip_adjustment(i,j), precip_returned(i,j)
-           call error_mesg ('moist_processes_mod', 'moist_processes: &
-                 &Change in water content does not balance precip &
-                 &from donner_deep routine.'//trim(warn_mesg), WARNING)
+!           write (warn_mesg,'(2i4,2e12.4)') i,j,precip_adjustment(i,j), precip_returned(i,j)
+!           call error_mesg ('moist_processes_mod', 'moist_processes: &
+!                 &Change in water content does not balance precip &
+!                 &from donner_deep routine.'//trim(warn_mesg), WARNING)
            scale(i,j) = 0.0
            delta_vapor(i,j,:) = 0.0
            delta_q(i,j,:) = 0.0
@@ -1391,12 +1389,6 @@ logical, intent(out), dimension(:,:)     :: convect
     used = send_data (id_meso_cld_frac,  meso_cld_frac, Time, is, js, 1, rmask=mask )
     used = send_data (id_donner_humidity_area,  donner_humidity_area, Time, is, js, 1, rmask=mask )
 ! <--- h1g, dump donner-deep  cell and meso cloud fraction, 2010-08-08
-    if ( id_thetae > 0 .or. id_Maxthetae > 0 ) then 
-! qin or rin?
-      call calc_thetae(tin, rin, pfull, thetae, maxTe_launch_level)
-      used = send_data (id_thetae, thetae(is:ie,js:je,:), Time, is, js, 1, rmask=mask )
-      used = send_data (id_Maxthetae, 1.0*maxTe_launch_level(is:ie,js:je), Time, is, js)
-    endif
 
     call mpp_clock_end (donner_clock)
 
@@ -4243,14 +4235,6 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
       id_lzb = register_diag_field ( mod_name, &
         'klzb', axes(1:2), Time, &
         'Index of LZB',                        'none')
-      id_thetae = register_diag_field ( mod_name, &
-        'thetae', axes(1:3), Time, &
-        'Equivalent Potential Temperature',  '', &
-                     missing_value=missing_value               )
-      id_Maxthetae = register_diag_field ( mod_name, &
-        'maxthetae', axes(1:2), Time, &
-        'Level of Maximum Equiv. Potential Temp in lowest 300hPa.', '', &
-                     missing_value=missing_value               )
 
    if ( do_bm ) then
       id_invtaubmt  = register_diag_field  (mod_name, &
