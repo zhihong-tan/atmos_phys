@@ -64,6 +64,7 @@ module tke_turb_mod
 
  real    :: tkemax           =  5.0
  real    :: tkemin           =  0.0
+ integer :: tke_option       =  0
  integer :: pbl_depth_option =  0
  real    :: tkecrit          =  0.05
  real    :: parcel_buoy      =  1.0
@@ -77,6 +78,7 @@ module tke_turb_mod
  real    :: alpha_sea        =  0.10
 
  namelist / tke_turb_nml /                            &
+         tke_option,                                  &
          pbl_depth_option, tkecrit, parcel_buoy,      &
          tkemax,   tkemin,                            &
          akmax,    akmin_land, akmin_sea, nk_lim,     &
@@ -101,6 +103,41 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
                       tt, qv, ql, qi, um, vm, z0, ustar, bstar,    &
                       tr_tke,                                      & 
                       el0, el, akm, akh, h )
+
+  integer,         intent(in)           :: is,ie,js,je
+  type(time_type), intent(in)           :: time
+  real,    intent(in)                   :: delt 
+  real,    intent(in), dimension(:,:)   :: fracland
+  real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
+  real,    intent(in), dimension(:,:,:) :: tt, qv, ql, qi, um, vm
+  real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
+  real,    intent(inout), dimension(:,:,:) :: tr_tke
+  real, intent(out), dimension(:,:)   :: el0
+  real, intent(out), dimension(:,:,:) :: el, akm, akh
+  real, intent(out), dimension(:,:)   :: h
+
+  if (tke_option == 0) then
+
+    call tke_turb_legacy( is, ie, js, je, time, delt, fracland,        &
+                          phalf, pfull, zhalf, zfull,                  &
+                          tt, qv, ql, qi, um, vm, z0, ustar, bstar,    &
+                          tr_tke,                                      & 
+                          el0, el, akm, akh, h )
+
+  elseif (tke_option == 1) then
+
+
+  end if
+
+ end subroutine tke_turb
+
+!#######################################################################
+
+ subroutine tke_turb_legacy( is, ie, js, je, time, delt, fracland,     &
+                             phalf, pfull, zhalf, zfull,               &
+                             tt, qv, ql, qi, um, vm, z0, ustar, bstar, &
+                             tr_tke,                                   & 
+                             el0, el, akm, akh, h )
 
 !=======================================================================
 !---------------------------------------------------------------------
@@ -469,7 +506,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
     used = send_data ( id_pblh_parcel, pblh_parcel, time, is, js )
   end if
 
-  end subroutine tke_turb 
+  end subroutine tke_turb_legacy
 
 !#######################################################################
 
