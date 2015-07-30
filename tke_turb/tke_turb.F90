@@ -659,15 +659,15 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- d( )/dz operators: at full levels & at half levels          
 !====================================================================
 
-   dsdz(:,:,1:kx)  = 1.0 / ( zhalf(:,:,2:kxp) - zhalf(:,:,1:kx) )
-  dsdzh(:,:,1:kxm) = 1.0 / ( zfull(:,:,2:kx)  - zfull(:,:,1:kxm) )
+   dsdz(:,:,1:kx)  = 1.0 / ( zhalf(:,:,1:kx)  - zhalf(:,:,2:kxp) )
+  dsdzh(:,:,1:kxm) = 1.0 / ( zfull(:,:,1:kxm) - zfull(:,:,2:kx) )
 
 !====================================================================
 ! --- Wind shear                 
 !====================================================================
 
-  xxm1(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( um(:,:,2:kx) - um(:,:,1:kxm) )
-  xxm2(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( vm(:,:,2:kx) - vm(:,:,1:kxm) )
+  xxm1(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( um(:,:,1:kxm) - um(:,:,2:kx) )
+  xxm2(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( vm(:,:,1:kxm) - vm(:,:,2:kx) )
 
   shear = xxm1 * xxm1 + xxm2 * xxm2
 
@@ -675,8 +675,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- Buoyancy                 
 !====================================================================
 
-  xxm1(:,:,1:kxm) = sv(:,:,2:kx) - sv(:,:,1:kxm) 
-  xxm2(:,:,1:kxm) = 0.5*( sv(:,:,2:kx) + sv(:,:,1:kxm) )
+  xxm1(:,:,1:kxm) = sv(:,:,1:kxm) - sv(:,:,2:kx) 
+  xxm2(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
 
   buoync = grav * dsdzh * xxm1 / xxm2
 
