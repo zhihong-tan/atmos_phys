@@ -58,6 +58,22 @@ module tke_turb_mod
  real, parameter :: t00     =  2.7248e2 
  real, parameter :: small   =  1.0e-10
 
+ ! Constants for new scheme
+
+ real, parameter :: cp_air_inv = 1.0/cp_air
+
+ real, parameter :: A1 = 0.92
+ real, parameter :: A2 = 0.74
+ real, parameter :: B1 = 16.6
+ real, parameter :: B2 = 10.1
+ real, parameter :: C1 = 0.08
+
+ real, parameter :: alpha1 = A1*(1.0-3.0*C1-6.0*A1/B1)
+ real, parameter :: alpha2 = -3.0*A1*A2*((B2-3.0*A2)*(1.0-6.0*A1/B1)-3.0*C1*(B2+6.0*A1))
+ real, parameter :: alpha3 = -3.0*A2*(6.0*A1+B2)
+ real, parameter :: alpha4 = -9.0*A1*A2
+ real, parameter :: alpha5 = A2*(1.0-6.0*A1/B1)
+
 !---------------------------------------------------------------------
 ! --- Namelist
 !---------------------------------------------------------------------
@@ -126,6 +142,11 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
   elseif (tke_option == 1) then
 
+    call tke_turb_dev( is, ie, js, je, time, delt, fracland,        &
+                       phalf, pfull, zhalf, zfull,                  &
+                       tt, qv, ql, qi, um, vm, z0, ustar, bstar,    &
+                       tr_tke,                                      & 
+                       el0, el, akm, akh, h )
 
   end if
 
@@ -507,6 +528,374 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   end if
 
   end subroutine tke_turb_legacy
+
+!#######################################################################
+
+ subroutine tke_turb_dev( is, ie, js, je, time, delt, fracland,     &
+                          phalf, pfull, zhalf, zfull,               &
+                          T, qv, ql, qi, um, vm, z0, ustar, bstar,  &
+                          tr_tke,                                   & 
+                          el0, el, akm, akh, h )
+
+!=======================================================================
+!---------------------------------------------------------------------
+! Arguments (Intent in)
+!   is,ie,js,je - i,j indices marking the slab of model working on
+!   time        - variable needed for netcdf diagnostics
+!   delt        - time step in seconds
+!   fracland    - fractional amount of land beneath a grid box
+!   phalf       - pressure at half levels
+!   pfull       - pressure at full levels
+!   zhalf       - height at half levels
+!   zfull       - height at full levels
+!   T           - temperature
+!   qv          - water vapor
+!   ql          - liquid water
+!   qi          - ice water
+!   um, vm      - wind components
+!   z0          - roughness length
+!   ustar       - friction velocity (m/sec)
+!   bstar       - buoyancy scale (m/sec**2)
+!---------------------------------------------------------------------
+
+  integer,         intent(in)           :: is,ie,js,je
+  type(time_type), intent(in)           :: time
+  real,    intent(in)                   :: delt 
+  real,    intent(in), dimension(:,:)   :: fracland
+  real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
+  real,    intent(in), dimension(:,:,:) :: T, qv, ql, qi, um, vm
+  real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
+
+!---------------------------------------------------------------------
+! Arguments (Intent inout)
+!   tr_tke   -  Tracer that stores tke
+!---------------------------------------------------------------------
+
+  real,    intent(inout), dimension(:,:,:) :: tr_tke
+
+!---------------------------------------------------------------------
+! Arguments (Intent out)
+!   el0      -  characteristic length scale
+!   el       -  master length scale
+!   akm      -  mixing coefficient for momentum
+!   akh      -  mixing coefficient for heat and moisture
+!   h        -  diagnosed depth of planetary boundary layer (m)
+!---------------------------------------------------------------------
+
+  real, intent(out), dimension(:,:)   :: el0
+  real, intent(out), dimension(:,:,:) :: el, akm, akh
+  real, intent(out), dimension(:,:)   :: h
+
+!---------------------------------------------------------------------
+!  (Intent local)
+!---------------------------------------------------------------------
+
+  logical used
+  integer outunit
+  integer :: ix, jx, kx, i, j, k
+  integer :: kxp, kxm, klim
+  real    :: cvfqdt, dvfqdt
+
+  real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
+        pblh_tke, pblh_parcel
+
+  real, dimension(size(um,1),size(um,2),size(um,3)-1) ::     &
+        dsdzh, shear, buoync, qm2,  qm3, qm4, el2,           &
+        aaa,   bbb,   ccc,    ddd,                           &
+        xxm1,  xxm2,  xxm3,   xxm4, xxm5,                    &
+        Gh,    Sm,    Sh
+
+  real, dimension(size(um,1),size(um,2),size(um,3)) ::       &
+        sv, sl, qt, hleff, dsdz, qm, xx1, xx2
+
+  real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke
+
+!====================================================================
+
+! --- Check to see if tke_turb has been initialized
+  if( .not. module_is_initialized ) call error_mesg( ' tke_turb',     &
+                                 ' tke_turb_init has not been called',&
+                                   FATAL )
+
+! --- Set dimensions etc
+  ix  = size( um, 1 )
+  jx  = size( um, 2 )
+  kx  = size( um, 3 )
+  kxp = kx + 1
+  kxm = kx - 1
+
+!====================================================================
+! --- Copy input tke from tracer array
+!====================================================================
+
+  tke(:,:,1) = tkemin
+  tke(:,:,2:kx) = tr_tke(:,:,1:kxm)
+  tke(:,:,kxp) = bcq * ustar * ustar
+
+!====================================================================
+! --- Compute thermodynamic variables
+!====================================================================
+
+  ! Effective latent heat
+  hleff = (min(1.,max(0.,0.05*(t       -tfreeze+20.)))*hlv + &
+           min(1.,max(0.,0.05*(tfreeze -t          )))*hls)
+
+  ! Liquid water static energy (sl/cp_air)
+  sl = T + cp_air_inv*( grav*zfull - hleff*(ql + qi) )
+
+  ! Total water
+  qt = qv + ql + qi
+
+  ! Virtual static energy (sv/cp_air)
+  sv = sl + T*qt + (cp_air_inv*hleff - T*(1.0+d608))*(ql + qi)
+
+!====================================================================
+! --- Surface height     
+!====================================================================
+
+  zsfc(:,:) = zhalf(:,:,kxp)
+
+!====================================================================
+! --- d( )/dz operators: at full levels & at half levels          
+!====================================================================
+
+   dsdz(:,:,1:kx)  = 1.0 / ( zhalf(:,:,2:kxp) - zhalf(:,:,1:kx) )
+  dsdzh(:,:,1:kxm) = 1.0 / ( zfull(:,:,2:kx)  - zfull(:,:,1:kxm) )
+
+!====================================================================
+! --- Wind shear                 
+!====================================================================
+
+  xxm1(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( um(:,:,2:kx) - um(:,:,1:kxm) )
+  xxm2(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( vm(:,:,2:kx) - vm(:,:,1:kxm) )
+
+  shear = xxm1 * xxm1 + xxm2 * xxm2
+
+!====================================================================
+! --- Buoyancy                 
+!====================================================================
+
+  xxm1(:,:,1:kxm) = sv(:,:,2:kx) - sv(:,:,1:kxm) 
+  xxm2(:,:,1:kxm) = 0.5*( sv(:,:,2:kx) + sv(:,:,1:kxm) )
+
+  buoync = grav * dsdzh * xxm1 / xxm2
+
+!====================================================================
+! --- Some tke stuff
+!====================================================================
+
+  do k=1,kx
+  do j=1,jx
+  do i=1,ix
+    xx1(i,j,k) = 2*tke(i,j,k+1)
+    if(xx1(i,j,k) > 0.0) then
+      qm(i,j,k) = sqrt(xx1(i,j,k))
+    else
+      qm(i,j,k) = 0.0
+    endif
+  enddo
+  enddo
+  enddo
+
+  qm2(:,:,1:kxm)  = xx1(:,:,1:kxm) 
+  qm3(:,:,1:kxm)  =  qm(:,:,1:kxm) * qm2(:,:,1:kxm) 
+  qm4(:,:,1:kxm)  = qm2(:,:,1:kxm) * qm2(:,:,1:kxm) 
+
+!====================================================================
+! --- Characteristic length scale                         
+!====================================================================
+
+  xx1(:,:,1:kxm) = qm(:,:,1:kxm)*( pfull(:,:,2:kx) - pfull(:,:,1:kxm) )
+
+  do k = 1, kxm
+     xx2(:,:,k) = xx1(:,:,k)  * ( zhalf(:,:,k+1) - zsfc(:,:) )
+  end do
+
+  xx1(:,:,kx) =  qm(:,:,kx) * ( phalf(:,:,kxp) - pfull(:,:,kx) )
+  xx2(:,:,kx) = xx1(:,:,kx) * z0(:,:)
+
+  x1 = sum( xx1, 3 )
+  x2 = sum( xx2, 3 )
+
+!---- should never be equal to zero ----
+  if (count(x1 <= 0.0) > 0) call error_mesg( ' tke_turb',  &
+                             'divid by zero, x1 <= 0.0', FATAL)
+  el0 = x2 / x1
+  el0 = el0 * (alpha_land*fracland + alpha_sea*(1.-fracland))
+
+  el0 = min( el0, el0max )
+  el0 = max( el0, el0min )
+
+!====================================================================
+! --- Master length scale 
+!====================================================================
+
+  do k = 1, kxm
+     xx1(:,:,k)  = vonkarm * ( zhalf(:,:,k+1) - zsfc(:,:) )
+  end do
+
+  x1(:,:) = vonkarm * z0(:,:) 
+  xx1(:,:,kx) = x1(:,:)
+
+  do k = 1,kx
+    el(:,:,k+1) = xx1(:,:,k) / ( 1.0 + xx1(:,:,k) / el0(:,:) )
+  end do
+    el(:,:,1)   = el0(:,:)
+
+  el2(:,:,1:kxm) = el(:,:,2:kx) * el(:,:,2:kx)
+
+!====================================================================
+! --- Mixing coefficients                     
+!====================================================================
+
+  Gh(:,:,1:kxm) = - buoync(:,:,1:kxm)*el2(:,:,1:kxm) / max( qm2, small)
+  Gh(:,:,1:kxm) = min( Gh(:,:,1:kxm), 0.0233 )
+
+  Sm = (alpha1+alpha2*Gh) / ((1.0+alpha3*Gh)*(1.0+alpha4*Gh))
+  Sh = alpha5 / (1.0+alpha3*Gh)
+
+  akm(:,:,1)    = 0.0
+  akm(:,:,2:kx) = Sm * el(:,:,2:kx) * qm(:,:,1:kxm) / sqrt(2.0)
+
+  akh(:,:,1)    = 0.0
+  akh(:,:,2:kx) = Sm * el(:,:,2:kx) * qm(:,:,1:kxm) / sqrt(2.0)
+
+!-------------------------------------------------------------------
+! --- Bounds 
+!-------------------------------------------------------------------
+
+! --- Upper bound
+  akm = max( min( akm, akmax ), 0.0)
+  akh = max( min( akh, akmax ), 0.0)
+
+! --- Lower bound near surface
+
+  akmin = akmin_land*fracland + akmin_sea*(1.-fracland)
+  klim = kx - nk_lim + 1
+  do  k = klim,kx
+    akm(:,:,k) = max( akm(:,:,k), akmin(:,:) )
+    akh(:,:,k) = max( akh(:,:,k), akmin(:,:) )
+  end do
+
+!====================================================================
+! --- Prognosticate turbulence kinetic energy
+!====================================================================
+
+  cvfqdt = cvfq1 * delt
+  dvfqdt = cvfq2 * delt * 2.0
+
+!-------------------------------------------------------------------
+! --- Part of linearized energy disiipation term 
+!-------------------------------------------------------------------
+
+  xxm1(:,:,1:kxm) = dvfqdt * qm(:,:,1:kxm) / el(:,:,2:kx)
+
+!-------------------------------------------------------------------
+! --- Part of linearized vertical diffusion term
+!-------------------------------------------------------------------
+
+  xx1(:,:,1:kx) = el(:,:,2:kxp) * qm(:,:,1:kx)
+
+  xx2(:,:,1)    = 0.5*  xx1(:,:,1)
+  xx2(:,:,2:kx) = 0.5*( xx1(:,:,2:kx) + xx1(:,:,1:kxm) )
+
+  xx1 = xx2 * dsdz
+
+!-------------------------------------------------------------------
+! --- Implicit time differencing for vertical diffusion 
+! --- and energy dissipation term 
+!-------------------------------------------------------------------
+ 
+  do k=1,kxm
+  do j=1,jx
+  do i=1,ix
+    aaa(i,j,k) = -cvfqdt * xx1(i,j,k+1) * dsdzh(i,j,k)
+    ccc(i,j,k) = -cvfqdt * xx1(i,j,k  ) * dsdzh(i,j,k)
+    bbb(i,j,k) =     1.0 - aaa(i,j,k  ) -   ccc(i,j,k) 
+    bbb(i,j,k) =           bbb(i,j,k  ) +  xxm1(i,j,k)
+    ddd(i,j,k) =           tke(i,j,k+1)
+  enddo
+  enddo
+  enddo
+
+! correction for vertical diffusion of tke surface boundary condition
+
+  do j = 1,jx
+  do i = 1,ix
+    ddd(i,j,kxm) = ddd(i,j,kxm) - aaa(i,j,kxm) * tke(i,j,kxp)
+  enddo
+  enddo
+
+! solve tridiagonal system
+
+  call tri_invert( xxm1, ddd, aaa, bbb, ccc ) 
+
+!-------------------------------------------------------------------
+! --- Shear and buoyancy terms
+!-------------------------------------------------------------------
+
+  xxm2(:,:,1:kxm) =  delt*( akm(:,:,2:kx)* shear(:,:,1:kxm)    &
+                          - akh(:,:,2:kx)*buoync(:,:,1:kxm) )
+
+!-------------------------------------------------------------------
+! --- Update turbulence kinetic energy
+!-------------------------------------------------------------------
+
+  do j=1,jx
+  do i=1,ix
+    tke(i,j,1) = 0.0
+    do k=2,kx
+      tke(i,j,k) = xxm1(i,j,k-1) + xxm2(i,j,k-1)
+    enddo
+  enddo
+  enddo
+
+!====================================================================
+! --- Bound turbulence kinetic energy
+!====================================================================
+
+  tke(:,:,:) = min( tke(:,:,:), tkemax )
+  tke(:,:,:) = max( tke(:,:,:), tkemin )
+
+!====================================================================
+! --- Compute PBL depth
+!====================================================================
+
+  if ( pbl_depth_option == 0 .or. id_pblh_tke > 0) then
+    call tke_pbl_depth(zsfc,zhalf,tke,bstar,pblh_tke)
+  end if
+  if ( pbl_depth_option == 1 .or. id_pblh_parcel > 0) then
+    call parcel_pbl_depth(zsfc,zfull,T,qv,ql,qi,ustar,bstar,pblh_parcel)
+  end if
+
+  if ( pbl_depth_option == 0 ) then
+    h = pblh_tke
+  else if ( pbl_depth_option == 1 ) then
+    h = pblh_parcel
+  end if
+
+!====================================================================
+! --- Copy output tke back to tracer array
+!====================================================================
+
+  tr_tke(:,:,:) = tke(:,:,2:kxp)
+
+!====================================================================
+! --- Diagnostics
+!====================================================================
+
+  if ( id_h > 0 ) then
+    used = send_data ( id_h, h, time, is, js )
+  end if
+  if ( id_pblh_tke > 0 ) then
+    used = send_data ( id_pblh_tke, pblh_tke, time, is, js )
+  end if
+  if ( id_pblh_parcel > 0 ) then
+    used = send_data ( id_pblh_parcel, pblh_parcel, time, is, js )
+  end if
+
+  end subroutine tke_turb_dev
+
 
 !#######################################################################
 
