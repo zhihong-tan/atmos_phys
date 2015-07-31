@@ -603,13 +603,27 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
         pblh_tke, pblh_parcel
 
   real, dimension(size(um,1),size(um,2),size(um,3)-1) ::     &
-        dsdzh, shear, buoync, el2,                           &
-        aaa,   bbb,   ccc,    ddd,                           &
-        xxm1,  xxm2,                                         &
-        Gh,    Sm,    Sh
+        dsdzh, shear, buoync
+!       dsdzh, shear, buoync, el2,                           &
+!       aaa,   bbb,   ccc,    ddd,                           &
+!       xxm1,  xxm2,                                         &
+!       Gh,    Sm,    Sh
 
-  real, dimension(size(um,1),size(um,2),size(um,3)) ::       &
-        sv, sl, qt, hleff, dsdz, xx1, xx2
+  real, dimension(size(um,1),size(um,2),size(um,3)-1), target ::  &
+        xxm1, xxm2, xxm3, xxm4, xxm5
+
+  real, dimension(:,:,:), pointer ::                              &
+        aaa, bbb, ccc, ddd, Gh, Sm, Sh
+
+  real, dimension(size(um,1),size(um,2),size(um,3)) ::            &
+        dsdz, sv
+!       sv, sl, qt, hleff, dsdz, xx1, xx2
+
+  real, dimension(size(um,1),size(um,2),size(um,3)), target ::    &
+        xx1, xx2, xx3
+
+  real, dimension(:,:,:), pointer ::                              &
+        sl, qt, hleff
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke, sqrte
 
@@ -639,6 +653,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- Compute thermodynamic variables
 !====================================================================
 
+  hleff => xx1; sl => xx2; qt => xx3
+
   ! Effective latent heat
   hleff = (min(1.,max(0.,0.05*(t       -tfreeze+20.)))*hlv + &
            min(1.,max(0.,0.05*(tfreeze -t          )))*hls)
@@ -651,6 +667,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
   ! Virtual static energy (sv/cp_air)
   sv = sl + T*qt + (cp_air_inv*hleff - T*(1.0+d608))*(ql + qi)
+
+  nullify(hleff,sl,qt)
 
 !====================================================================
 ! --- Surface height     
@@ -740,13 +758,15 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   end do
     el(:,:,1)   = el0(:,:)
 
-  el2(:,:,1:kxm) = el(:,:,2:kx) * el(:,:,2:kx)
+! el2(:,:,1:kxm) = el(:,:,2:kx) * el(:,:,2:kx)
 
 !====================================================================
 ! --- Mixing coefficients                     
 !====================================================================
 
-  Gh(:,:,1:kxm) = - buoync(:,:,1:kxm)*el2(:,:,1:kxm)  &
+  Gh => xxm1; Sm => xxm2; Sh => xxm3
+
+  Gh(:,:,1:kxm) = - buoync(:,:,1:kxm) * (el(:,:,2:kx)*el(:,:,2:kx)) &
                     / max( tke(:,:,2:kx), small)
   Gh(:,:,1:kxm) = min( Gh(:,:,1:kxm), 0.0233 )
 
@@ -758,6 +778,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
   akh(:,:,1)    = 0.0
   akh(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx)
+
+  nullify(Gh,Sm,Sh) 
 
 !-------------------------------------------------------------------
 ! --- Bounds 
@@ -779,6 +801,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 !====================================================================
 ! --- Prognosticate turbulence kinetic energy
 !====================================================================
+
+  aaa => xxm2; bbb => xxm3; ccc => xxm4; ddd => xxm5
 
   kedt = delt * ke
   bedt = delt / be
@@ -828,6 +852,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! solve tridiagonal system
 
   call tri_invert( xxm1, ddd, aaa, bbb, ccc ) 
+
+  nullify(aaa,bbb,ccc,ddd)
 
 !-------------------------------------------------------------------
 ! --- Shear and buoyancy terms
