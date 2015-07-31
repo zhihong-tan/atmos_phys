@@ -770,7 +770,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   akm(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx)
 
   akh(:,:,1)    = 0.0
-  akh(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx)
+  akh(:,:,2:kx) = Sh * el(:,:,2:kx) * sqrte(:,:,2:kx)
 
   nullify(Gh,Sm,Sh) 
 
