@@ -602,12 +602,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
         pblh_tke, pblh_parcel
 
-  real, dimension(size(um,1),size(um,2),size(um,3)-1) ::     &
+  real, dimension(size(um,1),size(um,2),size(um,3)-1) ::          &
         dsdzh, shear, buoync
-!       dsdzh, shear, buoync, el2,                           &
-!       aaa,   bbb,   ccc,    ddd,                           &
-!       xxm1,  xxm2,                                         &
-!       Gh,    Sm,    Sh
 
   real, dimension(size(um,1),size(um,2),size(um,3)-1), target ::  &
         xxm1, xxm2, xxm3, xxm4, xxm5
@@ -617,7 +613,6 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
   real, dimension(size(um,1),size(um,2),size(um,3)) ::            &
         dsdz, sv
-!       sv, sl, qt, hleff, dsdz, xx1, xx2
 
   real, dimension(size(um,1),size(um,2),size(um,3)), target ::    &
         xx1, xx2, xx3
@@ -757,8 +752,6 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
     el(:,:,k+1) = xx1(:,:,k) / ( 1.0 + xx1(:,:,k) / el0(:,:) )
   end do
     el(:,:,1)   = el0(:,:)
-
-! el2(:,:,1:kxm) = el(:,:,2:kx) * el(:,:,2:kx)
 
 !====================================================================
 ! --- Mixing coefficients                     
