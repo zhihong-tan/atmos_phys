@@ -74,6 +74,9 @@ module tke_turb_mod
  real, parameter :: alpha4 = -9.0*A1*A2
  real, parameter :: alpha5 = A2*(1.0-6.0*A1/B1)
 
+ real, parameter :: be = B1 / (2.0*sqrt(2.0))
+ real, parameter :: ke = 0.5421
+
 !---------------------------------------------------------------------
 ! --- Namelist
 !---------------------------------------------------------------------
@@ -594,19 +597,19 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   integer outunit
   integer :: ix, jx, kx, i, j, k
   integer :: kxp, kxm, klim
-  real    :: cvfqdt, dvfqdt
+  real    :: kedt, bedt
 
   real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
         pblh_tke, pblh_parcel
 
   real, dimension(size(um,1),size(um,2),size(um,3)-1) ::     &
-        dsdzh, shear, buoync, qm2,  qm3, qm4, el2,           &
+        dsdzh, shear, buoync, el2,                           &
         aaa,   bbb,   ccc,    ddd,                           &
-        xxm1,  xxm2,  xxm3,   xxm4, xxm5,                    &
+        xxm1,  xxm2,                                         &
         Gh,    Sm,    Sh
 
   real, dimension(size(um,1),size(um,2),size(um,3)) ::       &
-        sv, sl, qt, hleff, dsdz, qm, xx1, xx2
+        sv, sl, qt, hleff, dsdz, xx1, xx2
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke, sqrte
 
@@ -684,28 +687,11 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- Some tke stuff
 !====================================================================
 
-  do k=1,kx
-  do j=1,jx
-  do i=1,ix
-    xx1(i,j,k) = 2*tke(i,j,k+1)
-    if(xx1(i,j,k) > 0.0) then
-      qm(i,j,k) = sqrt(xx1(i,j,k))
-    else
-      qm(i,j,k) = 0.0
-    endif
-  enddo
-  enddo
-  enddo
-
-  qm2(:,:,1:kxm)  = xx1(:,:,1:kxm) 
-  qm3(:,:,1:kxm)  =  qm(:,:,1:kxm) * qm2(:,:,1:kxm) 
-  qm4(:,:,1:kxm)  = qm2(:,:,1:kxm) * qm2(:,:,1:kxm) 
-
   do k=1,kxp
   do j=1,jx
   do i=1,ix
     if(tke(i,j,k) > 0.0) then
-      sqrte(i,j,k) = sqrt(2*tke(i,j,k))
+      sqrte(i,j,k) = sqrt(tke(i,j,k))
     else
       sqrte(i,j,k) = 0.0
     endif
@@ -713,19 +699,16 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   enddo
   enddo
 
-
 !====================================================================
 ! --- Characteristic length scale                         
 !====================================================================
 
-! xx1(:,:,1:kxm) = qm(:,:,1:kxm)*( pfull(:,:,2:kx) - pfull(:,:,1:kxm) )
   xx1(:,:,1:kxm) = sqrte(:,:,2:kx)*( pfull(:,:,2:kx) - pfull(:,:,1:kxm) )
 
   do k = 1, kxm
      xx2(:,:,k) = xx1(:,:,k)  * ( zhalf(:,:,k+1) - zsfc(:,:) )
   end do
 
-! xx1(:,:,kx) =  qm(:,:,kx) * ( phalf(:,:,kxp) - pfull(:,:,kx) )
   xx1(:,:,kx) =  sqrte(:,:,kxp) * ( phalf(:,:,kxp) - pfull(:,:,kx) )
   xx2(:,:,kx) = xx1(:,:,kx) * z0(:,:)
 
@@ -763,19 +746,18 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- Mixing coefficients                     
 !====================================================================
 
-  Gh(:,:,1:kxm) = - buoync(:,:,1:kxm)*el2(:,:,1:kxm) / max( qm2, small)
+  Gh(:,:,1:kxm) = - buoync(:,:,1:kxm)*el2(:,:,1:kxm)  &
+                    / max( tke(:,:,2:kx), small)
   Gh(:,:,1:kxm) = min( Gh(:,:,1:kxm), 0.0233 )
 
   Sm = (alpha1+alpha2*Gh) / ((1.0+alpha3*Gh)*(1.0+alpha4*Gh))
   Sh = alpha5 / (1.0+alpha3*Gh)
 
   akm(:,:,1)    = 0.0
-! akm(:,:,2:kx) = Sm * el(:,:,2:kx) * qm(:,:,1:kxm) / sqrt(2.0)
-  akm(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx) / sqrt(2.0)
+  akm(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx)
 
   akh(:,:,1)    = 0.0
-! akh(:,:,2:kx) = Sm * el(:,:,2:kx) * qm(:,:,1:kxm) / sqrt(2.0)
-  akh(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx) / sqrt(2.0)
+  akh(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx)
 
 !-------------------------------------------------------------------
 ! --- Bounds 
@@ -798,21 +780,19 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- Prognosticate turbulence kinetic energy
 !====================================================================
 
-  cvfqdt = cvfq1 * delt
-  dvfqdt = cvfq2 * delt * 2.0
+  kedt = delt * ke
+  bedt = delt / be
 
 !-------------------------------------------------------------------
-! --- Part of linearized energy disiipation term 
+! --- Part of linearized energy dissipation term 
 !-------------------------------------------------------------------
 
-! xxm1(:,:,1:kxm) = dvfqdt * qm(:,:,1:kxm) / el(:,:,2:kx)
-  xxm1(:,:,1:kxm) = dvfqdt * sqrte(:,:,2:kx) / el(:,:,2:kx)
+  xxm1(:,:,1:kxm) = bedt * sqrte(:,:,2:kx) / el(:,:,2:kx)
 
 !-------------------------------------------------------------------
 ! --- Part of linearized vertical diffusion term
 !-------------------------------------------------------------------
 
-! xx1(:,:,1:kx) = el(:,:,2:kxp) * qm(:,:,1:kx)
   xx1(:,:,1:kx) = el(:,:,2:kxp) * sqrte(:,:,2:kxp)
 
   xx2(:,:,1)    = 0.5*  xx1(:,:,1)
@@ -828,11 +808,11 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   do k=1,kxm
   do j=1,jx
   do i=1,ix
-    aaa(i,j,k) = -cvfqdt * xx1(i,j,k+1) * dsdzh(i,j,k)
-    ccc(i,j,k) = -cvfqdt * xx1(i,j,k  ) * dsdzh(i,j,k)
-    bbb(i,j,k) =     1.0 - aaa(i,j,k  ) -   ccc(i,j,k) 
-    bbb(i,j,k) =           bbb(i,j,k  ) +  xxm1(i,j,k)
-    ddd(i,j,k) =           tke(i,j,k+1)
+    aaa(i,j,k) = -kedt * xx1(i,j,k+1) * dsdzh(i,j,k)
+    ccc(i,j,k) = -kedt * xx1(i,j,k  ) * dsdzh(i,j,k)
+    bbb(i,j,k) =   1.0 - aaa(i,j,k  ) -   ccc(i,j,k) 
+    bbb(i,j,k) =         bbb(i,j,k  ) +  xxm1(i,j,k)
+    ddd(i,j,k) =         tke(i,j,k+1)
   enddo
   enddo
   enddo
