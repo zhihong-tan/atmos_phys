@@ -661,7 +661,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   qt = qv + ql + qi
 
   ! Virtual static energy (sv/cp_air)
-  sv = sl + T*qt + (cp_air_inv*hleff - T*(1.0+d608))*(ql + qi)
+  sv = sl + d608*T*qt + (cp_air_inv*hleff - T*(1.0+d608))*(ql + qi)
 
   nullify(hleff,sl,qt)
 
