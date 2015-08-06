@@ -343,7 +343,8 @@ if (do_mellor_yamada) then
 
      call tke_turb (is, ie, js, je, Time_next, dt_tke, frac_land,      &
                     p_half, p_full, z_half, z_full,                    &
-                    tt, qq, qlin, qiin, uu, vv, rough, u_star, b_star, &
+                    tt, qq, qain, qlin, qiin, uu, vv,                  &
+                    rough, u_star, b_star,                             &
                     rdiag(:,:,:,ntke),                                 &
                     el0, el, diff_m, diff_t, z_pbl)
 

@@ -22,6 +22,8 @@ module tke_turb_mod
 
  use monin_obukhov_mod, only: mo_diff
 
+ use sat_vapor_pres_mod,only: compute_qs
+
  use  diag_manager_mod, only: register_diag_field, send_data
 
  use  time_manager_mod, only: time_type
@@ -84,6 +86,7 @@ module tke_turb_mod
  real    :: tkemax           =  5.0
  real    :: tkemin           =  0.0
  integer :: tke_option       =  0
+ integer :: buoync_option    =  2
  integer :: pbl_depth_option =  0
  real    :: tkecrit          =  0.05
  real    :: parcel_buoy      =  1.0
@@ -97,7 +100,7 @@ module tke_turb_mod
  real    :: alpha_sea        =  0.10
 
  namelist / tke_turb_nml /                            &
-         tke_option,                                  &
+         tke_option, buoync_option,                   &
          pbl_depth_option, tkecrit, parcel_buoy,      &
          tkemax,   tkemin,                            &
          akmax,    akmin_land, akmin_sea, nk_lim,     &
@@ -117,10 +120,10 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
 !#######################################################################
 
- subroutine tke_turb( is, ie, js, je, time, delt, fracland,        &
-                      phalf, pfull, zhalf, zfull,                  &
-                      tt, qv, ql, qi, um, vm, z0, ustar, bstar,    &
-                      tr_tke,                                      & 
+ subroutine tke_turb( is, ie, js, je, time, delt, fracland,          &
+                      phalf, pfull, zhalf, zfull,                    &
+                      tt, qv, qa, ql, qi, um, vm, z0, ustar, bstar,  &
+                      tr_tke,                                        & 
                       el0, el, akm, akh, h )
 
   integer,         intent(in)           :: is,ie,js,je
@@ -128,7 +131,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   real,    intent(in)                   :: delt 
   real,    intent(in), dimension(:,:)   :: fracland
   real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
-  real,    intent(in), dimension(:,:,:) :: tt, qv, ql, qi, um, vm
+  real,    intent(in), dimension(:,:,:) :: tt, qv, qa, ql, qi, um, vm
   real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
   real,    intent(inout), dimension(:,:,:) :: tr_tke
   real, intent(out), dimension(:,:)   :: el0
@@ -147,7 +150,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
     call tke_turb_dev( is, ie, js, je, time, delt, fracland,        &
                        phalf, pfull, zhalf, zfull,                  &
-                       tt, qv, ql, qi, um, vm, z0, ustar, bstar,    &
+                       tt, qv, qa, ql, qi, um, vm,                  & 
+                       z0, ustar, bstar,                            &
                        tr_tke,                                      & 
                        el0, el, akm, akh, h )
 
@@ -536,7 +540,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
  subroutine tke_turb_dev( is, ie, js, je, time, delt, fracland,     &
                           phalf, pfull, zhalf, zfull,               &
-                          T, qv, ql, qi, um, vm, z0, ustar, bstar,  &
+                          T, qv, qa, ql, qi, um, vm,                &
+                          z0, ustar, bstar,                         &
                           tr_tke,                                   & 
                           el0, el, akm, akh, h )
 
@@ -553,6 +558,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 !   zfull       - height at full levels
 !   T           - temperature
 !   qv          - water vapor
+!   qa          - cloud amount
 !   ql          - liquid water
 !   qi          - ice water
 !   um, vm      - wind components
@@ -566,7 +572,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   real,    intent(in)                   :: delt 
   real,    intent(in), dimension(:,:)   :: fracland
   real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
-  real,    intent(in), dimension(:,:,:) :: T, qv, ql, qi, um, vm
+  real,    intent(in), dimension(:,:,:) :: T, qv, qa, ql, qi, um, vm
   real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
 
 !---------------------------------------------------------------------
@@ -600,7 +606,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   real    :: kedt, bedt
 
   real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
-        pblh_tke, pblh_parcel
+        pblh_tke, pblh_parcel, hleff, Tl, qsl, qslT, gamma,       &
+        cqt, cthl
 
   real, dimension(size(um,1),size(um,2),size(um,3)-1) ::          &
         dsdzh, shear, buoync
@@ -612,13 +619,13 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
         aaa, bbb, ccc, ddd, Gh, Sm, Sh
 
   real, dimension(size(um,1),size(um,2),size(um,3)) ::            &
-        dsdz, sv
+        dsdz, sl, qt, sv, bhl, bqt
 
   real, dimension(size(um,1),size(um,2),size(um,3)), target ::    &
         xx1, xx2, xx3
 
   real, dimension(:,:,:), pointer ::                              &
-        sl, qt, hleff
+        tmp
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke, sqrte
 
@@ -648,22 +655,52 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- Compute thermodynamic variables
 !====================================================================
 
-  hleff => xx1; sl => xx2; qt => xx3
+  do k=1,kx
 
-  ! Effective latent heat
-  hleff = (min(1.,max(0.,0.05*(t       -tfreeze+20.)))*hlv + &
-           min(1.,max(0.,0.05*(tfreeze -t          )))*hls)
+    ! Effective latent heat
+    hleff(:,:) = (min(1.,max(0.,0.05*(T(:,:,k)-tfreeze+20.)))*hlv +            &
+                  min(1.,max(0.,0.05*(tfreeze -T(:,:,k)   )))*hls)
 
-  ! Liquid water static energy (sl/cp_air)
-  sl = T + cp_air_inv*( grav*zfull - hleff*(ql + qi) )
+    ! Liquid water temperature
+    Tl(:,:) = T(:,:,k) - cp_air_inv*hleff(:,:)*(ql(:,:,k)+qi(:,:,k))
 
-  ! Total water
-  qt = qv + ql + qi
+    ! Liquid water static energy (sl/cp_air)
+    sl(:,:,k) = Tl(:,:) + cp_air_inv*grav*zfull(:,:,k)
 
-  ! Virtual static energy (sv/cp_air)
-  sv = sl + d608*T*qt + (cp_air_inv*hleff - T*(1.0+d608))*(ql + qi)
+    ! Total water
+    qt(:,:,k) = qv(:,:,k) + ql(:,:,k) + qi(:,:,k)
 
-  nullify(hleff,sl,qt)
+    ! Virtual static energy (sv/cp_air)
+    sv(:,:,k)                                                                  &
+    = sl(:,:,k)                                                                &
+      + d608*T(:,:,k)*qt(:,:,k)                                                &
+      + (cp_air_inv*hleff(:,:) - T(:,:,k)*(1.0+d608))*(ql(:,:,k) + qi(:,:,k))
+
+    ! bhl, bqt
+    bhl(:,:,k) = 1.0
+    bqt(:,:,k) = d608 * T(:,:,k)
+
+    if (buoync_option == 2) then
+
+      ! Saturation specific humidity at Tl (qsl) and its derivative (qslT)
+      call compute_qs(Tl(:,:), pfull(:,:,k), qsl, dqsdT=qslT)
+
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! cqt, cthl
+      cqt = 1.0 / (1.0 + gamma)
+      cthl = cqt * cqt * gamma * ( 1.0 + gamma*qt(:,:,k)/max(qsl, small) )     &
+             * cp_air / hleff * (pfull(:,:,k)*p00inv)**(kappa)
+    
+      ! Add moist contribution to bhl, bqt
+      x1 = qa(:,:,k) * (cp_air_inv*hleff(:,:) - T(:,:,k)*(1.0+d608))
+      bhl(:,:,k) = bhl(:,:,k) - cthl * x1
+      bqt(:,:,k) = bqt(:,:,k) + cqt  * x1
+
+    end if
+
+  end do
 
 !====================================================================
 ! --- Surface height     
@@ -691,10 +728,24 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 ! --- Buoyancy                 
 !====================================================================
 
-  xxm1(:,:,1:kxm) = sv(:,:,1:kxm) - sv(:,:,2:kx) 
-  xxm2(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
+  if (buoync_option == 0) then
 
-  buoync = grav * dsdzh * xxm1 / xxm2
+    xxm1(:,:,1:kxm) = sv(:,:,1:kxm) - sv(:,:,2:kx) 
+    xxm2(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
+   
+    buoync = grav * dsdzh * xxm1 / xxm2
+
+  else
+
+    xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx) 
+    xxm2(:,:,1:kxm) = 0.5*( bhl(:,:,1:kxm) + bhl(:,:,2:kx) )
+    xxm3(:,:,1:kxm) = qt(:,:,1:kxm) - qt(:,:,2:kx) 
+    xxm4(:,:,1:kxm) = 0.5*( bqt(:,:,1:kxm) + bqt(:,:,2:kx) )
+    xxm5(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
+
+    buoync = grav * dsdzh / xxm5 * ( xxm1*xxm2 + xxm3*xxm4 )
+
+  end if
 
 !====================================================================
 ! --- Some tke stuff
