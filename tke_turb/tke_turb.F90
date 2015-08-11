@@ -690,8 +690,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
       ! cqt, cthl
       cqt = 1.0 / (1.0 + gamma)
-      cthl = cqt * cqt * gamma * ( 1.0 + gamma*qt(:,:,k)/max(qsl, small) )     &
-             * cp_air / hleff * (pfull(:,:,k)*p00inv)**(kappa)
+      cthl = cqt * gamma * cp_air / hleff * (pfull(:,:,k)*p00inv)**(kappa)
     
       ! Add moist contribution to bhl, bqt
       x1 = qa(:,:,k) * (cp_air_inv*hleff(:,:) - T(:,:,k)*(1.0+d608))
