@@ -71,7 +71,7 @@ use diag_manager_mod,      only: register_diag_field, send_data, &
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 use time_manager_mod,      only: time_manager_init, time_type, operator(>)
 use constants_mod,         only: constants_init, STEFAN, SECONDS_PER_DAY, &
-                                 RADIAN, WTMCO2, WTMAIR, GRAV
+                                 CP_AIR, RADIAN, WTMCO2, WTMAIR, GRAV
 
 use rad_utilities_mod,     only: radiation_control_type, &
                                  astronomy_type, &
@@ -255,7 +255,7 @@ integer                      :: id_flux_sw_dir, id_flux_sw_dif, &
                                 id_n2o_tf, id_sol_con
 integer                      :: id_conc_drop, id_conc_ice
 
-integer                      :: id_allradp
+integer                      :: id_allradp, id_heat2d, id_heat2d_sw
 integer, dimension(2)        :: id_tdt_sw,   id_tdt_lw,  &
                                 id_ufsw, id_dfsw,  &
                                 id_flxnet, &
@@ -1055,6 +1055,14 @@ logical,         intent(in) :: do_lwaerosol
                  'temperature tendency for SW + LW radiation', &
                  'deg_K/sec', missing_value=missing_value)
 
+         id_heat2d   = register_diag_field (mod_name,   &
+                 'heat2d_rad', axes(1:2), Time, &
+                 'integrated net radiative heating', 'watts/m2')
+
+         id_heat2d_sw = register_diag_field (mod_name,   &
+                 'heat2d_sw', axes(1:2), Time, &
+                 'integrated shortwave radiative heating', 'watts/m2')
+
 !----------------------------------------------------------------------
 !    register fields that are not clear-sky depedent.
 !----------------------------------------------------------------------
@@ -1416,7 +1424,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
       real, dimension (ie-is+1,je-js+1, size(Rad_output%tdtsw,3)) ::  &
                                                 tdtlw, tdtlw_clr,&
-                                                hsw, hswcf
+                                                hsw, hswcf, pmass
 
       real, dimension (ie-is+1,je-js+1, size(Rad_output%tdtsw,3)+1) :: &
                                                 dfsw, ufsw,  &
@@ -1427,7 +1435,8 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                                          swin_ad,     swout_ad, olr_ad,&
                               swups_ad,    swdns_ad, lwups_ad,lwdns_ad,&
                                  swin_ad_clr, swout_ad_clr, olr_ad_clr,&
-                  swups_ad_clr, swdns_ad_clr, lwups_ad_clr, lwdns_ad_clr
+                  swups_ad_clr, swdns_ad_clr, lwups_ad_clr, lwdns_ad_clr, &
+                                                               heat2d
       real, dimension (ie-is+1,je-js+1, size(Rad_output%tdtsw,3)+1) :: &
                                                dfsw_ad, ufsw_ad,  &
                                                dfswcf_ad, ufswcf_ad
@@ -1908,6 +1917,25 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                             Rad_output%tdt_rad(is:ie,js:je,:,nz),   &
                             Time_diag, is, js, 1)
         endif
+
+! integrated radiative heating (can be used to check energy conservation)
+! NOTE: phalf is now pass directly from radiation_driver argument list
+!       so this diagnostic can be computed every timestep
+  !BW if (Rad_control%do_sw_rad .or. Rad_control%do_lw_rad) then
+        if (id_heat2d > 0 .or. id_heat2d_sw > 0) then
+          do k=1,kmax
+            pmass(:,:,k) = phalf(:,:,k+1)-phalf(:,:,k)
+          enddo
+        endif
+        if (id_heat2d > 0) then
+          heat2d = CP_AIR/GRAV * sum(Rad_output%tdt_rad(is:ie,js:je,:,nz)*pmass,3)  
+          used = send_data (id_heat2d, heat2d, Time_diag, is, js )
+        endif
+        if (id_heat2d_sw > 0) then
+          heat2d = CP_AIR/GRAV * sum(Rad_output%tdtsw(is:ie,js:je,:,nz)*pmass,3)  
+          used = send_data (id_heat2d_sw, heat2d, Time_diag, is, js )
+        endif
+  !BW endif
 
 !------- conc_drop  -------------------------
 !BW       if (Rad_control%do_sw_rad .or. Rad_control%do_lw_rad) then
