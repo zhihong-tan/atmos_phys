@@ -39,29 +39,29 @@ end interface
 public :: sw_output_type
 
 type sw_output_type
-     real, dimension(:,:,:,:), pointer :: dfsw=>NULL(),   &
-                                          ufsw=>NULL(),  &
-                                          fsw=>NULL(),   &
-                                          hsw=>NULL()   
-     real, dimension(:,:,:,:), pointer :: dfswcf=>NULL(),   &
-                                          ufswcf=>NULL(),&
-                                          fswcf=>NULL(),  &
-                                          hswcf=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
-                                         ufsw_vis_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dir_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: ufsw_dir_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dir_sfc_clr=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
-                                         ufsw_dif_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dif_sfc_clr=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
-      real, dimension(:,:,:), pointer :: ufsw_vis_sfc_dir=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_clr=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
-                                         ufsw_vis_sfc_dif=>NULL()
-      real, dimension(:,:,:,:), pointer :: bdy_flx=>NULL()
-      real, dimension(:,:,:,:), pointer :: bdy_flx_clr=>NULL()
+     real, dimension(:,:,:), pointer :: dfsw=>NULL(),   &
+                                        ufsw=>NULL(),  &
+                                        fsw=>NULL(),   &
+                                        hsw=>NULL()   
+     real, dimension(:,:,:), pointer :: dfswcf=>NULL(),   &
+                                        ufswcf=>NULL(),&
+                                        fswcf=>NULL(),  &
+                                        hswcf=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
+                                       ufsw_vis_sfc=>NULL()
+      real, dimension(:,:), pointer :: dfsw_dir_sfc=>NULL()
+      real, dimension(:,:), pointer :: ufsw_dir_sfc=>NULL()
+      real, dimension(:,:), pointer :: dfsw_dir_sfc_clr=>NULL()
+      real, dimension(:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
+                                       ufsw_dif_sfc=>NULL()
+      real, dimension(:,:), pointer :: dfsw_dif_sfc_clr=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
+      real, dimension(:,:), pointer :: ufsw_vis_sfc_dir=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc_clr=>NULL()
+      real, dimension(:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
+                                       ufsw_vis_sfc_dif=>NULL()
+      real, dimension(:,:,:), pointer :: bdy_flx=>NULL()
+      real, dimension(:,:,:), pointer :: bdy_flx_clr=>NULL()
 end type sw_output_type
 
 !---------------------------------------------------------------------

@@ -150,31 +150,31 @@ namelist /radiation_driver_diag_nml/ all_step_diagnostics, &
 
 !-----------------------------------------------------------------------
 type sw_flux_save_type
-   real, dimension(:,:,:),   pointer :: flux_sw_down_total_dir_clr=>NULL(), &
-                                        flux_sw_down_total_dif_clr=>NULL(), &
-                                        flux_sw_down_vis_clr=>NULL()
-   real, dimension(:,:,:),   pointer :: flux_sw_surf=>NULL(), &
-                                        flux_sw_surf_dir=>NULL(), &
-                                        flux_sw_surf_refl_dir=>NULL(), &
-                                        flux_sw_surf_dif=>NULL(), &
-                                        flux_sw_down_vis_dir=>NULL(), &
-                                        flux_sw_down_vis_dif=>NULL(), &
-                                        flux_sw_down_total_dir=>NULL(), &
-                                        flux_sw_down_total_dif=>NULL(), &
-                                        flux_sw_vis=>NULL(), &
-                                        flux_sw_vis_dir=>NULL(), &
-                                        flux_sw_refl_vis_dir=>NULL(), &
-                                        flux_sw_vis_dif=>NULL()
-   real, dimension(:,:,:,:), pointer :: sw_heating=>NULL(),    &
-                                        tot_heating=>NULL(), &
-                                        dfsw=>NULL(), ufsw=>NULL(), &
-                                        fsw=>NULL(), hsw=>NULL()
-   real, dimension(:,:,:,:), pointer :: sw_heating_clr=>NULL(), &
-                                        tot_heating_clr=>NULL(), &
-                                        dfswcf=>NULL(), ufswcf=>NULL(), &
-                                        fswcf=>NULL(), hswcf=>NULL()
-   real, dimension(:,:,:,:), pointer :: dfsw_ad=>NULL(), ufsw_ad=>NULL()
-   real, dimension(:,:,:,:), pointer :: dfswcf_ad=>NULL(), ufswcf_ad=>NULL()
+   real, dimension(:,:),   pointer :: flux_sw_down_total_dir_clr=>NULL(), &
+                                      flux_sw_down_total_dif_clr=>NULL(), &
+                                      flux_sw_down_vis_clr=>NULL()
+   real, dimension(:,:),   pointer :: flux_sw_surf=>NULL(), &
+                                      flux_sw_surf_dir=>NULL(), &
+                                      flux_sw_surf_refl_dir=>NULL(), &
+                                      flux_sw_surf_dif=>NULL(), &
+                                      flux_sw_down_vis_dir=>NULL(), &
+                                      flux_sw_down_vis_dif=>NULL(), &
+                                      flux_sw_down_total_dir=>NULL(), &
+                                      flux_sw_down_total_dif=>NULL(), &
+                                      flux_sw_vis=>NULL(), &
+                                      flux_sw_vis_dir=>NULL(), &
+                                      flux_sw_refl_vis_dir=>NULL(), &
+                                      flux_sw_vis_dif=>NULL()
+   real, dimension(:,:,:), pointer :: sw_heating=>NULL(),    &
+                                      tot_heating=>NULL(), &
+                                      dfsw=>NULL(), ufsw=>NULL(), &
+                                      fsw=>NULL(), hsw=>NULL()
+   real, dimension(:,:,:), pointer :: sw_heating_clr=>NULL(), &
+                                      tot_heating_clr=>NULL(), &
+                                      dfswcf=>NULL(), ufswcf=>NULL(), &
+                                      fswcf=>NULL(), hswcf=>NULL()
+   real, dimension(:,:,:), pointer :: dfsw_ad=>NULL(), ufsw_ad=>NULL()
+   real, dimension(:,:,:), pointer :: dfswcf_ad=>NULL(), ufswcf_ad=>NULL()
 end type sw_flux_save_type
 
 type lw_flux_save_type
@@ -189,10 +189,10 @@ type lw_flux_save_type
 end type lw_flux_save_type
 
 type diag_special_type
-  real, dimension(:,:,:,:), pointer :: swdn_trop, swup_trop
-  real, dimension(:,:,:),   pointer :: netlw_trop
-  real, dimension(:,:,:,:), pointer :: swdn_trop_clr, swup_trop_clr
-  real, dimension(:,:,:),   pointer :: netlw_trop_clr
+  real, dimension(:,:,:), pointer :: swdn_trop, swup_trop
+  real, dimension(:,:,:), pointer :: netlw_trop
+  real, dimension(:,:,:), pointer :: swdn_trop_clr, swup_trop_clr
+  real, dimension(:,:,:), pointer :: netlw_trop_clr
 end type diag_special_type
 
 !-----------------------------------------------------------------------
@@ -315,7 +315,6 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !   local variables
       integer           ::   unit, io, ierr, logunit
       integer           ::   id, jd, kmax
-      integer           ::   nzens
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -374,52 +373,51 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !    physics step.
 !---------------------------------------------------------------------
       if (Rad_control%renormalize_sw_fluxes .or. all_step_diagnostics) then
-          nzens = Rad_control%nzens
           allocate (solar_save                       (id,jd))
-          allocate (Sw_flux_save%flux_sw_surf          (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_surf_dir      (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_surf_refl_dir (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_surf_dif      (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_down_vis_dir  (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_down_vis_dif  (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_down_total_dir(id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_down_total_dif(id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_vis           (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_vis_dir       (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_refl_vis_dir  (id,jd,nzens))
-          allocate (Sw_flux_save%flux_sw_vis_dif       (id,jd,nzens))
-          allocate (Sw_flux_save%sw_heating            (id,jd,kmax,nzens))
-          allocate (Sw_flux_save%tot_heating           (id,jd,kmax,nzens))
-          allocate (Sw_flux_save%dfsw                  (id,jd,kmax+1,nzens))
-          allocate (Sw_flux_save%ufsw                  (id,jd,kmax+1,nzens))
-          allocate (Sw_flux_save% fsw                  (id,jd,kmax+1,nzens))
-          allocate (Sw_flux_save% hsw                  (id,jd,kmax,nzens))
+          allocate (Sw_flux_save%flux_sw_surf          (id,jd))
+          allocate (Sw_flux_save%flux_sw_surf_dir      (id,jd))
+          allocate (Sw_flux_save%flux_sw_surf_refl_dir (id,jd))
+          allocate (Sw_flux_save%flux_sw_surf_dif      (id,jd))
+          allocate (Sw_flux_save%flux_sw_down_vis_dir  (id,jd))
+          allocate (Sw_flux_save%flux_sw_down_vis_dif  (id,jd))
+          allocate (Sw_flux_save%flux_sw_down_total_dir(id,jd))
+          allocate (Sw_flux_save%flux_sw_down_total_dif(id,jd))
+          allocate (Sw_flux_save%flux_sw_vis           (id,jd))
+          allocate (Sw_flux_save%flux_sw_vis_dir       (id,jd))
+          allocate (Sw_flux_save%flux_sw_refl_vis_dir  (id,jd))
+          allocate (Sw_flux_save%flux_sw_vis_dif       (id,jd))
+          allocate (Sw_flux_save%sw_heating            (id,jd,kmax))
+          allocate (Sw_flux_save%tot_heating           (id,jd,kmax))
+          allocate (Sw_flux_save%dfsw                  (id,jd,kmax+1))
+          allocate (Sw_flux_save%ufsw                  (id,jd,kmax+1))
+          allocate (Sw_flux_save% fsw                  (id,jd,kmax+1))
+          allocate (Sw_flux_save% hsw                  (id,jd,kmax))
           if (Aerosolrad_control%do_swaerosol_forcing) then
-              allocate (Sw_flux_save%dfsw_ad             (id,jd,kmax+1,nzens))
-              allocate (Sw_flux_save%ufsw_ad             (id,jd,kmax+1,nzens))
+              allocate (Sw_flux_save%dfsw_ad             (id,jd,kmax+1))
+              allocate (Sw_flux_save%ufsw_ad             (id,jd,kmax+1))
           endif
           if (Rad_control%do_totcld_forcing) then 
-              allocate (Sw_flux_save%sw_heating_clr            (id,jd,kmax,nzens))
-              allocate (Sw_flux_save%tot_heating_clr           (id,jd,kmax,nzens))
-              allocate (Sw_flux_save%dfswcf                    (id,jd,kmax+1,nzens))
-              allocate (Sw_flux_save%ufswcf                    (id,jd,kmax+1,nzens))
-              allocate (Sw_flux_save% fswcf                    (id,jd,kmax+1,nzens))
-              allocate (Sw_flux_save% hswcf                    (id,jd,kmax,nzens))
-              allocate (Sw_flux_save%flux_sw_down_total_dir_clr(id,jd,nzens))
-              allocate (Sw_flux_save%flux_sw_down_total_dif_clr(id,jd,nzens))
-              allocate (Sw_flux_save%flux_sw_down_vis_clr      (id,jd,nzens)) 
+              allocate (Sw_flux_save%sw_heating_clr            (id,jd,kmax))
+              allocate (Sw_flux_save%tot_heating_clr           (id,jd,kmax))
+              allocate (Sw_flux_save%dfswcf                    (id,jd,kmax+1))
+              allocate (Sw_flux_save%ufswcf                    (id,jd,kmax+1))
+              allocate (Sw_flux_save% fswcf                    (id,jd,kmax+1))
+              allocate (Sw_flux_save% hswcf                    (id,jd,kmax))
+              allocate (Sw_flux_save%flux_sw_down_total_dir_clr(id,jd))
+              allocate (Sw_flux_save%flux_sw_down_total_dif_clr(id,jd))
+              allocate (Sw_flux_save%flux_sw_down_vis_clr      (id,jd)) 
               if (Aerosolrad_control%do_swaerosol_forcing) then
-                  allocate (Sw_flux_save%dfswcf_ad               (id,jd,kmax+1,nzens))
-                  allocate (Sw_flux_save%ufswcf_ad               (id,jd,kmax+1,nzens))
+                  allocate (Sw_flux_save%dfswcf_ad               (id,jd,kmax+1))
+                  allocate (Sw_flux_save%ufswcf_ad               (id,jd,kmax+1))
               endif
           endif
 
           ! allocate space for special shortwave diagnostics
-          allocate(Diag_special%swdn_trop (id,jd,MX_SPEC_LEVS,nzens))
-          allocate(Diag_special%swup_trop (id,jd,MX_SPEC_LEVS,nzens))
+          allocate(Diag_special%swdn_trop (id,jd,MX_SPEC_LEVS))
+          allocate(Diag_special%swup_trop (id,jd,MX_SPEC_LEVS))
           if (Rad_control%do_totcld_forcing) then
-              allocate(Diag_special%swdn_trop_clr (id,jd,MX_SPEC_LEVS,nzens))
-              allocate(Diag_special%swup_trop_clr (id,jd,MX_SPEC_LEVS,nzens))
+              allocate(Diag_special%swdn_trop_clr (id,jd,MX_SPEC_LEVS))
+              allocate(Diag_special%swup_trop_clr (id,jd,MX_SPEC_LEVS))
           endif
       endif
 
@@ -564,7 +562,7 @@ end subroutine radiation_driver_diag_init
 !
 
 subroutine update_rad_fields (is, ie, js, je, Time_diag, Astro, Astro_phys,   &
-                              nz, Rad_control, Aerosolrad_control, &
+                              Rad_control, Aerosolrad_control, &
                               Sw_output, Rad_output, flux_ratio)
 
 !---------------------------------------------------------------------
@@ -574,7 +572,7 @@ subroutine update_rad_fields (is, ie, js, je, Time_diag, Astro, Astro_phys,   &
 !    effects when that option is activated.
 !--------------------------------------------------------------------
 
-integer,                 intent(in)    ::  is, ie, js, je, nz
+integer,                 intent(in)    ::  is, ie, js, je
 type(time_type),         intent(in)    ::  Time_diag
 type(astronomy_type),    intent(in)    ::  Astro
 type(astronomy_type),    intent(in)    ::  Astro_phys
@@ -597,7 +595,6 @@ real,  dimension(:,:),              intent(out)   ::  flux_ratio
 !      Astro_phys   astronomical properties on model grid, valid over 
 !                   physics timestep, used when renormalizing sw fluxes
 !                   [astronomy_type]
-!      nz           the current zenith step
 !      Sw_output    shortwave output variables on model grid,
 !                   [sw_output_type]     
 !
@@ -694,40 +691,40 @@ real,  dimension(:,:),              intent(out)   ::  flux_ratio
 !    relative earth-sun motion) between the current physics and current
 !    radiation timesteps.
 !---------------------------------------------------------------------
-        tdtlw(:,:,:) = Sw_flux_save%tot_heating(is:ie,js:je,:,nz) - Sw_flux_save%sw_heating(is:ie,js:je,:,nz)
+        tdtlw(:,:,:) = Sw_flux_save%tot_heating(is:ie,js:je,:) - Sw_flux_save%sw_heating(is:ie,js:je,:)
         do k=1, size(Rad_output%tdt_rad,3)
-          Rad_output%tdtsw(is:ie,js:je,k,nz) = Sw_flux_save%sw_heating(is:ie,js:je,k,nz)*flux_ratio(:,:)
+          Rad_output%tdtsw(is:ie,js:je,k) = Sw_flux_save%sw_heating(is:ie,js:je,k)*flux_ratio(:,:)
         end do
         do k=1, size(Rad_output%tdt_rad,3)+1
-          Rad_output%ufsw(is:ie,js:je,k,nz) = Sw_flux_save%ufsw(is:ie,js:je,k,nz)*flux_ratio(:,:)
-          Rad_output%dfsw(is:ie,js:je,k,nz) = Sw_flux_save%dfsw(is:ie,js:je,k,nz)*flux_ratio(:,:)
+          Rad_output%ufsw(is:ie,js:je,k) = Sw_flux_save%ufsw(is:ie,js:je,k)*flux_ratio(:,:)
+          Rad_output%dfsw(is:ie,js:je,k) = Sw_flux_save%dfsw(is:ie,js:je,k)*flux_ratio(:,:)
         end do
-        Rad_output%tdt_rad(is:ie,js:je,:,nz) = tdtlw(:,:,:) + Rad_output%tdtsw(is:ie,js:je,:,nz)
-        Rad_output%flux_sw_surf          (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf          (is:ie,js:je,nz)
-        Rad_output%flux_sw_surf_dir      (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf_dir      (is:ie,js:je,nz)
-        Rad_output%flux_sw_surf_refl_dir (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf_refl_dir (is:ie,js:je,nz)
-        Rad_output%flux_sw_surf_dif      (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf_dif      (is:ie,js:je,nz)
-        Rad_output%flux_sw_down_vis_dir  (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_vis_dir  (is:ie,js:je,nz)
-        Rad_output%flux_sw_down_vis_dif  (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_vis_dif  (is:ie,js:je,nz)
-        Rad_output%flux_sw_down_total_dir(is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dir(is:ie,js:je,nz)
-        Rad_output%flux_sw_down_total_dif(is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dif(is:ie,js:je,nz)
-        Rad_output%flux_sw_vis           (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_vis           (is:ie,js:je,nz)
-        Rad_output%flux_sw_vis_dir       (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_vis_dir       (is:ie,js:je,nz)
-        Rad_output%flux_sw_refl_vis_dir  (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_refl_vis_dir  (is:ie,js:je,nz)
-        Rad_output%flux_sw_vis_dif       (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_vis_dif       (is:ie,js:je,nz)
+        Rad_output%tdt_rad(is:ie,js:je,:) = tdtlw(:,:,:) + Rad_output%tdtsw(is:ie,js:je,:)
+        Rad_output%flux_sw_surf          (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf          (is:ie,js:je)
+        Rad_output%flux_sw_surf_dir      (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf_dir      (is:ie,js:je)
+        Rad_output%flux_sw_surf_refl_dir (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf_refl_dir (is:ie,js:je)
+        Rad_output%flux_sw_surf_dif      (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_surf_dif      (is:ie,js:je)
+        Rad_output%flux_sw_down_vis_dir  (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_vis_dir  (is:ie,js:je)
+        Rad_output%flux_sw_down_vis_dif  (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_vis_dif  (is:ie,js:je)
+        Rad_output%flux_sw_down_total_dir(is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dir(is:ie,js:je)
+        Rad_output%flux_sw_down_total_dif(is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dif(is:ie,js:je)
+        Rad_output%flux_sw_vis           (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_vis           (is:ie,js:je)
+        Rad_output%flux_sw_vis_dir       (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_vis_dir       (is:ie,js:je)
+        Rad_output%flux_sw_refl_vis_dir  (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_refl_vis_dir  (is:ie,js:je)
+        Rad_output%flux_sw_vis_dif       (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_vis_dif       (is:ie,js:je)
         if (Rad_control%do_totcld_forcing) then
-          tdtlw_clr(:,:,:) = Sw_flux_save%tot_heating_clr(is:ie,js:je,:,nz) - Sw_flux_save%sw_heating_clr (is:ie,js:je,:,nz)
-          Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dir_clr(is:ie,js:je,nz)
-          Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dif_clr(is:ie,js:je,nz)
-          Rad_output%flux_sw_down_vis_clr      (is:ie,js:je,nz) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_vis_clr      (is:ie,js:je,nz)
+          tdtlw_clr(:,:,:) = Sw_flux_save%tot_heating_clr(is:ie,js:je,:) - Sw_flux_save%sw_heating_clr (is:ie,js:je,:)
+          Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dir_clr(is:ie,js:je)
+          Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_total_dif_clr(is:ie,js:je)
+          Rad_output%flux_sw_down_vis_clr      (is:ie,js:je) = flux_ratio(:,:)*Sw_flux_save%flux_sw_down_vis_clr      (is:ie,js:je)
           do k=1, size(Rad_output%tdt_rad,3)
-            Rad_output%tdtsw_clr(is:ie,js:je,k,nz) = Sw_flux_save%sw_heating_clr (is:ie,js:je,k,nz)*flux_ratio(:,:)
+            Rad_output%tdtsw_clr(is:ie,js:je,k) = Sw_flux_save%sw_heating_clr (is:ie,js:je,k)*flux_ratio(:,:)
           end do
           do k=1, size(Rad_output%tdt_rad,3)+1
-            Rad_output%ufsw_clr(is:ie,js:je,k,nz) = Sw_flux_save%ufswcf(is:ie,js:je,k,nz)*flux_ratio(:,:)
-            Rad_output%dfsw_clr(is:ie,js:je,k,nz) = Sw_flux_save%dfswcf(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            Rad_output%ufsw_clr(is:ie,js:je,k) = Sw_flux_save%ufswcf(is:ie,js:je,k)*flux_ratio(:,:)
+            Rad_output%dfsw_clr(is:ie,js:je,k) = Sw_flux_save%dfswcf(is:ie,js:je,k)*flux_ratio(:,:)
           end do
-          Rad_output%tdt_rad_clr(is:ie,js:je,:,nz) = tdtlw_clr(:,:,:) + Rad_output%tdtsw_clr(is:ie,js:je,:,nz)
+          Rad_output%tdt_rad_clr(is:ie,js:je,:) = tdtlw_clr(:,:,:) + Rad_output%tdtsw_clr(is:ie,js:je,:)
         endif
       else if (all_step_diagnostics) then
 
@@ -1334,7 +1331,7 @@ end subroutine diag_field_init
 subroutine produce_radiation_diagnostics          &
                  (is, ie, js, je, Time_diag, Time, lat, atm_mass, ts, pflux, phalf, &
                   asfc_vis_dir, asfc_nir_dir, asfc_vis_dif, asfc_nir_dif, &
-                  flux_ratio, Astro, Astro_phys, nz, Rad_output, Rad_gases,&
+                  flux_ratio, Astro, Astro_phys, Rad_output, Rad_gases,&
                   Rad_control, Aerosolrad_control, Lw_output, Sw_output)
 !BW               Lsc_microphys)
 
@@ -1344,7 +1341,7 @@ subroutine produce_radiation_diagnostics          &
 !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
-integer,                 intent(in)             :: is, ie, js, je, nz
+integer,                 intent(in)             :: is, ie, js, je
 type(time_type),         intent(in)             :: Time_diag
 type(time_type),         intent(in)             :: Time
 real,dimension(:,:),     intent(in)             :: lat, ts
@@ -1379,7 +1376,6 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !                   rates [ dimensionless ]
 !      Astro        astronomical  variables input to the radiation
 !                   package [ dimensionless ]
-!      nz           the current zenith step [ dimensionless ]
 !      Rad_output   rad_output_type variable containing radiation 
 !                   output fields
 !      Rad_gases    radiative_gases_type variable containing co2 mixing
@@ -1412,13 +1408,11 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                                                 swups_clr, swdns_clr,&
                                                 lwups_clr, lwdns_clr   
 
-      real, dimension (ie-is+1,je-js+1, &
-                       MX_SPEC_LEVS, Rad_control%nzens) ::           & 
+      real, dimension (ie-is+1,je-js+1, MX_SPEC_LEVS) ::    & 
                                                 swdn_trop,  &
                                                 swdn_trop_clr, &
                                                 swup_trop, &
-                                                swup_trop_clr
-      real, dimension (ie-is+1,je-js+1, MX_SPEC_LEVS) ::           & 
+                                                swup_trop_clr, &
                                                 netlw_trop, &
                                                 netlw_trop_clr
 
@@ -1477,11 +1471,11 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !-------------------------------------------------------------------
       if (Rad_control%do_sw_rad) then
         if (Rad_control%renormalize_sw_fluxes .or. all_step_diagnostics) then
-          Diag_special%swdn_trop(is:ie,js:je,:,:) = swdn_trop(:,:,:,:)
-          Diag_special%swup_trop(is:ie,js:je,:,:) = swup_trop(:,:,:,:)
+          Diag_special%swdn_trop(is:ie,js:je,:) = swdn_trop(:,:,:)
+          Diag_special%swup_trop(is:ie,js:je,:) = swup_trop(:,:,:)
           if (Rad_control%do_totcld_forcing) then
-            Diag_special%swdn_trop_clr(is:ie,js:je,:,:) = swdn_trop_clr(:,:,:,:)
-            Diag_special%swup_trop_clr(is:ie,js:je,:,:) = swup_trop_clr(:,:,:,:)
+            Diag_special%swdn_trop_clr(is:ie,js:je,:) = swdn_trop_clr(:,:,:)
+            Diag_special%swup_trop_clr(is:ie,js:je,:) = swup_trop_clr(:,:,:)
           endif
         endif
       endif
@@ -1501,37 +1495,37 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
       kmax = size (Rad_output%tdtsw,3)
       if (Rad_control%renormalize_sw_fluxes) then
         do k=1, kmax         
-          hsw(:,:,k) = Sw_flux_save%hsw(is:ie,js:je,k,nz)*flux_ratio(:,:)
+          hsw(:,:,k) = Sw_flux_save%hsw(is:ie,js:je,k)*flux_ratio(:,:)
         end do
         do k=1, kmax+1             
           if (Aerosolrad_control%do_swaerosol_forcing) then
-            dfsw_ad(:,:,k) = Sw_flux_save%dfsw_ad(is:ie,js:je,k,nz)*flux_ratio(:,:)
-            ufsw_ad(:,:,k) = Sw_flux_save%ufsw_ad(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            dfsw_ad(:,:,k) = Sw_flux_save%dfsw_ad(is:ie,js:je,k)*flux_ratio(:,:)
+            ufsw_ad(:,:,k) = Sw_flux_save%ufsw_ad(is:ie,js:je,k)*flux_ratio(:,:)
           endif
-          dfsw(:,:,k) = Sw_flux_save%dfsw(is:ie,js:je,k,nz)*flux_ratio(:,:)
-          ufsw(:,:,k) = Sw_flux_save%ufsw(is:ie,js:je,k,nz)*flux_ratio(:,:)
-          fsw (:,:,k) = Sw_flux_save%fsw (is:ie,js:je,k,nz)*flux_ratio(:,:)
+          dfsw(:,:,k) = Sw_flux_save%dfsw(is:ie,js:je,k)*flux_ratio(:,:)
+          ufsw(:,:,k) = Sw_flux_save%ufsw(is:ie,js:je,k)*flux_ratio(:,:)
+          fsw (:,:,k) = Sw_flux_save%fsw (is:ie,js:je,k)*flux_ratio(:,:)
         end do
         do k=1,MX_SPEC_LEVS
-          swdn_trop(:,:,k,nz) = Diag_special%swdn_trop(is:ie,js:je,k,nz)*flux_ratio(:,:)
-          swup_trop(:,:,k,nz) = Diag_special%swup_trop(is:ie,js:je,k,nz)*flux_ratio(:,:)
+          swdn_trop(:,:,k) = Diag_special%swdn_trop(is:ie,js:je,k)*flux_ratio(:,:)
+          swup_trop(:,:,k) = Diag_special%swup_trop(is:ie,js:je,k)*flux_ratio(:,:)
         end do
         if (Rad_control%do_totcld_forcing) then
           do k=1, kmax            
-            hswcf(:,:,k) = Sw_flux_save%hswcf(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            hswcf(:,:,k) = Sw_flux_save%hswcf(is:ie,js:je,k)*flux_ratio(:,:)
           end do
           do k=1, kmax+1            
             if (Aerosolrad_control%do_swaerosol_forcing) then
-              dfswcf_ad(:,:,k) = Sw_flux_save%dfswcf_ad(is:ie,js:je,k,nz)*flux_ratio(:,:)
-              ufswcf_ad(:,:,k) = Sw_flux_save%ufswcf_ad(is:ie,js:je,k,nz)*flux_ratio(:,:)
+              dfswcf_ad(:,:,k) = Sw_flux_save%dfswcf_ad(is:ie,js:je,k)*flux_ratio(:,:)
+              ufswcf_ad(:,:,k) = Sw_flux_save%ufswcf_ad(is:ie,js:je,k)*flux_ratio(:,:)
             endif
-            dfswcf(:,:,k) = Sw_flux_save%dfswcf(is:ie,js:je,k,nz)*flux_ratio(:,:)
-            ufswcf(:,:,k) = Sw_flux_save%ufswcf(is:ie,js:je,k,nz)*flux_ratio(:,:)
-            fswcf (:,:,k) = Sw_flux_save%fswcf (is:ie,js:je,k,nz)*flux_ratio(:,:)
+            dfswcf(:,:,k) = Sw_flux_save%dfswcf(is:ie,js:je,k)*flux_ratio(:,:)
+            ufswcf(:,:,k) = Sw_flux_save%ufswcf(is:ie,js:je,k)*flux_ratio(:,:)
+            fswcf (:,:,k) = Sw_flux_save%fswcf (is:ie,js:je,k)*flux_ratio(:,:)
           end do
           do k=1,MX_SPEC_LEVS
-            swdn_trop_clr(:,:,k,nz) = Diag_special%swdn_trop_clr(is:ie,js:je,k,nz)*flux_ratio(:,:)
-            swup_trop_clr(:,:,k,nz) = Diag_special%swup_trop_clr(is:ie,js:je,k,nz)*flux_ratio(:,:)
+            swdn_trop_clr(:,:,k) = Diag_special%swdn_trop_clr(is:ie,js:je,k)*flux_ratio(:,:)
+            swup_trop_clr(:,:,k) = Diag_special%swup_trop_clr(is:ie,js:je,k)*flux_ratio(:,:)
           end do
         endif
 
@@ -1542,29 +1536,29 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !---------------------------------------------------------------------
       else if (Rad_control%do_sw_rad) then
         do k=1, kmax            
-          hsw(:,:,k) = Sw_output(1)%hsw(:,:,k,nz)
+          hsw(:,:,k) = Sw_output(1)%hsw(:,:,k)
         end do
         do k=1, kmax+1             
           if (Aerosolrad_control%do_swaerosol_forcing) then
-            dfsw_ad(:,:,k) = Sw_output(indx_swaf)%dfsw(:,:,k,nz)
-            ufsw_ad(:,:,k) = Sw_output(indx_swaf)%ufsw(:,:,k,nz)
+            dfsw_ad(:,:,k) = Sw_output(indx_swaf)%dfsw(:,:,k)
+            ufsw_ad(:,:,k) = Sw_output(indx_swaf)%ufsw(:,:,k)
           endif
-          dfsw(:,:,k) = Sw_output(1)%dfsw(:,:,k,nz)
-          ufsw(:,:,k) = Sw_output(1)%ufsw(:,:,k,nz)
-          fsw(:,:,k) = Sw_output(1)%fsw(:,:,k,nz)
+          dfsw(:,:,k) = Sw_output(1)%dfsw(:,:,k)
+          ufsw(:,:,k) = Sw_output(1)%ufsw(:,:,k)
+          fsw(:,:,k) = Sw_output(1)%fsw(:,:,k)
         end do
         if (Rad_control%do_totcld_forcing) then
           do k=1, kmax             
-            hswcf(:,:,k) = Sw_output(1)%hswcf(:,:,k,nz)
+            hswcf(:,:,k) = Sw_output(1)%hswcf(:,:,k)
           end do
           do k=1, kmax+1            
             if (Aerosolrad_control%do_swaerosol_forcing) then
-              dfswcf_ad(:,:,k) = Sw_output(indx_swaf)%dfswcf(:,:,k,nz)
-              ufswcf_ad(:,:,k) = Sw_output(indx_swaf)%ufswcf(:,:,k,nz)  
+              dfswcf_ad(:,:,k) = Sw_output(indx_swaf)%dfswcf(:,:,k)
+              ufswcf_ad(:,:,k) = Sw_output(indx_swaf)%ufswcf(:,:,k)  
             endif
-            dfswcf(:,:,k) = Sw_output(1)%dfswcf(:,:,k,nz)
-            ufswcf(:,:,k) = Sw_output(1)%ufswcf(:,:,k,nz)
-            fswcf(:,:,k) = Sw_output(1)%fswcf(:,:,k,nz)
+            dfswcf(:,:,k) = Sw_output(1)%dfswcf(:,:,k)
+            ufswcf(:,:,k) = Sw_output(1)%ufswcf(:,:,k)
+            fswcf(:,:,k) = Sw_output(1)%fswcf(:,:,k)
           end do
         endif
 
@@ -1576,34 +1570,34 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !---------------------------------------------------------------------
       else if (all_step_diagnostics) then
         do k=1, kmax
-          hsw(:,:,k) = Sw_flux_save%hsw(is:ie,js:je,k,nz)
+          hsw(:,:,k) = Sw_flux_save%hsw(is:ie,js:je,k)
         end do
         do k=1, kmax+1
           if (Aerosolrad_control%do_swaerosol_forcing) then
-            dfsw_ad(:,:,k) = Sw_flux_save%dfsw_ad(is:ie,js:je,k,nz)
-            ufsw_ad(:,:,k) = Sw_flux_save%ufsw_ad(is:ie,js:je,k,nz)
+            dfsw_ad(:,:,k) = Sw_flux_save%dfsw_ad(is:ie,js:je,k)
+            ufsw_ad(:,:,k) = Sw_flux_save%ufsw_ad(is:ie,js:je,k)
           endif
-          dfsw(:,:,k) = Sw_flux_save%dfsw(is:ie,js:je,k,nz)
-          ufsw(:,:,k) = Sw_flux_save%ufsw(is:ie,js:je,k,nz)
-          fsw (:,:,k) = Sw_flux_save%fsw (is:ie,js:je,k,nz)
+          dfsw(:,:,k) = Sw_flux_save%dfsw(is:ie,js:je,k)
+          ufsw(:,:,k) = Sw_flux_save%ufsw(is:ie,js:je,k)
+          fsw (:,:,k) = Sw_flux_save%fsw (is:ie,js:je,k)
         end do
-        swdn_trop(:,:,:,nz) = Diag_special%swdn_trop(is:ie,js:je,:,nz)
-        swup_trop(:,:,:,nz) = Diag_special%swup_trop(is:ie,js:je,:,nz)
+        swdn_trop(:,:,:) = Diag_special%swdn_trop(is:ie,js:je,:)
+        swup_trop(:,:,:) = Diag_special%swup_trop(is:ie,js:je,:)
         if (Rad_control%do_totcld_forcing) then
           do k=1, kmax
-            hswcf(:,:,k) = Sw_flux_save%hswcf(is:ie,js:je,k,nz)
+            hswcf(:,:,k) = Sw_flux_save%hswcf(is:ie,js:je,k)
           end do
           do k=1, kmax+1
             if (Aerosolrad_control%do_swaerosol_forcing) then
-              dfswcf_ad(:,:,k) = Sw_flux_save%dfswcf_ad(is:ie,js:je,k,nz)
-              ufswcf_ad(:,:,k) = Sw_flux_save%ufswcf_ad(is:ie,js:je,k,nz)
+              dfswcf_ad(:,:,k) = Sw_flux_save%dfswcf_ad(is:ie,js:je,k)
+              ufswcf_ad(:,:,k) = Sw_flux_save%ufswcf_ad(is:ie,js:je,k)
             endif
-            dfswcf(:,:,k) = Sw_flux_save%dfswcf(is:ie,js:je,k,nz)
-            ufswcf(:,:,k) = Sw_flux_save%ufswcf(is:ie,js:je,k,nz)
-            fswcf (:,:,k) = Sw_flux_save%fswcf (is:ie,js:je,k,nz)
+            dfswcf(:,:,k) = Sw_flux_save%dfswcf(is:ie,js:je,k)
+            ufswcf(:,:,k) = Sw_flux_save%ufswcf(is:ie,js:je,k)
+            fswcf (:,:,k) = Sw_flux_save%fswcf (is:ie,js:je,k)
           end do
-          swdn_trop_clr(:,:,:,nz) = Diag_special%swdn_trop_clr(is:ie,js:je,:,nz)
-          swup_trop_clr(:,:,:,nz) = Diag_special%swup_trop_clr(is:ie,js:je,:,nz)
+          swdn_trop_clr(:,:,:) = Diag_special%swdn_trop_clr(is:ie,js:je,:)
+          swup_trop_clr(:,:,:) = Diag_special%swup_trop_clr(is:ie,js:je,:)
         endif
       endif
 
@@ -1611,7 +1605,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !    define the sw diagnostic arrays.
 !---------------------------------------------------------------------
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
-           Rad_control%hires_coszen .or.   all_step_diagnostics) then
+          all_step_diagnostics) then
         if (Aerosolrad_control%do_swaerosol_forcing) then
           swin_ad (:,:) = dfsw_ad(:,:,1)
           swout_ad(:,:) = ufsw_ad(:,:,1)
@@ -1653,21 +1647,21 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- sw tendency -----------
         if (id_tdt_sw(ipass) > 0 ) then
           used = send_data (id_tdt_sw(ipass),    &
-                            Rad_output%tdtsw(is:ie,js:je,:,nz),   &
+                            Rad_output%tdtsw(is:ie,js:je,:),   &
                             Time_diag, is, js, 1)
         endif
 
 !---- 3d upward sw flux ---------
         if (id_ufsw(ipass) > 0 ) then
           used = send_data (id_ufsw(ipass),    &
-                            Rad_output%ufsw(is:ie,js:je,:,nz),   &
+                            Rad_output%ufsw(is:ie,js:je,:),   &
                             Time_diag, is, js, 1)
         endif
 
 !---- 3d downward sw flux ---------
         if (id_dfsw(ipass) > 0 ) then
           used = send_data (id_dfsw(ipass),    &
-                            Rad_output%dfsw(is:ie,js:je,:,nz),   &
+                            Rad_output%dfsw(is:ie,js:je,:),   &
                             Time_diag, is, js, 1)
         endif
 
@@ -1687,12 +1681,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         do k = 1, MX_SPEC_LEVS
 !------- incoming sw flux trop -------
           if (id_swdn_special(k,ipass) > 0 ) then
-            used = send_data (id_swdn_special(k,ipass), swdn_trop(:,:,k,nz), Time_diag, is, js )
+            used = send_data (id_swdn_special(k,ipass), swdn_trop(:,:,k), Time_diag, is, js )
           endif
 
 !------- outgoing sw flux trop -------
           if (id_swdn_special(k,ipass) > 0 ) then
-            used = send_data (id_swup_special(k,ipass), swup_trop(:,:,k,nz), Time_diag, is, js )
+            used = send_data (id_swup_special(k,ipass), swup_trop(:,:,k), Time_diag, is, js )
           endif
         end do
 
@@ -1786,21 +1780,21 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- sw tendency -----------
           if (id_tdt_sw(ipass) > 0 ) then
             used = send_data (id_tdt_sw(ipass),   &
-                              Rad_output%tdtsw_clr(is:ie,js:je,:,nz),  &
+                              Rad_output%tdtsw_clr(is:ie,js:je,:),  &
                               Time_diag, is, js, 1)
           endif
 
 !---- 3d upward sw flux ---------
          if (id_ufsw(ipass) > 0 ) then
            used = send_data (id_ufsw(ipass),    &
-                             Rad_output%ufsw_clr(is:ie,js:je,:,nz),   &
+                             Rad_output%ufsw_clr(is:ie,js:je,:),   &
                              Time_diag, is, js, 1)
          endif
  
 !---- 3d downward sw flux ---------
          if (id_dfsw(ipass) > 0 ) then
            used = send_data (id_dfsw(ipass),    &
-                             Rad_output%dfsw_clr(is:ie,js:je,:,nz),   &
+                             Rad_output%dfsw_clr(is:ie,js:je,:),   &
                              Time_diag, is, js, 1)
          endif
 
@@ -1819,13 +1813,13 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           do k = 1, MX_SPEC_LEVS
 !------- incoming sw flux trop -------
             if (id_swdn_special(1,ipass) > 0 ) then
-              used = send_data (id_swdn_special(k,ipass), swdn_trop_clr(:,:,k,nz), &
+              used = send_data (id_swdn_special(k,ipass), swdn_trop_clr(:,:,k), &
                                 Time_diag, is, js )
             endif
 
 !------- outgoing sw flux trop -------
             if (id_swup_special(1,ipass) > 0 ) then
-              used = send_data (id_swup_special(k,ipass), swup_trop_clr(:,:,k,nz), &
+              used = send_data (id_swup_special(k,ipass), swup_trop_clr(:,:,k), &
                                 Time_diag, is, js )
             endif
           end do
@@ -1914,7 +1908,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !---- 3d total radiative heating ---------
         if (id_allradp > 0 ) then
           used = send_data (id_allradp    ,    &
-                            Rad_output%tdt_rad(is:ie,js:je,:,nz),   &
+                            Rad_output%tdt_rad(is:ie,js:je,:),   &
                             Time_diag, is, js, 1)
         endif
 
@@ -1928,11 +1922,11 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           enddo
         endif
         if (id_heat2d > 0) then
-          heat2d = CP_AIR/GRAV * sum(Rad_output%tdt_rad(is:ie,js:je,:,nz)*pmass,3)  
+          heat2d = CP_AIR/GRAV * sum(Rad_output%tdt_rad(is:ie,js:je,:)*pmass,3)  
           used = send_data (id_heat2d, heat2d, Time_diag, is, js )
         endif
         if (id_heat2d_sw > 0) then
-          heat2d = CP_AIR/GRAV * sum(Rad_output%tdtsw(is:ie,js:je,:,nz)*pmass,3)  
+          heat2d = CP_AIR/GRAV * sum(Rad_output%tdtsw(is:ie,js:je,:)*pmass,3)  
           used = send_data (id_heat2d_sw, heat2d, Time_diag, is, js )
         endif
   !BW endif
@@ -2107,55 +2101,55 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- surface net sw flux, direct and diffuse  --------------------
         if ( id_flux_sw > 0 ) then
          used = send_data ( id_flux_sw, &
-          (Rad_output%flux_sw_surf_dir( is:ie,js:je,nz) + &
-          Rad_output%flux_sw_surf_dif( is:ie,js:je,nz)),   &
-                                         Time_diag, is, js )
+                (Rad_output%flux_sw_surf_dir(is:ie,js:je) + &
+                 Rad_output%flux_sw_surf_dif(is:ie,js:je)), &
+                                          Time_diag, is, js )
         endif
 
         if ( id_flux_sw_dir > 0 ) then
          used = send_data ( id_flux_sw_dir, &
-          Rad_output%flux_sw_surf_dir( is:ie,js:je,nz), Time_diag,  &
+          Rad_output%flux_sw_surf_dir( is:ie,js:je), Time_diag,  &
                                                               is, js )
         endif
         
         if ( id_flux_sw_refl_dir > 0 ) then
          used = send_data ( id_flux_sw_refl_dir, &
-          Rad_output%flux_sw_surf_refl_dir( is:ie,js:je,nz), Time_diag,  &
+          Rad_output%flux_sw_surf_refl_dir( is:ie,js:je), Time_diag,  &
                                                               is, js )
         endif
 
         if ( id_flux_sw_refl_vis_dir > 0 ) then
          used = send_data ( id_flux_sw_refl_vis_dir, &
-          Rad_output%flux_sw_refl_vis_dir( is:ie,js:je,nz), Time_diag,  &
+          Rad_output%flux_sw_refl_vis_dir( is:ie,js:je), Time_diag,  &
                                                               is, js )
         endif
         if ( id_flux_sw_dif > 0 ) then
           used = send_data ( id_flux_sw_dif, &
-           Rad_output%flux_sw_surf_dif(is:ie,js:je,nz), Time_diag, &
+           Rad_output%flux_sw_surf_dif(is:ie,js:je), Time_diag, &
                                                               is, js )
         endif
 
 !------- surface downward visible sw flux, direct and diffuse ----------
         if ( id_flux_sw_down_vis_dir > 0 ) then
           used = send_data ( id_flux_sw_down_vis_dir, &
-                     Rad_output%flux_sw_down_vis_dir(is:ie,js:je,nz), &
+                     Rad_output%flux_sw_down_vis_dir(is:ie,js:je), &
                      Time_diag, is, js )
         endif
         if ( id_flux_sw_down_vis_dif > 0 ) then
           used = send_data ( id_flux_sw_down_vis_dif, &
-                     Rad_output%flux_sw_down_vis_dif(is:ie, js:je,nz), &
+                     Rad_output%flux_sw_down_vis_dif(is:ie, js:je), &
                      Time_diag, is, js )
         endif
  
 !------- surface downward total sw flux, direct and diffuse  ----------
         if ( id_flux_sw_down_total_dir > 0 ) then
           used = send_data ( id_flux_sw_down_total_dir,  &
-                     Rad_output%flux_sw_down_total_dir(is:ie,js:je,nz),  &
+                     Rad_output%flux_sw_down_total_dir(is:ie,js:je),  &
                      Time_diag, is, js )
         endif
         if ( id_flux_sw_down_total_dif > 0 ) then
          used = send_data ( id_flux_sw_down_total_dif,  &
-                    Rad_output%flux_sw_down_total_dif(is:ie,js:je,nz),  &
+                    Rad_output%flux_sw_down_total_dif(is:ie,js:je),  &
                     Time_diag, is, js )
         endif
 
@@ -2164,17 +2158,17 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- surface downward total sw flux, direct and diffuse  ----------
         if ( id_flux_sw_down_total_dir_clr > 0 ) then
           used = send_data ( id_flux_sw_down_total_dir_clr,  &
-                 Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,nz),&
+                 Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je),&
                  Time_diag, is, js )
         endif
         if ( id_flux_sw_down_total_dif_clr > 0 ) then
           used = send_data ( id_flux_sw_down_total_dif_clr,  &
-                  Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,nz),  &
+                  Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je),  &
                   Time_diag, is, js )
         endif
         if ( id_flux_sw_down_vis_clr > 0 ) then
           used = send_data ( id_flux_sw_down_vis_clr, &
-                     Rad_output%flux_sw_down_vis_clr(is:ie, js:je,nz), &
+                     Rad_output%flux_sw_down_vis_clr(is:ie, js:je), &
                      Time_diag, is, js )
         endif
       endif
@@ -2182,15 +2176,15 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- surface net visible sw flux, total, direct and diffuse -------
         if ( id_flux_sw_vis > 0 ) then
           used = send_data ( id_flux_sw_vis,   &
-                Rad_output%flux_sw_vis(is:ie,js:je,nz), Time_diag, is, js )
+                Rad_output%flux_sw_vis(is:ie,js:je), Time_diag, is, js )
         endif
         if ( id_flux_sw_vis_dir > 0 ) then
           used = send_data ( id_flux_sw_vis_dir,   &
-            Rad_output%flux_sw_vis_dir(is:ie,js:je,nz), Time_diag, is, js )
+            Rad_output%flux_sw_vis_dir(is:ie,js:je), Time_diag, is, js )
         endif
         if ( id_flux_sw_vis_dif > 0 ) then
           used = send_data ( id_flux_sw_vis_dif,  &
-            Rad_output%flux_sw_vis_dif(is:ie,js:je,nz), Time_diag, is, js )
+            Rad_output%flux_sw_vis_dif(is:ie,js:je), Time_diag, is, js )
         endif
 
 ! use the correct astrononmy values (NEED TO CHECK THIS)
@@ -2364,7 +2358,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- net radiation (lw + sw) at 1 Pa-------
         if (id_netrad_1_Pa(ipass) > 0 ) then
           used = send_data (id_netrad_1_Pa(ipass),   &
-               swdn_trop(:,:,4,nz) -swup_trop(:,:,4,nz) -netlw_trop(:,:,4), &
+               swdn_trop(:,:,4) -swup_trop(:,:,4) -netlw_trop(:,:,4), &
                              Time_diag, is, js )
         endif
 
@@ -2434,7 +2428,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- net radiation (lw + sw) at top of atmos model-------
         if (id_rtmt > 0 ) then
           used = send_data (id_rtmt,   &
-               swdn_trop(:,:,4,nz) -swup_trop(:,:,4,nz) -netlw_trop(:,:,4), &
+               swdn_trop(:,:,4) -swup_trop(:,:,4) -netlw_trop(:,:,4), &
                              Time_diag, is, js )
         endif
 
@@ -2542,7 +2536,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
       endif
 
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
-          Rad_control%hires_coszen .or.   all_step_diagnostics) then
+          all_step_diagnostics) then
         swabs_intgl(is:ie,js:je) = swin(:,:) - swout(:,:)
       endif
 
@@ -2659,46 +2653,46 @@ integer :: indx_swaf
 
     indx_swaf = Aerosolrad_control%indx_swaf
 
-    Sw_flux_save%flux_sw_surf         (is:ie,js:je,:) = Rad_output%flux_sw_surf         (is:ie,js:je,:)
-    Sw_flux_save%flux_sw_surf_dir     (is:ie,js:je,:) = Rad_output%flux_sw_surf_dir     (is:ie,js:je,:)
-    Sw_flux_save%flux_sw_surf_refl_dir(is:ie,js:je,:) = Rad_output%flux_sw_surf_refl_dir(is:ie,js:je,:)
-    Sw_flux_save%flux_sw_surf_dif     (is:ie,js:je,:) = Rad_output%flux_sw_surf_dif     (is:ie,js:je,:)
-    Sw_flux_save%flux_sw_down_vis_dir (is:ie,js:je,:) = Rad_output%flux_sw_down_vis_dir(is:ie,js:je,:)
+    Sw_flux_save%flux_sw_surf         (is:ie,js:je) = Rad_output%flux_sw_surf         (is:ie,js:je)
+    Sw_flux_save%flux_sw_surf_dir     (is:ie,js:je) = Rad_output%flux_sw_surf_dir     (is:ie,js:je)
+    Sw_flux_save%flux_sw_surf_refl_dir(is:ie,js:je) = Rad_output%flux_sw_surf_refl_dir(is:ie,js:je)
+    Sw_flux_save%flux_sw_surf_dif     (is:ie,js:je) = Rad_output%flux_sw_surf_dif     (is:ie,js:je)
+    Sw_flux_save%flux_sw_down_vis_dir (is:ie,js:je) = Rad_output%flux_sw_down_vis_dir (is:ie,js:je)
 
-    Sw_flux_save%flux_sw_down_vis_dif  (is:ie,js:je,:) = Rad_output%flux_sw_down_vis_dif(is:ie,js:je,:)
-    Sw_flux_save%flux_sw_down_total_dir(is:ie,js:je,:) = Rad_output%flux_sw_down_total_dir(is:ie,js:je,:)
-    Sw_flux_save%flux_sw_down_total_dif(is:ie,js:je,:) = Rad_output%flux_sw_down_total_dif(is:ie,js:je,:)
-    Sw_flux_save%flux_sw_vis           (is:ie,js:je,:) = Rad_output%flux_sw_vis(is:ie,js:je,:)
-    Sw_flux_save%flux_sw_vis_dir       (is:ie,js:je,:) = Rad_output%flux_sw_vis_dir(is:ie,js:je,:)
-    Sw_flux_save%flux_sw_refl_vis_dir  (is:ie,js:je,:) = Rad_output%flux_sw_refl_vis_dir(is:ie,js:je,:)
-    Sw_flux_save%flux_sw_vis_dif       (is:ie,js:je,:) = Rad_output%flux_sw_vis_dif(is:ie,js:je,:)
+    Sw_flux_save%flux_sw_down_vis_dif  (is:ie,js:je) = Rad_output%flux_sw_down_vis_dif  (is:ie,js:je)
+    Sw_flux_save%flux_sw_down_total_dir(is:ie,js:je) = Rad_output%flux_sw_down_total_dir(is:ie,js:je)
+    Sw_flux_save%flux_sw_down_total_dif(is:ie,js:je) = Rad_output%flux_sw_down_total_dif(is:ie,js:je)
+    Sw_flux_save%flux_sw_vis           (is:ie,js:je) = Rad_output%flux_sw_vis           (is:ie,js:je)
+    Sw_flux_save%flux_sw_vis_dir       (is:ie,js:je) = Rad_output%flux_sw_vis_dir       (is:ie,js:je)
+    Sw_flux_save%flux_sw_refl_vis_dir  (is:ie,js:je) = Rad_output%flux_sw_refl_vis_dir  (is:ie,js:je)
+    Sw_flux_save%flux_sw_vis_dif       (is:ie,js:je) = Rad_output%flux_sw_vis_dif       (is:ie,js:je)
 
-    Sw_flux_save%sw_heating        (is:ie,js:je,:,:) = Rad_output%tdtsw  (is:ie,js:je,:,:)
-    Sw_flux_save%tot_heating       (is:ie,js:je,:,:) = Rad_output%tdt_rad(is:ie,js:je,:,:)
+    Sw_flux_save%sw_heating (is:ie,js:je,:) = Rad_output%tdtsw  (is:ie,js:je,:)
+    Sw_flux_save%tot_heating(is:ie,js:je,:) = Rad_output%tdt_rad(is:ie,js:je,:)
 
-    Sw_flux_save%dfsw              (is:ie,js:je,:,:) = Sw_output(1)%dfsw(:,:,:,:)
-    Sw_flux_save%ufsw              (is:ie,js:je,:,:) = Sw_output(1)%ufsw(:,:,:,:)
-    Sw_flux_save%fsw               (is:ie,js:je,:,:) = Sw_output(1)%fsw (:,:,:,:)
-    Sw_flux_save%hsw               (is:ie,js:je,:,:) = Sw_output(1)%hsw (:,:,:,:)
+    Sw_flux_save%dfsw       (is:ie,js:je,:) = Sw_output(1)%dfsw(:,:,:)
+    Sw_flux_save%ufsw       (is:ie,js:je,:) = Sw_output(1)%ufsw(:,:,:)
+    Sw_flux_save%fsw        (is:ie,js:je,:) = Sw_output(1)%fsw (:,:,:)
+    Sw_flux_save%hsw        (is:ie,js:je,:) = Sw_output(1)%hsw (:,:,:)
 
     if (Aerosolrad_control%do_swaerosol_forcing) then
-      Sw_flux_save%dfsw_ad       (is:ie,js:je,:,:) = Sw_output(indx_swaf)%dfsw(:,:,:,:)
-      Sw_flux_save%ufsw_ad       (is:ie,js:je,:,:) = Sw_output(indx_swaf)%ufsw(:,:,:,:)
+      Sw_flux_save%dfsw_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%dfsw(:,:,:)
+      Sw_flux_save%ufsw_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%ufsw(:,:,:)
     endif
 
     if (do_totcld_forcing) then 
-      Sw_flux_save%sw_heating_clr (is:ie,js:je,:,:) = Rad_output%tdtsw_clr(is:ie,js:je,:,:)
-      Sw_flux_save%tot_heating_clr(is:ie,js:je,:,:) = Rad_output%tdt_rad_clr(is:ie,js:je,:,:)
-      Sw_flux_save%dfswcf         (is:ie,js:je,:,:) = Sw_output(1)%dfswcf(:,:,:,:)
-      Sw_flux_save%ufswcf         (is:ie,js:je,:,:) = Sw_output(1)%ufswcf(:,:,:,:)
-      Sw_flux_save% fswcf         (is:ie,js:je,:,:) = Sw_output(1)%fswcf(:,:,:,:)
-      Sw_flux_save% hswcf         (is:ie,js:je,:,:) = Sw_output(1)%hswcf(:, :,:,:)
-      Sw_flux_save%flux_sw_down_total_dir_clr(is:ie,js:je,:)   = Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je,:)
-      Sw_flux_save%flux_sw_down_total_dif_clr(is:ie,js:je,:)   = Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je,:)
-      Sw_flux_save%flux_sw_down_vis_clr      (is:ie,js:je,:)   = Rad_output%flux_sw_down_vis_clr(is:ie,js:je,:)
+      Sw_flux_save%sw_heating_clr (is:ie,js:je,:) = Rad_output%tdtsw_clr(is:ie,js:je,:)
+      Sw_flux_save%tot_heating_clr(is:ie,js:je,:) = Rad_output%tdt_rad_clr(is:ie,js:je,:)
+      Sw_flux_save%dfswcf         (is:ie,js:je,:) = Sw_output(1)%dfswcf(:,:,:)
+      Sw_flux_save%ufswcf         (is:ie,js:je,:) = Sw_output(1)%ufswcf(:,:,:)
+      Sw_flux_save% fswcf         (is:ie,js:je,:) = Sw_output(1)%fswcf (:,:,:)
+      Sw_flux_save% hswcf         (is:ie,js:je,:) = Sw_output(1)%hswcf (:,:,:)
+      Sw_flux_save%flux_sw_down_total_dir_clr(is:ie,js:je) = Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
+      Sw_flux_save%flux_sw_down_total_dif_clr(is:ie,js:je) = Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
+      Sw_flux_save%flux_sw_down_vis_clr      (is:ie,js:je) = Rad_output%flux_sw_down_vis_clr      (is:ie,js:je)
       if (Aerosolrad_control%do_swaerosol_forcing) then
-        Sw_flux_save%dfswcf_ad  (is:ie,js:je,:,:) = Sw_output(indx_swaf)%dfswcf(:,:,:,:)
-        Sw_flux_save%ufswcf_ad  (is:ie,js:je,:,:) = Sw_output(indx_swaf)%ufswcf(:,:,:,:)
+        Sw_flux_save%dfswcf_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%dfswcf(:,:,:)
+        Sw_flux_save%ufswcf_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%ufswcf(:,:,:)
       endif
     endif
 
@@ -2734,22 +2728,22 @@ subroutine solar_interp_register_restart(fname, do_totcld_forcing)
    id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_vis_dir_save', Sw_flux_save%flux_sw_vis_dir)
    id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_refl_vis_dir_save', Sw_flux_save%flux_sw_refl_vis_dir)
    id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_vis_dif_save', Sw_flux_save%flux_sw_vis_dif)
-   id_restart = register_restart_field(Tile_restart, fname, 'sw_heating_save', Sw_flux_save%sw_heating(:,:,:,1))
-   id_restart = register_restart_field(Tile_restart, fname, 'tot_heating_save', Sw_flux_save%tot_heating(:,:,:,1))
-   id_restart = register_restart_field(Tile_restart, fname, 'dfsw_save', Sw_flux_save%dfsw(:,:,:,1))
-   id_restart = register_restart_field(Tile_restart, fname, 'ufsw_save', Sw_flux_save%ufsw(:,:,:,1))
-   id_restart = register_restart_field(Tile_restart, fname, 'fsw_save', Sw_flux_save%fsw(:,:,:,1))
-   id_restart = register_restart_field(Tile_restart, fname, 'hsw_save', Sw_flux_save%hsw(:,:,:,1))
+   id_restart = register_restart_field(Tile_restart, fname, 'sw_heating_save', Sw_flux_save%sw_heating)
+   id_restart = register_restart_field(Tile_restart, fname, 'tot_heating_save', Sw_flux_save%tot_heating)
+   id_restart = register_restart_field(Tile_restart, fname, 'dfsw_save', Sw_flux_save%dfsw)
+   id_restart = register_restart_field(Tile_restart, fname, 'ufsw_save', Sw_flux_save%ufsw)
+   id_restart = register_restart_field(Tile_restart, fname, 'fsw_save', Sw_flux_save%fsw)
+   id_restart = register_restart_field(Tile_restart, fname, 'hsw_save', Sw_flux_save%hsw)
    if (do_totcld_forcing) then
-      id_restart = register_restart_field(Tile_restart, fname, 'sw_heating_clr_save', Sw_flux_save%sw_heating_clr(:,:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'tot_heating_clr_save', Sw_flux_save%tot_heating_clr(:,:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'dfswcf_save', Sw_flux_save%dfswcf(:,:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'ufswcf_save', Sw_flux_save%ufswcf(:,:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'fswcf_save', Sw_flux_save%fswcf(:,:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'hswcf_save', Sw_flux_save%hswcf(:,:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dir_clr_save', Sw_flux_save%flux_sw_down_total_dir_clr(:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dif_clr_save', Sw_flux_save%flux_sw_down_total_dif_clr(:,:,1))
-      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_vis_clr_save', Sw_flux_save%flux_sw_down_vis_clr(:,:,1))
+      id_restart = register_restart_field(Tile_restart, fname, 'sw_heating_clr_save', Sw_flux_save%sw_heating_clr)
+      id_restart = register_restart_field(Tile_restart, fname, 'tot_heating_clr_save', Sw_flux_save%tot_heating_clr)
+      id_restart = register_restart_field(Tile_restart, fname, 'dfswcf_save', Sw_flux_save%dfswcf)
+      id_restart = register_restart_field(Tile_restart, fname, 'ufswcf_save', Sw_flux_save%ufswcf)
+      id_restart = register_restart_field(Tile_restart, fname, 'fswcf_save', Sw_flux_save%fswcf)
+      id_restart = register_restart_field(Tile_restart, fname, 'hswcf_save', Sw_flux_save%hswcf)
+      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dir_clr_save', Sw_flux_save%flux_sw_down_total_dir_clr)
+      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dif_clr_save', Sw_flux_save%flux_sw_down_total_dif_clr)
+      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_vis_clr_save', Sw_flux_save%flux_sw_down_vis_clr)
    endif
 
 end subroutine solar_interp_register_restart
@@ -2794,7 +2788,7 @@ type(radiation_control_type),  intent(in) :: Rad_control
       endif
 
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
-          Rad_control%hires_coszen .or.   all_step_diagnostics) then
+          all_step_diagnostics) then
         call sum_diag_integral_field ('abs_sw', swabs_intgl )
       endif
 
@@ -2852,7 +2846,7 @@ real,dimension(:,:,:),        intent(in)  :: pflux, phalf
 type(radiation_control_type), intent(in)  :: Rad_control
 type(lw_output_type),         intent(in)  :: Lw_output
 type(sw_output_type),         intent(in)  :: Sw_output
-real, dimension(:,:,:,:),     intent(out) :: swdn_trop, swup_trop, &
+real, dimension(:,:,:),       intent(out) :: swdn_trop, swup_trop, &
                                              swdn_trop_clr, swup_trop_clr
 real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
 
@@ -2873,7 +2867,7 @@ real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
                                                 lat_deg, tropo_ht
 
 
-      integer           :: j, k, nz
+      integer           :: j, k
       integer           :: ki, i
       integer           :: kmax
       real              :: wtlo, wthi
@@ -2900,18 +2894,16 @@ real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
             endif
           endif
           if (Rad_control%do_sw_rad) then
-            do nz = 1,Rad_control%nzens
-              swdn_trop(i,j,4,nz) = wthi*Sw_output%dfsw(i,j,1,nz) + &
-                                    wtlo*Sw_output%dfsw(i,j,2,nz)
-              swup_trop(i,j,4,nz) = wthi*Sw_output%ufsw(i,j,1,nz) + &
-                                    wtlo*Sw_output%ufsw(i,j,2,nz)
-              if (Rad_control%do_totcld_forcing) then
-                swdn_trop_clr(i,j,4,nz) = wthi*Sw_output%dfswcf(i,j,1,nz) +&
-                                          wtlo*Sw_output%dfswcf(i,j,2,nz)
-                swup_trop_clr(i,j,4,nz) = wthi*Sw_output%ufswcf(i,j,1,nz) +&
-                                          wtlo*Sw_output%ufswcf(i,j,2,nz)
-              endif
-            end do
+            swdn_trop(i,j,4) = wthi*Sw_output%dfsw(i,j,1) + &
+                               wtlo*Sw_output%dfsw(i,j,2)
+            swup_trop(i,j,4) = wthi*Sw_output%ufsw(i,j,1) + &
+                               wtlo*Sw_output%ufsw(i,j,2)
+            if (Rad_control%do_totcld_forcing) then
+              swdn_trop_clr(i,j,4) = wthi*Sw_output%dfswcf(i,j,1) +&
+                                     wtlo*Sw_output%dfswcf(i,j,2)
+              swup_trop_clr(i,j,4) = wthi*Sw_output%ufswcf(i,j,1) +&
+                                     wtlo*Sw_output%ufswcf(i,j,2)
+            endif
           endif
         enddo
       enddo
@@ -2941,18 +2933,16 @@ real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
                   endif
                 endif
                 if (Rad_control%do_sw_rad) then
-                  do nz = 1,Rad_control%nzens
-                    swdn_trop(i,j,1,nz) = wtlo*Sw_output%dfsw(i,j,ki,nz) + &
-                                          wthi*Sw_output%dfsw(i,j,ki-1,nz)
-                    swup_trop(i,j,1,nz) = wtlo*Sw_output%ufsw(i,j,ki,nz) + &
-                                          wthi*Sw_output%ufsw(i,j,ki-1,nz)
-                    if (Rad_control%do_totcld_forcing) then
-                      swdn_trop_clr(i,j,1,nz) = wtlo*Sw_output%dfswcf(i,j,ki,nz) +&
-                                                wthi*Sw_output%dfswcf(i,j,ki-1,nz)
-                      swup_trop_clr(i,j,1,nz) = wtlo*Sw_output%ufswcf(i,j,ki,nz) +&
-                                                wthi*Sw_output%ufswcf(i,j,ki-1,nz)
-                    endif
-                  end do !nz
+                  swdn_trop(i,j,1) = wtlo*Sw_output%dfsw(i,j,ki) + &
+                                     wthi*Sw_output%dfsw(i,j,ki-1)
+                  swup_trop(i,j,1) = wtlo*Sw_output%ufsw(i,j,ki) + &
+                                     wthi*Sw_output%ufsw(i,j,ki-1)
+                  if (Rad_control%do_totcld_forcing) then
+                    swdn_trop_clr(i,j,1) = wtlo*Sw_output%dfswcf(i,j,ki) +&
+                                           wthi*Sw_output%dfswcf(i,j,ki-1)
+                    swup_trop_clr(i,j,1) = wtlo*Sw_output%ufswcf(i,j,ki) +&
+                                           wthi*Sw_output%ufswcf(i,j,ki-1)
+                  endif
                 endif
                 exit
               endif
@@ -2987,18 +2977,16 @@ real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
                   endif
                 endif
                 if (Rad_control%do_sw_rad) then
-                  do nz = 1,Rad_control%nzens
-                    swdn_trop(i,j,2,nz) = wtlo*Sw_output%dfsw(i,j,ki,nz) + &
-                                          wthi*Sw_output%dfsw(i,j,ki-1,nz)
-                    swup_trop(i,j,2,nz) = wtlo*Sw_output%ufsw(i,j,ki,nz) + &
-                                          wthi*Sw_output%ufsw(i,j,ki-1,nz)
-                    if (Rad_control%do_totcld_forcing) then
-                      swdn_trop_clr(i,j,2,nz) = wtlo*Sw_output%dfswcf(i,j,ki,nz) + &
-                                                wthi*Sw_output%dfswcf(i,j,ki-1,nz)
-                      swup_trop_clr(i,j,2,nz) = wtlo*Sw_output%ufswcf(i,j,ki,nz) + &
-                                                wthi*Sw_output%ufswcf(i,j,ki-1,nz)
-                    endif
-                  end do !nz
+                  swdn_trop(i,j,2) = wtlo*Sw_output%dfsw(i,j,ki) + &
+                                     wthi*Sw_output%dfsw(i,j,ki-1)
+                  swup_trop(i,j,2) = wtlo*Sw_output%ufsw(i,j,ki) + &
+                                     wthi*Sw_output%ufsw(i,j,ki-1)
+                  if (Rad_control%do_totcld_forcing) then
+                    swdn_trop_clr(i,j,2) = wtlo*Sw_output%dfswcf(i,j,ki) + &
+                                           wthi*Sw_output%dfswcf(i,j,ki-1)
+                    swup_trop_clr(i,j,2) = wtlo*Sw_output%ufswcf(i,j,ki) + &
+                                           wthi*Sw_output%ufswcf(i,j,ki-1)
+                  endif
                 endif
                 exit
               endif
@@ -3032,18 +3020,16 @@ real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
                   endif
                 endif
                 if (Rad_control%do_sw_rad) then
-                  do nz = 1,Rad_control%nzens
-                    swdn_trop(i,j,3,nz) = wtlo*Sw_output%dfsw(i,j,ki,nz) + &
-                                          wthi*Sw_output%dfsw(i,j,ki-1,nz)
-                    swup_trop(i,j,3,nz) = wtlo*Sw_output%ufsw(i,j,ki,nz) + &
-                                          wthi*Sw_output%ufsw(i,j,ki-1,nz)
-                    if (Rad_control%do_totcld_forcing) then
-                      swdn_trop_clr(i,j,3,nz) = wtlo*Sw_output%dfswcf(i,j,ki,nz) + &
-                                                wthi*Sw_output%dfswcf(i,j,ki-1,nz)
-                      swup_trop_clr(i,j,3,nz) = wtlo*Sw_output%ufswcf(i,j,ki,nz) + &
-                                                wthi*Sw_output%ufswcf(i,j,ki-1,nz)
-                    endif
-                  end do !nz
+                  swdn_trop(i,j,3) = wtlo*Sw_output%dfsw(i,j,ki) + &
+                                     wthi*Sw_output%dfsw(i,j,ki-1)
+                  swup_trop(i,j,3) = wtlo*Sw_output%ufsw(i,j,ki) + &
+                                     wthi*Sw_output%ufsw(i,j,ki-1)
+                  if (Rad_control%do_totcld_forcing) then
+                    swdn_trop_clr(i,j,3) = wtlo*Sw_output%dfswcf(i,j,ki) + &
+                                           wthi*Sw_output%dfswcf(i,j,ki-1)
+                    swup_trop_clr(i,j,3) = wtlo*Sw_output%ufswcf(i,j,ki) + &
+                                           wthi*Sw_output%ufswcf(i,j,ki-1)
+                  endif
                 endif
                 exit
               endif

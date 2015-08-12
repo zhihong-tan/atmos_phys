@@ -500,10 +500,6 @@ integer :: nfields_lw_ssa = 0   ! number of fields contained in
 integer :: nfields_lw_asy = 0   ! number of fields contained in 
                                 ! supplemental lw_asy file
 
-integer :: num_zenith_angles  ! number of high-res solar zenith angles
-                              ! that shortwave radiation is calculated
-                              ! for every every shortwave time step
-                              ! saved so that diag arrays can be allocated
 !-------------------------------------------------------------------
 !   arrays holding variable names:
 character(len=64), dimension(:), allocatable ::   &
@@ -594,7 +590,7 @@ integer, dimension(:), allocatable :: sul_ind, bc_ind
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine aerosolrad_package_init (kmax, nzens, aerosol_names, lonb, latb, &
+subroutine aerosolrad_package_init (kmax, aerosol_names, lonb, latb, &
                                     Aerosolrad_control)
 
 !---------------------------------------------------------------------
@@ -605,7 +601,6 @@ subroutine aerosolrad_package_init (kmax, nzens, aerosol_names, lonb, latb, &
 !---------------------------------------------------------------------
 !character(len=64), dimension(:), intent(in)  :: aerosol_names
 integer,                        intent(in)    :: kmax
-integer,                        intent(in)    :: nzens
 character(len=*), dimension(:), intent(in)    :: aerosol_names
 real, dimension(:,:),           intent(in)    :: lonb,latb
 type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
@@ -616,8 +611,6 @@ type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
 !  intent(in) variables:
 !
 !      kmax              number of model levels
-!      nzens             number of high-res solar zenith angles
-!                        calculated per shortwave timestep
 !      aerosol_names     the names assigned to each of the activated
 !                        aerosol species
 !       lonb           2d array of model longitudes at cell corners
@@ -1083,12 +1076,6 @@ type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
      endif
 
 !---------------------------------------------------------------------
-!   save the number of solar zenith angles calculated each
-!   shortwave timestep, will be used to allocate diag arrays
-!---------------------------------------------------------------------
-     num_zenith_angles = nzens
-
-!---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
       module_is_initialized = .true.
@@ -1306,7 +1293,7 @@ type(aerosolrad_diag_type),     intent(out) :: Aerosolrad_diags
       if (Aerosolrad_control%volcanic_sw_aerosols) then
         allocate (Aerosolrad_diags%extopdep_vlcno   (ix, jx, kx, 3))
         allocate (Aerosolrad_diags%absopdep_vlcno   (ix, jx, kx, 3))
-        allocate (Aerosolrad_diags%sw_heating_vlcno (ix, jx, kx, num_zenith_angles))
+        allocate (Aerosolrad_diags%sw_heating_vlcno (ix, jx, kx))
         Aerosolrad_diags%extopdep_vlcno = 0.0
         Aerosolrad_diags%absopdep_vlcno = 0.0
         Aerosolrad_diags%sw_heating_vlcno = 0.0

@@ -511,17 +511,17 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
       ! Constructor and destructor for sw_output_type needs to be provided through
       ! rad_utilities
 !**************************************
-      call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
+      call shortwave_output_alloc (ix, jx, kx,                    &
                                    Rad_control%do_totcld_forcing, &
                                    Sw_output(1)) 
-      call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
+      call shortwave_output_alloc (ix, jx, kx,                    &
                                    Rad_control%do_totcld_forcing, &
                                    Sw_output_std) 
       if (Aerosolrad_control%do_swaerosol_forcing) then
-        call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
+        call shortwave_output_alloc (ix, jx, kx,                    &
                                      Rad_control%do_totcld_forcing, &
                                      Sw_output_ad)
-        call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
+        call shortwave_output_alloc (ix, jx, kx,                    &
                                      Rad_control%do_totcld_forcing, &
                                      Sw_output(Aerosolrad_control%indx_swaf)) 
       endif
@@ -648,8 +648,7 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !-----------------------------------------------------------------------
             if (Aerosolrad_control%do_swaerosol) then
               aerozero = 0.0
-              call swresf_wrapper (Rad_control%nzens, &
-                                   press, pflux, temp, rh2o, deltaz,  &
+              call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
                                    asfc_vis_dir, asfc_nir_dir, &
                                    asfc_vis_dif, asfc_nir_dif, &
                                    Rad_gases, Astro, &
@@ -658,8 +657,7 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
                                    Rad_control%do_totcld_forcing, &
                                    flag_stoch, Sw_output(Aerosolrad_control%indx_swaf))
             else
-              call swresf_wrapper (Rad_control%nzens, &
-                                   press, pflux, temp, rh2o, deltaz,  &
+              call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
                                    asfc_vis_dir, asfc_nir_dir, &
                                    asfc_vis_dif, asfc_nir_dif, &
                                    Rad_gases, Astro, &
@@ -675,8 +673,7 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !    standard call, where radiation output feeds back into the model.
 !----------------------------------------------------------------------
           if (Aerosolrad_control%do_swaerosol) then
-            call swresf_wrapper (Rad_control%nzens, &
-                                 press, pflux, temp, rh2o, deltaz,  &
+            call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
                                  asfc_vis_dir, asfc_nir_dir, &
                                  asfc_vis_dif, asfc_nir_dif, &
                                  Rad_gases, Astro, &
@@ -686,8 +683,7 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
                                  flag_stoch, Sw_output(1))
           else
             aerozero = 0.0
-            call swresf_wrapper (Rad_control%nzens, &
-                                 press, pflux, temp, rh2o, deltaz,  &
+            call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
                                  asfc_vis_dir, asfc_nir_dir, &
                                  asfc_vis_dif, asfc_nir_dif, &
                                  Rad_gases, Astro, &
@@ -849,7 +845,7 @@ end subroutine get_solar_constant
 !  </INOUT>
 ! </SUBROUTINE>
 !
-subroutine shortwave_output_alloc (ix, jx, kx, nzens, &
+subroutine shortwave_output_alloc (ix, jx, kx, &
                                    do_totcld_forcing, Sw_output) 
 
 !--------------------------------------------------------------------
@@ -858,7 +854,7 @@ subroutine shortwave_output_alloc (ix, jx, kx, nzens, &
 !    output data from shortwave_driver_mod.
 !--------------------------------------------------------------------
 
-integer,              intent(in)     ::  ix, jx, kx, nzens
+integer,              intent(in)     ::  ix, jx, kx
 logical,              intent(in)     ::  do_totcld_forcing
 type(sw_output_type), intent(inout)  ::  Sw_output 
 
@@ -879,26 +875,26 @@ type(sw_output_type), intent(inout)  ::  Sw_output
 !    (fsw), upward sw flux (ufsw), downward sw flux(dfsw) at flux 
 !    levels and sw heating in model layers (hsw).
 !--------------------------------------------------------------------
-      allocate (Sw_output%fsw  (ix, jx, kx+1, nzens) )
-      allocate (Sw_output%ufsw (ix, jx, kx+1, nzens) )
-      allocate (Sw_output%dfsw (ix, jx, kx+1, nzens) )
-      allocate (Sw_output%hsw  (ix, jx, kx  , nzens) )
-      allocate (Sw_output%dfsw_dir_sfc (ix, jx, nzens) )
-      allocate (Sw_output%ufsw_dir_sfc (ix, jx, nzens) )
-      allocate (Sw_output%ufsw_dif_sfc (ix, jx, nzens) )
-      allocate (Sw_output%dfsw_dif_sfc (ix, jx, nzens) )
-      allocate (Sw_output%dfsw_vis_sfc (ix, jx, nzens  ) )
-      allocate (Sw_output%ufsw_vis_sfc (ix, jx, nzens  ) )
-      allocate (Sw_output%dfsw_vis_sfc_dir (ix, jx, nzens  ) )
-      allocate (Sw_output%ufsw_vis_sfc_dir (ix, jx, nzens  ) )
-      allocate (Sw_output%dfsw_vis_sfc_dif (ix, jx, nzens  ) )
-      allocate (Sw_output%ufsw_vis_sfc_dif (ix, jx, nzens  ) )
-      allocate (Sw_output%bdy_flx          (ix, jx, 4, nzens) )
+      allocate (Sw_output%fsw  (ix, jx, kx+1) )
+      allocate (Sw_output%ufsw (ix, jx, kx+1) )
+      allocate (Sw_output%dfsw (ix, jx, kx+1) )
+      allocate (Sw_output%hsw  (ix, jx, kx  ) )
+      allocate (Sw_output%dfsw_dir_sfc (ix, jx) )
+      allocate (Sw_output%ufsw_dir_sfc (ix, jx) )
+      allocate (Sw_output%ufsw_dif_sfc (ix, jx) )
+      allocate (Sw_output%dfsw_dif_sfc (ix, jx) )
+      allocate (Sw_output%dfsw_vis_sfc (ix, jx  ) )
+      allocate (Sw_output%ufsw_vis_sfc (ix, jx  ) )
+      allocate (Sw_output%dfsw_vis_sfc_dir (ix, jx  ) )
+      allocate (Sw_output%ufsw_vis_sfc_dir (ix, jx  ) )
+      allocate (Sw_output%dfsw_vis_sfc_dif (ix, jx  ) )
+      allocate (Sw_output%ufsw_vis_sfc_dif (ix, jx  ) )
+      allocate (Sw_output%bdy_flx          (ix, jx, 4) )
 
-      Sw_output%fsw   (:,:,:,:) = 0.0
-      Sw_output%dfsw  (:,:,:,:) = 0.0
-      Sw_output%ufsw  (:,:,:,:) = 0.0
-      Sw_output%hsw   (:,:,:,:) = 0.0
+      Sw_output%fsw   (:,:,:) = 0.0
+      Sw_output%dfsw  (:,:,:) = 0.0
+      Sw_output%ufsw  (:,:,:) = 0.0
+      Sw_output%hsw   (:,:,:) = 0.0
       Sw_output%dfsw_dir_sfc = 0.0
       Sw_output%ufsw_dir_sfc = 0.0
       Sw_output%dfsw_dif_sfc  = 0.0
@@ -909,30 +905,30 @@ type(sw_output_type), intent(inout)  ::  Sw_output
       Sw_output%ufsw_vis_sfc_dir = 0.
       Sw_output%dfsw_vis_sfc_dif = 0.
       Sw_output%ufsw_vis_sfc_dif = 0.
-      Sw_output%bdy_flx(:,:,:,:) = 0.0       
+      Sw_output%bdy_flx(:,:,:) = 0.0       
 
 !---------------------------------------------------------------------
 !    if the cloud-free values are desired, allocate and initialize 
 !    arrays for the fluxes and heating rate in the absence of clouds.
 !----------------------------------------------------------------------
       if (do_totcld_forcing) then
-        allocate (Sw_output%fswcf  (ix, jx, kx+1, nzens) )
-        allocate (Sw_output%dfswcf (ix, jx, kx+1, nzens) )
-        allocate (Sw_output%ufswcf (ix, jx, kx+1, nzens) )
-        allocate (Sw_output%hswcf  (ix, jx, kx, nzens  ) )
-        allocate (Sw_output%dfsw_dir_sfc_clr (ix, jx, nzens) )
-        allocate (Sw_output%dfsw_dif_sfc_clr (ix, jx, nzens) )
-        allocate (Sw_output%dfsw_vis_sfc_clr (ix, jx, nzens  ) )
-        allocate (Sw_output%bdy_flx_clr      (ix, jx, 4, nzens) )
+        allocate (Sw_output%fswcf  (ix, jx, kx+1) )
+        allocate (Sw_output%dfswcf (ix, jx, kx+1) )
+        allocate (Sw_output%ufswcf (ix, jx, kx+1) )
+        allocate (Sw_output%hswcf  (ix, jx, kx  ) )
+        allocate (Sw_output%dfsw_dir_sfc_clr (ix, jx) )
+        allocate (Sw_output%dfsw_dif_sfc_clr (ix, jx) )
+        allocate (Sw_output%dfsw_vis_sfc_clr (ix, jx  ) )
+        allocate (Sw_output%bdy_flx_clr      (ix, jx, 4) )
 
-        Sw_output%fswcf (:,:,:,:) = 0.0
-        Sw_output%dfswcf(:,:,:,:) = 0.0
-        Sw_output%ufswcf(:,:,:,:) = 0.0
-        Sw_output%hswcf (:,:,:,:) = 0.0
+        Sw_output%fswcf (:,:,:) = 0.0
+        Sw_output%dfswcf(:,:,:) = 0.0
+        Sw_output%ufswcf(:,:,:) = 0.0
+        Sw_output%hswcf (:,:,:) = 0.0
         Sw_output%dfsw_dir_sfc_clr = 0.0
         Sw_output%dfsw_dif_sfc_clr  = 0.0
         Sw_output%dfsw_vis_sfc_clr = 0.
-        Sw_output%bdy_flx_clr (:,:,:,:) = 0.0
+        Sw_output%bdy_flx_clr (:,:,:) = 0.0
       endif
 
 !--------------------------------------------------------------------
@@ -1017,7 +1013,7 @@ end subroutine shortwave_output_dealloc
 
 !####################################################################
 
-subroutine swresf_wrapper ( nzens, press, pflux, temp, rh2o, deltaz,  &
+subroutine swresf_wrapper ( press, pflux, temp, rh2o, deltaz,  &
                             asfc_vis_dir, asfc_nir_dir, &
                             asfc_vis_dif, asfc_nir_dif, &
                             Rad_gases, Astro, &
@@ -1025,7 +1021,6 @@ subroutine swresf_wrapper ( nzens, press, pflux, temp, rh2o, deltaz,  &
                             aeroasymfac, aerosctopdep, aeroextopdep, &
                             do_totcld_forcing, flag_stoch, Sw_output )
 
-integer,                    intent(in)    :: nzens
 real, dimension(:,:,:),     intent(in)    :: press, pflux, temp, rh2o, deltaz
 real, dimension(:,:),       intent(in)    :: asfc_vis_dir, asfc_nir_dir, &
                                              asfc_vis_dif, asfc_nir_dif
@@ -1039,20 +1034,11 @@ integer,                    intent(in)    :: flag_stoch
 type(sw_output_type),       intent(inout) :: Sw_output
 
 real, dimension(size(Astro%cosz,1), &
-                size(Astro%cosz,2), &
-                nzens) :: cosz, fracday
+                size(Astro%cosz,2)) :: cosz, fracday
 integer :: kx
 
    kx = size (press,3)
 
-   if (nzens .gt. 1) then
-      cosz = Astro%cosz_p
-      fracday = Astro%fracday_p
-   else
-      cosz(:,:,1) = Astro%cosz
-      fracday(:,:,1) = Astro%fracday
-   endif
-      
    call swresf (press (:,:,1:kx),   &
                 pflux (:,:,1:kx+1), &
                 temp  (:,:,1:kx),   &
@@ -1063,7 +1049,7 @@ integer :: kx
                 Rad_gases%qo3, Rad_gases%rrvco2,    &
                 Rad_gases%rrvch4, Rad_gases%rrvn2o, &
                 solflxband, solar_constant_used, &
-                Astro%rrsun, cosz, fracday, &
+                Astro%rrsun, Astro%cosz, Astro%fracday, &
                 camtsw, cldsct, cldext, cldasymm, &
                 aeroasymfac, aerosctopdep, aeroextopdep, &
                 do_totcld_forcing, flag_stoch, Sw_output)
