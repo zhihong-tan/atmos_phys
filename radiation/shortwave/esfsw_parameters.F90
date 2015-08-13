@@ -30,8 +30,6 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              check_nml_error, error_mesg, &
                              FATAL, close_file
 
-use rad_utilities_mod, only: solar_spectrum_type
-
 !--------------------------------------------------------------------
 
 implicit none
@@ -97,31 +95,6 @@ namelist /esfsw_parameters_nml/    &
 !---------------------------------------------------------------------
 integer, parameter :: TOT_WVNUMS_LOCAL  = 57600
 
-!------------------------------------------------------------------
-!  variables: for cjg
-    real, dimension(:)		, allocatable, target  :: solarfluxtoa
-    real, dimension(:)		, allocatable, target  :: solflxband
-    real, dimension(:)		, allocatable, target  :: solflxbandref
-    real, dimension(:)		, allocatable, target  :: solflxband_lean_ann_1882
-    real, dimension(:)		, allocatable, target  :: solflxband_lean_ann_2000
-    real, dimension(:,:,:)	, allocatable, target  :: solflxband_lean
-    integer, dimension(:)	, allocatable, target  :: endwvnbands
-    integer, target         :: visible_band_indx
-    integer, target         :: one_micron_indx
-    integer, target         :: eight70_band_indx
-    logical, target         :: visible_band_indx_iz
-    logical, target	    :: one_micron_indx_iz
-    logical, target         :: eight70_band_indx_iz
-    integer, target         :: w340_band_indx
-    integer, target 	    :: w380_band_indx
-    integer, target	    :: w440_band_indx
-    integer, target 	    :: w670_band_indx
-    logical, target         :: w340_band_iz
-    logical, target	    :: w380_band_iz
-    logical, target	    :: w440_band_iz
-    logical, target	    :: w670_band_iz
-
-
 
 !-------------------------------------------------------------------
 !----- private data --------
@@ -163,11 +136,10 @@ logical :: module_is_initialized = .false.  ! module is initialized ?
 ! </SUBROUTINE>
 !
 subroutine esfsw_parameters_init (nbands, nfrqpts, nh2obands, &
-                                  nstreams, tot_wvnums, Solar_spect)
-    integer, intent(out),target :: nbands, nfrqpts, nh2obands, &
-                            nstreams, tot_wvnums
+                                  nstreams, tot_wvnums)
 
-    type(solar_spectrum_type), intent(out), optional :: Solar_spect
+integer, intent(out),target :: nbands, nfrqpts, nh2obands, &
+                               nstreams, tot_wvnums
 
 !------------------------------------------------------------------
 !    esfsw_parameters_init is the constructor for esfsw_parameters_mod.
@@ -258,65 +230,6 @@ subroutine esfsw_parameters_init (nbands, nfrqpts, nh2obands, &
         write (logunit, nml=esfsw_parameters_nml)
       endif  
 
-!gbw merge cjg
-
-    if ( present( Solar_spect ) ) then
-
-    !-------------------------------------------------------------------
-    !#    pack what we know
-    !-------------------------------------------------------------------
-
-	  Solar_spect%nbands	 => nbands
-	  Solar_spect%nfrqpts 	 => nfrqpts
-	  Solar_spect%nh2obands  => nh2obands
-	  Solar_spect%nstreams 	 => nstreams
-	  Solar_spect%tot_wvnums => tot_wvnums
-
-    !-------------------------------------------------------------------
-    !#    fill what was defined in cjg's work
-    !-------------------------------------------------------------------
-       
-    !-------------------------------------------------------------------
-    !    indicate that visible_band_indx has not yet been defined.
-    !-------------------------------------------------------------------
-          visible_band_indx = -10000000
-	  Solar_spect%visible_band_indx => visible_band_indx
-
-          visible_band_indx_iz = .false.
-	  Solar_spect%visible_band_indx_iz => visible_band_indx_iz
-    
-    !-------------------------------------------------------------------
-    !    indicate that eight70_band_indx has not yet been defined.
-    !-------------------------------------------------------------------
-          eight70_band_indx = -10000000
-	  Solar_spect%eight70_band_indx => eight70_band_indx
-
-          eight70_band_indx_iz = .false.
-	  Solar_spect%eight70_band_indx_iz => eight70_band_indx_iz
-    
-    !-------------------------------------------------------------------
-    !    allocate space for the array components of the solar_spect_type
-    !    variable.
-    !-------------------------------------------------------------------
-    ! then associate the pointers
-    !-------------------------------------------------------------------
-
-          allocate( solflxband(nbands) )
-	  Solar_spect%solflxband => solflxband
-
-          allocate( solflxbandref(nbands) )
-	  Solar_spect%solflxbandref => solflxbandref
-
-          allocate( endwvnbands(0:nbands) )
-	  Solar_spect%endwvnbands => endwvnbands
-
-          allocate( solarfluxtoa(tot_wvnums) )
-	  Solar_spect%solarfluxtoa => solarfluxtoa
-	  
-    endif
-
-
-
 !------------------------------------------------------------------
 !    mark the module as initialized.
 !------------------------------------------------------------------
@@ -363,19 +276,6 @@ subroutine esfsw_parameters_end
         call error_mesg ('esfsw_parameters_mod',   &
              'module has not been initialized', FATAL )
       endif
-
-!--------------------------------------------------------------------
-!    deallocate the components of the solar_spect_type variable.
-!---------------------------------------------------------------------
-      if ( allocated(solflxband) ) deallocate(solflxband)
-      if ( allocated(solflxbandref) ) deallocate(solflxbandref)
-      if ( allocated(endwvnbands) ) deallocate(endwvnbands)
-      if ( allocated(solarfluxtoa) ) deallocate(solarfluxtoa)
-      if ( allocated(solflxband_lean_ann_1882) ) deallocate(solflxband_lean_ann_1882)
-      if ( allocated(solflxband_lean_ann_2000) ) deallocate(solflxband_lean_ann_2000)
-      if ( allocated(solflxband_lean) ) deallocate(solflxband_lean)
-
-!------------------------------------------------
 
 !--------------------------------------------------------------------
 !    mark the module as uninitialized.
