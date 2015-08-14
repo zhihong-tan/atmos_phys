@@ -565,13 +565,13 @@ logical, dimension(:,:,:), intent(in)      :: mask
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
 
       if (nbands /= size(solflxbandref_local,1)) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'nbands argument not equal to number of SW bands registered', &
                                                                  FATAL)
       endif
@@ -723,13 +723,13 @@ real, dimension(:),       intent(out)      :: extband, ssalbband, &
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
 
       if (nbands /= size(solflxbandref_local,1)) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'nbands argument not equal to number of SW bands registered', &
                                                                  FATAL)
       endif
@@ -852,7 +852,7 @@ real, dimension(:,:,:),   intent(out)      :: extband
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
@@ -1015,13 +1015,13 @@ logical, dimension(:,:,:), intent(in)      :: mask
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
 
       if (nbands /= size(solflxbandref_local,1)) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'nbands argument not equal to number of SW bands registered', &
                                                                  FATAL)
       endif
@@ -1172,7 +1172,7 @@ real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_bands_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif

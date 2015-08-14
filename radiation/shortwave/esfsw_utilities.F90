@@ -329,7 +329,7 @@ logical, dimension(:,:,:), intent(in)      :: mask
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_utilities_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
@@ -562,7 +562,7 @@ real, dimension(:),       intent(out)      :: extband, ssalbband, &
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_utilities_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
@@ -730,7 +730,7 @@ real, dimension(:,:,:),   intent(out)      :: extband
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_utilities_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
@@ -928,7 +928,7 @@ logical, dimension(:,:,:), intent(in)      :: mask
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_utilities_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
@@ -1136,7 +1136,7 @@ real, dimension(:,:,:,:), intent(out)      :: extband, ssalbband,   &
 !    be sure module has been initialized.
 !--------------------------------------------------------------------
       if (.not. module_is_initialized) then
-        call error_mesg ('rad_utilities_mod',  &
+        call error_mesg ('esfsw_utilities_mod',  &
          'initialization routine of this module was never called', &
                                                                  FATAL)
       endif
