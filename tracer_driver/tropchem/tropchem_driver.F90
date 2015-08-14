@@ -146,6 +146,8 @@ character(len=64)  :: file_dry = 'depvel.nc',         & ! NetCDF file for dry de
                       file_jval_lut_min = ''            ! ascii file for photolysis rate LUT (for solar min)
 character(len=10), dimension(maxinv) :: inv_list =''    ! list of invariant (fixed) tracers
 real               :: lght_no_prd_factor = 1.           ! lightning NOx scale factor
+logical            :: normalize_lght_no_prd_area = .false. ! normalize lightning NOx production by grid cell area
+real               :: min_land_frac_lght = -999.        ! minimum land fraction for lightning NOx calculation
 real               :: strat_chem_age_factor = 1.        ! scale factor for age of air
 real               :: strat_chem_dclydt_factor = 1.     ! scale factor for dcly/dt
 logical            :: do_tropchem = .false.             ! Do tropospheric chemistry?
@@ -237,7 +239,9 @@ namelist /tropchem_driver_nml/    &
                                inv_list, & 
                                file_aircraft,&
                                lght_no_prd_factor, &
-                               strat_chem_age_factor, &
+                               normalize_lght_no_prd_area, &
+                               min_land_frac_lght, &
+			       strat_chem_age_factor, &
                                strat_chem_dclydt_factor, &
                                do_tropchem, &
                                use_tdep_jvals, &
@@ -2099,7 +2103,7 @@ end if
 !-----------------------------------------------------------------------
 !     ... Call the chemistry hook init routine
 !-----------------------------------------------------------------------
-   call moz_hook_init( lght_no_prd_factor, Time, axes, verbose )
+   call moz_hook_init( lght_no_prd_factor, normalize_lght_no_prd_area, min_land_frac_lght, Time, axes, verbose )
 
 !-----------------------------------------------------------------------
 !     ... Initializations for stratospheric chemistry
