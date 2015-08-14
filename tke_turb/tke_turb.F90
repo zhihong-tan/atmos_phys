@@ -607,7 +607,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
   real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
         pblh_tke, pblh_parcel, hleff, Tl, qsl, qslT, gamma,       &
-        cqt, cthl
+        cqt, cthl, Aclr, Bclr, Acld, Bcld
 
   real, dimension(size(um,1),size(um,2),size(um,3)-1) ::          &
         dsdzh, shear, buoync
@@ -676,11 +676,17 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
       + d608*T(:,:,k)*qt(:,:,k)                                                &
       + (cp_air_inv*hleff(:,:) - T(:,:,k)*(1.0+d608))*(ql(:,:,k) + qi(:,:,k))
 
-    ! bhl, bqt
-    bhl(:,:,k) = 1.0
-    bqt(:,:,k) = d608 * T(:,:,k)
+    if (buoync_option == 1) then
 
-    if (buoync_option == 2) then
+      ! bhl, bqt
+      bhl(:,:,k) = 1.0
+      bqt(:,:,k) = d608 * T(:,:,k)
+
+    elseif (buoync_option == 2) then
+
+      ! bhl, bqt
+      bhl(:,:,k) = 1.0
+      bqt(:,:,k) = d608 * T(:,:,k)
 
       ! Saturation specific humidity at Tl (qsl) and its derivative (qslT)
       call compute_qs(Tl(:,:), pfull(:,:,k), qsl, dqsdT=qslT)
@@ -696,6 +702,29 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
       x1 = qa(:,:,k) * (cp_air_inv*hleff(:,:) - T(:,:,k)*(1.0+d608))
       bhl(:,:,k) = bhl(:,:,k) - cthl * x1
       bqt(:,:,k) = bqt(:,:,k) + cqt  * x1
+
+    elseif (buoync_option == 3) then
+
+      ! Moist buoyancy formulation from  Cuijpers and Duynkerke (1993, JAS)
+
+      ! Saturation specific humidity at T (qsl) and its derivative (qslT)
+      call compute_qs(T(:,:,k), pfull(:,:,k), qsl, dqsdT=qslT)
+
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! Clear sky coefficients
+      Aclr = 1.0 + d608*qt(:,:,k)
+      Bclr = d608*T(:,:,k)
+
+      ! Cloud sky coefficients
+      Acld = ( 1.0 - qt(:,:,k) + (1.0+d608)*(qsl + d622*T(:,:,k)*qslT) )  &
+             / ( 1.0 + gamma )
+      Bcld = cp_air_inv*hleff * Acld/T(:,:,k) - 1.0
+      
+      ! All sky
+      bhl(:,:,k) = (1.0-qa(:,:,k))*Aclr + qa(:,:,k)*Acld
+      bqt(:,:,k) = (1.0-qa(:,:,k))*Bclr + qa(:,:,k)*Bcld
 
     end if
 
