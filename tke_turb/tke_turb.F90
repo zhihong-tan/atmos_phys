@@ -111,8 +111,12 @@ module tke_turb_mod
 !---------------------------------------------------------------------
 
 character(len=10) :: mod_name = 'tke_turb'
-real              :: missing_value = 0.
+real              :: missing_value = -999.99
 integer           :: id_h, id_pblh_tke, id_pblh_parcel
+
+!--> h1g, 2015-08-11
+integer           :: id_tke_avg_pbl, id_tke_turb
+!<-- h1g, 2015-08-11
 
 !---------------------------------------------------------------------
 
@@ -124,7 +128,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
                       phalf, pfull, zhalf, zfull,                    &
                       tt, qv, qa, ql, qi, um, vm, z0, ustar, bstar,  &
                       tr_tke,                                        & 
-                      el0, el, akm, akh, h )
+                      el0, el, akm, akh, h, tke_avg )
 
   integer,         intent(in)           :: is,ie,js,je
   type(time_type), intent(in)           :: time
@@ -138,7 +142,13 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   real, intent(out), dimension(:,:,:) :: el, akm, akh
   real, intent(out), dimension(:,:)   :: h
 
-  if (tke_option == 0) then
+!---> h1g, 2015-08-11
+  real, intent(out), optional, dimension(:,:) :: tke_avg  !averaged TKE within PBL
+!<--- h1g, 2015-08-11
+
+  if( present(tke_avg) ) tke_avg = 0.0  ! h1g, 2015-08-11
+
+  if (tke_option == 0) then 
 
     call tke_turb_legacy( is, ie, js, je, time, delt, fracland,        &
                           phalf, pfull, zhalf, zfull,                  &
@@ -148,12 +158,21 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
   elseif (tke_option == 1) then
 
+   if( present(tke_avg) ) then   ! h1g, 2015-08-11
+    call tke_turb_dev( is, ie, js, je, time, delt, fracland,        &
+                       phalf, pfull, zhalf, zfull,                  &
+                       tt, qv, qa, ql, qi, um, vm,                  & 
+                       z0, ustar, bstar,                            &
+                       tr_tke,                                      & 
+                       el0, el, akm, akh, h, tke_avg=tke_avg )
+   else
     call tke_turb_dev( is, ie, js, je, time, delt, fracland,        &
                        phalf, pfull, zhalf, zfull,                  &
                        tt, qv, qa, ql, qi, um, vm,                  & 
                        z0, ustar, bstar,                            &
                        tr_tke,                                      & 
                        el0, el, akm, akh, h )
+   endif   ! h1g, 2015-08-11
 
   end if
 
@@ -543,7 +562,7 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
                           T, qv, qa, ql, qi, um, vm,                &
                           z0, ustar, bstar,                         &
                           tr_tke,                                   & 
-                          el0, el, akm, akh, h )
+                          el0, el, akm, akh, h, tke_avg )
 
 !=======================================================================
 !---------------------------------------------------------------------
@@ -595,6 +614,11 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   real, intent(out), dimension(:,:,:) :: el, akm, akh
   real, intent(out), dimension(:,:)   :: h
 
+!---> h1g, 2015-08-11
+  real, intent(out), optional, dimension(:,:) :: tke_avg
+  integer :: k_pbl
+!<--- h1g, 2015-08-11
+
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
@@ -628,6 +652,8 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
         tmp
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke, sqrte
+
+  real, dimension(size(um,1),size(um,2))              :: tke_avg_tmp !h1g, 2015-08-11
 
 !====================================================================
 
@@ -977,6 +1003,26 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
   tr_tke(:,:,:) = tke(:,:,2:kxp)
 
+!--> h1g, 2015-08-11
+! calculate averaged TKE within PBL
+  do j=1,jx
+    do i=1,ix
+      tke_avg_tmp(i,j) = tke(i,j,kxp) * ( phalf(i,j,kxp)-pfull(i,j,kx) )
+      k_pbl        = kx
+      do k= kx, 2, -1
+        if( h(i,j) > zfull(i,j,k)-zsfc(i,j) ) then 
+          tke_avg_tmp(i,j) = tke_avg_tmp(i,j) + tke(i,j,k)*( pfull(i,j,k)-pfull(i,j,k-1) )      
+          k_pbl        = k-1
+        endif
+      enddo  
+      tke_avg_tmp(i,j) = tke_avg_tmp(i,j)/( phalf(i,j,kxp)-pfull(i,j,k_pbl))
+    enddo
+  enddo
+  tke_avg_tmp(:,:) = min(tke_avg_tmp(:,:), tkemax)
+  tke_avg_tmp(:,:) = max(tke_avg_tmp(:,:), tkemin)
+  if( present(tke_avg))  tke_avg = tke_avg_tmp
+!<-- h1g, 2015-08-11
+
 !====================================================================
 ! --- Diagnostics
 !====================================================================
@@ -990,6 +1036,16 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   if ( id_pblh_parcel > 0 ) then
     used = send_data ( id_pblh_parcel, pblh_parcel, time, is, js )
   end if
+
+!--> h1g, 2015-08-11
+  if ( id_tke_avg_pbl > 0 ) then
+    used = send_data ( id_tke_avg_pbl, tke_avg_tmp, time, is, js )
+  end if
+
+  if ( id_tke_turb > 0 ) then
+    used = send_data ( id_tke_turb, tr_tke, time, is, js, 1 )
+  end if
+!<-- h1g, 2015-08-11
 
   end subroutine tke_turb_dev
 
@@ -1078,6 +1134,16 @@ integer           :: id_h, id_pblh_tke, id_pblh_parcel
   id_h = register_diag_field (mod_name, 'zpbl', axes(1:2),     &
        time, 'diagnosed PBL depth', 'meters',                  &
        missing_value=missing_value )
+
+!---> h1g, 2015-08-11
+  id_tke_avg_pbl = register_diag_field (mod_name, 'tke_avg_pbl', axes(1:2),     &
+       time, 'diagnosed averaged tke within depth', 'm2/s2',                  &
+       missing_value=missing_value )
+
+  id_tke_turb = register_diag_field (mod_name, 'tke_turb', axes(1:3),     &
+       time, 'tke diagnosed from tr_tke', 'm2/s2',                  &
+       missing_value=missing_value )
+!<--- h1g, 2015-08-11
 
 !---------------------------------------------------------------------
 !--- Done with initialization

@@ -156,7 +156,7 @@ subroutine vert_turb_driver (is, js, Time, Time_next, dt, tdtlw,       &
                              lat, convect,                             &
                              u, v, t, q, r, um, vm, tm, qm, rm, rdiag, &
                              udt, vdt, tdt, qdt, rdt, diff_t, diff_m,  &
-                             gust, z_pbl, mask, kbot                   )
+                             gust, z_pbl, mask, kbot, tke_avg          )  ! h1g: output averaged TKE within PBL  
 
 !-----------------------------------------------------------------------
 integer,         intent(in)         :: is, js
@@ -175,6 +175,11 @@ logical, intent(in), dimension(:,:) :: convect
    real, intent(out),   dimension(:,:)   :: gust, z_pbl 
    real, intent(in),optional, dimension(:,:,:) :: mask
 integer, intent(in),optional, dimension(:,:) :: kbot
+
+!---> h1g, 2015-08-11
+  real, intent(out), optional, dimension(:,:) :: tke_avg  !averaged TKE within PBL
+!<--- h1g, 2015-08-11
+
 !-----------------------------------------------------------------------
 real   , dimension(size(t,1),size(t,2),size(t,3))   :: ape, thv
 logical, dimension(size(t,1),size(t,2),size(t,3)+1) :: lmask
@@ -214,6 +219,7 @@ real   , dimension(size(diff_t,1),size(diff_t,2), &
      ie = is + size(p_full,1) - 1
      je = js + size(p_full,2) - 1
 
+     if ( present(tke_avg) ) tke_avg = 0.0   ! h1g, 2015-08-11
 !-----------------------------------------------------------------------
 !---- set up state variable used by this module ----
 
@@ -341,13 +347,21 @@ if (do_mellor_yamada) then
 !    ---- compute tke, master length scale (el0),  -------------
 !    ---- length scale (el), and vert mix coeffs (diff_t,diff_m) ----
 
-     call tke_turb (is, ie, js, je, Time_next, dt_tke, frac_land,      &
-                    p_half, p_full, z_half, z_full,                    &
-                    tt, qq, qain, qlin, qiin, uu, vv,                  &
-                    rough, u_star, b_star,                             &
-                    rdiag(:,:,:,ntke),                                 &
-                    el0, el, diff_m, diff_t, z_pbl)
-
+     if( present(tke_avg) ) then
+      call tke_turb (is, ie, js, je, Time_next, dt_tke, frac_land,      &
+                     p_half, p_full, z_half, z_full,                    &
+                     tt, qq, qain, qlin, qiin, uu, vv,                  &
+                     rough, u_star, b_star,                             &
+                     rdiag(:,:,:,ntke),                                 &
+                     el0, el, diff_m, diff_t, z_pbl, tke_avg=tke_avg)
+     else
+      call tke_turb (is, ie, js, je, Time_next, dt_tke, frac_land,      &
+                     p_half, p_full, z_half, z_full,                    &
+                     tt, qq, qain, qlin, qiin, uu, vv,                  &
+                     rough, u_star, b_star,                             &
+                     rdiag(:,:,:,ntke),                                 &
+                     el0, el, diff_m, diff_t, z_pbl)
+     endif   ! h1g, 2015-08-11
 !-->cjg debug
 !101 format("AFTER TURB: ",A32," = ",Z20)
 !  outunit = stdout()

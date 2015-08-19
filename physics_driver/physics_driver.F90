@@ -1454,6 +1454,10 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       real             ::    dt, alpha, dt2
       logical          ::    used
 
+!---> h1g, 2015-08-11
+      real, dimension(ie-is+1,je-js+1) :: tke_avg
+!<--- h1g, 2015-08-11
+
 !---------------------------------------------------------------------
 !   local variables:
 !
@@ -1595,9 +1599,10 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                              u, v, t, r(:,:,:,1), r, um, vm,                  &
                              tm, rm(:,:,:,1), rm, rdiag,                      &
                              udt, vdt, tdt, rdt(:,:,:,1), rdt,                &
-                             diff_t_vert, diff_m_vert, gust, z_pbl)
+                             diff_t_vert, diff_m_vert, gust, z_pbl, tke_avg = tke_avg)
      call mpp_clock_end ( turb_clock )
      pbltop(is:ie,js:je) = z_pbl(:,:)
+     tke   (is:ie,js:je) = tke_avg(:,:)
 
       if (id_tdt_phys_turb > 0) then
         used = send_data ( id_tdt_phys_turb, +2.0*tdt(:,:,:), &

@@ -151,6 +151,7 @@ MODULE UW_CONV_MOD
   integer :: tracer_check_type = -999 !legacy
   !<f1p: use legacy check when false, use sj's routines to fill in negative if true>
 
+  logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
@@ -162,7 +163,7 @@ MODULE UW_CONV_MOD
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
-	   tracer_check_type
+	   tracer_check_type, use_turb_tke  !h1g, 2015-08-11
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -452,6 +453,13 @@ contains
           endif
        end do
     endif
+
+!---> h1g, 2015-08-11
+    if ( do_prog_tke .and. use_turb_tke )  then
+        call error_mesg ('uw_conv_mod',  &
+                '  do_prog_tke and use_turb_tke cannot be true at the same time', FATAL)
+    endif
+!<--- h1g, 2015-08-11
 
     id_xpsrc_uwc  = register_diag_field (mod_name,'xpsrc_uwc', axes(1:2), Time, &
          'xpsrc', 'hPa' )
@@ -1393,7 +1401,7 @@ contains
           sd%cgust_max = cgust_max
           sd%sigma0    = sigma0
           sd%tke       = tkeo(i,j)
-	  if (do_prog_tke) sd%tke = tkep(i,j)
+	  if (do_prog_tke .or. use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
 
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
 
