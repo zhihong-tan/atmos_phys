@@ -383,6 +383,11 @@ character(len=16) :: cosp_precip_sources = '    '
                                ! currently not considered as precip
                                ! sources.
 
+logical :: do_conserve_energy = .false.
+                                      ! when true, the actually model layer
+                                      ! interface pressures (p_half) are used
+                                      ! for the radiation calculation thus
+                                      ! conserving energy
 
 ! <NAMELIST NAME="radiation_driver_nml">
 !  <DATA NAME="rad_time_step" UNITS="" TYPE="integer" DIM="" DEFAULT="14400">
@@ -508,7 +513,8 @@ namelist /radiation_driver_nml/ do_radiation, &
                                 lat_for_solar_input, lon_for_solar_input, &
                                 rad_time_step, sw_rad_time_step, use_single_lw_sw_ts, &
                                 nonzero_rad_flux_init, &
-                                cosp_precip_sources
+                                cosp_precip_sources, &
+                                do_conserve_energy
 !---------------------------------------------------------------------
 !---- public data ----
 
@@ -2114,7 +2120,8 @@ real, dimension(:,:,:,:), pointer :: r, rm
       call produce_radiation_diagnostics        &
                           (is, ie, js, je, Time_next, Time, lat, &
                            Radiation_glbl_qty%atm_mass, Atmos_input%tsfc, &
-                           Atmos_input%pflux, Atmos_input%phalf,  &
+                           Atmos_input%pflux, p_half,  &
+                      !BW  Atmos_input%pflux, Atmos_input%phalf,  &
                            Surface%asfc_vis_dir, Surface%asfc_nir_dir, &
                            Surface%asfc_vis_dif, Surface%asfc_nir_dif, &
                            flux_ratio,  Astro, Astro_phys, &
@@ -3238,9 +3245,15 @@ type(atmos_input_type), intent(inout) :: Atmos_input
       Atmos_input%tsfc  => null()
       Atmos_input%aerosolpress => null()
 
+      ! flux pressure
+      if (do_conserve_energy) then
+        Atmos_input%pflux => null()
+      else
+        deallocate (Atmos_input%pflux)
+      endif
+
       ! auxiliary variables always allocated
       deallocate (Atmos_input%relhum     )
-      deallocate (Atmos_input%pflux      )
       deallocate (Atmos_input%tflux      )
       deallocate (Atmos_input%deltaz     )
       deallocate (Atmos_input%clouddeltaz)
@@ -4704,7 +4717,6 @@ type(atmos_input_type), intent(inout)  :: Atmos_input
       id   = size(Atmos_input%temp,1)
       jd   = size(Atmos_input%temp,2)
       kmax = size(Atmos_input%temp,3)
-      allocate ( Atmos_input%pflux (id,jd,kmax+1) )
       allocate ( Atmos_input%tflux (id,jd,kmax+1) )
       allocate ( Atmos_input%deltaz(id, jd,kmax) )
 
@@ -4712,19 +4724,28 @@ type(atmos_input_type), intent(inout)  :: Atmos_input
       allocate ( Atmos_input%clouddeltaz(id,jd,kmax) )
       allocate ( Atmos_input%aerosolrelhum(id,jd,kmax) )
 
+      if (do_conserve_energy) then
+        Atmos_input%pflux => Atmos_input%phalf
+      else
 !--------------------------------------------------------------------
 !    define flux level pressures (pflux) as midway between data level
-!    (layer-mean) pressures. specify temperatures at flux levels
-!    (tflux).
+!    (layer-mean) pressures.
+!--------------------------------------------------------------------
+        allocate ( Atmos_input%pflux (id,jd,kmax+1) )
+        do k=ks+1,ke
+          Atmos_input%pflux(:,:,k) = 0.5E+00*  &
+                  (Atmos_input%press(:,:,k-1) + Atmos_input%press(:,:,k))
+        enddo
+        Atmos_input%pflux(:,:,ks  ) = 0.0E+00
+        Atmos_input%pflux(:,:,ke+1) = Atmos_input%psfc(:,:)
+      endif
+!--------------------------------------------------------------------
+!    specify temperatures at flux levels (tflux)
 !--------------------------------------------------------------------
       do k=ks+1,ke
-        Atmos_input%pflux(:,:,k) = 0.5E+00*  &
-                (Atmos_input%press(:,:,k-1) + Atmos_input%press(:,:,k))
         Atmos_input%tflux(:,:,k) = 0.5E+00*  &
                 (Atmos_input%temp (:,:,k-1) + Atmos_input%temp (:,:,k))
       enddo
-      Atmos_input%pflux(:,:,ks  ) = 0.0E+00
-      Atmos_input%pflux(:,:,ke+1) = Atmos_input%psfc(:,:)
       Atmos_input%tflux(:,:,ks  ) = Atmos_input%temp(:,:,ks)
       Atmos_input%tflux(:,:,ke+1) = Atmos_input%tsfc(:,:)
 
