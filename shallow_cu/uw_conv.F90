@@ -9,7 +9,7 @@ MODULE UW_CONV_MOD
   use           fms_mod, only : write_version_number, open_namelist_file, check_nml_error,&
                                 FILE_EXIST, ERROR_MESG,  &
                                 lowercase, &
-                                CLOSE_FILE, FATAL
+                                CLOSE_FILE, FATAL, NOTE
   use  field_manager_mod, only: MODEL_ATMOS
   use  tracer_manager_mod, only: get_tracer_names, query_method, &
                                  get_tracer_index, NO_TRACER
@@ -149,7 +149,10 @@ MODULE UW_CONV_MOD
   real    :: dtime0 = 0.5
 
   integer :: tracer_check_type = -999 !legacy
-  !<f1p: use legacy check when false, use sj's routines to fill in negative if true>
+  !< select realizability checks to be applied to tracers
+  !! -999 (default): apply min/max checks (with scaling of tendencies), no filling
+  !!              1: omit min/max checks, apply filling (using sjl_fillz), no scaling
+  !!              2: omit min/max checks, no filling (apply scaling to avoid negatives)
 
   logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
@@ -864,6 +867,16 @@ contains
                                   trim(tracer_units(nn))//'/s', missing_value=mv)
         end do
      end if
+
+    select case (tracer_check_type)
+       case(1)
+          call error_mesg ('uw_conv', &
+	     'tracer checks: no min/max check, yes filling (WARNING! non-conservative)', NOTE)
+       case(2)
+          call error_mesg ('uw_conv', 'tracer checks: no min/max check, no filling', NOTE)
+       case DEFAULT
+          call error_mesg ('uw_conv', 'tracer checks: DEFAULT = min/max check, no filling', NOTE)
+    end select
 
     module_is_initialized = .true.
 
@@ -1677,12 +1690,13 @@ contains
 !            call check_tracer_realizability (kmax, size(trtend,4), delt, &
 !                                           cp%tr, ct%trten, ct%trwet) 
              call check_tracer_realizability (kmax, size(trtend,4), delt, &
-                                           cp%tr, ct%trten, ct%trwet, pmass(i,j,:), tracer_check_type )
+                                           cp%tr, ct%trten, ct%trwet, pmass(i,j,:), tracer_check_type, rn = rn )
             do k = 1,cp%ltop
               nk = kmax+1-k
               do n = 1, size(trtend,4)
                 trtend(i,j,nk,n) = ct%trten(k,n) + ct%trwet(k,n)
                 trwet(i,j,nk,n)  = ct%trwet(k,n)
+                rn_diag(i,j,nk,n) = rn(k,n)
               enddo
             enddo
 	  end if
