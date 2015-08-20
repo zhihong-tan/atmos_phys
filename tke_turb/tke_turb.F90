@@ -9,14 +9,25 @@ module tke_turb_mod
 !  Modified by Chris Golaz
 !=======================================================================
 
- use mpp_mod,           only : input_nml_file
- use fms_mod,           only : file_exist, open_namelist_file,       &
-                               error_mesg, FATAL, close_file, note,  &
-                               check_nml_error, mpp_pe, mpp_root_pe, &
-                               write_version_number, stdlog, stdout, &
-                               mpp_chksum
- use constants_mod,     only : grav, vonkarm
+ use           mpp_mod, only: input_nml_file
 
+ use           fms_mod, only: file_exist, open_namelist_file,       &
+                              error_mesg, FATAL, close_file, note,  &
+                              check_nml_error, mpp_pe, mpp_root_pe, &
+                              write_version_number, stdlog, stdout, &
+                              mpp_chksum
+
+ use     constants_mod, only: rdgas, rvgas, kappa, grav, vonkarm,   &
+                              cp_air, hlv, hls, tfreeze
+
+ use monin_obukhov_mod, only: mo_diff
+
+ use sat_vapor_pres_mod,only: compute_qs
+
+ use  diag_manager_mod, only: register_diag_field, send_data
+
+ use  time_manager_mod, only: time_type
+ 
 !---------------------------------------------------------------------
   implicit none
   private
@@ -29,6 +40,12 @@ module tke_turb_mod
 !---------------------------------------------------------------------
 ! --- Constants
 !---------------------------------------------------------------------
+
+ real, parameter :: p00    = 1000.0e2
+ real, parameter :: p00inv = 1./p00
+ real, parameter :: d622   = rdgas/rvgas
+ real, parameter :: d378   = 1.-d622
+ real, parameter :: d608   = d378/d622
 
  real :: ckm1,  ckm2,  ckm3, ckm4, ckm5, ckm6, ckm7, ckm8
  real :: ckh1,  ckh2,  ckh3, ckh4
@@ -43,26 +60,63 @@ module tke_turb_mod
  real, parameter :: t00     =  2.7248e2 
  real, parameter :: small   =  1.0e-10
 
+ ! Constants for new scheme
+
+ real, parameter :: cp_air_inv = 1.0/cp_air
+
+ real, parameter :: A1 = 0.92
+ real, parameter :: A2 = 0.74
+ real, parameter :: B1 = 16.6
+ real, parameter :: B2 = 10.1
+ real, parameter :: C1 = 0.08
+
+ real, parameter :: alpha1 = A1*(1.0-3.0*C1-6.0*A1/B1)
+ real, parameter :: alpha2 = -3.0*A1*A2*((B2-3.0*A2)*(1.0-6.0*A1/B1)-3.0*C1*(B2+6.0*A1))
+ real, parameter :: alpha3 = -3.0*A2*(6.0*A1+B2)
+ real, parameter :: alpha4 = -9.0*A1*A2
+ real, parameter :: alpha5 = A2*(1.0-6.0*A1/B1)
+
+ real, parameter :: be = B1 / (2.0*sqrt(2.0))
+ real, parameter :: ke = 0.5421
+
 !---------------------------------------------------------------------
 ! --- Namelist
 !---------------------------------------------------------------------
 
- real    :: tkemax       =  5.0
- real    :: tkemin       =  0.0
- real    :: tkecrit      =  0.05
- real    :: akmax        =  1.0e4
- real    :: akmin_land   =  5.0
- real    :: akmin_sea    =  0.0
- integer :: nk_lim       =  2
- real    :: el0max       =  1.0e6
- real    :: el0min       =  0.0
- real    :: alpha_land   =  0.10
- real    :: alpha_sea    =  0.10
+ real    :: tkemax           =  5.0
+ real    :: tkemin           =  0.0
+ integer :: tke_option       =  0
+ integer :: buoync_option    =  2
+ integer :: pbl_depth_option =  0
+ real    :: tkecrit          =  0.05
+ real    :: parcel_buoy      =  1.0
+ real    :: akmax            =  1.0e4
+ real    :: akmin_land       =  5.0
+ real    :: akmin_sea        =  0.0
+ integer :: nk_lim           =  2
+ real    :: el0max           =  1.0e6
+ real    :: el0min           =  0.0
+ real    :: alpha_land       =  0.10
+ real    :: alpha_sea        =  0.10
 
  namelist / tke_turb_nml /                            &
-         tkemax,   tkemin,     tkecrit,               &
+         tke_option, buoync_option,                   &
+         pbl_depth_option, tkecrit, parcel_buoy,      &
+         tkemax,   tkemin,                            &
          akmax,    akmin_land, akmin_sea, nk_lim,     &
          el0max,   el0min,  alpha_land,  alpha_sea
+
+!---------------------------------------------------------------------
+!--- Diagnostic fields       
+!---------------------------------------------------------------------
+
+character(len=10) :: mod_name = 'tke_turb'
+real              :: missing_value = -999.99
+integer           :: id_h, id_pblh_tke, id_pblh_parcel
+
+!--> h1g, 2015-08-11
+integer           :: id_tke_avg_pbl, id_tke_turb
+!<-- h1g, 2015-08-11
 
 !---------------------------------------------------------------------
 
@@ -70,31 +124,95 @@ module tke_turb_mod
 
 !#######################################################################
 
- subroutine tke_turb( delt, fracland, phalf, pfull, zhalf, zfull,  &
-                      um, vm, thetav, z0, ustar, bstar,            &
-                      tr_tke,                                      & 
-                      el0, el, akm, akh, h )
+ subroutine tke_turb( is, ie, js, je, time, delt, fracland,          &
+                      phalf, pfull, zhalf, zfull,                    &
+                      tt, qv, qa, ql, qi, um, vm, z0, ustar, bstar,  &
+                      tr_tke,                                        & 
+                      el0, el, akm, akh, h, tke_avg )
+
+  integer,         intent(in)           :: is,ie,js,je
+  type(time_type), intent(in)           :: time
+  real,    intent(in)                   :: delt 
+  real,    intent(in), dimension(:,:)   :: fracland
+  real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
+  real,    intent(in), dimension(:,:,:) :: tt, qv, qa, ql, qi, um, vm
+  real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
+  real,    intent(inout), dimension(:,:,:) :: tr_tke
+  real, intent(out), dimension(:,:)   :: el0
+  real, intent(out), dimension(:,:,:) :: el, akm, akh
+  real, intent(out), dimension(:,:)   :: h
+
+!---> h1g, 2015-08-11
+  real, intent(out), optional, dimension(:,:) :: tke_avg  !averaged TKE within PBL
+!<--- h1g, 2015-08-11
+
+  if( present(tke_avg) ) tke_avg = 0.0  ! h1g, 2015-08-11
+
+  if (tke_option == 0) then 
+
+    call tke_turb_legacy( is, ie, js, je, time, delt, fracland,        &
+                          phalf, pfull, zhalf, zfull,                  &
+                          tt, qv, ql, qi, um, vm, z0, ustar, bstar,    &
+                          tr_tke,                                      & 
+                          el0, el, akm, akh, h )
+
+  elseif (tke_option == 1) then
+
+   if( present(tke_avg) ) then   ! h1g, 2015-08-11
+    call tke_turb_dev( is, ie, js, je, time, delt, fracland,        &
+                       phalf, pfull, zhalf, zfull,                  &
+                       tt, qv, qa, ql, qi, um, vm,                  & 
+                       z0, ustar, bstar,                            &
+                       tr_tke,                                      & 
+                       el0, el, akm, akh, h, tke_avg=tke_avg )
+   else
+    call tke_turb_dev( is, ie, js, je, time, delt, fracland,        &
+                       phalf, pfull, zhalf, zfull,                  &
+                       tt, qv, qa, ql, qi, um, vm,                  & 
+                       z0, ustar, bstar,                            &
+                       tr_tke,                                      & 
+                       el0, el, akm, akh, h )
+   endif   ! h1g, 2015-08-11
+
+  end if
+
+ end subroutine tke_turb
+
+!#######################################################################
+
+ subroutine tke_turb_legacy( is, ie, js, je, time, delt, fracland,     &
+                             phalf, pfull, zhalf, zfull,               &
+                             tt, qv, ql, qi, um, vm, z0, ustar, bstar, &
+                             tr_tke,                                   & 
+                             el0, el, akm, akh, h )
 
 !=======================================================================
 !---------------------------------------------------------------------
 ! Arguments (Intent in)
-!   delt     -  Time step in seconds
-!   fracland -  Fractional amount of land beneath a grid box
-!   phalf    -  Pressure at half levels
-!   pfull    -  Pressure at full levels
-!   zhalf    -  Height at half levels
-!   zfull    -  Height at full levels
-!   um, vm   -  Wind components
-!   thetav   -  Virtual potential temperature
-!   z0       -  Roughness length
-!   ustar    -  Friction velocity (m/sec)
-!   bstar    -  Buoyancy scale (m/sec**2)
+!   is,ie,js,je - i,j indices marking the slab of model working on
+!   time        - variable needed for netcdf diagnostics
+!   delt        - time step in seconds
+!   fracland    - fractional amount of land beneath a grid box
+!   phalf       - pressure at half levels
+!   pfull       - pressure at full levels
+!   zhalf       - height at half levels
+!   zfull       - height at full levels
+!   tt          - temperature
+!   qv          - water vapor
+!   ql          - liquid water
+!   qi          - ice water
+!   um, vm      - wind components
+!   z0          - roughness length
+!   ustar       - friction velocity (m/sec)
+!   bstar       - buoyancy scale (m/sec**2)
 !---------------------------------------------------------------------
 
+  integer,         intent(in)           :: is,ie,js,je
+  type(time_type), intent(in)           :: time
   real,    intent(in)                   :: delt 
   real,    intent(in), dimension(:,:)   :: fracland
   real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
-  real,    intent(in), dimension(:,:,:) :: um, vm, thetav
+  real,    intent(in), dimension(:,:,:) :: tt, qv, ql, qi, um, vm
   real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
 
 !---------------------------------------------------------------------
@@ -121,12 +239,14 @@ module tke_turb_mod
 !  (Intent local)
 !---------------------------------------------------------------------
 
+  logical used
   integer outunit
   integer :: ix, jx, kx, i, j, k
   integer :: kxp, kxm, klim
   real    :: cvfqdt, dvfqdt
 
-  real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin
+  real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
+        pblh_tke, pblh_parcel
 
   real, dimension(size(um,1),size(um,2),size(um,3)-1) ::     &
         dsdzh, shear, buoync, qm2,  qm3, qm4, el2,           &
@@ -134,7 +254,7 @@ module tke_turb_mod
         xxm1,  xxm2,  xxm3,   xxm4, xxm5
 
   real, dimension(size(um,1),size(um,2),size(um,3)) ::       &
-        dsdz, qm,  xx1, xx2
+        thetav, tmp, dsdz, qm, xx1, xx2
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke
 
@@ -159,6 +279,13 @@ module tke_turb_mod
   tke(:,:,1) = tkemin
   tke(:,:,2:kx) = tr_tke(:,:,1:kxm)
   tke(:,:,kxp) = bcq * ustar * ustar
+
+!====================================================================
+! --- Compute virtual potential temperature
+!====================================================================
+
+  tmp(:,:,:) = (pfull(:,:,:)*p00inv)**(-kappa)
+  thetav(:,:,:) = tt(:,:,:)*(qv(:,:,:)*d608+1.0)*tmp
 
 !====================================================================
 ! --- Surface height     
@@ -393,7 +520,18 @@ module tke_turb_mod
 ! --- Compute PBL depth
 !====================================================================
 
-  call tke_pbl_depth(zsfc,zhalf,tke,h)
+  if ( pbl_depth_option == 0 .or. id_pblh_tke > 0) then
+    call tke_pbl_depth(zsfc,zhalf,tke,bstar,pblh_tke)
+  end if
+  if ( pbl_depth_option == 1 .or. id_pblh_parcel > 0) then
+    call parcel_pbl_depth(zsfc,zfull,tt,qv,ql,qi,ustar,bstar,pblh_parcel)
+  end if
+
+  if ( pbl_depth_option == 0 ) then
+    h = pblh_tke
+  else if ( pbl_depth_option == 1 ) then
+    h = pblh_parcel
+  end if
 
 !====================================================================
 ! --- Copy output tke back to tracer array
@@ -402,15 +540,534 @@ module tke_turb_mod
   tr_tke(:,:,:) = tke(:,:,2:kxp)
 
 !====================================================================
-  end subroutine tke_turb 
+! --- Diagnostics
+!====================================================================
+
+  if ( id_h > 0 ) then
+    used = send_data ( id_h, h, time, is, js )
+  end if
+  if ( id_pblh_tke > 0 ) then
+    used = send_data ( id_pblh_tke, pblh_tke, time, is, js )
+  end if
+  if ( id_pblh_parcel > 0 ) then
+    used = send_data ( id_pblh_parcel, pblh_parcel, time, is, js )
+  end if
+
+  end subroutine tke_turb_legacy
 
 !#######################################################################
 
-  subroutine tke_turb_init( )
+ subroutine tke_turb_dev( is, ie, js, je, time, delt, fracland,     &
+                          phalf, pfull, zhalf, zfull,               &
+                          T, qv, qa, ql, qi, um, vm,                &
+                          z0, ustar, bstar,                         &
+                          tr_tke,                                   & 
+                          el0, el, akm, akh, h, tke_avg )
+
+!=======================================================================
+!---------------------------------------------------------------------
+! Arguments (Intent in)
+!   is,ie,js,je - i,j indices marking the slab of model working on
+!   time        - variable needed for netcdf diagnostics
+!   delt        - time step in seconds
+!   fracland    - fractional amount of land beneath a grid box
+!   phalf       - pressure at half levels
+!   pfull       - pressure at full levels
+!   zhalf       - height at half levels
+!   zfull       - height at full levels
+!   T           - temperature
+!   qv          - water vapor
+!   qa          - cloud amount
+!   ql          - liquid water
+!   qi          - ice water
+!   um, vm      - wind components
+!   z0          - roughness length
+!   ustar       - friction velocity (m/sec)
+!   bstar       - buoyancy scale (m/sec**2)
+!---------------------------------------------------------------------
+
+  integer,         intent(in)           :: is,ie,js,je
+  type(time_type), intent(in)           :: time
+  real,    intent(in)                   :: delt 
+  real,    intent(in), dimension(:,:)   :: fracland
+  real,    intent(in), dimension(:,:,:) :: phalf, pfull, zhalf, zfull
+  real,    intent(in), dimension(:,:,:) :: T, qv, qa, ql, qi, um, vm
+  real,    intent(in), dimension(:,:)   :: z0, ustar, bstar
+
+!---------------------------------------------------------------------
+! Arguments (Intent inout)
+!   tr_tke   -  Tracer that stores tke
+!---------------------------------------------------------------------
+
+  real,    intent(inout), dimension(:,:,:) :: tr_tke
+
+!---------------------------------------------------------------------
+! Arguments (Intent out)
+!   el0      -  characteristic length scale
+!   el       -  master length scale
+!   akm      -  mixing coefficient for momentum
+!   akh      -  mixing coefficient for heat and moisture
+!   h        -  diagnosed depth of planetary boundary layer (m)
+!---------------------------------------------------------------------
+
+  real, intent(out), dimension(:,:)   :: el0
+  real, intent(out), dimension(:,:,:) :: el, akm, akh
+  real, intent(out), dimension(:,:)   :: h
+
+!---> h1g, 2015-08-11
+  real, intent(out), optional, dimension(:,:) :: tke_avg
+  integer :: k_pbl
+!<--- h1g, 2015-08-11
+
+!---------------------------------------------------------------------
+!  (Intent local)
+!---------------------------------------------------------------------
+
+  logical used
+  integer outunit
+  integer :: ix, jx, kx, i, j, k
+  integer :: kxp, kxm, klim
+  real    :: kedt, bedt
+
+  real, dimension(size(um,1),size(um,2)) :: zsfc, x1, x2, akmin,  &
+        pblh_tke, pblh_parcel, hleff, Tl, qsl, qslT, gamma,       &
+        cqt, cthl, Aclr, Bclr, Acld, Bcld
+
+  real, dimension(size(um,1),size(um,2),size(um,3)-1) ::          &
+        dsdzh, shear, buoync
+
+  real, dimension(size(um,1),size(um,2),size(um,3)-1), target ::  &
+        xxm1, xxm2, xxm3, xxm4, xxm5
+
+  real, dimension(:,:,:), pointer ::                              &
+        aaa, bbb, ccc, ddd, Gh, Sm, Sh
+
+  real, dimension(size(um,1),size(um,2),size(um,3)) ::            &
+        dsdz, sl, qt, sv, bhl, bqt
+
+  real, dimension(size(um,1),size(um,2),size(um,3)), target ::    &
+        xx1, xx2, xx3
+
+  real, dimension(:,:,:), pointer ::                              &
+        tmp
+
+  real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke, sqrte
+
+  real, dimension(size(um,1),size(um,2))              :: tke_avg_tmp !h1g, 2015-08-11
+
+!====================================================================
+
+! --- Check to see if tke_turb has been initialized
+  if( .not. module_is_initialized ) call error_mesg( ' tke_turb',     &
+                                 ' tke_turb_init has not been called',&
+                                   FATAL )
+
+! --- Set dimensions etc
+  ix  = size( um, 1 )
+  jx  = size( um, 2 )
+  kx  = size( um, 3 )
+  kxp = kx + 1
+  kxm = kx - 1
+
+!====================================================================
+! --- Copy input tke from tracer array
+!====================================================================
+
+  tke(:,:,1) = tkemin
+  tke(:,:,2:kx) = tr_tke(:,:,1:kxm)
+  tke(:,:,kxp) = bcq * ustar * ustar
+
+!====================================================================
+! --- Compute thermodynamic variables
+!====================================================================
+
+  do k=1,kx
+
+    ! Effective latent heat
+    hleff(:,:) = (min(1.,max(0.,0.05*(T(:,:,k)-tfreeze+20.)))*hlv +            &
+                  min(1.,max(0.,0.05*(tfreeze -T(:,:,k)   )))*hls)
+
+    ! Liquid water temperature
+    Tl(:,:) = T(:,:,k) - cp_air_inv*hleff(:,:)*(ql(:,:,k)+qi(:,:,k))
+
+    ! Liquid water static energy (sl/cp_air)
+    sl(:,:,k) = Tl(:,:) + cp_air_inv*grav*zfull(:,:,k)
+
+    ! Total water
+    qt(:,:,k) = qv(:,:,k) + ql(:,:,k) + qi(:,:,k)
+
+    ! Virtual static energy (sv/cp_air)
+    sv(:,:,k)                                                                  &
+    = sl(:,:,k)                                                                &
+      + d608*T(:,:,k)*qt(:,:,k)                                                &
+      + (cp_air_inv*hleff(:,:) - T(:,:,k)*(1.0+d608))*(ql(:,:,k) + qi(:,:,k))
+
+    if (buoync_option == 1) then
+
+      ! bhl, bqt
+      bhl(:,:,k) = 1.0
+      bqt(:,:,k) = d608 * T(:,:,k)
+
+    elseif (buoync_option == 2) then
+
+      ! bhl, bqt
+      bhl(:,:,k) = 1.0
+      bqt(:,:,k) = d608 * T(:,:,k)
+
+      ! Saturation specific humidity at Tl (qsl) and its derivative (qslT)
+      call compute_qs(Tl(:,:), pfull(:,:,k), qsl, dqsdT=qslT)
+
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! cqt, cthl
+      cqt = 1.0 / (1.0 + gamma)
+      cthl = cqt * gamma * cp_air / hleff * (pfull(:,:,k)*p00inv)**(kappa)
+    
+      ! Add moist contribution to bhl, bqt
+      x1 = qa(:,:,k) * (cp_air_inv*hleff(:,:) - T(:,:,k)*(1.0+d608))
+      bhl(:,:,k) = bhl(:,:,k) - cthl * x1
+      bqt(:,:,k) = bqt(:,:,k) + cqt  * x1
+
+    elseif (buoync_option == 3) then
+
+      ! Moist buoyancy formulation from  Cuijpers and Duynkerke (1993, JAS)
+
+      ! Saturation specific humidity at T (qsl) and its derivative (qslT)
+      call compute_qs(T(:,:,k), pfull(:,:,k), qsl, dqsdT=qslT)
+
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! Clear sky coefficients
+      Aclr = 1.0 + d608*qt(:,:,k)
+      Bclr = d608*T(:,:,k)
+
+      ! Cloud sky coefficients
+      Acld = ( 1.0 - qt(:,:,k) + (1.0+d608)*(qsl + d622*T(:,:,k)*qslT) )  &
+             / ( 1.0 + gamma )
+      Bcld = cp_air_inv*hleff * Acld/T(:,:,k) - 1.0
+      
+      ! All sky
+      bhl(:,:,k) = (1.0-qa(:,:,k))*Aclr + qa(:,:,k)*Acld
+      bqt(:,:,k) = (1.0-qa(:,:,k))*Bclr + qa(:,:,k)*Bcld
+
+    end if
+
+  end do
+
+!====================================================================
+! --- Surface height     
+!====================================================================
+
+  zsfc(:,:) = zhalf(:,:,kxp)
+
+!====================================================================
+! --- d( )/dz operators: at full levels & at half levels          
+!====================================================================
+
+   dsdz(:,:,1:kx)  = 1.0 / ( zhalf(:,:,1:kx)  - zhalf(:,:,2:kxp) )
+  dsdzh(:,:,1:kxm) = 1.0 / ( zfull(:,:,1:kxm) - zfull(:,:,2:kx) )
+
+!====================================================================
+! --- Wind shear                 
+!====================================================================
+
+  xxm1(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( um(:,:,1:kxm) - um(:,:,2:kx) )
+  xxm2(:,:,1:kxm) = dsdzh(:,:,1:kxm)*( vm(:,:,1:kxm) - vm(:,:,2:kx) )
+
+  shear = xxm1 * xxm1 + xxm2 * xxm2
+
+!====================================================================
+! --- Buoyancy                 
+!====================================================================
+
+  if (buoync_option == 0) then
+
+    xxm1(:,:,1:kxm) = sv(:,:,1:kxm) - sv(:,:,2:kx) 
+    xxm2(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
+   
+    buoync = grav * dsdzh * xxm1 / xxm2
+
+  else
+
+    xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx) 
+    xxm2(:,:,1:kxm) = 0.5*( bhl(:,:,1:kxm) + bhl(:,:,2:kx) )
+    xxm3(:,:,1:kxm) = qt(:,:,1:kxm) - qt(:,:,2:kx) 
+    xxm4(:,:,1:kxm) = 0.5*( bqt(:,:,1:kxm) + bqt(:,:,2:kx) )
+    xxm5(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
+
+    buoync = grav * dsdzh / xxm5 * ( xxm1*xxm2 + xxm3*xxm4 )
+
+  end if
+
+!====================================================================
+! --- Some tke stuff
+!====================================================================
+
+  do k=1,kxp
+  do j=1,jx
+  do i=1,ix
+    if(tke(i,j,k) > 0.0) then
+      sqrte(i,j,k) = sqrt(tke(i,j,k))
+    else
+      sqrte(i,j,k) = 0.0
+    endif
+  enddo
+  enddo
+  enddo
+
+!====================================================================
+! --- Characteristic length scale                         
+!====================================================================
+
+  xx1(:,:,1:kxm) = sqrte(:,:,2:kx)*( pfull(:,:,2:kx) - pfull(:,:,1:kxm) )
+
+  do k = 1, kxm
+     xx2(:,:,k) = xx1(:,:,k)  * ( zhalf(:,:,k+1) - zsfc(:,:) )
+  end do
+
+  xx1(:,:,kx) =  sqrte(:,:,kxp) * ( phalf(:,:,kxp) - pfull(:,:,kx) )
+  xx2(:,:,kx) = xx1(:,:,kx) * z0(:,:)
+
+  x1 = sum( xx1, 3 )
+  x2 = sum( xx2, 3 )
+
+!---- should never be equal to zero ----
+  if (count(x1 <= 0.0) > 0) call error_mesg( ' tke_turb',  &
+                             'divid by zero, x1 <= 0.0', FATAL)
+  el0 = x2 / x1
+  el0 = el0 * (alpha_land*fracland + alpha_sea*(1.-fracland))
+
+  el0 = min( el0, el0max )
+  el0 = max( el0, el0min )
+
+!====================================================================
+! --- Master length scale 
+!====================================================================
+
+  do k = 1, kxm
+     xx1(:,:,k)  = vonkarm * ( zhalf(:,:,k+1) - zsfc(:,:) )
+  end do
+
+  x1(:,:) = vonkarm * z0(:,:) 
+  xx1(:,:,kx) = x1(:,:)
+
+  do k = 1,kx
+    el(:,:,k+1) = xx1(:,:,k) / ( 1.0 + xx1(:,:,k) / el0(:,:) )
+  end do
+    el(:,:,1)   = el0(:,:)
+
+!====================================================================
+! --- Mixing coefficients                     
+!====================================================================
+
+  Gh => xxm1; Sm => xxm2; Sh => xxm3
+
+  Gh(:,:,1:kxm) = - buoync(:,:,1:kxm) * (el(:,:,2:kx)*el(:,:,2:kx)) &
+                    / max( tke(:,:,2:kx), small)
+  Gh(:,:,1:kxm) = min( Gh(:,:,1:kxm), 0.0233 )
+
+  Sm = (alpha1+alpha2*Gh) / ((1.0+alpha3*Gh)*(1.0+alpha4*Gh))
+  Sh = alpha5 / (1.0+alpha3*Gh)
+
+  akm(:,:,1)    = 0.0
+  akm(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx)
+
+  akh(:,:,1)    = 0.0
+  akh(:,:,2:kx) = Sh * el(:,:,2:kx) * sqrte(:,:,2:kx)
+
+  nullify(Gh,Sm,Sh) 
+
+!-------------------------------------------------------------------
+! --- Bounds 
+!-------------------------------------------------------------------
+
+! --- Upper bound
+  akm = max( min( akm, akmax ), 0.0)
+  akh = max( min( akh, akmax ), 0.0)
+
+! --- Lower bound near surface
+
+  akmin = akmin_land*fracland + akmin_sea*(1.-fracland)
+  klim = kx - nk_lim + 1
+  do  k = klim,kx
+    akm(:,:,k) = max( akm(:,:,k), akmin(:,:) )
+    akh(:,:,k) = max( akh(:,:,k), akmin(:,:) )
+  end do
+
+!====================================================================
+! --- Prognosticate turbulence kinetic energy
+!====================================================================
+
+  aaa => xxm2; bbb => xxm3; ccc => xxm4; ddd => xxm5
+
+  kedt = delt * ke
+  bedt = delt / be
+
+!-------------------------------------------------------------------
+! --- Part of linearized energy dissipation term 
+!-------------------------------------------------------------------
+
+  xxm1(:,:,1:kxm) = bedt * sqrte(:,:,2:kx) / el(:,:,2:kx)
+
+!-------------------------------------------------------------------
+! --- Part of linearized vertical diffusion term
+!-------------------------------------------------------------------
+
+  xx1(:,:,1:kx) = el(:,:,2:kxp) * sqrte(:,:,2:kxp)
+
+  xx2(:,:,1)    = 0.5*  xx1(:,:,1)
+  xx2(:,:,2:kx) = 0.5*( xx1(:,:,2:kx) + xx1(:,:,1:kxm) )
+
+  xx1 = xx2 * dsdz
+
+!-------------------------------------------------------------------
+! --- Implicit time differencing for vertical diffusion 
+! --- and energy dissipation term 
+!-------------------------------------------------------------------
+ 
+  do k=1,kxm
+  do j=1,jx
+  do i=1,ix
+    aaa(i,j,k) = -kedt * xx1(i,j,k+1) * dsdzh(i,j,k)
+    ccc(i,j,k) = -kedt * xx1(i,j,k  ) * dsdzh(i,j,k)
+    bbb(i,j,k) =   1.0 - aaa(i,j,k  ) -   ccc(i,j,k) 
+    bbb(i,j,k) =         bbb(i,j,k  ) +  xxm1(i,j,k)
+    ddd(i,j,k) =         tke(i,j,k+1)
+  enddo
+  enddo
+  enddo
+
+! correction for vertical diffusion of tke surface boundary condition
+
+  do j = 1,jx
+  do i = 1,ix
+    ddd(i,j,kxm) = ddd(i,j,kxm) - aaa(i,j,kxm) * tke(i,j,kxp)
+  enddo
+  enddo
+
+! solve tridiagonal system
+
+  call tri_invert( xxm1, ddd, aaa, bbb, ccc ) 
+
+  nullify(aaa,bbb,ccc,ddd)
+
+!-------------------------------------------------------------------
+! --- Shear and buoyancy terms
+!-------------------------------------------------------------------
+
+  xxm2(:,:,1:kxm) =  delt*( akm(:,:,2:kx)* shear(:,:,1:kxm)    &
+                          - akh(:,:,2:kx)*buoync(:,:,1:kxm) )
+
+!-------------------------------------------------------------------
+! --- Update turbulence kinetic energy
+!-------------------------------------------------------------------
+
+  do j=1,jx
+  do i=1,ix
+    tke(i,j,1) = 0.0
+    do k=2,kx
+      tke(i,j,k) = xxm1(i,j,k-1) + xxm2(i,j,k-1)
+    enddo
+  enddo
+  enddo
+
+!====================================================================
+! --- Bound turbulence kinetic energy
+!====================================================================
+
+  tke(:,:,:) = min( tke(:,:,:), tkemax )
+  tke(:,:,:) = max( tke(:,:,:), tkemin )
+
+!====================================================================
+! --- Compute PBL depth
+!====================================================================
+
+  if ( pbl_depth_option == 0 .or. id_pblh_tke > 0) then
+    call tke_pbl_depth(zsfc,zhalf,tke,bstar,pblh_tke)
+  end if
+  if ( pbl_depth_option == 1 .or. id_pblh_parcel > 0) then
+    call parcel_pbl_depth(zsfc,zfull,T,qv,ql,qi,ustar,bstar,pblh_parcel)
+  end if
+
+  if ( pbl_depth_option == 0 ) then
+    h = pblh_tke
+  else if ( pbl_depth_option == 1 ) then
+    h = pblh_parcel
+  end if
+
+!====================================================================
+! --- Copy output tke back to tracer array
+!====================================================================
+
+  tr_tke(:,:,:) = tke(:,:,2:kxp)
+
+!--> h1g, 2015-08-11
+! calculate averaged TKE within PBL
+  do j=1,jx
+    do i=1,ix
+      tke_avg_tmp(i,j) = tke(i,j,kxp) * ( phalf(i,j,kxp)-pfull(i,j,kx) )
+      k_pbl        = kx
+      do k= kx, 2, -1
+        if( h(i,j) > zfull(i,j,k)-zsfc(i,j) ) then 
+          tke_avg_tmp(i,j) = tke_avg_tmp(i,j) + tke(i,j,k)*( pfull(i,j,k)-pfull(i,j,k-1) )      
+          k_pbl        = k-1
+        endif
+      enddo  
+      tke_avg_tmp(i,j) = tke_avg_tmp(i,j)/( phalf(i,j,kxp)-pfull(i,j,k_pbl))
+    enddo
+  enddo
+  tke_avg_tmp(:,:) = min(tke_avg_tmp(:,:), tkemax)
+  tke_avg_tmp(:,:) = max(tke_avg_tmp(:,:), tkemin)
+  if( present(tke_avg))  tke_avg = tke_avg_tmp
+!<-- h1g, 2015-08-11
+
+!====================================================================
+! --- Diagnostics
+!====================================================================
+
+  if ( id_h > 0 ) then
+    used = send_data ( id_h, h, time, is, js )
+  end if
+  if ( id_pblh_tke > 0 ) then
+    used = send_data ( id_pblh_tke, pblh_tke, time, is, js )
+  end if
+  if ( id_pblh_parcel > 0 ) then
+    used = send_data ( id_pblh_parcel, pblh_parcel, time, is, js )
+  end if
+
+!--> h1g, 2015-08-11
+  if ( id_tke_avg_pbl > 0 ) then
+    used = send_data ( id_tke_avg_pbl, tke_avg_tmp, time, is, js )
+  end if
+
+  if ( id_tke_turb > 0 ) then
+    used = send_data ( id_tke_turb, tr_tke, time, is, js, 1 )
+  end if
+!<-- h1g, 2015-08-11
+
+  end subroutine tke_turb_dev
+
+
+!#######################################################################
+
+  subroutine tke_turb_init(lonb, latb, axes, time, idim, jdim, kdim)
 
 !=======================================================================
 ! --- Initialize tke module
 !=======================================================================
+!---------------------------------------------------------------------
+! Arguments (Intent in)
+!---------------------------------------------------------------------
+!   latb, lonb       - latitudes and longitudes at grid box corners
+!   axes, time       - variables needed for netcdf diagnostics
+!   idim, jdim, kdim - size of the first 3 dimensions 
+
+ integer,              intent(in) :: idim, jdim, kdim, axes(4)
+ type(time_type),      intent(in) :: time
+ real, dimension(:,:), intent(in) :: lonb, latb
+
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
@@ -470,9 +1127,29 @@ module tke_turb_mod
     cvfq2 = 1.0 / bb1
       bcq = 0.5 * ( bb1**(2.0/3.0) )
 
-!-------------------------------------------------------------------
-      module_is_initialized = .true.
 !---------------------------------------------------------------------
+!--- Register diagnostic fields       
+!---------------------------------------------------------------------
+
+  id_h = register_diag_field (mod_name, 'zpbl', axes(1:2),     &
+       time, 'diagnosed PBL depth', 'meters',                  &
+       missing_value=missing_value )
+
+!---> h1g, 2015-08-11
+  id_tke_avg_pbl = register_diag_field (mod_name, 'tke_avg_pbl', axes(1:2),     &
+       time, 'diagnosed averaged tke within depth', 'm2/s2',                  &
+       missing_value=missing_value )
+
+  id_tke_turb = register_diag_field (mod_name, 'tke_turb', axes(1:3),     &
+       time, 'tke diagnosed from tr_tke', 'm2/s2',                  &
+       missing_value=missing_value )
+!<--- h1g, 2015-08-11
+
+!---------------------------------------------------------------------
+!--- Done with initialization
+!---------------------------------------------------------------------
+
+  module_is_initialized = .true.
 
 !=====================================================================
   end subroutine tke_turb_init
@@ -493,7 +1170,7 @@ module tke_turb_mod
 
 !#######################################################################
 
-  subroutine tke_pbl_depth(zsfc,zhalf,tke,h)
+  subroutine tke_pbl_depth(zsfc,zhalf,tke,bstar,h)
 
 !=======================================================================
 ! --- Estimate PBL depth from tke
@@ -501,6 +1178,7 @@ module tke_turb_mod
  
   real,    intent(in), dimension(:,:)   :: zsfc
   real,    intent(in), dimension(:,:,:) :: zhalf, tke
+  real,    intent(in), dimension(:,:)   :: bstar
   real,    intent(out),dimension(:,:)   :: h
 
 !=======================================================================
@@ -521,9 +1199,9 @@ module tke_turb_mod
   !     first falls beneath a critical value tkecrit.
   do j=1,jx
     do i=1,ix
-      if (tke(i,j,nlev) .gt. tkecrit) then
+      if (bstar(i,j).gt.0. .and. tke(i,j,nlev).gt.tkecrit) then
         k = nlev
-        do while (k.gt. 2 .and. tke(i,j,k-1).gt.tkecrit)
+        do while (k.gt.2 .and. tke(i,j,k-1).gt.tkecrit)
           k = k-1
         enddo
         h(i,j) = zhalf_ag(i,j,k) + &
@@ -538,6 +1216,77 @@ module tke_turb_mod
 !=====================================================================
 
   end subroutine tke_pbl_depth
+
+!#######################################################################
+
+  subroutine parcel_pbl_depth(zsfc,zfull,t,qv,ql,qi,ustar,bstar,h)
+
+!=======================================================================
+! --- Estimate PBL depth by parcel lifting
+!=======================================================================
+ 
+  real,    intent(in), dimension(:,:)   :: zsfc
+  real,    intent(in), dimension(:,:,:) :: zfull, t, qv, ql, qi
+  real,    intent(in), dimension(:,:)   :: ustar, bstar
+  real,    intent(out),dimension(:,:)   :: h
+
+!=======================================================================
+
+  real, dimension(size(zfull,1),size(zfull,2),size(zfull,3)) :: &
+    zfull_ag, slv, hleff
+  real, dimension(size(zfull,1),size(zfull,2)) :: &
+    svp, h1, ws, k_t_ref, parcelkick
+  integer:: i,j,k,ix,jx,nlev
+  
+  ! --- dimensions
+  ix = size( zfull, 1 )
+  jx = size( zfull, 2 )
+  nlev = size( zfull, 3 )
+
+  ! --- compute heights relative to surface
+  do k = 1,nlev
+    zfull_ag(:,:,k) = zfull(:,:,k) - zsfc(:,:)
+  end do
+
+  ! --- compute slv
+  hleff = (min(1.,max(0.,0.05*(t       -tfreeze+20.)))*hlv + &
+           min(1.,max(0.,0.05*(tfreeze -t          )))*hls)
+     
+  slv = cp_air*t + grav*zfull_ag - hleff*(ql + qi)
+  slv = slv*(1+d608*(qv+ql+qi))
+  slv = slv / cp_air
+
+
+  ! --- surface parcel properties
+  svp  = slv(:,:,nlev)
+  h1   = zfull_ag(:,:,nlev)
+  call mo_diff(h1, ustar, bstar, ws, k_t_ref)
+  ws = max(small,ws/vonkarm/h1)
+  svp  = svp*(1.+(parcel_buoy*ustar*bstar/grav/ws) )
+  parcelkick = svp*parcel_buoy*ustar*bstar/grav/ws
+
+  ! --- Determine pbl depth
+  do j=1,jx
+    do i=1,ix
+
+      if (bstar(i,j).gt.0. .and. svp(i,j).gt.slv(i,j,nlev)) then
+        k = nlev
+        do while (k.gt.2 .and. svp(i,j).gt.slv(i,j,k-1))
+          k = k-1
+        enddo
+        h(i,j) = zfull_ag(i,j,k) + &
+                 (zfull_ag(i,j,k-1)-zfull_ag(i,j,k)) &
+                 *(slv(i,j,k)-svp(i,j))/(slv(i,j,k)-slv(i,j,k-1))
+      else
+        h(i,j) = 0.                      
+      end if
+
+    enddo
+  enddo
+
+!=====================================================================
+
+  end subroutine parcel_pbl_depth
 
 !#######################################################################
 

@@ -291,7 +291,7 @@ INTEGER, PARAMETER  :: max_strat_pts = 5
 ! 1 / relative variance of sub-grid cloud water distribution
 ! see morrison and gettelman, 2007, J. Climate for details
   real                                :: qcvar = 2.
-
+  logical                             :: Single_Gaussion_pdf  = .false. ! h1g, 2015-07-22
 
 namelist / strat_cloud_nml /   &
        do_netcdf_restart, U00, u00_profile, rthresh, use_kk_auto, &
@@ -312,6 +312,7 @@ namelist / strat_cloud_nml /   &
 
        num_strat_pts, strat_pts, debugo, isamp, jsamp, ksamp,  &
        
-       qcvar
-
-
+       qcvar, &
+!-->h1g, 2015-07-22
+       Single_Gaussion_pdf
+!<--h1g, 2015-07-22
