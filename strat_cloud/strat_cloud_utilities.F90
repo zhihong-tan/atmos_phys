@@ -255,7 +255,8 @@ type strat_nml_type
   logical :: do_netcdf_restart, u00_profile, use_kk_auto,     &
              use_online_aerosol, use_sub_seasalt,             &
              eros_choice, super_choice, tracer_advec,         &
-             do_old_snowmelt, retain_cm3_bug, do_pdf_clouds, do_liq_num,      &
+             do_old_snowmelt, retain_cm3_bug, do_pdf_clouds,  &
+             Single_Gaussion_pdf,  do_liq_num,                &
              do_dust_berg, pdf_org, do_ice_nucl_wpdf, debugo, &
              mass_cons, do_hallet_mossop, activate_all_ice_always
 
