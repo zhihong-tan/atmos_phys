@@ -6,7 +6,7 @@ use fms_mod,               only: fms_init, &
                                  open_namelist_file, stdlog, stdout, &
                                  close_file, write_version_number, &
                                  error_mesg, mpp_error, &
-                                 check_nml_error, &
+                                 check_nml_error, file_exist, &
                                  FATAL, WARNING, NOTE
 use time_manager_mod,      only: time_type
 

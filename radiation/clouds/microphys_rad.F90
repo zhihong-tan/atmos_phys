@@ -2013,7 +2013,7 @@ real, dimension(:,:,:,:,:),     intent(inout)       ::  abscoeff
               endif
            enddo
            if (lsc_index == 0) call error_mesg ('microphys_rad_mod', &
-                  'when do_orig_donner_stoch is true large-scale clouds'&
+                  'when do_orig_donner_stoch is true large-scale clouds'//&
                   '/strat_cloud must be activated', FATAL)
            print *, 'do_stochastic_clouds is TRUE'
            print *, 'do_orig_donner_stoch is TRUE'
