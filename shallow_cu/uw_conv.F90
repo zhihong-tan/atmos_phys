@@ -1250,6 +1250,8 @@ contains
     dissipative_heat = 0.; rhos=0; lhflx=0; shflx=0; 
     hmint_old=hmint; hmint=0;
 
+    cbmf_shallow = 0.
+
     naer = size(asol%aerosol,4)
 
 !========Option for deep convection=======================================
