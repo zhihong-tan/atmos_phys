@@ -2353,20 +2353,16 @@ character(len=8)     :: gas_name ! name associated with current
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
       if (trim(data_source) == 'input') then
-        if (trim(ch4_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)')  rch4
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired ch4_n2o input file is not present', FATAL)
-          endif
-        else
+        if (trim(ch4_specification_type) == 'time_series') then
           gas_name = 'ch4 '
           call read_gas_timeseries (gas_name, ch4_value, &
                                     Ch4_time_list, time_varying_ch4, &
                                     ch4_dataset_entry, rch4)   
+        else if (trim(ch4_specification_type) == 'base_and_trend') then
+          rch4 = ch4_base_value
+        else 
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid ch4 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -2382,46 +2378,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') rch4
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor ch4 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of ch4 is obtained from the namelist
+!    variable ch4_base_value.
+!    Current, predicted values of ch4 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') rch4
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor ch4 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rch4 = ch4_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'ch4 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of ch4 is obtained
@@ -2455,9 +2424,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
 end subroutine define_ch4
-
 
 
 !#####################################################################
@@ -2534,21 +2501,16 @@ character(len=8)     :: gas_name ! name associated with current
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
       if (trim(data_source) == 'input') then
-        if (trim(n2o_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rn2o
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired ch4_n2o input file is not present', FATAL)
-          endif
-        else
+        if (trim(n2o_specification_type) == 'time_series') then
           gas_name = 'n2o '
           call read_gas_timeseries (gas_name, n2o_value,   &
                                     N2o_time_list, time_varying_n2o, &
                                     n2o_dataset_entry, rn2o)   
+        else if (trim(n2o_specification_type) == 'base_and_trend') then
+          rn2o = ch4_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid n2o specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -2564,48 +2526,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rn2o
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor n2o input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of n2o is obtained from the namelist
+!    variable n2o_base_value.
+!    Current, predicted values of n2o can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rn2o
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor n2o input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rn2o = ch4_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'n2o data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of n2o is obtained
@@ -2640,10 +2573,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_n2o
-
 
 
 !#####################################################################
@@ -2713,27 +2643,23 @@ character(len=8)     :: gas_name ! name associated with current
       if (trim(f11_specification_type) /= 'time_series') then
         allocate (F11_time_list(1))
         allocate (f11_value(1))
-     endif
+      endif
 
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
       if (trim(data_source) == 'input') then
-        if (trim(f11_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  rf11
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired cfc input file is not present', FATAL)
-          endif
-        else
+        if (trim(f11_specification_type) == 'time_series') then
           gas_name = 'f11 '
           call read_gas_timeseries (gas_name, f11_value,   &
                                     F11_time_list, time_varying_f11, &
                                     f11_dataset_entry, rf11)   
+        else if (trim(f11_specification_type) == 'base_and_trend') then
+          rf11 = f11_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f11 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -2749,46 +2675,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') rf11
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f11 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f11 is obtained from the namelist
+!    variable f11_base_value.
+!    Current, predicted values of f11 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') rf11
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f11 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf11 = f11_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f11 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f11 is obtained
@@ -2822,11 +2721,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f11
-
-
 
 
 !#####################################################################
@@ -2903,21 +2798,16 @@ character(len=8)     :: gas_name ! name associated with current
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
       if (trim(data_source) == 'input') then
-        if (trim(f12_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rf12
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired cfc input file is not present', FATAL)
-          endif
-        else
+        if (trim(f12_specification_type) == 'time_series') then
           gas_name = 'f12 '
           call read_gas_timeseries (gas_name, f12_value,   &
                                     F12_time_list, time_varying_f12, &
                                     f12_dataset_entry, rf12)
+        else if (trim(f12_specification_type) == 'base_and_trend') then
+          rf12 = f12_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f12 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -2933,48 +2823,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf12
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f12 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f12 is obtained from the namelist
+!    variable f12_base_value.
+!    Current, predicted values of f12 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf12
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f12 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf12 = f12_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f12 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f12 is obtained
@@ -3008,11 +2869,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f12
-
-
 
 
 !#####################################################################
@@ -3089,22 +2946,16 @@ character(len=8)     :: gas_name ! name associated with current
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
       if (trim(data_source) == 'input') then
-        if (trim(f113_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rf113
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired f113 input file is not present', FATAL)
-          endif
-        else
+        if (trim(f113_specification_type) == 'time_series') then
           gas_name = 'f113'
           call read_gas_timeseries (gas_name, f113_value,   &
                                   F113_time_list, time_varying_f113, &
                                   f113_dataset_entry, rf113 )
+        else if (trim(f113_specification_type) == 'base_and_trend') then
+          rf113 = f113_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f113 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -3120,50 +2971,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf113
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f113 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f113 is obtained from the namelist
+!    variable f113_base_value.
+!    Current, predicted values of f113 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf113
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f113 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf113 = f113_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f113 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f113 is obtained
@@ -3197,10 +3017,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f113
-
 
 
 !#####################################################################
@@ -3277,23 +3094,16 @@ character(len=8)     :: gas_name ! name associated with current
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
       if (trim(data_source) == 'input') then
-        if (trim(f22_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rf22
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired cfc input file is not present', FATAL)
-          endif
-        else
+        if (trim(f22_specification_type) == 'time_series') then
           gas_name = 'f22 '
           call read_gas_timeseries (gas_name, f22_value,  &
                                     F22_time_list, time_varying_f22, &
                                     f22_dataset_entry, rf22)
+        else if (trim(f22_specification_type) == 'base_and_trend') then
+          rf22 = f22_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f22 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -3309,52 +3119,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf22
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f22 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f22 is obtained from the namelist
+!    variable f22_base_value.
+!    Current, predicted values of f22 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf22
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f22 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf22 = f22_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f22 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f22 is obtained
@@ -3388,10 +3165,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f22
-
 
 
 !#####################################################################
@@ -3468,20 +3242,16 @@ character(len=8)     :: gas_name ! name associated with current
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
       if (trim(data_source) == 'input') then
-        if (trim(co2_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1co2') ) then
-            inrad = open_namelist_file ('INPUT/id1co2')
-            read (inrad, FMT = '(5e18.10)')  rco2
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired co2 input file is not present', FATAL)
-          endif
-        else
+        if (trim(co2_specification_type) == 'time_series') then
           gas_name = 'co2 '
           call read_gas_timeseries (gas_name, co2_value, &
                                     Co2_time_list, time_varying_co2, &
                                     co2_dataset_entry, rco2)
+        else if (trim(co2_specification_type) == 'base_and_trend') then
+          rco2 = co2_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid co2 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -3497,46 +3267,14 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1co2') ) then
-            inrad = open_namelist_file ('INPUT/id1co2')
-            read (inrad, FMT = '(5e18.10)') rco2
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor co2 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of co2 is obtained from the namelist
+!    variable co2_base_value.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1co2') ) then
-            inrad = open_namelist_file ('INPUT/id1co2')
-            read (inrad, FMT = '(5e18.10)') rco2
-            call close_file (inrad)
-            co2_for_last_tf_calc = rco2
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor co2 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rco2 = co2_base_value
         endif
 
 !-------------------------------------------------------------------
