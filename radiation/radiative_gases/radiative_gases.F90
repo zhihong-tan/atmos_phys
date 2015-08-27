@@ -2322,15 +2322,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rch4_ipcc_80  = 1.56900E-06
-      real       ::  rch4_ipcc_92  = 1.71400E-06
-      real       ::  rch4_icrccm   = 1.75000E-06
-      real       ::  rch4_ipcc_98  = 1.82120E-06
-
-
 
 
       integer    :: inrad   ! unit number for i/o
@@ -2340,10 +2331,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial ch4 mixing ratios to be used.
-!    'icrccm'     --> rch4_icrccm
-!    'ipcc80'     --> rch4_ipcc_80
-!    'ipcc92'     --> rch4_ipcc_92
-!    'ipcc98'     --> rch4_ipcc_98
 !    'input'      --> file INPUT/id1ch4n2o, record 1
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2361,23 +2348,11 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (ch4_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rch4   = rch4_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rch4   = rch4_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rch4   = rch4_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rch4   = rch4_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
+      if (trim(data_source) == 'input') then
         if (trim(ch4_specification_type) /= 'time_series') then
           if (file_exist ('INPUT/id1ch4n2o') ) then
             inrad = open_namelist_file ('INPUT/id1ch4n2o')
@@ -2529,16 +2504,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rn2o_ipcc_80  = 3.02620E-07
-      real       ::  rn2o_ipcc_92  = 3.11000E-07
-      real       ::  rn2o_icrccm   = 2.80000E-07
-      real       ::  rn2o_ipcc_98  = 3.16000E-07
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -2547,10 +2512,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial n2o mixing ratios to be used.
-!    'icrccm'     --> rn2o_icrccm
-!    'ipcc80'     --> rn2o_ipcc_80
-!    'ipcc92'     --> rn2o_ipcc_92
-!    'ipcc98'     --> rn2o_ipcc_98
 !    'input'      --> file INPUT/id1ch4n2o, record 2
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2568,23 +2529,11 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (n2o_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rn2o   = rn2o_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rn2o   = rn2o_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rn2o   = rn2o_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rn2o   = rn2o_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
+      if (trim(data_source) == 'input') then
         if (trim(n2o_specification_type) /= 'time_series') then
           if (file_exist ('INPUT/id1ch4n2o') ) then
             inrad = open_namelist_file ('INPUT/id1ch4n2o')
@@ -2741,16 +2690,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf11_icrccm   = 1.00000E-09
-      real       ::  rf11_ipcc_80  = 1.57500E-10
-      real       ::  rf11_ipcc_92  = 2.68000E-10
-      real       ::  rf11_ipcc_98  = 2.68960E-10
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -2759,10 +2698,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f11 mixing ratios to be used.
-!    'icrccm'     --> rf11_icrccm
-!    'ipcc80'     --> rf11_ipcc_80
-!    'ipcc92'     --> rf11_ipcc_92
-!    'ipcc98'     --> rf11_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 1
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2780,23 +2715,11 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (f11_value(1))
      endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rf11   = rf11_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf11   = rf11_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf11   = rf11_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf11   = rf11_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
+      if (trim(data_source) == 'input') then
         if (trim(f11_specification_type) /= 'time_series') then
           if (file_exist ('INPUT/id1cfc') ) then
             inrad = open_namelist_file ('INPUT/id1cfc')
@@ -2950,16 +2873,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf12_icrccm   = 1.00000E-09
-      real       ::  rf12_ipcc_80  = 2.72500E-10
-      real       ::  rf12_ipcc_92  = 5.03000E-10
-      real       ::  rf12_ipcc_98  = 5.31510E-10
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -2968,10 +2881,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f12 mixing ratios to be used.
-!    'icrccm'     --> rf12_icrccm
-!    'ipcc80'     --> rf12_ipcc_80
-!    'ipcc92'     --> rf12_ipcc_92
-!    'ipcc98'     --> rf12_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 2
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2989,23 +2898,11 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (f12_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rf12   = rf12_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf12   = rf12_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf12   = rf12_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf12   = rf12_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
+      if (trim(data_source) == 'input') then
         if (trim(f12_specification_type) /= 'time_series') then
           if (file_exist ('INPUT/id1cfc') ) then
             inrad = open_namelist_file ('INPUT/id1cfc')
@@ -3162,16 +3059,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf113_icrccm  = 1.00000E-09
-      real       ::  rf113_ipcc_80 = 2.31400E-11
-      real       ::  rf113_ipcc_92 = 8.20000E-11
-      real       ::  rf113_ipcc_98 = 8.58100E-11
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -3180,10 +3067,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f113 mixing ratios to be used.
-!    'icrccm'     --> rf113_icrccm
-!    'ipcc80'     --> rf113_ipcc_80
-!    'ipcc92'     --> rf113_ipcc_92
-!    'ipcc98'     --> rf113_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 3
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -3201,23 +3084,11 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (f113_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rf113   = rf113_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf113   = rf113_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf113   = rf113_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf113   = rf113_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
+      if (trim(data_source) == 'input') then
         if (trim(f113_specification_type) /= 'time_series') then
           if (file_exist ('INPUT/id1cfc') ) then
             inrad = open_namelist_file ('INPUT/id1cfc')
@@ -3376,16 +3247,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf22_icrccm   = 1.00000E-09
-      real       ::  rf22_ipcc_80  = 6.20200E-11
-      real       ::  rf22_ipcc_92  = 1.05000E-10
-      real       ::  rf22_ipcc_98  = 1.26520E-10
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -3394,10 +3255,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f22 mixing ratios to be used.
-!    'icrccm'     --> rf22_icrccm
-!    'ipcc80'     --> rf22_ipcc_80
-!    'ipcc92'     --> rf22_ipcc_92
-!    'ipcc98'     --> rf22_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 4
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -3415,23 +3272,11 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (f22_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rf22   = rf22_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf22   = rf22_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf22   = rf22_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf22   = rf22_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
+      if (trim(data_source) == 'input') then
         if (trim(f22_specification_type) /= 'time_series') then
           if (file_exist ('INPUT/id1cfc') ) then
             inrad = open_namelist_file ('INPUT/id1cfc')
@@ -3593,19 +3438,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rco2_icrccm   = 3.00000E-04
-      real       ::  rco2_ipcc_92  = 3.56000E-04
-      real       ::  rco2_ipcc_80  = 3.37320E-04
-      real       ::  rco2_ipcc_98  = 3.69400E-04
-      real       ::  rco2_330ppm   = 3.30000E-04
-      real       ::  rco2_660ppm   = 6.60000E-04
-      real       ::  rco2_720ppm   = 7.20000E-04
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -3614,12 +3446,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial co2 mixing ratios to be used.
-!    'icrccm'     --> rco2_icrccm
-!    'ipcc80'     --> rco2_ipcc_80
-!    'ipcc92'     --> rco2_ipcc_92
-!    'ipcc98'     --> rco2_ipcc_98
-!    '330ppm'     --> rco2_330ppm 
-!    '660ppm'     --> rco2_660ppm 
 !    'input'      --> file INPUT/id1co2, record 2
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -3637,32 +3463,11 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (co2_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rco2   = rco2_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rco2   = rco2_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rco2   = rco2_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rco2   = rco2_ipcc_98
-
-      else if (trim(data_source) == '330ppm') then
-        rco2   = rco2_330ppm
-
-      else if (trim(data_source) == '660ppm') then
-        rco2   = rco2_660ppm
-
-      else if (trim(data_source) == '720ppm') then
-        rco2   = rco2_720ppm
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
+      if (trim(data_source) == 'input') then
         if (trim(co2_specification_type) /= 'time_series') then
           if (file_exist ('INPUT/id1co2') ) then
             inrad = open_namelist_file ('INPUT/id1co2')
