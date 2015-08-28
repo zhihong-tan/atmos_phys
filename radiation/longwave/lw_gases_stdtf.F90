@@ -76,8 +76,7 @@ private        &
         gasins, gasint, coeint, intcoef_1d, intcoef_2d, intcoef_2d_10um, &
         intcoef_2d_std, interp_error, interp_error_r, &
         pathv1, rctrns, read_lbltfs, allocate_interp_arrays, &
-        deallocate_interp_arrays
-
+        deallocate_interp_arrays,read_lbltfs_old
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -85,13 +84,13 @@ private        &
 logical    :: do_co2_bug = .true.
 logical    :: do_coeintdiag = .false.
 integer    :: NSTDCO2LVLS = 496 ! # of levels at which lbl tfs exist
-integer    :: llco2 = 20  ! #no iterations in coeint for co2
-integer    :: llch4 = 20  ! #no iterations in coeint for ch4
-integer    :: lln2o = 20  ! #no iterations in coeint for n2o
+integer    :: llco2 = 1  ! #no iterations in coeint for co2
+integer    :: llch4 = 1  ! #no iterations in coeint for ch4
+integer    :: lln2o = 1  ! #no iterations in coeint for n2o
 
 
 namelist/lw_gases_stdtf_nml/ &
-                                   do_co2_bug,       &
+				   do_co2_bug,       &
                                    do_coeintdiag,    &
                                    NSTDCO2LVLS,      &
                                    llco2, llch4, lln2o
@@ -441,7 +440,13 @@ real,  dimension(:,:), intent(in) :: pref
       pd = pd*1.0E-02
       pd8 = pd8*1.0E-02
       plm =plm*1.0E-02           
-      plm8 = plm8*1.0E-02           
+      plm8 = plm8*1.0E-02
+           
+      if (do_co2_bug) then  !!! gives repeatabilty!!
+        llco2 = 20  
+        llch4 = 20  
+        lln2o = 20  
+      end if 
 
 !---------------------------------------------------------------------
 !
@@ -666,7 +671,8 @@ real,              intent(in)  :: ch4_vmr
 !    to (ch4_vmr) without interpolation. otherwise, interpolation
 !    to (ch4_vmr) will be performed, in rctrns.F
 !--------------------------------------------------------------------
-        if (ch4_vmr .LT. ch4_std_vmr(1) .OR.               &
+   
+	if (ch4_vmr .LT. ch4_std_vmr(1) .OR.               &
             ch4_vmr .GT. ch4_std_vmr(number_std_ch4_vmrs)) then
           call error_mesg ('lw_gases_stdtf_mod', &
                      'ch4 volume mixing ratio is out of range', FATAL)
@@ -721,9 +727,17 @@ real,              intent(in)  :: ch4_vmr
 !    (USSTD,1976; USSTD,1976 +- 25).
 !----------------------------------------------------------------------
         do nf = 1,nfreq_bands_sea_ch4
-          call read_lbltfs ('ch4', callrctrns_ch4, nstd_ch4_lo, &
-                            nstd_ch4_hi, nf, ntbnd_ch4, & 
-                            trns_std_hi_nf, trns_std_lo_nf )
+	      if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' .or. &
+              trim(Sealw99_control%linecatalog_form) == 'hitran_2008' ) then
+            call read_lbltfs_old ('ch4', callrctrns_ch4, nstd_ch4_lo, &
+                              nstd_ch4_hi, nf, ntbnd_ch4, & 
+                              trns_std_hi_nf, trns_std_lo_nf )
+          else
+	        call read_lbltfs ('ch4', callrctrns_ch4, nstd_ch4_lo, &
+                              nstd_ch4_hi, nf, ntbnd_ch4, & 
+                              trns_std_hi_nf, trns_std_lo_nf )
+	      endif 
+	  
           do_lyrcalc_ch4    = do_lyrcalc_ch4_nf(nf)
           do_lvlcalc_ch4    = do_lvlcalc_ch4_nf(nf)
           do_lvlctscalc_ch4 = do_lvlctscalc_ch4_nf(nf)
@@ -981,11 +995,18 @@ real,             intent(in)     ::  co2_vmr
 !    (USSTD,1976; USSTD,1976 +- 25) except for the 4.3 um band (nf=2)
 !    where the number is one.
 !---------------------------------------------------------------------
-          call read_lbltfs('co2',                               &
+          if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' .or. &
+              trim(Sealw99_control%linecatalog_form) == 'hitran_2008' ) then
+	        call read_lbltfs_old('co2',                               &
                            callrctrns_co2, nstd_co2_lo, nstd_co2_hi,  &
                            nf, ntbnd_co2,                          &
                            trns_std_hi_nf, trns_std_lo_nf )
- 
+          else
+	        call read_lbltfs('co2',                               &
+                           callrctrns_co2, nstd_co2_lo, nstd_co2_hi,  &
+                           nf, ntbnd_co2,                          &
+                           trns_std_hi_nf, trns_std_lo_nf )
+	      endif  
           do_lyrcalc_co2 = do_lyrcalc_co2_nf(nf)
           do_lvlcalc_co2 = do_lvlcalc_co2_nf(nf)
           do_lvlctscalc_co2 = do_lvlctscalc_co2_nf(nf)
@@ -1262,11 +1283,19 @@ real,             intent(in)   :: n2o_vmr
 !    in the 1996 SEA formulation, the profiles required are 3 
 !    (USSTD,1976; USSTD,1976 +- 25).
 !----------------------------------------------------------------------
-         call read_lbltfs('n2o',                                    &   
+          if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' .or. &
+              trim(Sealw99_control%linecatalog_form) == 'hitran_2008' ) then
+	        call read_lbltfs_old('n2o',                                    &   
                          callrctrns_n2o, nstd_n2o_lo, nstd_n2o_hi, nf,&
                          ntbnd_n2o,                             &
                          trns_std_hi_nf, trns_std_lo_nf )
-          do_lyrcalc_n2o = do_lyrcalc_n2o_nf(nf)
+	      else	
+            call read_lbltfs('n2o',                                    &   
+                         callrctrns_n2o, nstd_n2o_lo, nstd_n2o_hi, nf,&
+                         ntbnd_n2o,                             &
+                         trns_std_hi_nf, trns_std_lo_nf ) 	 
+          endif 
+	      do_lyrcalc_n2o = do_lyrcalc_n2o_nf(nf)
           do_lvlcalc_n2o = do_lvlcalc_n2o_nf(nf)
           do_lvlctscalc_n2o = do_lvlctscalc_n2o_nf(nf)
  
@@ -2231,7 +2260,7 @@ real, dimension(:,:), intent(out)   :: approx
 !  local variables
       
       real, dimension(:,:), allocatable  :: upathv
-      integer         :: k, kp, kp0
+      integer         :: k, kp, kp0, NSTDCO2LVLS_loop
 
 !--------------------------------------------------------------------
 !  local variables
@@ -2244,7 +2273,14 @@ real, dimension(:,:), intent(out)   :: approx
 !
 !---------------------------------------------------------------------
       allocate (upathv (NSTDCO2LVLS,NSTDCO2LVLS) )
-      do k=1,NSTDCO2LVLS
+      
+      if (do_co2_bug) then
+        NSTDCO2LVLS_loop = NSTDCO2LVLS
+      else 
+        NSTDCO2LVLS_loop = NSTDCO2LVLS -1 
+      end if 
+      
+      do k=1,NSTDCO2LVLS_loop  
         if (do_triangle) then
           kp0 = k + 1
         else
@@ -3661,7 +3697,7 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
       integer     :: k, ll
       integer     :: llmax
       real        :: check
-
+      real, dimension(size(trns_val,1), size(trns_val,2)) :: abs_val
 !-----------------------------------------------------------------
 !   local variables
 ! 
@@ -3747,9 +3783,18 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
 !--------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
+      abs_val = MAX(1.0E-20,1.0 - trns_val)
+      
       do k=3,NSTDCO2LVLS
-        r(k) = (1.0 -trns_val(k,k-2))/(1.0 -trns_val(k,k-1))
-
+       
+        if (do_co2_bug) then 
+	      r(k) = (1.0 -trns_val(k,k-2))/(1.0 -trns_val(k,k-1))
+	    else
+	      r(k) = abs_val(k,k-2)/abs_val(k,k-1)
+	        if (r(k) .le. 1.0) then
+              r(k) = 1.0
+            endif
+	    endif 
 !------------------------------------------------------------------
 !    all  a(**)b code replaced with exp(b*(alog(a)) code below for 
 !    overall ~ 10% speedup in standalone code -- no change in radiag 
@@ -3764,6 +3809,11 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
         xx(k) = 2.0*(upathb(k)*rexp(k) - upatha(k))/   &
                 (upathb(k)*upathb(k)*rexp(k) - upatha(k)*upatha(k))
         xx0(k) = xx(k)
+	    if (.not. do_co2_bug) then
+	      if (xx0(k) .le. 0.0) then
+            xx0(k) = 0.0
+          endif
+	    end if 
       enddo
 !!    do ll=1,20
       if (gas_type .eq. 'co2') then
@@ -3789,9 +3839,17 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
 !    file
 !           ca(k)=(1.0 - trns_val(k,k-2))**(uexp(k)/sexp(k))/upatha(k)
 !------------------------------------------------------------------
-            ca(k)=EXP((uexp(k)/sexp(k))*   &
+            if (do_co2_bug) then 
+	          ca(k)=EXP((uexp(k)/sexp(k))*   &
                   ALOG((1.0 - trns_val(k,k-2))))/upatha(k)
-          elseif (ftest2(k) .GE. 1.0E+8) then
+            else     
+              ca(k)=EXP((uexp(k)/sexp(k))*   &
+                  ALOG((abs_val(k,k-2))))/upatha(k)
+              f(k) = 0.0
+              fprime(k) = 1.0
+	        endif  
+	  
+	      elseif (ftest2(k) .GE. 1.0E+8) then
             xxlog(k) = (LOG(upatha(k)) - rexp(k)*LOG(upathb(k)))/  &
                         (rexp(k)-1.0 )
             xa(k) = EXP(xxlog(k))
@@ -3803,27 +3861,38 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
 !           ca(k) = (1.0 - trns_val(k,k-2))**(uexp(k)/sexp(k))/  &
 !                   (xxlog(k) + LOG(upatha(k)))
 !------------------------------------------------------------------
-            ca(k)=EXP((uexp(k)/sexp(k))*   &
-                  ALOG((1.0 - trns_val(k,k-2))))/   &
-                       (xxlog(k) + LOG(upatha(k)))
-          else
+            if (do_co2_bug) then 
+	          ca(k)=EXP((uexp(k)/sexp(k))*   &
+                 ALOG((1.0 - trns_val(k,k-2))))/   &
+                      (xxlog(k) + LOG(upatha(k)))
+	        else 
+              ca(k)=EXP((uexp(k)/sexp(k))*   &
+                  ALOG((abs_val(k,k-2))))/   &
+                       (xxlog(k) + LOG(upatha(k)))	       
+              f(k) = 0.0
+              fprime(k) = 1.0  
+            end if 
+	      else
             f1(k) = LOG(1.0 + xx(k)*upatha(k))
             f2(k) = LOG(1.0 + xx(k)*upathb(k))
             f(k) = f1(k)/f2(k) - rexp(k)
             fprime(k) = (f2(k)*upatha(k)/(1.0 + xx(k)*upatha(k)) -  &
                          f1(k)*upathb(k)/(1.0 + xx(k)*upathb(k)))/  &
                          (f2(k)*f2(k))
+	 
             if (do_co2_bug) then
               xx(k) = xx(k) - f(k)/fprime(k)
             else
               xxtest(k) = xx(k) - f(k)/fprime(k)
-              if (xxtest(k) .le. 0.0) then
+              if (xx(k) .lt. 0.0) then
+                xx(k) = xx0(k)
+              else if (xxtest(k) .lt. 0.0) then
                 xx(k) = xx0(k)
               else
                 xx(k) = xxtest(k)
               endif
             endif
-          endif
+	      endif 	
         enddo
       enddo
 
@@ -3844,10 +3913,15 @@ real, dimension(:),     intent(out) :: ca, xa, sexp, uexp
 
       do k=3,NSTDCO2LVLS
         if (ftest1(k) .GT. 1.0E-10 .AND. ftest2(k) .LT. 1.0E+8) then
-          ca(k) = (1.0 - trns_val(k,k-2))**(uexp(k)/sexp(k))/  &
-                  (LOG(1.0 + xx(k)*upatha(k)) + 1.0e-20)
+          if (do_co2_bug) then  
+	        ca(k) = (1.0 - trns_val(k,k-2))**(uexp(k)/sexp(k))/  &
+                    (LOG(1.0 + xx(k)*upatha(k)) + 1.0e-20)
+          else
+            ca(k) = (abs_val(k,k-2))**(uexp(k)/sexp(k))/  &
+                    (LOG(1.0 + xx(k)*upatha(k)) + 1.0e-20)
+	      endif 	  
           xa(k) = xx(k)
-        endif
+       endif
       enddo
 
 !----------------------------------------------------------------------
@@ -4315,9 +4389,10 @@ logical,                 intent(in)  :: do_triangle
             ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
           else
             ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
-            if (ca_hiv(kp,k) .le. 0.0) then
-              call error_mesg('lw_gases_stdtf_mod', &
-                              'intcoef_2d, ca_hiv le 0', FATAL)
+            if (ca_hiv(kp,k) .lt. 0.0) then
+          !               call error_mesg('lw_gases_stdtf_mod', &
+          !                    'intcoef_2d, ca_hiv set to 0' , NOTE)
+              ca_hiv(kp,k) = xa_hiv(kp,k) ** (-1./uexp_hiv(kp,k)) 
             endif
           endif
         enddo
@@ -4491,7 +4566,7 @@ logical,                 intent(in)  :: do_triangle
                    (sexp(indx_hiv(kp,k)+1) - sexp(indx_hiv(kp,k))) /  &
                    (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
                    (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
-           uexp_hiv(kp,k) = uexp(indx_hiv(kp,k)) +   &
+          uexp_hiv(kp,k) = uexp(indx_hiv(kp,k)) +   &
                    (uexp(indx_hiv(kp,k)+1) - uexp(indx_hiv(kp,k))) /  &
                    (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
                    (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
@@ -4500,11 +4575,11 @@ logical,                 intent(in)  :: do_triangle
 !    use 2-point interpolation: (indx_hiv of 1 or 2 are excluded
 !    since ca and xa were arbitrarily set to ca(3),xa(3))
 !--------------------------------------------------------------------
-            prod_hiv(kp,k) = caxa(indx_hiv(kp,k)) +   &
+          prod_hiv(kp,k) = caxa(indx_hiv(kp,k)) +   &
                (caxa(indx_hiv(kp,k)+1) - caxa(indx_hiv(kp,k))) /  &
                (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
                           (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
-            xa_hiv(kp,k) = xa(indx_hiv(kp,k)) +   &
+          xa_hiv(kp,k) = xa(indx_hiv(kp,k)) +   &
                (xa(indx_hiv(kp,k)+1) - xa(indx_hiv(kp,k))) /  &
                (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
                           (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
@@ -4512,19 +4587,18 @@ logical,                 intent(in)  :: do_triangle
 !---------------------------------------------------------------------
 !    compute ca
 !---------------------------------------------------------------------
-                   If (do_CO2_BUG) then 
-          ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
+          if (do_co2_bug) then
+            ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
           else
-          ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
-           if (ca_hiv(kp,k) .lt. 0.0) then
-            call error_mesg('lw_gases_stdtf_mod', &
-            'intcoef_2d, ca_hiv set to 0' , NOTE)
-                ca_hiv(kp,k) = 0.0
+            ca_hiv(kp,k) = prod_hiv(kp,k)/xa_hiv(kp,k)
+            if (ca_hiv(kp,k) .lt. 0.0) then
+          !               call error_mesg('lw_gases_stdtf_mod', &
+          !                    'intcoef_2d, ca_hiv set to 0' , NOTE)
+              ca_hiv(kp,k) = xa_hiv(kp,k) ** (-1./uexp_hiv(kp,k)) 
             endif
-          endif 
+          endif
         enddo
       enddo
- 
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
@@ -4783,16 +4857,6 @@ integer, dimension(:,:), intent(out)  :: indx_hiv, indx_lov
             prod_hiv(kp,k) =   &
               caxa(indx_hiv(kp,k)+1) +  &
                 delp_hi(kp)*(akp(kp) + delp_hi(kp)*bkp(kp))
-
-            !BW - temporary fix to by-pass co2 bug
-            !     use second-order interp
-            if (.not.do_co2_bug .and. prod_hiv(kp,k) .le. 0.0) then
-               prod_hiv(kp,k) = caxa(indx_hiv(kp,k)) +   &
-                   (caxa(indx_hiv(kp,k)+1) - caxa(indx_hiv(kp,k))) /  &
-                    (pa  (indx_hiv(kp,k)+1) - pa  (indx_hiv(kp,k))) *  &
-                            (press_hiv(kp,k) - pa(indx_hiv(kp,k)))
-            endif
- 
           else
             prod_hiv(kp,k) = caxa(indx_hiv(kp,k)) +   &
                  (caxa(indx_hiv(kp,k)+1) - caxa(indx_hiv(kp,k))) /  &
@@ -4807,7 +4871,16 @@ integer, dimension(:,:), intent(out)  :: indx_hiv, indx_lov
 !------------------------------------------------------------------
 !    compute ca
 !------------------------------------------------------------------
-          caintv(kp,k) = prod_hiv(kp,k)/xaintv(kp,k)
+          if (do_co2_bug) then
+            caintv(kp,k) = prod_hiv(kp,k)/xaintv(kp,k)
+          else
+            caintv(kp,k) = prod_hiv(kp,k)/xaintv(kp,k)
+            if (caintv(kp,k) .lt. 0.0) then
+              call error_mesg('lw_gases_stdtf_mod', &
+                              'intcoef_2d_std, caintv set to formula' , NOTE)
+              caintv(kp,k) = xaintv(kp,k) ** (-1./uexpintv(kp,k))
+            endif 
+	      endif 
         enddo  ! (kp loop)
       enddo   ! (k loop)
  
@@ -5638,8 +5711,8 @@ real,    dimension(:,:), intent(inout) :: trns_vmr
 !    only the co2 tf's for the higher standard concentration.
 !    the coeint call and steps (1-2) of part (1) need not be repeated.
 !---------------------------------------------------------------------
-
-!---------------------------------------------------------------------
+  if (co2_std_lo .GT. 0.0 .or. do_co2_bug) then
+ !---------------------------------------------------------------------
 !    3) derive the pressures for interpolation using Eqs. (8a-b)
 !       in Ref.(2).
 !---------------------------------------------------------------------
@@ -5723,8 +5796,20 @@ real,    dimension(:,:), intent(inout) :: trns_vmr
         enddo
         trns_vmr(k,k) = 1.0
       enddo
-      deallocate (trans_guess1)
-      deallocate (trans_guess2)
+
+    else
+      do k=1,NSTDCO2LVLS
+        do kp=k+1,NSTDCO2LVLS
+          trns_vmr(kp,k) = trans_guess1(kp,k)
+          trns_vmr(k,kp) = trns_vmr(kp,k)
+        enddo
+          trns_vmr(k,k) = 1.0
+      enddo
+    
+    endif
+
+deallocate (trans_guess1)
+deallocate (trans_guess2)   
 
 !---------------------------------------------------------------------
        
@@ -5733,7 +5818,7 @@ end subroutine rctrns
 
 
 !#####################################################################
-! <SUBROUTINE NAME="read_lbltfs">
+! <SUBROUTINE NAME="read_lbltfs_old">
 !  <OVERVIEW>
 !   Subroutine to read gas transmission functions from input file
 !  </OVERVIEW>
@@ -5746,7 +5831,7 @@ end subroutine rctrns
 !  </TEMPLATE>
 ! </SUBROUTINE>
 !
-subroutine read_lbltfs (gas_type, callrctrns, nstd_lo, nstd_hi, nf,   &
+subroutine read_lbltfs_old (gas_type, callrctrns, nstd_lo, nstd_hi, nf,   &
                         ntbnd, trns_std_hi_nf, trns_std_lo_nf )
  
 !--------------------------------------------------------------------
@@ -5770,17 +5855,17 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !--------------------------------------------------------------------
 !  local variables:
 
-      character(len=24) input_lblco2name(nfreq_bands_sea_co2,number_std_co2_vmrs)
-      character(len=24) input_lblch4name(nfreq_bands_sea_ch4,number_std_ch4_vmrs)
-      character(len=24) input_lbln2oname(nfreq_bands_sea_n2o,number_std_n2o_vmrs)
-      character(len=24) name_lo
-      character(len=24) name_hi
-      character(len=32) filename, ncname
+      character(len=80) input_lblco2name(nfreq_bands_sea_co2,number_std_co2_vmrs)
+      character(len=80) input_lblch4name(nfreq_bands_sea_ch4,number_std_ch4_vmrs)
+      character(len=80) input_lbln2oname(nfreq_bands_sea_n2o,number_std_n2o_vmrs)
+      character(len=80) name_lo
+      character(len=80) name_hi
+      character(len=80) filename, ncname
 
       real, dimension(:,:), allocatable  :: trns_in
 
       integer        :: n, nt, nrec_inhi, inrad, nrec_inlo
-
+    
       data (input_lblco2name(n,1),n=1,nfreq_bands_sea_co2)/            &
         'cnsco2_0_490850   ', 'cnsco2_0_490630   ', 'cnsco2_0_630700   ', &
         'cnsco2_0_700850   ', 'cnsco2_0_43um     ', 'cnsco2_0_9901070  ', &
@@ -5875,6 +5960,235 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
         'cnsn2o_600_12001400 ', 'cnsn2o_600_10701200 ', 'cnsn2o_600_560630   '/
       data (input_lbln2oname(n,9),n=1,nfreq_bands_sea_n2o)/           &
         'cnsn2o_800_12001400 ', 'cnsn2o_800_10701200 ', 'cnsn2o_800_560630   '/
+      
+!--------------------------------------------------------------------
+!  local variables:
+!
+!     input_lblco2name    
+!
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!
+!---------------------------------------------------------------------
+      if (gas_type .EQ. 'co2') then
+        name_lo = input_lblco2name(nf,nstd_lo)
+        name_hi = input_lblco2name(nf,nstd_hi)
+      endif
+      if (gas_type .EQ. 'ch4') then
+        name_lo = input_lblch4name(nf,nstd_lo)
+        name_hi = input_lblch4name(nf,nstd_hi)
+      endif
+      if (gas_type .EQ. 'n2o') then
+        name_lo = input_lbln2oname(nf,nstd_lo)
+        name_hi = input_lbln2oname(nf,nstd_hi)
+      endif
+
+!-------------------------------------------------------------------
+!    read in tfs of higher std gas concentration
+!-------------------------------------------------------------------
+      filename = 'INPUT/' // trim(name_hi)
+      ncname = trim(filename) // '.nc'
+      if(file_exist(trim(ncname))) then
+         if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
+              'Reading NetCDF formatted input data file: ' // ncname, NOTE)
+         call read_data(ncname, 'trns_std_nf', trns_std_hi_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
+      else
+         if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
+              'Reading native formatted input data file: ' // filename, NOTE)
+         allocate (trns_in(NSTDCO2LVLS,NSTDCO2LVLS))
+         inrad = open_direct_file (file=filename, action='read', &
+              recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
+         nrec_inhi = 0
+         do nt=1,ntbnd(nf)
+            nrec_inhi = nrec_inhi + 1
+            read (inrad, rec = nrec_inhi) trns_in
+            trns_std_hi_nf(:,:,nt) = trns_in(:,:)
+         enddo
+         call close_file (inrad)
+         deallocate (trns_in)
+      endif
+
+!--------------------------------------------------------------------
+!    if necessary, read in tfs of lower standard gas concentration
+!-------------------------------------------------------------------
+      if (callrctrns) then
+        filename = 'INPUT/' // trim(name_lo )
+        ncname = trim(filename) // '.nc'
+        if(file_exist(trim(ncname))) then
+           if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
+                'Reading NetCDF formatted input data file: ' // ncname, NOTE)
+           call read_data(ncname, 'trns_std_nf', trns_std_lo_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
+        else
+           if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
+                'Reading native formatted input data file: ' // filename, NOTE)
+           allocate (trns_in(NSTDCO2LVLS,NSTDCO2LVLS))
+           inrad = open_direct_file (file=filename, action='read', &
+                recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
+           nrec_inlo = 0
+           do nt=1,ntbnd(nf)
+              nrec_inlo = nrec_inlo + 1
+              read (inrad, rec = nrec_inlo) trns_in
+              trns_std_lo_nf(:,:,nt) = trns_in(:,:)
+           enddo
+           call close_file (inrad)
+           deallocate (trns_in)
+        endif
+     endif
+ 
+!--------------------------------------------------------------------
+
+
+end subroutine read_lbltfs_old
+
+
+
+
+!#####################################################################
+! <SUBROUTINE NAME="read_lbltfs">
+!  <OVERVIEW>
+!   Subroutine to read gas transmission functions from input file
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   Subroutine to read gas transmission functions from input file
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call read_lbltfs (gas_type, callrctrns, nstd_lo, nstd_hi, nf,   &
+!                     ntbnd, trns_std_hi_nf, trns_std_lo_nf )
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
+subroutine read_lbltfs (gas_type, callrctrns, nstd_lo, nstd_hi, nf,   &
+                        ntbnd, trns_std_hi_nf, trns_std_lo_nf )
+ 
+!--------------------------------------------------------------------
+!
+!--------------------------------------------------------------------
+
+character(len=*),           intent(in)   :: gas_type
+logical,                    intent(in)   :: callrctrns
+integer,                    intent(in)   :: nstd_lo, nstd_hi, nf
+integer, dimension(:),      intent(in)   :: ntbnd
+real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
+                                            trns_std_lo_nf
+
+!--------------------------------------------------------------------
+!  intent(in) variables:
+!
+!     gas_type
+!
+!---------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!  local variables:
+
+      character(len=80) input_lblco2name(nfreq_bands_sea_co2,number_std_co2_vmrs)
+      character(len=80) input_lblch4name(nfreq_bands_sea_ch4,number_std_ch4_vmrs)
+      character(len=80) input_lbln2oname(nfreq_bands_sea_n2o,number_std_n2o_vmrs)
+      character(len=80) name_lo
+      character(len=80) name_hi
+      character(len=80) filename, ncname
+
+      real, dimension(:,:), allocatable  :: trns_in
+
+      integer        :: n, nt, nrec_inhi, inrad, nrec_inlo, CO2SORT
+      
+     data (input_lblco2name(n,1),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_0_HITRAN2012_490850_495lyr', 'cns_co2_0_HITRAN2012_490630_495lyr', 'cns_co2_0_HITRAN2012_630700_495lyr', &
+        'cns_co2_0_HITRAN2012_700850_495lyr', 'cns_co2_0_43um', 'cns_co2_0_HITRAN2012_9901070_495lyr', &
+        'cns_co2_0_HITRAN2012_900990_495lyr', 'cns_co2_0_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,2),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_165_HITRAN2012_490850_495lyr', 'cns_co2_165_HITRAN2012_490630_495lyr', 'cns_co2_165_HITRAN2012_630700_495lyr', &
+        'cns_co2_165_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_165_HITRAN2012_9901070_495lyr', &
+        'cns_co2_165_HITRAN2012_900990_495lyr', 'cns_co2_165_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,3),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_300_HITRAN2012_490850_495lyr', 'cns_co2_300_HITRAN2012_490630_495lyr', 'cns_co2_300_HITRAN2012_630700_495lyr', &
+        'cns_co2_300_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_300_HITRAN2012_9901070_495lyr', &
+        'cns_co2_300_HITRAN2012_900990_495lyr', 'cns_co2_300_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,4),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_330_HITRAN2012_490850_495lyr', 'cns_co2_330_HITRAN2012_490630_495lyr', 'cns_co2_330_HITRAN2012_630700_495lyr', &
+        'cns_co2_330_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_330_HITRAN2012_9901070_495lyr', &
+        'cns_co2_330_HITRAN2012_900990_495lyr', 'cns_co2_330_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,5),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_348_HITRAN2012_490850_495lyr', 'cns_co2_348_HITRAN2012_490630_495lyr', 'cns_co2_348_HITRAN2012_630700_495lyr', &
+        'cns_co2_348_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_348_HITRAN2012_9901070_495lyr', &
+        'cns_co2_348_HITRAN2012_900990_495lyr', 'cns_co2_348_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,6),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_356_HITRAN2012_490850_495lyr', 'cns_co2_356_HITRAN2012_490630_495lyr', 'cns_co2_356_HITRAN2012_630700_495lyr', &
+        'cns_co2_356_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_356_HITRAN2012_9901070_495lyr', &
+        'cns_co2_356_HITRAN2012_900990_495lyr', 'cns_co2_356_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,7),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_360_HITRAN2012_490850_495lyr', 'cns_co2_360_HITRAN2012_490630_495lyr', 'cns_co2_360_HITRAN2012_630700_495lyr', &
+        'cns_co2_360_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_360_HITRAN2012_9901070_495lyr', &
+        'cns_co2_360_HITRAN2012_900990_495lyr', 'cns_co2_360_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,8),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_600_HITRAN2012_490850_495lyr', 'cns_co2_600_HITRAN2012_490630_495lyr', 'cns_co2_600_HITRAN2012_630700_495lyr', &
+        'cns_co2_600_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_600_HITRAN2012_9901070_495lyr', &
+        'cns_co2_600_HITRAN2012_900990_495lyr', 'cns_co2_600_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,9),n=1,nfreq_bands_sea_co2)/            &
+        'cns_co2_660_HITRAN2012_490850_495lyr', 'cns_co2_660_HITRAN2012_490630_495lyr', 'cns_co2_660_HITRAN2012_630700_495lyr', &
+        'cns_co2_660_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_660_HITRAN2012_9901070_495lyr', &
+        'cns_co2_660_HITRAN2012_900990_495lyr', 'cns_co2_660_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,10),n=1,nfreq_bands_sea_co2)/           &
+        'cns_co2_1320_HITRAN2012_490850_495lyr', 'cns_co2_1320_HITRAN2012_490630_495lyr', 'cns_co2_1320_HITRAN2012_630700_495lyr', &
+        'cns_co2_1320_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_1320_HITRAN2012_9901070_495lyr', &
+        'cns_co2_1320_HITRAN2012_900990_495lyr', 'cns_co2_1320_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,11),n=1,nfreq_bands_sea_co2)/           &
+        'cns_co2_1600_HITRAN2012_490850_495lyr', 'cns_co2_1600_HITRAN2012_490630_495lyr', 'cns_co2_1600_HITRAN2012_630700_495lyr', &
+        'cns_co2_1600_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_1600_HITRAN2012_9901070_495lyr', &
+        'cns_co2_1600_HITRAN2012_900990_495lyr', 'cns_co2_1600_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,12),n=1,nfreq_bands_sea_co2)/           &
+        'cns_co2_2000_HITRAN2012_490850_495lyr', 'cns_co2_2000_HITRAN2012_490630_495lyr', 'cns_co2_2000_HITRAN2012_630700_495lyr', &
+        'cns_co2_2000_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_2000_HITRAN2012_9901070_495lyr', &
+        'cns_co2_2000_HITRAN2012_900990_495lyr', 'cns_co2_2000_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,13),n=1,nfreq_bands_sea_co2)/           &
+        'cns_co2_5000_HITRAN2012_490850_495lyr', 'cns_co2_5000_HITRAN2012_490630_495lyr', 'cns_co2_5000_HITRAN2012_630700_495lyr', &
+        'cns_co2_5000_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_5000_HITRAN2012_9901070_495lyr', &
+        'cns_co2_5000_HITRAN2012_900990_495lyr', 'cns_co2_5000_HITRAN2012_10701200_495lyr'  /
+      data (input_lblco2name(n,14),n=1,nfreq_bands_sea_co2)/           &
+        'cns_co2_10000_HITRAN2012_490850_495lyr', 'cns_co2_10000_HITRAN2012_490630_495lyr', 'cns_co2_10000_HITRAN2012_630700_495lyr', &
+        'cns_co2_10000_HITRAN2012_700850_495lyr', 'cnsco2_0_43um', 'cns_co2_10000_HITRAN2012_9901070_495lyr', &
+        'cns_co2_10000_HITRAN2012_900990_495lyr', 'cns_co2_10000_HITRAN2012_10701200_495lyr'  /
+ 
+      data (input_lblch4name(n,1),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_0_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,2),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_300_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,3),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_700_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,4),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_1250_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,5),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_1750_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,6),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_2250_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,7),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_2800_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,8),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_4000_HITRAN2012_12001400_495lyr'/
+      data (input_lblch4name(n,9),n=1,nfreq_bands_sea_ch4)/          &
+        'cns_ch4_6000_HITRAN2012_12001400_495lyr'/
+ 
+      data (input_lbln2oname(n,1),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_0_HITRAN2012_12001400_495lyr', 'cns_n2o_0_HITRAN2012_10701200_495lyr', 'cns_n2o_0_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,2),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_180_HITRAN2012_12001400_495lyr', 'cns_n2o_180_HITRAN2012_10701200_495lyr', 'cns_n2o_180_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,3),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_275_HITRAN2012_12001400_495lyr', 'cns_n2o_275_HITRAN2012_10701200_495lyr', 'cns_n2o_275_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,4),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_310_HITRAN2012_12001400_495lyr', 'cns_n2o_310_HITRAN2012_10701200_495lyr', 'cns_n2o_310_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,5),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_340_HITRAN2012_12001400_495lyr', 'cns_n2o_340_HITRAN2012_10701200_495lyr', 'cns_n2o_340_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,6),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_375_HITRAN2012_12001400_495lyr', 'cns_n2o_375_HITRAN2012_10701200_495lyr', 'cns_n2o_375_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,7),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_500_HITRAN2012_12001400_495lyr', 'cns_n2o_500_HITRAN2012_10701200_495lyr', 'cns_n2o_500_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,8),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_600_HITRAN2012_12001400_495lyr', 'cns_n2o_600_HITRAN2012_10701200_495lyr', 'cns_n2o_600_HITRAN2012_560630_495lyr'/
+      data (input_lbln2oname(n,9),n=1,nfreq_bands_sea_n2o)/           &
+        'cns_n2o_800_HITRAN2012_12001400_495lyr', 'cns_n2o_800_HITRAN2012_10701200_495lyr', 'cns_n2o_800_HITRAN2012_560630_495lyr'/
+      
+ 
  
 !--------------------------------------------------------------------
 !  local variables:
