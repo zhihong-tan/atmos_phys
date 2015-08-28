@@ -107,7 +107,7 @@ real :: &
       w_h2o, beta, f_a, in_temp
 real, parameter :: &
       GRAV = 9.80,              &  ! acceleration due to gravity [m/s2]
-      RDGAS = 287.04,           &  ! gas constant for dry air [J/kg/deg]
+!      RDGAS = 287.04,           &  ! gas constant for dry air [J/kg/deg]
       AVOGNO = 6.023000E+23,    &  ! Avogadro's number
       inv298p15 = 1./298.15,    &  ! 1/K
       cm3_2_m3 = 1.e-6             ! m3/cm3
@@ -188,7 +188,7 @@ if( Lgas .or. Laerosol ) then
       n_air = rho_air * (AVOGNO/mw_air) * cm3_2_m3 ! molec/cm3
       if (Lgas) then
 ! Calculate the temperature dependent Henry's Law constant
-         temp_factor = 1/T-inv298p15
+         temp_factor = 1./T-inv298p15
          Htemp = Henry_constant * exp( Henry_variable*temp_factor )
          f_a = Htemp * pmid * xliq
          scav_factor = f_a / ( 1.+f_a )

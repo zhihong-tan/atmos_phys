@@ -464,7 +464,7 @@ integer,                         intent(out) :: error
                   cell_liquid_eff_diam_land(i,j,k) = 2.0*(1.0e6)*  &
                                  (3.0*(pfull(i,j,k)/    &
                             (Param%rdgas*temp(i,j,k)))*cuql(i,j,k)/   &
-                     (4*Param%pie*Param%dens_h2o*Param%n_land))**(1./3.) 
+                     (4.0*Param%pie*Param%dens_h2o*Param%n_land))**(1./3.) 
                   cell_droplet_number_land(i,j,k) = Param%n_land/  &
                                 (pfull(i,j,k)/(Param%rdgas*temp(i,j,k)))
                 endif
@@ -493,7 +493,7 @@ integer,                         intent(out) :: error
                   cell_liquid_eff_diam_ocean(i,j,k) = 2.0*(1.0e6)*  &
                          (3.0*(pfull(i,j,k)/     &
                                (Param%rdgas*temp(i,j,k)))*cuql(i,j,k)/  &
-                    (4*Param%pie*Param%DENS_H2O*Param%n_ocean))**(1./3.)
+                    (4.0*Param%pie*Param%DENS_H2O*Param%n_ocean))**(1./3.)
                   cell_droplet_number_ocean(i,j,k) = Param%n_ocean/  &
                                (pfull(i,j,k)/(Param%rdgas*temp(i,j,k)))
                 endif

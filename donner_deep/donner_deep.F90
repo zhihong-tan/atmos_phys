@@ -214,12 +214,12 @@ real,                       &
                         ! sion of cloud to rainwater begins  [ g / m**3 ]
 real,                       &
   parameter                 &
-             ::  TFRE = 258.  
+             ::  TFRE = 263.0
                         ! temperature at which cloud liquid begins to 
                         ! freeze [ deg K ]
 real,                       &
   parameter                 &
-             ::  DFRE = 10.   
+             ::  DFRE = 15.0
                         ! range of temperature between the onset and 
                         ! completion of freezing  [ deg K ]
 real,                       &
@@ -231,12 +231,18 @@ real,                       &
                         ! [ Pa ]
 integer,                   &
   parameter         &
-             ::  ISTART = 1    
+             ::  ISTART = 1
                         ! index of level in cape grid from which the 
                         ! parcel originates for the cape calculations
 real,                       &
   parameter                 &
-             ::  TMIN = 154.       
+             ::  MOST_UNSTABLE_DEPTH = 300.0E02
+                        ! Depth of the layer used to calculate the maximum 
+                        ! Equivalent Potential Temperature to determine which 
+                        ! level the parcel originates for the cape calculations.
+real,                       &
+  parameter                 &
+             ::  TMIN = 154.
                         ! cape calculations are terminated when parcel 
                         ! temperature goes below TMIN [ deg K ]
 real,                       &
@@ -251,7 +257,7 @@ real,                       &
                         ! (from Leary and Louze, 1980) [ Pa / sec ]
 real,                       &
   parameter                 &
-             ::  TPRIME_MESO_UPDRFT = 1.0    
+             ::  TPRIME_MESO_UPDRFT = 1.0
                         ! assumed temperature excess of mesoscale updraft
                         ! over its environment [ deg K ]
 real,                       &
@@ -266,21 +272,21 @@ real,                       &
                         ! fumction [ Pa ]
 real,                       &
   parameter                 &
-             ::  R_CONV_LAND  = 10.0    
+             ::  R_CONV_LAND  = 10.0
                         ! assumed convective cloud droplet radius over 
                         ! land [ microns ]   
 real,                       &
   parameter                 &
-             ::  R_CONV_OCEAN = 16.0  
+             ::  R_CONV_OCEAN = 16.0
                         ! assumed convective cloud droplet radius over 
                         ! ocean [ microns ]   
 real,                       &
   parameter                 &
-             ::  N_LAND = 600*1.0e6 
+             ::  N_LAND = 600.0e6
                         ! assumed droplet number conc over land (m**-3)
 real,                       &
   parameter                 &
-             ::  N_OCEAN = 150*1.0e6 
+             ::  N_OCEAN = 150.0e6
                         ! assumed droplet number conc over ocean (m**-3)
 real,                       &
   parameter                 &
@@ -770,23 +776,23 @@ logical,                         intent(in), optional :: &
 !    these are stored in the derived-type variable Don_save. see 
 !    donner_types.h for description of these variables.
 !--------------------------------------------------------------------
-      allocate ( Don_save%cemetf             (idf, jdf, nlev ) )
-      allocate ( Don_save%lag_temp           (idf, jdf, nlev ) )
-      allocate ( Don_save%lag_vapor          (idf, jdf, nlev ) )
-      allocate ( Don_save%lag_press          (idf, jdf, nlev ) )
-      allocate ( Don_save%cememf             (idf, jdf, nlev ) )
-      allocate ( Don_save%mass_flux          (idf, jdf, nlev ) )
-      allocate ( Don_save%mflux_up           (idf, jdf, nlev ) )
-      allocate ( Don_save%cell_up_mass_flux  (idf, jdf, nlev+1 ) )
-      allocate ( Don_save%det_mass_flux      (idf, jdf, nlev ) )
-      allocate ( Don_save%dql_strat          (idf, jdf, nlev ) )
-      allocate ( Don_save%dqi_strat          (idf, jdf, nlev ) )
-      allocate ( Don_save%dqa_strat          (idf, jdf, nlev ) )
-      allocate ( Don_save%humidity_area      (idf, jdf, nlev ) )
-      allocate ( Don_save%humidity_factor    (idf, jdf, nlev ) )
-      allocate ( Don_save%tracer_tends       (idf, jdf, nlev, ntracers))
-      allocate ( Don_save%parcel_disp        (idf, jdf ) )
-      allocate ( Don_save%tprea1             (idf, jdf ) )
+      allocate ( Don_save%cemetf           (idf, jdf, nlev ) )         ; Don_save%cemetf           (:,:,:) = 0.0
+      allocate ( Don_save%lag_temp         (idf, jdf, nlev ) )         ; Don_save%lag_temp         (:,:,:) = 0.0
+      allocate ( Don_save%lag_vapor        (idf, jdf, nlev ) )         ; Don_save%lag_vapor        (:,:,:) = 0.0
+      allocate ( Don_save%lag_press        (idf, jdf, nlev ) )         ; Don_save%lag_press        (:,:,:) = 0.0
+      allocate ( Don_save%cememf           (idf, jdf, nlev ) )         ; Don_save%cememf           (:,:,:) = 0.0
+      allocate ( Don_save%mass_flux        (idf, jdf, nlev ) )         ; Don_save%mass_flux        (:,:,:) = 0.0
+      allocate ( Don_save%mflux_up         (idf, jdf, nlev ) )         ; Don_save%mflux_up         (:,:,:) = 0.0
+      allocate ( Don_save%cell_up_mass_flux(idf, jdf, nlev+1 ) )       ; Don_save%cell_up_mass_flux(:,:,:) = 0.0
+      allocate ( Don_save%det_mass_flux    (idf, jdf, nlev ) )         ; Don_save%det_mass_flux    (:,:,:) = 0.0
+      allocate ( Don_save%dql_strat        (idf, jdf, nlev ) )         ; Don_save%dql_strat        (:,:,:) = 0.0
+      allocate ( Don_save%dqi_strat        (idf, jdf, nlev ) )         ; Don_save%dqi_strat        (:,:,:) = 0.0
+      allocate ( Don_save%dqa_strat        (idf, jdf, nlev ) )         ; Don_save%dqa_strat        (:,:,:) = 0.0
+      allocate ( Don_save%humidity_area    (idf, jdf, nlev ) )         ; Don_save%humidity_area    (:,:,:) = 0.0
+      allocate ( Don_save%humidity_factor  (idf, jdf, nlev ) )         ; Don_save%humidity_factor  (:,:,:) = 0.0
+      allocate ( Don_save%tracer_tends     (idf, jdf, nlev, ntracers)) ; Don_save%tracer_tends     (:,:,:,:) = 0.0
+      allocate ( Don_save%parcel_disp      (idf, jdf ) )               ; Don_save%parcel_disp      (:,:) = 0.0
+      allocate ( Don_save%tprea1           (idf, jdf ) )               ; Don_save%tprea1           (:,:) = 0.0
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
@@ -918,6 +924,7 @@ logical,                         intent(in), optional :: &
       Param%meso_down_evap_fraction = Nml%MESO_DOWN_EVAP_FRACTION
       Param%meso_up_evap_fraction   = Nml%MESO_UP_EVAP_FRACTION
       Param%istart                  = ISTART
+      Param%most_unstable_depth     = MOST_UNSTABLE_DEPTH
 
       Param%max_entrainment_constant_gate =   &
                                            MAX_ENTRAINMENT_CONSTANT_GATE
@@ -1098,7 +1105,7 @@ subroutine donner_deep (is, ie, js, je, dt, temp, mixing_ratio, pfull, &
                         meso_cld_frac, meso_liq_amt, &
                         meso_liq_size, meso_ice_amt, meso_ice_size,  &
                         meso_droplet_number, &
-                        nsum, precip, delta_temp, delta_vapor, detf, &
+                        nsum, maxTe_launch_level, precip, delta_temp, delta_vapor, detf, &
                         uceml_inter, mtot, mfluxup, mhalf_3d, &
                         donner_humidity_area,    &
                         donner_humidity_factor, qtrtnd, donner_wetdep,&
@@ -1159,7 +1166,7 @@ real, dimension(:,:,:),       intent(inout) :: cell_cld_frac,  &
                                                meso_ice_amt,   &
                                                meso_ice_size, &
                                            meso_droplet_number
-integer, dimension(:,:),      intent(inout) :: nsum
+integer, dimension(:,:),      intent(inout) :: nsum, maxTe_launch_level
 real, dimension(:,:),         intent(out)   :: precip, &
                                                lheat_precip, &
                                                vert_motion, &
@@ -1283,6 +1290,10 @@ real, dimension(:,:,:),       intent(out),               &
 !                    [ microns ]
 !     nsum           number of time levels over which the above variables
 !                    have so far been summed
+!     maxTe_launch_level
+!                    The level, corresponding to the level of maximum Thetae,
+!                    at which the parcel is launched to calculate CAPE and CIN. 
+!                    This may be returned as Nml%launch_level (to reproduce old results).
 !
 !--------------------------------------------------------------------
 
@@ -1467,6 +1478,11 @@ real, dimension(:,:,:),       intent(out),               &
       Don_budgets%n_precip_paths      = N_PRECIP_PATHS     
       Don_budgets%n_precip_types      = N_PRECIP_TYPES     
 
+!     For reproducibility of previous results 
+      if ( Nml%parcel_launch_level > -1 ) then 
+        maxTe_launch_level = Nml%parcel_launch_level
+      endif
+
 !-----------------------------------------------------------------------
 !    call the kernel subroutine don_d_donner_deep_k to obtain the
 !    output fields resulting from the donner deep convection parameter-
@@ -1474,25 +1490,44 @@ real, dimension(:,:,:),       intent(out),               &
 !-----------------------------------------------------------------------
       call don_d_donner_deep_k   &
            (is, ie, js, je, isize, jsize, nlev_lsm, NLEV_HIRES, ntr, me,&
-            cloud_tracers_present,  cbmf,    &
-            dt, Param, Nml, temp, mixing_ratio, pfull,    &
-            phalf, zfull, zhalf, omega, pblht, tkemiz, qstar, cush, coldT,&
-            qlin_arg, qiin_arg, qain_arg, land, sfc_sh_flux,  &
-            sfc_vapor_flux,    &
-            tr_flux, tracers, cell_cld_frac, cell_liq_amt,      &
-            cell_liq_size, cell_ice_amt, cell_ice_size,   &
-            cell_droplet_number, meso_cld_frac,  &
-            meso_liq_amt, meso_liq_size, meso_ice_amt, meso_ice_size,  &
-            meso_droplet_number, &
-            nsum, precip, delta_temp, delta_vapor, detf, uceml_inter,  &
-            mtot, mfluxup, donner_humidity_area,  &
-            donner_humidity_factor, &
-            total_precip, temperature_forcing, moisture_forcing,    &
-            parcel_rise, delta_ql_arg, delta_qi_arg, delta_qa_arg,   &
-            qtrtnd,         &
-            calc_conv_on_this_step, mhalf_3d, ermesg, error, Initialized, Col_diag,   &
+            cloud_tracers_present,  cbmf, dt, Param, Nml, &
+            temp, mixing_ratio, pfull, phalf, zfull, zhalf, &
+            omega, pblht, tkemiz, qstar, cush, coldT, &
+            qlin_arg, qiin_arg, qain_arg, &
+            land, sfc_sh_flux, sfc_vapor_flux, tr_flux, &
+            tracers, cell_cld_frac, cell_liq_amt, cell_liq_size, &
+            cell_ice_amt, cell_ice_size,  cell_droplet_number, &
+            meso_cld_frac, meso_liq_amt, meso_liq_size, &
+            meso_ice_amt, meso_ice_size, meso_droplet_number, &
+            nsum, maxTe_launch_level, &
+            precip, delta_temp, delta_vapor, detf, uceml_inter, mtot, mfluxup, &
+            donner_humidity_area, donner_humidity_factor, total_precip, &
+            temperature_forcing, moisture_forcing, parcel_rise, &
+            delta_ql_arg, delta_qi_arg, delta_qa_arg, qtrtnd,  &
+            calc_conv_on_this_step, mhalf_3d, ermesg, error, &
+            Initialized, Col_diag, &
             Don_rad, Don_conv, Don_cape, Don_cem, Don_save, &!miz
             sd, Uw_p, ac, cp, ct,  Don_budgets)
+
+!----------------------------------------------------------------------
+!    determine if an error message was returned from the kernel routine.
+!    if so, process the error message.
+!!!  HOW TO DISTINGUISH FATAL, WARNING, NOTE ??
+!    FOR NOW, ALL messages considered FATAL.
+!----------------------------------------------------------------------
+      if (error /= 0) then
+        if (running_in_fms) then
+          call fms_error_mesg (ermesg) 
+        else
+
+!---------------------------------------------------------------------
+!    appropriate error processing code should be added in subroutine
+!    nonfms_error_mesg. currently an error message is printed and a 
+!    stop command issued (dangerous on parallel machines!).
+!---------------------------------------------------------------------
+          call nonfms_error_mesg (ermesg) 
+        endif
+      endif
 
 !----------------------------------------------------------------------
 !    if strat_cloud is active, move the output arguments into the proper
@@ -1514,26 +1549,6 @@ real, dimension(:,:,:),       intent(out),               &
       endif
       liquid_precip = Don_budgets%liq_prcp
       frozen_precip = Don_budgets%frz_prcp
-
-!----------------------------------------------------------------------
-!    determine if an error message was returned from the kernel routine.
-!    if so, process the error message.
-!!!  HOW TO DISTINGUISH FATAL, WARNING, NOTE ??
-!    FOR NOW, ALL messages considered FATAL.
-!----------------------------------------------------------------------
-      if (error /= 0) then
-        if (running_in_fms) then
-          call fms_error_mesg (ermesg) 
-        else
-
-!---------------------------------------------------------------------
-!    appropriate error processing code should be added in subroutine
-!    nonfms_error_mesg. currently an error message is printed and a 
-!    stop command issued (dangerous on parallel machines!).
-!---------------------------------------------------------------------
-          call nonfms_error_mesg (ermesg) 
-        endif
-      endif
 
 !---------------------------------------------------------------------
 !    if this is a calculation step for donner_deep, define a mass

@@ -24,7 +24,7 @@ use diag_manager_mod,      only: register_diag_field, send_data, &
                                  get_diag_field_id, DIAG_FIELD_NOT_FOUND
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 use mpp_mod,               only: input_nml_file
-use fms_mod,               only: error_mesg, FATAL, NOTE,        &
+use fms_mod,               only: error_mesg, FATAL, WARNING, NOTE, &
                                  file_exist, check_nml_error,    &
                                  open_namelist_file, close_file, &
                                  write_version_number,           &
@@ -329,6 +329,7 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_bmflag, id_klzbs, id_invtaubmt, id_invtaubmq, &
            id_massflux, id_entrop_ls, &
            id_cape, id_cin, id_tref, id_qref, &
+           id_tp, id_rp, id_lcl, id_lfc, id_lzb, &
            id_q_conv_col, id_q_ls_col, id_t_conv_col, id_t_ls_col, &
            id_enth_moist_col, id_wat_moist_col, &
            id_enth_ls_col, id_wat_ls_col, &
@@ -612,6 +613,10 @@ logical, intent(out), dimension(:,:)     :: convect
    logical :: used, avgbl
    real    :: dtinv
 
+   integer, dimension(size(t,1),size(t,2)) :: klzb, klcl, klfc
+   real, dimension(size(t,1),size(t,2),size(pfull,3)) :: tp, rp
+   real, dimension(size(t,1),size(t,2),size(t,3)) :: thetae
+
    real, dimension(size(t,1),size(t,2)) :: cape, cin
    real, dimension(size(t,1),size(t,2)) :: precip, total_precip, lheat_precip, &
                                            precip_returned, precip_adjustment, &
@@ -734,6 +739,8 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(r,1),size(r,2),size(r,3),num_donner_tracers) :: qtr, donner_tracer
    real, dimension(size(r,1),size(r,2),size(r,3),num_uw_tracers) :: qtruw
 
+   integer, dimension(size(pfull,1),size(pfull,2)) :: maxTe_launch_level
+   character(len=128) :: warn_mesg
 ! <--- h1g, 2014-01-24     
 !-------- input array size and position in global storage --------------
       ix=size(t,1); jx=size(t,2); kx=size(t,3); nt=size(rdt,4)
@@ -1074,7 +1081,7 @@ logical, intent(out), dimension(:,:)     :: convect
                         cell_droplet_number,                        &
                         meso_cld_frac, meso_liq_amt, meso_liq_size, &
                         meso_ice_amt, meso_ice_size,                &
-                        meso_droplet_number, nsum_out,              &
+                        meso_droplet_number, nsum_out, maxTe_launch_level, &
                         precip_returned, delta_temp, delta_vapor,   &
                         m_cdet_donner, m_cellup, mc_donner,         &
                         mc_donner_up, mc_donner_half,               &
@@ -1096,7 +1103,7 @@ logical, intent(out), dimension(:,:)     :: convect
                         cell_droplet_number,                        &
                         meso_cld_frac, meso_liq_amt, meso_liq_size, &
                         meso_ice_amt, meso_ice_size,                &
-                        meso_droplet_number, nsum_out,              &
+                        meso_droplet_number, nsum_out, maxTe_launch_level, &
                         precip_returned, delta_temp, delta_vapor,   &
                         m_cdet_donner, m_cellup, mc_donner,         &
                         mc_donner_up, mc_donner_half, &
@@ -1119,6 +1126,26 @@ logical, intent(out), dimension(:,:)     :: convect
       endif
     end do
 
+!--------------------------------------------------------------------
+!    obtain updated vapor specific humidity (qnew) resulting from deep 
+!    convection. define the vapor specific humidity change due to deep 
+!    convection (qtnd).
+!--------------------------------------------------------------------
+    do k=1,kx
+     do j=1,jx
+      do i=1,ix
+        if (delta_vapor(i,j,k) /= 0.0) then
+!was qnew... now temp
+          temp = (rin(i,j,k) + delta_vapor(i,j,k))/   &
+                 (1.0 + (rin(i,j,k) + delta_vapor(i,j,k)))
+          delta_q(i,j,k) = temp - qin(i,j,k)
+        else
+          delta_q(i,j,k) = 0.
+        endif
+      enddo
+     enddo
+    end do
+
     if (do_donner_conservation_checks) then
       vaporint = 0.
       lcondensint = 0.
@@ -1128,7 +1155,7 @@ logical, intent(out), dimension(:,:)     :: convect
       enthdiffint = 0.
     
       do k=1,kx
-        vaporint(:,:) = vaporint(:,:) + pmass(is:ie,js:je,k)*delta_vapor(:,:,k)
+        vaporint(:,:) = vaporint(:,:) + pmass(is:ie,js:je,k)*delta_q(:,:,k)
         enthint(:,:) = enthint(:,:) + CP_AIR*pmass(is:ie,js:je,k)*delta_temp(:,:,k)
         condensint(:,:) = condensint(:,:) + pmass(is:ie,js:je,k) *  &
                          (delta_ql(:,:,k) + delta_qi(:,:,k))
@@ -1160,26 +1187,6 @@ logical, intent(out), dimension(:,:)     :: convect
       used = send_data(id_lprcp, lheat_precip/seconds_per_day, Time, is, js)
       used = send_data(id_enthdiffint, enthdiffint, Time, is, js)
     endif
-
-!--------------------------------------------------------------------
-!    obtain updated vapor specific humidity (qnew) resulting from deep 
-!    convection. define the vapor specific humidity change due to deep 
-!    convection (qtnd).
-!--------------------------------------------------------------------
-    do k=1,kx
-     do j=1,jx
-      do i=1,ix
-        if (delta_vapor(i,j,k) /= 0.0) then
-!was qnew... now temp
-          temp = (rin(i,j,k) + delta_vapor(i,j,k))/   &
-                 (1.0 + (rin(i,j,k) + delta_vapor(i,j,k)))
-          delta_q(i,j,k) = temp - qin(i,j,k)
-        else
-          delta_q(i,j,k) = 0.
-        endif
-      enddo
-     enddo
-    end do
 
 !---------------------------------------------------------------------
 !    scale Donner tendencies to prevent the formation of negative
@@ -1217,6 +1224,28 @@ logical, intent(out), dimension(:,:)     :: convect
        do i=1,ix
          if (ABS(precip_adjustment(i,j)) < 1.0e-10) then
            precip_adjustment (i,j) = 0.0
+         endif
+        if ( precip_adjustment(i,j) < 0.0 .and. &
+             (precip_adjustment(i,j)+precip_returned(i,j)) < 0.0 ) then
+! If precip_returned is greater than the "change in water content" balance, and
+! there is not enough water available to beg/borrow/steal from, we need to zero
+! out the various tendencies. i.e. donner_deep will not contribute to changing 
+! the column 
+!           write (warn_mesg,'(2i4,2e12.4)') i,j,precip_adjustment(i,j), precip_returned(i,j)
+!           call error_mesg ('moist_processes_mod', 'moist_processes: &
+!                 &Change in water content does not balance precip &
+!                 &from donner_deep routine.'//trim(warn_mesg), WARNING)
+           scale(i,j) = 0.0
+           delta_vapor(i,j,:) = 0.0
+           delta_q(i,j,:) = 0.0
+           delta_qi(i,j,:) = 0.0
+           delta_ql(i,j,:) = 0.0
+           delta_qa(i,j,:) = 0.0
+           total_precip(i,j) = 0.0
+           precip_returned(i,j) = 0.0
+           liquid_precip(i,j,:) = 0.0
+           frozen_precip(i,j,:) = 0.0
+           lheat_precip(i,j) = 0.0
          endif
        end do
       end do
@@ -1874,13 +1903,13 @@ logical, intent(out), dimension(:,:)     :: convect
      do j = 1,jx
        do i = 1,ix
          do k = 1,kx
-           if (mc_full(i,j,k) /= 0 ) then
+           if (mc_full(i,j,k) /= 0.0 ) then
              cldtop(i,j) = k
              exit
            endif
          enddo
          do k = size(r,3),1,-1
-           if (mc_full(i,j,k) /= 0 ) then
+           if (mc_full(i,j,k) /= 0.0 ) then
              cldbot(i,j) = k
              exit
            endif
@@ -3115,12 +3144,19 @@ logical, intent(out), dimension(:,:)     :: convect
       do j=1,size(t,2)
        do i=1,size(t,1)
          call capecalcnew( kx, pfull(i,j,:), phalf(i,j,:), CP_AIR, RDGAS, RVGAS, &
-                   HLV, KAPPA, tin(i,j,:), rin(i,j,:), avgbl, cape(i,j), cin(i,j))
+                   HLV, KAPPA, tin(i,j,:), rin(i,j,:), avgbl, cape(i,j), cin(i,j), &
+                   tp(i,j,:), rp(i,j,:), klcl(i,j), klfc(i,j), klzb(i,j))
        end do
       end do
       if (id_cape > 0) used = send_data ( id_cape, cape, Time, is, js )
       if ( id_cin > 0 ) used = send_data ( id_cin, cin, Time, is, js )
-    end if
+    
+      if ( id_tp  > 0 ) used = send_data ( id_tp,  tp, Time, is, js )
+      if ( id_rp  > 0 ) used = send_data ( id_rp,  rp, Time, is, js )
+      if ( id_lcl > 0 ) used = send_data ( id_lcl, 1.0*klcl, Time, is, js )
+      if ( id_lfc > 0 ) used = send_data ( id_lfc, 1.0*klfc, Time, is, js )
+      if ( id_lzb > 0 ) used = send_data ( id_lzb, 1.0*klzb, Time, is, js )
+end if
 
 !---------------------------------------------------------------------
 !    output the global integral of precipitation in units of mm/day.
@@ -4174,6 +4210,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
          'klzbs', axes(1:2), Time, &
          'klzb', &
          'no units', missing_value=missing_value            )
+   endif
 
       id_cape = register_diag_field ( mod_name, & 
         'cape', axes(1:2), Time, &
@@ -4182,7 +4219,22 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
       id_cin = register_diag_field ( mod_name, &
         'cin', axes(1:2), Time, &
         'Convective inhibition',                        'J/Kg')
-   endif
+
+      id_tp = register_diag_field ( mod_name, &
+        'tp', axes(1:3), Time, &
+        'Temperature of lifted parcel',                    'K')
+      id_rp = register_diag_field ( mod_name, &
+        'rp', axes(1:3), Time, &
+        'Humidity of lifted parcel',                   'kg/kg')
+      id_lcl = register_diag_field ( mod_name, &
+        'klcl', axes(1:2), Time, &
+        'Index of LCL',                        'none')
+      id_lfc = register_diag_field ( mod_name, &
+        'klfc', axes(1:2), Time, &
+        'Index of LFC',                        'none')
+      id_lzb = register_diag_field ( mod_name, &
+        'klzb', axes(1:2), Time, &
+        'Index of LZB',                        'none')
 
    if ( do_bm ) then
       id_invtaubmt  = register_diag_field  (mod_name, &

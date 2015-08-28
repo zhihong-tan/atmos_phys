@@ -1335,6 +1335,7 @@ contains
             tkep(i,j) = MAX (tkemin, tkep(i,j))
        	 endif
 
+         cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
            ocode(i,j) = 6
            go to 100
