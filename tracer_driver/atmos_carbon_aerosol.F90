@@ -742,7 +742,7 @@ real, parameter                            :: yield_soa = 0.1
 !
 !  sink = 1./(86400.*1.44) = 8.023e-6
 
-    if (do_dynamic_bc .or. do_dynamic_om) then 
+    if (do_dynamic_bc .or. do_dynamic_om .or. soa_source .ne. ' ') then 
       do l = 1,kd
         zzz1(:,:,l)=z_half(:,:,l)-z_half(:,:,l+1)
       enddo
