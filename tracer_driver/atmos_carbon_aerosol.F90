@@ -742,10 +742,12 @@ real, parameter                            :: yield_soa = 0.1
 !
 !  sink = 1./(86400.*1.44) = 8.023e-6
 
-    do l = 1,kd
-      zzz1(:,:,l)=z_half(:,:,l)-z_half(:,:,l+1)
-    enddo
-    oh_conc1 = oh_conc * pwt/zzz1*2.079e19
+    if (do_dynamic_bc .or. do_dynamic_om .or. soa_source .ne. ' ') then 
+      do l = 1,kd
+        zzz1(:,:,l)=z_half(:,:,l)-z_half(:,:,l+1)
+      enddo
+      oh_conc1 = oh_conc * pwt/zzz1*2.079e19
+    endif
 
     bcphob_sink(:,:,:) = 0.0
     if (do_dynamic_bc) then
@@ -1073,6 +1075,16 @@ integer ::  unit, ierr, io, logunit
 
 30        format (A,' was initialized as tracer number ',i2)
 
+
+   n = get_tracer_index(MODEL_ATMOS,'oh')
+   if ( do_dynamic_bc .and. n < 0 ) &
+     call error_mesg ('atmos_carbon_aerosol_mod', &
+           'do_dynamic_bc = true but OH is not present in field_table', FATAL)
+   if ( do_dynamic_om .and. n < 0 ) &
+     call error_mesg ('atmos_carbon_aerosol_mod', &
+           'do_dynamic_om = true but OH is not present in field_table', FATAL)
+
+
     if (soa_source .ne. ' ') then
       n = get_tracer_index(MODEL_ATMOS,'SOA')
       if (n>0) then
@@ -1165,6 +1177,8 @@ integer ::  unit, ierr, io, logunit
                       'SOA production by C4H10 + OH',        &
                       'kg/m2/s')
     endif
+
+
 !
 !   Register Emissions as static fields (monthly)
 !
