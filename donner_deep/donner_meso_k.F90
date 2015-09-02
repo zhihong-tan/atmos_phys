@@ -202,7 +202,7 @@ integer,                           intent(out) :: error
 !    in AM2p9 with this pztm, so the constraint was changed to pztm >= 
 !    plzb_c + dp
 !--------------------------------------------------------------------
-      if ((pt_ens + dp) >= 10.e03)  then
+      if ((pt_ens + dp) >= plzb_c)  then
         pztm = plzb_c
       else
         pztm = plzb_c + dp

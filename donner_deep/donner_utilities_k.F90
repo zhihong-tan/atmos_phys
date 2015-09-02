@@ -928,7 +928,7 @@ implicit none
 
 integer,                  intent(in)    :: n_lo, n_hi
 real, dimension(n_lo),    intent(in)    :: x_lo
-real, dimension(n_lo+1),  intent(in)    :: p_lo
+real, dimension(n_lo),    intent(in)    :: p_lo
 real, dimension(n_hi),    intent(in)    :: p_hi
 real, dimension(n_hi),    intent(out)   :: x_hi
 character(len=*),         intent(out)   :: ermesg
@@ -1044,7 +1044,7 @@ subroutine don_u_lo1d_to_hi0d_linear_k  &
 
 integer,                 intent(in)    :: n_lo
 real, dimension(n_lo),   intent(in)    :: x_lo
-real, dimension(n_lo+1), intent(in)    ::  p_lo
+real, dimension(n_lo),   intent(in)    ::  p_lo
 real,                    intent(in)    :: p_hi
 real,                    intent(out)   :: x_hi
 character(len=*),        intent(out)   :: ermesg
@@ -1215,6 +1215,113 @@ integer,               intent(out)  :: error
 
 
 end subroutine don_u_lo1d_to_hi0d_log_k
+
+!#####################################################################
+
+subroutine don_u_lo1d_to_hi0d_log_fast_k     &
+         (n_lo, sig_lo, ps, p_hi, indx, displ, ermesg, error)
+
+!--------------------------------------------------------------------
+!    subroutine don_u_lo1d_to_hi0d_log_fast_k uses logarithmic 
+!    interpolation to define the index and displacement of the hires
+!    pressure profile from the input pressure profile size n_lo on 
+!    sigma grid sig_lo (with associated surface pressure ps).
+!    NOTE: vertical index 1 is closest to the ground in all arrays
+!    used here.
+!    any error message is returned in ermesg.
+!
+!    Use the indx and displ variables to interpolate the variable X of 
+!    interest using the formula :
+! 
+!          X_hi = X_lo(indx) + (X_lo(indx+1) - X_lo(indx))*displ
+!
+!
+!    This routine is faster than don_u_lo1d_to_hi0d_log_k if you will be
+!    repeating the same operation on multiple tracers.
+!
+!------------------------------------------------------------------
+
+implicit none
+
+integer,               intent(in)   :: n_lo
+real, dimension(n_lo), intent(in)   :: sig_lo 
+real,                  intent(in)   :: ps
+real,                  intent(in)   :: p_hi
+integer,               intent(out)  :: indx  ! nearest vertical grid index on specified grid 
+                                             ! surfaceward of the desired pressure
+real,                  intent(out)  :: displ ! logarithmic displacement of desired pressure 
+                                             ! from the indx grid level
+character(len=*),      intent(out)  :: ermesg
+integer,               intent(out)  :: error
+
+!--------------------------------------------------------------------
+!   intent(in) variables:
+!
+!     n_lo     size of input profile on lo-res grid
+!     x_lo     field to be interpolated [ units of x_lo ]
+!     sig_lo   sigma profile defining the specified grid [ fraction ]
+!     ps       surface pressure defining the specified grid [ Pa ]
+!     p_hi     pressure whose location on the specified grid is desired 
+!              [ Pa ]
+!
+!   intent(out) variables:
+!
+!     indx     nearest vertical grid index on specified grid 
+!              surfaceward of the desired pressure
+!     displ    logarithmic displacement of desired pressure 
+!              from the indx grid level
+!     x_hi     output variable value at pressure p_hi [ units of x_lo ] 
+!     ermesg   error message, if error is encountered
+!
+!----------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!   local variables:
+
+      integer  :: k     ! do-loop index
+
+!----------------------------------------------------------------------
+!    initialize the error message character string.
+!----------------------------------------------------------------------
+      ermesg = ' ' ; error = 0
+
+!--------------------------------------------------------------------
+!    define an initial value for indx which can be checked to verify
+!    if the search was successful.
+!--------------------------------------------------------------------
+      indx = 0
+
+!--------------------------------------------------------------------
+!    march through the vertical grid until the desired pressure is 
+!    bracketed. define the lower index (indx) and calculate the logar-
+!    ithmic displacement of the desired pressure between the two sur-
+!    rounding grid levels.
+!--------------------------------------------------------------------
+      do k=1,n_lo-1
+        if ((ps*sig_lo(k) >= p_hi) .and.   &
+            (ps*sig_lo(k+1) <= p_hi) ) then 
+          indx = k
+          displ = alog(p_hi/(ps*sig_lo(k)))/alog(sig_lo(k+1)/sig_lo(k)) 
+!          x_hi = x_lo(indx) + (x_lo(indx+1) - x_lo(indx))*displ
+          exit
+        endif
+      end do
+
+!---------------------------------------------------------------------
+!    if pressure was outside the limits of the input profile, write 
+!    error message.
+!---------------------------------------------------------------------
+      if (indx == 0) then
+        ermesg = 'unable to bracket the input pressure within the input &
+                                           &pressure profile'
+        error = 1
+        return
+      endif
+
+!--------------------------------------------------------------------
+
+
+end subroutine don_u_lo1d_to_hi0d_log_fast_k
 
 !#####################################################################
 
