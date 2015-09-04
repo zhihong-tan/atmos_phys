@@ -40,6 +40,7 @@ MODULE DEEP_CONV_MOD
 
   public deepc
   type deepc
+     real    :: cbmf0
      real    :: rkm_dp1
      real    :: rkm_dp2
      real    :: cbmf_dp_frac1
@@ -90,6 +91,7 @@ contains
 
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
+    dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
@@ -391,7 +393,7 @@ contains
 
     zcldtop = 2000 !sd%z(cp%ltop)
     wrel  = max(cc%wrel, wrel0)
-    cbmf0 = 0.0001
+    cbmf0 = dpc%cbmf0
     call cp_clear_k(cp);  cp %maxcldfrac=1.;
     call cp_clear_k(cp1); cp1%maxcldfrac=1.;
     call ct_clear_k(ct1);
