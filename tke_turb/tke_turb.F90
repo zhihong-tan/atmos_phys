@@ -653,7 +653,8 @@ integer           :: id_tke_avg_pbl, id_tke_turb
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke, sqrte
 
-  real, dimension(size(um,1),size(um,2))              :: tke_avg_tmp !h1g, 2015-08-11
+  real, dimension(size(um,1),size(um,2))              :: tke_avg_tmp, qa_tmp !h1g, 2015-08-11
+  real, dimension(size(um,1),size(um,2),size(um,3))   :: Aclr_3D, Bclr_3D, Acld_3D, Bcld_3D
 
 !====================================================================
 
@@ -752,9 +753,64 @@ integer           :: id_tke_avg_pbl, id_tke_turb
       bhl(:,:,k) = (1.0-qa(:,:,k))*Aclr + qa(:,:,k)*Acld
       bqt(:,:,k) = (1.0-qa(:,:,k))*Bclr + qa(:,:,k)*Bcld
 
+!---> h1g, 2015-08-27
+    elseif (buoync_option == 4) then
+
+      ! Moist buoyancy formulation from  Cuijpers and Duynkerke (1993, JAS)
+      ! bugfix for "buoync_option == 3"
+
+      ! Saturation specific humidity at T (qsl) and its derivative (qslT)
+      call compute_qs(T(:,:,k), pfull(:,:,k), qsl, dqsdT=qslT)
+
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! Clear sky coefficients
+      Aclr = 1.0 + d608*qt(:,:,k)
+      Bclr = d608*T(:,:,k)
+
+      ! Cloud sky coefficients
+      Acld = ( 1.0 - qt(:,:,k) + (1.0+d608)*(qsl + T(:,:,k)*qslT) )  &
+             / ( 1.0 + gamma )
+      Bcld = cp_air_inv*hleff * Acld - T(:,:,k)
+      
+      ! All sky
+      bhl(:,:,k) = (1.0-qa(:,:,k))*Aclr + qa(:,:,k)*Acld
+      bqt(:,:,k) = (1.0-qa(:,:,k))*Bclr + qa(:,:,k)*Bcld
+!<--- h1g, 2015-08-27
+    elseif (buoync_option == 5) then
+      call compute_qs(T(:,:,k), pfull(:,:,k), qsl, dqsdT=qslT)
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! Clear sky coefficients
+      Aclr_3D(:,:,k) = 1.0 + d608*qt(:,:,k)
+      Bclr_3D(:,:,k) = d608*T(:,:,k)
+
+      ! Cloud sky coefficients
+      Acld_3D(:,:,k) = ( 1.0 - qt(:,:,k) + (1.0+d608)*(qsl + T(:,:,k)*qslT) )  &
+             / ( 1.0 + gamma )
+      Bcld_3D(:,:,k) = cp_air_inv*hleff * Acld_3D(:,:,k) - T(:,:,k)
     end if
 
   end do
+
+!---> h1g, 2015-08-31
+  if (buoync_option == 5) then
+    do k=1,kxm
+      Aclr(:,:) = 0.5 * ( Aclr_3D(:,:,k) + Aclr_3D(:,:,k+1) )
+      Bclr(:,:) = 0.5 * ( Bclr_3D(:,:,k) + Bclr_3D(:,:,k+1) )
+
+      Acld(:,:) = 0.5 * ( Acld_3D(:,:,k) + Acld_3D(:,:,k+1) )
+      Bcld(:,:) = 0.5 * ( Bcld_3D(:,:,k) + Bcld_3D(:,:,k+1) )
+
+      ! All sky at level k+1/2
+      qa_tmp(:,:) = min( qa(:,:,k), 0.5*(qa(:,:,k)+qa(:,:,k+1)) )
+      bhl(:,:,k) = (1.0-qa_tmp(:,:))*Aclr + qa_tmp(:,:)*Acld
+      bqt(:,:,k) = (1.0-qa_tmp(:,:))*Bclr + qa_tmp(:,:)*Bcld
+    end do
+  endif
+!<--- h1g, 2015-08-31
 
 !====================================================================
 ! --- Surface height     
@@ -789,8 +845,16 @@ integer           :: id_tke_avg_pbl, id_tke_turb
    
     buoync = grav * dsdzh * xxm1 / xxm2
 
-  else
+  elseif(buoync_option == 5) then
+    xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx) 
+    xxm2(:,:,1:kxm) = bhl(:,:,1:kxm) 
+    xxm3(:,:,1:kxm) = qt(:,:,1:kxm) - qt(:,:,2:kx) 
+    xxm4(:,:,1:kxm) = bqt(:,:,1:kxm)  
+    xxm5(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
 
+    buoync = grav * dsdzh / xxm5 * ( xxm1*xxm2 + xxm3*xxm4 )
+
+  else
     xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx) 
     xxm2(:,:,1:kxm) = 0.5*( bhl(:,:,1:kxm) + bhl(:,:,2:kx) )
     xxm3(:,:,1:kxm) = qt(:,:,1:kxm) - qt(:,:,2:kx) 
