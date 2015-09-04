@@ -193,7 +193,9 @@ real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
 
 ! #include "monin_obukhov_interfaces.h"
 
-if(.not.module_is_initialized) call monin_obukhov_init
+if(.not. module_is_initialized) call error_mesg( &
+        'mo_drag_1d in MONIN_OBUKHOV_MOD', &
+        'monin_obukhov_init is not called', FATAL)
 
 n      = size(pt)
 lavail = .false.
@@ -235,7 +237,9 @@ integer                            :: n, ier
 
 ! #include "monin_obukhov_interfaces.h"
 
-if(.not. module_is_initialized) call monin_obukhov_init
+if(.not. module_is_initialized) call error_mesg( &
+        'mo_profile_1d in MONIN_OBUKHOV_MOD', &
+        'monin_obukhov_init is not called', FATAL)
 
 n = size(z)
 if(present(avail)) then
@@ -267,7 +271,10 @@ real, intent(out), dimension(:,:,:)  :: mix
 
 integer :: n, ier
 
-if(.not. module_is_initialized) call monin_obukhov_init
+if(.not. module_is_initialized) call error_mesg( &
+        'stable_mix_3d in MONIN_OBUKHOV_MOD', &
+        'monin_obukhov_init is not called', FATAL)
+
 
 n = size(rich,1)*size(rich,2)*size(rich,3)
 call monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
@@ -287,7 +294,9 @@ real, intent(out), dimension(:,:,:) :: k_m, k_h
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
-if(.not.module_is_initialized) call monin_obukhov_init
+if(.not. module_is_initialized) call error_mesg( &
+        'mod_diff_2d_n in MONIN_OBUKHOV_MOD', &
+        'monin_obukhov_init is not called', FATAL)
 
 ni = size(z, 1); nj = size(z, 2); nk = size(z, 3)
 call monin_obukhov_diff(vonkarm,                           &
@@ -880,7 +889,9 @@ real, intent(out) :: k_m, k_h
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
-if(.not.module_is_initialized) call monin_obukhov_init
+if(.not. module_is_initialized) call error_mesg( &
+        'mo_diff_0d_1 in MONIN_OBUKHOV_MOD', &
+        'monin_obukhov_init is not called', FATAL)
 
 ni = 1; nj = 1; nk = 1
 call monin_obukhov_diff(vonkarm,                           &
@@ -901,7 +912,9 @@ real, intent(out), dimension(:) :: k_m, k_h
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
-if(.not.module_is_initialized) call monin_obukhov_init
+if(.not. module_is_initialized) call error_mesg( &
+        'mo_diff_0d_n in MONIN_OBUKHOV_MOD', &
+        'monin_obukhov_init is not called', FATAL)
 
 ni = 1; nj = 1; nk = size(z(:))
 call monin_obukhov_diff(vonkarm,                           &
