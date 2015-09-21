@@ -1890,11 +1890,11 @@ contains
              tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:) 
              qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:) 
 
-             !cldql (i,j,:) = cldql (i,j,:) + cldql_d(i,j,:)
-             !cldqi (i,j,:) = cldqi (i,j,:) + cldqi_d(i,j,:)
-	     !do k = 1,kmax
-	     !	cldqa (i,j,k) = max(cldqa (i,j,k),cldqa_d(i,j,k))
-   	     !end do
+             cldql (i,j,:) = cldql (i,j,:) + cldql_d(i,j,:)
+             cldqi (i,j,:) = cldqi (i,j,:) + cldqi_d(i,j,:)
+	     do k = 1,kmax
+	     	cldqa (i,j,k) = max(cldqa (i,j,k),cldqa_d(i,j,k))
+   	     end do
 
              snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
              rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
