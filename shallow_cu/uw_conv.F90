@@ -1374,14 +1374,18 @@ contains
                         asol%aerosol_names(na) == 'bcphobic' .or. &
                         asol%aerosol_names(na) == 'dust1' .or. &
                         asol%aerosol_names(na) == 'dust2' .or. &
-                        asol%aerosol_names(na) == 'dust3' ) then
+                        asol%aerosol_names(na) == 'dust3' .or. &
+                        asol%aerosol_names(na) == 'dust_mode1_of_2') then   !h1g, 2015-09-19
                            am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'seasalt1' .or. &
-                        asol%aerosol_names(na) == 'seasalt2') then
+                        asol%aerosol_names(na) == 'seasalt2' .or. &
+                        asol%aerosol_names(na) == 'seasalt_aitken' .or. &   !h1g, 2015-09-19
+                        asol%aerosol_names(na) == 'seasalt_fine'  ) then    !h1g, 2015-09-19
                            am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'seasalt3' .or. &
                         asol%aerosol_names(na) == 'seasalt4' .or. &
-                        asol%aerosol_names(na) == 'seasalt5' ) then
+                        asol%aerosol_names(na) == 'seasalt5' .or. &
+                        asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
                            am5(k)=am5(k)+asol%aerosol(i,j,k,na)*tmp
                 end if
               end do
