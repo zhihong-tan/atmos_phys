@@ -314,7 +314,7 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_qidt_deep_donner, &
            id_qndt_deep_donner,  id_qnidt_deep_donner, &
            id_tdt_mca_donner, id_qdt_mca_donner, &
-           id_prec_deep_donner, id_prec_mca_donner,&
+           id_prec_deep_donner, id_precret_deep_donner, id_prec_mca_donner,&
            id_tdt_uw, id_qdt_uw, &
            id_qadt_uw, id_qldt_uw, id_qidt_uw, id_qndt_uw, id_qnidt_uw, &
            id_prec1_deep_donner, &
@@ -1193,9 +1193,10 @@ logical, intent(out), dimension(:,:)     :: convect
 !    total water specific humidities
 !---------------------------------------------------------------------
     if (do_strat .and. do_limit_donner) then
-      call moistproc_scale_donner(is,ie,js,je,qin, delta_temp, delta_q, &
+      call moistproc_scale_donner(is,ie,js,je,dt, qin, delta_temp, delta_q, &
                                   precip_returned, total_precip, lheat_precip, liquid_precip,    &
-                                  frozen_precip, num_tracers, tracers_in_donner,&
+                                  frozen_precip, pmass(is:ie,js:je,:), &
+                                  num_tracers, tracers_in_donner,&
                                   delta_ql, delta_qi, delta_qa, qlin, qiin, qtr, scale_donner)
       used = send_data (id_scale_donner, scale_donner, Time, is, js )
     else
@@ -1334,6 +1335,18 @@ logical, intent(out), dimension(:,:)     :: convect
 !    deep convection on this step to the arrays accumulating precip-
 !    itation from all sources (lprec, fprec).
 !--------------------------------------------------------------------
+
+!if (minval(rain_don) < 0.0 ) then
+!           write (warn_mesg,'(2i4,e12.4)') minloc(rain_don), minval(rain_don)
+!           call error_mesg ('moist_processes_mod', 'moist_processes: &
+!                 &Donner_deep rain is negative.'//trim(warn_mesg), WARNING)
+!endif
+!if (minval(snow_don) < 0.0 )  then
+!           write (warn_mesg,'(2i4,e12.4)') minloc(snow_don), minval(snow_don)
+!           call error_mesg ('moist_processes_mod', 'moist_processes: &
+!                 &Donner_deep snow is negative.'//trim(warn_mesg), WARNING)
+!endif
+
     lprec  = lprec + rain_don
     fprec  = fprec + snow_don
 
@@ -1354,6 +1367,8 @@ logical, intent(out), dimension(:,:)     :: convect
     used = send_data (id_prec_deep_donner, rain_don + snow_don, Time, is, js )
     used = send_data (id_prec1_deep_donner, precip_adjustment,  &
                          Time, is, js, mask = precip_returned > 0.0)
+    used = send_data (id_precret_deep_donner, precip_returned,  &
+                         Time, is, js)
 
     if (do_donner_conservation_checks) then
       used = send_data (id_enth_donner_col2, -hlv*rain_don, Time, is, js)
@@ -3156,7 +3171,7 @@ logical, intent(out), dimension(:,:)     :: convect
       if ( id_lcl > 0 ) used = send_data ( id_lcl, 1.0*klcl, Time, is, js )
       if ( id_lfc > 0 ) used = send_data ( id_lfc, 1.0*klfc, Time, is, js )
       if ( id_lzb > 0 ) used = send_data ( id_lzb, 1.0*klzb, Time, is, js )
-end if
+    end if
 
 !---------------------------------------------------------------------
 !    output the global integral of precipitation in units of mm/day.
@@ -4946,6 +4961,12 @@ if (do_donner_deep) then
    id_prec_deep_donner = register_diag_field ( mod_name, &
            'prc_deep_donner', axes(1:2), Time, &
            ' total precip rate - deep portion', 'kg/m2/s', &
+                        missing_value=missing_value, &
+             interp_method = "conserve_order1"               )
+
+   id_precret_deep_donner = register_diag_field ( mod_name, &
+           'prc_ret_deep_donner', axes(1:2), Time, &
+           ' precip_returned - per timestep', 'kg/m2/timestep', &
                         missing_value=missing_value, &
              interp_method = "conserve_order1"               )
 

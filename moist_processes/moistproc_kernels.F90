@@ -922,21 +922,22 @@ end subroutine moistproc_uw_conv
 
 
 !#######################################################################
-subroutine moistproc_scale_donner(is,ie,js,je,q, delta_temp, delta_q, precip_returned,      &
+subroutine moistproc_scale_donner(is,ie,js,je, dt, q, delta_temp, delta_q, precip_returned,      &
                                   total_precip, lheat_precip, liquid_precip,    &
-                                  frozen_precip, num_tracers, tracers_in_donner,&
+                                  frozen_precip, pmass, num_tracers, tracers_in_donner,&
                                   delta_ql, delta_qi, delta_qa, qlin, qiin, qtr, scale)
 
-  integer, intent(in) :: is, ie, js, je, num_tracers
-  logical, intent(in), dimension(:)       :: tracers_in_donner
-  real, intent(inout), dimension(:,:)     :: precip_returned, total_precip, &
-                                             lheat_precip
-  real, intent(inout), dimension(:,:,:)   :: q, delta_temp, delta_q,    &
-                                             liquid_precip, frozen_precip, & 
-                                             delta_ql, delta_qi, delta_qa, &
-                                             qlin, qiin
-  real, intent(inout), dimension(:,:,:,:) :: qtr
-  real, intent(out),   dimension(:,:)     :: scale
+  integer, intent(in)                        :: is, ie, js, je, num_tracers
+  real ,   intent(in)                        :: dt  ! Timestep of model.
+  logical, intent(in),    dimension(:)       :: tracers_in_donner
+  real,    intent(inout), dimension(:,:)     :: precip_returned, total_precip, &
+                                                lheat_precip
+  real,    intent(inout), dimension(:,:,:)   :: q, delta_temp, delta_q,    &
+                                                liquid_precip, frozen_precip, pmass, &
+                                                delta_ql, delta_qi, delta_qa, &
+                                                qlin, qiin
+  real,    intent(inout), dimension(:,:,:,:) :: qtr
+  real,    intent(out),   dimension(:,:)     :: scale
 
   integer :: n, nn, i, j, k, ix, jx, kx
   real    :: qvin, dqv
@@ -1008,13 +1009,33 @@ subroutine moistproc_scale_donner(is,ie,js,je,q, delta_temp, delta_q, precip_ret
         endif
       end do
 
-      precip_returned = scale*precip_returned
+! Precip returned from Donner scheme is recalculated below.
+!      precip_returned = scale*precip_returned
 
       total_precip = scale*total_precip
       lheat_precip = scale*lheat_precip
       do k=1, kx
         liquid_precip(:,:,k) = scale(:,:)*liquid_precip(:,:,k)
         frozen_precip(:,:,k) = scale(:,:)*frozen_precip(:,:,k)
+      end do
+
+! Limit liquid and frozen precip to not have negative values.
+      where ( liquid_precip(:,:,:) .lt. 0.)
+         liquid_precip(:,:,:) = 0.0
+      end where
+
+      where ( frozen_precip(:,:,:) .lt. 0.)
+         frozen_precip(:,:,:) = 0.0
+      end where
+
+! dimensions of liquid_precip is [kg(H20)/(kg s)]*(SECONDS_PER_DAY)
+! dimensions of frozen_precip is [kg(H20)/(kg s)]*(SECONDS_PER_DAY)
+
+!Note that (dt/seconds_per_day) * sum of (liquid_precip(k) + frozen_precip(k) *pmass(k)) gives precip_returned.
+      precip_returned(:,:) = 0.0
+      do k=1, kx
+        precip_returned(:,:) = precip_returned(:,:) + (liquid_precip(:,:,k) + frozen_precip(:,:,k))*pmass(:,:,k) *&
+                             dt/SECONDS_PER_DAY
       end do
 
 end subroutine moistproc_scale_donner
