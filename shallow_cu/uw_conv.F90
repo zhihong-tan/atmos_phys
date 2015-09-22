@@ -129,6 +129,7 @@ MODULE UW_CONV_MOD
   logical :: do_prog_gust = .false.
   logical :: do_gust_qt = .false.
   logical :: use_new_let = .false.
+  logical :: use_lcl_only =.false.
   logical :: zero_out_conv_area = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
@@ -167,7 +168,7 @@ MODULE UW_CONV_MOD
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
-       zero_out_conv_area, tracer_check_type, use_turb_tke !h1g, 2015-08-11
+       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -225,6 +226,7 @@ MODULE UW_CONV_MOD
 
 
 !========Option for deep convection=======================================
+  real    :: cbmf0         = 0.0001
   real    :: rkm_dp1       = 10.
   real    :: rkm_dp2       = 1.
   real    :: cbmf_dp_frac1 = 0.
@@ -270,7 +272,7 @@ MODULE UW_CONV_MOD
   real    :: cin_fact    = 1
   real    :: wcrit_min_gust = 0.2
   integer :: cgust_choice = 0
-  NAMELIST / deep_conv_nml / rkm_dp1, rkm_dp2, cbmf_dp_frac1, cbmf_dp_frac2, do_forced_conv, &
+  NAMELIST / deep_conv_nml / cbmf0, rkm_dp1, rkm_dp2, cbmf_dp_frac1, cbmf_dp_frac2, do_forced_conv, &
                  crh_th_ocean, crh_th_land, do_forcedlifting_d, frac_limit_d, wcrit_min_gust, cin_fact,&
                  cape_th, cin_th, cwfn_th, tau_dp, rpen_d, mixing_assumption_d, norder, dcwfndm_th, &
                  do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, pblfac_d, ffldep_d, lofactor_d, dcapedm_th, &
@@ -1134,6 +1136,8 @@ contains
     cpn % weffect    = weffect
     cpn % use_online_aerosol = use_online_aerosol
     cpn % use_new_let = use_new_let
+    cpn % use_lcl_only= use_lcl_only
+
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
@@ -1177,6 +1181,7 @@ contains
     cc  % tau_sh    = tau_sh
     cc  % do_old_cbmfmax = do_old_cbmfmax
 !========Option for deep convection=======================================
+    dpc % cbmf0               = cbmf0
     dpc % rkm_dp1             = rkm_dp1
     dpc % rkm_dp2             = rkm_dp2
     dpc % cbmf_dp_frac1       = cbmf_dp_frac1
@@ -1369,14 +1374,18 @@ contains
                         asol%aerosol_names(na) == 'bcphobic' .or. &
                         asol%aerosol_names(na) == 'dust1' .or. &
                         asol%aerosol_names(na) == 'dust2' .or. &
-                        asol%aerosol_names(na) == 'dust3' ) then
+                        asol%aerosol_names(na) == 'dust3' .or. &
+                        asol%aerosol_names(na) == 'dust_mode1_of_2') then   !h1g, 2015-09-19
                            am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'seasalt1' .or. &
-                        asol%aerosol_names(na) == 'seasalt2') then
+                        asol%aerosol_names(na) == 'seasalt2' .or. &
+                        asol%aerosol_names(na) == 'seasalt_aitken' .or. &   !h1g, 2015-09-19
+                        asol%aerosol_names(na) == 'seasalt_fine'  ) then    !h1g, 2015-09-19
                            am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'seasalt3' .or. &
                         asol%aerosol_names(na) == 'seasalt4' .or. &
-                        asol%aerosol_names(na) == 'seasalt5' ) then
+                        asol%aerosol_names(na) == 'seasalt5' .or. &
+                        asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
                            am5(k)=am5(k)+asol%aerosol(i,j,k,na)*tmp
                 end if
               end do
@@ -1885,11 +1894,11 @@ contains
              tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:) 
              qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:) 
 
-             !cldql (i,j,:) = cldql (i,j,:) + cldql_d(i,j,:)
-             !cldqi (i,j,:) = cldqi (i,j,:) + cldqi_d(i,j,:)
-	     !do k = 1,kmax
-	     !	cldqa (i,j,k) = max(cldqa (i,j,k),cldqa_d(i,j,k))
-   	     !end do
+             cldql (i,j,:) = cldql (i,j,:) + cldql_d(i,j,:)
+             cldqi (i,j,:) = cldqi (i,j,:) + cldqi_d(i,j,:)
+	     do k = 1,kmax
+	     	cldqa (i,j,k) = max(cldqa (i,j,k),cldqa_d(i,j,k))
+   	     end do
 
              snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
              rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
