@@ -44,7 +44,7 @@ MODULE CONV_PLUMES_k_MOD
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
-     logical :: use_new_let, do_subcloud_flx
+     logical :: use_new_let, do_subcloud_flx, use_lcl_only
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -446,6 +446,13 @@ contains
        zrel    = sd % zinv
        thv0rel = sd % thvinv
     else
+       krel    = ac % klcl
+       prel    = ac % plcl
+       zrel    = ac % zlcl
+       thv0rel = ac % thv0lcl
+    endif
+
+    if (cpn%use_lcl_only) then
        krel    = ac % klcl
        prel    = ac % plcl
        zrel    = ac % zlcl

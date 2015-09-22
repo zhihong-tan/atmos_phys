@@ -1253,14 +1253,14 @@ integer,                           intent(out)   :: error
         ci_ice_cond = 0.
         do kk=1,nlev_lsm
           dp = phalf_c(kk) - phalf_c(kk+1)
-          ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp
+!          ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp
 !RSHfix for "s" release:  
 !     replace the above line with the following; also comment out line
 !     noted below. This fix will eliminate the occurrence of roundoff
 !     "snow" falling from donner (~10e-22, + and -) that results from 
 !     difference in this calc and that of "summel" above 
 !NOTE THAT THE SAME CHANGE NEEDS TO BE MADE IN THE DONNER-FULL CODE.>>>
-!         ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp/Param%grav
+         ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp/Param%grav
         end do
        if (pmelt_lsm < pb) then
          melting_in_cloud = .true.
@@ -1268,7 +1268,7 @@ integer,                           intent(out)   :: error
         melting_in_cloud = .false.
      endif
 !RSHfix  for "s" release -- comment out this line:
-        ci_ice_cond = ci_ice_cond/(Param%grav)
+!        ci_ice_cond = ci_ice_cond/(Param%grav)
         if (ci_ice_cond /= 0.0) then
           if (melting_in_cloud) then
          precip_melt_frac = summel/ci_ice_cond

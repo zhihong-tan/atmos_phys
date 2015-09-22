@@ -115,7 +115,7 @@ real              :: missing_value = -999.99
 integer           :: id_h, id_pblh_tke, id_pblh_parcel
 
 !--> h1g, 2015-08-11
-integer           :: id_tke_avg_pbl, id_tke_turb
+integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
 !<-- h1g, 2015-08-11
 
 !---------------------------------------------------------------------
@@ -653,7 +653,9 @@ integer           :: id_tke_avg_pbl, id_tke_turb
 
   real, dimension(size(um,1),size(um,2),size(um,3)+1) :: tke, sqrte
 
-  real, dimension(size(um,1),size(um,2))              :: tke_avg_tmp !h1g, 2015-08-11
+  real, dimension(size(um,1),size(um,2))              :: tke_avg_tmp, qa_tmp !h1g, 2015-08-11
+  real, dimension(size(um,1),size(um,2))              :: dthetav, dtheta, dqt
+  real, dimension(size(um,1),size(um,2),size(um,3))   :: Aclr_3D, Bclr_3D, Acld_3D, Bcld_3D
 
 !====================================================================
 
@@ -752,9 +754,64 @@ integer           :: id_tke_avg_pbl, id_tke_turb
       bhl(:,:,k) = (1.0-qa(:,:,k))*Aclr + qa(:,:,k)*Acld
       bqt(:,:,k) = (1.0-qa(:,:,k))*Bclr + qa(:,:,k)*Bcld
 
+!---> h1g, 2015-08-27
+    elseif (buoync_option == 4) then
+
+      ! Moist buoyancy formulation from  Cuijpers and Duynkerke (1993, JAS)
+      ! bugfix for "buoync_option == 3"
+
+      ! Saturation specific humidity at T (qsl) and its derivative (qslT)
+      call compute_qs(T(:,:,k), pfull(:,:,k), qsl, dqsdT=qslT)
+
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! Clear sky coefficients
+      Aclr = 1.0 + d608*qt(:,:,k)
+      Bclr = d608*T(:,:,k)
+
+      ! Cloud sky coefficients
+      Acld = ( 1.0 - qt(:,:,k) + (1.0+d608)*(qsl + T(:,:,k)*qslT) )  &
+             / ( 1.0 + gamma )
+      Bcld = cp_air_inv*hleff * Acld - T(:,:,k)
+      
+      ! All sky
+      bhl(:,:,k) = (1.0-qa(:,:,k))*Aclr + qa(:,:,k)*Acld
+      bqt(:,:,k) = (1.0-qa(:,:,k))*Bclr + qa(:,:,k)*Bcld
+!<--- h1g, 2015-08-27
+    elseif (buoync_option == 5) then
+      call compute_qs(T(:,:,k), pfull(:,:,k), qsl, dqsdT=qslT)
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! Clear sky coefficients
+      Aclr_3D(:,:,k) = 1.0 + d608*qt(:,:,k)
+      Bclr_3D(:,:,k) = d608*T(:,:,k)
+
+      ! Cloud sky coefficients
+      Acld_3D(:,:,k) = ( 1.0 - qt(:,:,k) + (1.0+d608)*(qsl + T(:,:,k)*qslT) )  &
+             / ( 1.0 + gamma )
+      Bcld_3D(:,:,k) = cp_air_inv*hleff * Acld_3D(:,:,k) - T(:,:,k)
     end if
 
   end do
+
+!---> h1g, 2015-08-31
+  if (buoync_option == 5) then
+    do k=1,kxm
+      Aclr(:,:) = 0.5 * ( Aclr_3D(:,:,k) + Aclr_3D(:,:,k+1) )
+      Bclr(:,:) = 0.5 * ( Bclr_3D(:,:,k) + Bclr_3D(:,:,k+1) )
+
+      Acld(:,:) = 0.5 * ( Acld_3D(:,:,k) + Acld_3D(:,:,k+1) )
+      Bcld(:,:) = 0.5 * ( Bcld_3D(:,:,k) + Bcld_3D(:,:,k+1) )
+
+      ! All sky at level k+1/2
+      qa_tmp(:,:) = min( qa(:,:,k), 0.5*(qa(:,:,k)+qa(:,:,k+1)) )
+      bhl(:,:,k) = (1.0-qa_tmp(:,:))*Aclr + qa_tmp(:,:)*Acld
+      bqt(:,:,k) = (1.0-qa_tmp(:,:))*Bclr + qa_tmp(:,:)*Bcld
+    end do
+  endif
+!<--- h1g, 2015-08-31
 
 !====================================================================
 ! --- Surface height     
@@ -789,8 +846,16 @@ integer           :: id_tke_avg_pbl, id_tke_turb
    
     buoync = grav * dsdzh * xxm1 / xxm2
 
-  else
+  elseif(buoync_option == 5) then
+    xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx) 
+    xxm2(:,:,1:kxm) = bhl(:,:,1:kxm) 
+    xxm3(:,:,1:kxm) = qt(:,:,1:kxm) - qt(:,:,2:kx) 
+    xxm4(:,:,1:kxm) = bqt(:,:,1:kxm)  
+    xxm5(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
 
+    buoync = grav * dsdzh / xxm5 * ( xxm1*xxm2 + xxm3*xxm4 )
+
+  else
     xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx) 
     xxm2(:,:,1:kxm) = 0.5*( bhl(:,:,1:kxm) + bhl(:,:,2:kx) )
     xxm3(:,:,1:kxm) = qt(:,:,1:kxm) - qt(:,:,2:kx) 
@@ -1004,7 +1069,11 @@ integer           :: id_tke_avg_pbl, id_tke_turb
   tr_tke(:,:,:) = tke(:,:,2:kxp)
 
 !--> h1g, 2015-08-11
-! calculate averaged TKE within PBL
+! calculate averaged TKE within PBL, and moisture and temperature jump across inversion
+  dqt     = missing_value
+  dthetav = missing_value
+  dtheta  = missing_value
+
   do j=1,jx
     do i=1,ix
       tke_avg_tmp(i,j) = tke(i,j,kxp) * ( phalf(i,j,kxp)-pfull(i,j,kx) )
@@ -1016,6 +1085,19 @@ integer           :: id_tke_avg_pbl, id_tke_turb
         endif
       enddo  
       tke_avg_tmp(i,j) = tke_avg_tmp(i,j)/( phalf(i,j,kxp)-pfull(i,j,k_pbl))
+
+      if( k_pbl<kx .and. k_pbl>1 ) then
+        dqt(i,j)       = (qt(i,j,k_pbl-1)-qt(i,j,k_pbl+1))/(zfull(i,j,k_pbl-1)-zfull(i,j,k_pbl+1))
+        dqt(i,j)       = dqt(i,j) * 1.e3  ! convert from kg/kg to g/kg
+
+        dthetav(i,j)   = T(i,j,k_pbl-1)*(1.0+d608*qv(i,j,k_pbl-1))*(pfull(i,j,k_pbl-1)*p00inv)**(-kappa) &
+                        -T(i,j,k_pbl+1)*(1.0+d608*qv(i,j,k_pbl+1))*(pfull(i,j,k_pbl+1)*p00inv)**(-kappa)
+        dthetav(i,j)   = dthetav(i,j)/(zfull(i,j,k_pbl-1)-zfull(i,j,k_pbl+1))
+
+        dtheta(i,j)   = T(i,j,k_pbl-1)*(pfull(i,j,k_pbl-1)*p00inv)**(-kappa) &
+                       -T(i,j,k_pbl+1)*(pfull(i,j,k_pbl+1)*p00inv)**(-kappa)
+        dtheta(i,j)   = dtheta(i,j)/(zfull(i,j,k_pbl-1)-zfull(i,j,k_pbl+1))
+      endif 
     enddo
   enddo
   tke_avg_tmp(:,:) = min(tke_avg_tmp(:,:), tkemax)
@@ -1045,6 +1127,19 @@ integer           :: id_tke_avg_pbl, id_tke_turb
   if ( id_tke_turb > 0 ) then
     used = send_data ( id_tke_turb, tr_tke, time, is, js, 1 )
   end if
+
+  if ( id_dqt > 0 ) then
+    used = send_data ( id_dqt, dqt, time, is, js )
+  end if
+
+  if ( id_dthetav > 0 ) then
+    used = send_data ( id_dthetav, dthetav, time, is, js )
+  end if
+
+  if ( id_dtheta > 0 ) then
+    used = send_data ( id_dtheta, dtheta, time, is, js )
+  end if
+
 !<-- h1g, 2015-08-11
 
   end subroutine tke_turb_dev
@@ -1142,6 +1237,18 @@ integer           :: id_tke_avg_pbl, id_tke_turb
 
   id_tke_turb = register_diag_field (mod_name, 'tke_turb', axes(1:3),     &
        time, 'tke diagnosed from tr_tke', 'm2/s2',                  &
+       missing_value=missing_value )
+
+  id_dthetav = register_diag_field (mod_name, 'dthetav', axes(1:2),     &
+       time, 'virtual potential temperature jump across inversion','K/m', &
+       missing_value=missing_value )
+
+  id_dtheta = register_diag_field (mod_name, 'dtheta', axes(1:2),     &
+       time, 'potential temperature jump across inversion','K/m', &
+       missing_value=missing_value )
+
+  id_dqt = register_diag_field (mod_name, 'dqt', axes(1:2),     &
+       time, 'total water content jump across inversion','g/kg/m', &
        missing_value=missing_value )
 !<--- h1g, 2015-08-11
 
