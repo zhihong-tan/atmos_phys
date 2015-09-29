@@ -13,23 +13,23 @@
 
 subroutine don_d_donner_deep_k   &
          (is, ie, js, je, isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
-          cloud_tracers_present, cbmf,  &
-          dt, Param, Nml, temp, mixing_ratio, pfull, phalf,   &
-          zfull, zhalf, omega, pblht, tkemiz, qstar, cush, coldT, qlin,&!miz
-          qiin, qain, land, sfc_sh_flux, sfc_vapor_flux, tr_flux,  &
+          cloud_tracers_present, cbmf, dt, Param, Nml, &
+          temp, mixing_ratio, pfull, phalf, zfull, zhalf, &
+          omega, pblht, tkemiz, qstar, cush, coldT, qlin, qiin, qain, &
+          land, sfc_sh_flux, sfc_vapor_flux, tr_flux,  &
           tracers, cell_cld_frac, cell_liq_amt, cell_liq_size,  &
           cell_ice_amt, cell_ice_size, cell_droplet_number, &
-          meso_cld_frac, meso_liq_amt,  &
-          meso_liq_size, meso_ice_amt, meso_ice_size,    &
-          meso_droplet_number, nsum, & 
-          precip, delta_temp, delta_vapor, detf, uceml_inter, mtot,   &
-          mfluxup, &
+          meso_cld_frac, meso_liq_amt, meso_liq_size, &
+          meso_ice_amt, meso_ice_size, meso_droplet_number, &
+          nsum, maxTe_launch_level, &
+          precip, delta_temp, delta_vapor, detf, uceml_inter, mtot, mfluxup, &
           donner_humidity_area, donner_humidity_factor, total_precip,  &
           temperature_forcing, moisture_forcing, parcel_rise, &
-          delta_ql, delta_qi, delta_qa, qtrtnd, calc_conv_on_this_step, &
-          mhalf_3d, &
-          ermesg, error, Initialized, Col_diag, Don_rad, Don_conv, Don_cape, &
-          Don_cem, Don_save, sd, Uw_p, ac, cp, ct, Don_budgets)
+          delta_ql, delta_qi, delta_qa, qtrtnd, &
+          calc_conv_on_this_step, mhalf_3d, ermesg, error, &
+          Initialized, Col_diag, &
+          Don_rad, Don_conv, Don_cape, Don_cem, Don_save, &
+          sd, Uw_p, ac, cp, ct, Don_budgets)
                         
 !-------------------------------------------------------------------
 !    subroutine don_d_donner_deep_k is the primary kernel sub-
@@ -64,8 +64,7 @@ real, dimension(isize,jsize,nlev_lsm),                                  &
                                            cell_cld_frac,  cell_liq_amt,&
                                            cell_liq_size, cell_ice_amt, &
                                            cell_ice_size,  &
-                                           cell_droplet_number, &
-                                           meso_cld_frac,&
+                                           cell_droplet_number, meso_cld_frac,&
                                            meso_liq_amt, meso_liq_size, &
                                            meso_ice_amt, meso_ice_size,&
                                            meso_droplet_number
@@ -80,8 +79,8 @@ real,    dimension(isize,jsize,ntr),                                 &
 real,    dimension(isize,jsize,nlev_lsm,ntr),                         &
                          intent(in)     :: tracers 
 integer, dimension(isize,jsize),                                     &
-                         intent(in)     :: nsum      
-real,    dimension(isize,jsize),                                     & 
+                         intent(in)     :: nsum, maxTe_launch_level      
+real,    dimension(isize,jsize),                                     &
                          intent(out)    :: precip      
 real, dimension(isize,jsize,nlev_lsm),                                 &
                          intent(out)    :: delta_temp, delta_vapor,&
@@ -485,16 +484,20 @@ type(ctend),             intent(inout)  :: ct
 !--------------------------------------------------------------------- 
         call don_d_convection_driver_k   &
              (isize, jsize, nlev_lsm, nlev_hires, ntr, me, &
-              cloud_tracers_present, cbmf, dt, Nml, &
-              Initialized, Param, Col_diag, temp, mixing_ratio,  &
-              pfull, zfull, zhalf, pblht, tkemiz, qstar, cush, coldT,  &!miz
-              qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,    &
-              lag_cape_press, phalf, current_displ, land, sfc_sh_flux, &
-              sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
-              Don_rad, Don_cem, temperature_forcing, moisture_forcing,  &
-              total_precip, donner_humidity_factor, donner_humidity_area,&
-              dql, dqi, dqa, mhalf_3d_local, exit_flag, ermesg, error, sd, Uw_p, ac, cp, ct, &
-              Don_budgets)
+              cloud_tracers_present, dt, Param, Col_diag, &
+              temp, mixing_ratio, pfull, phalf, zfull, zhalf, &
+              qlin, qiin, qain, &
+              lag_cape_temp, lag_cape_vapor, lag_cape_press, &
+              current_displ, pblht, tkemiz, qstar, cush, coldT, land, &
+              sfc_sh_flux, sfc_vapor_flux, tr_flux, tracers, &
+              Nml, Initialized, &
+              Don_cape, Don_conv, Don_budgets, Don_rad, Don_cem, &
+              sd, Uw_p, ac, cp, ct, &
+              cbmf, &
+              temperature_forcing, moisture_forcing, total_precip, &
+              donner_humidity_factor, donner_humidity_area,&
+              dql, dqi, dqa, mhalf_3d_local, &
+              exit_flag, ermesg, error)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -1048,6 +1051,10 @@ integer,                         intent(out)   :: error
       allocate (Don_cape%model_p    (isize, jsize, nlev_lsm) )
       allocate (Don_cape%model_r    (isize, jsize, nlev_lsm) )
       allocate (Don_cape%model_t    (isize, jsize, nlev_lsm) )
+      allocate (Don_cape%launch_level(isize, jsize) )
+      allocate (Don_cape%Tthetae     (isize, jsize) )
+      allocate (Don_cape%Pthetae     (isize, jsize) )
+      allocate (Don_cape%thetae     (isize, jsize, nlev_lsm) )
 
 !---------------------------------------------------------------------
 !    initialize the components of the donner_cape_type variable Don_cape.
@@ -1068,6 +1075,11 @@ integer,                         intent(out)   :: error
       Don_cape%model_p     = 0.0
       Don_cape%model_r     = 0.0
       Don_cape%model_t     = 0.0
+
+      Don_cape%launch_level = Param%ISTART
+      Don_cape%Tthetae      = 0.0
+      Don_cape%Pthetae      = 0.0
+      Don_cape%thetae       = 0.0
 
 !---------------------------------------------------------------------
 !    allocate the components of the donner_rad_type variable Don_rad.
@@ -1312,17 +1324,20 @@ end subroutine don_d_column_input_fields_k
 
 subroutine don_d_convection_driver_k    &
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me,  &
-          cloud_tracers_present, cbmf, dt, Nml,    &
-          Initialized, Param, Col_diag, temp, mixing_ratio,  &
-          pfull, zfull, zhalf, pblht, tkemiz, qstar, cush, coldT,  &!miz
-          qlin, qiin, qain, lag_cape_temp, lag_cape_vapor,  &
-          lag_cape_press, phalf, current_displ, land, sfc_sh_flux,  &
-          sfc_vapor_flux, tr_flux, tracers, Don_cape, Don_conv, &
-          Don_rad, Don_cem, temperature_forcing, moisture_forcing, &
-          total_precip, &
-          donner_humidity_factor, donner_humidity_area, dql, dqi, dqa, &
-          mhalf_3d, &
-          exit_flag, ermesg, error, sd, Uw_p, ac, cp, ct, Don_budgets)
+          cloud_tracers_present, dt, Param, Col_diag, &
+          temp, mixing_ratio, pfull, phalf, zfull, zhalf, &
+          qlin, qiin, qain, &
+          lag_cape_temp, lag_cape_vapor, lag_cape_press, &
+          current_displ, pblht, tkemiz, qstar, cush, coldT, land, &
+          sfc_sh_flux,  sfc_vapor_flux, tr_flux, tracers, &
+          Nml, Initialized, &
+          Don_cape, Don_conv, Don_budgets, Don_rad, Don_cem, &
+          sd, Uw_p, ac, cp, ct, &
+          cbmf, &
+          temperature_forcing, moisture_forcing, total_precip, &
+          donner_humidity_factor, donner_humidity_area, &
+          dql, dqi, dqa, mhalf_3d, &
+          exit_flag, ermesg, error)
 
 use donner_types_mod, only : donner_initialized_type, donner_rad_type, &
                              donner_param_type, donner_conv_type, &
@@ -1347,10 +1362,7 @@ implicit none
 integer,                         intent(in) :: isize, jsize, nlev_lsm,  &
                                                nlev_hires,    ntr, me
 logical,                         intent(in) :: cloud_tracers_present
-real, dimension(isize,jsize),    intent(inout) :: cbmf
 real,                            intent(in) :: dt 
-type(donner_nml_type),           intent(inout) :: Nml
-type(donner_initialized_type),   intent(inout) :: Initialized
 type(donner_param_type),         intent(in) :: Param
 type(donner_column_diag_type),   intent(in) :: Col_diag
 real,    dimension(isize,jsize,nlev_lsm),              &
@@ -1369,34 +1381,37 @@ real,    dimension(isize,jsize),                                     &
                                                sfc_vapor_flux
 logical, dimension(isize,jsize), intent(in) :: coldT
 real,    dimension(isize,jsize,ntr),                             &
-                              intent(in)    :: tr_flux        
+                                 intent(in)    :: tr_flux        
 real,    dimension(isize,jsize,nlev_lsm,ntr),                      &
-                              intent(in)    :: tracers        
-type(donner_cape_type),       intent(inout) :: Don_cape
-type(donner_conv_type),       intent(inout) :: Don_conv
+                                 intent(in)    :: tracers        
+
+type(donner_nml_type),           intent(inout) :: Nml
+type(donner_initialized_type),   intent(inout) :: Initialized
+type(donner_cape_type),          intent(inout) :: Don_cape
+type(donner_conv_type),          intent(inout) :: Don_conv
 type(donner_budgets_type),       intent(inout) :: Don_budgets
-type(donner_rad_type),        intent(inout) :: Don_rad
-type(donner_cem_type),        intent(inout) :: Don_cem
+type(donner_rad_type),           intent(inout) :: Don_rad
+type(donner_cem_type),           intent(inout) :: Don_cem
+type(sounding),                  intent(inout) :: sd
+type(uw_params),                 intent(inout) :: Uw_p
+type(adicloud),                  intent(inout) :: ac
+type(cplume),                    intent(inout) :: cp
+type(ctend),                     intent(inout) :: ct
+real, dimension(isize,jsize),    intent(inout) :: cbmf
+
 real,    dimension(isize,jsize,nlev_lsm),                           &
-                              intent(out)   :: temperature_forcing,&
-                                               moisture_forcing
-real,    dimension(isize,jsize),                                  &
-                              intent(out)   :: total_precip
+                                 intent(out)   :: temperature_forcing,&
+                                                  moisture_forcing
+real,    dimension(isize,jsize), intent(out)   :: total_precip
 real,    dimension(isize,jsize,nlev_lsm),                              &
-                              intent(out)   :: donner_humidity_factor, &
-                                               donner_humidity_area, &
-                                               dql, dqi, dqa
+                                 intent(out)   :: donner_humidity_factor, &
+                                                  donner_humidity_area, &
+                                                  dql, dqi, dqa
 real,    dimension(isize,jsize,nlev_lsm+1),                          &
-                              intent(out)   :: mhalf_3d  
-character(len=*),             intent(out)   :: ermesg
-integer,                      intent(out)   :: error
-logical, dimension(isize,jsize),                                &
-                              intent(out)   :: exit_flag
-type(sounding),               intent(inout) :: sd
-type(uw_params),               intent(inout) :: Uw_p
-type(adicloud),               intent(inout) :: ac
-type(cplume),                 intent(inout) :: cp
-type(ctend),                  intent(inout) :: ct
+                                 intent(out)   :: mhalf_3d  
+character(len=*),                intent(out)   :: ermesg
+integer,                         intent(out)   :: error
+logical, dimension(isize,jsize), intent(out)   :: exit_flag
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -1564,14 +1579,16 @@ type(ctend),                  intent(inout) :: ct
 !    forcing.
 !---------------------------------------------------------------------
       call don_d_cupar_k     &
-           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
-            Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux, &
-            sfc_vapor_flux, temp, mixing_ratio, pblht, tkemiz, qstar, &
-            cush, land, coldT, pfull, phalf,&
-            zfull, zhalf, sd, Uw_p, ac, cp, ct, tr_flux, tracers,    &
-            Don_conv, Don_cape, Don_cem, temperature_forcing, &
-            moisture_forcing, &
-            total_precip, Don_budgets, ermesg, error, exit_flag)
+           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, &
+            Col_diag, Param, Nml, current_displ, sfc_sh_flux, sfc_vapor_flux, &
+            temp, mixing_ratio, pblht, tkemiz, qstar, cush, land, coldT, &
+            pfull, phalf, zfull, zhalf, &
+            tr_flux, tracers,    &
+            Initialized, cbmf, &
+            sd, Uw_p, ac, cp, ct, &
+            Don_conv, Don_budgets, Don_cape, Don_cem, &
+            temperature_forcing, moisture_forcing, total_precip, &
+            ermesg, error, exit_flag)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -1644,7 +1661,7 @@ type(ctend),                  intent(inout) :: ct
                qlw_wd = Don_conv%xice(i,j,k)
 ! convert precip from kg/kg/timestep to kg/m3/timestep
                tv_wd = temp(i,j,k) &
-                       * ( 1 + Param%D608*mixing_ratio(i,j,k)/(1+mixing_ratio(i,j,k)) )
+                       * ( 1.0 + Param%D608*mixing_ratio(i,j,k)/(1.0+mixing_ratio(i,j,k)) )
                air_density_wd = 0.5*(press0+press1)/(Param%rdgas*tv_wd)
                qrw_wd = qrw_col_wd * air_density_wd
                do n = 1,size(Don_conv%temptr,4)
@@ -1770,16 +1787,17 @@ end subroutine don_d_convection_driver_k
 !######################################################################
 
 subroutine don_d_cupar_k     &
-         (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Col_diag, &
-          Param, Nml, Initialized, cbmf, current_displ, sfc_sh_flux,   &
-          sfc_vapor_flux,                                        &
+         (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, &
+          Col_diag, Param, Nml, current_displ, sfc_sh_flux, sfc_vapor_flux, &
           temp, mixing_ratio, pblht, tkemiz, qstar, cush, land, coldT, & !miz 
           pfull, phalf, zfull, zhalf,  &
-          sd, Uw_p, ac,cp, ct, & !miz
           tr_flux, tracers, &
-          Don_conv, Don_cape, Don_cem, temperature_forcing, &
-          moisture_forcing,  &
-          total_precip, Don_budgets, &
+!intent(inout)
+          Initialized, cbmf, &
+          sd, Uw_p, ac,cp, ct, & !miz
+          Don_conv, Don_budgets, Don_cape, Don_cem, &
+!intent(out)
+          temperature_forcing, moisture_forcing, total_precip, &
           ermesg, error, exit_flag)
 
 !----------------------------------------------------------------------
@@ -1807,33 +1825,34 @@ real,                              intent(in)    :: dt
 type(donner_column_diag_type),     intent(in)    :: Col_diag
 type(donner_param_type),           intent(in)    :: Param
 type(donner_nml_type),             intent(in)    :: Nml
-type(donner_initialized_type),     intent(inout) :: Initialized
-type(sounding),                    intent(inout) :: sd
-type(uw_params),                   intent(inout) :: Uw_p
-type(adicloud),                    intent(inout) :: ac
-type(cplume),                      intent(inout) :: cp
-type(ctend),                       intent(inout) :: ct
-real,    dimension(isize,jsize),   intent(in)    :: pblht, tkemiz, &
-                                                    qstar, cush, land
-logical, dimension(isize,jsize),   intent(in)    :: coldT
-
-real,    dimension(isize,jsize),   intent(inout)    :: cbmf
 real,    dimension(isize,jsize),   intent(in)    :: current_displ, &
                                                     sfc_sh_flux,  &
                                                     sfc_vapor_flux
 real,    dimension(isize,jsize,nlev_lsm),                      &
-                                   intent(in)    :: pfull, temp, &
-                                                    mixing_ratio, zfull
+                                   intent(in)    :: temp, mixing_ratio, &
+                                                    pfull, zfull
+real,    dimension(isize,jsize),   intent(in)    :: pblht, tkemiz, &
+                                                    qstar, cush, land
+logical, dimension(isize,jsize),   intent(in)    :: coldT
 real,    dimension(isize,jsize,nlev_lsm+1),                    &  
                                    intent(in)    :: phalf, zhalf
 real,    dimension(isize,jsize,ntr),                           &
                                    intent(in)    :: tr_flux
 real,    dimension(isize,jsize,nlev_lsm,ntr),               &
                                    intent(in)    :: tracers
+
+type(donner_initialized_type),     intent(inout) :: Initialized
+type(sounding),                    intent(inout) :: sd
+type(uw_params),                   intent(inout) :: Uw_p
+type(adicloud),                    intent(inout) :: ac
+type(cplume),                      intent(inout) :: cp
+type(ctend),                       intent(inout) :: ct
 type(donner_conv_type),            intent(inout) :: Don_conv
-type(donner_budgets_type),            intent(inout) :: Don_budgets
+type(donner_budgets_type),         intent(inout) :: Don_budgets
 type(donner_cape_type),            intent(inout) :: Don_cape
 type(donner_cem_type),             intent(inout) :: Don_cem
+real,    dimension(isize,jsize),   intent(inout) :: cbmf
+
 real,    dimension(isize,jsize,nlev_lsm),                      &
                                    intent(out)   :: temperature_forcing,&
                                                     moisture_forcing
@@ -2014,18 +2033,16 @@ logical, dimension(isize,jsize),   intent(out)   :: exit_flag
 !    cloud area at cloud base level a_1(p_b).
 !---------------------------------------------------------------------
       call don_d_mulsub_k   &
-           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param,   &
-!++lwh
-            Nml, Col_diag,   &
-            Initialized,   &
+           (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param, Nml, &
+            Col_diag, Initialized, &
             temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT,  &
             phalf, pfull, zhalf, zfull,  &
+            sfc_vapor_flux, sfc_sh_flux, sfc_tracer_flux, &
+            xgcm_v, &
             sd, Uw_p, ac, cp, ct, &
-           sfc_vapor_flux, sfc_sh_flux, &
-!--lwh
-            sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, Don_cem, exit_flag,  &
+            Don_cape, Don_conv, Don_cem, Don_budgets, exit_flag,  &
             total_precip, temperature_forcing, moisture_forcing, &
-            Don_budgets, ermesg, error)
+            ermesg, error)
 
 !----------------------------------------------------------------------
 !    if an error message was returned from the kernel routine, return
@@ -2394,7 +2411,7 @@ integer,                          intent(out)   :: error
 !----------------------------------------------------------------------
 !    case of no upward motion at lowest level:    
 !----------------------------------------------------------------------
-            if (current_displ(idiag,jdiag) == 0) then
+            if (current_displ(idiag,jdiag) == 0.0) then
               write (unitdiag, '(a)')   &
                     'no upward motion at lowest level'
             else 
@@ -2494,17 +2511,19 @@ end subroutine don_d_check_for_deep_conv_k
 !#####################################################################
 
 subroutine don_d_mulsub_k   &
+!intent in
          (isize, jsize, nlev_lsm, nlev_hires, ntr, me, dt, Param, Nml, &
-!++lwh
           Col_diag, Initialized,   &
-          temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT, & !miz
-          phalf, pfull, zhalf, zfull, sd,  &
-           Uw_p, ac,         cp, ct, &
-          sfc_vapor_flux, sfc_sh_flux, &
-!--lwh
-          sfc_tracer_flux, xgcm_v, Don_cape, Don_conv, Don_cem, exit_flag, &
+          temp, mixing_ratio, pblht, tkemiz, qstar, cush, cbmf, land, coldT, &
+          phalf, pfull, zhalf, zfull, &
+          sfc_vapor_flux, sfc_sh_flux, sfc_tracer_flux, &
+          xgcm_v, &
+!intent inout
+          sd,  Uw_p, ac,         cp, ct, &
+          Don_cape, Don_conv, Don_cem, Don_budgets, exit_flag, &
+!intent out
           total_precip, temperature_forcing, moisture_forcing,  &
-          Don_budgets, ermesg, error)
+          ermesg, error)
 
 !--------------------------------------------------------------------
 !    subroutine don_d_mulsub_k calculates the thermal and moisture
@@ -2538,34 +2557,33 @@ type(donner_param_type),      intent(in)     ::  Param
 type(donner_nml_type),        intent(in)     ::  Nml  
 type(donner_column_diag_type),                           &
                               intent(in)     ::  Col_diag
-!++lwh
 type(donner_initialized_type), intent(in)    :: Initialized
-!--lwh
 real,    dimension(isize,jsize,nlev_lsm+1),                    &
                               intent(in)     ::  phalf, zhalf
 real,    dimension(isize,jsize,nlev_lsm),                      &
                               intent(in)     ::  pfull, zfull, temp, mixing_ratio
-type(sounding),               intent(inout)  ::  sd
-type(uw_params),               intent(inout)  ::  Uw_p
-type(adicloud),               intent(inout)  ::  ac
-type(cplume),                 intent(inout)  ::  cp
-type(ctend),                  intent(inout)  ::  ct
 real, dimension(isize,jsize), intent(in)     ::  pblht, tkemiz, qstar, &
-                                                 cush, cbmf, land
-logical, dimension(isize,jsize), intent(in)  ::  coldT
-real,    dimension(isize,jsize),                                &
-                              intent(in)     ::  sfc_vapor_flux,  &
+                                                 cush, cbmf, land, &
+                                                 sfc_vapor_flux,  &
                                                  sfc_sh_flux
+logical, dimension(isize,jsize), intent(in)  ::  coldT
 real,    dimension(isize,jsize,ntr),                              &
                               intent(in)     ::  sfc_tracer_flux       
 real,    dimension(isize,jsize,nlev_lsm,ntr),               &
                               intent(in)     ::  xgcm_v
+
+type(sounding),               intent(inout)  ::  sd
+type(uw_params),              intent(inout)  ::  Uw_p
+type(adicloud),               intent(inout)  ::  ac
+type(cplume),                 intent(inout)  ::  cp
+type(ctend),                  intent(inout)  ::  ct
 type(donner_cape_type),       intent(inout)  ::  Don_cape
 type(donner_conv_type),       intent(inout)  ::  Don_conv
 type(donner_cem_type),        intent(inout)  ::  Don_cem
-type(donner_budgets_type),       intent(inout)  ::  Don_budgets
+type(donner_budgets_type),    intent(inout)  ::  Don_budgets
 logical, dimension(isize,jsize),                            &
                               intent(inout)  ::  exit_flag
+
 real,    dimension(isize,jsize),                          &
                               intent(out)    ::  total_precip        
 real,    dimension(isize,jsize,nlev_lsm),                        &
@@ -2982,7 +3000,8 @@ integer,                      intent(out)    ::  error
                  Don_cape%model_p(i,j,:), phalf_c, xgcm_v(i,j,:,:), &
                  sfc_sh_flux(i,j), sfc_vapor_flux(i,j), &
                  sfc_tracer_flux(i,j,:), Don_cape%plzb(i,j), &
-                 exit_flag(i,j),  ensmbl_precip, ensmbl_cond,       &
+                 Don_cape%launch_level(i,j), exit_flag(i,j),  &
+                 ensmbl_precip, ensmbl_cond,       &
                  ensmbl_anvil_cond_liq, ensmbl_anvil_cond_liq_frz, &
                  ensmbl_anvil_cond_ice, pb,  &
                  pt_ens, ampta1, Don_conv%amax(i,j), emsm, rlsm,  &
@@ -3137,7 +3156,7 @@ integer,                      intent(out)    ::  error
             do k=1,nlev_lsm
               do kcont=1,ntr  
                 if (qtren(k,kcont) /= 0.00) then
-                  write (diag_unit, '(a, 2i4, f19.10, e20.12)')  &
+                  write (diag_unit, '(a32, 2i4, f19.10, e20.12)')  &
                   'in mulsub: jk, pr,qtren= ', k, kcont,              &
                             Don_cape%model_p(i,j,k), qtren(k,kcont)
                 endif
@@ -3151,7 +3170,7 @@ integer,                      intent(out)    ::  error
 !    convective precipitation to total precipitation (contotxx_v).
 !--------------------------------------------------------------------
           if (debug_ijt) then
-            write (diag_unit, '(a,e20.12, a, e20.12)')  &
+            write (diag_unit, '(a20,e20.12, a8, e20.12)')  &
               'in mulsub: CATOT= ',ensmbl_anvil_cond_liq + &
                ensmbl_anvil_cond_liq_frz + ensmbl_anvil_cond_ice,   &
                                ' contot=',  &
@@ -3260,11 +3279,11 @@ integer,                      intent(out)    ::  error
 !    ical profile of total cloud fraction (Don_conv%cual).
 !--------------------------------------------------------------------
           if (debug_ijt) then
-            write  (diag_unit, '(a, 2e20.12)')   &
+            write  (diag_unit, '(a22, 2e20.12)')   &
                   'in cupar:  ampt,tpre= ',  &
                             Don_conv%ampta1(i,j), total_precip(i,j)      
             do k=1,nlev_lsm-Col_diag%kstart+1    
-              write (diag_unit, '(a, i4, e20.12)')  &
+              write (diag_unit, '(a22, i4, e20.12)')  &
                    'in cupar: k,cual= ',k,  &
                                 Don_conv%cual(i,j,nlev_lsm-k+1)
             end do
@@ -3284,7 +3303,7 @@ integer,                      intent(out)    ::  error
 !    variables.
 !--------------------------------------------------------------------
           if (debug_ijt) then
-            write (diag_unit, '(a, 2e20.12)')   &
+            write (diag_unit, '(a22, 2e20.12)')   &
                   'in cupar: dqls,qlsd= ', dqls_v, qlsd_v     
           endif
 
@@ -3306,7 +3325,8 @@ integer,                      intent(out)    ::  error
                  Don_cape%model_r(i,j,:), Don_cape%env_t(i,j,:), &
                  Don_cape%env_r(i,j,:), Don_cape%parcel_t(i,j,:), &
                  Don_cape%parcel_r(i,j,:), Don_cape%cape_p(i,j,:), &
-                 exit_flag(i,j), Don_conv%amos(i,j), Don_conv%a1(i,j),&
+                 Don_cape%xcape(i,j), exit_flag(i,j), &
+                 Don_conv%amos(i,j), Don_conv%a1(i,j),&
                  ermesg, error)
             else  ! (do_donner_closure)
 ! these paths used by donner_lite parameterization:
@@ -3434,13 +3454,13 @@ end subroutine don_d_mulsub_k
 
 subroutine don_d_integ_cu_ensemble_k             &
          (nlev_lsm, nlev_hires, ntr, me, diag_unit, debug_ijt, &
-          lofactor, Param, Col_diag, Nml, Initialized, temp_c, &
-          mixing_ratio_c, pfull_c, phalf_c,   &
-          tracers_c, sfc_sh_flux_c, sfc_vapor_flux_c,   &
-          sfc_tracer_flux_c, plzb_c, exit_flag_c, ensmbl_precip,    &
-          ensmbl_cond, ensmbl_anvil_cond_liq,  &
-          ensmbl_anvil_cond_liq_frz, &
-          ensmbl_anvil_cond_ice, pb, pt_ens, ampta1, amax, &
+          lofactor, Param, Col_diag, Nml, Initialized, &
+          temp_c, mixing_ratio_c, pfull_c, phalf_c, tracers_c, &
+          sfc_sh_flux_c, sfc_vapor_flux_c,   &
+          sfc_tracer_flux_c, plzb_c, parcel_launch_level, exit_flag_c, &
+          ensmbl_precip, ensmbl_cond, ensmbl_anvil_cond_liq,  &
+          ensmbl_anvil_cond_liq_frz, ensmbl_anvil_cond_ice, &
+          pb, pt_ens, ampta1, amax, &
           emsm, rlsm, cld_press, ensmbl_melt, ensmbl_melt_meso, &
           ensmbl_freeze, ensmbl_freeze_meso, ensmbl_wetc, &
           disb, disc_liq, disc_ice, dism_liq, dism_liq_frz, &
@@ -3454,22 +3474,20 @@ subroutine don_d_integ_cu_ensemble_k             &
           i, j, Don_cem)
 
 !----------------------------------------------------------------------
-!    subroutine integrate_cumulus_ensemble works on a single model 
-!    column. all profile arrays used in this subroutine and below have 
-!    index 1 nearest the surface. it first determines the lifting conden-
-!    sation level (if one exists) of a parcel moving from the specified 
-!    parcel_launch_level. if an lcl is found, subroutine 
-!    donner_cloud_model_cloud_model is called to determine the behavior
-!    of each of kpar cloud ensemble mem-
-!    bers assumed present in the column (each ensemble member is ass-
-!    umed to have a different entrainment rate). if all ensemble members
-!    produce deep convection, the ensemble statistics are produced for 
-!    use in the large-scale model; otherwise deep convection is not seen
-!    in the large-scale model in this grid column. if the ensemble will 
-!    support a mesoscale circulation, its impact on the large-scale model
-!    fields is also determined. upon completion, the appropriate output 
-!    fields needed by the large-scale model are returned to the calling 
-!    routine.
+!    subroutine integrate_cumulus_ensemble works on a single model  column. All
+!    profile arrays used in this subroutine and below have  index 1 nearest the
+!    surface. It first determines the lifting condensation level (if one exists)
+!    of a parcel moving from the specified  parcel_launch_level. If an lcl is
+!    found, subroutine  donner_cloud_model_cloud_model is called to determine 
+!    the behavior of each of kpar cloud ensemble members assumed present in the
+!    column (each ensemble member is assumed to have a different entrainment
+!    rate). If all ensemble members produce deep convection, the ensemble
+!    statistics are produced for  use in the large-scale model; otherwise deep
+!    convection is not seen in the large-scale model in this grid column. If the
+!    ensemble will  support a mesoscale circulation, its impact on the
+!    large-scale model fields is also determined. upon completion, the
+!    appropriate output fields needed by the large-scale model are returned to
+!    the calling routine.
 !----------------------------------------------------------------------
 use donner_types_mod, only : donner_param_type, &
                              donner_nml_type, donner_column_diag_type, &
@@ -3496,6 +3514,7 @@ real,                              intent(in)    :: sfc_sh_flux_c,   &
 real,    dimension(ntr),           intent(in)    :: sfc_tracer_flux_c 
 real,                              intent(in)    :: plzb_c
 real,                              intent(in)    :: lofactor
+integer,                           intent(in)    :: parcel_launch_level
 logical,                           intent(inout) :: exit_flag_c  
 real,                              intent(out)   ::    &
                      ensmbl_precip, ensmbl_cond,                    &
@@ -3972,7 +3991,10 @@ type(donner_cem_type),             intent(inout) :: Don_cem
       real     ::  meso_frac, precip_frac, frz_frac_non_precip,  &
                    bak, meso_frz_frac, pmelt_lsm, precip_melt_frac, &
                    ecei_liq,  ci_liq_cond, ci_ice_cond
-     
+
+      real,    dimension (nlev_lsm)       :: thetae
+      integer ::   local_launch_level
+      real    ::   theta     
 
 !----------------------------------------------------------------------
 !   local variables:
@@ -3997,7 +4019,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !---------------------------------------------------------------------
       if (debug_ijt) then
         do k=1,nlev_lsm-Col_diag%kstart+1
-          write (diag_unit, '(a, i4, f20.14, e20.12, f19.10)')&
+          write (diag_unit, '(a24, i4, f20.14, e20.12, f19.10)')&
                 'in mulsub: k,T,Q,P= ',k, temp_c(k),  &
                                       mixing_ratio_c(k), pfull_c(k)
         end do
@@ -4010,10 +4032,17 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !    isfactory lcl is not reached for this parcel, the logical variable 
 !    lcl_reached will be set to .false..
 !--------------------------------------------------------------------
+
+      local_launch_level = 2 ! Original AM3 code.
+! Eventually use the same level as calculated when determining CAPE.
+      !
+      if ( Nml%do_most_unstable_layer ) then
+        local_launch_level = parcel_launch_level 
+      endif
       call don_cm_lcl_k    &
-           (Param, temp_c (Nml%parcel_launch_level),    &
-            pfull_c       (Nml%parcel_launch_level),    &
-            mixing_ratio_c(Nml%parcel_launch_level),   &
+           (Param, temp_c (local_launch_level),    &
+            pfull_c       (local_launch_level),    &
+            mixing_ratio_c(local_launch_level),   &
             tb, pb, mrb, lcl_reached, ermesg, error)     
 
 !---------------------------------------------------------------------
@@ -4029,10 +4058,10 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !--------------------------------------------------------------------
       if (debug_ijt) then
         if (lcl_reached) then
-          write (diag_unit, '(a, f20.14, f19.10, e20.12)') &
+          write (diag_unit, '(a24, f20.14, f19.10, e20.12)') &
                                 'in mulsub: tb,pb,qb= ',tb, pb, mrb  
         else
-          write (diag_unit, '(a)') 'in mulsub: lcl not reached'
+          write (diag_unit, '(a26)') 'in mulsub: lcl not reached'
         endif
       endif
 
@@ -4178,7 +4207,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
         endif
 
         if (debug_ijt) then
-          write (diag_unit, '(a)')    &
+          write (diag_unit, '(a26)')    &
                      'in mulsub: phalf, temp= :'
           do k=1,nlev_lsm 
           write (diag_unit, '(i4, 2f19.10)')    &
@@ -4198,7 +4227,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
        endif
 
        if (debug_ijt) then
-         write (diag_unit, '(a, 2f19.10)')    &
+         write (diag_unit, '(a48, 2f19.10)')    &
          'before cm_cloud_model call pb,  pmelt_lsm    = ', &
                                     pb, pmelt_lsm
        endif
@@ -4253,7 +4282,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !    (lmeso).
 !----------------------------------------------------------------------
         if (debug_ijt) then
-          write (diag_unit, '(a, 2f19.10,1l4)')    &
+          write (diag_unit, '(a30, 2f19.10,1l4)')    &
          'in mulsub: PB,PT, lmeso= ', pb, ptma(kou), lmeso
         endif
 
@@ -4348,9 +4377,20 @@ type(donner_cem_type),             intent(inout) :: Don_cem
          else
            precip_melt_frac = 0.
          endif
+!---------------------------------------------------------------------
+!      Limit the precip fraction that melts to be less than 100%.
+!      summel above is calculated on the higher vertical resolution
+!      cloud model levels while ci_ice_cond is calculated on the lower
+!      vertical resolution large-scale model. They may be very close
+!      in value but computationally different. If precip_melt_frac is
+!      slightly greater than 1 (e.g. 1.0+2.e-8) then  spurious levels
+!      of negative snow are produced via the calculation of disp_ice
+!      below.
+!---------------------------------------------------------------------
+       if (precip_melt_frac > 1.0 )  precip_melt_frac = 1.0
 
        if (debug_ijt) then
-         write (diag_unit, '(a, 3e20.12)')  &
+         write (diag_unit, '(a48, 3e20.12)')  &
             'in mulsub: h1_ice intg, summel, precip_melt_frac', &
                        ci_ice_cond, summel, precip_melt_frac
        endif
@@ -4403,7 +4443,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
           bak = bak/(Param%grav)
           bak = bak/(Param%seconds_per_day*1.0e3)
           if (debug_ijt) then
-            write (diag_unit, '(a, 3e20.12)')  &
+            write (diag_unit, '(a24, e20.12)')  &
                   'in mulsub: column meso_freeze', bak
           endif
           if (bak > 0.0) then
@@ -4464,11 +4504,11 @@ type(donner_cem_type),             intent(inout) :: Don_cem
         endif
 
         if (debug_ijt) then
-          write (diag_unit, '(a, 3e20.12)')  &
+          write (diag_unit, '(a68, 3e20.12)')  &
                    'in mulsub pre anvil_cond_frz: h1_liq intg, dint,&
                        & frz_frac_non_precip           ', &
                    ci_liq_cond, dint, frz_frac_non_precip
-          write (diag_unit, '(a, 1e20.12)')  &
+          write (diag_unit, '(a68, 1e20.12)')  &
                                  'in mulsub : frz_frac', &
                                     frz_frac
 
@@ -4478,7 +4518,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !    is frozen (meso_frz_frac). define a logical indicating whether any 
 !    such condensate exists (meso_frz_intg). 
 !----------------------------------------------------------------------
-              write (diag_unit, '(a, i4, 2e20.12)')  &
+              write (diag_unit, '(a68, i4, 2e20.12)')  &
            'in mulsub : kou,  meso_frz_frac, precip_melt_frac', &
                                  kou,  meso_frz_frac, precip_melt_frac
           endif
@@ -4504,14 +4544,14 @@ type(donner_cem_type),             intent(inout) :: Don_cem
         if (error /= 0 ) return
 
         if (debug_ijt) then
-          write (diag_unit, '(a, i4, 3f19.10)')    &
+          write (diag_unit, '(a56, i4, 3f19.10)')    &
                      'in mulsub: meso_frac, precip_frac,frz_frac_non_precip:', &  
                      kou, meso_frac, precip_frac, frz_frac_non_precip
-          write (diag_unit, '(a, i4, 4f19.10)')    &
+          write (diag_unit, '(a56, i4, 4f19.10)')    &
                      'in mulsub: cu, ca, cell_precip, dint   :', &  
                          kou, cu, ca_liq + ca_ice, cell_precip,   &
                          dint*Param%seconds_per_day
-          write (diag_unit, '(a, 3f19.10)')    &
+          write (diag_unit, '(a56, 3f19.10)')    &
                      'in mulsub: pmelt_lsm, pb, summel   :', &  
                          pmelt_lsm, pb,  summel          
         endif
@@ -4627,20 +4667,20 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !    area (ampta1).
 !---------------------------------------------------------------------
       if (debug_ijt) then
-        write (diag_unit, '(a, e20.12, a, e20.12)')  &
+        write (diag_unit, '(a42, e20.12, a8, e20.12)')  &
                       'in mulsub: CUTOT=', ensmbl_cond, ' PRETOT=', &
                                       ensmbl_precip
-        write (diag_unit, '(a, 4e20.12)') &
+        write (diag_unit, '(a42, 4e20.12)') &
                'in mulsub: CATOT, (sum, liq, frzliq,ice)=', &
               ensmbl_anvil_cond_liq  + ensmbl_anvil_cond_liq_frz  +  &
                                    ensmbl_anvil_cond_ice, &
                                      ensmbl_anvil_cond_liq, &
                                      ensmbl_anvil_cond_liq_frz, &
                                      ensmbl_anvil_cond_ice
-        write (diag_unit, '(a, 3f19.10, 1l4)')  &
+        write (diag_unit, '(a42, 3f19.10, 1l4)')  &
               'in mulsub: ps,pb,pt,lmeso= ',   &
                      phalf_c(1), pb, pt_ens, lmeso
-        write (diag_unit, '(a, e20.12)')  &
+        write (diag_unit, '(a42, e20.12)')  &
                                  'in mulsub: ampt= ',ampta1     
       endif
 
@@ -4691,7 +4731,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !    this heating over the boundary layer.
 !---------------------------------------------------------------------
        sbl = Param%grav*sfc_sh_flux_c/((phalf_c(1) - psmx)*Param%cp_air)
-        write (diag_unit, '(a, e20.12, 2f19.10)')  &
+        write (diag_unit, '(a36, e20.12, 2f19.10)')  &
              'in cm_intgl_to_gcm_col: xav,p1,p2= ',sbl, phalf_c(1), psmx 
         call don_u_map_hires_i_to_lores_c_k   &
              (nlev_lsm, sbl, phalf_c(1), psmx, phalf_c, sfch, ermesg, error)
@@ -4704,7 +4744,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 
         do k=1,size(sfch(:))
           if (sfch(k) /= 0.0) then
-            write (diag_unit, '(a, i4, e20.12)') &
+            write (diag_unit, '(a36, i4, e20.12)') &
                             'in cm_intgl_to_gcm_col: k,x= ',k,sfch(k)
           endif
         end do
@@ -4717,7 +4757,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 !    this moistening over the boundary layer.
 !---------------------------------------------------------------------
         sbl = (sfc_vapor_flux_c*Param%grav)/(phalf_c(1) - psmx)
-        write (diag_unit, '(a, e20.12, 2f19.10)')  &
+        write (diag_unit, '(a36, e20.12, 2f19.10)')  &
              'in cm_intgl_to_gcm_col: xav,p1,p2= ',sbl, phalf_c(1), psmx 
         call don_u_map_hires_i_to_lores_c_k   &
              (nlev_lsm, sbl, phalf_c(1), psmx, phalf_c, sfcq, ermesg, error)
@@ -4730,7 +4770,7 @@ type(donner_cem_type),             intent(inout) :: Don_cem
 
         do k=1,size(sfcq(:))
           if (sfcq(k) /= 0.0) then
-            write (diag_unit, '(a, i4, e20.12)') &
+            write (diag_unit, '(a36, i4, e20.12)') &
                             'in cm_intgl_to_gcm_col: k,x= ',k,sfcq(k)
           endif
         end do
@@ -5114,7 +5154,7 @@ integer,               intent(out) :: error
 !    indicating the variable that is being processed.
 !---------------------------------------------------------------------
       if (debug_ijt) then
-        write (diag_unit, '(a)')  &
+        write (diag_unit, '(a60)')  &
            'in mulsub: map_hi_res_col_to_lo_res_col: ' // trim(name_hi)
       endif
 
@@ -5139,7 +5179,7 @@ integer,               intent(out) :: error
 !    profiles on both the hi- and lo-res grids.
 !---------------------------------------------------------------------
       if (debug_ijt) then
-        write (diag_unit, '(a, 2e20.12)')  &
+        write (diag_unit, '(a60, 2e20.12)')  &
              'in mulsub: rintsum(' // trim(name_lo) // ' ) =',  &
                                               intgl_hi, intgl_lo
 
@@ -5178,7 +5218,7 @@ integer,               intent(out) :: error
         if (debug_ijt) then
           do k=1,n_lo                   
             if (profile_lo(k) /= 0.0) then
-              write (diag_unit, '(a, i4, e20.12)') &
+              write (diag_unit, '(a48, i4, e20.12)') &
                  'in set_col_integral: k,phr,phr+= ', k, profile_lo(k)* &
                               conservation_factor_used(k)
             endif
@@ -5208,13 +5248,13 @@ integer,               intent(out) :: error
 !    profiles, both before and after the adjustment to the desired value.
 !---------------------------------------------------------------------
         if (debug_ijt) then
-          write (diag_unit, '(a, e20.12)')  &
+          write (diag_unit, '(a48, e20.12)')  &
                            'in set_col_integral: column(in)= ',intgl_hi
-          write (diag_unit, '(a, e20.12)')  &
+          write (diag_unit, '(a48, e20.12)')  &
                           'in set_col_integral: column(out)= ',intgl_lo 
           do k=1,n_lo                 
             if (profile_lo(k)*conservation_factor_used(k) /= out(k)) then
-              write (diag_unit, '(a, i4, 2e20.12)') &
+              write (diag_unit, '(a48, i4, 2e20.12)') &
                'in set_col_integral: k,qtr(in), qtr(out)= ', k,  &
                       profile_lo(k)*conservation_factor_used(k), out(k)
             endif
@@ -5263,15 +5303,15 @@ integer,               intent(out) :: error
 !    profiles, both before and after adding the boundary layer source.
 !---------------------------------------------------------------------
         if (debug_ijt) then
-          write (diag_unit, '(a, 3e20.12)')  &
+          write (diag_unit, '(a44, 3e20.12)')  &
              'after apply_subcloud: column(in)= ',   &
                              intgl_hi, press_lo(1), press_hi(1)
-          write (diag_unit, '(a, e20.12)')  &
+          write (diag_unit, '(a44, e20.12)')  &
                            'after apply_subcloud: column(out)= ',  &
                                                        intgl_lo 
           do k=1,n_lo                  
             if (profile_lo(k) /= out(k)) then
-              write (diag_unit, '(a, i4, 2e20.12)') &
+              write (diag_unit, '(a44, i4, 2e20.12)') &
                'in set_col_integral: k,qtr(in), qtr(out)= ', k,  &
                                        profile_lo(k), out(k)
             endif
@@ -5716,14 +5756,14 @@ integer,                            intent(out)   :: error
 !    of liquid water produced by the given ensemble member.
 !----------------------------------------------------------------------
       if (debug_ijt) then
-        write (diag_unit, '(a)') 'in mulsub: P & CLD_EVAP'
+        write (diag_unit, '(a24)') 'in mulsub: P & CLD_EVAP'
         do k=1,ncc_kou-1
-            write (diag_unit, '(a, i4, 2e20.12)')  &
+            write (diag_unit, '(a24, i4, 2e20.12)')  &
                  'in mulsub: k, P & QLW', k, cld_press(k), cld_evap (k)
         end do
-        write (diag_unit, '(a)') 'in mulsub: P & QLW'
+        write (diag_unit, '(a24)') 'in mulsub: P & QLW'
         do k=1,ncc_kou-1
-            write (diag_unit, '(a, i4, 2e20.12)')  &
+            write (diag_unit, '(a24, i4, 2e20.12)')  &
                  'in mulsub: k, P & QLW', k, cld_press(k), qlw      (k)
         end do
       endif
@@ -5755,7 +5795,7 @@ integer,                            intent(out)   :: error
           aak = aak - dpf_warm(k)*dp
         end do
         aak = aak/(Param%grav*1000.)
-            write (diag_unit, '(a, e20.12, i6)')  &
+            write (diag_unit, '(a36, e20.12, i6)')  &
                                  'in mulsub: dpf_warm intg, ncc_kou',  &
                                            aak, ncc_kou
       endif
@@ -5767,7 +5807,7 @@ integer,                            intent(out)   :: error
         end do
         ci_liq_cond = ci_liq_cond/(Param%grav      )
       if (debug_ijt) then
-            write (diag_unit, '(a, e20.12)')  &
+            write (diag_unit, '(a36, e20.12)')  &
                                  'in mulsub: h1_liq intg', ci_liq_cond
       endif
 
@@ -5790,18 +5830,29 @@ integer,                            intent(out)   :: error
           aak = aak - dpf_cold(k)*dp
         end do
         aak = aak/(Param%grav*1000.)
-            write (diag_unit, '(a, e20.12, i6)')  &
+            write (diag_unit, '(a36, e20.12, i6)')  &
                                  'in mulsub: dpf_cold intg, ncc_kou',  &
                                            aak, ncc_kou
       endif
         ci_ice_cond = 0.
         do k=1,nlev_lsm
           dp = phalf_c(k) - phalf_c(k+1)
-          ci_ice_cond = ci_ice_cond + h1_ice(k)*dp
+!WFCfix for "Verona" release:  
+!          ci_ice_cond = ci_ice_cond + h1_ice(k)*dp
+!     replace the above line with the following; also comment out line
+!     noted below. This fix will eliminate the occurrence of roundoff
+!     "snow" falling from donner (~10e-22, + and -) that results from 
+!     difference in this calc and that of "summel" above 
+! NOTE THIS REPLICATES A FIX MADE IN THE DONNER LITE CODE.
+          ci_ice_cond = ci_ice_cond + h1_ice(k)*dp/Param%grav
+! This fix will not allow for perfect comparison. 
+! ci_ice_cond is integrated over the low resolution model levels.
+! summel is integrated over the higher resolution cloud model levels.
         end do
-        ci_ice_cond = ci_ice_cond/(Param%grav      )
+!fix  for "Verona" release -- comment out this line:
+!        ci_ice_cond = ci_ice_cond/(Param%grav      )
       if (debug_ijt) then
-            write (diag_unit, '(a, e20.12)')  &
+            write (diag_unit, '(a36, e20.12)')  &
                                  'in mulsub: h1_ice intg', ci_ice_cond
       endif
 
@@ -5870,7 +5921,7 @@ integer,                            intent(out)   :: error
           aak = aak + q1(k)*dp
         end do
         aak = aak/(Param%grav*1000.)
-            write (diag_unit, '(a, e20.12)')  &
+            write (diag_unit, '(a36, e20.12)')  &
                                  'in mulsub: q1 intg', aak
       endif
         
@@ -5933,15 +5984,15 @@ integer,                            intent(out)   :: error
 !    if in diagnostics column, output the profile of the entropy flux
 !    convergence on the lo-res grid, at levels where it is non-zero.
 !---------------------------------------------------------------------
-      do k=1,nlev_lsm
-        if (debug_ijt) then
+      if (debug_ijt) then
+        do k=1,nlev_lsm
           if (h1_2(k) /= 0.0) then
-            write (diag_unit, '(a, i4, e20.12)')  &
+            write (diag_unit, '(a18, i4, e20.12)')  &
                                  'in mulsub: JK,H1= ', k, h1_2(k)
           endif
-        endif
-      end do
-
+        end do
+      endif
+  
 !----------------------------------------------------------------------
 
 
@@ -6127,7 +6178,7 @@ integer,                         intent(  out)  :: error
 !    (ucemh) and the cloud area at each level ( alp).
 !----------------------------------------------------------------------
         if (debug_ijt) then
-          write (diag_unit, '(a, i4, 2e20.12)')  &
+          write (diag_unit, '(a26, i4, 2e20.12)')  &
                     'in mulsub: k,ucemh, alp= ',k,ucemh(k), alp(k)
         endif
       end do
@@ -6559,19 +6610,19 @@ real   , intent(in) ::            precip_melt_frac
         endif
 
         if (debug_ijt) then
-          write (diag_unit, '(a, i4, 3e20.12)')  &
+          write (diag_unit, '(a54, i4, 3e20.12)')  &
                               'in mulsub: precip profiles', &
                                k, disp_liq(k)*Param%hlv/Param%cp_air, &
                              Param%hls/Param%cp_air*disp_ice(k), &
                              Param%hls/Param%cp_air*disz(k)
-          write (diag_unit, '(a, i4, 2e20.12)')  &
+          write (diag_unit, '(a54, i4, 2e20.12)')  &
                            'in mulsub: remelt, melt precip profiles', &
                            k, Param%hlv/Param%cp_air*disz_remelt(k), &
                                   Param%hlv/Param%cp_air*disp_melted(k)
-          write (diag_unit, '(a, i4, 3e20.12)')  &
+          write (diag_unit, '(a54, i4, 3e20.12)')  &
                               'in mulsub: evap   profiles', &
                                k, disze1(k), disze2(k),  -disze3(k)     
-          write (diag_unit, '(a, i4, 2e20.12)')  &
+          write (diag_unit, '(a54, i4, 2e20.12)')  &
                               'in mulsub: cd     profiles', &
                                k, disc_liq(k), disc_ice(k)
         endif
@@ -6666,7 +6717,7 @@ real   , intent(in) ::            precip_melt_frac
                                   meso_freeze(k)
           if (debug_ijt) then
             if (meso_freeze(k) /= 0.0) then
-              write (diag_unit, '(a, i4, 2e20.12)')  &
+              write (diag_unit, '(a28, i4, 2e20.12)')  &
                               'in mulsub: jk,fres,fre= ',   &
                                k, ensmbl_freeze_meso(k), meso_freeze(k)
             endif
@@ -6685,7 +6736,7 @@ real   , intent(in) ::            precip_melt_frac
         ensmbl_melt(k) = ensmbl_melt(k) - area_ratio*cell_melt(k)
         if (debug_ijt) then
           if (cell_freeze(k) /= 0.0) then
-            write (diag_unit, '(a, i4, 2e20.12)')  &
+            write (diag_unit, '(a28, i4, 2e20.12)')  &
                      'in mulsub: jk,fres,frea= ',    &
                                      k, ensmbl_freeze(k), cell_freeze(k)
           endif
@@ -6703,11 +6754,11 @@ real   , intent(in) ::            precip_melt_frac
         qtrsum = 0.
         do k=1,nlev_lsm       
           do kcont=1,ntr  
-            write (diag_unit, '(a,  i4, 2e20.12)')  &
+            write (diag_unit, '(a40,  i4, 2e20.12)')  &
                       'in mulsub: jk,    qtr,qtren=         ', &
                               k,    qtr(k,kcont),qtren(k,kcont)
             qtrsum = qtrsum + qtr(k,kcont)*(phalf_c(k) - phalf_c(k+1))
-            write (diag_unit, '(a,  i4, e20.12)')  &
+            write (diag_unit, '(a40,  i4, e20.12)')  &
                          'in mulsub: jk,    qtrsum= ', k,    qtrsum
           end do
         end do
@@ -6743,14 +6794,14 @@ real   , intent(in) ::            precip_melt_frac
               rlh(k) = (h1_liq(k) + h1_ice(k))*Param%SECONDS_PER_DAY*  &
                                                                 convrat
             endif
-            write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+            write (diag_unit, '(a21, i4, f19.10, e20.12)')  &
                       'in mulsub: k, p & ctf', k, pfull_c(    k),  &
                                                h1_2(k)*86400. + rlh(k)
           endif
         end do
         do k=1,nlev_lsm        
           if (cmf(k) /= 0.0) then
-            write (diag_unit, '(a, i4, f19.10, e20.12)') &
+            write (diag_unit, '(a21, i4, f19.10, e20.12)') &
                        'in mulsub: k, p & cmf', k, pfull_c(k), cmf(k)
           endif
         end do
@@ -7003,7 +7054,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if ( (disc_liq(k)+ disc_ice(k))  /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, 2e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, 2e20.12)')  &
               'in mulsub: k, P & liq/ice =',  k, pfull_c(k),disc_liq(k), &
                                                         disc_ice(k)
         endif
@@ -7015,7 +7066,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (disb(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)') &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)') &
               'in mulsub: k, P & EFC =',  k, pfull_c(k),disb(k)
         endif
       end do
@@ -7026,7 +7077,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (disd(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                'in mulsub: k, P & EMF =',  k, pfull_c(k),disd(k)
         endif
       end do
@@ -7037,7 +7088,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (disn(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                        'in mulsub: k, P & cell thermal forcing =',    &
                         k, pfull_c(k),disn(k)
         endif
@@ -7049,7 +7100,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (encmf(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                       'in mulsub: k, P & cell moisture forcing =',    &
                         k, pfull_c(k),encmf(k)
         endif
@@ -7062,7 +7113,7 @@ integer,                       intent(out) :: error
       do k=1,nlev_lsm
         if ((temp_tend_freeze(k) +   &
                           temp_tend_freeze_meso(k))/= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)') &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)') &
                       'in mulsub: k, P & meso up freeze        =',    &
            k, pfull_c(k),temp_tend_freeze(k) + temp_tend_freeze_meso(k)
         endif
@@ -7074,7 +7125,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (temp_tend_melt(k)  /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                      'in mulsub: k, P & meso down melt        =',    &
                        k, pfull_c(k),temp_tend_melt(k) 
         endif
@@ -7086,7 +7137,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (cmus_tot(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)') &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)') &
                       'in mulsub: k, P & meso up con           =',    &
                          k, pfull_c(k),cmus_tot  (    k)
         endif
@@ -7098,7 +7149,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if ((emds_liq(k) + emds_ice(k)) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                      'in mulsub: k, P & meso down evap        =',    &
                        k, pfull_c(k), emds_liq(k) + emds_ice(k)
         endif
@@ -7110,7 +7161,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if ((emes_liq(k) + emes_ice(k)) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                         'in mulsub: k, P & meso up evap        =',    &
                           k, pfull_c(k),emes_liq(k) + emes_ice(k)
         endif
@@ -7122,7 +7173,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (wmms(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                       'in mulsub: k, P & meso cell con       =',    &
                        k, pfull_c(k),wmms(k)
         endif
@@ -7134,7 +7185,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (wmps(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                        'in mulsub: k, P & meso vap redist     =',    &
                           k, pfull_c(k),wmps(k)
         endif
@@ -7146,7 +7197,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (tmes(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                        'in mulsub: k, P & meso efc            =',    &
                         k, pfull_c(k),tmes(k)
         endif
@@ -7159,7 +7210,7 @@ integer,                       intent(out) :: error
       do k=1,nlev_lsm
 !! WAS ORIGINALLY    :    if (tmes  (    k) /= 0.00 ) then
         if (mrmes(k) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)') &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)') &
                         'in mulsub: k, P & meso mfc            =',    &
                          k, pfull_c(k),mrmes(k)
         endif
@@ -7171,7 +7222,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if ((eces_liq(k) + eces_ice(k)) /= 0.00 ) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                       'in mulsub: k, P & up con evap         =',    &
                           k, pfull_c(k), eces_liq(k) + eces_ice(k)
         endif
@@ -7183,7 +7234,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if ((ecds_liq(k) + ecds_ice(k)) /= 0.00 ) then
-           write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+           write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                       'in mulsub: k, P & down con evap         =',    &
                        k, pfull_c(k), ecds_liq(k) + ecds_ice(k)
         endif
@@ -7195,7 +7246,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (disa(k) /= 0.0) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                            'in mulsub: k, p & ens thermal forc', &
                               k, pfull_c(k), disa(k)
          endif
@@ -7207,7 +7258,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (dise(k) /= 0.0) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                           'in mulsub: k, p & ens moisture forc', &
                            k, pfull_c(k), dise(k)
         endif
@@ -7219,11 +7270,11 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if ((disg_2liq(k) + disg_2ice(k)) /= 0.0) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                          'in mulsub: k, p & thermal modifications', &
                           k, pfull_c(k), disg_2liq(k) + disg_2ice(k)+ &
                          temp_tend_freeze(k) + temp_tend_melt(k)
-          write (diag_unit, '(a, i4, f19.10, 2e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, 2e20.12)')  &
             'in mulsub: k, p & thermal modifications -- liq, ice', &
                           k, pfull_c(k), disg_2liq(k),  disg_2ice(k)
         endif
@@ -7235,7 +7286,7 @@ integer,                       intent(out) :: error
 !---------------------------------------------------------------------
       do k=1,nlev_lsm
         if (disf(k) /= 0.0) then
-          write (diag_unit, '(a, i4, f19.10, e20.12)')  &
+          write (diag_unit, '(a42, i4, f19.10, e20.12)')  &
                       'in mulsub: k, p & moisture modifications', &
                        k, pfull_c(k), disf(k)
         endif
@@ -7751,14 +7802,21 @@ logical,                      intent( in) :: melting_in_cloud
           disl_ice_melted(k) = 0.
         endif
         if (lmeso) then
-            liq_prcp(k) = Param%anvil_precip_efficiency*(dism_liq(k) + &
-                          disl_liq(k) +    &
-                          dism_liq_remelt(k) + dism_ice_melted(k) + &
-                          disl_ice_melted(k)) + disp_liq(k) + &
-                          disp_melted(k) + disz_remelt(k)
+            liq_prcp(k) = Param%anvil_precip_efficiency* &
+                                  (dism_liq(k) + &
+                                   disl_liq(k) + &
+                                   dism_liq_remelt(k) + &
+                                   dism_ice_melted(k) + &
+                                   disl_ice_melted(k)) + &
+                          disp_liq(k) + &
+                          disp_melted(k) + &
+                          disz_remelt(k)
             frz_prcp(k) = Param%anvil_precip_efficiency*  &
-                          (dism_liq_frz(k) + dism_ice(k) +   &
-                          disl_ice(k)) + disp_ice(k) + disz(k)
+                                  (dism_liq_frz(k) + &
+                                   dism_ice(k) +   &
+                                   disl_ice(k)) + &
+                          disp_ice(k) + &
+                          disz(k)
           else
             liq_prcp(k) = disp_liq(k) + disp_melted(k) + disz_remelt(k)
             frz_prcp(k) = disp_ice(k) + disz(k)
@@ -8596,7 +8654,7 @@ subroutine don_d_determine_cloud_area_k            &
           Initialized, Nml, lofactor, &
           max_depletion_rate, dcape, amax, dise_v, disa_v, pfull_c,  &
           temp_c, mixing_ratio_c, env_t, env_r, parcel_t, parcel_r, &
-          cape_p, exit_flag, amos, a1, ermesg, error)
+          cape_p, xcape_deep, exit_flag, amos, a1, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine determine_cloud_area defines the convective cloud area
@@ -8625,6 +8683,7 @@ real, dimension(nlev_lsm),    intent(in)    :: dise_v, disa_v, &
                                                mixing_ratio_c 
 real, dimension(nlev_hires),  intent(in)    :: env_t, env_r, parcel_t,  &
                                                parcel_r, cape_p
+real,                         intent(in)    :: xcape_deep
 logical,                      intent(inout) :: exit_flag
 real,                         intent(out)   :: amos, a1
 character(len=*),             intent(out)   :: ermesg
@@ -8762,7 +8821,7 @@ integer,                      intent(out)   :: error
            (nlev_hires, diag_unit, debug_ijt, Param, Initialized, &
             Nml, lofactor, dcape, &
             cape_p, qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, &
-            rl_v, parcel_r, env_t, parcel_t, a1, ermesg, error)     
+            rl_v, parcel_r, env_t, parcel_t, xcape_deep, a1, ermesg, error)     
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine. 
@@ -9418,6 +9477,10 @@ integer,                        intent(out)   :: error
       deallocate (Don_cape%model_t    )
       deallocate (Don_cape%qint       )     
       deallocate (Don_cape%qint_lag   ) 
+      deallocate (Don_cape%launch_level)
+      deallocate (Don_cape%Tthetae    )
+      deallocate (Don_cape%Pthetae    )
+      deallocate (Don_cape%thetae     )
 
 !----------------------------------------------------------------------
 !    deallocate the components of the donner_rad_type variable.

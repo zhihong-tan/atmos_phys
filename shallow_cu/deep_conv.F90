@@ -40,6 +40,7 @@ MODULE DEEP_CONV_MOD
 
   public deepc
   type deepc
+     real    :: cbmf0
      real    :: rkm_dp1
      real    :: rkm_dp2
      real    :: cbmf_dp_frac1
@@ -90,6 +91,7 @@ contains
 
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
+    dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
@@ -344,116 +346,54 @@ contains
        ocode=6; return
     end if
 
-!    if (cc%wrel .le. 0.) then
-!       cbmf0 = 0.0001
-!       call cp_clear_k(cp);  cp %maxcldfrac=1.;
-!       call cp_clear_k(cp1); cp1%maxcldfrac=1.;
-!       call ct_clear_k(ct1);
-!       call cumulus_plume_k(dpn, sd, ac, cp, rkm_dp, cbmf0, wrel, zcldtop, Uw_p, ier, ermesg)
-!       if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
-!       	  cbmf_deep = 0.; ocode=8; return
-!       else
-!        print*,'AAAAAAAAAAAAAAAAAAAAAAAAA'
-!       end if
-!    end if
-
     cwfn_th = dpc%cwfn_th;
     if (dpc%do_cgust_dp) then
-       if (sd%land.gt.0.5) then
-       	  if (dpc%cgust_choice==0) then
-       	     if (ac%cape.gt.ac%cin .and. ac%cin.gt.dpc%cin_th .and. ac%cape.gt.dpc%cape_th) then
-       	     	dpn%do_forcedlifting = .true.
-             	dpn%do_ppen = .false.
-       	     	!taudp = taudp * dpc%tau_dp_fact
-             	!cwfn_th = 0.
-	     	!rkm_dp = dpc%rkm_dp2
-             	!tmp = sd%cgust/(sd%cgust0+sd%cgust)
-	     	!tmp = (1.-sqrt(tmp))
-             	!rkm_dp = rkm_dp * tmp
-             	!taudp  = taudp  * tmp
-             	!taudp  = max(taudp, 7200.)
-             endif 
-	  else if (dpc%cgust_choice==1) then
-       	     if (ac%cape.gt.dpc%cape_th .and. ac%cin/ac%cape.lt.dpc%cin_fact) then
-       	     	dpn%do_forcedlifting = .true.
-             	dpn%do_ppen = .false. !taudp = taudp * dpc%tau_dp_fact
-             endif 
-	  else if (dpc%cgust_choice==2) then
-	     !if (ac%cape.gt.dpc%cape_th .and. ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-	     if (ac%cape.gt.dpc%cape_th .and. ac%cin.gt.dpc%cin_th .and.     &
-	         ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-       	     	dpn%do_forcedlifting = .true.
-             	dpn%do_ppen = .false.;
-                lofactor= 1.- sd%land*(1.- dpc%lofactor_d)
-             	rkm_dp  = rkm_dp  * lofactor
-	     endif
-	  else if (dpc%cgust_choice==3) then
-	     if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
-	         ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-       	     	dpn%do_forcedlifting = .true.
-             	dpn%do_ppen  = .false.;
-                lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
-             	rkm_dp       = rkm_dp        * lofactor
-                dpn % peff_l = dpn % peff_l  / lofactor
-                dpn % peff_i = dpn % peff_i  / lofactor
-                !dpn % mixing_assumption = 2
-	     	lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
-      	     	lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
-      	     	latx=lat*180/3.1415926; lonx=lon*180/3.1415926
-      	     	if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
-                   tmp=1
-      	     	   elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
-            	   tmp=2
-      	     	endif
- 	     endif
-	  else if (dpc%cgust_choice==4) then !significant cin, cape and cgust
-       	     if (dpc%src_choice_d .ne. sd%src_choice) then
-       	     	sd%src_choice = dpc%src_choice_d
-    	     	call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
-	     	ksrc  =sd%ksrc
-	     	zsrc  =sd%zsrc
-	     	psrc  =sd%psrc
-	     	thcsrc=sd%thcsrc
-	     	qctsrc=sd%qctsrc
-	     	hlsrc =sd%hlsrc
-    	     	if (sd%p(ksrc).lt. 80000 .and. sd%p(ksrc).gt. 60000) then
-       	     	   ksrc=ksrc
-	     	end if
-    	     	call ac_clear_k(ac);
-    	     	call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
-    	     	if (ac%plcl-ac%plfc .lt. 15000.) then
-       	     	   dpn%do_forcedlifting = .true.
-             	   dpn%do_ppen  = .false.;
-	     	end if
-	     end if
-	  else if (dpc%cgust_choice==5) then !significant cin, cape and cgust
-	     lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
-      	     lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
-      	     latx=lat*180/3.1415926; lonx=lon*180/3.1415926
-      	     if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
-                tmp=1
-      	     elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
-            	tmp=2
-      	     endif
-
-             sd%do_gust_qt = .true.
-             sd%gqt_choice = 0
-    	     call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
-   	     ksrc  =sd%ksrc
-	     zsrc  =sd%zsrc
-	     psrc  =sd%psrc
-	     thcsrc=sd%thcsrc
-	     qctsrc=sd%qctsrc
-	     hlsrc =sd%hlsrc
-    	     call ac_clear_k(ac);
-    	     call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
-	  endif
+       if (dpc%cgust_choice==0) then
+       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+       	      dpn%do_forcedlifting = .true.
+              dpn%do_ppen  = .false.;
+              lofactor     = dpc%lofactor_d
+              rkm_dp       = rkm_dp        * lofactor
+              dpn % peff_l = dpn % peff_l  / lofactor
+              dpn % peff_i = dpn % peff_i  / lofactor
+ 	  endif
+       else if (dpc%cgust_choice==3 .and. sd%land.gt.0.5) then
+       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+       	      dpn%do_forcedlifting = .true.
+              dpn%do_ppen  = .false.;
+              lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
+              rkm_dp       = rkm_dp        * lofactor
+              dpn % peff_l = dpn % peff_l  / lofactor
+              dpn % peff_i = dpn % peff_i  / lofactor
+ 	  endif
+       else if (dpc%cgust_choice==5) then !saved only for testing purpose
+	  lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
+	  lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
+      	  latx=lat*180/3.1415926; lonx=lon*180/3.1415926
+      	  if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
+             tmp=1
+      	  elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
+             tmp=2
+      	  endif
+          sd%do_gust_qt = .true.
+          sd%gqt_choice = 0
+    	  call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
+   	  ksrc  =sd%ksrc
+	  zsrc  =sd%zsrc
+	  psrc  =sd%psrc
+	  thcsrc=sd%thcsrc
+	  qctsrc=sd%qctsrc
+	  hlsrc =sd%hlsrc
+    	  call ac_clear_k(ac);
+    	  call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
        endif
     end if
 
     zcldtop = 2000 !sd%z(cp%ltop)
     wrel  = max(cc%wrel, wrel0)
-    cbmf0 = 0.0001
+    cbmf0 = dpc%cbmf0
     call cp_clear_k(cp);  cp %maxcldfrac=1.;
     call cp_clear_k(cp1); cp1%maxcldfrac=1.;
     call ct_clear_k(ct1);

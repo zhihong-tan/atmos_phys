@@ -15,7 +15,7 @@ subroutine cu_clo_cumulus_closure_k   &
          (nlev_hires, diag_unit, debug_ijt, Param, Initialized, &
           Nml, lofactor, dcape, cape_p, &
           qli0_v, qli1_v, qr_v, qt_v, env_r, ri_v, rl_v, parcel_r,   &
-          env_t, parcel_t, a1, ermesg, error)
+          env_t, parcel_t, xcape_deep, a1, ermesg, error)
 
 !---------------------------------------------------------------------
 !    subroutine cumulus_closure calculates a_1(p_b) for closing the 
@@ -39,6 +39,7 @@ real,    dimension(nlev_hires), intent(in)  :: cape_p, qli0_v, qli1_v, &
                                                qr_v, qt_v, env_r, ri_v, &
                                                rl_v, parcel_r, env_t,   &
                                                parcel_t
+real,                           intent(in)  :: xcape_deep
 real,                           intent(out) :: a1
 character(len=*),               intent(out) :: ermesg
 integer,                        intent(out) :: error
@@ -241,34 +242,23 @@ integer,                        intent(out) :: error
             pert_env_t, &
             pert_env_r, cape_p, .false., plfc, plzb, plcl, dumcoin,  &
             dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)
-      else
-
-!--------------------------------------------------------------------
-!    if using cape relaxation closure then need to return cape value.
-!--------------------------------------------------------------------
-      call don_c_displace_parcel_k   &
-           (nlev_hires, diag_unit, debug_ijt, Param,   &
-            Nml%do_freezing_for_closure, Nml%tfre_for_closure, &
-            Nml%dfre_for_closure, Nml%rmuz_for_closure, &
-            Initialized%use_constant_rmuz_for_closure, &
-                Nml%modify_closure_plume_condensate, &
-                Nml%closure_plume_condensate, &
-            pert_env_t, &
-            pert_env_r, cape_p, .true., plfc, plzb, plcl, dumcoin,  &
-            dumxcape, pert_parcel_r,  pert_parcel_t, ermesg, error)
-     endif
 
 !----------------------------------------------------------------------
 !    determine if an error message was returned from the kernel routine.
 !    if so, return to calling program where it will be processed.
 !----------------------------------------------------------------------
-      if (error /= 0 ) return
+        if (error /= 0 ) return
 
+      else
+
+!--------------------------------------------------------------------
+!    if using cape relaxation closure then need to return cape value.
+!--------------------------------------------------------------------
+        dumxcape=xcape_deep
 
 !---------------------------------------------------------------------
 !    define quantities needed for cape relaxation closure option.
 !---------------------------------------------------------------------
-      if ( .not. Nml%do_dcape) then
         cape_c = Nml%cape0
         tau    = Nml%tau
         if (Nml%do_lands) then

@@ -122,18 +122,19 @@ logical      ::  do_ch4_sw_effects = .false.    ! the shortwave effects
 logical      ::  do_n2o_sw_effects = .false.    ! the shortwave effects
                                                 ! of n2o are included ?
 logical      ::  do_sw_continuum =  .false.     ! include the shortwave
-                                                ! continuum? 						 
+                                                ! continuum?
 logical      ::  do_rayleigh     = .true.       ! is rayleigh scattering
-                                                ! turned on? 
+                                                ! turned on?
 logical      ::  reproduce_ulm   = .true.       ! reproduce ulm code
-                                                 
+logical      ::  do_four_stream  = .false.      !
+                              
 namelist / esfsw_driver_nml /    &
                                do_rayleigh_all_bands, &
                                do_herzberg, do_quench, &
                                do_h2o_sw_effects, do_o3_sw_effects, &
                                do_ch4_sw_effects, do_n2o_sw_effects, &
                                do_co2_sw_effects, do_o2_sw_effects, &
-                               do_sw_continuum, do_rayleigh, reproduce_ulm
+                               do_sw_continuum, do_rayleigh, reproduce_ulm, do_four_stream
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -504,8 +505,8 @@ subroutine esfsw_driver_init
       allocate ( solflxband      (nbands) )
       allocate ( kh2o            (nfrqpts),   & 
                  ko3             (nfrqpts),   &
-          	 kctms            (nfrqpts),  & 
-		 kctmf            (nfrqpts),  & 
+                 kctms           (nfrqpts),   & 
+                 kctmf           (nfrqpts),   & 
                  wtfreq          (nfrqpts),   &
                  strterm         (nfrqpts)   )
       allocate ( wtstr           (nstreams),   & 
@@ -566,24 +567,22 @@ subroutine esfsw_driver_init
 !    read input file for band positions, solar fluxes and band
 !    strengths.
 !---------------------------------------------------------------------
-      if (nh2obands == 9 ) then
-         ! Ulm/CJG esf_sw_input_data
-         if (nbands == 18 .and. nfrqpts == 38) then
-            if (do_sw_continuum) then
-               file_name = 'INPUT/esf_sw_input_data_n38b18ctm'
-            else
-               file_name = 'INPUT/esf_sw_input_data_n38b18'
-            endif
-         else if (nbands == 18 .and. nfrqpts == 74) then
-            if (do_sw_continuum) then
-               file_name = 'INPUT/esf_sw_input_data_n74b18ctm'
-            else
-               file_name = 'INPUT/esf_sw_input_data_n74b18'
-            endif
-         endif
-      else  !nh2obands
+
+      if (nbands == 18 .and. nfrqpts == 38) then
+        if (do_sw_continuum) then
+           file_name = 'INPUT/esf_sw_input_data_n38b18ctm'
+        else
+           file_name = 'INPUT/esf_sw_input_data_n38b18'
+        endif
+      else if (reproduce_ulm) then
+        if (do_sw_continuum) then
+           file_name = 'INPUT/esf_sw_input_data_n74b18ctm'
+        else
+           file_name = 'INPUT/esf_sw_input_data_n74b18'
+        endif
+      else
          file_name = 'INPUT/esf_sw_input_data'
-      endif !nh2obands
+      endif
       
       call error_mesg ( 'esfsw_driver_mod', &
           'reading solar band data from file '//trim(file_name), NOTE)
@@ -595,8 +594,7 @@ subroutine esfsw_driver_init
       read(iounit,103) FIRSTRAYBAND,NIRBANDS
       read(iounit,104) ( powph2o(nband), nband=1,NH2OBANDS )
       read(iounit,104) ( p0h2o(nband), nband=1,NH2OBANDS )
-
-      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+      if ((nbands == 18 .and. nfrqpts == 38) .or. reproduce_ulm) then
         read(iounit,105) ( c1co2(nband), nband=1,NH2OBANDS )
         read(iounit,105) ( c1co2str(nband), nband=1,NH2OBANDS )
         read(iounit,105) ( c2co2(nband), nband=1,NH2OBANDS )
@@ -632,7 +630,7 @@ subroutine esfsw_driver_init
       read(iounit,105) ( c3n2o(nband), nband=1,NH2OBANDS )
       read(iounit,105) ( c3n2ostr(nband), nband=1,NH2OBANDS )
       
-      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+      if ((nbands == 18 .and. nfrqpts == 38) .or. reproduce_ulm) then
       else 
         do nband = 1,NCO2BANDS
         do nf = 1,nfreqptsco2(nband)
@@ -642,7 +640,7 @@ subroutine esfsw_driver_init
    206  format(1p,2e16.6,16x,l16)
       endif 
 
-      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+      if ((nbands == 18 .and. nfrqpts == 38) .or. reproduce_ulm) then
         if (do_sw_continuum) then   
            do nf = 1,nfrqpts
               read(iounit,1066) wtfreq(nf),kh2o(nf),ko3(nf),kctms(nf),kctmf(nf),strterm(nf)    
@@ -654,8 +652,8 @@ subroutine esfsw_driver_init
         endif
       else
         do nf = 1,nfrqpts
-          read(iounit,1066) wtfreq(nf),kh2o(nf),ko3(nf),kctms(nf),kctmf(nf),strterm(nf)    
-       end do 
+           read(iounit,1066) wtfreq(nf),kh2o(nf),ko3(nf),kctms(nf),kctmf(nf),strterm(nf)    
+        end do 
       endif
 
       read(iounit,107) nintsolar
@@ -733,9 +731,9 @@ subroutine esfsw_driver_init
       p0h2o = 1.0E-2/p0h2o  ! invert, and convert mb to mks
       kh2o = kh2o *1.0E-01   ! cgs to mks
       ko3  = ko3 *1.0E-01    ! cgs to mks
-
-      if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
-      else
+      
+      if ((nbands == 18 .and. nfrqpts == 38) .or. reproduce_ulm) then
+     else
          p0co2(1:NCO2BANDS) = 1.0E-2/p0co2(1:NCO2BANDS)
       endif
 
@@ -745,7 +743,7 @@ subroutine esfsw_driver_init
 
       do n=1,NH2OBANDS
 
-        if (nbands == 18 .and. nh2obands == 9  .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
+        if ((nbands == 18 .and. nfrqpts == 38) .or. reproduce_ulm) then
           if (do_co2_sw_effects      .and.  &
               c1co2(n) /= input_flag .and.  &
             c2co2(n) /= input_flag .and.  &
@@ -782,70 +780,94 @@ subroutine esfsw_driver_init
             c3o2(n) /= input_flag ) then
           c4o2(n) = c1o2(n) * c2o2(n) ** c3o2(n)
           toto2max(n) = ( (1.0/c1o2(n) ) + c2o2(n) ** c3o2(n) ) ** &
-                          (1.0/c3o2(n) ) - c2o2(n)
+                          (1.0/c3o2(n) ) - c2o2(n)   
         else
-         c4o2(n) = 0.0                              
-         toto2max(n) = 0.0                                            
-       endif
+          c4o2(n) = 0.0                              
+          toto2max(n) = -1                                            
+        endif
 
-        if (do_o2_sw_effects .and. &
-            c1o2str(n) /= input_flag .and.   &
-            c2o2str(n) /= input_flag .and.   &
-            c3o2str(n) /= input_flag ) then
-          c4o2str(n) = c1o2str(n) * c2o2str(n) ** c3o2str(n)
-                            if (c3o2str(n) > 3.3E-3) then
-                                toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
+
+        if (reproduce_ulm) then 
+
+          if (do_o2_sw_effects .and. &
+              c1o2str(n) /= input_flag .and.   &
+              c2o2str(n) /= input_flag .and.   &
+              c3o2str(n) /= input_flag ) then
+            c4o2str(n) = c1o2str(n) * c2o2str(n) ** c3o2str(n)
+            if (c3o2str(n) > 3.3E-3) then
+              toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
                                   c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
                                   c2o2str(n)
-                            else
-                               toto2strmax(n) = HUGE (c4o2strschrun) 
-                           endif
-        else
-          c4o2str(n) = 0.0
-          toto2strmax(n) = 0.0
-        endif
+            else
+              toto2strmax(n) = HUGE (c4o2strschrun) 
+            endif
+          else
+            c4o2str(n) = 0.0
+            toto2strmax(n) = 0.0
+          endif
+
+        else ! reproduce_ulm
+
+          if (do_o2_sw_effects .and. &
+              c1o2str(n) /= input_flag .and.   &
+              c2o2str(n) /= input_flag .and.   &
+              c3o2str(n) /= input_flag ) then
+            c4o2str(n) = c1o2str(n) * c2o2str(n) ** c3o2str(n)
+            if (c3o2str(n) > 5E-2 ) then
+              toto2strmax(n) = ( (1.0/c1o2str(n) ) + c2o2str(n) ** &
+                                c3o2str(n) ) ** (1.0/c3o2str(n) ) - &
+                                c2o2str(n)
+            else
+              toto2strmax(n) = 1E10!HUGE (c4o2strschrun) 
+            endif
+          else
+            c4o2str(n) = 0.0
+            toto2strmax(n) = -1.0
+          endif
+
+        endif ! reproduce_ulm
 
 
 
-    if (do_ch4_sw_effects) then
-        if (c1ch4(n) /= input_flag .and.  &
-            c2ch4(n) /= input_flag .and.  &
-            c3ch4(n) /= input_flag ) then
-          c4ch4(n) = c1ch4(n) * c2ch4(n) ** c3ch4(n)
-          c4ch4str(n) = c1ch4str(n) * c2ch4str(n) ** c3ch4str(n)
-          totch4max(n) = ( (1.0/c1ch4(n) ) + c2ch4(n) ** c3ch4(n) ) ** &
-                           (1.0/c3ch4(n) ) - c2ch4(n)
-          totch4strmax(n) = ( (1.0/c1ch4str(n) ) + c2ch4str(n) ** &
-                            c3ch4str(n) ) ** (1.0/c3ch4str(n) ) - &
-                            c2ch4str(n)
-        else
-          c4ch4(n) = 0.
-          c4ch4str(n) = 0.
-          totch4max(n) = 0.
-          totch4strmax(n) = 0.     
-        endif
-     endif
+        if (do_ch4_sw_effects) then
+          if (c1ch4(n) /= input_flag .and.  &
+              c2ch4(n) /= input_flag .and.  &
+              c3ch4(n) /= input_flag ) then
+            c4ch4(n) = c1ch4(n) * c2ch4(n) ** c3ch4(n)
+            c4ch4str(n) = c1ch4str(n) * c2ch4str(n) ** c3ch4str(n)
+            totch4max(n) = ( (1.0/c1ch4(n) ) + c2ch4(n) ** c3ch4(n) ) ** &
+                             (1.0/c3ch4(n) ) - c2ch4(n)
+            totch4strmax(n) = ( (1.0/c1ch4str(n) ) + c2ch4str(n) ** &
+                              c3ch4str(n) ) ** (1.0/c3ch4str(n) ) - &
+                              c2ch4str(n)
+          else
+            c4ch4(n) = 0.
+            c4ch4str(n) = 0.
+            totch4max(n) = 0.
+            totch4strmax(n) = 0.     
+          endif
+        endif ! do_ch4_sw_effects
 
-     if (do_n2o_sw_effects) then
-        if (c1n2o(n) /= input_flag .and.  &
-            c2n2o(n) /= input_flag .and.  &
-            c3n2o(n) /= input_flag ) then
-          c4n2o(n) = c1n2o(n) * c2n2o(n) ** c3n2o(n)
-          c4n2ostr(n) = c1n2ostr(n) * c2n2ostr(n) ** c3n2ostr(n)
-          totn2omax(n) = ( (1.0/c1n2o(n) ) + c2n2o(n) ** c3n2o(n) ) ** &
-                           (1.0/c3n2o(n) ) - c2n2o(n)
-          totn2ostrmax(n) = ( (1.0/c1n2ostr(n) ) + c2n2ostr(n) ** &
-                               c3n2ostr(n) ) ** (1.0/c3n2ostr(n) ) - &
-                               c2n2ostr(n)
-        else
-          c4n2o(n) = 0.
-          c4n2ostr(n) = 0.
-          totn2omax(n) = 0.
-          totn2ostrmax(n) = 0.     
-        endif
-     endif
+        if (do_n2o_sw_effects) then
+          if (c1n2o(n) /= input_flag .and.  &
+              c2n2o(n) /= input_flag .and.  &
+              c3n2o(n) /= input_flag ) then
+            c4n2o(n) = c1n2o(n) * c2n2o(n) ** c3n2o(n)
+            c4n2ostr(n) = c1n2ostr(n) * c2n2ostr(n) ** c3n2ostr(n)
+            totn2omax(n) = ( (1.0/c1n2o(n) ) + c2n2o(n) ** c3n2o(n) ) ** &
+                             (1.0/c3n2o(n) ) - c2n2o(n)
+            totn2ostrmax(n) = ( (1.0/c1n2ostr(n) ) + c2n2ostr(n) ** &
+                                 c3n2ostr(n) ) ** (1.0/c3n2ostr(n) ) - &
+                                 c2n2ostr(n)
+          else
+            c4n2o(n) = 0.
+            c4n2ostr(n) = 0.
+            totn2omax(n) = 0.
+            totn2ostrmax(n) = 0.     
+          endif
+        endif ! do_ch4_sw_effects
 
-   end do
+      end do ! NH2OBANDS
 
       c4o2strschrun = c1o2strschrun * c2o2strschrun ** c3o2strschrun
       toto2strmaxschrun = ( (1.0/c1o2strschrun) + c2o2strschrun ** &
@@ -1106,7 +1128,8 @@ type(sw_output_type),          intent(inout) :: Sw_output
             tlayerdeovc,    tlayerdif,                        &
             tlayerdifclr,   tlayerdifovc,     &
             tlayerdir,      tlayerdirclr,     &
-            tlayerdirovc
+            tlayerdirovc, pmstr1clr, pmstr2clr, pmstr3clr,  &
+            pmstr1ovc, pmstr2ovc, pmstr3ovc
            
       real, dimension (size(pflux,1), &
                        size(pflux,2), &
@@ -1426,7 +1449,11 @@ type(sw_output_type),          intent(inout) :: Sw_output
                     gclr(i,j,k) = aeroasymfac(i,j,k,nband)*  &
                                   aerosctopdep(i,j,k,nband)/&
                                                      sctopdepclr(i,j,k)
-                    fclr(i,j,k) = aeroasymfac(i,j,k,nband)*gclr(i,j,k)
+                    if (do_four_stream) then
+                      fclr(i,j,k) = aeroasymfac(i,j,k,nband)**3*gclr(i,j,k)
+                    else
+                      fclr(i,j,k) = aeroasymfac(i,j,k,nband)*gclr(i,j,k)
+                    end if 
                     gstrclr(i,j,k) = ( gclr(i,j,k)  - fclr(i,j,k) )/  &
                                      ( 1.0 - fclr(i,j,k) )
                   endif
@@ -1450,11 +1477,19 @@ type(sw_output_type),          intent(inout) :: Sw_output
                                   ( aeroasymfac(i,j,k,nband) *   &
                                     aerosctopdep(i,j,k,nband)))/   &
                                     sctopdepovc(i,j,k)
-                  fovc(i,j,k) = ( ( cloudasymfac(i,j,k) ** 2 *  &
-                                    cloudsctopdep(i,j,k) ) + &
-                                  ( aeroasymfac(i,j,k,nband) ** 2 *  &
-                                    aerosctopdep(i,j,k,nband) ))/  &
-                                    sctopdepovc(i,j,k)
+                  if (do_four_stream) then
+                    fovc(i,j,k) = ( ( cloudasymfac(i,j,k) ** 4 *  &
+                                      cloudsctopdep(i,j,k) ) + &
+                                    ( aeroasymfac(i,j,k,nband) ** 4 *  &
+                                      aerosctopdep(i,j,k,nband) ))/  &
+                                      sctopdepovc(i,j,k)
+                  else
+                    fovc(i,j,k) = ( ( cloudasymfac(i,j,k) ** 2 *  &
+                                      cloudsctopdep(i,j,k) ) + &
+                                    ( aeroasymfac(i,j,k,nband) ** 2 *  &
+                                      aerosctopdep(i,j,k,nband) ))/  &
+                                      sctopdepovc(i,j,k)
+                  end if 
                   gstrovc(i,j,k) = ( govc(i,j,k)  - fovc(i,j,k))/  &
                                    ( 1.0 - fovc(i,j,k) )
                 endif
@@ -1493,6 +1528,15 @@ type(sw_output_type),          intent(inout) :: Sw_output
                         omegastrclr(i,j,k) =      &
                                ssalbclr(i,j,k)*((1.0 - fclr(i,j,k))/  &
                                (1.0 -  ssalbclr(i,j,k)*fclr(i,j,k)))
+
+                        !stunew for 4 stream code 
+                        pmstr1clr(i,j,k) =        &
+                             3.0 *( gclr(i,j,k)-fclr(i,j,k) ) / ( 1.0-fclr(i,j,k) )
+                        pmstr2clr(i,j,k) =        &
+                             5.0 *( gclr(i,j,k)**2-fclr(i,j,k) ) / ( 1.0-fclr(i,j,k) )
+                        pmstr3clr(i,j,k) =        &
+                             7.0 *( gclr(i,j,k)**3-fclr(i,j,k) ) / ( 1.0-fclr(i,j,k) )       
+                        !stunew for 4 stream code 
                       endif
                     end do
                   end do
@@ -1519,6 +1563,14 @@ type(sw_output_type),          intent(inout) :: Sw_output
                                            fovc(i,j,k) )/( 1.0 -   &
                                            ssalbovc(i,j,k) *   &
                                            fovc(i,j,k) ) )
+                      !stunew for 4 stream code                  
+                      pmstr1ovc(i,j,k) =        &
+                           3.0 *( govc(i,j,k)-fovc(i,j,k) ) / ( 1.0-fovc(i,j,k) )
+                      pmstr2ovc(i,j,k) =        &
+                           5.0 *( govc(i,j,k)**2-fovc(i,j,k) ) / ( 1.0-fovc(i,j,k) )
+                      pmstr3ovc(i,j,k) =        &
+                           7.0 *( govc(i,j,k)**3-fovc(i,j,k) ) / ( 1.0-fovc(i,j,k) )
+                      !stunew for 4 stream code  
                     endif
                   end do
                 end do
@@ -1547,11 +1599,20 @@ type(sw_output_type),          intent(inout) :: Sw_output
 !    do diffuse calculation only for first zenith angle -- it is 
 !    independent of zenith angle.
 !---------------------------------------------------------------------
-                call deledd     &
-                    (ix, jx, kx, taustrclr, omegastrclr, &
-                     gstrclr, cosangsolar_p(:,:,ng), ng, daylight, &
-                     rlayerdirclr, tlayerdirclr, tlayerdeclr, &
-                     rlayerdif=rlayerdifclr, tlayerdif=tlayerdifclr)
+                if (do_four_stream) then
+                  call deledd_4stream     &
+                      (ix, jx, kx, taustrclr, omegastrclr, &
+                       pmstr1clr, pmstr2clr, pmstr3clr, &
+                       cosangsolar_p(:,:,ng), ng, daylight, &
+                       rlayerdirclr, tlayerdirclr, tlayerdeclr, &
+                       rlayerdif=rlayerdifclr, tlayerdif=tlayerdifclr)
+                else
+                  call deledd     &
+                      (ix, jx, kx, taustrclr, omegastrclr, &
+                       gstrclr, cosangsolar_p(:,:,ng), ng, daylight, &
+                       rlayerdirclr, tlayerdirclr, tlayerdeclr, &
+                       rlayerdif=rlayerdifclr, tlayerdif=tlayerdifclr)
+                endif
 
 !---------------------------------------------------------------------
 !    the following needs to be done at daylight points only -- currently
@@ -1617,12 +1678,22 @@ type(sw_output_type),          intent(inout) :: Sw_output
 !    calculate the reflection and transmission in the scattering layers 
 !    using the delta-eddington method.                                  
 !-------------------------------------------------------------------
-              call deledd      &
-                   (ix, jx, kx, taustrovc, omegastrovc, gstrovc, &
-                    cosangsolar_p(:,:,ng), ng, daylight, &
-                    rlayerdirovc, tlayerdirovc, tlayerdeovc, &
-                    rlayerdif=rlayerdifovc, tlayerdif=tlayerdifovc,&
-                    cloud=cloud)
+              if (do_four_stream) then
+                call deledd_4stream      &
+                     (ix, jx, kx, taustrovc, omegastrovc, &
+                      pmstr1ovc, pmstr2ovc, pmstr3ovc, &
+                      cosangsolar_p(:,:,ng), ng, daylight, &
+                      rlayerdirovc, tlayerdirovc, tlayerdeovc, &
+                      rlayerdif=rlayerdifovc, tlayerdif=tlayerdifovc,&
+                      cloud=cloud)
+              else
+                call deledd     &
+                     (ix, jx, kx, taustrovc, omegastrovc, gstrovc, &
+                      cosangsolar_p(:,:,ng), ng, daylight, &
+                      rlayerdirovc, tlayerdirovc, tlayerdeovc, &
+                      rlayerdif=rlayerdifovc, tlayerdif=tlayerdifovc,&
+                      cloud=cloud)
+              end if
               if (ng /= 1) then
                 tlayerdifovc(:,:,:) = tlayerdifclr(:,:,:)
                 rlayerdifovc(:,:,:) = rlayerdifclr(:,:,:)
@@ -2280,7 +2351,10 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
       alphach4str(1) = 0.0
       alphan2o   (1) = 0.0
       alphan2ostr(1) = 0.0
-
+      efftauo2(:) = 0.0
+      efftauCo2(:) = 0.0
+      efftaun2o(:) = 0.0
+      efftauch4(:) = 0.0
       h2o_conv = 3.30E16
       wh2octms(:) = 0 
       wh2octmf(:) = 0
@@ -2432,35 +2506,35 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
 !    note: for large zenith angles, alpha can exceed 1. In this case,a
 !    the optical depths are set to the previous layer values.          
 !-------------------------------------------------------------------
-                !if (nbands == 18 .and. nfrqpts == 38) then
-                 if (nbands == 18 .and. nh2obands == 9 .and. ( nfrqpts == 38 .or. nfrqpts == 74) ) then
-                  if ( c1co2(nband).ne.1.0E-99 ) then
-                    do k = KSRAD+1,KERAD+1
-                      if (totco2(k) < totco2max(nband) .and.  &
-                          totco2str(k) < totco2strmax(nband))  then
-                        alphaco2(k) =     &
-                             c1co2(nband)*exp(c3co2(nband)* &
-                                 alog((totco2(k) + c2co2(nband))))  -  &
-                                                          c4co2(nband)
-                        alphaco2str(k) = &
-                          c1co2str(nband)*exp(c3co2str(nband)*  &
-                            alog((totco2str(k) + c2co2str(nband)))) - &
-                                                        c4co2str(nband)
-                        tco2(k-1) =      &
-                             (1.0 - alphaco2(k))*   &
-                                            (1.0 - alphaco2str(k))/ &
-                             ((1.0 - alphaco2(k-1))*    &
-                                            (1.0 - alphaco2str(k-1)))
-                        efftauco2(k-1) = -cosangsolar*alog( tco2(k-1))
-                      else if (k > KSRAD+1) then
-                        efftauco2(k-1) = efftauco2(k-2)
-                      else
-                        efftauco2(k-1) = 0.0
-                        endif
-                    end do
-                  else    !( c1co2(nband).ne.1.0E-99 ) 
-                    efftauco2(:) = 0.0
-                  end if  !( c1co2(nband).ne.1.0E-99 ) 
+                
+                  if ((nbands == 18 .and. nfrqpts == 38) .or. reproduce_ulm) then
+                    if ( c1co2(nband).ne.1.0E-99 ) then
+                      do k = KSRAD+1,KERAD+1
+                        if (totco2(k) < totco2max(nband) .and.  &
+                            totco2str(k) < totco2strmax(nband))  then
+                          alphaco2(k) =     &
+                               c1co2(nband)*exp(c3co2(nband)* &
+                                   alog((totco2(k) + c2co2(nband))))  -  &
+                                                            c4co2(nband)
+                          alphaco2str(k) = &
+                            c1co2str(nband)*exp(c3co2str(nband)*  &
+                              alog((totco2str(k) + c2co2str(nband)))) - &
+                                                          c4co2str(nband)
+                          tco2(k-1) =      &
+                               (1.0 - alphaco2(k))*   &
+                                              (1.0 - alphaco2str(k))/ &
+                               ((1.0 - alphaco2(k-1))*    &
+                                              (1.0 - alphaco2str(k-1)))
+                          efftauco2(k-1) = -cosangsolar*alog( tco2(k-1))
+                        else if (k > KSRAD+1) then
+                          efftauco2(k-1) = efftauco2(k-2)
+                        else
+                          efftauco2(k-1) = 0.0
+                          endif
+                      end do
+                    else    !( c1co2(nband).ne.1.0E-99 ) 
+                      efftauco2(:) = 0.0
+                    end if  !( c1co2(nband).ne.1.0E-99 ) 
 
                   else  ! nbands
 
@@ -2535,68 +2609,110 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
                                    ((1.0 - alphach4(k-1))*   &
                                            (1.0 - alphach4str(k-1)))
                            efftauch4(k-1) = -cosangsolar*alog(tch4(k-1))
-                         else if (k > KSRAD+1) then
+                        else if (k > KSRAD+1) then
                            efftauch4(k-1) = efftauch4(k-2)
-                         else
+                        else
                            efftauch4(k-1) = 0.0
-                         end if
-                       end do
-                     else    !( c1ch4(nband).ne.1.0E-99 )
-                       efftauch4(:) = 0.0
-                     end if  !( c1ch4(nband).ne.1.0E-99 )
-                   else    !do_ch4 = .false.
-                     efftauch4(:) = 0.0
-                   end if
+                        end if
+                      end do
+                    else    !( c1ch4(nband).ne.1.0E-99 )
+                      efftauch4(:) = 0.0
+                    end if  !( c1ch4(nband).ne.1.0E-99 )
+                  else    !do_ch4 = .false.
+                    efftauch4(:) = 0.0
+                  end if
 
-                   if (do_n2o_sw_effects) then
-                     if ( c1n2o(nband).ne.1.0E-99 ) then
-                       do k = KSRAD+1,KERAD+1
-                         if (totn2o(k) < totn2omax(nband) .and.  &
-                              totn2ostr(k) < totn2ostrmax(nband)) then
-                           alphan2o(k) = &
-                                c1n2o(nband)*exp(c3n2o(nband)* &
-                                   alog((totn2o(k) +c2n2o(nband)))) -  &
-                                                          c4n2o(nband)
-                           alphan2ostr(k) = &
+                  if (do_n2o_sw_effects) then
+                    if ( c1n2o(nband).ne.1.0E-99 ) then
+                      do k = KSRAD+1,KERAD+1
+                        if (totn2o(k) < totn2omax(nband) .and.  &
+                            totn2ostr(k) < totn2ostrmax(nband)) then
+                          alphan2o(k) = &
+                               c1n2o(nband)*exp(c3n2o(nband)* &
+                                  alog((totn2o(k) +c2n2o(nband)))) -  &
+                                                         c4n2o(nband)
+                          alphan2ostr(k) = &
                             c1n2ostr(nband)*exp(c3n2ostr(nband)*  &
                             alog((totn2ostr(k) + c2n2ostr(nband)))) -  &
-                                                       c4n2ostr(nband)
-                           tn2o(k-1) = &
+                                                 c4n2ostr(nband)
+                          tn2o(k-1) = &
                                     (1.0 - alphan2o(k)) *  &
-                                              (1.0 - alphan2ostr(k))/ &
-                                    (( 1.0 - alphan2o(k-1)) *  &
-                                            (1.0 - alphan2ostr(k-1)))
-                           efftaun2o(k-1) = -cosangsolar*alog(tn2o(k-1))
-                         else if (k > KSRAD+1) then
-                           efftaun2o(k-1) = efftaun2o(k-2)
-                         else
-                           efftaun2o(k-1) = 0.0
-                         end if
-                       end do
-                     else    !( c1n2o(nband).ne.1.0E-99 )
-                       efftaun2o(:) = 0.0
-                     end if  !( c1n2o(nband).ne.1.0E-99 )
-                   else  !do_n2o = .false.
-                     efftaun2o(:) = 0.0
-                   end if
+                                    (1.0 - alphan2ostr(k))/ &
+                                  (( 1.0 - alphan2o(k-1)) *  &
+                                    (1.0 - alphan2ostr(k-1)))
+                          efftaun2o(k-1) = -cosangsolar*alog(tn2o(k-1))
+                        else if (k > KSRAD+1) then
+                          efftaun2o(k-1) = efftaun2o(k-2)
+                        else
+                          efftaun2o(k-1) = 0.0
+                        end if
+                      end do
+                    else    !( c1n2o(nband).ne.1.0E-99 )
+                      efftaun2o(:) = 0.0
+                    end if  !( c1n2o(nband).ne.1.0E-99 )
+                  else  !do_n2o = .false.
+                    efftaun2o(:) = 0.0
+                  end if
 
-                  if (do_o2_sw_effects .and. c1o2(nband).ne.1.0E-99 ) then
-                    do k = KSRAD+1,KERAD+1
-                      if (reproduce_ulm) then
-                      if (toto2(k) .lt. toto2max(nband) .and.   &
-                          toto2str(k) .lt. toto2strmax(nband)) then
-                        alphao2(k) = c1o2(nband)*exp( c3o2(nband)* &
-                                     alog((toto2(k) + c2o2(nband)))) - &
-                                                            c4o2(nband)
+
+
+                  if (reproduce_ulm) then
+                    if (do_o2_sw_effects .and. c1o2(nband).ne.1.0E-99 ) then
+                      do k = KSRAD+1,KERAD+1                     
+                        if (toto2(k) .lt. toto2max(nband) .and.   &
+                            toto2str(k) .lt. toto2strmax(nband)) then
+                          alphao2(k) = c1o2(nband)*exp( c3o2(nband)* &
+                                       alog((toto2(k) + c2o2(nband)))) - &
+                                                        c4o2(nband)
                           alphao2str(k) = &
                                   c1o2str(nband)*exp(c3o2str(nband)*  &
                                       alog((toto2str(k) + c2o2str(nband)))) &
                                                               - c4o2str(nband)
                           to2(k-1) = &
                                      (1.0 - alphao2(k))*  &
-                                          (1.0 - alphao2str(k) )/ &
-                                      ((1.0 - alphao2(k-1)) *  &
-                                                  (1.0 - alphao2str(k-1)))
+                                     (1.0 - alphao2str(k) )/ &
+                                    ((1.0 - alphao2(k-1)) *  &
+                                     (1.0 - alphao2str(k-1)))
+
+                          efftauo2(k-1) = -cosangsolar*alog(to2(k-1))
+
+                        else if (k.gt.KSRAD+1) then
+                          !write(3322,*) '1S', nband, toto2str(k), alphao2str(k)
+                          !write(3322,*) '1', nband, toto2(k), alphao2(k),efftauo2(k-2)
+                          efftauo2(k-1) = efftauo2(k-2)
+                        else
+                          !write(3322,*) '2S', toto2str(k), alphao2str(k)
+                          !write(3322,*) '2', toto2(k), alphao2(k),efftauo2(k-2)
+                          efftauo2(k-1) = 0.0 
+                        end if 
+                      end do
+
+                    else   !  ( c1o2(nband).ne.1.0E-99 ) 
+                      efftauo2(:) = 0.0
+                    end if  !  ( c1o2(nband).ne.1.0E-99 ) 
+                  
+
+                  else ! reproduce_ulm
+                  
+
+                    if (do_o2_sw_effects .and. c1o2(nband).ne.1.0E-99  .and. c1o2str(nband).ne.1.0E-99) then
+   
+                      do k = KSRAD+1,KERAD+1
+                     
+                        if (toto2(k) .lt. toto2max(nband) .and.   &
+                            toto2str(k) .lt. toto2strmax(nband)) then
+                          alphao2(k) = c1o2(nband)*exp( c3o2(nband)* &
+                                       alog((toto2(k) + c2o2(nband)))) - &
+                                                        c4o2(nband)
+                          alphao2str(k) = &
+                                  c1o2str(nband)*exp(c3o2str(nband)*  &
+                                      alog((toto2str(k) + c2o2str(nband)))) &
+                                                              - c4o2str(nband)
+                          to2(k-1) = &
+                                     (1.0 - alphao2(k))*  &
+                                     (1.0 - alphao2str(k) )/ &
+                                    ((1.0 - alphao2(k-1)) *  &
+                                     (1.0 - alphao2str(k-1)))
 
                           efftauo2(k-1) = -cosangsolar*alog(to2(k-1))
 
@@ -2604,44 +2720,51 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
                           efftauo2(k-1) = efftauo2(k-2)
                         else
                           efftauo2(k-1) = 0.0 
-                        end if
+                        end if 
 
-                      else ! reproduce_ulm
-                        if (toto2(k) .lt. toto2max(nband) .or.   &   
-                            toto2str(k) .lt. toto2strmax(nband)) then
-                          if (toto2(k) .lt. toto2max(nband)) then
-                            alphao2(k) = c1o2(nband)*exp( c3o2(nband)* &
-                                          alog((toto2(k) + c2o2(nband)))) - &
-                                                              c4o2(nband)
-                          else
-                            alphao2(k) = 0.0 
-                          end if
-                          if (toto2str(k) .lt. toto2strmax(nband)) then
-                            alphao2str(k) = & 
-                            c1o2str(nband)*exp(c3o2str(nband)*  &
-                                alog((toto2str(k) + c2o2str(nband)))) &
-                                                        - c4o2str(nband)
-                          else
-                            alphao2str(k) = 0.0 
-                          end if
-                        to2(k-1) = &
-                               (1.0 - alphao2(k))*  &
-                                    (1.0 - alphao2str(k) )/ &
-                                ((1.0 - alphao2(k-1)) *  &
-                                            (1.0 - alphao2str(k-1)))
+                      end do
 
-                        efftauo2(k-1) = -cosangsolar*alog(to2(k-1))
-                      else if (k.gt.KSRAD+1) then
-                        efftauo2(k-1) = efftauo2(k-2)
-                      else
-                        efftauo2(k-1) = 0.0
-                      end if
-                      end if ! reproduce_ulm
-                    end do
-                  else   !  ( c1o2(nband).ne.1.0E-99 ) 
+                    else  if (do_o2_sw_effects .and. c1o2(nband).ne.1.0E-99 .and. c1o2str(nband).eq.1.0E-99) then
+ 
+                      do k = KSRAD+1,KERAD+1
+                     
+                        if (toto2(k) .lt. toto2max(nband)) then
+                          alphao2(k) = c1o2(nband)*exp( c3o2(nband)* &
+                                       alog((toto2(k) + c2o2(nband)))) - &
+                                                        c4o2(nband)
+                
+                          to2(k-1) = &
+                                     (1.0 - alphao2(k))*  &
+                                          (1.0)/ &
+                                      ((1.0 - alphao2(k-1)) *  &
+                                                  (1.0))
+
+                          efftauo2(k-1) = -cosangsolar*alog(to2(k-1))
+
+                        else if (k.gt.KSRAD+1) then
+                          efftauo2(k-1) = efftauo2(k-2)
+                        else
+                          efftauo2(k-1) = 0.0 
+                        end if 
+
+                      end do
+                                     
+                    else   !  ( c1o2(nband).ne.1.0E-99 ) 
+                      efftauo2(:) = 0.0
+                    end if  !  ( c1o2(nband).ne.1.0E-99 ) 		   
+   
+                  end if ! reproduce_ulm
+
+
+                else ! if (nband > nh2obands) then
+
+                  if (reproduce_ulm) then
+                  else
                     efftauo2(:) = 0.0
-                  end if  !  ( c1o2(nband).ne.1.0E-99 ) 
-
+                    efftauCo2(:) = 0.0
+                    efftaun2o(:) = 0.0
+                    efftauch4(:) = 0.0
+                  end if  
                 end if  ! (nband <= nh2obands)
  
 !---------------------------------------------------------------------
@@ -2685,8 +2808,8 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
                   if (do_sw_continuum) then 
                     gasopdep(i,j,:,np,ng) =    &
                           opdep(:) + quenchfac(:)*efftauco2(:) +   &
-                    efftauo2(:) + efftauch4(:) + efftaun2o(:) &
-                        +  wh2octms(:)*kctms(np) +wh2octmf(:)*kctmf(np)
+                          efftauo2(:) + efftauch4(:) + efftaun2o(:) &
+                          +  wh2octms(:)*kctms(np) +wh2octmf(:)*kctmf(np)
                   else
                     gasopdep(i,j,:,np,ng) =    &
                           opdep(:) + quenchfac(:)*efftauco2(:) +   &
@@ -3313,6 +3436,427 @@ logical, dimension(:,:,:), intent(in), optional    :: cloud
 end subroutine deledd
 
 !#####################################################################
+ subroutine deledd_4stream (ix, jx, kx, taustr, omegastr, pmstr1, pmstr2, pmstr3, cosang, ng, &
+                   daylight, rlayerdir, tlayerdir, tlayerde,   &
+                   rlayerdif, tlayerdif, cloud)
+ implicit none
+!---------------------------------------------------------------------- 
+!    deledd calculates the reflection and transmission in the 
+!    scattering layers using the delta-eddington method.         
+!    references:                                                   
+!      joseph, j.h., w. wiscombe, and j.a. weinman, the delta-eddington
+!      approximation for radiative flux transfer.,j. atmos. sci.,33,  
+!      2452-2459, 1976.                                              
+!-------------------------------------------------------------------
+
+integer,                   intent(in)              :: ix, jx, kx
+real, dimension(:,:,:),    intent(inout)           :: taustr, omegastr
+!stunew for 4 stream code
+real, dimension(:,:,:),    intent(in)              :: pmstr1, pmstr2, pmstr3
+!
+real, dimension(:,:),    intent(in)                ::  cosang
+integer,                   intent(in)              :: ng
+logical, dimension(:,:),   intent(in)              :: daylight
+real, dimension(:,:,:),    intent(out)             :: rlayerdir,   &
+                                                      tlayerdir,   &
+                                                      tlayerde
+real, dimension(:,:,:),    intent(inout), optional :: rlayerdif,   &
+                                                      tlayerdif
+logical, dimension(:,:,:), intent(in), optional    :: cloud          
+
+!----------------------------------------------------------------------
+!  intent(in) variables:
+!
+!    ix,jx,kx
+!    cosang      the cosine of the solar zenith angle    
+!    ng          the number of gaussian angles to compute the diurnally 
+!                averaged solar radiation (=1 unless lswg = true)       
+!    daylight
+!
+!  intent(inout) variables:
+!
+!    taustr      the scaled extinction optical depth                    
+!    omegastr    the scaled single-scattering albedo               
+!
+!  intent(out) variables:
+!
+!    rlayerdir   the layer reflectivity to a direct incident beam      
+!    tlayerdir   the layer transmissivity to a direct incident beam   
+!    rlayerdif   the layer reflectivity to a diffuse incident beam   
+!    tlayerdif   the layer transmissivity to a diffuse incident beam
+!    tlayerde    the layer transmissivity (non-scattered) to the direct 
+!                incident beam                                       
+!
+! intent(in),optional:
+!
+!    cloud       flag for existence of a cloud (used only in 'ovc' mode)
+!
+!----------------------------------------------------------------------
+
+!----------------------------------------------------------------------
+!  local variables:
+
+      real        :: rsum, tsum
+      integer     :: k, i, ns, j, nn, ntot
+
+      integer, dimension(ix, jx, kx) :: cld_index
+
+      real,    dimension(ix)                  ::   &
+                                          taustr2, omegastr2, &
+                                           cosangzk2, rlayerdir2, &
+                                           tlayerde2, tlayerdir2, &
+                                           sumr, sumt
+!stunew for 4 stream code
+      real,    dimension(ix)                  ::   &
+               pmstr12, pmstr22, pmstr32, rlayerdif2, tlayerdif2
+      real        :: h(4),w(4),x(4),y(4),z(4),alambda(2)
+      real        :: a(0:3),b(0:3),eta(0:3),tr(0:2)
+      real        :: factor(2),p(2),q(2),r(2),c(2),d(2)
+      real        :: rcossolar,delta,det
+
+!----------------------------------------------------------------------
+!  local variables:
+!
+!      i,j,k
+!      ns
+!      nn
+!      ntot
+!
+!---------------------------------------------------------------------
+!
+!stunew define the gaussian weights and angles for the four stream diffuse
+!calculation so that the setting of the number of streams is not considered
+      real        :: WTSTR(4),cosangstr(4)
+
+      wtstr(1)=0.347854845
+      wtstr(2)=0.652145155
+      wtstr(3)=0.347854845
+      wtstr(4)=0.652145155
+      cosangstr(1) = 0.069431844
+      cosangstr(2) = 0.330009478
+      cosangstr(3) = 0.930568156
+      cosangstr(4) = 0.669990522
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      do k=1,kx         
+        do j=1,jx         
+
+!---------------------------------------------------------------------
+!    overcast sky mode. note: in this mode, the delta-eddington method
+!    is performed only for spatial points containing a cloud.   
+!-------------------------------------------------------------------
+          nn = 0
+          if (present(cloud)) then
+            do i=1,ix          
+              if (cloud(i,j,k) ) then
+                nn = nn + 1
+                cld_index(i,j,k) = nn
+                taustr2(nn) = taustr(i,j,k)
+                omegastr2(nn) = omegastr(i,j,k)
+                cosangzk2(nn) = cosang(i,j)
+!stunew for 4 stream code
+                pmstr12(nn) = pmstr1(i,j,k)
+                pmstr22(nn) = pmstr2(i,j,k)
+                pmstr32(nn) = pmstr3(i,j,k)
+
+!----------------------------------------------------------------------
+!    note: the following are done to avoid the conservative scattering 
+!    case, and to eliminate floating point errors in the exponential 
+!    calculations, respectively.                      
+!----------------------------------------------------------------------c
+                if (omegastr2(nn) >= 9.9999999E-01) omegastr2(nn) = 9.9999999E-01
+                if (taustr2(nn) >= 1.0E+02) taustr2(nn) = 1.0E+02
+              endif
+            end do
+
+!----------------------------------------------------------------------c
+!    clear sky mode. note: in this mode, the delta-eddington method is 
+!    performed for all spatial points.                 
+!----------------------------------------------------------------------c
+          else
+            do i=1,ix         
+              if (daylight(i,j) ) then
+                nn = nn + 1
+                cld_index(i,j,k) = nn
+                taustr2(nn) = taustr(i,j,k)
+                omegastr2(nn) = omegastr(i,j,k)
+                cosangzk2(nn) = cosang(i,j   )
+!stunew for 4 stream code
+                pmstr12(nn) = pmstr1(i,j,k)
+                pmstr22(nn) = pmstr2(i,j,k)
+                pmstr32(nn) = pmstr3(i,j,k)
+
+!----------------------------------------------------------------------c
+!    note: the following are done to avoid the conservative scattering  
+!    case, and to eliminate floating point errors in the exponential 
+!    calculations, respectively.                    
+!----------------------------------------------------------------------c
+                if (omegastr2(nn) >=9.9999999E-01) omegastr2(nn) = 9.9999999E-01
+                if (taustr2(nn) >= 1.0E+02) taustr2(nn) = 1.0E+02
+              endif
+            end do
+          endif
+
+!----------------------------------------------------------------------
+!
+!----------------------------------------------------------------------
+          ntot = nn
+
+!----------------------------------------------------------------------
+!
+!----------------------------------------------------------------------
+
+          do nn=1,ntot      
+! 
+            a(0)=1.-omegastr2(nn)
+            a(1)=3.-omegastr2(nn)*pmstr12(nn)
+            a(2)=5.-omegastr2(nn)*pmstr22(nn)
+            a(3)=7.-omegastr2(nn)*pmstr32(nn)
+!  
+            factor(1)=a(0)*a(1)+a(2)*a(3)/9.+4./9.*a(0)*a(3)
+            factor(2)=1./9.*a(0)*a(1)*a(2)*a(3)
+        !    write(3322,*) nn,ntot, a(0:4)
+            alambda(1)=sqrt(0.5*(factor(1)+sqrt(factor(1)**2-4.*factor(2))))
+            alambda(2)=sqrt(0.5*(factor(1)-sqrt(factor(1)**2-4.*factor(2))))
+        !    write(3322,*) alambda(1),  alambda(2)
+            tr(1)=exp(-alambda(1)*taustr2(nn))
+            tr(2)=exp(-alambda(2)*taustr2(nn))
+!
+            p(1)=-a(0)/alambda(1)
+            q(1)=0.5*(a(0)*a(1)/alambda(1)**2-1.)      
+            r(1)=-1.5*(a(0)*a(1)/alambda(1)-alambda(1))/a(3) 
+! 
+            p(2)=-a(0)/alambda(2)
+            q(2)=0.5*(a(0)*a(1)/alambda(2)**2-1.)     
+            r(2)=-1.5*(a(0)*a(1)/alambda(2)-alambda(2))/a(3) 
+!
+            w(1)=(0.5-p(1)+0.625*q(1))
+            w(2)=(0.5+p(1)+0.625*q(1))
+            w(3)=(0.5-p(2)+0.625*q(2))
+            w(4)=(0.5+p(2)+0.625*q(2))
+!
+            x(1)=(-0.125+0.625*q(1)-r(1))
+            x(2)=(-0.125+0.625*q(1)+r(1))
+            x(3)=(-0.125+0.625*q(2)-r(2))
+            x(4)=(-0.125+0.625*q(2)+r(2))
+!
+            y(1)=(0.5+p(1)+0.625*q(1))*tr(1)
+            y(2)=(0.5-p(1)+0.625*q(1))/tr(1)
+            y(3)=(0.5+p(2)+0.625*q(2))*tr(2)
+            y(4)=(0.5-p(2)+0.625*q(2))/tr(2)
+!
+            z(1)=(-0.125+0.625*q(1)+r(1))*tr(1)
+            z(2)=(-0.125+0.625*q(1)-r(1))/tr(1)
+            z(3)=(-0.125+0.625*q(2)+r(2))*tr(2)
+            z(4)=(-0.125+0.625*q(2)-r(2))/tr(2)
+!
+            b(0)=omegastr2(nn)*0.25
+            b(1)=-omegastr2(nn)*pmstr12(nn)*cosangzk2(nn)*0.25
+            b(2)=omegastr2(nn)*pmstr22(nn)*(3.*cosangzk2(nn)**2-1.)*0.125
+            b(3)=-omegastr2(nn)*pmstr32(nn)*(5.*cosangzk2(nn)**3-3.*cosangzk2(nn))*0.125
+!  
+            rcossolar=1./cosangzk2(nn) 
+!
+            tr(0)=exp(-taustr2(nn)*rcossolar)
+!    
+            delta=9.*rcossolar**4-rcossolar**2*(9.*a(0)*a(1)+a(2)*a(3)+4.*a(0)*a(3))+ &
+                      a(0)*a(1)*a(2)*a(3)
+            delta=1./delta
+!
+            eta(0)=((a(1)*b(0)-rcossolar*b(1))*(a(2)*a(3)-9.*rcossolar**2)+ &
+              2.*rcossolar**2*(a(3)*b(2)-2.*a(3)*b(0)-3.*rcossolar*b(3)))*delta
+!            
+            eta(1)=((a(0)*b(1)-rcossolar*b(0))*(a(2)*a(3)-9.*rcossolar**2)- &
+              2.*rcossolar*a(0)*(a(3)*b(2)-3.*rcossolar*b(3)))*delta
+!
+            eta(2)=((a(3)*b(2)-3.*rcossolar*b(3))*(a(0)*a(1)-rcossolar**2)- &
+             2.*rcossolar*a(3)*(a(0)*b(1)-rcossolar*b(0)))*delta
+!
+            eta(3)=((a(2)*b(3)-3.*rcossolar*b(2))*(a(0)*a(1)-rcossolar**2)+ &
+             rcossolar**2*(6.*a(0)*b(1)-4.*a(0)*b(3)-6.*rcossolar*b(0)))*delta
+!
+            h(1)=-(0.5*eta(0)-eta(1)+0.625*eta(2))
+            h(2)=-(-0.125*eta(0)+0.625*eta(2)-eta(3))
+            h(3)=-(0.5*eta(0)+eta(1)+0.625*eta(2))*tr(0)
+            h(4)=-(-0.125*eta(0)+0.625*eta(2)+eta(3))*tr(0)
+!
+            det=(w(1)*x(2)-x(1)*w(2))*(y(3)*z(4)-z(3)*y(4))- &
+              (w(1)*x(3)-x(1)*w(3))*(y(2)*z(4)-z(2)*y(4))+ &
+              (w(1)*x(4)-x(1)*w(4))*(y(2)*z(3)-z(2)*y(3))+ &
+              (w(2)*x(3)-x(2)*w(3))*(y(1)*z(4)-z(1)*y(4))- &
+              (w(2)*x(4)-x(2)*w(4))*(y(1)*z(3)-z(1)*y(3))+ &
+              (w(3)*x(4)-x(3)*w(4))*(y(1)*z(2)-z(1)*y(2)) 
+            det=1./det
+!
+            c(1)=((h(1)*x(2)-h(2)*w(2))*(y(3)*z(4)-z(3)*y(4))- &
+              (h(1)*x(3)-h(2)*w(3))*(y(2)*z(4)-z(2)*y(4))+ &
+              (h(1)*x(4)-h(2)*w(4))*(y(2)*z(3)-z(2)*y(3))+ &
+              (w(2)*x(3)-x(2)*w(3))*(h(3)*z(4)-h(4)*y(4))- &
+              (w(2)*x(4)-x(2)*w(4))*(h(3)*z(3)-h(4)*y(3))+ &
+              (w(3)*x(4)-x(3)*w(4))*(h(3)*z(2)-h(4)*y(2)))*det
+!
+            d(1)=((w(1)*h(2)-x(1)*h(1))*(y(3)*z(4)-z(3)*y(4))- &
+              (w(1)*x(3)-x(1)*w(3))*(h(3)*z(4)-h(4)*y(4))+ &
+              (w(1)*x(4)-x(1)*w(4))*(h(3)*z(3)-h(4)*y(3))+ &
+              (h(1)*x(3)-h(2)*w(3))*(y(1)*z(4)-z(1)*y(4))- &
+              (h(1)*x(4)-h(2)*w(4))*(y(1)*z(3)-z(1)*y(3))+ &
+              (w(3)*x(4)-x(3)*w(4))*(y(1)*h(4)-z(1)*h(3)))*det 
+!
+            c(2)=((w(1)*x(2)-x(1)*w(2))*(h(3)*z(4)-h(4)*y(4))- &
+              (w(1)*h(2)-x(1)*h(1))*(y(2)*z(4)-z(2)*y(4))+ &
+              (w(1)*x(4)-x(1)*w(4))*(y(2)*h(4)-z(2)*h(3))+ &
+              (w(2)*h(2)-x(2)*h(1))*(y(1)*z(4)-z(1)*y(4))- &
+              (w(2)*x(4)-x(2)*w(4))*(y(1)*h(4)-z(1)*h(3))+ &
+              (h(1)*x(4)-h(2)*w(4))*(y(1)*z(2)-z(1)*y(2)))*det
+!
+            d(2)=((w(1)*x(2)-x(1)*w(2))*(y(3)*h(4)-z(3)*h(3))- &
+              (w(1)*x(3)-x(1)*w(3))*(y(2)*h(4)-z(2)*h(3))+ &
+              (w(1)*h(2)-x(1)*h(1))*(y(2)*z(3)-z(2)*y(3))+ &
+              (w(2)*x(3)-x(2)*w(3))*(y(1)*h(4)-z(1)*h(3))- &
+              (w(2)*h(2)-x(2)*h(1))*(y(1)*z(3)-z(1)*y(3))+ &
+              (w(3)*h(2)-x(3)*h(1))*(y(1)*z(2)-z(1)*y(2)))*det 
+!
+            rlayerdir2(nn)=((c(1)+d(1)+c(2)+d(2)+eta(0))+ &
+              2.*(p(1)*(c(1)-d(1))+p(2)*(c(2)-d(2))+eta(1))+ &
+              1.25*(q(1)*(c(1)+d(1))+q(2)*(c(2)+d(2))+ &
+              eta(2)))*rcossolar
+!
+            tlayerdir2(nn)=((c(1)*tr(1)+d(1)/tr(1)+c(2)*tr(2)+ &
+              d(2)/tr(2)+eta(0)*tr(0))-2.*(p(1)*(c(1)*tr(1)- &
+              d(1)/tr(1))+p(2)*(c(2)*tr(2)-d(2)/tr(2))+ &
+              eta(1)*tr(0))+1.25*(q(1)*(c(1)*tr(1)+d(1)/tr(1))+ &
+              q(2)*(c(2)*tr(2)+d(2)/tr(2))+eta(2)*tr(0)))* &
+              rcossolar+tr(0)
+!
+            tlayerde2(nn) = tr(0)
+!
+!----------------------------------------------------------------------c
+!    diffuse quantities                                       
+!    notes: the number of streams for the diffuse beam is fixed at 4.   
+!    this calculation is done only for ng=4.                 
+!----------------------------------------------------------------------c
+            if (present (tlayerdif) .and. present(rlayerdif)) then
+
+              rsum = 0.0
+              tsum = 0.0
+
+              do ns = 1,4
+!
+                b(1)=-omegastr2(nn)*pmstr12(nn)*cosangstr(ns)*0.25
+                b(2)=omegastr2(nn)*pmstr22(nn)*(3.*cosangstr(ns)**2-1.)*0.125
+                b(3)=-omegastr2(nn)*pmstr32(nn)*(5.*cosangstr(ns)**3-3.*cosangstr(ns))*0.125
+!
+                rcossolar=1./cosangstr(ns)
+!
+                tr(0)=exp(-taustr2(nn)*rcossolar)
+!
+                delta=9.*rcossolar**4-rcossolar**2*(9.*a(0)*a(1)+a(2)*a(3)+4.*a(0)*a(3))+ &
+                      a(0)*a(1)*a(2)*a(3)
+                delta=1./delta
+!
+                eta(0)=((a(1)*b(0)-rcossolar*b(1))*(a(2)*a(3)-9.*rcossolar**2)+ &
+                  2.*rcossolar**2*(a(3)*b(2)-2.*a(3)*b(0)-3.*rcossolar*b(3)))*delta
+!
+                eta(1)=((a(0)*b(1)-rcossolar*b(0))*(a(2)*a(3)-9.*rcossolar**2)- &
+                  2.*rcossolar*a(0)*(a(3)*b(2)-3.*rcossolar*b(3)))*delta
+!
+                eta(2)=((a(3)*b(2)-3.*rcossolar*b(3))*(a(0)*a(1)-rcossolar**2)- &
+                  2.*rcossolar*a(3)*(a(0)*b(1)-rcossolar*b(0)))*delta
+!
+                eta(3)=((a(2)*b(3)-3.*rcossolar*b(2))*(a(0)*a(1)-rcossolar**2)+ &
+                    rcossolar**2*(6.*a(0)*b(1)-4.*a(0)*b(3)-6.*rcossolar*b(0)))*delta
+!
+                h(1)=-(0.5*eta(0)-eta(1)+0.625*eta(2))
+                h(2)=-(-0.125*eta(0)+0.625*eta(2)-eta(3))
+                h(3)=-(0.5*eta(0)+eta(1)+0.625*eta(2))*tr(0)
+                h(4)=-(-0.125*eta(0)+0.625*eta(2)+eta(3))*tr(0)
+!
+                det=(w(1)*x(2)-x(1)*w(2))*(y(3)*z(4)-z(3)*y(4))- &
+                  (w(1)*x(3)-x(1)*w(3))*(y(2)*z(4)-z(2)*y(4))+ &
+                  (w(1)*x(4)-x(1)*w(4))*(y(2)*z(3)-z(2)*y(3))+ &
+                  (w(2)*x(3)-x(2)*w(3))*(y(1)*z(4)-z(1)*y(4))- &
+                  (w(2)*x(4)-x(2)*w(4))*(y(1)*z(3)-z(1)*y(3))+ &
+                  (w(3)*x(4)-x(3)*w(4))*(y(1)*z(2)-z(1)*y(2))
+                det=1./det
+
+                c(1)=((h(1)*x(2)-h(2)*w(2))*(y(3)*z(4)-z(3)*y(4))- &
+                  (h(1)*x(3)-h(2)*w(3))*(y(2)*z(4)-z(2)*y(4))+ &
+                  (h(1)*x(4)-h(2)*w(4))*(y(2)*z(3)-z(2)*y(3))+ &
+                  (w(2)*x(3)-x(2)*w(3))*(h(3)*z(4)-h(4)*y(4))- &
+                  (w(2)*x(4)-x(2)*w(4))*(h(3)*z(3)-h(4)*y(3))+ &
+                  (w(3)*x(4)-x(3)*w(4))*(h(3)*z(2)-h(4)*y(2)))*det
+!
+                d(1)=((w(1)*h(2)-x(1)*h(1))*(y(3)*z(4)-z(3)*y(4))- &
+                  (w(1)*x(3)-x(1)*w(3))*(h(3)*z(4)-h(4)*y(4))+ &
+                  (w(1)*x(4)-x(1)*w(4))*(h(3)*z(3)-h(4)*y(3))+ &
+                  (h(1)*x(3)-h(2)*w(3))*(y(1)*z(4)-z(1)*y(4))- &
+                  (h(1)*x(4)-h(2)*w(4))*(y(1)*z(3)-z(1)*y(3))+ &
+                  (w(3)*x(4)-x(3)*w(4))*(y(1)*h(4)-z(1)*h(3)))*det
+!
+                c(2)=((w(1)*x(2)-x(1)*w(2))*(h(3)*z(4)-h(4)*y(4))- &
+                  (w(1)*h(2)-x(1)*h(1))*(y(2)*z(4)-z(2)*y(4))+ &
+                  (w(1)*x(4)-x(1)*w(4))*(y(2)*h(4)-z(2)*h(3))+ &
+                  (w(2)*h(2)-x(2)*h(1))*(y(1)*z(4)-z(1)*y(4))- &
+                  (w(2)*x(4)-x(2)*w(4))*(y(1)*h(4)-z(1)*h(3))+ &
+                  (h(1)*x(4)-h(2)*w(4))*(y(1)*z(2)-z(1)*y(2)))*det
+!
+                d(2)=((w(1)*x(2)-x(1)*w(2))*(y(3)*h(4)-z(3)*h(3))- &
+                  (w(1)*x(3)-x(1)*w(3))*(y(2)*h(4)-z(2)*h(3))+ &
+                  (w(1)*h(2)-x(1)*h(1))*(y(2)*z(3)-z(2)*y(3))+ &
+                  (w(2)*x(3)-x(2)*w(3))*(y(1)*h(4)-z(1)*h(3))- &
+                  (w(2)*h(2)-x(2)*h(1))*(y(1)*z(3)-z(1)*y(3))+ &
+                  (w(3)*h(2)-x(3)*h(1))*(y(1)*z(2)-z(1)*y(2)))*det
+
+                  rsum = rsum + (((c(1)+d(1)+c(2)+d(2)+eta(0))+ &
+                                  2.*(p(1)*(c(1)-d(1))+p(2)*(c(2)-d(2))+eta(1))+ &
+                                  1.25*(q(1)*(c(1)+d(1))+q(2)*(c(2)+d(2))+eta(2)))*rcossolar)*cosangstr(ns)*wtstr(ns)
+                  tsum = tsum + (((c(1)*tr(1)+d(1)/tr(1)+c(2)*tr(2)+d(2)/tr(2)+eta(0)*tr(0))- &
+                                  2.*(p(1)*(c(1)*tr(1)-d(1)/tr(1))+p(2)*(c(2)*tr(2)- &
+                                  d(2)/tr(2))+eta(1)*tr(0))+1.25*(q(1)*(c(1)*tr(1)+d(1)/tr(1))+ &
+                                  q(2)*(c(2)*tr(2)+d(2)/tr(2))+eta(2)*tr(0)))*rcossolar+tr(0))*cosangstr(ns)*wtstr(ns)
+            end do
+
+            sumr(nn) = rsum
+            sumt(nn) = tsum
+
+            endif ! (present (tlayerdiff))
+!
+          end do  ! ntot loop
+
+!---------------------------------------------------------------------
+!     return results in proper locations in (i,j,k) arrays
+!---------------------------------------------------------------------
+          if (present(cloud)) then
+            do i=1,ix           
+              if (cloud(i,j,k) ) then
+                rlayerdir(i,j,k) =rlayerdir2(cld_index(i,j,k))
+                tlayerdir(i,j,k) =tlayerdir2(cld_index(i,j,k))
+                tlayerde(i,j,k) = tlayerde2(cld_index(i,j,k))
+                rlayerdif(i,j,k) =sumr(cld_index(i,j,k))
+                tlayerdif(i,j,k) =sumt(cld_index(i,j,k))
+              endif
+            end do
+
+!----------------------------------------------------------------------
+!
+!----------------------------------------------------------------------
+          else
+            do i=1,ix            
+              if (daylight(i,j) ) then
+                rlayerdir(i,j,k) =rlayerdir2(cld_index(i,j,k))
+                tlayerdir(i,j,k) =tlayerdir2(cld_index(i,j,k))
+                tlayerde(i,j,k) = tlayerde2(cld_index(i,j,k))
+                rlayerdif(i,j,k) =sumr(cld_index(i,j,k))
+                tlayerdif(i,j,k) =sumt(cld_index(i,j,k))
+              endif
+            end do
+          endif
+        end do
+      end do
+
+!---------------------------------------------------------------------
+ 
+end subroutine deledd_4stream
 
                    end module esfsw_driver_mod
 

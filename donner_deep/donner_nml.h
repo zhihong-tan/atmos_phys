@@ -22,6 +22,10 @@ integer             :: parcel_launch_level = 2
                              ! cel is launched to determine the lifting 
                              ! condensation level (level 1 nearest the 
                              ! surface)
+logical             :: do_most_unstable_layer = .false.
+                             ! Use the most unstable layer in the lower
+                             ! atmosphere when launching a parcel to determine
+                             ! the lifting condensation level.
 logical             :: allow_mesoscale_circulation = .true.
                              ! a mesoscale circulation will be included 
                              ! in those columns which satisfy the 
@@ -32,10 +36,10 @@ logical             :: allow_mesoscale_circulation = .true.
                         ! by Table 2 in Thompson et al. (1979, JAS).
 logical             :: do_freezing_for_cape = .false.
                         ! include freezing in cape parcel calculation
-real                :: tfre_for_cape = 258.0
+real                :: tfre_for_cape = 263.0
                         ! temperature at which freezing begins for   
                         ! parcel in cape parcel calculation [ deg K ]
-real                :: dfre_for_cape =  10.
+real                :: dfre_for_cape =  15.
                         ! all liquid freezes between tfre_for_cape and 
                         ! tfre_for_cape + dfre_for_cape  in cape parcel
                         ! calculation [ deg K ]
@@ -44,10 +48,10 @@ real                :: rmuz_for_cape = 0.0
                         ! calculation
 logical             :: do_freezing_for_closure = .false.
                         ! include freezing in closure calculation
-real                :: tfre_for_closure = 258.0
+real                :: tfre_for_closure = 263.0
                         ! temperature at which freezing begins for
                         ! parcel in closure calculation [ deg K ]
-real                :: dfre_for_closure =  10.
+real                :: dfre_for_closure =  15.
                         ! all liquid freezes tfre_for_closure and 
                         ! tfre_for_closure + dfre_for_closure in  
                         ! closure calculation [ deg K ]
@@ -293,7 +297,7 @@ namelist / donner_deep_nml /      &
   MESO_UP_EVAP_FRACTION, model_levels_in_sfcbl, modify_closure_plume_condensate,&
   parcel_launch_level, pblht0, plev0, rhavg0, rmuz_for_cape, rmuz_for_closure, &
   tau, tfre_for_cape, tfre_for_closure, tke0, ttend_max, use_llift_criteria,   &
-  use_memphis_size_limits, use_pdeep_cv, wmin_ratio,                           &
+  use_memphis_size_limits, use_pdeep_cv, wmin_ratio, do_most_unstable_layer,   &
 ! not contained in donner_nml_type variable:
 
   diagnostics_pressure_cutoff, diagnostics_start_time,  &

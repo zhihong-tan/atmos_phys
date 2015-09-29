@@ -68,8 +68,8 @@ MODULE UW_CONV_MOD
                                ! 1: Emanuel-Rayment: quasiequilibrium PBL
   real    :: rkm_sh1  = 10.0  
   real    :: rkm_sh   = 3.0    ! fractional lateral mixing rate for shallow
-  real    :: cldhgt_max   = 4.e3
-  real    :: landfact_m   = 0.0
+  real    :: cldhgt_max   = 50.e3
+  real    :: landfact_m   = 0.5
   integer :: idpchoice = 0  
   logical :: do_deep = .false.
   logical :: do_relaxcape = .false.
@@ -87,7 +87,7 @@ MODULE UW_CONV_MOD
   logical :: prevent_unreasonable = .true.
   real    :: aerol = 1.e-12
   real    :: tkemin   = 1.e-6
-  real    :: wmin_ratio = 0.
+  real    :: wmin_ratio = 0.05
   logical :: use_online_aerosol = .false.
   logical :: use_sub_seasalt = .true.
   logical :: do_auto_aero = .false.
@@ -129,6 +129,8 @@ MODULE UW_CONV_MOD
   logical :: do_prog_gust = .false.
   logical :: do_gust_qt = .false.
   logical :: use_new_let = .false.
+  logical :: use_lcl_only =.false.
+  logical :: zero_out_conv_area = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
   real    :: tke0 = 0.1
@@ -144,7 +146,7 @@ MODULE UW_CONV_MOD
   real    :: gfact4 = 1
   real    :: cgust0 = 1.
   real    :: cgust_max = 10.
-  real    :: sigma0 = 1.
+  real    :: sigma0 = 0.5
   real    :: stime0 = 0.5
   real    :: dtime0 = 0.5
 
@@ -166,7 +168,7 @@ MODULE UW_CONV_MOD
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
-	   tracer_check_type, use_turb_tke  !h1g, 2015-08-11
+       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -224,14 +226,15 @@ MODULE UW_CONV_MOD
 
 
 !========Option for deep convection=======================================
+  real    :: cbmf0         = 0.0001
   real    :: rkm_dp1       = 10.
   real    :: rkm_dp2       = 1.
   real    :: cbmf_dp_frac1 = 0.
   real    :: cbmf_dp_frac2 = 1.
-  real    :: crh_th_ocean  = 100.
-  real    :: crh_th_land   = 100.
-  real    :: cape_th       = 0.
-  real    :: cin_th        = 0.
+  real    :: crh_th_ocean  = 0.5
+  real    :: crh_th_land   = 0.5
+  real    :: cape_th       = 10.
+  real    :: cin_th        = 5.
   real    :: cwfn_th       = 0.
   real    :: tau_dp        = 7200.
   real    :: rpen_d        = 5.0
@@ -269,7 +272,7 @@ MODULE UW_CONV_MOD
   real    :: cin_fact    = 1
   real    :: wcrit_min_gust = 0.2
   integer :: cgust_choice = 0
-  NAMELIST / deep_conv_nml / rkm_dp1, rkm_dp2, cbmf_dp_frac1, cbmf_dp_frac2, do_forced_conv, &
+  NAMELIST / deep_conv_nml / cbmf0, rkm_dp1, rkm_dp2, cbmf_dp_frac1, cbmf_dp_frac2, do_forced_conv, &
                  crh_th_ocean, crh_th_land, do_forcedlifting_d, frac_limit_d, wcrit_min_gust, cin_fact,&
                  cape_th, cin_th, cwfn_th, tau_dp, rpen_d, mixing_assumption_d, norder, dcwfndm_th, &
                  do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, pblfac_d, ffldep_d, lofactor_d, dcapedm_th, &
@@ -648,7 +651,7 @@ contains
     id_cape_uwc= register_diag_field ( mod_name,'cape_uwc', axes(1:2), Time, &
          'CAPE from uw_conv', 'm2/s2' )
     id_gust_uwc= register_diag_field ( mod_name,'gust_uwc', axes(1:2), Time, &
-         'gustiness from uw_conv', 'm/s' )
+         'gustiness from uw_conv', 'm2/s2' )
     id_crh_uwc= register_diag_field ( mod_name,'crh_uwc', axes(1:2), Time, &
          'Column RH from uw_conv', '%' )
     id_pblht_uwc= register_diag_field ( mod_name,'pblht_uwc', axes(1:2), Time, &
@@ -1133,6 +1136,8 @@ contains
     cpn % weffect    = weffect
     cpn % use_online_aerosol = use_online_aerosol
     cpn % use_new_let = use_new_let
+    cpn % use_lcl_only= use_lcl_only
+
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
@@ -1176,6 +1181,7 @@ contains
     cc  % tau_sh    = tau_sh
     cc  % do_old_cbmfmax = do_old_cbmfmax
 !========Option for deep convection=======================================
+    dpc % cbmf0               = cbmf0
     dpc % rkm_dp1             = rkm_dp1
     dpc % rkm_dp2             = rkm_dp2
     dpc % cbmf_dp_frac1       = cbmf_dp_frac1
@@ -1335,6 +1341,7 @@ contains
             tkep(i,j) = MAX (tkemin, tkep(i,j))
        	 endif
 
+         cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
            ocode(i,j) = 6
            go to 100
@@ -1367,14 +1374,18 @@ contains
                         asol%aerosol_names(na) == 'bcphobic' .or. &
                         asol%aerosol_names(na) == 'dust1' .or. &
                         asol%aerosol_names(na) == 'dust2' .or. &
-                        asol%aerosol_names(na) == 'dust3' ) then
+                        asol%aerosol_names(na) == 'dust3' .or. &
+                        asol%aerosol_names(na) == 'dust_mode1_of_2') then   !h1g, 2015-09-19
                            am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'seasalt1' .or. &
-                        asol%aerosol_names(na) == 'seasalt2') then
+                        asol%aerosol_names(na) == 'seasalt2' .or. &
+                        asol%aerosol_names(na) == 'seasalt_aitken' .or. &   !h1g, 2015-09-19
+                        asol%aerosol_names(na) == 'seasalt_fine'  ) then    !h1g, 2015-09-19
                            am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
                 else if(asol%aerosol_names(na) == 'seasalt3' .or. &
                         asol%aerosol_names(na) == 'seasalt4' .or. &
-                        asol%aerosol_names(na) == 'seasalt5' ) then
+                        asol%aerosol_names(na) == 'seasalt5' .or. &
+                        asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
                            am5(k)=am5(k)+asol%aerosol(i,j,k,na)*tmp
                 end if
               end do
@@ -1883,10 +1894,11 @@ contains
              tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:) 
              qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:) 
 
-             !wuo   (i,j,:) = wuo   (i,j,:) 
-             !fero  (i,j,:) = fero  (i,j,:) 
-             !fdro  (i,j,:) = fdro  (i,j,:)  
-             !fdrso (i,j,:) = fdrso (i,j,:) 
+             cldql (i,j,:) = cldql (i,j,:) + cldql_d(i,j,:)
+             cldqi (i,j,:) = cldqi (i,j,:) + cldqi_d(i,j,:)
+	     do k = 1,kmax
+	     	cldqa (i,j,k) = max(cldqa (i,j,k),cldqa_d(i,j,k))
+   	     end do
 
              snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
              rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
@@ -2373,6 +2385,10 @@ contains
     if (.not.apply_tendency) then
        uten=0.; vten=0.; tten=0.; qvten=0.; cmf=0.; rain=0.; snow=0.;
        qlten=0.; qiten=0.; qaten=0.; qnten=0.;
+    end if
+
+    if (zero_out_conv_area) then
+       cldql=0.; cldqi=0.; cldqa=0.;
     end if
 
     if (do_imposing_rad_cooling) then
