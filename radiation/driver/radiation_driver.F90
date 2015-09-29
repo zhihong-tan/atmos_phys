@@ -111,13 +111,11 @@ use sea_esf_rad_mod,       only: sea_esf_rad_init, sea_esf_rad, &
                                  sea_esf_rad_time_vary,  &
                                  sea_esf_rad_endts, &
                                  sea_esf_rad_end, &
-                                 lw_output_type, &
-                                 lw_diagnostics_type, lw_table_type, &
-                                 longwave_output_alloc, longwave_dealloc, &
-                                 shortwave_output_alloc, shortwave_output_dealloc, &
-                                 get_solar_constant, longwave_get_tables, &
-                                 longwave_diag_alloc, assignment(=)
-use shortwave_types,       only: sw_output_type, assignment(=)
+                                 lw_table_type, &
+                                 get_solar_constant, longwave_get_tables
+
+use longwave_types_mod,    only: lw_output_type, lw_diagnostics_type, assignment(=)
+use shortwave_types_mod,   only: sw_output_type, assignment(=)
 
 use rad_output_file_mod,   only: rad_output_file_init, &
                                  write_rad_output_file,    &
@@ -3649,9 +3647,9 @@ integer :: n
       call Rad_diag%Sw_output(n)%dealloc
     end do
     do n = 1, size(Rad_diag%Lw_output)
-      call longwave_dealloc(Rad_diag%Lw_output(n))
+      call Rad_diag%Lw_output(n)%dealloc
     end do
-    call longwave_dealloc(Rad_diag%Lw_diagnostics)
+    call Rad_diag%Lw_diagnostics%dealloc
 
 !-------------------------------------------------------------------
 
@@ -4533,9 +4531,9 @@ type(aerosolrad_diag_type),        intent(inout)  :: Aerosolrad_diags
 !--------------------------------------------------------------------
       if (do_lw_rad) then
         do n = 1, Aerosolrad_control%indx_lwaf
-          call longwave_dealloc(Lw_output(n))
+          call Lw_output(n)%dealloc
         end do
-        call longwave_dealloc(Lw_diagnostics)
+        call Lw_diagnostics%dealloc
       endif
 
 !--------------------------------------------------------------------
@@ -4824,14 +4822,13 @@ integer :: id, jd, kd, n
       Rad_diag%Sw_output(n) = Sw_output(n)
     end do
     do n = 1, size(Lw_output)
-      call longwave_output_alloc (id, jd, kd, &
-                                  Rad_control%do_totcld_forcing, &
-                                  Rad_diag%Lw_output(n))
+      call Rad_diag%Lw_output(n)%alloc (id, jd, kd, Rad_control%do_totcld_forcing)
       Rad_diag%Lw_output(n) = Lw_output(n)
     end do
-    call longwave_diag_alloc (id, jd, kd, &
-                              Rad_control%do_totcld_forcing, &
-                              Rad_diag%Lw_diagnostics)
+    call Rad_diag%Lw_diagnostics%alloc (id, jd, kd, &
+                                        size(Lw_diagnostics%flx1e1f,3), &
+                                        size(Lw_diagnostics%exctsn,4),  &
+                                        Rad_control%do_totcld_forcing)
     Rad_diag%Lw_diagnostics = Lw_diagnostics
 
   ! pointer to longwave tables

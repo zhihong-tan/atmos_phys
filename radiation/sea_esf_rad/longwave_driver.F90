@@ -32,11 +32,11 @@ use aerosolrad_types_mod, only: aerosolrad_control_type
 
 use sealw99_mod,        only: sealw99_init, sealw99_time_vary, sealw99, &
                               sealw99_endts, sealw99_end, &
-                              lw_output_type, assignment(=), &
-                              lw_table_type, lw_diagnostics_type, &
+                              lw_table_type,  &
                               longwave_number_of_bands => sealw99_number_of_bands, &
-                              longwave_get_tables => sealw99_get_tables, &
-                              longwave_diag_alloc => sealw99_alloc
+                              longwave_get_tables => sealw99_get_tables
+
+use longwave_types_mod, only: lw_output_type, lw_diagnostics_type
 
 !------------------------------------------------------------------
 
@@ -64,15 +64,7 @@ public      &
 
 ! inherited from sealw99_mod
 public  longwave_number_of_bands, longwave_get_tables, &
-        assignment(=), lw_output_type, lw_table_type, &
-        lw_diagnostics_type, longwave_diag_alloc
-
-public longwave_dealloc
-interface longwave_dealloc
-   module procedure longwave_output_dealloc
-   module procedure longwave_diag_dealloc
-end interface
-
+        lw_table_type
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -390,20 +382,13 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
       ! Constructor and destructor for lw_output_type needs to be provided through
       ! rad_utilities
 !**************************************
-      call longwave_output_alloc (ix, jx, kx, &
-                                  Rad_control%do_totcld_forcing, &
-                                  Lw_output(1))
-      call longwave_output_alloc (ix, jx, kx, &
-                                  Rad_control%do_totcld_forcing, &
-                                  Lw_output_std)
+      call Lw_output(1) %alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+      call Lw_output_std%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+
       if (Aerosolrad_control%do_lwaerosol_forcing) then
-      ! This is a temporary fix! Lw_output needs to be allocated at a higher level!
-        call longwave_output_alloc (ix, jx, kx, &
-                                    Rad_control%do_totcld_forcing, &
-                                    Lw_output(Aerosolrad_control%indx_lwaf))
-        call longwave_output_alloc (ix, jx, kx, &
-                                    Rad_control%do_totcld_forcing, &
-                                    Lw_output_ad)
+        call Lw_output(Aerosolrad_control%indx_lwaf)%alloc
+                                (ix, jx, kx, Rad_control%do_totcld_forcing)
+        call Lw_output_ad%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
       endif
 
 !--------------------------------------------------------------------
@@ -466,9 +451,9 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
          'invalid longwave radiation parameterization selected', FATAL)
       endif
 
-      call longwave_output_dealloc (Lw_output_std)
+      call Lw_output_std%dealloc
       if (Aerosolrad_control%do_lwaerosol_forcing) then
-        call longwave_output_dealloc (Lw_output_ad)
+        call Lw_output_ad%dealloc
       endif
 
 !---------------------------------------------------------------------
@@ -519,213 +504,6 @@ subroutine longwave_driver_end
 
 
 end subroutine longwave_driver_end                  
-
-
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-!
-!
-!                     PRIVATE SUBROUTINES
-!
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-!#####################################################################
-! <SUBROUTINE NAME="longwave_output_alloc">
-!  <OVERVIEW>
-!   Subroutine to allocate output variables from longwave calculation
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   This subroutine allocates and initializes the components
-!    of the lw_output_type variable Lw_output which holds the longwave
-!    output needed by radiation_driver_mod.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call longwave_output_alloc (ix, jx, kx, Lw_output)
-!  </TEMPLATE>
-!  <IN NAME="ix" TYPE="integer">
-!   Dimension 1 length of radiation arrays to be allocated
-!  </IN>
-!  <IN NAME="jx" TYPE="integer">
-!   Dimension 2 length of radiation arrays to be allocated
-!  </IN>
-!  <IN NAME="kx" TYPE="integer">
-!   Dimension 3 length of radiation arrays to be allocated
-!  </IN>
-!  <OUT NAME="Lw_output" TYPE="lw_output_type">
-!   lw_output_type variable containing longwave 
-!                   radiation output data
-!  </OUT>
-! </SUBROUTINE>
-!
-subroutine longwave_output_alloc (ix, jx, kx,  &
-                                  do_totcld_forcing, Lw_output)
-
-!--------------------------------------------------------------------
-!    longwave_driver_alloc allocates and initializes the components
-!    of the lw_output_type variable Lw_output which holds the longwave
-!    output needed by radiation_driver_mod.
-!--------------------------------------------------------------------
-
-integer,                   intent(in)    :: ix, jx, kx
-logical,                   intent(in)    :: do_totcld_forcing
-type(lw_output_type),      intent(inout) :: Lw_output
-
-!--------------------------------------------------------------------
-!   intent(in) variables:
-!
-!     ix,jx,kx      (i,j,k) dimensions of current physics window 
-!     do_totcld_forcing   True if arrays for clear sky output
-!                         are allocated
-!
-!   intent(inout) variables:
-!
-!     Lw_output     lw_output_type variable containing longwave 
-!                   radiation output data 
-!  
-!---------------------------------------------------------------------
-
-!-------------------------------------------------------------------
-!    allocate and initialize arrays to hold net longwave fluxes and 
-!    the longwave heating rate at each gridpoint. if the
-!    cloud-forcing calculation is to be done, also allocate and init-
-!    ialize arrays for fluxes and heating rates without clouds.
-!-------------------------------------------------------------------
-      allocate (Lw_output%flxnet ( ix, jx, kx+1) )
-      allocate (Lw_output%heatra ( ix, jx, kx  ) )
-      allocate (Lw_output%bdy_flx( ix, jx, 7) )    ! change by Xianglei Huang
-      Lw_output%flxnet(:,:,:) = 0.0
-      Lw_output%heatra(:,:,:) = 0.0
-      Lw_output%bdy_flx (:,:,:) = 0.0      
-      if (do_totcld_forcing)  then
-        allocate (Lw_output%flxnetcf   ( ix, jx, kx+1) )
-        allocate (Lw_output%heatracf   ( ix, jx, kx  ) )
-        allocate (Lw_output%bdy_flx_clr( ix, jx, 7) )   ! change by Xianglei Huang
-        Lw_output%flxnetcf(:,:,:) = 0.0
-        Lw_output%heatracf(:,:,:) = 0.0
-        Lw_output%bdy_flx_clr (:,:,:) = 0.0      
-      endif
-    
-!--------------------------------------------------------------------
-
-end subroutine longwave_output_alloc
-
-
-!#####################################################################
-! <SUBROUTINE NAME="longwave_output_dealloc">
-!  <OVERVIEW>
-!   Subroutine to deallocate output variables from longwave calculation
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   This subroutine allocates and initializes the components
-!    of the lw_output_type variable Lw_output which holds the longwave
-!    output needed by radiation_driver_mod.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call longwave_output_alloc (Lw_output)
-!  </TEMPLATE>
-!  <OUT NAME="Lw_output" TYPE="lw_output_type">
-!   lw_output_type variable containing longwave 
-!                   radiation output data
-!  </OUT>
-! </SUBROUTINE>
-!
-subroutine longwave_output_dealloc (Lw_output)
-
-!--------------------------------------------------------------------
-!    longwave_output_dealloc deallocates the components
-!    of the lw_output_type variable Lw_output.
-!--------------------------------------------------------------------
-
-type(lw_output_type),      intent(inout) :: Lw_output
-
-!--------------------------------------------------------------------
-!
-!   intent(inout) variables:
-!
-!      Lw_output    lw_output_type variable containing longwave 
-!                   radiation output data 
-!  
-!---------------------------------------------------------------------
-
-!-------------------------------------------------------------------
-!    deallocate arrays to hold net longwave fluxes and 
-!    the longwave heating rate at each gridpoint
-!-------------------------------------------------------------------
-      deallocate (Lw_output%flxnet)
-      deallocate (Lw_output%heatra)
-      deallocate (Lw_output%bdy_flx)
-      if (ASSOCIATED(Lw_output%flxnetcf))  then
-        deallocate (Lw_output%flxnetcf)
-        deallocate (Lw_output%heatracf)
-        deallocate (Lw_output%bdy_flx_clr)
-      endif
-    
-!--------------------------------------------------------------------
-
-end subroutine longwave_output_dealloc
-
-!###################################################################
-! <SUBROUTINE NAME="longwave_diag_dealloc">
-!  
-!   <OVERVIEW>
-!     A routine to deallocate arrays allocated temporarily for
-!     longwave diagnostics during radiation calculation.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     This subroutine deallocates arrays used in longwave 
-!     diagnostics and cloud space parameters used in the
-!     lacis-hansen formulation.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     call longwave_diag_dealloc (Lw_diagnostics)
-!   </TEMPLATE>
-!
-!   <IN NAME="Lw_diagnostics" TYPE="lw_diagnostics_type">
-!     Desired diagnostics from longwave_driver
-!     so they may be passed to radiation_diag_mod
-!   </IN>
-! </SUBROUTINE>
-
-subroutine longwave_diag_dealloc (Lw_diagnostics)
-
-!---------------------------------------------------------------------
-!    deallocate_arrays deallocates the array cpomponents of local
-!    derived-type variables.
-!---------------------------------------------------------------------
-
-type(lw_diagnostics_type),       intent(inout)   :: Lw_diagnostics
-
-!---------------------------------------------------------------------
-!  intent(inout) variables:
-!
-!         Lw_diagnostics      lw_diagnostics_type variable to hold
-!                             desired diagnostics from longwave_driver
-!                             so they may be passed to 
-!                             radiation_diag_mod
-!
-!----------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!    deallocate the components of Lw_diagnostics.
-!--------------------------------------------------------------------
-   !if (Rad_control%do_lw_rad) then
-      deallocate (Lw_diagnostics%flx1e1)
-      deallocate (Lw_diagnostics%fluxn )
-      deallocate (Lw_diagnostics%cts_out)
-      deallocate (Lw_diagnostics%cts_outcf)
-      deallocate (Lw_diagnostics%gxcts )
-      deallocate (Lw_diagnostics%excts )
-      deallocate (Lw_diagnostics%exctsn)
-      deallocate (Lw_diagnostics%fctsg )
-        deallocate (Lw_diagnostics%flx1e1f)
-      if (ASSOCIATED(Lw_diagnostics%fluxncf)) then
-        deallocate (Lw_diagnostics%fluxncf)
-      endif
-   !endif
-
-!--------------------------------------------------------------------
-
-end subroutine longwave_diag_dealloc
 
 !###################################################################
 

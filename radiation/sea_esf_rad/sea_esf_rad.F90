@@ -46,14 +46,11 @@ use longwave_driver_mod,  only: longwave_driver_init,   &
                                 longwave_driver, &
                                 longwave_driver_endts, &
                                 longwave_driver_end, &
-                                lw_output_type, &
-                                lw_diagnostics_type, &
                                 lw_table_type, &
                                 longwave_number_of_bands, &
-                                longwave_get_tables, &
-                                longwave_output_alloc, &
-                                longwave_diag_alloc, &
-                                longwave_dealloc
+                                longwave_get_tables
+
+use longwave_types_mod,   only: lw_output_type, lw_diagnostics_type
 
 use shortwave_driver_mod, only: shortwave_driver_init,  &
                                 shortwave_driver,  &
@@ -92,12 +89,8 @@ public       &
 
 ! inherited from longwave & shortwave modules
 public  longwave_number_of_bands, longwave_get_tables, &
-        longwave_output_alloc, longwave_dealloc, &
-        lw_diagnostics_type, longwave_diag_alloc, &
-        shortwave_output_alloc, shortwave_output_dealloc, &
         shortwave_number_of_bands, get_solar_constant, &
-        lw_table_type, &
-        lw_output_type
+        lw_table_type
 
 !---------------------------------------------------------------------
 !--- namelist ---

@@ -43,7 +43,7 @@ use cloudrad_types_mod,   only:  cld_specification_type
 
 use esfsw_driver_mod,     only:  esfsw_bands
 use shortwave_types_mod,  only:  sw_output_type
-use sealw99_mod,          only:  lw_output_type
+use longwave_types_mod,   only:  lw_output_type
 
 !--------------------------------------------------------------------
 
