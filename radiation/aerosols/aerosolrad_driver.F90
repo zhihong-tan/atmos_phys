@@ -93,12 +93,12 @@ logical ::  module_is_initialized = .false. ! module initialized?
 
 !######################################################################
 
-subroutine aerosolrad_driver_init (lonb, latb, kmax, nzens, &
+subroutine aerosolrad_driver_init (lonb, latb, kmax,   &
                                    Aerosolrad_control, &
                                    aerosol_names, aerosol_family_names)
 
 real, dimension(:,:),       intent(in)    :: lonb, latb
-integer,                    intent(in)    :: kmax, nzens
+integer,                    intent(in)    :: kmax
 type(aerosolrad_control_type), intent(inout) :: Aerosolrad_control
 character(len=64), pointer, intent(out)   :: aerosol_names(:), &
                                              aerosol_family_names(:)
@@ -163,7 +163,7 @@ character(len=64), pointer, intent(out)   :: aerosol_names(:), &
       call aerosol_init (lonb, latb, Aerosol_rad, &
                          aerosol_names, aerosol_family_names)
 
-      call aerosolrad_package_init (kmax, nzens, aerosol_names, lonb, latb, &
+      call aerosolrad_package_init (kmax, aerosol_names, lonb, latb, &
                                     Aerosolrad_control)
 
 !---------------------------------------------------------------------

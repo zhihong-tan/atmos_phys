@@ -37,9 +37,10 @@ type aerosolrad_diag_type
 
      real, dimension(:,:,:,:), pointer  :: extopdep_vlcno=>NULL(), &
                                            absopdep_vlcno=>NULL(), &
-                                           sw_heating_vlcno=>NULL(), &
                                            lw_extopdep_vlcno=>NULL(), &
                                            lw_absopdep_vlcno=>NULL()
+
+     real, dimension(:,:,:), pointer  :: sw_heating_vlcno=>NULL()
 
      real, dimension(:,:,:,:),   pointer  :: sw_ext=>NULL(), &
                                              sw_ssa=>NULL(), &

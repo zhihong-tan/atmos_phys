@@ -61,9 +61,6 @@ type astronomy_type
      real, dimension(:,:), pointer  :: solar=>NULL(),   &
                                        cosz=>NULL(),  &
                                        fracday=>NULL()
-     real, dimension(:,:,:), pointer  :: solar_p=>NULL(),   &
-                                       cosz_p=>NULL(),  &
-                                       fracday_p=>NULL()
      real    :: rrsun
 end type astronomy_type
 
@@ -168,8 +165,6 @@ type radiation_control_type
     logical  :: do_sw_rad
     logical  :: do_lw_rad
     logical  :: renormalize_sw_fluxes
-    logical  :: hires_coszen
-    integer  :: nzens
   ! from longwave_control_type
     logical  :: do_h2o
     logical  :: do_o3 
@@ -256,11 +251,11 @@ public rad_output_type
 !    coszen_angle
 
 type rad_output_type
-     real, dimension(:,:,:,:), pointer :: tdt_rad=>NULL(),  &
+     real, dimension(:,:,:), pointer :: tdt_rad=>NULL(),  &
                                         ufsw=>NULL(),  &
                                         dfsw=>NULL(),  &
                                         tdtsw=>NULL()  
-     real, dimension(:,:,:,:), pointer :: tdt_rad_clr=>NULL(), &
+     real, dimension(:,:,:), pointer :: tdt_rad_clr=>NULL(), &
                                         ufsw_clr=>NULL(),  &
                                         dfsw_clr=>NULL(),  &
                                         tdtsw_clr=>NULL()
@@ -269,7 +264,7 @@ type rad_output_type
      real, dimension(:,:,:), pointer :: flxnet=>NULL()
      real, dimension(:,:,:), pointer :: flxnetcf=>NULL()
      real, dimension(:,:,:), pointer :: tdtlw_clr=>NULL()
-     real, dimension(:,:,:),   pointer :: flux_sw_surf=>NULL(), &
+     real, dimension(:,:),   pointer :: flux_sw_surf=>NULL(), &
                                         flux_sw_surf_refl_dir=>NULL(), &
                                         flux_sw_surf_dir=>NULL(), &
                                         flux_sw_surf_dif=>NULL(), &
@@ -281,7 +276,7 @@ type rad_output_type
                                         flux_sw_vis_dir=>NULL(), &
                                         flux_sw_refl_vis_dir=>NULL(), &
                                         flux_sw_vis_dif=>NULL()
-     real, dimension(:,:,:),   pointer :: flux_sw_down_vis_clr=>NULL(), &
+     real, dimension(:,:),   pointer :: flux_sw_down_vis_clr=>NULL(), &
                                   flux_sw_down_total_dir_clr=>NULL(), &
                                   flux_sw_down_total_dif_clr=>NULL()
      real, dimension(:,:),   pointer :: flux_lw_surf=>NULL(), &

@@ -806,7 +806,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !  miscellaneous indices
 !---------------------------------------------------------------------
       integer ::   kc, nprt, ny, nx, k, nn, m, n
-      integer :: nz, nzens
+     !integer :: nz
 
       if (Rad_diag%do_swaerosol_forcing) then
         Sw_output_ad = Rad_diag%Sw_output(Rad_diag%indx_swaf)
@@ -1002,18 +1002,6 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                                Rad_diag%solar_constant*Rad_diag%rrsun, &
                                Rad_diag%cosz(iloc,jloc), &
                                Rad_diag%fracday(iloc,jloc)
-            nzens = 1
-            if (Rad_diag%hires_coszen) then
-              nzens = size(Rad_diag%cosz_p,3)
-              write (radiag_unit, 9081)
-              do nz = 1,nzens
-                write (radiag_unit, 9082) nz
-            write (radiag_unit,9080)    &
-                               Rad_diag%solar_constant*Rad_diag%rrsun, &
-                               Rad_diag%cosz_p(iloc,jloc,nz), &
-                               Rad_diag%fracday_p(iloc,jloc,nz)
-              end do
-             endif
         
 !----------------------------------------------------------------------
 !    write out atmospheric input data and longwave fluxes and heating
@@ -1070,38 +1058,37 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !DEL        if (Sw_control%do_esfsw) then
               write (radiag_unit, 99016)
 !DEL        endif
-          do nz=1,nzens
-                write (radiag_unit, 9082) nz
+           !write (radiag_unit, 9082) nz
             write (radiag_unit,9140)
             write (radiag_unit,9150) (k, press(k),   &
-                                     Rad_diag%Sw_output(1)%hsw  (iloc,jloc,k,nz), &
-                                     Rad_diag%Sw_output(1)%fsw  (iloc,jloc,k,nz), &
-                                     Rad_diag%Sw_output(1)%dfsw (iloc,jloc,k,nz),    &
-                                     Rad_diag%Sw_output(1)%ufsw (iloc,jloc,k,nz),&
+                                     Rad_diag%Sw_output(1)%hsw  (iloc,jloc,k), &
+                                     Rad_diag%Sw_output(1)%fsw  (iloc,jloc,k), &
+                                     Rad_diag%Sw_output(1)%dfsw (iloc,jloc,k),    &
+                                     Rad_diag%Sw_output(1)%ufsw (iloc,jloc,k),&
                                      pflux          (k), k=ks,ke)
             write (radiag_unit,6556) press(ke+1),    &
-                                     Rad_diag%Sw_output(1)%fsw  (iloc,jloc,ke+1,nz), &
-                                     Rad_diag%Sw_output(1)%dfsw (iloc,jloc,ke+1,nz), &
-                                     Rad_diag%Sw_output(1)%ufsw (iloc,jloc,ke+1,nz), &
+                                     Rad_diag%Sw_output(1)%fsw  (iloc,jloc,ke+1), &
+                                     Rad_diag%Sw_output(1)%dfsw (iloc,jloc,ke+1), &
+                                     Rad_diag%Sw_output(1)%ufsw (iloc,jloc,ke+1), &
                                      pflux          (ke+1)
 
 !DEL        if (Sw_control%do_esfsw) then
-              dfsw_nir = Rad_diag%Sw_output(1)%dfsw(iloc,jloc,ke+1,nz) -   &
-                         Rad_diag%Sw_output(1)%dfsw_vis_sfc(iloc,jloc,nz)
-              dfsw_nir_dir = Rad_diag%Sw_output(1)%dfsw_dir_sfc(iloc,jloc,nz) -   &
-                             Rad_diag%Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc,nz)
-              dfsw_nir_dif = Rad_diag%Sw_output(1)%dfsw_dif_sfc(iloc,jloc,nz) -   &
-                             Rad_diag%Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc,nz)
-              ufsw_nir = Rad_diag%Sw_output(1)%ufsw(iloc,jloc,ke+1,nz) -   &
-                         Rad_diag%Sw_output(1)%ufsw_vis_sfc(iloc,jloc,nz)
-              ufsw_nir_dif = Rad_diag%Sw_output(1)%ufsw_dif_sfc(iloc,jloc,nz) -   &
-                             Rad_diag%Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc,nz)
+              dfsw_nir = Rad_diag%Sw_output(1)%dfsw(iloc,jloc,ke+1) -   &
+                         Rad_diag%Sw_output(1)%dfsw_vis_sfc(iloc,jloc)
+              dfsw_nir_dir = Rad_diag%Sw_output(1)%dfsw_dir_sfc(iloc,jloc) -   &
+                             Rad_diag%Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc)
+              dfsw_nir_dif = Rad_diag%Sw_output(1)%dfsw_dif_sfc(iloc,jloc) -   &
+                             Rad_diag%Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc)
+              ufsw_nir = Rad_diag%Sw_output(1)%ufsw(iloc,jloc,ke+1) -   &
+                         Rad_diag%Sw_output(1)%ufsw_vis_sfc(iloc,jloc)
+              ufsw_nir_dif = Rad_diag%Sw_output(1)%ufsw_dif_sfc(iloc,jloc) -   &
+                             Rad_diag%Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc)
               write (radiag_unit, 99026)    &
-                           Rad_diag%Sw_output(1)%dfsw_vis_sfc(iloc,jloc,nz), &
-                           Rad_diag%Sw_output(1)%ufsw_vis_sfc(iloc,jloc,nz), &
-                           Rad_diag%Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc,nz), &
-                           Rad_diag%Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc,nz), &
-                           Rad_diag%Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc,nz), &
+                           Rad_diag%Sw_output(1)%dfsw_vis_sfc(iloc,jloc), &
+                           Rad_diag%Sw_output(1)%ufsw_vis_sfc(iloc,jloc), &
+                           Rad_diag%Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc), &
+                           Rad_diag%Sw_output(1)%dfsw_vis_sfc_dif(iloc,jloc), &
+                           Rad_diag%Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc), &
                            dfsw_nir, ufsw_nir,  &
                            dfsw_nir_dir,               &
                            dfsw_nir_dif, ufsw_nir_dif
@@ -1113,10 +1100,10 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !----------------------------------------------------------------------
             do k=ks,ke+1
               flwsw(k) = Rad_diag%Lw_output(1)%flxnet (iloc,jloc,k) +    &
-                         Rad_diag%Sw_output(1)%fsw    (iloc,jloc,k,nz)
+                         Rad_diag%Sw_output(1)%fsw    (iloc,jloc,k)
             end do
             do k=ks,ke
-              hlwsw(k) = Rad_diag%Sw_output(1)%hsw    (iloc,jloc,k,nz) +    &
+              hlwsw(k) = Rad_diag%Sw_output(1)%hsw    (iloc,jloc,k) +    &
                          Rad_diag%Lw_output(1)%heatra (iloc,jloc,k)
             end do
             write (radiag_unit,9160)
@@ -1126,7 +1113,6 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                                       pflux(k), k=ks,ke)
             write (radiag_unit,9180)  press(ke+1), flwsw(ke+1),   &
                                       pflux(ke+1)
-      end do
 
             if (Rad_diag%do_totcld_forcing) then
 !----------------------------------------------------------------------
@@ -1167,20 +1153,19 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !                [ degrees K / day ]
 !----------------------------------------------------------------------
               write (radiag_unit,9410)
-       do nz=1,nzens
-                write (radiag_unit, 9082) nz
-            write (radiag_unit,9140)
+             !write (radiag_unit, 9082) nz
+              write (radiag_unit,9140)
               write (radiag_unit,9150) (k, press(k),   &
-                                        Rad_diag%Sw_output(1)%hswcf (iloc,jloc,k,nz), &
-                                        Rad_diag%Sw_output(1)%fswcf (iloc,jloc,k,nz), &
-                                        Rad_diag%Sw_output(1)%dfswcf(iloc,jloc,k,nz),&
-                                        Rad_diag%Sw_output(1)%ufswcf(iloc,jloc,k,nz), &
+                                        Rad_diag%Sw_output(1)%hswcf (iloc,jloc,k), &
+                                        Rad_diag%Sw_output(1)%fswcf (iloc,jloc,k), &
+                                        Rad_diag%Sw_output(1)%dfswcf(iloc,jloc,k),&
+                                        Rad_diag%Sw_output(1)%ufswcf(iloc,jloc,k), &
                                         pflux(k), k=ks,ke)
               write (radiag_unit,6556)    &
                                     press(ke+1), &
-                                    Rad_diag%Sw_output(1)%fswcf(iloc,jloc,ke+1,nz),&
-                                    Rad_diag%Sw_output(1)%dfswcf(iloc,jloc,ke+1,nz),  &
-                                    Rad_diag%Sw_output(1)%ufswcf(iloc,jloc,ke+1,nz), &
+                                    Rad_diag%Sw_output(1)%fswcf(iloc,jloc,ke+1),&
+                                    Rad_diag%Sw_output(1)%dfswcf(iloc,jloc,ke+1),  &
+                                    Rad_diag%Sw_output(1)%ufswcf(iloc,jloc,ke+1), &
                                     pflux(ke+1)
 
 !----------------------------------------------------------------------
@@ -1189,10 +1174,10 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !----------------------------------------------------------------------
               do k=ks,ke+1
                 flwswcf(k) = Rad_diag%Lw_output(1)%flxnetcf(iloc,jloc,k) +    &
-                             Rad_diag%Sw_output(1)%fswcf   (iloc,jloc,k,nz)
+                             Rad_diag%Sw_output(1)%fswcf   (iloc,jloc,k)
               end do
               do k=ks,ke
-                hlwswcf(k) = Rad_diag%Sw_output(1)%hswcf   (iloc,jloc,k,nz) +    &
+                hlwswcf(k) = Rad_diag%Sw_output(1)%hswcf   (iloc,jloc,k) +    &
                              Rad_diag%Lw_output(1)%heatracf(iloc,jloc,k)
               end do
 
@@ -1202,7 +1187,6 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                                        flwswcf(k), pflux(k), k=ks,ke)
               write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
                                        pflux(ke+1)
-      end do
             endif
 
             if (Rad_diag%do_lwaerosol_forcing) then
@@ -1293,18 +1277,17 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                 write (radiag_unit,9701)
               endif
               write (radiag_unit,9140)
-    do nz = 1, nzens
               write (radiag_unit,9150) (k, press(k),   &
-                                        Sw_output_ad%hsw (iloc,jloc,k,nz), &
-                                        Sw_output_ad%fsw (iloc,jloc,k,nz), &
-                                        Sw_output_ad%dfsw(iloc,jloc,k,nz),&
-                                        Sw_output_ad%ufsw(iloc,jloc,k,nz), &
+                                        Sw_output_ad%hsw (iloc,jloc,k), &
+                                        Sw_output_ad%fsw (iloc,jloc,k), &
+                                        Sw_output_ad%dfsw(iloc,jloc,k),&
+                                        Sw_output_ad%ufsw(iloc,jloc,k), &
                                         pflux(k), k=ks,ke)
               write (radiag_unit,6556)    &
                                     press(ke+1), &
-                                    Sw_output_ad%fsw(iloc,jloc,ke+1,nz),&
-                                    Sw_output_ad%dfsw(iloc,jloc,ke+1,nz),  &
-                                    Sw_output_ad%ufsw(iloc,jloc,ke+1,nz), &
+                                    Sw_output_ad%fsw(iloc,jloc,ke+1),&
+                                    Sw_output_ad%dfsw(iloc,jloc,ke+1),  &
+                                    Sw_output_ad%ufsw(iloc,jloc,ke+1), &
                                     pflux(ke+1)
 ! clear-sky results
               if (Rad_diag%do_swaerosol) then
@@ -1316,23 +1299,21 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
               endif
               write (radiag_unit,9140)
               write (radiag_unit,9150) (k, press(k),   &
-                                        Sw_output_ad%hswcf (iloc,jloc,k,nz), &
-                                        Sw_output_ad%fswcf (iloc,jloc,k,nz), &
-                                        Sw_output_ad%dfswcf(iloc,jloc,k,nz),&
-                                        Sw_output_ad%ufswcf(iloc,jloc,k,nz), &
+                                        Sw_output_ad%hswcf (iloc,jloc,k), &
+                                        Sw_output_ad%fswcf (iloc,jloc,k), &
+                                        Sw_output_ad%dfswcf(iloc,jloc,k),&
+                                        Sw_output_ad%ufswcf(iloc,jloc,k), &
                                         pflux(k), k=ks,ke)
               write (radiag_unit,6556)    &
                                     press(ke+1), &
-                                    Sw_output_ad%fswcf(iloc,jloc,ke+1,nz),&
-                                    Sw_output_ad%dfswcf(iloc,jloc,ke+1,nz),  &
-                                    Sw_output_ad%ufswcf(iloc,jloc,ke+1,nz), &
+                                    Sw_output_ad%fswcf(iloc,jloc,ke+1),&
+                                    Sw_output_ad%dfswcf(iloc,jloc,ke+1),  &
+                                    Sw_output_ad%ufswcf(iloc,jloc,ke+1), &
                                     pflux(ke+1)
-        end do
             endif
 
             if (Rad_diag%do_lwaerosol_forcing .and.   &
                 Rad_diag%do_swaerosol_forcing) then
-       do nz=1,nzens
 !----------------------------------------------------------------------
 !    compute and write out total radiative heating and total fluxes 
 !    (lw + sw, up-down) for the total-sky and cloud-free case
@@ -1340,14 +1321,14 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !----------------------------------------------------------------------
               do k=ks,ke+1
                 flwsw(k) = Lw_output_ad%flxnet(iloc,jloc,k) +    &
-                             Sw_output_ad%fsw   (iloc,jloc,k,nz)
+                             Sw_output_ad%fsw   (iloc,jloc,k)
                 flwswcf(k) = Lw_output_ad%flxnetcf(iloc,jloc,k) +    &
-                             Sw_output_ad%fswcf   (iloc,jloc,k,nz)
+                             Sw_output_ad%fswcf   (iloc,jloc,k)
               end do
               do k=ks,ke
-                hlwsw(k) = Sw_output_ad%hsw   (iloc,jloc,k,nz) +    &
+                hlwsw(k) = Sw_output_ad%hsw   (iloc,jloc,k) +    &
                              Lw_output_ad%heatra(iloc,jloc,k)
-                hlwswcf(k) = Sw_output_ad%hswcf   (iloc,jloc,k,nz) +    &
+                hlwswcf(k) = Sw_output_ad%hswcf   (iloc,jloc,k) +    &
                              Lw_output_ad%heatracf(iloc,jloc,k)
               end do
 
@@ -1365,7 +1346,6 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                                        flwswcf(k), pflux(k), k=ks,ke)
               write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
                                        pflux(ke+1)
-     end do
             endif
 
 !----------------------------------------------------------------------
