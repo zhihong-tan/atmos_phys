@@ -111,12 +111,13 @@ use sea_esf_rad_mod,       only: sea_esf_rad_init, sea_esf_rad, &
                                  sea_esf_rad_time_vary,  &
                                  sea_esf_rad_endts, &
                                  sea_esf_rad_end, &
-                                 lw_output_type, sw_output_type, &
+                                 lw_output_type, &
                                  lw_diagnostics_type, lw_table_type, &
                                  longwave_output_alloc, longwave_dealloc, &
                                  shortwave_output_alloc, shortwave_output_dealloc, &
                                  get_solar_constant, longwave_get_tables, &
                                  longwave_diag_alloc, assignment(=)
+use shortwave_types,       only: sw_output_type, assignment(=)
 
 use rad_output_file_mod,   only: rad_output_file_init, &
                                  write_rad_output_file,    &
@@ -3645,7 +3646,7 @@ integer :: n
     nullify(Rad_diag%Lw_tables)
 
     do n = 1, size(Rad_diag%Sw_output)
-      call shortwave_output_dealloc(Rad_diag%Sw_output(n))
+      call Rad_diag%Sw_output(n)%dealloc
     end do
     do n = 1, size(Rad_diag%Lw_output)
       call longwave_dealloc(Rad_diag%Lw_output(n))
@@ -4542,7 +4543,7 @@ type(aerosolrad_diag_type),        intent(inout)  :: Aerosolrad_diags
 !--------------------------------------------------------------------
       if (do_sw_rad) then
         do n = 1, Aerosolrad_control%indx_swaf
-          call shortwave_output_dealloc(Sw_output(n))
+          call Sw_output(n)%dealloc
         end do
       endif
 
@@ -4819,9 +4820,7 @@ integer :: id, jd, kd, n
     allocate(Rad_diag%Sw_output(size(Sw_output)))
     allocate(Rad_diag%Lw_output(size(Lw_output)))
     do n = 1, size(Sw_output)
-      call shortwave_output_alloc (id, jd, kd, &
-                                   Rad_control%do_totcld_forcing, &
-                                   Rad_diag%Sw_output(n))
+      call Rad_diag%Sw_output(n)%alloc (id, jd, kd, Rad_control%do_totcld_forcing)
       Rad_diag%Sw_output(n) = Sw_output(n)
     end do
     do n = 1, size(Lw_output)

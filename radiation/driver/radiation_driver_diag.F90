@@ -79,7 +79,7 @@ use rad_utilities_mod,     only: radiation_control_type, &
                                  radiative_gases_type, &
                                  rad_utilities_init
 use aerosolrad_types_mod,  only: aerosolrad_control_type
-use esfsw_driver_mod,      only: sw_output_type
+use shortwave_types_mod,   only: sw_output_type
 use sealw99_mod,           only: lw_output_type
 
 use diag_integral_mod,     only: diag_integral_init, &

@@ -47,9 +47,9 @@ use esfsw_bands_mod,      only:  esfsw_bands_init, &
                                  esfsw_thickavg
 
 use esfsw_utilities_mod,  only:  esfsw_utilities_init, &
-                                 esfsw_utilities_end, &
-                                 sw_output_type, &
-                                 assignment(=)
+                                 esfsw_utilities_end
+
+use shortwave_types_mod,  only:  sw_output_type
 
 !---------------------------------------------------------------------
 
@@ -91,10 +91,7 @@ public  &
         esfsw_bands, &
         esfsw_band_segments, &
         esfsw_solar_flux, &
-        esfsw_thickavg, &
-  !  from esfsw_utilities_mod
-        sw_output_type, &
-        assignment(=)
+        esfsw_thickavg
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------

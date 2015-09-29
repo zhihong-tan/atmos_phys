@@ -53,8 +53,7 @@ use longwave_driver_mod,  only: longwave_driver_init,   &
                                 longwave_get_tables, &
                                 longwave_output_alloc, &
                                 longwave_diag_alloc, &
-                                longwave_dealloc, &
-                                assignment(=)
+                                longwave_dealloc
 
 use shortwave_driver_mod, only: shortwave_driver_init,  &
                                 shortwave_driver,  &
@@ -62,10 +61,8 @@ use shortwave_driver_mod, only: shortwave_driver_init,  &
                                 shortwave_driver_time_vary, &
                                 shortwave_number_of_bands, &
                                 get_solar_constant, &
-                                sw_output_type, &
-                                shortwave_output_alloc, &
-                                shortwave_output_dealloc, &
-                                assignment(=)
+
+use shortwave_types_mod,  only: sw_output_type
                                 
 
 !----------------------------------------------------------------------
@@ -100,7 +97,7 @@ public  longwave_number_of_bands, longwave_get_tables, &
         shortwave_output_alloc, shortwave_output_dealloc, &
         shortwave_number_of_bands, get_solar_constant, &
         lw_table_type, &
-        sw_output_type, lw_output_type, assignment(=)
+        lw_output_type
 
 !---------------------------------------------------------------------
 !--- namelist ---

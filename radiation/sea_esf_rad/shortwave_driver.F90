@@ -47,8 +47,9 @@ use aerosolrad_types_mod, only: aerosolrad_control_type
 use esfsw_driver_mod,     only: esfsw_driver_init, swresf,   &
                                 esfsw_driver_end, &
                                 shortwave_number_of_bands => esfsw_number_of_bands, &
-                                esfsw_solar_flux, &
-                                sw_output_type, assignment(=)
+                                esfsw_solar_flux
+
+use shortwave_types_mod,  only: sw_output_type, assignment(=)
 
 use solar_data_mod,       only: solar_data_init, &
                                 solar_data_time_vary, &
@@ -82,8 +83,7 @@ public        &
           get_solar_flux_by_band, &
           get_solar_constant
 
-public    shortwave_number_of_bands, sw_output_type, assignment(=), &
-          shortwave_output_alloc, shortwave_output_dealloc
+public    shortwave_number_of_bands
 
 
 !---------------------------------------------------------------------
@@ -511,19 +511,14 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
       ! Constructor and destructor for sw_output_type needs to be provided through
       ! rad_utilities
 !**************************************
-      call shortwave_output_alloc (ix, jx, kx,                    &
-                                   Rad_control%do_totcld_forcing, &
-                                   Sw_output(1)) 
-      call shortwave_output_alloc (ix, jx, kx,                    &
-                                   Rad_control%do_totcld_forcing, &
-                                   Sw_output_std) 
+
+      call Sw_output(1) %alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+      call Sw_output_std%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+
       if (Aerosolrad_control%do_swaerosol_forcing) then
-        call shortwave_output_alloc (ix, jx, kx,                    &
-                                     Rad_control%do_totcld_forcing, &
-                                     Sw_output_ad)
-        call shortwave_output_alloc (ix, jx, kx,                    &
-                                     Rad_control%do_totcld_forcing, &
-                                     Sw_output(Aerosolrad_control%indx_swaf)) 
+        call Sw_output_ad%alloc(ix, jx, kx, Rad_control%do_totcld_forcing)
+        call Sw_output(Aerosolrad_control%indx_swaf)%alloc
+                               (ix, jx, kx, Rad_control%do_totcld_forcing)
       endif
 
 !--------------------------------------------------------------------
@@ -698,9 +693,9 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
       endif  
 
 
-      call shortwave_output_dealloc (Sw_output_std)
+      call Sw_output_std%dealloc
       if (Aerosolrad_control%do_swaerosol_forcing) then
-        call shortwave_output_dealloc (Sw_output_ad)
+        call Sw_output_ad%dealloc
       endif
 !--------------------------------------------------------------------
 
@@ -937,81 +932,6 @@ end  subroutine shortwave_output_alloc
 
 
 !###################################################################
-! <SUBROUTINE NAME="shortwave_output_dealloc">
-!  <OVERVIEW>
-!   Code that allocates and initializes shortwave output variables
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Shortwave_output_dealloc allocates and initializes the components
-!   of the sw_output_type variable Sw_output, which is used to hold
-!   output data from shortwave_driver_mod.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call shortwave_output_dealloc (Sw_output)
-!  </TEMPLATE>
-!  <INOUT NAME="Sw_output" TYPE="sw_output_type">
-!   shortwave radiation output variable
-!  </INOUT>
-! </SUBROUTINE>
-!
-subroutine shortwave_output_dealloc (Sw_output)
-
-!--------------------------------------------------------------------
-!    shortwave_output_dealloc deallocates the components
-!    of the sw_output_type variable Sw_output, which is used to hold
-!    output data from shortwave_driver_mod.
-!--------------------------------------------------------------------
-
-type(sw_output_type), intent(inout)  ::  Sw_output
-
-!-------------------------------------------------------------------
-!  intent(inout) variables:
-!
-!      Sw_output  sw_output_type variable containing shortwave 
-!                 radiation output data 
-!
-!--------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!    deallocate fields to contain net(up-down) sw flux 
-!    (fsw), upward sw flux (ufsw), downward sw flux(dfsw) at flux 
-!    levels and sw heating in model layers (hsw).
-!--------------------------------------------------------------------
-      deallocate (Sw_output%fsw)
-      deallocate (Sw_output%ufsw)
-      deallocate (Sw_output%dfsw)
-      deallocate (Sw_output%hsw)
-      deallocate (Sw_output%dfsw_dir_sfc)
-      deallocate (Sw_output%ufsw_dir_sfc)
-      deallocate (Sw_output%ufsw_dif_sfc)
-      deallocate (Sw_output%dfsw_dif_sfc)
-      deallocate (Sw_output%dfsw_vis_sfc)
-      deallocate (Sw_output%ufsw_vis_sfc)
-      deallocate (Sw_output%dfsw_vis_sfc_dir)
-      deallocate (Sw_output%ufsw_vis_sfc_dir)
-      deallocate (Sw_output%dfsw_vis_sfc_dif)
-      deallocate (Sw_output%ufsw_vis_sfc_dif)
-      deallocate (Sw_output%bdy_flx)
-!---------------------------------------------------------------------
-!    if the cloud-free values are desired, allocate and initialize 
-!    arrays for the fluxes and heating rate in the absence of clouds.
-!----------------------------------------------------------------------
-      if (ASSOCIATED(Sw_output%hswcf)) then
-        deallocate (Sw_output%fswcf)
-        deallocate (Sw_output%dfswcf)
-        deallocate (Sw_output%ufswcf)
-        deallocate (Sw_output%hswcf)
-        deallocate (Sw_output%dfsw_dir_sfc_clr)
-        deallocate (Sw_output%dfsw_dif_sfc_clr)
-        deallocate (Sw_output%dfsw_vis_sfc_clr)
-        deallocate (Sw_output%bdy_flx_clr)
-      endif
-
-!--------------------------------------------------------------------
-
-end subroutine shortwave_output_dealloc
-
-!####################################################################
 
 subroutine swresf_wrapper ( press, pflux, temp, rh2o, deltaz,  &
                             asfc_vis_dir, asfc_nir_dir, &
