@@ -83,7 +83,6 @@ use physics_radiation_exch_mod,only: exchange_control_type, &
                                      dealloc_radiation_flux_type
 
 use rad_utilities_mod,     only: radiation_control_type, &
-                                 radiative_gases_type, &
                                  astronomy_type, surface_type, &
                                  atmos_input_type, rad_utilities_init,&
                                  rad_output_type, astronomy_inp_type,  &
@@ -145,7 +144,10 @@ use radiative_gases_mod,   only: radiative_gases_init,   &
                                  radiative_gases_dealloc, &
                                  radiative_gases_end,     &    
                                  radiative_gases_restart, &
-                                 assignment(=)
+                                 get_longwave_gas_flag
+
+use radiative_gases_types_mod, only: radiative_gases_type, &
+                                     assignment(=)
 
 use field_manager_mod,     only: MODEL_ATMOS
 use tracer_manager_mod,    only: tracer_manager_init, &
@@ -1033,31 +1035,20 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       rh2o_lower_limit = rh2o_lower_limit_seaesf
 
 !---------------------------------------------------------------------
-!    set control variable indicating whether water vapor effects are to
-!    be included in the radiative calculation. if h2o effects are not 
-!    to be included in the radiative calculations, set the lower limit 
-!    for h2o to zero
-!---------------------------------------------------------------------
-      Rad_control%do_h2o = do_h2o 
-      if (.not. do_h2o) then
-        rh2o_lower_limit = 0.0
-      endif
-
-!---------------------------------------------------------------------
 !    set control variable indicating whether ozone effects are to be
 !    included in the radiative calculation
 !---------------------------------------------------------------------
-      Rad_control%do_o3 = do_o3 
+!BW   Rad_control%do_o3 = do_o3 
 
 !---------------------------------------------------------------------
 !    set control variables indicating whether the effects of other
 !    radiative gases are to be included in the longwave radiation
 !    calculation
 !---------------------------------------------------------------------
-      Rad_control%do_ch4_lw = do_ch4_lw 
-      Rad_control%do_n2o_lw = do_n2o_lw 
-      Rad_control%do_co2_lw = do_co2_lw 
-      Rad_control%do_cfc_lw = do_cfc_lw 
+!BW   Rad_control%do_ch4_lw = do_ch4_lw  ! moved to radiative gases
+!BW   Rad_control%do_n2o_lw = do_n2o_lw 
+!BW   Rad_control%do_co2_lw = do_co2_lw 
+!BW   Rad_control%do_cfc_lw = do_cfc_lw 
       
 !---------------------------------------------------------------------
 !    stop execution if overriding of aerosol data has been requested.
@@ -1267,9 +1258,16 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !-----------------------------------------------------------------------
       call mpp_clock_begin ( radiative_gases_init_clock )
       call radiative_gases_init (lw_rad_time_step, &
-                                 Radiation%glbl_qty%pref, latb, lonb, &
-                                 Rad_control)
+                                 Radiation%glbl_qty%pref, latb, lonb)
       call mpp_clock_end ( radiative_gases_init_clock )
+
+!---------------------------------------------------------------------
+!    if h2o effects are not to be included in the longwave radiative
+!    calculations, then set the lower limit for h2o to zero
+!---------------------------------------------------------------------
+      if (.not. get_longwave_gas_flag('h2o')) then
+        rh2o_lower_limit = 0.0
+      endif
 
 !---------------------------------------------------------------------
 !    initialize the modules that are accessed from radiation_driver_mod.
@@ -1542,7 +1540,7 @@ integer, intent(in)  :: is,js
 !---------------------------------------------------------------------
 
       if (do_rad) then
-         call radiative_gases_endts (Rad_control, Rad_gases_tv)
+         call radiative_gases_endts (Rad_gases_tv)
          if (Aerosolrad_control%do_aerosol) call aerosolrad_driver_endts
          call sea_esf_rad_endts (Rad_gases_tv)
       endif
@@ -2239,7 +2237,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    arrays input to radiation_driver.
 !---------------------------------------------------------------------
       if (do_rad) then
-        call radiative_gases_dealloc (Rad_gases)
+        call Rad_gases%dealloc
         call cloud_spec_dealloc (Cldrad_control, Cld_spec)   !BW, Lsc_microphys)
         call atmos_input_dealloc (Atmos_input)
         call microphys_dealloc (Cldrad_control, Model_microphys)

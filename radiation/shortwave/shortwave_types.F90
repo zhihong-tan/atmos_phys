@@ -224,7 +224,7 @@ logical,              intent(in)     ::  do_totcld_forcing
 
 !--------------------------------------------------------------------
 
-end  subroutine shortwave_output_alloc
+end subroutine shortwave_output_alloc
 
 !###################################################################
 ! <SUBROUTINE NAME="shortwave_output_dealloc">

@@ -34,7 +34,6 @@ use time_manager_mod,     only: time_manager_init, time_type
 !  shared radiation package modules:
 
 use rad_utilities_mod,    only: radiation_control_type, &
-                                radiative_gases_type, & 
                                 astronomy_type
 
 use aerosolrad_types_mod, only: aerosolrad_control_type
@@ -61,6 +60,7 @@ use shortwave_driver_mod, only: shortwave_driver_init,  &
 
 use shortwave_types_mod,  only: sw_output_type
                                 
+use radiative_gases_types_mod, only: radiative_gases_type
 
 !----------------------------------------------------------------------
 
@@ -222,7 +222,7 @@ type(radiation_control_type), intent(inout) :: Rad_control
 !---------------------------------------------------------------------
 !    initialize the modules called by this module.
 !---------------------------------------------------------------------
-      call longwave_driver_init  (pref_r, Rad_control)
+      call longwave_driver_init  (pref_r)
       call shortwave_driver_init (Rad_control)
 
 !---------------------------------------------------------------------

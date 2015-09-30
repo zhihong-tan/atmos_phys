@@ -23,7 +23,6 @@ use fms_mod,            only : fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                write_version_number, &
                                error_mesg, FATAL, close_file
-use time_manager_mod,   only : time_type
 
 !--------------------------------------------------------------------
 
@@ -180,62 +179,6 @@ type radiation_control_type
     logical  :: do_daily_mean
     logical  :: do_cmip_sw_diagnostics
 end type radiation_control_type
-
-!------------------------------------------------------------------
-
-public   radiative_gases_type
- 
-!    qo3
-!    rrvch4
-!    rrvn2o
-!    rrvco2
-!    rrvf11
-!    rrvf12
-!    rrvf113
-!    rrvf22
-!    rf11air
-!    rf12air
-!    rf113air
-!    rf22air
-!    time_varying_co2
-!    time_varying_f11
-!    time_varying_f12
-!    time_varying_f113
-!    time_varying_f22
-!    time_varying_ch4
-!    time_varying_n2o
-
-type radiative_gases_type
-     real, dimension(:,:,:), pointer :: qo3=>NULL()
-     real                            :: rrvch4, rrvn2o, rrvco2,    &
-                                        rrvf11, rrvf12, rrvf113,  &
-                                        rrvf22, rf11air, rf12air,  &
-                                        rf113air, rf22air, &
-                                        co2_for_last_tf_calc,  &
-                                        co2_tf_offset, &
-                                        co2_for_next_tf_calc, &
-                                        ch4_for_last_tf_calc,  &
-                                        ch4_tf_offset, &
-                                        ch4_for_next_tf_calc, &
-                                        n2o_for_last_tf_calc,  &
-                                        n2o_tf_offset, &
-                                        n2o_for_next_tf_calc, &
-                                        ch4_for_tf_calc, &
-                                        n2o_for_tf_calc, &
-                                        co2_for_tf_calc
-     logical                         :: time_varying_co2,  &
-                                        time_varying_f11, &
-                                        time_varying_f12,  &
-                                        time_varying_f113, &
-                                        time_varying_f22,  &
-                                        time_varying_ch4, &
-                                        time_varying_n2o, &
-                                        use_ch4_for_tf_calc, &
-                                        use_n2o_for_tf_calc, &
-                                        use_co2_for_tf_calc, &
-                                        use_model_supplied_co2
-     type(time_type)                 :: Co2_time, Ch4_time, N2o_time
-end type radiative_gases_type
 
 !------------------------------------------------------------------
 

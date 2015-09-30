@@ -37,7 +37,6 @@ use diag_manager_mod,     only: diag_manager_init, get_base_time
 !   shared radiation package modules:
  
 use rad_utilities_mod,    only: radiation_control_type, &
-                                radiative_gases_type,   &
                                 astronomy_type
 
 use aerosolrad_types_mod, only: aerosolrad_control_type
@@ -50,6 +49,8 @@ use esfsw_driver_mod,     only: esfsw_driver_init, swresf,   &
                                 esfsw_solar_flux
 
 use shortwave_types_mod,  only: sw_output_type, assignment(=)
+
+use radiative_gases_types_mod, only: radiative_gases_type
 
 use solar_data_mod,       only: solar_data_init, &
                                 solar_data_time_vary, &

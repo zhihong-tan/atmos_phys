@@ -23,8 +23,7 @@ use fms_mod,            only: open_namelist_file, fms_init, &
 
 ! shared radiation package modules:
 
-use rad_utilities_mod,  only: radiation_control_type, &
-                              radiative_gases_type
+use rad_utilities_mod,  only: radiation_control_type
 
 use aerosolrad_types_mod, only: aerosolrad_control_type
 
@@ -37,6 +36,9 @@ use sealw99_mod,        only: sealw99_init, sealw99_time_vary, sealw99, &
                               longwave_get_tables => sealw99_get_tables
 
 use longwave_types_mod, only: lw_output_type, lw_diagnostics_type
+
+use radiative_gases_mod,       only: get_longwave_gas_flag
+use radiative_gases_types_mod, only: radiative_gases_type
 
 !------------------------------------------------------------------
 
@@ -112,14 +114,14 @@ logical :: do_sealw99 = .false.               ! sealw99 parameter-
 !   This subroutine initializes longwave radiation package
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call longwave_driver_init (pref, Rad_control)
+!   call longwave_driver_init (pref)
 !  </TEMPLATE>
 !  <IN NAME="pref" TYPE="real">
 !   array containing two reference pressure profiles [pascals]
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine longwave_driver_init (pref, Rad_control)
+subroutine longwave_driver_init (pref)
  
 !---------------------------------------------------------------------
 !    longwave_driver_init is the constructor for longwave_driver_mod.
@@ -127,7 +129,6 @@ subroutine longwave_driver_init (pref, Rad_control)
 
 !---------------------------------------------------------------------
 real, dimension(:,:),         intent(in) :: pref
-type(radiation_control_type), intent(in) :: Rad_control
 
 !---------------------------------------------------------------------
 !  intent(in) variables:
@@ -195,10 +196,13 @@ type(radiation_control_type), intent(in) :: Rad_control
       if (trim(lwform) == 'sealw99') then
         do_sealw99 = .true.
         call sealw99_init ( pref, &
-                            Rad_control%do_h2o,    Rad_control%do_o3,  &
-                            Rad_control%do_ch4_lw, Rad_control%do_n2o_lw, &
-                            Rad_control%do_co2_lw, Rad_control%do_co2_10um, &
-                            Rad_control%do_cfc_lw  )
+                            get_longwave_gas_flag('h2o'), &
+                            get_longwave_gas_flag('o3'),  &
+                            get_longwave_gas_flag('ch4'), &
+                            get_longwave_gas_flag('n2o'), &
+                            get_longwave_gas_flag('co2'), &
+                            get_longwave_gas_flag('co2_10um'), &
+                            get_longwave_gas_flag('cfc') )
       else
         call error_mesg ( 'longwave_driver_mod', &
                  'invalid longwave radiation form specified', FATAL)

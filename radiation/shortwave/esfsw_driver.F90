@@ -996,10 +996,6 @@ end subroutine esfsw_driver_init
 !    Astronomy_type variable containing the astronomical
 !    input fields on the radiation grid  
 !  </IN>
-!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
-!    Radiative_gases_type variable containing the radiative 
-!    gas input fields on the radiation grid 
-!  </IN>
 !  <INOUT NAME="Sw_output" TYPE="sw_output_type">
 !    The shortwave radiation calculation result
 !  </INOUT>
@@ -1064,9 +1060,9 @@ type(sw_output_type),          intent(inout) :: Sw_output
 !      albedo_nir_dir Near-IR surface albedo for direct radiation
 !      albedo_vis_dif UV/visible surface albedo for diffuse radiation
 !      albedo_nir_dif Near-IR surface albedo for diffuse radiation
-!      Rad_gases      radiative_gases_type structure, contains var-
-!                     iables defining the radiatively active gases, 
-!                     passed through to lower level routines
+!      qo3            ozone
+!      rrvco2,rrvch4,
+!          rrvn2o     radiatively active gases (scalars)
 !      Astro          astronomy_type structure
 !      camtsw         cloud amount for shortwave clouds,
 !                     if stochastic clouds is implemented then
@@ -2239,10 +2235,6 @@ end subroutine esfsw_driver_end
 !  <IN NAME="cosz" TYPE="real">
 !    cosine of the zenith angle
 !  </IN>
-!  <IN NAME="Rad_gases" TYPE="radiative_gases_type">
-!    Radiative_gases_type variable containing the radiative 
-!    gas input fields on the radiation grid 
-!  </IN>
 ! </SUBROUTINE>
 
    subroutine compute_gas_props (press, pflux, temp, rh2o, deltaz, &
@@ -2270,9 +2262,9 @@ real, dimension(:,:,:,:,:),    intent(out)   :: gasopdep
 !      pflux          interface pressures (mks units)
 !      rh2o           h2o mixing ratio
 !      deltaz         layer thickness in meters
-!      Rad_gases      radiative_gases_type structure, contains var-
-!                     iables defining the radiatively active gases, 
-!                     passed through to lower level routines
+!      rrvco2         carbon dioxide
+!      rrvch4         methane
+!      rrvn2o         nitrous oxide
 !      cosz           cosine of the zenith angle
 !                                                                 
 !   intent(inout) variables:
