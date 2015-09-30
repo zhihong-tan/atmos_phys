@@ -75,9 +75,9 @@ use constants_mod,         only: constants_init, STEFAN, SECONDS_PER_DAY, &
 
 use rad_utilities_mod,     only: radiation_control_type, &
                                  astronomy_type, &
-                                 rad_output_type, &
-                                 rad_utilities_init
+                                 rad_output_type
 use aerosolrad_types_mod,  only: aerosolrad_control_type
+
 use shortwave_types_mod,   only: sw_output_type
 use longwave_types_mod,    only: lw_output_type
 use radiative_gases_types_mod, only: radiative_gases_type
@@ -287,6 +287,11 @@ character(len=8)             :: std_digits   = 'f8.3'
 character(len=8)             :: extra_digits = 'f16.11'
 integer                      :: area_id
 
+logical  ::  do_swaerosol_forcing
+logical  ::  do_lwaerosol_forcing
+integer  ::  indx_swaf
+integer  ::  indx_lwaf
+
 !-----------------------------------------------------------------------
 
 logical :: module_is_initialized = .false.
@@ -368,6 +373,17 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
       kmax  = size(pref,1) - 1 
 
 !---------------------------------------------------------------------
+!    save aerosol forcing flags as module variable
+!---------------------------------------------------------------------
+      do_swaerosol_forcing = Aerosolrad_control%do_swaerosol_forcing
+      do_lwaerosol_forcing = Aerosolrad_control%do_lwaerosol_forcing
+
+!   indexing for aerosol forcing output
+      indx_swaf = Aerosolrad_control%indx_swaf
+      indx_lwaf = Aerosolrad_control%indx_lwaf
+
+
+!---------------------------------------------------------------------
 !    allocate space for variables which must be saved when sw fluxes
 !    are renormalized or diagnostics are desired to be output on every
 !    physics step.
@@ -392,7 +408,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
           allocate (Sw_flux_save%ufsw                  (id,jd,kmax+1))
           allocate (Sw_flux_save% fsw                  (id,jd,kmax+1))
           allocate (Sw_flux_save% hsw                  (id,jd,kmax))
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+          if (do_swaerosol_forcing) then
               allocate (Sw_flux_save%dfsw_ad             (id,jd,kmax+1))
               allocate (Sw_flux_save%ufsw_ad             (id,jd,kmax+1))
           endif
@@ -406,7 +422,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
               allocate (Sw_flux_save%flux_sw_down_total_dir_clr(id,jd))
               allocate (Sw_flux_save%flux_sw_down_total_dif_clr(id,jd))
               allocate (Sw_flux_save%flux_sw_down_vis_clr      (id,jd)) 
-              if (Aerosolrad_control%do_swaerosol_forcing) then
+              if (do_swaerosol_forcing) then
                   allocate (Sw_flux_save%dfswcf_ad               (id,jd,kmax+1))
                   allocate (Sw_flux_save%ufswcf_ad               (id,jd,kmax+1))
               endif
@@ -431,7 +447,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
           allocate (Lw_flux_save%lwdns           (id,jd))
           allocate (Lw_flux_save%tdtlw           (id,jd,kmax))
           allocate (Lw_flux_save%flxnet          (id,jd,kmax+1))
-          if (Aerosolrad_control%do_lwaerosol_forcing) then
+          if (do_lwaerosol_forcing) then
               allocate (Lw_flux_save%olr_ad        (id,jd))
               allocate (Lw_flux_save%lwups_ad      (id,jd))
               allocate (Lw_flux_save%lwdns_ad      (id,jd))
@@ -442,7 +458,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
               allocate (Lw_flux_save%lwdns_clr         (id,jd))
               allocate (Lw_flux_save%tdtlw_clr         (id,jd,kmax))
               allocate (Lw_flux_save%flxnetcf          (id,jd,kmax+1))
-              if (Aerosolrad_control%do_lwaerosol_forcing) then
+              if (do_lwaerosol_forcing) then
                   allocate (Lw_flux_save%olr_ad_clr      (id,jd))
                   allocate (Lw_flux_save%lwups_ad_clr    (id,jd))
                   allocate (Lw_flux_save%lwdns_ad_clr    (id,jd))
@@ -562,8 +578,7 @@ end subroutine radiation_driver_diag_init
 !
 
 subroutine update_rad_fields (is, ie, js, je, Time_diag, Astro, Astro_phys,   &
-                              Rad_control, Aerosolrad_control, &
-                              Sw_output, Rad_output, flux_ratio)
+                              Rad_control, Sw_output, Rad_output, flux_ratio)
 
 !---------------------------------------------------------------------
 !    update_rad_fields defines the current radiative heating rate, 
@@ -577,7 +592,6 @@ type(time_type),         intent(in)    ::  Time_diag
 type(astronomy_type),    intent(in)    ::  Astro
 type(astronomy_type),    intent(in)    ::  Astro_phys
 type(radiation_control_type),       intent(in)    ::  Rad_control
-type(aerosolrad_control_type),      intent(in)    ::  Aerosolrad_control
 type(sw_output_type), dimension(:), intent(in)    ::  Sw_output
 type(rad_output_type),              intent(inout) ::  Rad_output
 real,  dimension(:,:),              intent(out)   ::  flux_ratio
@@ -649,8 +663,7 @@ real,  dimension(:,:),              intent(out)   ::  flux_ratio
         if (Rad_control%do_sw_rad) then
           solar_save(is:ie,js:je)  = Astro%solar(:,:)
           call solar_flux_save_init (is, ie,js, je, Sw_output, Rad_output, &
-                                     Rad_control%do_totcld_forcing, &
-                                     Aerosolrad_control)
+                                     Rad_control%do_totcld_forcing)
 
 !---------------------------------------------------------------------
 !    define the ratio of the solar factor valid over this physics step
@@ -734,8 +747,7 @@ real,  dimension(:,:),              intent(out)   ::  flux_ratio
 !---------------------------------------------------------------------
         if (Rad_control%do_sw_rad) then
           call solar_flux_save_init (is,ie,js,je, Sw_output, Rad_output, &
-                                     Rad_control%do_totcld_forcing, &
-                                     Aerosolrad_control)
+                                     Rad_control%do_totcld_forcing)
         endif
       else
         flux_ratio(:,:) = 1.0
@@ -1332,7 +1344,7 @@ subroutine produce_radiation_diagnostics          &
                  (is, ie, js, je, Time_diag, Time, lat, atm_mass, ts, pflux, phalf, &
                   asfc_vis_dir, asfc_nir_dir, asfc_vis_dif, asfc_nir_dif, &
                   flux_ratio, Astro, Astro_phys, Rad_output, Rad_gases,&
-                  Rad_control, Aerosolrad_control, Lw_output, Sw_output)
+                  Rad_control, Lw_output, Sw_output)
 !BW               Lsc_microphys)
 
 !--------------------------------------------------------------------
@@ -1356,7 +1368,6 @@ type(astronomy_type),    intent(in)             :: Astro, Astro_phys
 type(rad_output_type),   intent(in)             :: Rad_output
 type(radiative_gases_type), intent(in)          :: Rad_gases
 type(radiation_control_type),  intent(in)       :: Rad_control
-type(aerosolrad_control_type), intent(in)       :: Aerosolrad_control
 type(lw_output_type), dimension(:), intent(in), optional :: Lw_output
 type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !BW type(microphysics_type), intent(in), optional   :: Lsc_microphys
@@ -1440,7 +1451,6 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
       logical           :: used
       integer           :: iind, jind
       integer           :: kmax
-      integer           :: indx_swaf, indx_lwaf
 
 !      asfc         surface albedo  [ dimensionless ]
 !      asfc_vis_dir surface visible albedo  [ dimensionless ]
@@ -1480,12 +1490,6 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         endif
       endif
       
-!-------------------------------------------------------------------
-!   indexing for aerosol forcing output
-
-      indx_swaf = Aerosolrad_control%indx_swaf
-      indx_lwaf = Aerosolrad_control%indx_lwaf
-
 !---------------------------------------------------------------------
 !    if sw flux renormalization is active, modify the fluxes calculated
 !    on the last radiation step by the normalization factor based on
@@ -1498,7 +1502,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           hsw(:,:,k) = Sw_flux_save%hsw(is:ie,js:je,k)*flux_ratio(:,:)
         end do
         do k=1, kmax+1             
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+          if (do_swaerosol_forcing) then
             dfsw_ad(:,:,k) = Sw_flux_save%dfsw_ad(is:ie,js:je,k)*flux_ratio(:,:)
             ufsw_ad(:,:,k) = Sw_flux_save%ufsw_ad(is:ie,js:je,k)*flux_ratio(:,:)
           endif
@@ -1515,7 +1519,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
             hswcf(:,:,k) = Sw_flux_save%hswcf(is:ie,js:je,k)*flux_ratio(:,:)
           end do
           do k=1, kmax+1            
-            if (Aerosolrad_control%do_swaerosol_forcing) then
+            if (do_swaerosol_forcing) then
               dfswcf_ad(:,:,k) = Sw_flux_save%dfswcf_ad(is:ie,js:je,k)*flux_ratio(:,:)
               ufswcf_ad(:,:,k) = Sw_flux_save%ufswcf_ad(is:ie,js:je,k)*flux_ratio(:,:)
             endif
@@ -1539,7 +1543,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           hsw(:,:,k) = Sw_output(1)%hsw(:,:,k)
         end do
         do k=1, kmax+1             
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+          if (do_swaerosol_forcing) then
             dfsw_ad(:,:,k) = Sw_output(indx_swaf)%dfsw(:,:,k)
             ufsw_ad(:,:,k) = Sw_output(indx_swaf)%ufsw(:,:,k)
           endif
@@ -1552,7 +1556,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
             hswcf(:,:,k) = Sw_output(1)%hswcf(:,:,k)
           end do
           do k=1, kmax+1            
-            if (Aerosolrad_control%do_swaerosol_forcing) then
+            if (do_swaerosol_forcing) then
               dfswcf_ad(:,:,k) = Sw_output(indx_swaf)%dfswcf(:,:,k)
               ufswcf_ad(:,:,k) = Sw_output(indx_swaf)%ufswcf(:,:,k)  
             endif
@@ -1573,7 +1577,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           hsw(:,:,k) = Sw_flux_save%hsw(is:ie,js:je,k)
         end do
         do k=1, kmax+1
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+          if (do_swaerosol_forcing) then
             dfsw_ad(:,:,k) = Sw_flux_save%dfsw_ad(is:ie,js:je,k)
             ufsw_ad(:,:,k) = Sw_flux_save%ufsw_ad(is:ie,js:je,k)
           endif
@@ -1588,7 +1592,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
             hswcf(:,:,k) = Sw_flux_save%hswcf(is:ie,js:je,k)
           end do
           do k=1, kmax+1
-            if (Aerosolrad_control%do_swaerosol_forcing) then
+            if (do_swaerosol_forcing) then
               dfswcf_ad(:,:,k) = Sw_flux_save%dfswcf_ad(is:ie,js:je,k)
               ufswcf_ad(:,:,k) = Sw_flux_save%ufswcf_ad(is:ie,js:je,k)
             endif
@@ -1606,7 +1610,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !---------------------------------------------------------------------
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
           all_step_diagnostics) then
-        if (Aerosolrad_control%do_swaerosol_forcing) then
+        if (do_swaerosol_forcing) then
           swin_ad (:,:) = dfsw_ad(:,:,1)
           swout_ad(:,:) = ufsw_ad(:,:,1)
           swups_ad(:,:) = ufsw_ad(:,:,kmax+1)
@@ -1617,7 +1621,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         swups(:,:) = ufsw(:,:,kmax+1)
         swdns(:,:) = dfsw(:,:,kmax+1)
         if (Rad_control%do_totcld_forcing) then
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+          if (do_swaerosol_forcing) then
             swin_ad_clr (:,:) = dfswcf_ad(:,:,1)
             swout_ad_clr(:,:) = ufswcf_ad(:,:,1)
             swups_ad_clr(:,:) = ufswcf_ad(:,:,kmax+1)
@@ -1714,7 +1718,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                              Time_diag, is, js )
          endif
 
-      if (Aerosolrad_control%do_swaerosol_forcing) then
+      if (do_swaerosol_forcing) then
 
 !------- net sw flux at toa -------
          if (id_swtoa_ad(ipass) > 0 ) then
@@ -1847,7 +1851,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
            used = send_data (id_swsfc(ipass), swdns_clr-swups_clr,   &
                             Time_diag, is, js )
          endif
-     if (Aerosolrad_control%do_swaerosol_forcing) then
+     if (do_swaerosol_forcing) then
 
 !------- net sw flux at toa -------
         if (id_swtoa_ad(ipass) > 0 ) then
@@ -2230,7 +2234,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         lwdns(:,:)   = lwups(:,:) - Lw_output(1)%flxnet(:,:,kmax+1)
         tdtlw(:,:,:) = Lw_output(1)%heatra(:,:,:)/ SECONDS_PER_DAY
         flxnet(:,:,:) = Lw_output(1)%flxnet(:,:,:)
-        if (Aerosolrad_control%do_lwaerosol_forcing) then
+        if (do_lwaerosol_forcing) then
           olr_ad  (:,:)   = Lw_output(indx_lwaf)%flxnet(:,:,1)
           lwups_ad(:,:)   = STEFAN*ts(:,:  )**4
           lwdns_ad(:,:)   = lwups_ad(:,:) -    &
@@ -2244,7 +2248,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                              Lw_output(1)%flxnetcf(:,:,kmax+1)
           tdtlw_clr(:,:,:) = Lw_output(1)%heatracf(:,:,:)/SECONDS_PER_DAY
           flxnetcf(:,:,:) = Lw_output(1)%flxnetcf(:,:,:)
-          if (Aerosolrad_control%do_lwaerosol_forcing) then
+          if (do_lwaerosol_forcing) then
             olr_ad_clr  (:,:)   = Lw_output(indx_lwaf)%flxnetcf(:,:,1)
             lwups_ad_clr(:,:)   = STEFAN*ts(:,:  )**4
             lwdns_ad_clr(:,:)   = lwups_ad_clr(:,:) -    &
@@ -2257,7 +2261,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !    for later use.
 !---------------------------------------------------------------------
         if (all_step_diagnostics) then
-          if (Aerosolrad_control%do_lwaerosol_forcing) then
+          if (do_lwaerosol_forcing) then
             Lw_flux_save%olr_ad  (is:ie,js:je)   = olr_ad(:,:)
             Lw_flux_save%lwups_ad(is:ie,js:je)   = lwups_ad(:,:)
             Lw_flux_save%lwdns_ad(is:ie,js:je)   = lwdns_ad(:,:)
@@ -2270,7 +2274,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           Diag_special%netlw_trop(is:ie,js:je,:) = netlw_trop(:,:,:)
 
           if (Rad_control%do_totcld_forcing) then
-            if (Aerosolrad_control%do_lwaerosol_forcing) then 
+            if (do_lwaerosol_forcing) then 
               Lw_flux_save%olr_ad_clr  (is:ie,js:je)   = olr_ad_clr(:,:)
               Lw_flux_save%lwups_ad_clr(is:ie,js:je)   = lwups_ad_clr(:,:)
               Lw_flux_save%lwdns_ad_clr(is:ie,js:je)   = lwdns_ad_clr(:,:)
@@ -2289,7 +2293,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !    define the fields from the xxx_save variables.
 !---------------------------------------------------------------------
       else if (all_step_diagnostics) then  ! (do_lw_rad)
-        if (Aerosolrad_control%do_lwaerosol_forcing) then 
+        if (do_lwaerosol_forcing) then 
            olr_ad(:,:)     = Lw_flux_save%olr_ad  (is:ie,js:je)
            lwups_ad(:,:)   = Lw_flux_save%lwups_ad(is:ie,js:je)
            lwdns_ad(:,:)   = Lw_flux_save%lwdns_ad(is:ie,js:je) 
@@ -2302,7 +2306,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         netlw_trop(:,:,:) = Diag_special%netlw_trop(is:ie,js:je,:)
 
         if (Rad_control%do_totcld_forcing) then
-          if (Aerosolrad_control%do_lwaerosol_forcing) then
+          if (do_lwaerosol_forcing) then
             olr_ad_clr(:,:)     = Lw_flux_save%olr_ad_clr  (is:ie,js:je)
             lwups_ad_clr(:,:)   = Lw_flux_save%lwups_ad_clr(is:ie,js:je)
             lwdns_ad_clr(:,:)   = Lw_flux_save%lwdns_ad_clr(is:ie,js:je)
@@ -2388,7 +2392,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                              Time_diag, is, js )
          endif
  
-     if (Aerosolrad_control%do_lwaerosol_forcing) then
+     if (do_lwaerosol_forcing) then
 
 !------- outgoing lw flux toa (olr) with aerosols-------
         if (id_olr_ad(ipass) > 0 ) then
@@ -2490,7 +2494,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                              Time_diag, is, js )
         endif   
    
-     if (Aerosolrad_control%do_lwaerosol_forcing) then
+     if (do_lwaerosol_forcing) then
 
 !------- outgoing lw flux toa (olr) with aerosols-------
          if (id_olr_ad(ipass) > 0 ) then
@@ -2546,10 +2550,9 @@ end subroutine produce_radiation_diagnostics
 
 !###################################################################
 
-subroutine radiation_driver_diag_end (Rad_control, Aerosolrad_control)
+subroutine radiation_driver_diag_end (Rad_control)
 
 type(radiation_control_type),  intent(in) :: Rad_control
-type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 
 !-------------------------------------------------------------------
 !    verify that this module has been initialized. if not, exit.
@@ -2590,7 +2593,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
                      Sw_flux_save%tot_heating, &
                      Sw_flux_save%dfsw, Sw_flux_save%ufsw,   &
                      Sw_flux_save%fsw, Sw_flux_save%hsw)
-        if (Aerosolrad_control%do_swaerosol_forcing) then
+        if (do_swaerosol_forcing) then
           deallocate (Sw_flux_save%dfsw_ad, Sw_flux_save%ufsw_ad)
         endif
         if (Rad_control%do_totcld_forcing) then
@@ -2601,7 +2604,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
                       Sw_flux_save%flux_sw_down_total_dir_clr, &
                       Sw_flux_save%flux_sw_down_total_dif_clr, &
                       Sw_flux_save%flux_sw_down_vis_clr )
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+          if (do_swaerosol_forcing) then
             deallocate (Sw_flux_save%dfswcf_ad, Sw_flux_save%ufswcf_ad)
           endif
         endif
@@ -2616,7 +2619,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
                     Lw_flux_save%lwdns, &
                     Lw_flux_save%flxnet, &
                     Lw_flux_save%tdtlw)
-        if (Aerosolrad_control%do_lwaerosol_forcing) then
+        if (do_lwaerosol_forcing) then
           deallocate (Lw_flux_save%olr_ad, &
                       Lw_flux_save%lwups_ad, &
                       Lw_flux_save%lwdns_ad)
@@ -2627,7 +2630,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
                       Lw_flux_save%lwdns_clr, &
                       Lw_flux_save%flxnetcf, &
                       Lw_flux_save%tdtlw_clr)
-          if (Aerosolrad_control%do_lwaerosol_forcing) then
+          if (do_lwaerosol_forcing) then
             deallocate (Lw_flux_save%olr_ad_clr, &
                         Lw_flux_save%lwups_ad_clr,  &
                         Lw_flux_save%lwdns_ad_clr)
@@ -2641,17 +2644,17 @@ end subroutine radiation_driver_diag_end
 
 !###################################################################
 
-subroutine solar_flux_save_init (is, ie, js, je, Sw_output, Rad_output, &
-                                 do_totcld_forcing, Aerosolrad_control)
+subroutine solar_flux_save_init (is, ie, js, je, Sw_output, &
+                                 Rad_output, do_totcld_forcing)
 integer,                            intent(in) :: is, js, ie, je
 type(sw_output_type), dimension(:), intent(in) :: Sw_output
 type(rad_output_type),              intent(in) :: Rad_output
 logical,                            intent(in) :: do_totcld_forcing
-type(aerosolrad_control_type),      intent(in) :: Aerosolrad_control
 
-integer :: indx_swaf
-
-    indx_swaf = Aerosolrad_control%indx_swaf
+!----------------------------------------
+!  module variables (initialized in init)
+!     do_swaerosol_forcing
+!     indx_swaf
 
     Sw_flux_save%flux_sw_surf         (is:ie,js:je) = Rad_output%flux_sw_surf         (is:ie,js:je)
     Sw_flux_save%flux_sw_surf_dir     (is:ie,js:je) = Rad_output%flux_sw_surf_dir     (is:ie,js:je)
@@ -2675,7 +2678,7 @@ integer :: indx_swaf
     Sw_flux_save%fsw        (is:ie,js:je,:) = Sw_output(1)%fsw (:,:,:)
     Sw_flux_save%hsw        (is:ie,js:je,:) = Sw_output(1)%hsw (:,:,:)
 
-    if (Aerosolrad_control%do_swaerosol_forcing) then
+    if (do_swaerosol_forcing) then
       Sw_flux_save%dfsw_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%dfsw(:,:,:)
       Sw_flux_save%ufsw_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%ufsw(:,:,:)
     endif
@@ -2690,7 +2693,7 @@ integer :: indx_swaf
       Sw_flux_save%flux_sw_down_total_dir_clr(is:ie,js:je) = Rad_output%flux_sw_down_total_dir_clr(is:ie,js:je)
       Sw_flux_save%flux_sw_down_total_dif_clr(is:ie,js:je) = Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je)
       Sw_flux_save%flux_sw_down_vis_clr      (is:ie,js:je) = Rad_output%flux_sw_down_vis_clr      (is:ie,js:je)
-      if (Aerosolrad_control%do_swaerosol_forcing) then
+      if (do_swaerosol_forcing) then
         Sw_flux_save%dfswcf_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%dfswcf(:,:,:)
         Sw_flux_save%ufswcf_ad  (is:ie,js:je,:) = Sw_output(indx_swaf)%ufswcf(:,:,:)
       endif

@@ -2060,8 +2060,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !-------------------------------------------------------------------
       call mpp_clock_begin (misc_clock)
       call update_rad_fields (is, ie, js, je, Time_next, Astro, &
-                              Astro_phys, &
-                              Rad_control, Aerosolrad_control, &
+                              Astro_phys, Rad_control,  &
                               Sw_output, Rad_output, flux_ratio)
                                 
 
@@ -2077,8 +2076,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
                            Surface%asfc_vis_dir, Surface%asfc_nir_dir, &
                            Surface%asfc_vis_dif, Surface%asfc_nir_dif, &
                            flux_ratio,  Astro, Astro_phys, &
-                           Rad_output,  &
-                           Rad_gases, Rad_control, Aerosolrad_control, &
+                           Rad_output, Rad_gases, Rad_control, &
                            Lw_output=Lw_output,&
                            Sw_output=Sw_output)
 
@@ -3300,7 +3298,7 @@ integer :: outunit
 !    wrap up modules specific to the radiation package in use.
 !---------------------------------------------------------------------
 
-      call radiation_driver_diag_end (Rad_control, Aerosolrad_control)
+      call radiation_driver_diag_end (Rad_control)
 
       call rad_output_file_end
       call sea_esf_rad_end (Rad_control)
