@@ -56,7 +56,7 @@ use shortwave_driver_mod, only: shortwave_driver_init,  &
                                 shortwave_driver_end, &
                                 shortwave_driver_time_vary, &
                                 shortwave_number_of_bands, &
-                                get_solar_constant, &
+                                get_solar_constant
 
 use shortwave_types_mod,  only: sw_output_type
                                 

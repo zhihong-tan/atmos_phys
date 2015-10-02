@@ -141,7 +141,6 @@ use radiative_gases_mod,   only: radiative_gases_init,   &
                                  radiative_gases_time_vary, &
                                  radiative_gases_endts, &
                                  define_radiative_gases, &
-                                 radiative_gases_dealloc, &
                                  radiative_gases_end,     &    
                                  radiative_gases_restart, &
                                  get_longwave_gas_flag
@@ -1979,8 +1978,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !---------------------------------------------------------------------
         Rad_gases = Rad_gases_tv
         call define_radiative_gases (is, ie, js, je, Rad_time, lat, &
-                                     Atmos_input%pflux, r, Time_next, &
-                                     Rad_gases)
+                                     Atmos_input%pflux, r, Rad_gases)
       endif
 
 !---------------------------------------------------------------------

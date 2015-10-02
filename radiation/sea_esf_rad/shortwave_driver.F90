@@ -518,7 +518,7 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 
       if (Aerosolrad_control%do_swaerosol_forcing) then
         call Sw_output_ad%alloc(ix, jx, kx, Rad_control%do_totcld_forcing)
-        call Sw_output(Aerosolrad_control%indx_swaf)%alloc
+        call Sw_output(Aerosolrad_control%indx_swaf)%alloc &
                                (ix, jx, kx, Rad_control%do_totcld_forcing)
       endif
 

@@ -335,7 +335,6 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !---------------------------------------------------------------------
       call fms_init
       call constants_init
-      call rad_utilities_init
       call diag_manager_init
       call time_manager_init
       call diag_integral_init

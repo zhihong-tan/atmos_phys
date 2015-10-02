@@ -62,7 +62,7 @@ character(len=128)  :: tagname =  '$Name$'
 
 public      &
    longwave_driver_init, longwave_driver_time_vary, longwave_driver,   &
-   longwave_driver_endts, longwave_driver_end, longwave_output_alloc
+   longwave_driver_endts, longwave_driver_end
 
 ! inherited from sealw99_mod
 public  longwave_number_of_bands, longwave_get_tables, &
@@ -390,7 +390,7 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
       call Lw_output_std%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
 
       if (Aerosolrad_control%do_lwaerosol_forcing) then
-        call Lw_output(Aerosolrad_control%indx_lwaf)%alloc
+        call Lw_output(Aerosolrad_control%indx_lwaf)%alloc &
                                 (ix, jx, kx, Rad_control%do_totcld_forcing)
         call Lw_output_ad%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
       endif
