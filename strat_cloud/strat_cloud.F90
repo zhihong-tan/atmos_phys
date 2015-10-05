@@ -255,6 +255,7 @@ logical :: debugo1 = .false.  ! .true. !morr
 logical :: debugo3 = .false. 
 logical :: debugo4 = .false.  ! when true, nrefuse will be output
 integer :: ncall   = 1        ! timestep counter of calls to strat_cloud
+integer :: logunit
 
 !-----------------------------------------------------------------------
 !    variables related to code timing.         
@@ -358,7 +359,7 @@ logical,          intent(in), optional  :: do_legacy_strat_cloud
 !---local variables------------------------------------------------------
 
       integer                          :: id_restart
-      integer                          :: unit,io,ierr, logunit
+      integer                          :: unit,io,ierr
       integer                          :: vers2
       character(len=4)                 :: chvers
       character(len=64)                :: restart_file, fname
@@ -397,10 +398,12 @@ logical,          intent(in), optional  :: do_legacy_strat_cloud
 !----------------------------------------------------------------------- 
 !    write version and namelist to stdlog.
 !-----------------------------------------------------------------------  
-      call write_version_number(Version, Tagname)
+
       logunit = stdlog()
-      if ( mpp_pe() == mpp_root_pe() )  &
-                    write (logunit, nml=strat_cloud_nml)
+      if ( mpp_pe() == mpp_root_pe() ) then
+          call write_version_number(Version, Tagname)
+          write (logunit, nml=strat_cloud_nml)
+      endif
 
 !----------------------------------------------------------------------- 
 !    obtain info on form of restart file to be written.
@@ -1185,7 +1188,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !  water in column (activated by setting debugo4 to .true.)
       integer :: nrefuse 
 
-      outunit = stdout()
+      outunit = logunit !use logunit from strat_cloud_init
 
 !-----------------------------------------------------------------------
 !    check for consistent arguments and options.
@@ -1231,7 +1234,9 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
         END IF
       ENDIF  ! (do_rk_microphys)
       if (debugo) then
-        IF( MAXVAL( ahuco ) .GT. 1. ) WRITE(outunit,*) "AHUCO WARNING"
+!$OMP single
+        IF( MAXVAL( ahuco ) .GT. 1 .AND. mpp_pe() .EQ. 0 ) WRITE(outunit,*) "AHUCO WARNING"
+!$OMP end single
       endif
 
 !-------------------------------------------------------------------------
@@ -1262,7 +1267,9 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
       end if
 
       if ( debugo4 .and. mpp_pe() .EQ. 0 ) then   
+!$OMP single
         write (outunit,*) "in stratcloud mod", ncall
+!$OMP end single
       endif
 
       if (debugo .or. debugo0 .or. debugo3 )then
@@ -1722,9 +1729,11 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 
       
       if ( debugo4 .and. nrefuse .gt. 0)then
+!$OMP single
         write(outunit,*) "WARNING: Refusing to do two moment microphysics &
            &in columns containing points with negative total water: " ,  &
                                                                    nrefuse
+!$OMP end single
       end if
 
 !-----------------------------------------------------------------------
@@ -1977,7 +1986,9 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
 !    indicate exit from module for pe 0.
 !------------------------------------------------------------------------
       if ( debugo4 .and. mpp_pe() .EQ.  0) then  
+!$OMP single
         write(outunit,*) "out stratcloud mod"
+!$OMP end single
       endif
       call mpp_clock_end (sc_end)
 
