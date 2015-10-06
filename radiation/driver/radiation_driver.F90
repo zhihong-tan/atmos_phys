@@ -305,26 +305,6 @@ logical :: always_calculate = .false. !  radiation calculation is done
                                       !  on every call to 
                                       !  radiation_driver ?
 
-logical :: do_h2o         = .true.    !  h2o radiative effects are 
-                                      !  included in the radiation 
-                                      !  calculation ? 
-logical :: do_o3          = .true.    !  o3 radiative effects are 
-                                      !  included in the radiation 
-                                      !  calculation ? 
-
-logical :: do_ch4_lw      = .true.    !  ch4 radiative effects are 
-                                      !  included in the longwave
-                                      !  radiation calculation ? 
-logical :: do_n2o_lw      = .true.    !  n2o radiative effects are 
-                                      !  included in the longwave
-                                      !  radiation calculation ? 
-logical :: do_co2_lw      = .true.    !  co2 radiative effects are 
-                                      !  included in the longwave
-                                      !  radiation calculation ? 
-logical :: do_cfc_lw      = .true.    !  cfc radiative effects are 
-                                      !  included in the longwave
-                                      !  radiation calculation ? 
-
 logical               :: treat_sfc_refl_dir_as_dif = .true.
                                       ! when true, solar direct  beam
                                       ! radiation reflected from the
@@ -459,12 +439,6 @@ logical :: do_conserve_energy = .false.
 !  calculate radiative fluxes and heating rates on every call to 
 !  radiation_driver ?
 !  </DATA>
-!  <DATA NAME="do_h2o" UNITS="" TYPE="logical" DIM="" DEFAULT="">
-!  include h2o effects in radiation calculation ?
-!  </DATA>
-!  <DATA NAME="do_o3" UNITS="" TYPE="logical" DIM="" DEFAULT="">
-!  include o3 effects in radiation calculation ?
-!  </DATA>
 !  <DATA NAME="always_calculate" UNITS="" TYPE="logical" DIM="" DEFAULT="">
 !fluxes and heating rates should
 ! be calculatd on each call to
@@ -501,8 +475,7 @@ namelist /radiation_driver_nml/ do_radiation, &
                                 overriding_aerosol, &
                                 use_co2_tracer_field, &
                                 treat_sfc_refl_dir_as_dif, &
-                                always_calculate,  do_h2o, do_o3, &
-                                do_ch4_lw, do_n2o_lw, do_co2_lw, do_cfc_lw, &
+                                always_calculate,  &
                                 use_uniform_solar_input, &
                                 lat_for_solar_input, lon_for_solar_input, &
                                 rad_time_step, sw_rad_time_step, use_single_lw_sw_ts, &

@@ -1231,7 +1231,7 @@ logical,                       intent(in)    ::  do_totcld_forcing, &
       je = jx
 
 !--------------------------------------------------------------------
-!    call Lw_diagnostic alloc routine to allocate component arrays of 
+!    call Lw_diagnostic alloc to allocate component arrays of 
 !    lw_diagnostics_type variables.
 !----------------------------------------------------------------------
       if ( .not. associated (Lw_diagnostics%flx1e1)) then

@@ -267,12 +267,12 @@ end subroutine longwave_diag_dealloc
 
 !#####################################################################
 
-! <SUBROUTINE NAME="longwave_diag_dealloc">
+! <SUBROUTINE NAME="longwave_diag_alloc">
 !  <OVERVIEW>
 !   Subroutine to allocate variables needed for longwave diagnostics
 !  </OVERVIEW>
 !  <TEMPLATE>
-!   call longwave_diag_dealloc (Lw_diagnostics, ix, jx, kx)
+!   call longwave_diag_alloc (Lw_diagnostics, ix, jx, kx)
 !  </TEMPLATE>
 !  <IN NAME="ix" TYPE="integer">
 !   Dimension 1 length of radiation arrays to be allocated
@@ -283,7 +283,7 @@ end subroutine longwave_diag_dealloc
 !  <IN NAME="kx" TYPE="integer">
 !   Dimension 3 length of radiation arrays to be allocated
 !  </IN>
-!  <INOUT NAME="Lw_diagnostics" TYPE="lw_output_type">
+!  <INOUT NAME="Lw_diagnostics" TYPE="lw_diagnostics_type">
 !   lw_diagnostics_type variable containing longwave 
 !                   radiation output data
 !  </INOUT>

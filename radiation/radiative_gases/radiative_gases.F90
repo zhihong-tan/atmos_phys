@@ -35,7 +35,7 @@ use fms_mod,             only: open_namelist_file, fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
                                check_nml_error, error_mesg, &
-                               FATAL, NOTE, close_file, &
+                               FATAL, WARNING, NOTE, close_file, &
                                open_restart_file, read_data
 use fms_io_mod,          only: get_restart_io_mode, &
                                register_restart_field, restart_file_type, &
@@ -829,8 +829,12 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
 !    define logical variable indicating whether ch4 is active.
 !---------------------------------------------------------------------
       if ((.not. time_varying_ch4) .and. rch4 == 0.0) then
+        if (do_ch4_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_ch4_lw changed from true to false.', WARNING)
         do_ch4_lw = .false.
       else
+        if (.not.do_ch4_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_ch4_lw changed from false to true.', WARNING)
         do_ch4_lw = .true.
       endif
 
@@ -838,8 +842,12 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
 !    define logical variable indicating whether n2o is active.
 !---------------------------------------------------------------------
       if ((.not. time_varying_n2o) .and. rn2o == 0.0) then
+        if (do_n2o_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_n2o_lw changed from true to false.', WARNING)
         do_n2o_lw = .false.
       else
+        if (.not.do_n2o_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_n2o_lw changed from false to true.', WARNING)
         do_n2o_lw = .true.
       endif
 
@@ -851,8 +859,12 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
           (.not. time_varying_f12) .and. rf12 == 0.0 .and. &
           (.not. time_varying_f113) .and. rf113 == 0.0 .and. &
           (.not. time_varying_f22) .and. rf22 == 0.0 )  then 
+        if (do_cfc_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_cfc_lw changed from true to false.', WARNING)
         do_cfc_lw = .false.
       else
+        if (.not.do_cfc_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_cfc_lw changed from false to true.', WARNING)
         do_cfc_lw = .true.
       endif
 
@@ -861,13 +873,19 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
 !    activated. currently co2 must be activated. 
 !---------------------------------------------------------------------
       if ((.not. time_varying_co2) .and. rco2 == 0.0) then
+        if (do_co2_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_co2_lw changed from true to false.', WARNING)
         do_co2_lw = .false.
       else
+        if (.not.do_co2_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_co2_lw changed from false to true.', WARNING)
         do_co2_lw = .true.
       endif
 
       if (.not. use_co2_10um .or. &
          (use_co2_10um .and. (.not. time_varying_co2) .and. rco2 == 0.0)) then
+        if (use_co2_10um) call error_mesg ('radiative_gases_mod', &
+            'value of use_co2_10um changed from true to false.', WARNING)
         do_co2_10um = .false.
       else
         do_co2_10um = .true.
@@ -1056,7 +1074,7 @@ end subroutine radiative_gases_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call define_radiative_gases (is, ie, js, je, Rad_time, lat, &
-!                                pflux, Time_next, Rad_gases)
+!                                pflux, Rad_gases)
 !  </TEMPLATE>
 !  <IN NAME="is,ie,js,je" TYPE="integer">
 !   starting/ending subdomain i,j indices of data in 
@@ -1950,7 +1968,7 @@ logical :: get_longwave_gas_flag
       else if (trim(gas) .eq. 'cfc') then
           get_longwave_gas_flag = do_cfc_lw
       else if (trim(gas) .eq. 'co2_10um') then
-          get_longwave_gas_flag = use_co2_10um
+          get_longwave_gas_flag = do_co2_10um
       else
           call error_mesg ( 'radiative_gases_mod', &
              'invalid gas as input to get_longwave_gas_flag', FATAL )

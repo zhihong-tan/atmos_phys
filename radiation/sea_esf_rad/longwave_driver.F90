@@ -35,7 +35,8 @@ use sealw99_mod,        only: sealw99_init, sealw99_time_vary, sealw99, &
                               longwave_number_of_bands => sealw99_number_of_bands, &
                               longwave_get_tables => sealw99_get_tables
 
-use longwave_types_mod, only: lw_output_type, lw_diagnostics_type
+use longwave_types_mod, only: lw_output_type, lw_diagnostics_type, &
+                              assignment(=)
 
 use radiative_gases_mod,       only: get_longwave_gas_flag
 use radiative_gases_types_mod, only: radiative_gases_type

@@ -373,7 +373,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
       kmax  = size(pref,1) - 1 
 
 !---------------------------------------------------------------------
-!    save aerosol forcing flags as module variable
+!    save aerosol forcing flags as module variables
 !---------------------------------------------------------------------
       do_swaerosol_forcing = Aerosolrad_control%do_swaerosol_forcing
       do_lwaerosol_forcing = Aerosolrad_control%do_lwaerosol_forcing

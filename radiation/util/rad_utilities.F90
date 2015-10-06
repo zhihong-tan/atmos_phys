@@ -164,14 +164,6 @@ type radiation_control_type
     logical  :: do_sw_rad
     logical  :: do_lw_rad
     logical  :: renormalize_sw_fluxes
-  ! from longwave_control_type
-    logical  :: do_h2o
-    logical  :: do_o3 
-    logical  :: do_ch4_lw
-    logical  :: do_n2o_lw
-    logical  :: do_cfc_lw
-    logical  :: do_co2_lw
-    logical  :: do_co2_10um
   ! from shortwave_control_type
     logical  :: do_esfsw
     logical  :: do_diurnal
