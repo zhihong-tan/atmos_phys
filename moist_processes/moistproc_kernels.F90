@@ -706,6 +706,7 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
           end if ! if do_ice_num
         end if   ! if do_clubb, legacy_strat_cloud
       else       ! not do_liq_num
+        if (do_legacy_strat_cloud) then
         call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,     &
                           radturbten, t, q, tracer(:,:,:,nql),        &
                           tracer(:,:,:,nqi), tracer(:,:,:,nqa),      &
@@ -716,6 +717,27 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                           rain, snow, convective_humidity_ratio,  &
                           convective_humidity_area, &
                           limit_conv_cloud_frac, mask=mask)
+        else
+            call strat_cloud_new (Time, is, ie, js, je, dt, pfull, phalf, &
+                                  zhalf, zfull, radturbten, t, q,   &
+                                  tracer(:,:,:,nql), tracer(:,:,:,nqi),  &
+                                  tracer(:,:,:,nqa), omega, mc_full, &
+                                  diff_t, land, ttnd, qtnd,    &
+                                  q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi),   &
+                                  q_tnd(:,:,:,nqa), f_snow_berg,   &
+                                  rain3d, snow3d,   &
+                                  snowclr3d,rain, snow,   &
+                                  convective_humidity_ratio,   &
+                                  convective_humidity_area,&
+                                  limit_conv_cloud_frac, Aerosol,   &
+!                                 mask3d=mask, qn_in=tracer(:,:,:,nqn),  &
+                                  mask3d=mask,                           &
+!                                 SN_out= q_tnd(:,:,:,nqn),   &
+                                  lsc_snow = lsc_snow,      &
+                                  lsc_rain = lsc_rain, &
+                                  lsc_snow_size = lsc_snow_size,   &
+                                  lsc_rain_size = lsc_rain_size )
+        endif ! do_legacy_strat_cloud and not do_liq_num
       endif     ! if do_liq_num
   endif         ! if do_lin_cld_microphys
 !----------------------------------------------------------------------

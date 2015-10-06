@@ -52,6 +52,8 @@ use  field_manager_mod, only: MODEL_ATMOS
 use tracer_manager_mod, only: get_tracer_index, &
                               get_number_tracers
 
+use moist_proc_utils_mod,  only: rh_calc
+
 implicit none
 private
 
@@ -136,7 +138,7 @@ integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl, id_gust,  &
            id_diff_t, id_diff_m, id_diff_sc, id_z_full, id_z_half,&
            id_uwnd,   id_vwnd,   id_diff_t_stab, id_diff_m_stab,  &
            id_diff_t_entr, id_diff_m_entr,                        &
-           id_z_Ri_025, id_tref, id_qref  ! cjg: PBL depth mods
+           id_z_Ri_025, id_tref, id_qref, id_rh_Ri_025  ! cjg: PBL depth mods, h1g, add RH diagnostics at Ri_025, 2015-04-02
 
 real :: missing_value = -999.
 
@@ -187,6 +189,11 @@ real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: el, diag3
 real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: tke
 real   , dimension(size(t,1),size(t,2))             :: stbltop
 real   , dimension(size(t,1),size(t,2))             :: z_Ri_025    ! cjg: PBL depth mods
+
+real   , dimension(size(t,1),size(t,2))             :: RH_Ri_025   ! h1g: relative humidity at Ri_025, 2015-04-02
+
+real   , dimension(size(t,1),size(t,2),size(t,3))   :: RH_3D_tmp   ! h1g: 3D relative humidity, 2015-04-02
+
 real   , dimension(size(t,1),size(t,2))             :: el0, vspblcap
 real   , dimension(size(diff_t,1),size(diff_t,2), &
                                   size(diff_t,3))   :: diff_sc,     &
@@ -199,6 +206,7 @@ real   , dimension(size(t,1),size(t,2),size(t,3))   :: tt, qq, uu, vv
 real   , dimension(size(t,1),size(t,2),size(t,3))   :: qlin, qiin, qain
 real    :: dt_tke
 integer :: ie, je, nlev, sec, day, nt
+integer :: ii,jj,kk
 logical :: used
 !-->h1g, 2012-08-07
 real   , dimension(size(diff_t,1),size(diff_t,2), &
@@ -464,11 +472,11 @@ else
 CALL STABLE_BL_TURB( is, js, Time_next, tt, qq, qlin, qiin, uu,&
                      vv, z_half, z_full, u_star, b_star, lat,  &
      diff_m_stab, diff_t_stab,kbot=kbot)
-     
+
 ! --->h1g, 2012-07-16
      if(  do_clubb > 0 ) then
         clubb_on = 1.0
-        where ( r(:,:,:, nwp2) <= wp2_min )
+        where ( rdiag(:,:,:, nwp2) <= wp2_min )
             where( diff_m_stab > diff_m .or. diff_t_stab > diff_t )
                stable_on = 1.0
                where( diff_m_stab >= diff_min .or. diff_t_stab >= diff_min )
@@ -478,7 +486,7 @@ CALL STABLE_BL_TURB( is, js, Time_next, tt, qq, qlin, qiin, uu,&
             diff_m = diff_m +  MAX( diff_m_stab - diff_m, 0.0 )
             diff_t = diff_t +  MAX( diff_t_stab - diff_t, 0.0 )
             clubb_on = 0.0
-         endwhere
+        endwhere
      else
         diff_m = diff_m +  MAX( diff_m_stab - diff_m, 0.0 )
         diff_t = diff_t +  MAX( diff_t_stab - diff_t, 0.0 )
@@ -575,6 +583,25 @@ end if
          call bulk_Ri_height_b(tt,qq,uu,vv,t_ref,q_ref,p_full,z_full,p_half,z_half,z_Ri_025)
          used = send_data ( id_z_Ri_025, z_Ri_025, Time_next, is, js )
          if ( alternate_zpbl == 1 ) z_pbl = z_Ri_025
+
+!--->h1g: calculate relative humidity, 2015-04-02
+         call rh_calc ( p_full,  tt, qq, RH_3D_tmp, .false., do_cmip=.true.)
+        
+         rh_Ri_025(:,:) = missing_value
+
+         do ii = is, ie 
+           do jj = js, je
+!      Vertical upward loop
+             do kk = nlev, 1, -1 
+               if ( z_full(ii,jj,kk) >= z_Ri_025(ii, jj) + z_half(ii,jj, nlev+1) ) then
+                 rh_Ri_025(ii,jj) = RH_3D_tmp(ii,jj,kk) * 100.
+                 exit
+               endif
+             enddo
+           enddo
+         enddo
+         used = send_data ( id_rh_Ri_025, rh_Ri_025, Time_next, is, js )
+!<---h1g,  2015-04-02
       endif
 !<--cjg
 
@@ -789,6 +816,11 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
          call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
            'both do_entrain and CLUBB', FATAL)
     nwp2 = get_tracer_index ( MODEL_ATMOS, 'wp2' )
+    if ( do_clubb>0 .and. nwp2 <= ntp ) then
+     ! nwp2 is a diagnostic tracer
+      call error_mesg ('vert_turb_driver_mod', &
+                      'wp2 is a diagnostic tracer in CLUBB', FATAL)
+    endif
 !<--h1g, 2012-07-16
 
        if (strat_cloud_on) then
@@ -886,6 +918,13 @@ endif
    register_diag_field ( mod_name, 'z_Ri_025', axes(1:2), Time,       &
                         'Critical bulk Richardson height',  'm'  )
 !<--cjg
+
+!-->h1g: add RH (%) at new PBL depth,  2015-04-02 
+   id_rh_Ri_025 = &
+   register_diag_field ( mod_name, 'rh_Ri_025', axes(1:2), Time,       &
+                        'Relative humidity at the critical bulk Richardson height',  '%'  )
+!<--h1g,  2015-04-02
+
 
    id_gust = &
    register_diag_field ( mod_name, 'gust', axes(1:2), Time,        &
