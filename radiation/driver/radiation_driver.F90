@@ -141,7 +141,6 @@ use radiative_gases_mod,   only: radiative_gases_init,   &
                                  radiative_gases_time_vary, &
                                  radiative_gases_endts, &
                                  define_radiative_gases, &
-                                 radiative_gases_dealloc, &
                                  radiative_gases_end,     &    
                                  radiative_gases_restart, &
                                  get_longwave_gas_flag
@@ -1018,7 +1017,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !    radiative gases are to be included in the longwave radiation
 !    calculation
 !---------------------------------------------------------------------
-!BW   Rad_control%do_ch4_lw = do_ch4_lw  ! moved to radiative gases
+!BW   Rad_control%do_ch4_lw = do_ch4_lw ! moved to radiative gases
 !BW   Rad_control%do_n2o_lw = do_n2o_lw 
 !BW   Rad_control%do_co2_lw = do_co2_lw 
 !BW   Rad_control%do_cfc_lw = do_cfc_lw 
@@ -1952,8 +1951,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !---------------------------------------------------------------------
         Rad_gases = Rad_gases_tv
         call define_radiative_gases (is, ie, js, je, Rad_time, lat, &
-                                     Atmos_input%pflux, r, Time_next, &
-                                     Rad_gases)
+                                     Atmos_input%pflux, r, Rad_gases)
       endif
 
 !---------------------------------------------------------------------
@@ -2033,7 +2031,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !-------------------------------------------------------------------
       call mpp_clock_begin (misc_clock)
       call update_rad_fields (is, ie, js, je, Time_next, Astro, &
-                              Astro_phys, Rad_control,  &
+                              Astro_phys, Rad_control, &
                               Sw_output, Rad_output, flux_ratio)
                                 
 

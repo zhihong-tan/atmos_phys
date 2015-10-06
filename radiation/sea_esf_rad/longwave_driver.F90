@@ -31,7 +31,7 @@ use aerosolrad_types_mod, only: aerosolrad_control_type
 
 use sealw99_mod,        only: sealw99_init, sealw99_time_vary, sealw99, &
                               sealw99_endts, sealw99_end, &
-                              lw_table_type,  &
+                              lw_table_type, &
                               longwave_number_of_bands => sealw99_number_of_bands, &
                               longwave_get_tables => sealw99_get_tables
 
@@ -63,7 +63,7 @@ character(len=128)  :: tagname =  '$Name$'
 
 public      &
    longwave_driver_init, longwave_driver_time_vary, longwave_driver,   &
-   longwave_driver_endts, longwave_driver_end, longwave_output_alloc
+   longwave_driver_endts, longwave_driver_end
 
 ! inherited from sealw99_mod
 public  longwave_number_of_bands, longwave_get_tables, &
@@ -464,7 +464,6 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !---------------------------------------------------------------------
 
 end subroutine longwave_driver
-
 
 !#####################################################################
 ! <SUBROUTINE NAME="longwave_driver_end">

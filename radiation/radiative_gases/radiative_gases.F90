@@ -408,7 +408,6 @@ namelist /radiative_gases_nml/ verbose, &
             do_ch4_lw, do_n2o_lw, do_co2_lw, do_cfc_lw, &
             use_co2_10um
 
-
 !---------------------------------------------------------------------
 !------- public data ------
 
@@ -1228,7 +1227,7 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !    this field for use in the radiation calculation.
 !--------------------------------------------------------------------
 
-      call Rad_gases%alloc ( ie-is+1, je-js+1,size(pflux,3)-1 )
+      call Rad_gases%alloc (ie-is+1, je-js+1,size(pflux,3)-1)
 
       call ozone_driver (is, ie, js, je, lat, Rad_time, pflux, &
                          r, Rad_gases)
@@ -1828,7 +1827,6 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 end subroutine radiative_gases_time_vary
 
 
-
 !##################################################################
 
 subroutine radiative_gases_endts (Rad_gases_tv)
@@ -1949,10 +1947,12 @@ character(len=*), intent(in) :: gas
 logical :: get_longwave_gas_flag
 
 !--------------------------------------------------------------------
+
       if (.not. module_is_initialized ) then
         call error_mesg ( 'radiative_gases_mod', &
                'module has not been initialized', FATAL )
       endif
+
 !--------------------------------------------------------------------
       
       if (trim(gas) .eq. 'h2o') then
