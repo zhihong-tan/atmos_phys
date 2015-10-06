@@ -372,15 +372,14 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
       kmax  = size(pref,1) - 1 
 
 !---------------------------------------------------------------------
-!    save aerosol forcing flags as module variable
+!    save aerosol forcing flags as module variables
 !---------------------------------------------------------------------
       do_swaerosol_forcing = Aerosolrad_control%do_swaerosol_forcing
       do_lwaerosol_forcing = Aerosolrad_control%do_lwaerosol_forcing
 
-!   indexing for aerosol forcing output
+!    indexing for aerosol forcing output
       indx_swaf = Aerosolrad_control%indx_swaf
       indx_lwaf = Aerosolrad_control%indx_lwaf
-
 
 !---------------------------------------------------------------------
 !    allocate space for variables which must be saved when sw fluxes
@@ -2645,6 +2644,7 @@ end subroutine radiation_driver_diag_end
 
 subroutine solar_flux_save_init (is, ie, js, je, Sw_output, &
                                  Rad_output, do_totcld_forcing)
+
 integer,                            intent(in) :: is, js, ie, je
 type(sw_output_type), dimension(:), intent(in) :: Sw_output
 type(rad_output_type),              intent(in) :: Rad_output
