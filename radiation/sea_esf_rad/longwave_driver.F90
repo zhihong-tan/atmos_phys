@@ -391,7 +391,7 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
       call Lw_output_std%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
 
       if (Aerosolrad_control%do_lwaerosol_forcing) then
-        call Lw_output(Aerosolrad_control%indx_lwaf)%alloc
+        call Lw_output(Aerosolrad_control%indx_lwaf)%alloc &
                                 (ix, jx, kx, Rad_control%do_totcld_forcing)
         call Lw_output_ad%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
       endif
@@ -505,7 +505,6 @@ subroutine longwave_driver_end
       module_is_initialized = .false.
 
 !---------------------------------------------------------------------
-
 
 end subroutine longwave_driver_end                  
 
