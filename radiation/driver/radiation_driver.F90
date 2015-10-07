@@ -1489,7 +1489,8 @@ type(radiation_flux_control_type), intent(inout) :: Rad_flux_control
     call define_rad_times (Time, Time_next, Rad_time)
 
     if (do_rad) then
-       call radiative_gases_time_vary (Rad_time, gavg_rrv, Rad_control, Rad_gases_tv)
+       call radiative_gases_time_vary (Rad_time, gavg_rrv, &
+                                       Rad_control%do_lw_rad, Rad_gases_tv)
 
        if (Aerosolrad_control%do_aerosol) &
            call aerosolrad_driver_time_vary (Rad_time, Aerosolrad_control)

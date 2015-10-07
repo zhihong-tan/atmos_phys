@@ -309,7 +309,8 @@ end subroutine longwave_driver_endts
 subroutine longwave_driver (press, pflux, temp, tflux, rh2o, deltaz, &
                             Rad_gases, emrndlw, emmxolw, crndlw, cmxolw, &
                             aerooptdep, aerooptdep_volc, &
-                            flag_stoch, Rad_control, Aerosolrad_control, &
+                            flag_stoch, Rad_control, &
+                            do_lwaerosol, volcanic_lw_aerosols, &
                             Lw_output, Lw_diagnostics)
 
 !--------------------------------------------------------------------
@@ -328,7 +329,8 @@ real, dimension(:,:,:),       intent(in)     :: cmxolw
 real, dimension(:,:,:,:),     intent(in)     :: aerooptdep, aerooptdep_volc
 integer,                      intent(in)     :: flag_stoch
 type(radiation_control_type),  intent(in)    :: Rad_control
-type(aerosolrad_control_type), intent(in)    :: Aerosolrad_control
+logical,                       intent(in)    :: do_lwaerosol
+logical,                       intent(in)    :: volcanic_lw_aerosols
 type(lw_output_type), dimension(:),  intent(inout)  :: Lw_output
 type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 
@@ -363,9 +365,10 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !--------------------------------------------------------------------
 !   local variables
 
-      type(lw_output_type)  :: Lw_output_std, Lw_output_ad
+      logical :: do_lwaerosol_forcing
       logical :: calc_includes_aerosols
-      integer  :: ix, jx, kx  ! dimensions of current physics window
+      integer :: ix, jx, kx  ! dimensions of current physics window
+      integer :: indx
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
@@ -382,18 +385,15 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
       ix = size(press,1)
       jx = size(press,2)
       kx = size(press,3)
-!**************************************
-      ! This is a temporary fix! Lw_output needs to be allocated at a higher level!
-      ! Constructor and destructor for lw_output_type needs to be provided through
-      ! rad_utilities
-!**************************************
-      call Lw_output(1) %alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
-      call Lw_output_std%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
 
-      if (Aerosolrad_control%do_lwaerosol_forcing) then
-        call Lw_output(Aerosolrad_control%indx_lwaf)%alloc &
-                                (ix, jx, kx, Rad_control%do_totcld_forcing)
-        call Lw_output_ad%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+      do indx = 1, size(Lw_output,1)
+         call Lw_output(indx)%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+      enddo
+
+      if (size(Lw_output,1) .gt. 1) then
+         do_lwaerosol_forcing = .true.
+      else
+         do_lwaerosol_forcing = .false.
       endif
 
 !--------------------------------------------------------------------
@@ -406,8 +406,8 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !    call sealw99 to use the simplified-exchange-approximation (sea)
 !    parameterization.
 !----------------------------------------------------------------------
-         if (Aerosolrad_control%do_lwaerosol_forcing) then
-           if (Aerosolrad_control%do_lwaerosol) then
+         if (do_lwaerosol_forcing) then
+           if (do_lwaerosol) then
              calc_includes_aerosols = .false.
            else
              calc_includes_aerosols = .true.
@@ -419,17 +419,17 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !    fluxes to Lw_output_ad (which does not feed back into the model),
 !    but which may be used to define the aerosol forcing.
 !----------------------------------------------------------------------
+           indx = size(Lw_output,1)
            call sealw99 ( &
                      press, pflux, temp, tflux, rh2o, deltaz, &
                      Rad_gases%qo3, Rad_gases%rrvco2,      &
                      Rad_gases%rrvf11, Rad_gases%rrvf12,   &
                      Rad_gases%rrvf113, Rad_gases%rrvf22,  &
                      emrndlw, emmxolw, crndlw, cmxolw, &
-                     aerooptdep, aerooptdep_volc, Lw_output_ad, &
+                     aerooptdep, aerooptdep_volc, Lw_output(indx), &
                      Lw_diagnostics, flag_stoch, &
                      Rad_control%do_totcld_forcing, calc_includes_aerosols, &
-                     Aerosolrad_control%volcanic_lw_aerosols)
-           Lw_output(Aerosolrad_control%indx_lwaf) = Lw_output_ad
+                     volcanic_lw_aerosols)
          endif
  
 !----------------------------------------------------------------------
@@ -441,11 +441,10 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
                      Rad_gases%rrvf11, Rad_gases%rrvf12,   &   
                      Rad_gases%rrvf113, Rad_gases%rrvf22,  &
                      emrndlw, emmxolw, crndlw, cmxolw, &
-                     aerooptdep, aerooptdep_volc, Lw_output_std,  &
+                     aerooptdep, aerooptdep_volc, Lw_output(1),  &
                      Lw_diagnostics, flag_stoch, &
-                     Rad_control%do_totcld_forcing, Aerosolrad_control%do_lwaerosol, &
-                     Aerosolrad_control%volcanic_lw_aerosols)
-        Lw_output(1) = Lw_output_std
+                     Rad_control%do_totcld_forcing, do_lwaerosol, &
+                     volcanic_lw_aerosols)
       else
 
 !--------------------------------------------------------------------
@@ -454,11 +453,6 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !----------------------------------------------------------------------
         call error_mesg ('longwave_driver_mod', &
          'invalid longwave radiation parameterization selected', FATAL)
-      endif
-
-      call Lw_output_std%dealloc
-      if (Aerosolrad_control%do_lwaerosol_forcing) then
-        call Lw_output_ad%dealloc
       endif
 
 !---------------------------------------------------------------------

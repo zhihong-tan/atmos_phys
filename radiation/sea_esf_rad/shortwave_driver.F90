@@ -39,14 +39,12 @@ use diag_manager_mod,     only: diag_manager_init, get_base_time
 use rad_utilities_mod,    only: radiation_control_type, &
                                 astronomy_type
 
-use aerosolrad_types_mod, only: aerosolrad_control_type
-
-!  radiation package modules:
-
 use esfsw_driver_mod,     only: esfsw_driver_init, swresf,   &
                                 esfsw_driver_end, &
                                 shortwave_number_of_bands => esfsw_number_of_bands, &
                                 esfsw_solar_flux
+
+!  radiation package modules:
 
 use shortwave_types_mod,  only: sw_output_type, assignment(=)
 
@@ -247,7 +245,6 @@ type(radiation_control_type), intent(inout) :: Rad_control
 !    sw package.
 !---------------------------------------------------------------------
       if (trim(swform) == 'esfsw99') then
-        Rad_control%do_esfsw = .true.
         call esfsw_driver_init
         call shortwave_number_of_bands(nbands)
         ! save reference solar data
@@ -415,7 +412,7 @@ subroutine shortwave_driver (press, pflux, temp, rh2o, &
                              asfc_vis_dif, asfc_nir_dif, Astro,   &
                              aeroasymfac, aerosctopdep, aeroextopdep,       &
                              Rad_gases, camtsw, cldsct, cldext, cldasymm,   &
-                             flag_stoch, Rad_control, Aerosolrad_control, Sw_output )
+                             flag_stoch, Rad_control, do_swaerosol, Sw_output )
 
 !---------------------------------------------------------------------
 !    shortwave_driver initializes shortwave radiation output variables, 
@@ -434,7 +431,7 @@ real, dimension(:,:,:,:),        intent(in)    :: camtsw
 real, dimension(:,:,:,:,:),      intent(in)    :: cldsct, cldext, cldasymm
 integer,                         intent(in)    :: flag_stoch
 type(radiation_control_type),    intent(in)    :: Rad_control
-type(aerosolrad_control_type),   intent(in)    :: Aerosolrad_control
+logical,                         intent(in)    :: do_swaerosol
 type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 
 !--------------------------------------------------------------------
@@ -468,12 +465,11 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !----------------------------------------------------------------------
 !  local variables:
 
-      type(sw_output_type) :: Sw_output_ad, Sw_output_std
       logical  :: skipswrad
-      logical  :: with_clouds
-      logical  :: calc_includes_aerosols
+      logical  :: use_aero
+      logical  :: do_swaerosol_forcing
       integer  :: naerosol_optical
-      integer  :: i, j       
+      integer  :: i, j, indx
       integer  :: ix, jx, kx
       real     :: aerozero(size(aeroasymfac,1), &
                            size(aeroasymfac,2), &
@@ -485,8 +481,9 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !
 !      skipswrad    bypass calling sw package because sun is not 
 !                   shining any where in current physics window ?
-!      with_clouds  are clouds to be considered in determining
-!                   the sw fluxes and heating rates ?
+!      do_swaerosol_forcing  if the output (type) array contains
+!                   more than one-dimension then aerosol forcing
+!                   is to be computed
 !      ix,jx,kx     dimensions of current physics window
 !      i,j          do-loop indices
 !
@@ -507,19 +504,15 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
       ix = size(press,1)
       jx = size(press,2)
       kx = size(press,3)
-!**************************************
-      ! This is a temporary fix! Sw_output needs to be allocated at a higher level!
-      ! Constructor and destructor for sw_output_type needs to be provided through
-      ! rad_utilities
-!**************************************
 
-      call Sw_output(1) %alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
-      call Sw_output_std%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+      do indx = 1, size(Sw_output,1)
+         call Sw_output(indx)%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+      enddo
 
-      if (Aerosolrad_control%do_swaerosol_forcing) then
-        call Sw_output_ad%alloc(ix, jx, kx, Rad_control%do_totcld_forcing)
-        call Sw_output(Aerosolrad_control%indx_swaf)%alloc &
-                               (ix, jx, kx, Rad_control%do_totcld_forcing)
+      if (size(Sw_output,1) .gt. 1) then
+         do_swaerosol_forcing = .true.
+      else
+         do_swaerosol_forcing = .false.
       endif
 
 !--------------------------------------------------------------------
@@ -559,82 +552,18 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !    calculate shortwave radiative forcing and fluxes using the 
 !    exponential-sum-fit parameterization.
 !---------------------------------------------------------------------
-      else if (Rad_control%do_esfsw) then
+      else
 
 !---------------------------------------------------------------------
-!    if volcanic sw heating calculation desired, set up to call swresf
-!    twice.
-!---------------------------------------------------------------------
-       !if (Aerosolrad_control%calculate_volcanic_sw_heating ) then  
-       !  if (Aerosolrad_control%volcanic_sw_aerosols) then
-       !  else
-       !    call error_mesg ('shortwave_driver_mod', &
-       !     'cannot calculate volcanic sw heating when volcanic sw &
-       !                     &aerosols are not activated', FATAL)
-       !  endif
 
-!----------------------------------------------------------------------
-!    call swresf without including volcanic aerosol effects. save the 
-!    heating rate as Aerosolrad_diags%sw_heating_vlcno.
-!----------------------------------------------------------------------
-         !call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
-         !             Astro, camtsw, cldsct, cldext, cldasymm, &
-         !             aeroasymfac2, aerosctopdep2, aeroextopdep2, &
-         !             Sw_output_std)
-         !Aerosolrad_diags%sw_heating_vlcno = Sw_output_std%hsw 
+          do indx = 1, size(Sw_output,1)
 
-!----------------------------------------------------------------------
-!    reinitialize the sw outputs for the "real" call.
-!----------------------------------------------------------------------
-         !Sw_output_std%fsw   (:,:,:,:) = 0.0
-         !Sw_output_std%dfsw  (:,:,:,:) = 0.0
-         !Sw_output_std%ufsw  (:,:,:,:) = 0.0
-         !Sw_output_std%hsw   (:,:,:,:) = 0.0
-         !Sw_output_std%dfsw_dir_sfc = 0.0
-         !Sw_output_std%ufsw_dir_sfc = 0.0
-         !Sw_output_std%dfsw_dif_sfc  = 0.0
-         !Sw_output_std%ufsw_dif_sfc = 0.0
-         !Sw_output_std%dfsw_vis_sfc = 0.
-         !Sw_output_std%ufsw_vis_sfc = 0.
-         !Sw_output_std%dfsw_vis_sfc_dir = 0.
-         !Sw_output_std%ufsw_vis_sfc_dir = 0.
-         !Sw_output_std%dfsw_vis_sfc_dif = 0.
-         !Sw_output_std%ufsw_vis_sfc_dif = 0.
-         !Sw_output_std%swdn_special  (:,:,:,:) = 0.0
-         !Sw_output_std%swup_special  (:,:,:,:) = 0.0
-         !Sw_output_std%bdy_flx(:,:,:,:) = 0.0
-     !if (Rad_control%do_totcld_forcing) then
-         !Sw_output_std%fswcf (:,:,:,:) = 0.0
-         !Sw_output_std%dfswcf(:,:,:,:) = 0.0
-         !Sw_output_std%ufswcf(:,:,:,:) = 0.0
-         !Sw_output_std%hswcf (:,:,:,:) = 0.0
-         !Sw_output_std%dfsw_dir_sfc_clr = 0.             
-         !Sw_output_std%dfsw_dif_sfc_clr = 0.           
-         !Sw_output_std%dfsw_vis_sfc_clr = 0.
-         !Sw_output_std%swdn_special_clr  (:,:,:,:) = 0.0
-         !Sw_output_std%swup_special_clr  (:,:,:,:) = 0.0
-         !Sw_output_std%bdy_flx_clr(:,:,:,:) = 0.0
-     !endif
-         !call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
-         !             Astro, camtsw, cldsct, cldext, cldasymm, &
-         !             aeroasymfac, aerosctopdep, aeroextopdep, &
-         !             Sw_output_std)
-
-!----------------------------------------------------------------------
-!    define the difference in heating rates betweenthe case with 
-!    volcanic aerosol and the case without. save in 
-!    Aerosolrad_diags%sw_heating_vlcno.
-!----------------------------------------------------------------------
-         !Aerosolrad_diags%sw_heating_vlcno = Sw_output_std%hsw  -   &
-         !                               Aerosolrad_diags%sw_heating_vlcno
-         !Sw_output(1) = Sw_output_std
-
-!----------------------------------------------------------------------
-!    if volcanic heating calculation not desired, simply call swresf.
-!----------------------------------------------------------------------
-       !else
- 
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+             use_aero =.true.
+             if (indx .eq. size(Sw_output,1)) then
+                if (do_swaerosol .and. do_swaerosol_forcing) use_aero = .false.
+             else
+                if (.not.do_swaerosol .and. .not.do_swaerosol_forcing) use_aero = .false.
+             endif
 
 !-----------------------------------------------------------------------
 !    call swresf with aerosols (if model is being run without) or without
@@ -642,62 +571,39 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !    in Sw_output_ad (which does not feed back into the model), but 
 !    which may be used to define the aerosol forcing.
 !-----------------------------------------------------------------------
-            if (Aerosolrad_control%do_swaerosol) then
-              aerozero = 0.0
-              call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
-                                   asfc_vis_dir, asfc_nir_dir, &
-                                   asfc_vis_dif, asfc_nir_dif, &
-                                   Rad_gases, Astro, &
-                                   camtsw, cldsct, cldext, cldasymm, &
-                                   aerozero, aerozero, aerozero, &
-                                   Rad_control%do_totcld_forcing, &
-                                   flag_stoch, Sw_output(Aerosolrad_control%indx_swaf))
-            else
-              call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
-                                   asfc_vis_dir, asfc_nir_dir, &
-                                   asfc_vis_dif, asfc_nir_dif, &
-                                   Rad_gases, Astro, &
-                                   camtsw, cldsct, cldext, cldasymm, &
-                                   aeroasymfac, aerosctopdep, aeroextopdep, &
-                                   Rad_control%do_totcld_forcing, &
-                                   flag_stoch, Sw_output(Aerosolrad_control%indx_swaf))
-            endif
+             if (use_aero) then
+                call swresf (press, pflux, temp, rh2o, deltaz,  &
+                             asfc_vis_dir, asfc_nir_dir, &
+                             asfc_vis_dif, asfc_nir_dif, &
+                             Rad_gases%qo3, Rad_gases%rrvco2,    &   
+                             Rad_gases%rrvch4, Rad_gases%rrvn2o, &
+                             solflxband, solar_constant_used, &
+                             Astro%rrsun, Astro%cosz, Astro%fracday, &
+                             camtsw, cldsct, cldext, cldasymm, &
+                             aeroasymfac, aerosctopdep, aeroextopdep, &
+                             Rad_control%do_totcld_forcing, &
+                             flag_stoch, Sw_output(indx))
+             else
+                aerozero = 0.0
+                call swresf (press, pflux, temp, rh2o, deltaz,  &
+                             asfc_vis_dir, asfc_nir_dir, &
+                             asfc_vis_dif, asfc_nir_dif, &
+                             Rad_gases%qo3, Rad_gases%rrvco2,    &   
+                             Rad_gases%rrvch4, Rad_gases%rrvn2o, &
+                             solflxband, solar_constant_used, &
+                             Astro%rrsun, Astro%cosz, Astro%fracday, &
+                             camtsw, cldsct, cldext, cldasymm, &
+                             aerozero, aerozero, aerozero, &
+                             Rad_control%do_totcld_forcing, &
+                             flag_stoch, Sw_output(indx))
+             endif
 
-          endif ! do_swaerosol_forcing
- 
-!----------------------------------------------------------------------
-!    standard call, where radiation output feeds back into the model.
-!----------------------------------------------------------------------
-          if (Aerosolrad_control%do_swaerosol) then
-            call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
-                                 asfc_vis_dir, asfc_nir_dir, &
-                                 asfc_vis_dif, asfc_nir_dif, &
-                                 Rad_gases, Astro, &
-                                 camtsw, cldsct, cldext, cldasymm, &
-                                 aeroasymfac, aerosctopdep, aeroextopdep, &
-                                 Rad_control%do_totcld_forcing, &
-                                 flag_stoch, Sw_output(1))
-          else
-            aerozero = 0.0
-            call swresf_wrapper (press, pflux, temp, rh2o, deltaz,  &
-                                 asfc_vis_dir, asfc_nir_dir, &
-                                 asfc_vis_dif, asfc_nir_dif, &
-                                 Rad_gases, Astro, &
-                                 camtsw, cldsct, cldext, cldasymm, &
-                                 aerozero, aerozero, aerozero, &
-                                 Rad_control%do_totcld_forcing, &
-                                 flag_stoch, Sw_output(1))
-          endif
-       !endif
+          enddo  ! indx
 
-!---------------------------------------------------------------------
-      endif  
+!--------------------------------------------------------------------
 
+      endif  ! skipswrad
 
-      call Sw_output_std%dealloc
-      if (Aerosolrad_control%do_swaerosol_forcing) then
-        call Sw_output_ad%dealloc
-      endif
 !--------------------------------------------------------------------
 
 
@@ -716,12 +622,11 @@ end subroutine shortwave_driver
 !   call shortwave_driver_end
 !  </TEMPLATE>
 ! </SUBROUTINE>
-subroutine shortwave_driver_end (Rad_control)
+subroutine shortwave_driver_end
 
 !---------------------------------------------------------------------
 !    shortwave_driver_end is the destructor for shortwave_driver_mod.
 !---------------------------------------------------------------------
-type(radiation_control_type),  intent(in) :: Rad_control
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
@@ -734,10 +639,7 @@ type(radiation_control_type),  intent(in) :: Rad_control
 !--------------------------------------------------------------------
 !    close out the modules initialized by this module.
 !--------------------------------------------------------------------
-      if (Rad_control%do_esfsw) then
-        call esfsw_driver_end
-      endif
-
+      call esfsw_driver_end
       call solar_data_end
 
 !---------------------------------------------------------------------

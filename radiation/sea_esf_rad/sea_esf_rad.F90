@@ -439,7 +439,9 @@ type(lw_diagnostics_type)         , intent(inout)  :: Lw_diagnostics
       call longwave_driver (press, pflux, temp, tflux, rh2o, deltaz,  &
                             Rad_gases, emrndlw, emmxolw, crndlw, cmxolw, &
                             aerooptdep, aerooptdep_volc, &
-                            flag_stoch, Rad_control, Aerosolrad_control, &
+                            flag_stoch, Rad_control,  &
+                            Aerosolrad_control%do_lwaerosol, &
+                            Aerosolrad_control%volcanic_lw_aerosols, &
                             Lw_output, Lw_diagnostics)
       call mpp_clock_end (longwave_clock)
     endif
@@ -454,7 +456,7 @@ type(lw_diagnostics_type)         , intent(inout)  :: Lw_diagnostics
                              asfc_vis_dif, asfc_nir_dif, Astro, &
                              aeroasymfac, aerosctopdep, aeroextopdep, &
                              Rad_gases, camtsw, cldsct, cldext, cldasymm, &
-                             flag_stoch, Rad_control, Aerosolrad_control, Sw_output)
+                             flag_stoch, Rad_control, Aerosolrad_control%do_swaerosol, Sw_output)
       call mpp_clock_end (shortwave_clock)
     endif
 
@@ -497,7 +499,7 @@ type(radiation_control_type), intent(in) :: Rad_control
 !    close out the modules initialized by this module.
 !--------------------------------------------------------------------
       call longwave_driver_end
-      call shortwave_driver_end (Rad_control)
+      call shortwave_driver_end
  
 !--------------------------------------------------------------------
 !    mark the module as uninitialized.

@@ -46,13 +46,11 @@ use field_manager_mod,   only: MODEL_ATMOS
 
 !  shared radiation package modules:
 
-use rad_utilities_mod,   only: radiation_control_type
-
-use radiative_gases_types_mod, only: radiative_gases_type
-
 use sealw99_mod,         only: get_control_gas_tf
 
-! component modules:
+! radiative gas component modules:
+
+use radiative_gases_types_mod, only: radiative_gases_type
 
 use ozone_mod,           only: ozone_driver, ozone_init,  &
                                ozone_time_vary, ozone_endts, ozone_end
@@ -1242,7 +1240,7 @@ end subroutine define_radiative_gases
 !#####################################################################
 
 subroutine radiative_gases_time_vary (Rad_time, gavg_rrv, &
-                                      Rad_control, Rad_gases_tv)
+                                      do_lw_rad, Rad_gases_tv)
 
 !---------------------------------------------------------------------
 !     subroutine radiative_gases_time_vary calculates time-dependent, space-
@@ -1251,7 +1249,7 @@ subroutine radiative_gases_time_vary (Rad_time, gavg_rrv, &
 
 type(time_type),    intent(in)   :: Rad_time
 real, dimension(:), intent(in)   :: gavg_rrv
-type(radiation_control_type), intent(in)    :: Rad_control
+logical,            intent(in)   :: do_lw_rad
 type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 
 !---------------------------------------------------------------------
@@ -1554,7 +1552,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    print out the current gas mixing ratios, if desired.
 !---------------------------------------------------------------------
       if ((mpp_pe() == mpp_root_pe()) .and. verbose >= 3) then
-        if (Rad_control%do_lw_rad) then
+        if (do_lw_rad) then
           print_alarm = print_alarm - lw_rad_time_step_saved
         endif
         if (print_alarm <= 0) then
