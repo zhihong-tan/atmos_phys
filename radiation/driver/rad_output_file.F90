@@ -33,8 +33,8 @@ use aerosol_types_mod, only:  aerosol_type
 
 !  radiation package shared modules:
 
-use rad_utilities_mod, only:  radiation_control_type, &
-                              rad_output_type
+use radiation_driver_types_mod, only:  radiation_control_type, &
+                                       rad_output_type
 
 use aerosolrad_types_mod, only:  aerosolrad_control_type, &
                                  aerosolrad_diag_type

@@ -23,7 +23,7 @@ use fms_mod,            only: open_namelist_file, fms_init, &
 
 ! shared radiation package modules:
 
-use rad_utilities_mod,  only: radiation_control_type
+use radiation_driver_types_mod, only: radiation_control_type
 
 use aerosolrad_types_mod, only: aerosolrad_control_type
 

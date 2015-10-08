@@ -73,18 +73,23 @@ use time_manager_mod,      only: time_manager_init, time_type, operator(>)
 use constants_mod,         only: constants_init, STEFAN, SECONDS_PER_DAY, &
                                  CP_AIR, RADIAN, WTMCO2, WTMAIR, GRAV
 
-use rad_utilities_mod,     only: radiation_control_type, &
-                                 astronomy_type, &
-                                 rad_output_type
+! atmos physics modules
+
+use diag_integral_mod,     only: diag_integral_init, &
+                                 diag_integral_field_init, &
+                                 sum_diag_integral_field
+
+! radiation modules
+
+use radiation_driver_types_mod, only: radiation_control_type, &
+                                      astronomy_type, &
+                                      rad_output_type
+
 use aerosolrad_types_mod,  only: aerosolrad_control_type
 
 use shortwave_types_mod,   only: sw_output_type
 use longwave_types_mod,    only: lw_output_type
 use radiative_gases_types_mod, only: radiative_gases_type
-
-use diag_integral_mod,     only: diag_integral_init, &
-                                 diag_integral_field_init, &
-                                 sum_diag_integral_field
 
 !--------------------------------------------------------------------
 

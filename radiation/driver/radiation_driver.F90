@@ -42,6 +42,7 @@ use mpp_mod,               only: input_nml_file
 use fms_mod,               only: fms_init, mpp_clock_id, &
                                  mpp_clock_begin, mpp_clock_end, &
                                  CLOCK_MODULE_DRIVER, CLOCK_MODULE, &
+                                 CLOCK_ROUTINE, &
                                  field_exist, field_size, &
                                  mpp_pe, mpp_root_pe, &
                                  open_namelist_file, stdlog, stdout, &
@@ -65,6 +66,11 @@ use constants_mod,         only: constants_init, RDGAS, RVGAS,   &
                                  RADIAN, diffac
 use data_override_mod,     only: data_override
 
+use field_manager_mod,     only: MODEL_ATMOS
+use tracer_manager_mod,    only: tracer_manager_init, &
+                                 get_number_tracers, &
+                                 get_tracer_index, NO_TRACER
+
 ! shared radiation package modules:
 
 use radiation_types_mod,   only: radiation_type, &
@@ -82,11 +88,10 @@ use physics_radiation_exch_mod,only: exchange_control_type, &
                                      alloc_radiation_flux_type, &
                                      dealloc_radiation_flux_type
 
-use rad_utilities_mod,     only: radiation_control_type, &
-                                 astronomy_type, surface_type, &
-                                 atmos_input_type, rad_utilities_init,&
-                                 rad_output_type, astronomy_inp_type,  &
-                                 rad_utilities_end
+use radiation_driver_types_mod,  only: radiation_control_type, &
+                                       astronomy_type, surface_type, &
+                                       atmos_input_type, &
+                                       rad_output_type, astronomy_inp_type
 
 use     aerosol_types_mod, only: aerosol_type, &
                                  aerosol_time_vary_type
@@ -104,16 +109,26 @@ use astronomy_mod,         only: astronomy_init, annual_mean_solar, &
                                  daily_mean_solar, diurnal_solar, &
                                  astronomy_end
 
-!  component modules:
+!  radiation component modules:
 
-use sea_esf_rad_mod,       only: sea_esf_rad_init, sea_esf_rad, &
-                                 sea_esf_rad_time_vary,  &
-                                 sea_esf_rad_endts, &
-                                 sea_esf_rad_end, &
-                                 lw_table_type, &
-                                 get_solar_constant, longwave_get_tables
+use longwave_driver_mod,  only: longwave_driver_init,   &   
+                                longwave_driver_time_vary, &
+                                longwave_driver, &
+                                longwave_driver_endts, &
+                                longwave_driver_end, &
+                                lw_table_type, &
+                                longwave_number_of_bands, &
+                                longwave_get_tables
 
 use longwave_types_mod,    only: lw_output_type, lw_diagnostics_type, assignment(=)
+
+use shortwave_driver_mod, only: shortwave_driver_init,  &
+                                shortwave_driver,  &
+                                shortwave_driver_end, &
+                                shortwave_driver_time_vary, &
+                                shortwave_number_of_bands, &
+                                get_solar_constant
+
 use shortwave_types_mod,   only: sw_output_type, assignment(=)
 
 use rad_output_file_mod,   only: rad_output_file_init, &
@@ -147,11 +162,6 @@ use radiative_gases_mod,   only: radiative_gases_init,   &
 
 use radiative_gases_types_mod, only: radiative_gases_type, &
                                      assignment(=)
-
-use field_manager_mod,     only: MODEL_ATMOS
-use tracer_manager_mod,    only: tracer_manager_init, &
-                                 get_number_tracers, &
-                                 get_tracer_index, NO_TRACER
 
 use radiation_driver_diag_mod, only: radiation_driver_diag_init, &
                                      radiation_driver_diag_end, &
@@ -569,7 +579,7 @@ type(radiative_gases_type), save :: Rad_gases_tv
 type(aerosolrad_control_type) ::  Aerosolrad_control
 type(cloudrad_control_type) :: Cldrad_control
 type(radiation_control_type) :: Rad_control
-integer :: radiation_clock
+integer :: radiation_clock, longwave_clock, shortwave_clock
 
 !    miscellaneous control variables:
 
@@ -906,7 +916,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !    subroutine data_override is called.
 !---------------------------------------------------------------------
       call fms_init
-      call rad_utilities_init
       call time_manager_init
       call sat_vapor_pres_init
       call constants_init
@@ -1224,6 +1233,15 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
         mpp_clock_id( '   Physics_driver_init: Radiation: Initialization', &
                        grain=CLOCK_MODULE_DRIVER )
 
+!---------------------------------------------------------------------
+!    initialize clocks to time LW/SW core routines
+!---------------------------------------------------------------------
+      longwave_clock =      &
+                  mpp_clock_id ('   Physics_down: Radiation: lw', &
+                        grain=CLOCK_ROUTINE)
+      shortwave_clock =     &
+                  mpp_clock_id ('   Physics_down: Radiation: sw', &
+                        grain=CLOCK_ROUTINE)
 
 !-----------------------------------------------------------------------
 !    initialize radiative_gases_mod.
@@ -1244,8 +1262,8 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !---------------------------------------------------------------------
 !    initialize the modules that are accessed from radiation_driver_mod.
 !---------------------------------------------------------------------
-      call sea_esf_rad_init (Radiation%glbl_qty%pref(ks:ke+1,:), &
-                             Rad_control)
+      call longwave_driver_init  (Radiation%glbl_qty%pref(ks:ke+1,:))
+      call shortwave_driver_init (Rad_control)
 
 !-----------------------------------------------------------------------
 !    initialize clouds.     
@@ -1495,7 +1513,8 @@ type(radiation_flux_control_type), intent(inout) :: Rad_flux_control
        if (Aerosolrad_control%do_aerosol) &
            call aerosolrad_driver_time_vary (Rad_time, Aerosolrad_control)
 
-       call sea_esf_rad_time_vary (Rad_time, Rad_gases_tv)
+       call shortwave_driver_time_vary (Rad_time)
+       call longwave_driver_time_vary  (Rad_gases_tv)
     endif
 
     Rad_flux_control%do_rad = do_rad
@@ -1515,7 +1534,7 @@ integer, intent(in)  :: is,js
       if (do_rad) then
          call radiative_gases_endts (Rad_gases_tv)
          if (Aerosolrad_control%do_aerosol) call aerosolrad_driver_endts
-         call sea_esf_rad_endts (Rad_gases_tv)
+         call longwave_driver_endts (Rad_gases_tv)
       endif
 
       call radiation_driver_diag_endts (Rad_control)
@@ -3271,9 +3290,10 @@ integer :: outunit
 !---------------------------------------------------------------------
 
       call radiation_driver_diag_end (Rad_control)
-
       call rad_output_file_end
-      call sea_esf_rad_end (Rad_control)
+      call longwave_driver_end
+      call shortwave_driver_end
+
       call mpp_clock_begin ( cloud_spec_term_clock )
       call cloudrad_driver_end (Cldrad_control)
       call mpp_clock_end ( cloud_spec_term_clock )
@@ -3317,11 +3337,6 @@ integer :: outunit
                     Rad_output%flux_sw_down_total_dif_clr,  &
                     Rad_output%flux_sw_down_vis_clr)
       endif
-
-!----------------------------------------------------------------------
-!    call rad_utilities_end to uninitialize that module.
-!---------------------------------------------------------------------
-        call rad_utilities_end
 
 !----------------------------------------------------------------------------
 !    print out checksum info for Rad_flux when concurrent radiation is active
@@ -4321,20 +4336,35 @@ type(lw_diagnostics_type),          intent(inout)    :: Lw_diagnostics
 
       integer :: kmax
 
-!---------------------------------------------------------------------
-!    call routines to perform radiation calculations, using the
-!    sea_esf_rad radiation package.
-!---------------------------------------------------------------------
-      call sea_esf_rad (press, pflux, temp, tflux, rh2o, deltaz, &
-                        asfc_vis_dir, asfc_nir_dir, &
-                        asfc_vis_dif, asfc_nir_dif, Astro, Rad_gases,  &
-                        aerooptdep, aerooptdep_volc, &
-                        aeroasymfac, aerosctopdep, aeroextopdep, &
-                        crndlw, cmxolw, emrndlw, emmxolw, &
-                        camtsw, cldsct, cldext, cldasymm, &
-                        flag_stoch, Rad_control, Aerosolrad_control, &
-                        Lw_output, Sw_output, Lw_diagnostics)
+!----------------------------------------------------------------------
+!    compute longwave radiation
+!----------------------------------------------------------------------
+    if (do_lw_rad) then
+      call mpp_clock_begin (longwave_clock)
+      call longwave_driver (press, pflux, temp, tflux, rh2o, deltaz,  &
+                            Rad_gases, emrndlw, emmxolw, crndlw, cmxolw, &
+                            aerooptdep, aerooptdep_volc, &
+                            flag_stoch, Rad_control, &
+                            Aerosolrad_control%do_lwaerosol, &
+                            Aerosolrad_control%volcanic_lw_aerosols, &
+                            Lw_output, Lw_diagnostics)
+      call mpp_clock_end (longwave_clock)
+    endif
 
+!----------------------------------------------------------------------
+!    compute shortwave radiation
+!----------------------------------------------------------------------
+    if (do_sw_rad) then
+      call mpp_clock_begin (shortwave_clock)
+      call shortwave_driver (press, pflux, temp, rh2o, deltaz, &
+                             asfc_vis_dir, asfc_nir_dir, &
+                             asfc_vis_dif, asfc_nir_dif, Astro, &
+                             aeroasymfac, aerosctopdep, aeroextopdep, &
+                             Rad_gases, camtsw, cldsct, cldext, cldasymm, &
+                             flag_stoch, Rad_control, &
+                             Aerosolrad_control%do_swaerosol, Sw_output)
+      call mpp_clock_end (shortwave_clock)
+    endif
 
 !---------------------------------------------------------------------
 !    define the components of Rad_output to be passed back to 

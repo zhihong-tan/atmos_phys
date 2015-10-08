@@ -1,5 +1,6 @@
  
-               module rad_utilities_mod
+module radiation_driver_types_mod
+
 !
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
@@ -10,51 +11,30 @@
 ! 
 ! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
 ! <OVERVIEW>
-!  Code to define the derived data types and provide table search routines.
+!  Code to define the derived data types.
 ! </OVERVIEW>
 ! <DESCRIPTION>
 !  This code is used in the radiation code package as a helper module.
 !  It defines many derived data types used in radiation calculation.
-!  This code also provides table search routines and simple arithmatic
-!  routines.
 ! </DESCRIPTION>
 !
-use fms_mod,            only : fms_init, &
-                               mpp_pe, mpp_root_pe, stdlog, &
-                               write_version_number, &
-                               error_mesg, FATAL, close_file
-
 !--------------------------------------------------------------------
 
 implicit none
 private
 
 !---------------------------------------------------------------------
-!    rad_utilities_mod contains radiation table search routines,
-!    some band averaging routines, and the derived-type variables 
-!    used in the radiation package.
+!    radiation_driver_types_mod contains definitions for
+!    derived-type variables used by the radiation/driver routines.
 !---------------------------------------------------------------------
-
-
-!---------------------------------------------------------------------
-!----------- ****** VERSION NUMBER ******* ---------------------------
-
-character(len=128)  :: version =  '$Id$'
-character(len=128)  :: tagname =  '$Name$'
-
-!---------------------------------------------------------------------
-!-------  interfaces --------
-
-public    rad_utilities_init, rad_utilities_end
-
-!------------------------------------------------------------------
 
 public astronomy_type
-    
-!    solar
-!    cosz
-!    fracday
-!    rrsun
+
+!    solar     shortwave flux factor
+!    cosz      cosine of zenith angle
+!    fracday   fraction of timestep during which the sun is shining
+!    rrsun     inverse of square of earth-sun distance
+!              relative to the mean square of earth-sun distance
 
 type astronomy_type
      real, dimension(:,:), pointer  :: solar=>NULL(),   &
@@ -128,34 +108,6 @@ end type atmos_input_type
 
 !-------------------------------------------------------------------
 
-!public cld_specification_type
-
-!    tau
-!    lwp
-!    iwp
-!    reff_liq
-!    reff_ice
-!    liq_frac
-!    cloud_water
-!    cloud_ice
-!    cloud_area
-!    cloud_droplet
-!    reff_liq_micro
-!    reff_ice_micro
-!    camtsw
-!    cmxolw
-!    crndlw
-!    cld_thickness
-!    ncldsw
-!    nmxolw
-!    nrndlw
-!    hi_cloud
-!    mid_cloud
-!    low_cloud
-!    ice_cloud
-
-!------------------------------------------------------------------
-
 public radiation_control_type
 
 type radiation_control_type
@@ -176,14 +128,39 @@ end type radiation_control_type
 
 public rad_output_type
 
-!    tdt_rad
-!    tdt_rad_clr
-!    tdtsw
-!    tdtsw_clr
-!    tdtlw
-!    flux_sw_surf
-!    flux_lw_surf
-!    coszen_angle
+!
+!  rad_output_type variable with the following components:
+!
+!      tdt_rad                radiative (sw + lw) heating rate
+!      flux_sw_surf           net (down-up) sw flux at surface
+!      flux_sw_surf_dir       net (down-up) sw flux at surface
+!      flux_sw_surf_refl_dir       dir sw flux reflected at surface
+!      flux_sw_surf_dif            net (down-up) sw flux at surface
+!      flux_sw_down_vis_dir        downward visible sw flux at surface
+!      flux_sw_down_vis_dif        downward visible sw flux at surface
+!      flux_sw_down_total_dir      downward total sw flux at surface
+!      flux_sw_down_total_dif      downward total sw flux at surface
+!      flux_sw_down_total_dir_clr  downward total direct sw flux at surface  (clear sky)
+!      flux_sw_down_total_dif_clr  downward total diffuse sw flux at surface (clear sky)
+!      flux_sw_down_vis_clr        downward visible sw flux at surface  (clear sky)
+!      flux_sw_vis            net visible sw flux at surface
+!      flux_sw_vis_dir        net visible sw flux at surface
+!      flux_sw_refl_vis_dir   reflected direct visible sw flux at surface
+!      flux_sw_vis_dif        net visible sw flux at surface
+!      flux_lw_surf           downward lw flux at surface
+!      coszen_angle    cosine of the zenith angle (used for the last radiation calculation)
+!      tdt_rad_clr     net radiative heating rate in the absence of cloud
+!      tdtsw           shortwave heating rate
+!      tdtsw_clr       shortwave heating rate in he absence of cloud
+!      tdtlw_clr       longwave heating rate in he absence of cloud
+!      tdtlw           longwave heating rate
+!      ufsw            upward sw flux
+!      dfsw            downward sw flux
+!      ufsw_clr        upward sw flux
+!      dfsw_clr        downward sw flux
+!      flxnet          net lw flux
+!      flxnetcf        net lw flux, cloud free
+!      extinction      SW extinction (band 4 centered on 1 micron) for volcanoes
 
 type rad_output_type
      real, dimension(:,:,:), pointer :: tdt_rad=>NULL(),  &
@@ -235,112 +212,9 @@ type surface_type
                                         asfc_nir_dif=>NULL()
 end type surface_type
 
-!-------------------------------------------------------------------
-!--------------------------------------------------------------------
-!------- private data ------
-
-
-logical :: module_is_initialized=.false.   ! module is initialized ?
-
-
-!---------------------------------------------------------------------
-!---------------------------------------------------------------------
-
-
-                           contains
-
-
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-!
-!                     PUBLIC SUBROUTINES
-!
-!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-! <SUBROUTINE NAME="rad_utilities_init">
-!  <OVERVIEW>
-!   Subroutine to initialize radiation utility package.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   This subroutine initializes rad_utilities_nml.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call rad_utilities_init
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine rad_utilities_init
-
-!---------------------------------------------------------------------
-!    rad_utilities_init is the constructor for rad_utilities_mod.
-!---------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!    if routine has already been executed, exit.
-!---------------------------------------------------------------------
-      if (module_is_initialized) return
- 
-!---------------------------------------------------------------------
-!    verify that modules used by this module that are not called later
-!    have already been initialized.
-!---------------------------------------------------------------------
-      call fms_init
-
-!-----------------------------------------------------------------------
-!    write version number and namelist to logfile.
-!---------------------------------------------------------------------
-      call write_version_number (version, tagname)
-
-!-------------------------------------------------------------------
-!    mark the module as initialized.
-!-------------------------------------------------------------------
-      module_is_initialized = .true.
-
-!------------------------------------------------------------------
-
-end subroutine rad_utilities_init
-
-
-!#####################################################################
-!
-! <SUBROUTINE NAME="rad_utilities_end">
-!  <OVERVIEW>
-!   Subroutine to close out the radiation utility package.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   This subroutine is the destructor for rad_utilies_mod. it marks
-!   the module as uninitialized.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call rad_utilities_end
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine rad_utilities_end
-
-!--------------------------------------------------------------------
-!    rad_utilites_end is the destructor for rad_utilities_mod.
-!---------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!    be sure module has been initialized.
-!---------------------------------------------------------------------
-     !if (.not. module_is_initialized ) then
-     !  call error_mesg ('rad_utilites_mod',   &
-     !       'module has not been initialized', FATAL )
-     !endif
-
-!---------------------------------------------------------------------
-!    mark the module as uninitialized.
-!---------------------------------------------------------------------
-       module_is_initialized = .false.
-
-!-------------------------------------------------------------------
-
-end subroutine rad_utilities_end
-
 !####################################################################
 
 
-                     end module rad_utilities_mod
+end module radiation_driver_types_mod
 
 

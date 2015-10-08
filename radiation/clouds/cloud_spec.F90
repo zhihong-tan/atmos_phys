@@ -51,8 +51,8 @@ use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 
 ! shared radiation package modules:
 
-use sea_esf_rad_mod,          only: shortwave_number_of_bands, &
-                                    longwave_number_of_bands
+use esfsw_driver_mod,         only: esfsw_number_of_bands
+use sealw99_mod,              only: sealw99_number_of_bands
 
 ! cloud radiation modules
 
@@ -397,8 +397,8 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
 !--------------------------------------------------------------------
 !    save the number of shortwave and longwave bands
 !-------------------------------------------------------------------
-      call shortwave_number_of_bands (num_sw_bands)
-      call longwave_number_of_bands  (num_lw_bands)
+      call esfsw_number_of_bands   (num_sw_bands)
+      call sealw99_number_of_bands (num_lw_bands)
 
 !-------------------------------------------------------------------
 !    verify that the nml variable cloud_type_form specifies a valid

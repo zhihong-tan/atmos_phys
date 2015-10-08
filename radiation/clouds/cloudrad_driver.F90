@@ -25,8 +25,8 @@ use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 
 !  radiation modules:
 
-use sea_esf_rad_mod,       only: shortwave_number_of_bands, &
-                                 longwave_number_of_bands
+use esfsw_driver_mod,         only: esfsw_number_of_bands
+use sealw99_mod,              only: sealw99_number_of_bands
 
 !  cloud radiation modules:
 
@@ -137,7 +137,6 @@ character(len=16),           intent(out)   :: cloud_type_form_out
 !    subroutine data_override is called.
 !---------------------------------------------------------------------
       call fms_init
-!BW   call rad_utilities_init
       call tracer_manager_init
 
 !---------------------------------------------------------------------
@@ -178,8 +177,8 @@ character(len=16),           intent(out)   :: cloud_type_form_out
 !---------------------------------------------------------------------
 !    get the number of shortwave and longwave cloud bands
 !---------------------------------------------------------------------
-      call shortwave_number_of_bands (Cldrad_control%num_sw_cloud_bands)
-      call longwave_number_of_bands  (Cldrad_control%num_lw_cloud_bands)
+      call esfsw_number_of_bands   (Cldrad_control%num_sw_cloud_bands)
+      call sealw99_number_of_bands (Cldrad_control%num_lw_cloud_bands)
 
 !---------------------------------------------------------------------
 !    set flag to indicate that module has been successfully initialized.

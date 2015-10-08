@@ -36,8 +36,8 @@ use diag_manager_mod,     only: diag_manager_init, get_base_time
 
 !   shared radiation package modules:
  
-use rad_utilities_mod,    only: radiation_control_type, &
-                                astronomy_type
+use radiation_driver_types_mod, only: radiation_control_type, &
+                                      astronomy_type
 
 use esfsw_driver_mod,     only: esfsw_driver_init, swresf,   &
                                 esfsw_driver_end, &
@@ -50,9 +50,9 @@ use shortwave_types_mod,  only: sw_output_type, assignment(=)
 
 use radiative_gases_types_mod, only: radiative_gases_type
 
-use solar_data_mod,       only: solar_data_init, &
-                                solar_data_time_vary, &
-                                solar_data_end
+use solar_data_driver_mod, only: solar_data_driver_init, &
+                                 solar_data_driver_time_vary, &
+                                 solar_data_driver_end
 
 !-------------------------------------------------------------------
 
@@ -266,7 +266,7 @@ type(radiation_control_type), intent(inout) :: Rad_control
 !    set up solar data
 !---------------------------------------------------------------------
 
-      call solar_data_init (nbands, ierr)
+      call solar_data_driver_init (nbands, ierr)
 
       ! if the error code returned is non-zero then
       ! the data file did not exist
@@ -322,7 +322,7 @@ type(radiation_control_type), intent(inout) :: Rad_control
                      str='Data used in this experiment is from solar &
                           &timeseries at time:')
                ! define time to be used for solar input data
-               call solar_data_time_vary (Solar_entry, solar_constant_used, solflxband)
+               call solar_data_driver_time_vary (Solar_entry, solar_constant_used, solflxband)
                solflxband_initialized = .true.
               !call esfsw_solar_flux_init (solar_constant_used, solflxband)
          endif
@@ -358,7 +358,7 @@ type(time_type) :: Solar_time
             Solar_time = Rad_time + Solar_offset
          endif
 
-        call solar_data_time_vary (Solar_time, solar_constant_used, solflxband)
+        call solar_data_driver_time_vary (Solar_time, solar_constant_used, solflxband)
        !call esfsw_solar_flux_init (solar_constant_used, solflxband)
         solflxband_initialized = .true.
       endif
@@ -640,7 +640,7 @@ subroutine shortwave_driver_end
 !    close out the modules initialized by this module.
 !--------------------------------------------------------------------
       call esfsw_driver_end
-      call solar_data_end
+      call solar_data_driver_end
 
 !---------------------------------------------------------------------
 !    mark the module as uninitialized.

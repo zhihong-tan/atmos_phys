@@ -30,7 +30,7 @@ use aerosolrad_package_mod, only: aerosolrad_package_init,    &
                                   number_of_lw_aerosol_bands, &
                                   aerosolrad_diag_dealloc
 
-use sea_esf_rad_mod,        only: shortwave_number_of_bands
+use esfsw_driver_mod,       only: esfsw_number_of_bands
 
 !--------------------------------------------------------------------
 
@@ -169,7 +169,7 @@ character(len=64), pointer, intent(out)   :: aerosol_names(:), &
 !---------------------------------------------------------------------
 !    return the number of shortwave and longwave aerosols
 !---------------------------------------------------------------------
-      call shortwave_number_of_bands  (Aerosolrad_control%num_sw_aerosol_bands)
+      call esfsw_number_of_bands      (Aerosolrad_control%num_sw_aerosol_bands)
       call number_of_lw_aerosol_bands (Aerosolrad_control%num_lw_aerosol_bands)
 
 !---------------------------------------------------------------------

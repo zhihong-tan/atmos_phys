@@ -24,8 +24,8 @@ use time_manager_mod,         only: time_type, time_manager_init
 
 ! shared radiation package modules:
 
-use sea_esf_rad_mod,          only: shortwave_number_of_bands, &
-                                    longwave_number_of_bands
+use esfsw_driver_mod,         only: esfsw_number_of_bands
+use sealw99_mod,              only: sealw99_number_of_bands
 
 ! cloud radiation modules:
 
@@ -282,8 +282,8 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !--------------------------------------------------------------------
 !    save the number of longwave and shortwave bands
 !--------------------------------------------------------------------
-      call shortwave_number_of_bands (num_sw_bands)
-      call longwave_number_of_bands  (num_lw_bands)
+      call esfsw_number_of_bands   (num_sw_bands)
+      call sealw99_number_of_bands (num_lw_bands)
 
 !-------------------------------------------------------------------
 !    define variables which denote whether microphysically-based cloud
