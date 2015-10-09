@@ -92,8 +92,7 @@ use radiation_driver_types_mod, only: radiation_control_type, &
                                       astronomy_type, surface_type, &
                                       atmos_input_type, &
                                       rad_output_type, astronomy_inp_type, &
-                                      rad_output_alloc, rad_output_dealloc, rad_output_init, &
-                                      astronomy_alloc, astronomy_dealloc
+                                      rad_output_init
 
 use     aerosol_types_mod, only: aerosol_type, &
                                  aerosol_time_vary_type
@@ -118,8 +117,8 @@ use longwave_driver_mod,  only: longwave_driver_init,   &
                                 longwave_driver, &
                                 longwave_driver_endts, &
                                 longwave_driver_end, &
-                                lw_table_type, &
                                 longwave_number_of_bands, &
+                                lw_table_type, &
                                 longwave_get_tables
 
 use longwave_types_mod,    only: lw_output_type, lw_diagnostics_type, assignment(=)
@@ -1149,8 +1148,8 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !    be saved between timesteps (these are used on every timestep,
 !    but only calculated on radiation steps).
 !---------------------------------------------------------------------
-     !call Rad_output%alloc (id, jd, kmax, Rad_control%do_totcld_forcing) 
-      call rad_output_alloc (Rad_output, id, jd, kmax, Rad_control%do_totcld_forcing)
+      call Rad_output%alloc (id, jd, kmax, Rad_control%do_totcld_forcing) 
+     !call rad_output_alloc (Rad_output, id, jd, kmax, Rad_control%do_totcld_forcing)
 
 !-----------------------------------------------------------------------
 !    should stardard radiation restart files be written?
@@ -3315,8 +3314,8 @@ integer :: outunit
 !    release space used for module variables that hold data between
 !    timesteps.
 !---------------------------------------------------------------------
-     !call Rad_output%dealloc
-      call rad_output_dealloc (Rad_output)
+     !call rad_output_dealloc (Rad_output)
+      call Rad_output%dealloc
 
 !----------------------------------------------------------------------------
 !    print out checksum info for Rad_flux when concurrent radiation is active
@@ -3957,8 +3956,8 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
 !    angle, daylight fraction, solar flux factor and earth-sun distance)
 !    that are to be used on the current step.
 !---------------------------------------------------------------------
-     !call Astro%alloc (size(lat,1), size(lat,2))
-      call astronomy_alloc ( Astro, size(lat,1), size(lat,2) )
+      call Astro%alloc (size(lat,1), size(lat,2))
+     !call astronomy_alloc ( Astro, size(lat,1), size(lat,2) )
 
 !---------------------------------------------------------------------
 !    case 0: input parameters.
@@ -4024,8 +4023,8 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
             Astro%solar   = solar_r
             Astro%rrsun   = rrsun_r
           endif
-         !call Astro_phys%alloc (size(lat,1), size(lat,2))
-          call astronomy_alloc (Astro_phys, size(lat,1), size(lat,2))
+          call Astro_phys%alloc (size(lat,1), size(lat,2))
+         !call astronomy_alloc (Astro_phys, size(lat,1), size(lat,2))
           Astro_phys%cosz    = cosz_p
           Astro_phys%fracday = fracday_p
           Astro_phys%solar   = solar_p
@@ -4481,11 +4480,11 @@ type(aerosolrad_diag_type),        intent(inout)  :: Aerosolrad_diags
 !    deallocate the variables in Astro and Astro_phys.
 !--------------------------------------------------------------------
       if ( do_rad .or. renormalize_sw_fluxes ) then 
-       !call Astro%dealloc
-        call astronomy_dealloc (Astro)
+       !call astronomy_dealloc (Astro)
+        call Astro%dealloc
         if ( do_sw_rad .and. renormalize_sw_fluxes .and. Rad_control%do_diurnal ) then 
-           !call Astro_phys%dealloc
-            call astronomy_dealloc (Astro_phys)
+           !call astronomy_dealloc (Astro_phys)
+            call Astro_phys%dealloc
         endif
       endif
 

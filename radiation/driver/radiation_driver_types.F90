@@ -43,9 +43,9 @@ type astronomy_type
      real    :: rrsun
      logical :: initialized = .false.
 
-!    contains
-!        procedure :: alloc=>astronomy_alloc
-!        procedure :: dealloc=>astronomy_dealloc
+     contains
+         procedure :: alloc=>astronomy_alloc
+         procedure :: dealloc=>astronomy_dealloc
 end type astronomy_type
 
 public :: astronomy_alloc, astronomy_dealloc
@@ -204,9 +204,9 @@ type rad_output_type
      logical :: initialized = .false.
      logical :: do_totcld_forcing = .false.
 
-!    contains
-!        procedure :: alloc=>rad_output_alloc
-!        procedure :: dealloc=>rad_output_dealloc
+     contains
+         procedure :: alloc=>rad_output_alloc
+         procedure :: dealloc=>rad_output_dealloc
 !        procedure :: initvalues=>rad_output_init
 end type rad_output_type
 
@@ -237,7 +237,7 @@ CONTAINS
 subroutine rad_output_alloc (Rad_output, id, jd, kd, &
                              do_totcld_forcing)
 
-type(rad_output_type), intent(out)  ::  Rad_output
+class(rad_output_type), intent(out)  ::  Rad_output
 integer,                intent(in)   ::  id, jd, kd
 logical,                intent(in)   ::  do_totcld_forcing
 
@@ -302,7 +302,7 @@ end subroutine rad_output_alloc
 
 subroutine rad_output_dealloc (Rad_output)
 
-type(rad_output_type), intent(inout)  ::  Rad_output
+class(rad_output_type), intent(inout)  ::  Rad_output
 !---------------------------------------------------------------------
 !    release space used for variables
 !---------------------------------------------------------------------
@@ -401,7 +401,7 @@ end subroutine rad_output_init
 
 subroutine astronomy_alloc (Astro, id, jd)
 
-type(astronomy_type), intent(out) :: Astro
+class(astronomy_type), intent(out) :: Astro
 integer,               intent(in)  :: id, jd
 
 !---------------------------------------------------------------------
@@ -421,7 +421,7 @@ end subroutine astronomy_alloc
 
 subroutine astronomy_dealloc (Astro)
 
-type(astronomy_type), intent(inout) :: Astro
+class(astronomy_type), intent(inout) :: Astro
 
 !---------------------------------------------------------------------
 !    deallocate space for variables in the astronomy type
