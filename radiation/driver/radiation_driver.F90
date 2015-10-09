@@ -885,6 +885,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       integer           ::   nyr, nv, nband
       integer           ::   yr, month, year, dum
       integer           ::   ico2
+      integer           ::   num_sw_bands, num_lw_bands
 
       character(len=16) ::  cosp_precip_sources_modified
 
@@ -1149,7 +1150,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !    but only calculated on radiation steps).
 !---------------------------------------------------------------------
       call Rad_output%alloc (id, jd, kmax, Rad_control%do_totcld_forcing) 
-     !call rad_output_alloc (Rad_output, id, jd, kmax, Rad_control%do_totcld_forcing)
 
 !-----------------------------------------------------------------------
 !    should stardard radiation restart files be written?
@@ -1269,6 +1269,13 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       call longwave_driver_init  (Radiation%glbl_qty%pref(ks:ke+1,:))
       call shortwave_driver_init (Rad_control)
 
+!---------------------------------------------------------------------
+!    get the number of SW and LW bands
+!    this will be needed by clouds and aerosols
+!---------------------------------------------------------------------
+      call shortwave_number_of_bands (num_sw_bands)
+      call longwave_number_of_bands  (num_lw_bands)
+
 !-----------------------------------------------------------------------
 !    initialize clouds.     
 !-----------------------------------------------------------------------
@@ -1277,6 +1284,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
                                  lonb, latb, axes, &
                                  Radiation%glbl_qty%pref, &
                                  Exch_ctrl%donner_meso_is_largescale, &
+                                 num_sw_bands, num_lw_bands, &
                                  Cldrad_control, &
                                  Exch_ctrl%cloud_type_form)
       call mpp_clock_end ( cloud_spec_init_clock )
@@ -1286,6 +1294,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !-----------------------------------------------------------------------
       call mpp_clock_begin ( aerosol_init_clock )
       call aerosolrad_driver_init (lonb, latb, kmax,   &
+                                   num_sw_bands, num_lw_bands, &
                                    Aerosolrad_control, &
                                    aerosol_names, aerosol_family_names)
       call mpp_clock_end ( aerosol_init_clock )
@@ -3314,7 +3323,6 @@ integer :: outunit
 !    release space used for module variables that hold data between
 !    timesteps.
 !---------------------------------------------------------------------
-     !call rad_output_dealloc (Rad_output)
       call Rad_output%dealloc
 
 !----------------------------------------------------------------------------
@@ -3957,7 +3965,6 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
 !    that are to be used on the current step.
 !---------------------------------------------------------------------
       call Astro%alloc (size(lat,1), size(lat,2))
-     !call astronomy_alloc ( Astro, size(lat,1), size(lat,2) )
 
 !---------------------------------------------------------------------
 !    case 0: input parameters.
@@ -4024,7 +4031,6 @@ type(astronomy_inp_type),   intent(inout), optional ::  &
             Astro%rrsun   = rrsun_r
           endif
           call Astro_phys%alloc (size(lat,1), size(lat,2))
-         !call astronomy_alloc (Astro_phys, size(lat,1), size(lat,2))
           Astro_phys%cosz    = cosz_p
           Astro_phys%fracday = fracday_p
           Astro_phys%solar   = solar_p
@@ -4480,10 +4486,8 @@ type(aerosolrad_diag_type),        intent(inout)  :: Aerosolrad_diags
 !    deallocate the variables in Astro and Astro_phys.
 !--------------------------------------------------------------------
       if ( do_rad .or. renormalize_sw_fluxes ) then 
-       !call astronomy_dealloc (Astro)
         call Astro%dealloc
         if ( do_sw_rad .and. renormalize_sw_fluxes .and. Rad_control%do_diurnal ) then 
-           !call astronomy_dealloc (Astro_phys)
             call Astro_phys%dealloc
         endif
       endif

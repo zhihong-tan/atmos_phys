@@ -49,11 +49,6 @@ use aerosol_types_mod,        only: aerosol_type
 
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 
-! shared radiation package modules:
-
-use esfsw_driver_mod,         only: esfsw_number_of_bands
-use sealw99_mod,              only: sealw99_number_of_bands
-
 ! cloud radiation modules
 
 use cloudrad_types_mod,       only: cld_specification_type, &
@@ -215,9 +210,6 @@ integer :: num_slingo_bands  ! number of radiative bands over which
                              ! cloud optical depth is calculated in the
                              ! gordon diag_cloud parameterization
 
-integer :: num_lw_bands      ! number of parameterized longwave bands
-integer :: num_sw_bands      ! number of parameterized shortwave bands
-                             ! for sea_esf radiation
 integer :: id, jd, kmax
 
 type(time_type) :: Radiation_time_step  ! saved for data override
@@ -394,12 +386,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
           call random_number_streams_init ( lonb, latb, Cldrad_control )
       endif
 
-!--------------------------------------------------------------------
-!    save the number of shortwave and longwave bands
-!-------------------------------------------------------------------
-      call esfsw_number_of_bands   (num_sw_bands)
-      call sealw99_number_of_bands (num_lw_bands)
-
 !-------------------------------------------------------------------
 !    verify that the nml variable cloud_type_form specifies a valid
 !    cloud parameterization. set the appropriate logical control
@@ -413,7 +399,7 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
 !    parameterization.
 !-------------------------------------------------------------------
          Cldrad_control%do_strat_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
+         call strat_clouds_W_init(latb, lonb, Cldrad_control)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are diagnosed based on model relative 
@@ -447,7 +433,7 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
       else if (trim(cloud_type_form) == 'stratdeep')  then
          Cldrad_control%do_strat_clouds = .true.
          Cldrad_control%do_donner_deep_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
+         call strat_clouds_W_init(latb, lonb, Cldrad_control)
          call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !-------------------------------------------------------------------
@@ -468,7 +454,7 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
       else if (trim(cloud_type_form) == 'stratuw')  then
          Cldrad_control%do_strat_clouds = .true.
          Cldrad_control%do_uw_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
+         call strat_clouds_W_init(latb, lonb, Cldrad_control)
          call uw_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !-------------------------------------------------------------------
@@ -480,7 +466,7 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
          Cldrad_control%do_strat_clouds = .true.
          Cldrad_control%do_donner_deep_clouds = .true.
          Cldrad_control%do_uw_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
+         call strat_clouds_W_init(latb, lonb, Cldrad_control)
          call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
          call uw_clouds_W_init (pref, lonb, latb, axes, Time)
 
@@ -1604,8 +1590,15 @@ type(cld_specification_type),          intent(inout) :: Cld_spec
 !
 !---------------------------------------------------------------------
 
-      integer  :: n, nb
+      integer  :: n, nb, nswcb, nlwcb
 
+!---------------------------------------------------------------------
+
+      nswcb = Cldrad_control%num_sw_cloud_bands
+      nlwcb = Cldrad_control%num_lw_cloud_bands
+
+!---------------------------------------------------------------------
+!    loop thru all cloud schemes
 !---------------------------------------------------------------------
 
       do n = 1, size(scheme_names(:))
@@ -1652,32 +1645,32 @@ type(cld_specification_type),          intent(inout) :: Cld_spec
        !    allocate the arrays for stochastic clouds
        !--------------------------------------------------
             if (Cldrad_control%do_stochastic_clouds) then
-               allocate (Cloud_microphys(n)%stoch_conc_drop (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_conc_ice  (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_size_drop (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_size_ice  (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_cldamt    (ix, jx, kx, num_lw_bands + num_sw_bands) )
+               allocate (Cloud_microphys(n)%stoch_conc_drop (ix, jx, kx, nlwcb + nswcb) )
+               allocate (Cloud_microphys(n)%stoch_conc_ice  (ix, jx, kx, nlwcb + nswcb) )
+               allocate (Cloud_microphys(n)%stoch_size_drop (ix, jx, kx, nlwcb + nswcb) )
+               allocate (Cloud_microphys(n)%stoch_size_ice  (ix, jx, kx, nlwcb + nswcb) )
+               allocate (Cloud_microphys(n)%stoch_cldamt    (ix, jx, kx, nlwcb + nswcb) )
                allocate (Cloud_microphys(n)%stoch_droplet_number  &
-                                                (ix, jx, kx, num_lw_bands + num_sw_bands) )
+                                                (ix, jx, kx, nlwcb + nswcb) )
                allocate (Cloud_microphys(n)%stoch_ice_number  &
-                                                (ix, jx, kx, num_lw_bands + num_sw_bands) )
+                                                (ix, jx, kx, nlwcb + nswcb) )
   
-               Cloud_microphys(n)%lw_stoch_conc_drop => Cloud_microphys(n)%stoch_conc_drop(:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_conc_drop => Cloud_microphys(n)%stoch_conc_drop(:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_conc_ice  => Cloud_microphys(n)%stoch_conc_ice (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_conc_ice  => Cloud_microphys(n)%stoch_conc_ice (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_size_drop => Cloud_microphys(n)%stoch_size_drop(:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_size_drop => Cloud_microphys(n)%stoch_size_drop(:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_size_ice  => Cloud_microphys(n)%stoch_size_ice (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_size_ice  => Cloud_microphys(n)%stoch_size_ice (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_cldamt    => Cloud_microphys(n)%stoch_cldamt   (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_cldamt    => Cloud_microphys(n)%stoch_cldamt   (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_droplet_number    => Cloud_microphys(n)%stoch_droplet_number   (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_droplet_number    => Cloud_microphys(n)%stoch_droplet_number   (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_ice_number    => Cloud_microphys(n)%stoch_ice_number   (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_ice_number    => Cloud_microphys(n)%stoch_ice_number   (:, :, :, num_lw_bands+1:)
+               Cloud_microphys(n)%lw_stoch_conc_drop => Cloud_microphys(n)%stoch_conc_drop(:, :, :, 1:nlwcb)
+               Cloud_microphys(n)%sw_stoch_conc_drop => Cloud_microphys(n)%stoch_conc_drop(:, :, :, nlwcb+1:)
+               Cloud_microphys(n)%lw_stoch_conc_ice  => Cloud_microphys(n)%stoch_conc_ice (:, :, :, 1:nlwcb)
+               Cloud_microphys(n)%sw_stoch_conc_ice  => Cloud_microphys(n)%stoch_conc_ice (:, :, :, nlwcb+1:)
+               Cloud_microphys(n)%lw_stoch_size_drop => Cloud_microphys(n)%stoch_size_drop(:, :, :, 1:nlwcb)
+               Cloud_microphys(n)%sw_stoch_size_drop => Cloud_microphys(n)%stoch_size_drop(:, :, :, nlwcb+1:)
+               Cloud_microphys(n)%lw_stoch_size_ice  => Cloud_microphys(n)%stoch_size_ice (:, :, :, 1:nlwcb)
+               Cloud_microphys(n)%sw_stoch_size_ice  => Cloud_microphys(n)%stoch_size_ice (:, :, :, nlwcb+1:)
+               Cloud_microphys(n)%lw_stoch_cldamt    => Cloud_microphys(n)%stoch_cldamt   (:, :, :, 1:nlwcb)
+               Cloud_microphys(n)%sw_stoch_cldamt    => Cloud_microphys(n)%stoch_cldamt   (:, :, :, nlwcb+1:)
+               Cloud_microphys(n)%lw_stoch_droplet_number    => Cloud_microphys(n)%stoch_droplet_number   (:, :, :, 1:nlwcb)
+               Cloud_microphys(n)%sw_stoch_droplet_number    => Cloud_microphys(n)%stoch_droplet_number   (:, :, :, nlwcb+1:)
+               Cloud_microphys(n)%lw_stoch_ice_number    => Cloud_microphys(n)%stoch_ice_number   (:, :, :, 1:nlwcb)
+               Cloud_microphys(n)%sw_stoch_ice_number    => Cloud_microphys(n)%stoch_ice_number   (:, :, :, nlwcb+1:)
 
-               do nb = 1, num_lw_bands + num_sw_bands
+               do nb = 1, nlwcb + nswcb
                   Cloud_microphys(n)%stoch_conc_drop(:,:,:,nb) = 0.
                   Cloud_microphys(n)%stoch_conc_ice(:,:,:,nb)  = 0.
                   Cloud_microphys(n)%stoch_size_drop(:,:,:,nb) = 1.0e-20
@@ -1710,19 +1703,19 @@ type(cld_specification_type),          intent(inout) :: Cld_spec
       Cld_spec%nrndlw (:,:)  = 0
       Cld_spec%ncldsw (:,:)  = 0
       if (Cldrad_control%do_stochastic_clouds) then
-        allocate ( Cld_spec%camtsw_band (ix, jx, kx, num_sw_bands) )
-        allocate ( Cld_spec%ncldsw_band (ix, jx, num_sw_bands) )
+        allocate ( Cld_spec%camtsw_band (ix, jx, kx, nswcb) )
+        allocate ( Cld_spec%ncldsw_band (ix, jx, nswcb) )
         allocate (Cld_spec%cld_thickness_sw_band & 
-                                 (ix, jx, kx, num_sw_bands) )
+                                 (ix, jx, kx, nswcb) )
         allocate (Cld_spec%iwp_sw_band    &
-                                 (ix, jx, kx, num_sw_bands) )
+                                 (ix, jx, kx, nswcb) )
         allocate (Cld_spec%lwp_sw_band   &
-                                 (ix, jx, kx, num_sw_bands) )
+                                 (ix, jx, kx, nswcb) )
         allocate (Cld_spec%reff_liq_sw_band   &  
-                                 (ix, jx, kx, num_sw_bands) )
+                                 (ix, jx, kx, nswcb) )
         allocate (Cld_spec%reff_ice_sw_band   &   
-                                 (ix, jx, kx, num_sw_bands) )
-        do n=1,num_sw_bands
+                                 (ix, jx, kx, nswcb) )
+        do n=1,nswcb
         Cld_spec%camtsw_band(:,:,:,n) = 0.0E+00
         Cld_spec%ncldsw_band(:,:,n) = 0
         Cld_spec%cld_thickness_sw_band(:,:,:,n) = 0              
@@ -1732,20 +1725,20 @@ type(cld_specification_type),          intent(inout) :: Cld_spec
         Cld_spec%reff_ice_sw_band(:,:,:,n)      = 30.0
         end do
         allocate ( Cld_spec%crndlw_band    &
-                                 (ix, jx, kx, num_lw_bands) )
+                                 (ix, jx, kx, nlwcb) )
         allocate ( Cld_spec%nrndlw_band    &
-                                 (ix, jx, num_lw_bands) )
+                                 (ix, jx, nlwcb) )
         allocate (Cld_spec%cld_thickness_lw_band & 
-                                 (ix, jx, kx, num_lw_bands) )
+                                 (ix, jx, kx, nlwcb) )
         allocate (Cld_spec%iwp_lw_band    &
-                                 (ix, jx, kx, num_lw_bands) )
+                                 (ix, jx, kx, nlwcb) )
         allocate (Cld_spec%lwp_lw_band   &
-                                 (ix, jx, kx, num_lw_bands) )
+                                 (ix, jx, kx, nlwcb) )
         allocate (Cld_spec%reff_liq_lw_band   &  
-                                 (ix, jx, kx, num_lw_bands) )
+                                 (ix, jx, kx, nlwcb) )
         allocate (Cld_spec%reff_ice_lw_band   &   
-                                 (ix, jx, kx, num_lw_bands) )
-        do n=1, num_lw_bands
+                                 (ix, jx, kx, nlwcb) )
+        do n=1, nlwcb
         Cld_spec%crndlw_band(:,:,:,n) = 0.0E+00
         Cld_spec%nrndlw_band(:,:,n) = 0
         Cld_spec%cld_thickness_lw_band(:,:,:,n) = 0              
@@ -1754,7 +1747,7 @@ type(cld_specification_type),          intent(inout) :: Cld_spec
         Cld_spec%reff_liq_lw_band(:,:,:,n)      = 10.0
         Cld_spec%reff_ice_lw_band (:,:,:,n)     = 30.0
         end do
-        allocate (Cld_spec%stoch_cloud_type (ix, jx, kx, num_sw_bands + num_lw_bands) )
+        allocate (Cld_spec%stoch_cloud_type (ix, jx, kx, nswcb + nlwcb) )
         Cld_spec%stoch_cloud_type = 0
       endif
 
@@ -1920,7 +1913,8 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
                     dimension(size(Cld_spec%camtsw,1),   &
                               size(Cld_spec%camtsw,2),   &       
                               size(Cld_spec%camtsw,3),   &       
-                              num_lw_bands+num_sw_bands) :: &
+                              Cldrad_control%num_lw_cloud_bands+ &
+                              Cldrad_control%num_sw_cloud_bands) :: &
                                                      randomNumbers
       integer :: nn, nsubcols
 
@@ -1994,7 +1988,8 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !    seen by the radiation code in each stochastic subcolumn.
 !--------------------------------------------------------------------
       if (Cldrad_control%do_stochastic_clouds) then
-        nsubcols = num_sw_bands + num_lw_bands
+        nsubcols = Cldrad_control%num_sw_cloud_bands + &
+                   Cldrad_control%num_lw_cloud_bands
 
 !--------------------------------------------------------------------
 !   assign either a 1 or a 0 to each subcolumn indicating whether
@@ -2002,10 +1997,10 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !--------------------------------------------------------------------
         if (istrat > 0) then
           do n=1,nsubcols
-            if ( n > num_sw_bands) then
-              nn = n - num_sw_bands    
+            if ( n > Cldrad_control%num_sw_cloud_bands) then
+              nn = n - Cldrad_control%num_sw_cloud_bands    
             else
-              nn = n + num_lw_bands    
+              nn = n + Cldrad_control%num_lw_cloud_bands    
             endif
             do k=1,size(Cld_spec%camtsw,3) ! Levels
                do j=1,size(Cld_spec%camtsw,2) ! Lons
@@ -2128,7 +2123,7 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !     define the cloud amount in each stochastic subcolumn to be either
 !     1.0 if cloud is present, or 0.0 if no cloud exists.
 !---------------------------------------------------------------------
-        do n=1,num_sw_bands
+        do n=1,Cldrad_control%num_sw_cloud_bands
           do k=1,size(Cld_spec%camtsw,3) ! Levels
             do j=1,size(Cld_spec%camtsw,2) ! Lons
               do i=1,size(Cld_spec%camtsw,1) ! Lats
@@ -2142,8 +2137,8 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
           end do
         end do
         
-        do n=1,num_lw_bands
-          nn = num_sw_bands + n
+        do n=1,Cldrad_control%num_lw_cloud_bands
+          nn = Cldrad_control%num_sw_cloud_bands + n
           do k=1,size(Cld_spec%camtsw,3) ! Levels
             do j=1,size(Cld_spec%camtsw,2) ! Lons
               do i=1,size(Cld_spec%camtsw,1) ! Lats
@@ -2159,7 +2154,7 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
       endif  ! (do_stochastic)
 
 
-!#####################################################################
+!-------------------------------------------------------------------
 
 
 end subroutine combine_cloud_properties 

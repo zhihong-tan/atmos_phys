@@ -364,7 +364,7 @@ subroutine cloudrad_diagnostics_init (min_cld_drop_rad_in,  &
                                       min_cld_ice_size_in, &
                                       max_cld_ice_size_in, axes, Time, &
                                       donner_meso_is_largescale_in, &
-                                      nswcldb, nlwcldb, Cldrad_control)
+                                      Cldrad_control)
 
 !---------------------------------------------------------------------
 !    cloudrad_diagnostics_init is the constructor for 
@@ -378,7 +378,6 @@ real,                        intent(in)  ::  min_cld_drop_rad_in, &
 integer, dimension(4),       intent(in)  ::  axes
 type(time_type),             intent(in)  ::  Time
 logical,                     intent(in)  ::  donner_meso_is_largescale_in
-integer,                     intent(in)  ::  nswcldb, nlwcldb
 type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 
 !---------------------------------------------------------------------
@@ -398,8 +397,6 @@ type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 !                             [ microns ]
 !       axes                  diagnostic variable axes
 !       Time                  current time [time_type(days, seconds)]
-!       nswcldb               number of parameterized shortwave bands
-!       nlwcldb               number of parameterized longwave bands
 !
 !----------------------------------------------------------------------
 
@@ -473,8 +470,8 @@ type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 !    allocate the arrays needed to hold the diagnostics to be gener-
 !    ated for each of the ncol stochastic sub-columns.
 !---------------------------------------------------------------------
-      nswbands = nswcldb
-      nlwbands = nlwcldb
+      nswbands = Cldrad_control%num_sw_cloud_bands
+      nlwbands = Cldrad_control%num_lw_cloud_bands
       ncol = nlwbands + nswbands
       if (Cldrad_control%do_stochastic_clouds) then
           allocate (id_stoch_cloud_type        (ncol))

@@ -23,11 +23,6 @@ use aerosol_types_mod,     only: aerosol_type
 
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 
-!  radiation modules:
-
-use esfsw_driver_mod,         only: esfsw_number_of_bands
-use sealw99_mod,              only: sealw99_number_of_bands
-
 !  cloud radiation modules:
 
 use cloudrad_types_mod,    only: cld_specification_type, &
@@ -90,6 +85,8 @@ logical ::  module_is_initialized = .false. ! module initialized?
 subroutine cloudrad_driver_init (Time, rad_time_step,  &
                                  lonb, latb, axes, pref, &
                                  donner_meso_is_largescale, &
+                                 num_sw_cloud_bands, &
+                                 num_lw_cloud_bands, &
                                  Cldrad_control, &
                                  cloud_type_form_out)
 
@@ -105,6 +102,8 @@ real, dimension(:,:),        intent(in)    :: lonb, latb
 integer, dimension(4),       intent(in)    :: axes
 real, dimension(:,:),        intent(in)    :: pref
 logical,                     intent(in)    :: donner_meso_is_largescale
+integer,                     intent(in)    :: num_sw_cloud_bands, &
+                                              num_lw_cloud_bands
 type(cloudrad_control_type), intent(inout) :: Cldrad_control
 character(len=16),           intent(out)   :: cloud_type_form_out
 !----------------------------------------------------------------------
@@ -164,6 +163,12 @@ character(len=16),           intent(out)   :: cloud_type_form_out
       if (mpp_pe() == mpp_root_pe() ) &
            write (logunit, nml=cloudrad_driver_nml)
 
+!---------------------------------------------------------------------
+!    save the number of shortwave and longwave cloud bands
+!---------------------------------------------------------------------
+      Cldrad_control%num_sw_cloud_bands = num_sw_cloud_bands
+      Cldrad_control%num_lw_cloud_bands = num_lw_cloud_bands
+
 !--------------------------------------------------------------------
 !    initialize the modules that are accessed from radiation_driver_mod.
 !---------------------------------------------------------------------
@@ -173,12 +178,6 @@ character(len=16),           intent(out)   :: cloud_type_form_out
 
       call cloudrad_package_init   (pref, lonb, latb, axes, Time, &
                                     donner_meso_is_largescale, Cldrad_control)
-
-!---------------------------------------------------------------------
-!    get the number of shortwave and longwave cloud bands
-!---------------------------------------------------------------------
-      call esfsw_number_of_bands   (Cldrad_control%num_sw_cloud_bands)
-      call sealw99_number_of_bands (Cldrad_control%num_lw_cloud_bands)
 
 !---------------------------------------------------------------------
 !    set flag to indicate that module has been successfully initialized.

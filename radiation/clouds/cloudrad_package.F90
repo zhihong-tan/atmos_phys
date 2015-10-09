@@ -22,11 +22,6 @@ use fms_mod,                  only: fms_init, open_namelist_file, &
                                     FATAL, close_file
 use time_manager_mod,         only: time_type, time_manager_init
 
-! shared radiation package modules:
-
-use esfsw_driver_mod,         only: esfsw_number_of_bands
-use sealw99_mod,              only: sealw99_number_of_bands
-
 ! cloud radiation modules:
 
 use cloudrad_types_mod,       only: cld_specification_type, &
@@ -123,13 +118,6 @@ namelist /cloudrad_package_nml /     &
 
 !----------------------------------------------------------------------
 !----  private data -------
-!
-!     num_sw_bands     number of spectral bands resolved by the 
-!                      sw radiation package
-!     num_lw_bands     number of frequency bands for which longwave
-!                      emissivities are defined
-
-integer :: num_sw_bands, num_lw_bands
 
 logical :: module_is_initialized = .false.  ! module initialized?
 
@@ -278,13 +266,6 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !BW                                                              FATAL)
 !BW   endif
 
-
-!--------------------------------------------------------------------
-!    save the number of longwave and shortwave bands
-!--------------------------------------------------------------------
-      call esfsw_number_of_bands   (num_sw_bands)
-      call sealw99_number_of_bands (num_lw_bands)
-
 !-------------------------------------------------------------------
 !    define variables which denote whether microphysically-based cloud
 !    radiative properties will be defined for the longwave and shortwave
@@ -294,7 +275,7 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !    then do_lw_micro will be .true..
 !----------------------------------------------------------------------
      !if (Lw_control%do_lwcldemiss) then
-      if (num_lw_bands > 1) then
+      if (Cldrad_control%num_lw_cloud_bands > 1) then
         Cldrad_control%do_lw_micro = .true.
       endif
 !BW   if (Sw_control%do_esfsw) then
@@ -436,7 +417,7 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
       if (Cldrad_control%do_bulk_microphys) then
         call bulkphys_rad_init (min_cld_drop_rad, max_cld_drop_rad, &
                                 min_cld_ice_size, max_cld_ice_size, &
-                                pref, lonb, latb, num_sw_bands, num_lw_bands, &
+                                pref, lonb, latb, &
                                 Cldrad_control)
       endif
 
@@ -451,7 +432,7 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
                                   min_cld_ice_size, max_cld_ice_size, &
                                         axes, Time, &
                                   donner_meso_is_largescale, &
-                                  num_sw_bands, num_lw_bands, Cldrad_control)
+                                  Cldrad_control)
       endif
 
 !--------------------------------------------------------------------
@@ -1086,22 +1067,27 @@ type(cldrad_properties_type),   intent(inout) :: Cldrad_props
 !                      [ dimensionless ]
 !
 !---------------------------------------------------------------------
-      integer :: n
+      integer :: n, nlwcb, nswcb
+
+!-------------------------------------------------------------------
+
+      nlwcb = Cldrad_control%num_lw_cloud_bands
+      nswcb = Cldrad_control%num_sw_cloud_bands
 
 !-------------------------------------------------------------------
 !    allocate the arrays used to define the longwave cloud radiative
 !    properties. initialize to appropriate non-cloudy values.
 !--------------------------------------------------------------------
       if (Cldrad_control%do_ica_calcs) then
-        allocate (Cldrad_props%emmxolw  (ix, jx, kx, num_lw_bands,num_lw_bands) )
-        allocate (Cldrad_props%emrndlw  (ix, jx, kx, num_lw_bands,num_lw_bands) )
-        allocate (Cldrad_props%abscoeff (ix, jx, kx, num_lw_bands,num_lw_bands) )
-        allocate (Cldrad_props%cldemiss (ix, jx, kx, num_lw_bands,num_lw_bands) )
+        allocate (Cldrad_props%emmxolw  (ix, jx, kx, nlwcb, nlwcb) )
+        allocate (Cldrad_props%emrndlw  (ix, jx, kx, nlwcb, nlwcb) )
+        allocate (Cldrad_props%abscoeff (ix, jx, kx, nlwcb, nlwcb) )
+        allocate (Cldrad_props%cldemiss (ix, jx, kx, nlwcb, nlwcb) )
       else
-        allocate (Cldrad_props%emmxolw  (ix, jx, kx, num_lw_bands,1) )
-        allocate (Cldrad_props%emrndlw  (ix, jx, kx, num_lw_bands,1) )
-        allocate (Cldrad_props%abscoeff (ix, jx, kx, num_lw_bands,1) )
-        allocate (Cldrad_props%cldemiss (ix, jx, kx, num_lw_bands,1) )
+        allocate (Cldrad_props%emmxolw  (ix, jx, kx, nlwcb, 1) )
+        allocate (Cldrad_props%emrndlw  (ix, jx, kx, nlwcb, 1) )
+        allocate (Cldrad_props%abscoeff (ix, jx, kx, nlwcb, 1) )
+        allocate (Cldrad_props%cldemiss (ix, jx, kx, nlwcb, 1) )
       endif
       Cldrad_props%emmxolw           = 1.0E+00
       Cldrad_props%emrndlw           = 1.0E+00
@@ -1113,16 +1099,13 @@ type(cldrad_properties_type),   intent(inout) :: Cldrad_props
 !    radiative properties.
 !---------------------------------------------------------------------
       if (Cldrad_control%do_ica_calcs) then
-        allocate (Cldrad_props%cldext  (ix, jx, kx, num_sw_bands, &
-                  num_sw_bands) )
-        allocate (Cldrad_props%cldsct  (ix, jx, kx, num_sw_bands, &
-                  num_sw_bands) )
-        allocate (Cldrad_props%cldasymm(ix, jx, kx, num_sw_bands, &
-                  num_sw_bands) )
+        allocate (Cldrad_props%cldext  (ix, jx, kx, nswcb, nswcb) )
+        allocate (Cldrad_props%cldsct  (ix, jx, kx, nswcb, nswcb) )
+        allocate (Cldrad_props%cldasymm(ix, jx, kx, nswcb, nswcb) )
       else
-        allocate (Cldrad_props%cldext  (ix, jx, kx, num_sw_bands, 1))
-        allocate (Cldrad_props%cldsct  (ix, jx, kx, num_sw_bands, 1))
-        allocate (Cldrad_props%cldasymm(ix, jx, kx, num_sw_bands, 1))
+        allocate (Cldrad_props%cldext  (ix, jx, kx, nswcb, 1))
+        allocate (Cldrad_props%cldsct  (ix, jx, kx, nswcb, 1))
+        allocate (Cldrad_props%cldasymm(ix, jx, kx, nswcb, 1))
       endif
       Cldrad_props%cldsct            = 0.0E+00
       Cldrad_props%cldext            = 0.0E+00
@@ -1134,10 +1117,10 @@ type(cldrad_properties_type),   intent(inout) :: Cldrad_props
 !---------------------------------------------------------------------
 
       do n = 1, size(Microrad_props(:))
-        allocate (Microrad_props(n)%cldext  (ix, jx, kx, num_sw_bands))
-        allocate (Microrad_props(n)%cldsct  (ix, jx, kx, num_sw_bands))
-        allocate (Microrad_props(n)%cldasymm(ix, jx, kx, num_sw_bands))
-        allocate (Microrad_props(n)%abscoeff (ix, jx, kx, num_lw_bands))
+        allocate (Microrad_props(n)%cldext   (ix, jx, kx, nswcb))
+        allocate (Microrad_props(n)%cldsct   (ix, jx, kx, nswcb))
+        allocate (Microrad_props(n)%cldasymm (ix, jx, kx, nswcb))
+        allocate (Microrad_props(n)%abscoeff (ix, jx, kx, nlwcb))
         Microrad_props(n)%cldext   = 0.
         Microrad_props(n)%cldsct   = 0.
         Microrad_props(n)%cldasymm = 1.
