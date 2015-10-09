@@ -855,8 +855,8 @@ logical,         intent(in) :: do_lwaerosol
 !--------------------------------------------------------------------
 !    names for special diagnostics fields
 !-------------------------------------------------------------------
-     spec_names = (/character(len=16) :: '200hPa', 'lin_trop', 'therm_trop', '1_Pa' /)
-     spec_long_names = (/character(len=24) :: '200 hPa', 'linear tropopause', &
+     spec_names = (/ character(len=16) :: '200hPa', 'lin_trop', 'therm_trop', '1_Pa' /)
+     spec_long_names = (/ character(len=24) :: '200 hPa', 'linear tropopause', &
                           'thermo tropopause', '1 hPa' /)
 
 !-------------------------------------------------------------------
