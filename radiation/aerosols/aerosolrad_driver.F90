@@ -27,8 +27,7 @@ use aerosolrad_package_mod, only: aerosolrad_package_init,    &
                                   aerosolrad_package_time_vary, &
                                   aerosol_radiative_properties, &
                                   aerosolrad_package_end, &
-                                  number_of_lw_aerosol_bands, &
-                                  aerosolrad_diag_dealloc
+                                  number_of_lw_aerosol_bands
 
 !--------------------------------------------------------------------
 
@@ -312,7 +311,8 @@ type(aerosolrad_diag_type), intent(inout) :: Aerosolrad_diags
 !---------------------------------------------------------------------
 
       call aerosol_dealloc (Aerosol)
-      call aerosolrad_diag_dealloc (Aerosolrad_diags)
+     !call aerosolrad_diag_dealloc (Aerosolrad_diags)
+      call Aerosolrad_diags%dealloc
 
 !-------------------------------------------------------------------
 

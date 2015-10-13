@@ -31,13 +31,10 @@ use cloudrad_types_mod,    only: cld_specification_type, &
 
 use cloud_spec_mod,        only: cloud_spec_init, &
                                  cloud_spec_end, &
-                                 cloud_spec, &
-                                 cloud_spec_dealloc, &
-                                 dealloc_microphysics_type
+                                 cloud_spec
 
 use cloudrad_package_mod,  only: cloudrad_package_init, &
                                  cloud_radiative_properties, &
-                                 cldrad_props_dealloc, &
                                  cloudrad_package_end
 
 !--------------------------------------------------------------------
@@ -57,8 +54,6 @@ character(len=128) :: tagname = '$Name$'
 public    cloudrad_driver_init, &
           cloudrad_driver, &
           cloudrad_driver_end
-
-public    cloud_spec_dealloc
 
 !--------------------------------------------------------------------
 !------- namelist ---------
@@ -241,7 +236,7 @@ type(microphysics_type), allocatable, dimension(:) :: Cloud_microphys
 !                     cloud schemes, passed through to lower
 !                     level routines
 
-integer :: i, istrat
+integer :: n
 
 !-------------------------------------------------------------------
 !    verify that this module has been initialized. if not, exit.
@@ -284,7 +279,10 @@ integer :: i, istrat
 !    deallocate the components of the derived type arrays
 !---------------------------------------------------------------------
 
-      call dealloc_microphysics_type (Cldrad_control, Cloud_microphys)
+      do n = 1, size(Cloud_microphys,1)
+        call Cloud_microphys(n)%dealloc(Cldrad_control)
+      enddo
+      deallocate(Cloud_microphys)
 
 !---------------------------------------------------------------------
 

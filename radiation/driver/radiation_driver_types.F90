@@ -207,7 +207,7 @@ type rad_output_type
      contains
          procedure :: alloc=>rad_output_alloc
          procedure :: dealloc=>rad_output_dealloc
-!        procedure :: initvalues=>rad_output_init
+         procedure :: initvalues=>rad_output_init
 end type rad_output_type
 
 public :: rad_output_alloc, rad_output_dealloc, rad_output_init
@@ -347,7 +347,7 @@ end subroutine rad_output_dealloc
 
 subroutine rad_output_init (Rad_output)
 
-type(rad_output_type), intent(inout)  ::  Rad_output
+class(rad_output_type), intent(inout)  ::  Rad_output
 !---------------------------------------------------------------------
 !    initializes radiative fluxes and tendencies which must be
 !    saved between timesteps (these are used on every timestep,

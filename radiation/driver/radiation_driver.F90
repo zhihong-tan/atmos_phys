@@ -145,12 +145,10 @@ use aerosolrad_driver_mod, only: aerosolrad_driver_init, &
 
 use cloudrad_driver_mod,   only: cloudrad_driver_init, &
                                  cloudrad_driver, &
-                                 cloudrad_driver_end, &
-                                 cloud_spec_dealloc
+                                 cloudrad_driver_end
 
 use cloudrad_diagnostics_mod,      &
-                           only: model_micro_dealloc, &
-                                 obtain_cloud_tau_and_em, &
+                           only: obtain_cloud_tau_and_em, &
                                  modis_yim, modis_cmip
 
 use radiative_gases_mod,   only: radiative_gases_init,   &
@@ -236,7 +234,6 @@ private  &
           return_cosp_inputs, &
           define_atmos_input_fields, atmos_input_dealloc, &
           define_surface, surface_dealloc, &
-          microphys_dealloc, &
 
 ! called from radiation_driver_time_vary:
           define_rad_times, &
@@ -1189,8 +1186,8 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
            'radiation to be calculated on first step: no restart file&
                                                  & present', NOTE)
           endif
-         !call Rad_output%initvalues
-          call rad_output_init (Rad_output)
+          call Rad_output%initvalues
+         !call rad_output_init (Rad_output)
           if (mpp_pe() == mpp_root_pe() ) then
             call error_mesg ('radiation_driver_mod', &
            'no acceptable radiation restart file present; therefore'//&
@@ -1214,8 +1211,8 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
            & this is a scheduled radiation step;  if it is not, &
                            &restart seamlessness will be lost ', NOTE)
      endif
-    !call Rad_output%initvalues
-     call rad_output_init (Rad_output)
+     call Rad_output%initvalues
+    !call rad_output_init (Rad_output)
    endif ! (using_restart_file)
 
 !--------------------------------------------------------------------
@@ -2240,9 +2237,9 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !---------------------------------------------------------------------
       if (do_rad) then
         call Rad_gases%dealloc
-        call cloud_spec_dealloc (Cldrad_control, Cld_spec)   !BW, Lsc_microphys)
+        call Cld_spec%dealloc (Cldrad_control)   !BW, Lsc_microphys)
         call atmos_input_dealloc (Atmos_input)
-        call microphys_dealloc (Cldrad_control, Model_microphys)
+        call Model_microphys%dealloc (Cldrad_control)
       endif
 
 !BW   call surface_dealloc (Surface)
@@ -3206,36 +3203,6 @@ type(atmos_input_type), intent(inout) :: Atmos_input
 
 
 end subroutine atmos_input_dealloc 
-
-
-!#####################################################################
-
-subroutine microphys_dealloc (Cldrad_control, Model_microphys)
- 
-type(cloudrad_control_type), intent(in)    :: Cldrad_control
-type(microphysics_type),     intent(inout) :: Model_microphys
- 
-!----------------------------------------------------------------------
-!   microphys_dealloc calls model_micro_dealloc to deallocate the 
-!   array components of the microphysics_type structure Model_microphys.
-!----------------------------------------------------------------------
-
-!-------------------------------------------------------------------
-!    verify that this module has been initialized. if not, exit.
-!-------------------------------------------------------------------
-      if (.not. module_is_initialized)   &
-          call error_mesg ('radiation_driver_mod',  &
-                 'module has not been initialized', FATAL)
-
-!---------------------------------------------------------------------
-!    deallocate the components of module variable Model_microphys.
-!---------------------------------------------------------------------
-      call model_micro_dealloc (Cldrad_control, Model_microphys)
-
-!--------------------------------------------------------------------
- 
-
-end subroutine microphys_dealloc
 
 
 !#####################################################################
