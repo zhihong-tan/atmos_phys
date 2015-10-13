@@ -3061,7 +3061,6 @@ type(surface_type),      intent(inout)           :: Surface
 end subroutine define_surface    
 
 
-
 !#####################################################################
 ! <SUBROUTINE NAME="surface_dealloc">
 !  <OVERVIEW>
@@ -3666,37 +3665,7 @@ subroutine conc_rad_register_restart(fname, Rad_flux, Exch_ctrl, Atm_block)
    ix = Atm_block%iec-Atm_block%isc+1
    jx = Atm_block%jec-Atm_block%jsc+1
    npz = Atm_block%npz
-   allocate (Restart%tdt_rad               (ix,jx,npz), &
-             Restart%tdt_lw                (ix,jx,npz), &
-             Restart%flux_sw               (ix,jx),     &
-             Restart%flux_sw_dir           (ix,jx),     &
-             Restart%flux_sw_dif           (ix,jx),     &
-             Restart%flux_sw_down_vis_dir  (ix,jx),     &
-             Restart%flux_sw_down_vis_dif  (ix,jx),     &
-             Restart%flux_sw_down_total_dir(ix,jx),     &
-             Restart%flux_sw_down_total_dif(ix,jx),     &
-             Restart%flux_sw_vis           (ix,jx),     &
-             Restart%flux_sw_vis_dir       (ix,jx),     &
-             Restart%flux_sw_vis_dif       (ix,jx),     &
-             Restart%flux_lw               (ix,jx),     &
-             Restart%coszen                (ix,jx),     &
-             Restart%extinction            (ix,jx,npz)  )
-
-   Restart%tdt_rad               =0.
-   Restart%tdt_lw                =0.
-   Restart%flux_sw               =0.
-   Restart%flux_sw_dir           =0.
-   Restart%flux_sw_dif           =0.
-   Restart%flux_sw_down_vis_dir  =0.
-   Restart%flux_sw_down_vis_dif  =0.
-   Restart%flux_sw_down_total_dir=0.
-   Restart%flux_sw_down_total_dif=0.
-   Restart%flux_sw_vis           =0.
-   Restart%flux_sw_vis_dir       =0.
-   Restart%flux_sw_vis_dif       =0.
-   Restart%flux_lw               =0.
-   Restart%coszen                =0.
-   Restart%extinction            =0.
+   call Restart%alloc (ix,jx,npz)
 
    id_restart = register_restart_field(Til_restart_conc, fname, 'tdt_rad',                Restart%tdt_rad)
    id_restart = register_restart_field(Til_restart_conc, fname, 'tdt_lw',                 Restart%tdt_lw)
