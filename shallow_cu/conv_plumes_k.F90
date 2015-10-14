@@ -2249,7 +2249,7 @@ contains
                              qs, ier, dqsdT=dqs) 
           def=(hcevap*sd%qs(k) - sd%qv(k))/(1.+(HL*hcevap*dqs/Uw_p%Cp_Air ))
           def=evef*def
-          def=MIN( def, prec/mass(k) )
+          def=MIN( def, prec/mass(k)-(1.e-15) )
           def=MAX( def, 0.0)
        else
           def=0.0
