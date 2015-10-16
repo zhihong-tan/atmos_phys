@@ -89,7 +89,7 @@ namelist /atmos_co2_nml/  &
 public :: co2_radiation_override, do_co2_emissions
 
 logical :: module_is_initialized = .FALSE.
-
+integer :: logunit
 
 !---- version number -----
 character(len=128) :: version = '$$'
@@ -162,7 +162,7 @@ character(len=256), parameter   :: note_header =                                
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
 
-integer   :: i,j,k,id,jd,kd, logunit
+integer   :: i,j,k,id,jd,kd
 logical   :: sent
 logical   :: used
 real      :: restore_co2_dvmr = -1
@@ -173,7 +173,6 @@ id=size(co2,1); jd=size(co2,2); kd=min(size(co2,3),restore_klimit)
 
 co2_restore(:,:,:)=0.0
 
-logunit=stdlog()
 if (ind_co2 > 0 .and. do_co2_restore) then
 
 ! input is in dvmr (mol/mol)
@@ -253,11 +252,8 @@ character(len=256), parameter   :: warn_header =                                
      '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 character(len=256), parameter   :: note_header =                                &
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-integer :: logunit
 logical   :: used
 !-----------------------------------------------------------------------
-
-logunit=stdlog()
 
 if (ind_co2 > 0 .and. co2_radiation_override) then
 
@@ -348,7 +344,7 @@ character(len=256), parameter   :: note_header =                                
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
 
-integer   :: i,j,k,id,jd,kd,kb, logunit
+integer   :: i,j,k,id,jd,kd,kb
 logical   :: sent
 real, dimension(size(co2,1),size(co2,2),size(co2,3)) ::  co2_emis_source
 real, dimension(size(co2,1),size(co2,2)) :: co2_emis2d
@@ -366,7 +362,6 @@ co2_emis2d(:,:)=0.0
 co2_emis_source(:,:,:)=0.0
 co2_emiss_dt(:,:,:)=0.0
 
-logunit=stdlog()
 if (ind_co2 > 0 .and. do_co2_emissions) then
 
 
@@ -492,20 +487,19 @@ character(len=256), parameter   :: warn_header =                                
 character(len=256), parameter   :: note_header =                                &
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
-integer :: logunit
+integer :: outunit
 
 if ( .not. module_is_initialized) then
 
 !----- set initial value of carbon ------------
-
+  logunit=stdlog()
   call tracer_manager_init      ! need to call here since the ocean pes never call it
   n = get_tracer_index(MODEL_ATMOS,'co2')
   if (n > 0) then
     ind_co2 = n
     if (ind_co2 > 0) then
-      logunit=stdout()
-      write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
-      logunit=stdlog()
+      outunit=stdout()
+      write (outunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
       write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
     endif
     ind_sphum = get_tracer_index(MODEL_ATMOS,'sphum')
@@ -561,10 +555,11 @@ integer, dimension(3), intent(in)                   :: axes
 !         io         error status returned from io operation
 !-----------------------------------------------------------------------
 !
-integer :: ierr, unit, io, logunit
+integer :: ierr, unit, io
 integer :: n
 real    :: missing_value = -1.e10
 character(len=64) :: desc
+integer :: outunit
 !
 !-----------------------------------------------------------------------
 !     local parameters
@@ -613,9 +608,8 @@ character(len=256), parameter   :: note_header =                                
 n = get_tracer_index(MODEL_ATMOS,'co2')
 if (n > 0) then
   ind_co2 = n
-    logunit=stdout()
-    write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
-    logunit=stdlog()
+    outunit=stdout()
+    write (outunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
     write (logunit,*) trim(note_header), ' CO2 was initialized as tracer number ', ind_co2
 
  ! initialize diagnostics
@@ -648,7 +642,6 @@ if (n > 0) then
 
 endif
 
-logunit=stdlog()
 if (.not.(ind_co2 > 0 .and. do_co2_restore)) then
    if (mpp_pe() == mpp_root_pe() ) &
      write (logunit,*)' CO2 restoring not active:do_co2_restore= ',do_co2_restore
