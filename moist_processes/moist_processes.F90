@@ -2095,6 +2095,7 @@ logical, intent(out), dimension(:,:)     :: convect
      used = send_data (id_uw_precip, rain_uw + snow_uw, Time, is, js)
    endif
    used = send_data (id_uw_snow, snow_uw, Time, is, js)
+
  if (do_uw_conv) then
    used = send_data (id_tdt_uw, ttnd_uw, Time, is, js, 1, rmask=mask)
    used = send_data (id_qdt_uw, qtnd_uw, Time, is, js, 1, rmask=mask)
