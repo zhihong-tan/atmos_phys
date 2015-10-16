@@ -7,7 +7,7 @@ use mpp_mod,            only:  input_nml_file
 use fms_mod,            only:  open_namelist_file, mpp_pe, &
                                mpp_root_pe, stdlog, fms_init, &
                                write_version_number, file_exist, &
-                               check_nml_error, &
+                               check_nml_error, close_file, &
                                error_mesg, FATAL, NOTE
 use time_manager_mod,   only:  time_type
 use constants_mod,      only:  RADIAN
