@@ -44,7 +44,7 @@ MODULE CONV_PLUMES_k_MOD
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
-     logical :: use_new_let, do_subcloud_flx, use_lcl_only
+     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -2026,17 +2026,29 @@ contains
           ct%rain  = ct%rain  + cp%pptr(k)
        end do
        if (cpn%do_pevap .and. ct%snow+ct%rain > 0.) then
+        if (cpn%do_new_pevap) then
+           if (.not.sd%coldT) then
+              call precip_evap (sd, cp, cpn, ct, Uw_p, dpevap)
+              ct%tten (:)=ct%tten (:)+ct%tevap(:)
+              ct%qvten(:)=ct%qvten(:)+ct%qevap(:)
+              ct%qctten(:)=ct%qctten(:)+ct%qevap (:)
+              ct%pflx  (:)=ct%pflx  (:)-ct%pflx_e(:)
+              !ct%trwet(:,:)=ct%trwet(:,:)+ct%trevp(:,:)
+	      ct%rain  = ct%rain - dpevap
+           end if
+	else
           call precip_evap (sd, cp, cpn, ct, Uw_p, dpevap)
           ct%tten (:)=ct%tten (:)+ct%tevap(:)
           ct%qvten(:)=ct%qvten(:)+ct%qevap(:)
           ct%qctten(:)=ct%qctten(:)+ct%qevap (:)
           ct%pflx  (:)=ct%pflx  (:)-ct%pflx_e(:)
           !ct%trwet(:,:)=ct%trwet(:,:)+ct%trevp(:,:)
-         if (sd%coldT) then
+          if (sd%coldT) then
              ct%snow  = ct%snow - dpevap
           else
              ct%rain  = ct%rain - dpevap
           end if
+        end if
        end if
     end if
 
@@ -2249,7 +2261,7 @@ contains
                              qs, ier, dqsdT=dqs) 
           def=(hcevap*sd%qs(k) - sd%qv(k))/(1.+(HL*hcevap*dqs/Uw_p%Cp_Air ))
           def=evef*def
-          def=MIN( def, prec/mass(k) )
+          def=MIN( def, prec/mass(k) - (1.e-15) )
           def=MAX( def, 0.0)
        else
           def=0.0
