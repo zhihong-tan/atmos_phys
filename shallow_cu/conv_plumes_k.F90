@@ -40,7 +40,7 @@ MODULE CONV_PLUMES_k_MOD
      integer :: mixing_assumption, mp_choice
      real :: rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit,  &
-             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep,  &
+             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
@@ -727,8 +727,8 @@ contains
           !if (wtw.le.0. .and. k <= ac%klfc) then
           !nnn = max(ac%klnb, ac%klfc)
           !if (wtw.le.0. .and. k <= (ac%klfc+nnn)*0.5) then
-	  if (ac%plfc.eq.0. .or. ac%plfc.lt.50000.) then 
-	     plfc_tmp=50000.
+	  if (ac%plfc.eq.0. .or. ac%plfc.lt.cpn%plev_for) then 
+	     plfc_tmp=cpn%plev_for
 	  else
 	     plfc_tmp=ac%plfc
           endif
