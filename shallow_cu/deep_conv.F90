@@ -93,6 +93,7 @@ contains
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_new_pevap       = cpn % do_new_pevap
+    dpn % plev_for           = cpn % plev_for
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen

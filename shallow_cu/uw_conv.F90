@@ -134,6 +134,7 @@ MODULE UW_CONV_MOD
   logical :: zero_out_conv_area = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
+  real    :: plev_for   = 50000.
   real    :: tke0 = 0.1
   real    :: gama = 0.
   real    :: hgt0 = 500.
@@ -169,7 +170,7 @@ MODULE UW_CONV_MOD
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
-       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap
+       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -1142,6 +1143,7 @@ contains
     cpn % use_new_let = use_new_let
     cpn % use_lcl_only= use_lcl_only
     cpn % do_new_pevap= do_new_pevap
+    cpn % plev_for = plev_for
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
