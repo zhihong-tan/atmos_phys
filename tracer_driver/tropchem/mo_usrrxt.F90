@@ -516,6 +516,7 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
 !-----------------------------------------------------------------
 !         ... n2o5 --> 2*hno3
 !             no3 --> hno3
+!This reaction is updated from JPL11. (jmao,04/30/2013)         
 !-----------------------------------------------------------------
 !        ... first compute the relative humidity
 !-----------------------------------------------------------------
@@ -570,6 +571,24 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
             end if
          end if
 elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
+!-----------------------------------------------------------------
+!        ... ho2 + ho2 --> h2o2
+!        note: this rate involves the water vapor number density
+!-----------------------------------------------------------------
+         if( usr9_ndx > 0 ) then
+            if( indexh2o > 0 ) then
+               tmp_indexh2o = indexh2o
+               fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp( 2200.*tinv(:) )
+            else if( h2o_ndx > 0 ) then
+               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp( 2200.*tinv(:) )
+            else
+               fc(:) = 1.
+            end if
+            ko(:)   = 3.0e-13 * exp( 460.*tinv(:) )
+            kinf(:) = 2.1e-33 * m(:,k) * exp( 920.*tinv(:) )
+            rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
+         end if
+
 !-----------------------------------------------------------------
 !        ... first compute the relative humidity
 !-----------------------------------------------------------------
