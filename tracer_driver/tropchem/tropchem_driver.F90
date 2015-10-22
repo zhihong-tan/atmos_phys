@@ -106,6 +106,7 @@ use fms_io_mod, only: read_data
 
 use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1p, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
+use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
 implicit none
 
 private
@@ -201,6 +202,7 @@ real               :: max_rh_aerosol             = 9999      !max rh used for ae
 logical            :: limit_no3                  = .true.   !for isorropia/stratosphere
 
 character(len=64)  :: aerosol_thermo_method = 'legacy'               ! other choice isorropia
+character(len=64)  :: het_chem_type          = 'legacy'
 real               :: gN2O5                 = 0.1
 real               :: gNO2                  = 1e-4
 real               :: gSO2                  = 0.
@@ -1665,6 +1667,12 @@ end if
    if(mpp_pe() == mpp_root_pe()) write(*,*) 'cloud_H',trop_option%cloud_H
 
 
+if ( trim(het_chem_type) == 'legacy' ) then
+   trop_option%het_chem = het_chem_legacy
+   if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacy_het_chem'
+elseif ( trim(het_chem_type) == 'j1m' ) then
+   trop_option%het_chem = het_chem_j1m
+end if
 
 
 

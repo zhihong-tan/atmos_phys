@@ -25,12 +25,12 @@
                  c2h5o2_ndx, isopo2_ndx, macro2_ndx, mco3_ndx, c3h7o2_ndx, &
                  ro2_ndx, xo2_ndx, no_ndx, no2_ndx, no3_ndx, n2o5_ndx, &
                  c2h4_ndx, c3h6_ndx, isop_ndx, mvk_ndx, c10h16_ndx
-      integer :: ox_p1_ndx, ox_p2_ndx, ox_p3_ndx, ox_p4_ndx, ox_p5_ndx, &
-                 ox_p6_ndx, ox_p7_ndx, ox_p8_ndx, ox_p9_ndx, ox_p10_ndx, &
-                 ox_p11_ndx
-      integer :: ox_l1_ndx, ox_l2_ndx, ox_l3_ndx, ox_l4_ndx, ox_l5_ndx, &
-                 ox_l6_ndx, ox_l7_ndx, ox_l8_ndx, ox_l9_ndx, usr4_ndx, &
-                 usr16_ndx, usr17_ndx
+      integer :: op_ho2_ndx, op_mo2_ndx, op_ch3co3_ndx, op_po2_ndx, op_c2h5o2_ndx, &
+                 op_isopo2_ndx, op_macro2_ndx, op_mco3_ndx, op_c3h7o2_ndx, op_ro2_ndx, &
+                 op_xo2_ndx
+      integer :: ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ox_c3h6_ndx, ol_isop_ndx, &
+                 ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_terp_ndx, uoh_no2_ndx, &
+                 n2o5h_ndx, no3h_ndx
       logical :: do_ox_pl = .true.
       integer :: verbose
       real    :: r2d
@@ -166,38 +166,38 @@ logical                       :: module_is_initialized = .false.
       end do
 
       if( ox_ndx > 0 ) then
-         ox_p1_ndx = get_rxt_ndx( 'ox_p1' )
-         ox_p2_ndx = get_rxt_ndx( 'ox_p2' )
-         ox_p3_ndx = get_rxt_ndx( 'ox_p3' )
-         ox_p4_ndx = get_rxt_ndx( 'ox_p4' )
-         ox_p5_ndx = get_rxt_ndx( 'ox_p5' )
-         ox_p6_ndx = get_rxt_ndx( 'ox_p6' )
-         ox_p7_ndx = get_rxt_ndx( 'ox_p7' )
-         ox_p8_ndx = get_rxt_ndx( 'ox_p8' )
-         ox_p9_ndx = get_rxt_ndx( 'ox_p9' )
-         ox_p10_ndx = get_rxt_ndx( 'ox_p10' )
-         ox_p11_ndx = get_rxt_ndx( 'ox_p11' )
-         wrk(1:11) = (/ ox_p1_ndx, ox_p2_ndx, ox_p3_ndx, ox_p4_ndx, ox_p5_ndx, &
-                        ox_p6_ndx, ox_p7_ndx, ox_p8_ndx, ox_p9_ndx, ox_p10_ndx, ox_p11_ndx /)
+         op_ho2_ndx = get_rxt_ndx( 'op_ho2' )
+         op_mo2_ndx = get_rxt_ndx( 'op_mo2' )
+         op_po2_ndx = get_rxt_ndx( 'op_po2' )
+         op_ch3co3_ndx = get_rxt_ndx( 'op_ch3co3' )
+         op_c2h5o2_ndx = get_rxt_ndx( 'op_c2h5o2' )
+         op_isopo2_ndx = get_rxt_ndx( 'op_isopo2' )
+         op_macro2_ndx = get_rxt_ndx( 'op_macro2' )
+         op_mco3_ndx = get_rxt_ndx( 'op_mco3' )
+         op_c3h7o2_ndx = get_rxt_ndx( 'op_c3h7o2' )
+         op_ro2_ndx = get_rxt_ndx( 'op_ro2' )
+         op_xo2_ndx = get_rxt_ndx( 'op_xo2' )
+         wrk(1:11) = (/ op_ho2_ndx, op_mo2_ndx, op_po2_ndx, op_ch3co3_ndx, op_c2h5o2_ndx, &
+                        op_isopo2_ndx, op_macro2_ndx, op_mco3_ndx, op_c3h7o2_ndx, op_ro2_ndx, op_xo2_ndx /)
          if( any( wrk(1:11) < 1 ) ) then
             do_ox_pl = .false.
          end if
          if( do_ox_pl ) then
-            ox_l1_ndx = get_rxt_ndx( 'ox_l1' )
-            ox_l2_ndx = get_rxt_ndx( 'ox_l2' )
-            ox_l3_ndx = get_rxt_ndx( 'ox_l3' )
-            ox_l4_ndx = get_rxt_ndx( 'ox_l4' )
-            ox_l5_ndx = get_rxt_ndx( 'ox_l5' )
-            ox_l6_ndx = get_rxt_ndx( 'ox_l6' )
-            ox_l7_ndx = get_rxt_ndx( 'ox_l7' )
-            ox_l8_ndx = get_rxt_ndx( 'ox_l8' )
-            ox_l9_ndx = get_rxt_ndx( 'ox_l9' )
-            usr4_ndx = get_rxt_ndx( 'usr4' )
-            usr16_ndx = get_rxt_ndx( 'usr16' )
-            usr17_ndx = get_rxt_ndx( 'usr17' )
-            wrk(1:12) = (/ ox_l1_ndx, ox_l2_ndx, ox_l3_ndx, ox_l4_ndx, ox_l5_ndx, &
-                           ox_l6_ndx, ox_l7_ndx, ox_l8_ndx, ox_l9_ndx, usr4_ndx, &
-                           usr16_ndx, usr17_ndx /)
+            ol_o1d_ndx = get_rxt_ndx( 'o1_o1d' )
+            ol_oh_ndx = get_rxt_ndx( 'ol_oh' )
+            ol_ho2_ndx = get_rxt_ndx( 'ol_ho2' )
+            ol_c3h6_ndx = get_rxt_ndx( 'ol_c3h6' )
+            ol_isop_ndx = get_rxt_ndx( 'ol_isop' )
+            ol_c2h4_ndx = get_rxt_ndx( 'ol_c2h4' )
+            ol_mvk_ndx = get_rxt_ndx( 'ol_mvk' )
+            ol_macr_ndx = get_rxt_ndx( 'ol_macr' )
+            ol_terp_ndx = get_rxt_ndx( 'ol_terp' )
+            uoh_no2_ndx = get_rxt_ndx( 'uoh_no2' )
+            n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
+            no3_ndx = get_rxt_ndx( 'no3' )
+            wrk(1:12) = (/ ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ol_c3h6_ndx, ol_isop_ndx, &
+                           ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_terp_ndx, uoh_no2_ndx, &
+                           n2o5h_ndx, no3_ndx /)
             if( any( wrk(1:12) < 1 ) ) then
                do_ox_pl = .false.
             end if
@@ -757,17 +757,17 @@ iter_loop : &
 !                          write(*,*)'do_ox_pl is ', do_ox_pl
 			      if( do_ox_pl ) then
                                    prod_ox(indx) = &
-                                    (reaction_rates(indx,ox_p1_ndx)*base_sol(indx,ho2_ndx) &
-                                    + reaction_rates(indx,ox_p2_ndx) *base_sol(indx,ch3o2_ndx) &
-                                    + reaction_rates(indx,ox_p3_ndx) *base_sol(indx,po2_ndx) &
-                                    + reaction_rates(indx,ox_p4_ndx) *base_sol(indx,ch3co3_ndx) &
-                                    + reaction_rates(indx,ox_p5_ndx) *base_sol(indx,c2h5o2_ndx) &
-                                    + .88*reaction_rates(indx,ox_p6_ndx)*base_sol(indx,isopo2_ndx) &
-                                    + .985*reaction_rates(indx,ox_p7_ndx)*base_sol(indx,macro2_ndx) &
-                                    + reaction_rates(indx,ox_p8_ndx)*base_sol(indx,mco3_ndx) &
-                                    + reaction_rates(indx,ox_p9_ndx)*base_sol(indx,c3h7o2_ndx) &
-                                    + reaction_rates(indx,ox_p10_ndx)*base_sol(indx,ro2_ndx) &
-                                    + reaction_rates(indx,ox_p11_ndx)*base_sol(indx,xo2_ndx)) * base_sol(indx,no_ndx)
+                                    (reaction_rates(indx,op_ho2_ndx)*base_sol(indx,ho2_ndx) &
+                                    + reaction_rates(indx,op_mo2_ndx) *base_sol(indx,ch3o2_ndx) &
+                                    + reaction_rates(indx,op_po2_ndx) *base_sol(indx,po2_ndx) &
+                                    + reaction_rates(indx,op_ch3co3_ndx) *base_sol(indx,ch3co3_ndx) &
+                                    + reaction_rates(indx,op_c2h5o2_ndx) *base_sol(indx,c2h5o2_ndx) &
+                                    + .88*reaction_rates(indx,op_isopo2_ndx)*base_sol(indx,isopo2_ndx) &
+                                    + .985*reaction_rates(indx,op_macro2_ndx)*base_sol(indx,macro2_ndx) &
+                                    + reaction_rates(indx,op_mco3_ndx)*base_sol(indx,mco3_ndx) &
+                                    + reaction_rates(indx,op_c3h7o2_ndx)*base_sol(indx,c3h7o2_ndx) &
+                                    + reaction_rates(indx,op_ro2_ndx)*base_sol(indx,ro2_ndx) &
+                                    + reaction_rates(indx,op_xo2_ndx)*base_sol(indx,xo2_ndx)) * base_sol(indx,no_ndx)
 !                              end if
 !                          else
 !                              j = implicit%permute(cls_ndx)
@@ -803,21 +803,21 @@ iter_loop : &
 !             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
 !-----------------------------------------------------------------------
 !	                         k = indx
-                                   loss_ox(indx) = reaction_rates(indx,ox_l2_ndx) *base_sol(indx,oh_ndx) &
-                                   + reaction_rates(indx,ox_l3_ndx) *base_sol(indx,ho2_ndx) &
-                                   + reaction_rates(indx,ox_l6_ndx) *base_sol(indx,c2h4_ndx) &
-                                   + reaction_rates(indx,ox_l4_ndx) *base_sol(indx,c3h6_ndx) &
-                                   + .9*reaction_rates(indx,ox_l5_ndx) *base_sol(indx,isop_ndx) &
-                                   + .8*(reaction_rates(indx,ox_l7_ndx)*base_sol(indx,mvk_ndx) &
-                                         + reaction_rates(indx,ox_l8_ndx)*base_sol(indx,macro2_ndx)) &
-                                   + .235*reaction_rates(indx,ox_l9_ndx)*base_sol(indx,c10h16_ndx) &
-                                   + (reaction_rates(indx,usr4_ndx) * base_sol(indx,no2_ndx) * base_sol(indx,oh_ndx) &
-                                      + 3. * reaction_rates(indx,usr16_ndx) * base_sol(indx,n2o5_ndx) &
-                                      + 2. * reaction_rates(indx,usr17_ndx) * base_sol(indx,no3_ndx)) &
+                                   loss_ox(indx) = reaction_rates(indx,ol_oh_ndx) *base_sol(indx,oh_ndx) &
+                                   + reaction_rates(indx,ol_ho2_ndx) *base_sol(indx,ho2_ndx) &
+                                   + reaction_rates(indx,ol_c2h4_ndx) *base_sol(indx,c2h4_ndx) &
+                                   + reaction_rates(indx,ol_c3h6_ndx) *base_sol(indx,c3h6_ndx) &
+                                   + .9*reaction_rates(indx,ol_isop_ndx) *base_sol(indx,isop_ndx) &
+                                   + .8*(reaction_rates(indx,ol_mvk_ndx)*base_sol(indx,mvk_ndx) &
+                                         + reaction_rates(indx,ol_macr_ndx)*base_sol(indx,macro2_ndx)) &
+                                   + .235*reaction_rates(indx,ol_terp_ndx)*base_sol(indx,c10h16_ndx) &
+                                   + (reaction_rates(indx,uoh_no2_ndx) * base_sol(indx,no2_ndx) * base_sol(indx,oh_ndx) &
+                                      + 3. * reaction_rates(indx,n2o5h_ndx) * base_sol(indx,n2o5_ndx) &
+                                      + 2. * reaction_rates(indx,no3_ndx) * base_sol(indx,no3_ndx)) &
                                      /max( base_sol(indx,ox_ndx),1.e-20 )
 ! here I sperate the o1d term because we need ozone implicitly from o1d.
                                      loss_ox(indx)=loss_ox(indx)*base_sol(indx,ox_ndx)&
-                                   +reaction_rates(indx,ox_l1_ndx)*base_sol(indx,o1d_ndx)*base_sol(indx,h2o_ndx)
+                                   +reaction_rates(indx,ol_o1d_ndx)*base_sol(indx,o1d_ndx)*base_sol(indx,h2o_ndx)
                                    prod_ox(indx)=max(prod_ox(indx),0.0)
                                    loss_ox(indx)=max(loss_ox(indx),0.0)
                              end if
