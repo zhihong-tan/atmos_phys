@@ -588,6 +588,14 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
             kinf(:) = 2.1e-33 * m(:,k) * exp( 920.*tinv(:) )
             rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
          end if
+!-----------------------------------------------------------------
+!       ... DMS + OH -> .75 * SO2 
+!-----------------------------------------------------------------
+         if( uoh_dms_ndx > 0 ) then
+            ko(:) = 1. + 1.05e-5 * exp( 3644.*tinv(:) ) * 0.21
+            rxt(:,k,uoh_dms_ndx) = 8.2e-39 * exp( 5376.*tinv(:) ) & 
+                                 * m(:,k) * 0.21 / ko(:)
+         end if
 
 !-----------------------------------------------------------------
 !        ... first compute the relative humidity
