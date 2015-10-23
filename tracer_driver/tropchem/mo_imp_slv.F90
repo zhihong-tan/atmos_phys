@@ -28,7 +28,7 @@
       integer :: op_ho2_ndx, op_mo2_ndx, op_ch3co3_ndx, op_po2_ndx, op_c2h5o2_ndx, &
                  op_isopo2_ndx, op_macro2_ndx, op_mco3_ndx, op_c3h7o2_ndx, op_ro2_ndx, &
                  op_xo2_ndx
-      integer :: ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ox_c3h6_ndx, ol_isop_ndx, &
+      integer :: ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ol_c3h6_ndx, ol_isop_ndx, &
                  ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_terp_ndx, uoh_no2_ndx, &
                  n2o5h_ndx, no3h_ndx
       logical :: do_ox_pl = .true.
