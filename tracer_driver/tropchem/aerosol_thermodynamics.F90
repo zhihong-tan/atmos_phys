@@ -26,9 +26,7 @@ contains
     integer, intent(in) :: aerosol_thermo_type
 
     if (aerosol_thermo_type .eq. AERO_ISORROPIA) then
-!$OMP CRITICAL
        call isorropia_interface(rh, TK, pres, so4, nh3, nh4, hno3, no3)
-!$OMP END CRITICAL
     elseif ( aerosol_thermo_type .eq. AERO_LEGACY ) then
        call old_am3_interface(rh,TK,nh3,hno3,no3)
     end if
