@@ -59,7 +59,8 @@ logical                       :: module_is_initialized = .false.
 !       ... Dummy arguments
 !-----------------------------------------------------------------------
       integer,          intent(in) :: verbose
-
+      integer           NJ1, I, J, K
+      NJ1 =8 ! Use channel 8 to read files at the moment 
       uo_o2_ndx = get_rxt_ndx( 'uo_o2' )
       uno2_no3_ndx = get_rxt_ndx( 'uno2_no3' )
       un2o5_ndx = get_rxt_ndx( 'un2o5' )
@@ -575,7 +576,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
 !        ... ho2 + ho2 --> h2o2
 !        note: this rate involves the water vapor number density
 !-----------------------------------------------------------------
-         if( usr9_ndx > 0 ) then
+         if( uho2_ho2_ndx > 0 ) then
             if( indexh2o > 0 ) then
                tmp_indexh2o = indexh2o
                fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp( 2200.*tinv(:) )
@@ -586,7 +587,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
             end if
             ko(:)   = 3.0e-13 * exp( 460.*tinv(:) )
             kinf(:) = 2.1e-33 * m(:,k) * exp( 920.*tinv(:) )
-            rxt(:,k,usr9_ndx) = (ko(:) + kinf(:)) * fc(:)
+            rxt(:,k,uho2_ho2_ndx) = (ko(:) + kinf(:)) * fc(:)
          end if
 !-----------------------------------------------------------------
 !       ... DMS + OH -> .75 * SO2 
