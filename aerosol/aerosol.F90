@@ -445,12 +445,13 @@ character(len=64), dimension(:), optional, pointer :: aerosol_family_names
               data_names(Aerosol_tv%nfields)           = trim(tr_rad_name)
               aerosol_tracer_scale_factor(Aerosol_tv%nfields) = tr_rad_scale_factor
             endif
-
-            if ( trim(tracer_names(n)) .eq. "nh4" )                                            inh4 = n
-            if ( trim(tracer_names(n)) .eq. "nh4no3" .or. trim(tracer_names(n)) .eq. "nit" )    ino3 = n
-            if ( trim(tracer_names(n)) .eq. "so4" )                                            iso4 = n
           endif
-        end do
+
+          if ( trim(tracer_names(n)) .eq. "nh4" )                                            inh4 = n
+          if ( trim(tracer_names(n)) .eq. "nh4no3" .or. trim(tracer_names(n)) .eq. "nit" )   ino3 = n
+          if ( trim(tracer_names(n)) .eq. "so4" )                                            iso4 = n
+
+       end do
 
         if ( partition_nh4 ) then
            if ( iso4 .eq. 0 .or. inh4 .eq. 0 ) then
