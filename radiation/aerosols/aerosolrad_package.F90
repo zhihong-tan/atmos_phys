@@ -290,6 +290,17 @@ integer, dimension(0:100) ::  sulfate_indices = (/      &
                            70,70,70,75,75,75,75,75,80,80,80,80,82,82, &
                            84,84,86,86,88,88,90,91,92,93,94,95,96,97, &
                            98,99,100 /)
+
+!f1p
+integer, dimension(0:100) ::  nitrate_indices = (/      &
+                           30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
+                           30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
+                           30,30,30,30,30,35,35,35,35,35,40,40,40,40, &
+                           40,45,45,45,45,45,50,50,50,50,50,55,55,55, &
+                           55,55,60,60,60,60,60,65,65,65,65,65,70,70, &
+                           70,70,70,75,75,75,75,75,80,80,80,80,82,82, &
+                           84,84,86,86,88,88,90,91,92,93,94,95,96,97, &
+                           98,99,100 /)
 !yim
 integer, dimension(0:100) ::  sulfate_vol_indices = (/      &
                              100,98,98,96,96,94,94,92,92,90,90,88,88,86,86,84,84,82,82,80, &
@@ -306,6 +317,7 @@ namelist / aerosolrad_package_nml /                          &
                                     aerosol_data_set, &
                                     aerosol_optical_names, &
                                     sulfate_indices, &
+                                    nitrate_indices, &
                                     sulfate_vol_indices, &
                                     omphilic_indices, &
                                     bcphilic_indices, &
@@ -403,6 +415,8 @@ integer, PARAMETER ::  SEASALTF_FLAG = -9
 integer, PARAMETER ::  SEASALTC_FLAG = -10
 !yim
 integer, PARAMETER ::  BC_FLAG = -11
+!f1p
+integer, PARAMETER ::  NITRATE_FLAG = -12
 !integer, PARAMETER ::  NOT_IN_USE = -2000
 
 !----------------------------------------------------------------------
@@ -414,6 +428,7 @@ integer, dimension(:,:), allocatable :: sulfate_index_MOD
 integer, dimension(:),   allocatable :: optical_index_MOD
 integer, dimension(:),   allocatable :: omphilic_index_MOD
 integer, dimension(:),   allocatable :: bcphilic_index_MOD
+integer, dimension(:),   allocatable :: nitrate_index_MOD
 integer, dimension(:),   allocatable :: seasalt1_index_MOD
 integer, dimension(:),   allocatable :: seasalt2_index_MOD
 integer, dimension(:),   allocatable :: seasalt3_index_MOD
@@ -1843,6 +1858,7 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !    deallocate module arrays
 !---------------------------------------------------------------------
       if (allocated(sulfate_index_MOD )) deallocate(sulfate_index_MOD )
+      if (allocated(nitrate_index_MOD )) deallocate(nitrate_index_MOD )
       if (allocated(bcphilic_index_MOD)) deallocate(bcphilic_index_MOD)
       if (allocated(omphilic_index_MOD)) deallocate(omphilic_index_MOD)
       if (allocated(seasalt1_index_MOD)) deallocate(seasalt1_index_MOD)
@@ -2032,7 +2048,8 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
                 seasalt5_index_MOD(0:100 ), & 
                 seasalt_aitken_index_MOD(0:100 ), &
                 seasalt_fine_index_MOD(0:100 ), &
-                seasalt_coarse_index_MOD(0:100 ) )
+                seasalt_coarse_index_MOD(0:100 ), &
+                nitrate_index_mod(0:100))
       allocate (optical_index_MOD(nfields) )
       optical_index_MOD    = 0
       sulfate_index_MOD    = 0
@@ -2046,6 +2063,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
       seasalt_aitken_index_MOD = 0
       seasalt_fine_index_MOD   = 0
       seasalt_coarse_index_MOD = 0
+      nitrate_index_mod = 0
 
 !----------------------------------------------------------------------
 !    match aerosol optical property indices with aerosol indices.
@@ -2065,14 +2083,16 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
             isul = isul + 1
           endif
         else if (name_in == "omphilic" .or. name_in == "oc_hydrophilic") then
-            optical_index_MOD(n) = OMPHILIC_FLAG
+           optical_index_MOD(n) = OMPHILIC_FLAG
         else if (name_in == "bcphilic" .or. name_in == "bc_hydrophilic") then
-            optical_index_MOD(n) = BCPHILIC_FLAG
-            if (using_im_bcsul) then
+           optical_index_MOD(n) = BCPHILIC_FLAG
+           if (using_im_bcsul) then
               num_bc = num_bc +1
               bc_ind(ibc) = n
               ibc = ibc + 1
-            endif
+           endif
+        else if ( name_in == "nh4no3" .or. name_in == "nit" ) then
+            optical_index_mod(n) = NITRATE_FLAG           
         else if (name_in == "seasalt1") then
             optical_index_MOD(n) = SEASALT1_FLAG
         else if (name_in == "seasalt2") then
@@ -2221,6 +2241,13 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
        call optical_property_index ('sulfate', sulfate_indices, sulfate_index_MOD(:,0))
 
      endif !using_im_bssul
+
+!---------------------------------------------------------------------
+!    set up RH-dependent nitrate aerosol optical property indices.
+!    define the optical properties type for all possible values of 
+!    relative humidity.
+!-------------------------------------------------------------------
+     call optical_property_index ('nitrate', nitrate_indices, nitrate_index_MOD)
 
 !---------------------------------------------------------------------
 !    set up RH-dependent omphilic aerosol optical property indices.
@@ -3266,7 +3293,7 @@ real, intent(out), dimension (size(Aerosol%aerosol,1),  &
                                                      aerooptdepspec_cn
       integer, dimension (size(Aerosol%aerosol,1),  &
                           size(Aerosol%aerosol,2),  &
-                          size(Aerosol%aerosol,3),11)  :: opt_indices
+                          size(Aerosol%aerosol,3),12)  :: opt_indices
 
     ! real, dimension (size(Aerosol%aerosol,3)+1) :: bsum
 
@@ -3299,6 +3326,7 @@ real, intent(out), dimension (size(Aerosol%aerosol,1),  &
             opt_indices(i,j,k,9) = seasalt_aitken_index_MOD( irh )
             opt_indices(i,j,k,10) = seasalt_fine_index_MOD( irh )
             opt_indices(i,j,k,11) = seasalt_coarse_index_MOD( irh )
+            opt_indices(i,j,k,12) = nitrate_index_MOD( irh )
           end do
         end do
       end do
@@ -3638,6 +3666,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                   opt_indices(k,9) = seasalt_aitken_index_MOD( irh )
                   opt_indices(k,10) = seasalt_fine_index_MOD( irh )
                   opt_indices(k,11) = seasalt_coarse_index_MOD( irh )
+                  opt_indices(k,12) = nitrate_index_MOD( irh )
                 end do
 
 !---------------------------------------------------------------------
