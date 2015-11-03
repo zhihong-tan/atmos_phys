@@ -38,13 +38,13 @@ MODULE CONV_PLUMES_k_MOD
   public cpnlist
   type cpnlist
      integer :: mixing_assumption, mp_choice
-     real :: rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc
-     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit,  &
+     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
+     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
-     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap
+     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -748,6 +748,9 @@ contains
        if(wtw.lt.wtwtop) exit
 
        cp%wu(k) = sqrt(wtw)
+       if(cpn%do_limit_wmax) then
+         cp%wu(k)=min(cp%wu(k),cpn%wmax)
+       endif
        if(cp%wu(k).gt.100.)then
           !print *, 'Very big wu in UW-ShCu',bogbot,bogtop,expfac,cp%fer(k)
 	  cp%cush = -1
@@ -2118,33 +2121,37 @@ contains
 !    ct%cpool=-ct%cpool/ct%mslcl                   !unit:J/kg/s or m2/s2/s
 
 
-!   Add check to zero out tendencies if total UW causes the
-!   temperature to become unrealistically large
+!   Add check for tendencies larger than tten_max
     if (cpn%do_tten_max) then
       i = 0
       do k = 1,sd%kmax
-        if (ct%tten(k)*sd%delt+sd%t(k) > 363.15) then
+        if (ct%tten(k)*86400 > cpn%tten_max) then
           i = i + 1
         end if
       end do
       if (i > 0) then
-        print *, 'WARNING: zeroing out large T tendencies in UW'
-        ct%tten = 0
-        ct%qvten = 0
-        ct%qlten = 0
-        ct%qiten = 0
-        ct%qaten = 0
-        ct%qnten = 0
-        ct%uten  = 0
-        ct%qctten = 0
-        ct%pflx = 0
-        ct%trwet = 0
-        ct%snow = 0
-        ct%rain = 0
-        cp%umf = 0
-        cp%emf = 0
+        print *, 'WARNING: tendencies larger than tten_max occurs in UW'
+        write(*,"(A6,F5.2,A6,F5.2,A6,F5.2)"),'lat=',sd%lat, ';lon=',sd%lon, ';land=',sd%land, ';zs=', sd%zs(1)
+        write(*,*), 'num=',i, 'krel=',krel, 'let=',cp%let, 'ltop=',cp%ltop
+        write(*,*), 'mixing_assumption=',cpn%mixing_assumption,'forced_lifting=',cpn%do_forcedlifting
+        write(*,"(A6,F8.2,A6,F8.2)"), 'rain=',ct%rain*86400,'snow=',ct%snow*86400
+        write(*,"(15A6)"),'lev','pf','tten','buo','umf','wu','ufrc','hlten','qcten','ppflx',&
+			  'gumf','gemf','rei','fer','fdr'
+        do k=1,sd%kmax
+           xx1 = ct%hlten(k)/Uw_p%cp_air*86400.
+           xx2 = (Uw_p%HLv*ct%qlten(k)+Uw_p%HLs*ct%qiten(k))/Uw_p%cp_air*86400.
+           xx3 = (Uw_p%HLv*cp%pptr(k) +Uw_p%HLs*cp%ppti(k))*Uw_p%grav/sd%dp(k)/Uw_p%cp_air*86400
+	   x1  = -Uw_p%grav*cp%umf(k)*sd%ssthc(k)*86400
+	   x2  = -Uw_p%grav*cp%emf(k)*sd%ssthc(k)*86400
+           write(*,"(I5,11F8.2,4F8.5)"),k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
+                                       cp%wu(k),cp%ufrc(k),xx1,xx2,xx3,x1,x2,cp%emf(k),cp%rei(k),cp%fer(k),cp%fdr(k)
+        end do
+!        ct%tten  = 0; ct%qvten = 0; ct%qlten = 0; ct%qiten = 0;
+!        ct%qaten = 0; ct%qnten = 0; ct%uten  = 0; ct%qctten = 0
+!        ct%pflx  = 0; ct%trwet = 0; ct%snow  = 0; ct%rain   = 0
+!        cp%umf   = 0; cp%emf   = 0; 
       end if
-    end if  ! end maximum temperature tendency check
+    end if  ! end check for unrealistically large tendencies
 
 
   end subroutine cumulus_tend_k
