@@ -229,6 +229,7 @@ INTEGER, PARAMETER  :: max_strat_pts = 5
   real              :: rthresh        =  10.
   logical           :: use_kk_auto    =  .false.
   real              :: U_evap         =  1.0
+  real              :: U_evap_snow    =  1.0 !miz
   real              :: eros_scale     =  1.E-06
   logical           :: eros_choice    =  .false.
   real              :: eros_scale_c   =  8.E-06
@@ -295,7 +296,7 @@ INTEGER, PARAMETER  :: max_strat_pts = 5
 
 namelist / strat_cloud_nml /   &
        do_netcdf_restart, U00, u00_profile, rthresh, use_kk_auto, &
-       U_evap, eros_scale, eros_choice, eros_scale_c, eros_scale_t, &
+       U_evap, U_evap_snow, eros_scale, eros_choice, eros_scale_c, eros_scale_t, &!miz
        mc_thresh, diff_thresh, super_choice, tracer_advec, qmin, Dmin, &
        efact, vfact, cfact, do_old_snowmelt, iwc_crit, vfall_const2,  &
        vfall_exp2, num_mass_ratio1, num_mass_ratio2,   &

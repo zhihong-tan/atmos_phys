@@ -24,8 +24,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id$'
-character(len=128) :: tagname = '$Name$'
+character(len=128) :: version = '$Id: topo_drag.F90,v 19.0.12.2 2014/05/08 13:39:09 Chris.Golaz Exp $'
+character(len=128) :: tagname = '$Name: tikal_topo_drag_garner_cjg $'
 
 logical :: module_is_initialized = .false.
 
@@ -38,6 +38,7 @@ integer :: kd=0
 
 real, allocatable, dimension(:,:) :: t11, t21, t12, t22    ! drag tensor
 real, allocatable, dimension(:,:) :: hmin, hmax
+real, allocatable, dimension(:,:) :: lon, lat
 
 ! parameters:
 
@@ -45,9 +46,10 @@ real, parameter :: u0=1.0       ! arbitrary velocity scale for diagnostics
 real, parameter :: xl=80.0e3    ! arbitrary horiz length scale for diagnostics
 real, parameter :: ro=1.2       ! arbitrary density scale for diagnostics
 real, parameter :: lapse=Grav/Cp_Air ! adiabatic temperature lapse rate
-real, parameter :: tiny=1.0e-8
+real, parameter :: tiny=1.0e-20
 
 real, parameter :: resolution=60.0 ! # of points per degree in topo datasets
+real, parameter :: frint=0.5
 
 integer, parameter :: ipts=360*resolution
 integer, parameter :: jpts=180*resolution
@@ -60,7 +62,7 @@ type(restart_file_type), save :: Top_restart
 real :: &
    frcrit=0.7   &      ! critical value of Froude number for nonlinear flow
   ,alin=1.0     &      ! amplitude of propagating drag
-  ,anonlin=7.0  &      ! amplitude of nonpropagating drag
+  ,anonlin=5.0  &      ! amplitude of nonpropagating drag
   ,gamma=0.4    &      ! exponent in aspect ratio power law
   ,epsi=0.0     &      ! exponent in distribution power law
   ,beta=0.5     &      ! bluntness of topographic features
@@ -72,15 +74,18 @@ real :: &
   ,no_drag_frac=0.05 & ! fraction of lower atmosphere with no breaking
   ,max_pbl_frac=0.50   ! max fraction of lower atmosphere in PBL
 logical :: &
-   do_conserve_energy=.true. &! conserve total energy?
-  ,keep_residual_flux=.true. &! redistribute residual pseudomomentum?
-  ,do_pbl_average=.false.     ! average u,rho,N over PBL for baseflux?
+   do_conserve_energy=.true. & ! conserve total energy?
+  ,keep_residual_flux=.true. & ! redistribute residual pseudomomentum?
+  ,do_pbl_average=.false.    & ! average u,rho,N over PBL for baseflux?
+  ,use_mg_scaling=.false.    & ! base flux saturates with value 'usat'?
+  ,use_mask_for_pbl=.false.    ! use bottom no_drag_layer as pbl
 
 NAMELIST /topo_drag_nml/                                               &
   frcrit, alin, anonlin, beta, gamma, epsi,                            &
   h_frac, zref_fac, tboost, pcut, samp,                                &
   no_drag_frac, max_pbl_frac,                                          &
-  do_conserve_energy, keep_residual_flux, do_pbl_average
+  do_conserve_energy, keep_residual_flux, do_pbl_average,              &
+  use_mg_scaling, use_mask_for_pbl                                            !stg
 
 public topo_drag, topo_drag_init, topo_drag_end
 public topo_drag_restart
@@ -89,8 +94,8 @@ contains
 
 !#######################################################################
 
-subroutine topo_drag                                                   &
-                                     ( is, js, delt, uwnd, vwnd, atmp, &
+subroutine topo_drag (                                                 &
+                                       is, js, delt, uwnd, vwnd, atmp, &
                                            pfull, phalf, zfull, zhalf, &
                           dtaux, dtauy, dtemp, taux, tauy, taus, kbot )
 
@@ -123,7 +128,7 @@ real, intent(in), dimension(:,:,:) :: pfull, phalf, zfull, zhalf
 real, intent(out), dimension(:,:)   :: taux, tauy
 real, intent(out), dimension(:,:,:) :: dtaux, dtauy, dtemp, taus
 
-integer, dimension(size(zfull,1),size(zfull,2)) :: kpbl, ktop, kcut
+integer, dimension(size(zfull,1),size(zfull,2)) :: kpbl, knod, kcut
 real,    dimension(size(zhalf,1),size(zhalf,2),size(zhalf,3)) :: tausat
 
 ! work arrays
@@ -141,7 +146,7 @@ integer :: k, kdim
 
 ! estimate height of pbl
 
-  call get_pbl ( atmp, zfull, pfull, phalf, kpbl, ktop, kcut )
+  call get_pbl ( atmp, zfull, pfull, phalf, kpbl, knod, kcut )
 
 ! calculate base flux
 
@@ -152,20 +157,21 @@ integer :: k, kdim
                                            frulo, fruhi, frunl, rnorm, &
                                      zfull, zhalf, pfull, phalf, kpbl )
 
+
 ! calculate saturation flux profile
 
   call satur_flux (                                                    &
                                                      uwnd, vwnd, atmp, &
                                                    taup, taub, tausat, &
                                                   frulo, fruhi, frunl, &
-                        dtaux, dtauy, zfull, pfull, phalf, ktop, kcut )
+                        dtaux, dtauy, zfull, pfull, phalf, knod, kcut )
 
 ! calculate momentum tendency
 
   call topo_drag_tend (                                                &
                                                delt, uwnd, vwnd, atmp, &
                                        taux, tauy, taul, taun, tausat, &
-                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, ktop )
+                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, knod )
 
 ! put saturation flux profile into 'taus' for diagnostics
 
@@ -209,8 +215,8 @@ integer :: k, kdim, kb, kt
 
 real :: usat, bfreq2, bfreq, dphdz, vtau, d2udz2, d2vdz2
 real :: dzfull, dzhalf, dzhalf1, dzhalf2, density
-real :: frmin, frmax, frumin, frumax, fruclp, fru0, frusat
-real :: rnormal, gterm
+real :: frmin, frmax, frmed, frumin, frumax, frumed, fruclp, fruclm
+real :: rnormal, gterm, hterm, fru0, frusat
 real :: usum, vsum, delp
 
   idim = size(uwnd,1)
@@ -241,14 +247,15 @@ real :: usum, vsum, delp
         id = is+i-1
         kt = kpbl(i,j)
         kb = max(kd,kt)
-
         dzfull = zhalf(i,j,kt) - zhalf(i,j,kb+1)
         density = (phalf(i,j,kb+1) - phalf(i,j,kt))/(Grav*dzfull)
-        dzfull = zfull(i,j,kt-1) - zhalf(i,j,kb+1)
+        dzfull = zfull(i,j,kt-1) - zfull(i,j,kb+1)
         bfreq2 = Grav*((atmp(i,j,kb+1) - atmp(i,j,kt-1))/dzfull+lapse)/& 
                   (0.5*(atmp(i,j,kb+1) + atmp(i,j,kt-1)))
 
         bfreq = sqrt(max(tiny, bfreq2))
+
+!       included 'alin' 4/2015
 
         taux(i,j) = (ubar(i,j)*t11(id,jd) + vbar(i,j)*t21(id,jd))      &
                                                    *bfreq*density*alin
@@ -259,10 +266,11 @@ real :: usum, vsum, delp
 
 !       min/max Froude numbers based on low-level flow
 
-        vtau = max(tiny, -(ubar(i,j)*taux(i,j)                          &
+        vtau = max(tiny, -(ubar(i,j)*taux(i,j)                         &
                          + vbar(i,j)*tauy(i,j))/taub(i,j))
         frmax = hmax(id,jd)*bfreq / vtau
         frmin = hmin(id,jd)*bfreq / vtau
+        frmed = frcrit + frint
 
 !       linear momentum flux associated with min/max Froude numbers
 
@@ -270,37 +278,48 @@ real :: usum, vsum, delp
         usat = sqrt(density/ro) * vtau / sqrt(dphdz*xl)
         frusat = frcrit*usat
 
-        frumin = frmin*usat         ! linear momentum flux
+        frumin = frmin*usat
         frumax = frmax*usat
+        frumed = frmed*usat
+
         frumax = max(frumax,frumin + tiny)
         fruclp = min(frumax,max(frumin,frusat))
+        fruclm = min(frumax,max(frumin,frumed))
         fru0 = (u0/vtau)*usat
 
 !       total drag in linear limit
 
-        rnormal = (frumax**(2.0*gamma - epsi)                          &
-                 - frumin**(2.0*gamma - epsi))/(2.0*gamma - epsi) 
+        rnormal =                                                      &
+                   (frumax**(2.0*gamma - epsi)                         &
+                  - frumin**(2.0*gamma - epsi))/(2.0*gamma - epsi)
         rnormal = fru0**gamma * ro/rnormal  
 
-        gterm = (frumax**(gamma - epsi - beta)                         &
-               - fruclp**(gamma - epsi - beta))/(gamma - epsi - beta)
-        gterm = gterm*frusat**beta
-
         taul(i,j) =                                                    &
-                    (frumax**(2.0 + gamma - epsi)                      &
-                   - frumin**(2.0 + gamma - epsi))/(2.0 + gamma - epsi)
+                   (frumax**(2.0 + gamma - epsi)                       &
+                  - frumin**(2.0 + gamma - epsi))/(2.0 + gamma - epsi)
 
 !       separate propagating and nonpropagating parts of total drag
 
-        taup(i,j) =                                                    &
-                 ( (fruclp**(2.0 + gamma - epsi)                       &       
-                  - frumin**(2.0 + gamma - epsi))/(2.0 + gamma - epsi) &
-                                                    + frusat**2*gterm )
+        gterm = frusat**(beta + 2.0)*                                  &
+                (frumax**(gamma - epsi - beta)                         &
+               - fruclp**(gamma - epsi - beta))/(gamma - epsi - beta)
 
-        taun(i,j) = anonlin*usat/(1.0 + beta)       /max(frcrit,frmax)*               &
+        taup(i,j) =                                                    &
+                   (fruclp**(2.0 + gamma - epsi)                       &
+                  - frumin**(2.0 + gamma - epsi))/(2.0 + gamma - epsi) &
+                                                              + gterm
+
+        gterm = (frumax**(gamma - epsi - beta)                         &
+               - fruclp**(gamma - epsi - beta))/(gamma - epsi - beta)
+
+        taun(i,j) = anonlin*usat/(1.0 + beta) *                        &
                  ( (frumax**(1.0 + gamma - epsi)                       &
                   - fruclp**(1.0 + gamma - epsi))/(1.0 + gamma - epsi) &
-                                                       - frusat*gterm )
+                                                      - frusat*gterm )
+
+!       5/2015 mg option: depth of blocking ~ U/N, not h
+
+        if (use_mg_scaling) taun(i,j) = taun(i,j)/max(frmax,frcrit)
 
         fruhi(i,j) = frumax
         frulo(i,j) = frumin
@@ -352,7 +371,7 @@ subroutine satur_flux (                                                &
                                                      uwnd, vwnd, atmp, &
                                                    taup, taub, tausat, &
                                                   frulo, fruhi, frunl, &
-                        dtaux, dtauy, zfull, pfull, phalf, ktop, kcut )
+                        dtaux, dtauy, zfull, pfull, phalf, knod, kcut )
 
 real, intent(in),  dimension (:,:,:) :: uwnd, vwnd, atmp
 real, intent(in),  dimension (:,:,:) :: dtaux, dtauy
@@ -361,7 +380,7 @@ real, intent(in),  dimension (:,:)   :: taup
 real, intent(out), dimension (:,:)   :: taub
 real, intent(out), dimension (:,:,:) :: tausat
 real, intent(in),  dimension (:,:)   :: frulo, fruhi, frunl
-integer, intent(in), dimension (:,:) :: ktop, kcut
+integer, intent(in), dimension (:,:) :: knod, kcut
 
 real, dimension(size(zfull,1),size(zfull,2)) :: usat
 
@@ -440,9 +459,9 @@ integer :: k, kdim, k1
 
 ! make propagating flux constant with height in zero-drag surface layer
 
-  k1 = minval(ktop)
+  k1 = minval(knod)
   do k=kdim+1,k1+1,-1
-     where (k > ktop)
+     where (k > knod)
         tausat(:,:,k) = taup
      endwhere
   enddo
@@ -464,7 +483,7 @@ endsubroutine satur_flux
 subroutine topo_drag_tend (                                            &
                                                delt, uwnd, vwnd, atmp, &
                                        taux, tauy, taul, taun, tausat, &
-                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, ktop )
+                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, knod )
 
 real, intent(in) :: delt
 real, intent(in), dimension(:,:,:)    :: uwnd, vwnd, atmp
@@ -472,18 +491,18 @@ real, intent(in), dimension(:,:,:)    :: zfull, zhalf, pfull, phalf
 real, intent(in), dimension(:,:)      :: taux, tauy, taul, taun
 real, intent(inout), dimension(:,:,:) :: tausat
 real, intent(inout), dimension(:,:,:) :: dtaux, dtauy, dtemp
-integer, intent(in), dimension (:,:)  :: ktop
+integer, intent(in), dimension (:,:)  :: knod
 
 real, parameter :: bfmin=0.7e-2, bfmax=1.7e-2  ! min/max buoyancy freq [1/s]
 real, parameter :: vvmin=1.0                   ! minimum surface wind [m/s]
 
 integer,dimension(size(zfull,1),size(zfull,2)) :: kref
 real :: dzhalf, zlast, rscale, phase, bfreq, bfreq2, vtau
-real :: gfac, gfac1, dp, weight, wtsum, taunon
+real :: gfac, gfac1, dp, weight, wtsum, taunon, taunon1
 
 integer :: i, idim
 integer :: j, jdim
-integer :: k, kdim, kr
+integer :: k, kdim, kr, kt
 
 real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
 
@@ -496,7 +515,7 @@ real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
 !the following re-orients the drag to align with low-level wind
 !do j=1,jdim
 !do i=1,idim
-!k = ktop(i,j)
+!k = knod(i,j)
 !gfac = sqrt( (taux(i,j)**2 + tauy(i,j)**2) / max (tiny, uwnd(i,j,k)**2 + vwnd(i,j,k)**2) )
 !dx(i,j) = gfac * uwnd(i,j,k)
 !dy(i,j) = gfac * vwnd(i,j,k)
@@ -505,7 +524,8 @@ real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
 
   do j=1,jdim
      do i=1,idim
-        k = ktop(i,j)
+        k = knod(i,j)
+!stg        k = kdim
         phase = 0.0
         zlast = zhalf(i,j,k)
         do while (phase <= Pi*zref_fac .and. k > 1)
@@ -535,6 +555,8 @@ real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
           gfac1 = gfac*Grav/(dp*taul(i,j))
           dtaux(i,j,k) = gfac1*taux(i,j)
           dtauy(i,j,k) = gfac1*tauy(i,j)
+!dtaux(i,j,k) = -gfac1*dx(i,j)
+!dtauy(i,j,k) = -gfac1*dy(i,j)
         enddo
      enddo
   enddo
@@ -544,28 +566,36 @@ real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
   do j=1,jdim
      do i=1,idim
         kr = kref(i,j)
+        kt = knod(i,j)
+!stg        kt = kdim
         gfac = taun(i,j)/taul(i,j) * Grav
         wtsum = 0.0
-        do k=kr,kdim
+        do k=kr,kt
            dp = phalf(i,j,k+1) - phalf(i,j,k)
            weight = pfull(i,j,k) - phalf(i,j,kr)
            wtsum = wtsum + dp*weight
         enddo
         taunon = 0.0
-        do k=kr,kdim
+        do k=kr,kt
            weight = pfull(i,j,k) - phalf(i,j,kr)
            gfac1 = gfac*weight/wtsum
            dtaux(i,j,k) = dtaux(i,j,k) + gfac1*taux(i,j)
            dtauy(i,j,k) = dtauy(i,j,k) + gfac1*tauy(i,j)
+!dtaux(i,j,k) = dtaux(i,j,k) - gfac1*dx(i,j)
+!dtauy(i,j,k) = dtauy(i,j,k) - gfac1*dy(i,j)
            dp = phalf(i,j,k+1) - phalf(i,j,k)
            taunon = taunon + gfac1*dp
-           tausat(i,j,k) = tausat(i,j,k) + taunon*taul(i,j)/Grav
+           taunon1 = taunon*taul(i,j)/Grav
+           tausat(i,j,k) = tausat(i,j,k) + taunon1
+        enddo
+        do k=kt+1,kdim
+           tausat(i,j,k) = tausat(i,j,k) + taunon1
         enddo
      enddo
   enddo
 
-  dtaux = max(-.005, min(.005, dtaux))   !stg
-  dtauy = max(-.005, min(.005, dtauy))
+  dtaux = max(-.003, min(.003, dtaux))   !stg
+  dtauy = max(-.003, min(.003, dtauy))
 
 ! CALCULATE HEATING TO CONSERVE TOTAL ENERGY
 
@@ -580,9 +610,9 @@ end subroutine topo_drag_tend
 
 !=======================================================================
 
-subroutine get_pbl ( atmp, zfull, pfull, phalf, kpbl, ktop, kcut )
+subroutine get_pbl ( atmp, zfull, pfull, phalf, kpbl, knod, kcut )
 
-integer, intent(out), dimension(:,:) :: kpbl, ktop, kcut
+integer, intent(out), dimension(:,:) :: kpbl, knod, kcut
 real, intent(in), dimension(:,:,:)   :: atmp
 real, intent(in), dimension(:,:,:)   :: zfull, pfull, phalf
 
@@ -606,24 +636,13 @@ integer :: k, kdim
      enddo
   enddo
 
-! find highest model level in surface mixed layer
-
-  kpbl = kdim-1
-
-  do k=kdim-2,2,-1
-     where ( pfull(:,:,k) >= ppbl(:,:) .and.                         &
-        tbot(:,:) - atmp(:,:,k) > lapse*(zfull(:,:,k) - zbot(:,:)) )
-        kpbl = k
-     endwhere
-  enddo
-
 ! find highest model level in no-drag surface layer
 
-  ktop = kdim-1
+  knod = kdim-1
 
   do k=kdim-2,2,-1
      where ( pfull(:,:,k) >= pbot(:,:) )
-        ktop = k
+        knod = k
      endwhere
   enddo
 
@@ -638,6 +657,22 @@ integer :: k, kdim
   enddo
 
   if (kd == 0 .and. do_pbl_average) kd = kdim-1
+
+  if ( use_mask_for_pbl ) then
+     kpbl = knod
+     return
+  endif
+
+! find highest model level in surface mixed layer
+
+  kpbl = kdim-1
+
+  do k=kdim-2,2,-1
+     where ( pfull(:,:,k) >= ppbl(:,:) .and.                          &
+        tbot(:,:) - atmp(:,:,k) > lapse*(zfull(:,:,k) - zbot(:,:)) )
+        kpbl = k
+     endwhere
+  enddo
 
 end subroutine get_pbl
 
@@ -657,10 +692,10 @@ logical :: found_field(4)
 
 real, parameter :: bfscale=1.0e-2      ! buoyancy frequency scale [1/s]
 
-real, allocatable, dimension(:)   :: xdat, ydat, xdatb, ydatb
-real, allocatable, dimension(:,:) :: zdat, zout, lon, lat
+real, allocatable, dimension(:)   :: xdatb, ydatb
+real, allocatable, dimension(:,:) :: zdat, zout
 type (horiz_interp_type) :: Interp
-real :: exponent
+real :: exponent, hmod
 
 integer :: n
 integer :: io, ierr, unit_nml, logunit
@@ -742,8 +777,6 @@ integer :: id_restart
      
      allocate (xdatb(ipts+1))
      allocate (ydatb(jpts+1))
-     allocate (xdat(ipts))
-     allocate (ydat(jpts))
      allocate (zdat(ipts,jpts))
      allocate (zout(nlon,nlat))
 
@@ -752,12 +785,6 @@ integer :: id_restart
      enddo
      do j=1,jpts+1
         ydatb(j) = (-90.0 + (j-1)/resolution) / Radian
-     enddo
-     do i=1,ipts
-        xdat(i) = (i-.5)/resolution / Radian
-     enddo
-     do j=1,jpts
-        ydat(j) = (-90.0 + (j-.5)/resolution) / Radian
      enddo
 
      allocate (lon(nlon,nlat),lat(nlon,nlat))

@@ -2365,6 +2365,7 @@ subroutine fill_nml_variable
       Nml%use_sub_seasalt = use_sub_seasalt
       Nml%N_ocean = N_ocean
       Nml%U_evap = U_evap
+      Nml%U_evap_snow = U_evap_snow
       Nml%eros_scale = eros_scale
       Nml%eros_choice = eros_choice
       Nml%eros_scale_t = eros_scale_t
