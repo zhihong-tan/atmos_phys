@@ -177,6 +177,7 @@ MODULE UW_CONV_MOD
   real    :: rpen     = 5.0    ! for entrainment efficiency
   real    :: rmaxfrac = 0.15   ! maximum allowable updraft fraction
   real    :: wmin     = 0.5    ! minimum vertical velocity for computing updraft fraction
+  real    :: wmax     = 50     ! maximum allowable vertical velocity
   real    :: rbuoy    = 1.0    ! for nonhydrostatic pressure effects on updraft
   real    :: rdrag    = 1.0 
   real    :: frac_drs = 0.0    ! 
@@ -204,15 +205,17 @@ MODULE UW_CONV_MOD
   real    :: pblfac    = 0.0
   real    :: ffldep    = 0.0
   logical :: do_weffect = .false.
+  logical :: do_limit_wmax =.false.
   real    :: weffect    = 0.5
   real    :: peff_l     = 1.0
   real    :: peff_i     = 1.0
   real    :: t00        = 295
+  real    :: tten_max   = 1000.
 
-  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc, ffldep, &
+  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, ffldep, do_limit_wmax,&
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
        mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, pblfac,&
-       do_weffect, weffect, peff_l, peff_i, t00
+       do_weffect, weffect, peff_l, peff_i, t00, tten_max
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -1099,6 +1102,7 @@ contains
     cpn % rpen      = rpen
     cpn % rmaxfrac  = rmaxfrac
     cpn % wmin      = wmin
+    cpn % wmax      = wmax
     cpn % rbuoy     = rbuoy
     cpn % rdrag     = rdrag  
     cpn % frac_drs  = frac_drs
@@ -1110,6 +1114,7 @@ contains
     cpn % do_emmax  = do_emmax
     cpn % do_pnqv   = do_pnqv
     cpn % do_tten_max   = do_tten_max
+    cpn % tten_max  = tten_max
     cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
@@ -1143,6 +1148,7 @@ contains
     cpn % use_new_let = use_new_let
     cpn % use_lcl_only= use_lcl_only
     cpn % do_new_pevap= do_new_pevap
+    cpn % do_limit_wmax= do_limit_wmax
     cpn % plev_for = plev_for
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
@@ -1432,6 +1438,9 @@ contains
           sd%cgust_max = cgust_max
           sd%sigma0    = sigma0
           sd%tke       = tkeo(i,j)
+          sd%lat       = lat(i,j)*180/3.1415926
+          sd%lon       = lon(i,j)*180/3.1415926
+
 	  if (do_prog_tke .or. use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
 
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
@@ -2041,7 +2050,6 @@ contains
     !scaling factor for each column is the minimum value within that column
               scale_uw(i,j) = min( temp_1, scale_uw(i,j))
             endif
-
           enddo
         enddo
       enddo
