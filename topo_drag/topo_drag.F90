@@ -71,6 +71,7 @@ real :: &
   ,tboost=1.0   &      ! surface T boost to improve PBL height estimate
   ,pcut=0.0     &      ! high-level cutoff pressure for momentum forcing
   ,samp=1.0     &      ! correction for coarse sampling of d2v/dz2
+  ,max_udt=3.e-3     & ! upper bound on acceleration [m/s2]
   ,no_drag_frac=0.05 & ! fraction of lower atmosphere with no breaking
   ,max_pbl_frac=0.50   ! max fraction of lower atmosphere in PBL
 logical :: &
@@ -78,11 +79,11 @@ logical :: &
   ,keep_residual_flux=.true. & ! redistribute residual pseudomomentum?
   ,do_pbl_average=.false.    & ! average u,rho,N over PBL for baseflux?
   ,use_mg_scaling=.false.    & ! base flux saturates with value 'usat'?
-  ,use_mask_for_pbl=.false.    ! use bottom no_drag_layer as pbl
+  ,use_mask_for_pbl=.false.    ! use bottom no_drag_layer as pbl?
 
 NAMELIST /topo_drag_nml/                                               &
   frcrit, alin, anonlin, beta, gamma, epsi,                            &
-  h_frac, zref_fac, tboost, pcut, samp,                                &
+  h_frac, zref_fac, tboost, pcut, samp, max_udt,                       &
   no_drag_frac, max_pbl_frac,                                          &
   do_conserve_energy, keep_residual_flux, do_pbl_average,              &
   use_mg_scaling, use_mask_for_pbl                                            !stg
@@ -594,8 +595,8 @@ real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
      enddo
   enddo
 
-  dtaux = max(-.003, min(.003, dtaux))   !stg
-  dtauy = max(-.003, min(.003, dtauy))
+  dtaux = max(-max_udt, min(max_udt, dtaux))   !stg
+  dtauy = max(-max_udt, min(max_udt, dtauy))
 
 ! CALCULATE HEATING TO CONSERVE TOTAL ENERGY
 
