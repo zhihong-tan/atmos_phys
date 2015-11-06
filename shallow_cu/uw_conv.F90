@@ -1030,7 +1030,7 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, cfq, peo, hmo, hms, abu, cmf_s
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
-    real :: tnew, qtin, dqt, temp_1
+    real :: tnew, qtin, dqt, temp_1, temp_max, temp_min
     
     !f1p
     real, dimension(size(tracers,1), size(tracers,2), size(tracers,3), size(tracers,4)) :: trtend_nc, rn_diag
@@ -1997,6 +1997,8 @@ contains
     end if
 
     if ( prevent_unreasonable ) then
+      temp_min=300.
+      temp_max=200.
       scale_uw=HUGE(1.0)
       do k=1,kmax
         do j=1,jmax
@@ -2040,10 +2042,14 @@ contains
             endif
     !rescaling to prevent excessive temperature tendencies
             if (do_rescale_t) then
+              temp_max = max(temp_max,tb(i,j,k))
+              temp_min = min(temp_min,tb(i,j,k))
               tnew  =  tb(i,j,k) + tten(i,j,k) * delt
               if ( tnew > 363.15 ) then
                 temp_1 = 0.0
                 print *, 'WARNING: setting scale_uw to zero to prevent large T tendencies in UW'
+                print *, i,j,'lev=',k,'pressure=',pmid(i,j,k),'tb=',tb(i,j,k),'tten=',tten(i,j,k)*delt
+                print *, 'lat=', sd%lat, 'lon=', sd%lon, 'land=',sd%land
               else
                 temp_1 = 1.0
               endif
@@ -2053,6 +2059,9 @@ contains
           enddo
         enddo
       enddo
+      if (temp_max > 320. .or. temp_min < 170.) then
+      	 print *, 'temp_min=',temp_min, 'temp_max=',temp_max
+      endif
 
 !     where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
 !        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
