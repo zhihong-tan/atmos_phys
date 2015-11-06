@@ -2125,26 +2125,26 @@ contains
     if (cpn%do_tten_max) then
       i = 0
       do k = 1,sd%kmax
-        if (ct%tten(k)*86400 > cpn%tten_max) then
+        if (ct%tten(k)*86400 > cpn%tten_max .or. ct%tten(k)*86400 < -cpn%tten_max) then
           i = i + 1
         end if
       end do
       if (i > 0) then
         print *, 'WARNING: tendencies larger than tten_max occurs in UW'
-        write(*,"(A6,F5.2,A6,F5.2,A6,F5.2)"),'lat=',sd%lat, ';lon=',sd%lon, ';land=',sd%land, ';zs=', sd%zs(1)
+        write(*,"(A6,F6.2,A6,F6.2,A6,F4.2,A6,F7.1)"),'lat=',sd%lat, ';lon=',sd%lon, ';land=',sd%land, ';zs=', sd%zs(1)
         write(*,*), 'num=',i, 'krel=',krel, 'let=',cp%let, 'ltop=',cp%ltop
         write(*,*), 'mixing_assumption=',cpn%mixing_assumption,'forced_lifting=',cpn%do_forcedlifting
         write(*,"(A6,F8.2,A6,F8.2)"), 'rain=',ct%rain*86400,'snow=',ct%snow*86400
-        write(*,"(15A6)"),'lev','pf','tten','buo','umf','wu','ufrc','hlten','qcten','ppflx',&
-			  'gumf','gemf','rei','fer','fdr'
+        write(*,"(15A5)"),'lev','pf','tten','buo','umf','wu','ufrc','hlten','qcten','ppflx',&
+			  'gumf','gemf','hlflx','emf','rei','fer','fdr'
         do k=1,sd%kmax
            xx1 = ct%hlten(k)/Uw_p%cp_air*86400.
            xx2 = (Uw_p%HLv*ct%qlten(k)+Uw_p%HLs*ct%qiten(k))/Uw_p%cp_air*86400.
            xx3 = (Uw_p%HLv*cp%pptr(k) +Uw_p%HLs*cp%ppti(k))*Uw_p%grav/sd%dp(k)/Uw_p%cp_air*86400
 	   x1  = -Uw_p%grav*cp%umf(k)*sd%ssthc(k)*86400
 	   x2  = -Uw_p%grav*cp%emf(k)*sd%ssthc(k)*86400
-           write(*,"(I5,11F8.2,4F8.5)"),k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
-                                       cp%wu(k),cp%ufrc(k),xx1,xx2,xx3,x1,x2,cp%emf(k),cp%rei(k),cp%fer(k),cp%fdr(k)
+           write(*,"(I5,12F8.2,4F8.5)"),k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
+                                       cp%wu(k),cp%ufrc(k),xx1,xx2,xx3,x1,x2,ct%hlflx(k),cp%emf(k),cp%rei(k),cp%fer(k),cp%fdr(k)
         end do
 !        ct%tten  = 0; ct%qvten = 0; ct%qlten = 0; ct%qiten = 0;
 !        ct%qaten = 0; ct%qnten = 0; ct%uten  = 0; ct%qctten = 0
