@@ -793,21 +793,6 @@ CONTAINS
        frac_ic_nh4_snow = frac_ic_nh4
     end if
 
-
-    if ( trop_option%frac_aerosol_incloud .ge. 0. ) then
-       !overwrite
-       frac_ic_nh4 = trop_option%frac_aerosol_incloud
-       frac_ic_no3 = trop_option%frac_aerosol_incloud
-       frac_ic_so4 = trop_option%frac_aerosol_incloud
-    end if
-
-
-    if (mpp_root_pe() .eq. mpp_pe()) then
-       write(*,'(a,2e18.3)') 'frac_ic_nh4',frac_ic_nh4,frac_ic_nh4_snow
-       write(*,'(a,2e18.3)') 'frac_ic_no3',frac_ic_no3,frac_ic_no3_snow
-       write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
-    endif
-
     if ( nh4no3_ndx .gt. 0 ) then
        flag = query_method ('wet_deposition',MODEL_ATMOS,&
             get_tracer_index(MODEL_ATMOS,'nh4no3'), &
@@ -827,6 +812,23 @@ CONTAINS
     elseif ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
        nh4no3_is_no3 = .true.
     end if
+
+
+    if ( trop_option%frac_aerosol_incloud .ge. 0. ) then
+       !overwrite
+       frac_ic_nh4 = trop_option%frac_aerosol_incloud
+       frac_ic_no3 = trop_option%frac_aerosol_incloud
+       frac_ic_so4 = trop_option%frac_aerosol_incloud
+    end if
+
+
+    if (mpp_root_pe() .eq. mpp_pe()) then
+       write(*,'(a,2e18.3)') 'frac_ic_nh4',frac_ic_nh4,frac_ic_nh4_snow
+       write(*,'(a,2e18.3)') 'frac_ic_no3',frac_ic_no3,frac_ic_no3_snow
+       write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
+    endif
+
+
  ! ELSEIF ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
 !        nh4no3_ndx  = get_spc_ndx( 'ANO3' )
 !        if ( nh4no3_ndx .gt. 0 ) then
