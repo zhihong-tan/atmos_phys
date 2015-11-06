@@ -93,12 +93,14 @@ contains
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_new_pevap       = cpn % do_new_pevap
+    dpn % do_limit_wmax      = cpn % do_limit_wmax
     dpn % plev_for           = cpn % plev_for
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
     dpn % rmaxfrac           = cpn % rmaxfrac
     dpn % wmin               = cpn % wmin
+    dpn % wmax               = cpn % wmax
     dpn % rbuoy              = cpn % rbuoy
     dpn % rdrag              = cpn % rdrag  
     dpn % frac_drs           = cpn % frac_drs
@@ -142,6 +144,8 @@ contains
     dpn % use_online_aerosol = cpn % use_online_aerosol
     dpn % isdeep             = cpn % isdeep
     dpn % use_new_let        = cpn % use_new_let
+    dpn % do_tten_max        = cpn % do_tten_max
+    dpn % tten_max           = cpn % tten_max
 
   end subroutine cpn_copy
 

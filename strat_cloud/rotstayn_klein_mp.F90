@@ -2026,8 +2026,8 @@ INTEGER,                             INTENT(IN)   :: otun
 !-------------------------------------------------------------------------
           tmp1 (:,:,k) = min(tmp1(:,:,k), ((1. - qa_mean(:,:,k))/  &
                            max(a_snow_clr(:,:,k), Nml%qmin))*qs(:,:,k)* &
-                           max(0., Nml%U_evap  -U_clr(:,:,k))/  &
-                               (1. + (Nml%U_evap*(1. - qa_mean(:,:,k)) + &
+                           max(0., Nml%U_evap_snow  -U_clr(:,:,k))/  &         !miz
+                               (1. + (Nml%U_evap_snow*(1. - qa_mean(:,:,k)) + &!miz
                                            qa_mean(:,:,k))*gamma(:,:,k)) )
         
 !-------------------------------------------------------------------------

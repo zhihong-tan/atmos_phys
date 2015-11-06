@@ -177,6 +177,7 @@ MODULE UW_CONV_MOD
   real    :: rpen     = 5.0    ! for entrainment efficiency
   real    :: rmaxfrac = 0.15   ! maximum allowable updraft fraction
   real    :: wmin     = 0.5    ! minimum vertical velocity for computing updraft fraction
+  real    :: wmax     = 50     ! maximum allowable vertical velocity
   real    :: rbuoy    = 1.0    ! for nonhydrostatic pressure effects on updraft
   real    :: rdrag    = 1.0 
   real    :: frac_drs = 0.0    ! 
@@ -204,15 +205,17 @@ MODULE UW_CONV_MOD
   real    :: pblfac    = 0.0
   real    :: ffldep    = 0.0
   logical :: do_weffect = .false.
+  logical :: do_limit_wmax =.false.
   real    :: weffect    = 0.5
   real    :: peff_l     = 1.0
   real    :: peff_i     = 1.0
   real    :: t00        = 295
+  real    :: tten_max   = 1000.
 
-  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc, ffldep, &
+  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, ffldep, do_limit_wmax,&
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
        mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, pblfac,&
-       do_weffect, weffect, peff_l, peff_i, t00
+       do_weffect, weffect, peff_l, peff_i, t00, tten_max
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -1027,7 +1030,7 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, cfq, peo, hmo, hms, abu, cmf_s
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
-    real :: tnew, qtin, dqt, temp_1
+    real :: tnew, qtin, dqt, temp_1, temp_max, temp_min
     
     !f1p
     real, dimension(size(tracers,1), size(tracers,2), size(tracers,3), size(tracers,4)) :: trtend_nc, rn_diag
@@ -1099,6 +1102,7 @@ contains
     cpn % rpen      = rpen
     cpn % rmaxfrac  = rmaxfrac
     cpn % wmin      = wmin
+    cpn % wmax      = wmax
     cpn % rbuoy     = rbuoy
     cpn % rdrag     = rdrag  
     cpn % frac_drs  = frac_drs
@@ -1110,6 +1114,7 @@ contains
     cpn % do_emmax  = do_emmax
     cpn % do_pnqv   = do_pnqv
     cpn % do_tten_max   = do_tten_max
+    cpn % tten_max  = tten_max
     cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
@@ -1143,6 +1148,7 @@ contains
     cpn % use_new_let = use_new_let
     cpn % use_lcl_only= use_lcl_only
     cpn % do_new_pevap= do_new_pevap
+    cpn % do_limit_wmax= do_limit_wmax
     cpn % plev_for = plev_for
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
@@ -1432,6 +1438,9 @@ contains
           sd%cgust_max = cgust_max
           sd%sigma0    = sigma0
           sd%tke       = tkeo(i,j)
+          sd%lat       = lat(i,j)*180/3.1415926
+          sd%lon       = lon(i,j)*180/3.1415926
+
 	  if (do_prog_tke .or. use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
 
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
@@ -1988,6 +1997,8 @@ contains
     end if
 
     if ( prevent_unreasonable ) then
+      temp_min=300.
+      temp_max=200.
       scale_uw=HUGE(1.0)
       do k=1,kmax
         do j=1,jmax
@@ -2031,20 +2042,26 @@ contains
             endif
     !rescaling to prevent excessive temperature tendencies
             if (do_rescale_t) then
+              temp_max = max(temp_max,tb(i,j,k))
+              temp_min = min(temp_min,tb(i,j,k))
               tnew  =  tb(i,j,k) + tten(i,j,k) * delt
               if ( tnew > 363.15 ) then
                 temp_1 = 0.0
                 print *, 'WARNING: setting scale_uw to zero to prevent large T tendencies in UW'
+                print *, i,j,'lev=',k,'pressure=',pmid(i,j,k),'tb=',tb(i,j,k),'tten=',tten(i,j,k)*delt
+                print *, 'lat=', sd%lat, 'lon=', sd%lon, 'land=',sd%land
               else
                 temp_1 = 1.0
               endif
     !scaling factor for each column is the minimum value within that column
               scale_uw(i,j) = min( temp_1, scale_uw(i,j))
             endif
-
           enddo
         enddo
       enddo
+      if (temp_max > 320. .or. temp_min < 170.) then
+      	 print *, 'temp_min=',temp_min, 'temp_max=',temp_max
+      endif
 
 !     where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
 !        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
