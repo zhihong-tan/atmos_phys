@@ -7,13 +7,14 @@
      
      _PURE subroutine monin_obukhov_diff(vonkarm,                &
           & ustar_min,                                     &
-          & neutral, stable_option, rich_crit, zeta_trans, &
+          & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
           & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
        real   , intent(in   )                        :: vonkarm
        real   , intent(in   )                        :: ustar_min ! = 1.e-10
        logical, intent(in   )                        :: neutral
        integer, intent(in   )                        :: stable_option
+       logical, intent(in   )                        :: new_mo_option !miz
        real   , intent(in   )                        :: rich_crit, zeta_trans
        integer, intent(in   )                        :: ni, nj, nk
        real   , intent(in   ), dimension(ni, nj, nk) :: z
@@ -25,7 +26,7 @@
 
     _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
           & error, zeta_min, max_iter, small,                         &
-          & neutral, stable_option, rich_crit, zeta_trans, drag_min,  &
+          & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, drag_min,  &!miz
           & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
           & drag_q, u_star, b_star, lavail, avail, ier)
 
@@ -37,6 +38,7 @@
        real   , intent(in   )                :: small    ! = 1.e-04
        logical, intent(in   )                :: neutral
        integer, intent(in   )                :: stable_option
+       logical, intent(in   )                :: new_mo_option !miz
        real   , intent(in   )                :: rich_crit, zeta_trans, drag_min
        integer, intent(in   )                :: n
        real   , intent(in   ), dimension(n)  :: pt      ! potential temperature
@@ -58,13 +60,14 @@
      end subroutine monin_obukhov_drag_1d
 
      _PURE subroutine monin_obukhov_profile_1d(vonkarm, &
-          & neutral, stable_option, rich_crit, zeta_trans, &
+          & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &
           & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
           & del_m, del_t, del_q, lavail, avail, ier)
 
        real   , intent(in   )                :: vonkarm
        logical, intent(in   )                :: neutral
        integer, intent(in   )                :: stable_option
+       logical, intent(in   )                :: new_mo_option !miz
        real   , intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
        real,    intent(in)                   :: zref, zref_t
@@ -75,13 +78,14 @@
        integer, intent(  out)                :: ier
      end subroutine monin_obukhov_profile_1d
 
-     _PURE subroutine monin_obukhov_derivative_t(stable_option, rich_crit, zeta_trans, &
+     _PURE subroutine monin_obukhov_derivative_t(stable_option, new_mo_option, rich_crit, zeta_trans, &
           & n, phi_t, zeta, mask, ier)
 
        ! the differential similarity function for buoyancy and tracers
        ! Note: seems to be the same as monin_obukhov_derivative_m?
 
        integer, intent(in   )                :: stable_option
+       logical, intent(in   )                :: new_mo_option !miz
        real   , intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
        real   , intent(  out), dimension(n)  :: phi_t
@@ -104,13 +108,14 @@
        integer, intent(out  )                :: ier
      end subroutine monin_obukhov_derivative_m
 
-     _PURE subroutine monin_obukhov_integral_tq(stable_option, rich_crit, zeta_trans, &
+     _PURE subroutine monin_obukhov_integral_tq(stable_option, new_mo_option, rich_crit, zeta_trans, &
           & n, psi_t, psi_q, zeta, zeta_t, zeta_q, &
           & ln_z_zt, ln_z_zq, mask, ier)
 
        ! the integral similarity function for moisture and tracers
 
        integer, intent(in   )                :: stable_option
+       logical, intent(in   )                :: new_mo_option !miz
        real,    intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
        real   , intent(  out), dimension(n)  :: psi_t, psi_q
@@ -145,7 +150,7 @@
      end subroutine monin_obukhov_stable_mix
 
      _PURE subroutine monin_obukhov_solve_zeta(error, zeta_min, max_iter, small,  &
-          & stable_option, rich_crit, zeta_trans,                           &
+          & stable_option, new_mo_option, rich_crit, zeta_trans,                  &!miz
           & n, rich, z, z0, zt, zq, f_m, f_t, f_q, mask, ier)
 
        real   , intent(in   )                :: error    ! = 1.e-04
@@ -153,6 +158,7 @@
        integer, intent(in   )                :: max_iter ! = 20
        real   , intent(in   )                :: small    ! = 1.e-04
        integer, intent(in   )                :: stable_option
+       logical, intent(in   )                :: new_mo_option !miz
        real   , intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
        real   , intent(in   ), dimension(n)  :: rich, z, z0, zt, zq
