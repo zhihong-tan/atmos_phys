@@ -697,7 +697,8 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
 !---------------------------------------------------------------------
 !    deallocate the arrays unique to the large-scale stratiform clouds 
 !---------------------------------------------------------------------
-      if (trim(Cloud_microphys%scheme_name) == 'strat_cloud' .or. trim(scheme_name) == 'model') then
+      if (trim(Cloud_microphys%scheme_name) == 'strat_cloud' .or. &
+          trim(Cloud_microphys%scheme_name) == 'model') then
 
         deallocate(Cloud_microphys%ice_number)
 
