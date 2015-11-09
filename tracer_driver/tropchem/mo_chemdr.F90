@@ -343,7 +343,8 @@ logical                       :: module_is_initialized = .false.
          call setrxt( reaction_rates, tfld, invariants(:,:,indexm), plonl, plev, plnplv )
 !        call sulf_interp( lat, ip, pmid, caldayn, sulfate, plonl )
          call usrrxt( reaction_rates, tfld, invariants, h2ovmr, pmid, &
-                      invariants(:,:,indexm), sulfate, psc, vmr, sh, delt, plonl )
+                      invariants(:,:,indexm), sulfate, psc, vmr, sh, delt, plonl , r, &
+                      trop_diag_array, trop_option, trop_diag)
 !-----------------------------------------------------------------------      
 !       ...  Save reaction rate constants for diagnostic output
 !-----------------------------------------------------------------------      
