@@ -44,7 +44,7 @@ MODULE CONV_PLUMES_k_MOD
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
-     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax
+     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -837,6 +837,14 @@ contains
 
     if (cpn%do_ppen) then !Calculate penetrative entrainment
        call penetrative_mixing_k(cpn, sd, Uw_p, cp) 
+    else if (cpn%stop_at_let .and. cpn%do_forcedlifting) then
+       do k=let,ltop
+       	  cp%umf(k)=0.
+       enddo
+       ltop=let
+       cp%ltop=ltop;
+       cp%fdr(ltop) = 1./sd%dp(ltop)
+       cp%cldhgt = sd%z(ltop)-ac%zlcl
     else
        cp%fdr(ltop) = 1./sd%dp(ltop)
     end if
@@ -2133,18 +2141,21 @@ contains
         print *, 'WARNING: tendencies larger than tten_max occurs in UW'
         write(*,"(A6,F6.2,A6,F6.2,A6,F4.2,A6,F7.1)"),'lat=',sd%lat, ';lon=',sd%lon, ';land=',sd%land, ';zs=', sd%zs(1)
         write(*,*), 'num=',i, 'krel=',krel, 'let=',cp%let, 'ltop=',cp%ltop
-        write(*,*), 'mixing_assumption=',cpn%mixing_assumption,'forced_lifting=',cpn%do_forcedlifting
+        write(*,*), 'mixing_assumption=',cpn%mixing_assumption,'forced_lifting=',cpn%do_forcedlifting, &
+                    'do_ppen=',cpn%do_ppen
         write(*,"(A6,F8.2,A6,F8.2)"), 'rain=',ct%rain*86400,'snow=',ct%snow*86400
-        write(*,"(15A5)"),'lev','pf','tten','buo','umf','wu','ufrc','hlten','qcten','ppflx',&
-			  'gumf','gemf','hlflx','emf','rei','fer','fdr'
+        write(*,"(15A6)"),'levl','pres','tten','buoy','Umf','Wu','ufrc','T-hl','T-qc','T-px',&
+			  'Tumf','Temf','hlflx','qlten','qiten','qaten','emf','rei','fer','fdr'
         do k=1,sd%kmax
            xx1 = ct%hlten(k)/Uw_p%cp_air*86400.
            xx2 = (Uw_p%HLv*ct%qlten(k)+Uw_p%HLs*ct%qiten(k))/Uw_p%cp_air*86400.
            xx3 = (Uw_p%HLv*cp%pptr(k) +Uw_p%HLs*cp%ppti(k))*Uw_p%grav/sd%dp(k)/Uw_p%cp_air*86400
 	   x1  = -Uw_p%grav*cp%umf(k)*sd%ssthc(k)*86400
 	   x2  = -Uw_p%grav*cp%emf(k)*sd%ssthc(k)*86400
-           write(*,"(I5,12F8.2,4F8.5)"),k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
-                                       cp%wu(k),cp%ufrc(k),xx1,xx2,xx3,x1,x2,ct%hlflx(k),cp%emf(k),cp%rei(k),cp%fer(k),cp%fdr(k)
+           write(*,"(I5,15F8.2,4F8.5)"),k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
+		                        cp%wu(k),cp%ufrc(k),xx1,xx2,xx3,x1,x2,ct%hlflx(k),  &
+ 					ct%qaten(k), ct%qlten(k)*86400,ct%qiten(k)*86400,   &
+					cp%emf(k),cp%rei(k),cp%fer(k),cp%fdr(k)
         end do
 !        ct%tten  = 0; ct%qvten = 0; ct%qlten = 0; ct%qiten = 0;
 !        ct%qaten = 0; ct%qnten = 0; ct%uten  = 0; ct%qctten = 0
