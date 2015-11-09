@@ -419,7 +419,11 @@
                          qfld, &
                          r  )
 
+#ifndef AM3_CHEM
       use CHEM_MODS_MOD, only : ncol_abs, phtcnt
+#else
+      use AM3_CHEM_MODS_MOD, only : ncol_abs, phtcnt
+#endif
       use time_manager_mod, only : time_type      
 
       implicit none

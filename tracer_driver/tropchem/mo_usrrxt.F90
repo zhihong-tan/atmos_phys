@@ -170,9 +170,12 @@ logical                       :: module_is_initialized = .false.
 !        ... set the user specified reaction rates
 !-----------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod, only : nfs, rxntot, indexh2o
+#else
+      use AM3_chem_mods_mod, only : nfs, rxntot, indexh2o
+#endif
       use constants_mod, only : PI
-      use m_rxt_id_mod
       use tropchem_types_mod, only : tropchem_opt, tropchem_diag
 
       implicit none

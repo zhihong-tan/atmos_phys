@@ -18,6 +18,7 @@ logical                       :: module_is_initialized = .false.
 !            ... Initialize chemistry modules
 !--------------------------------------------------------
 
+#ifndef AM3_CHEM
       use CHEM_MODS_MOD,     only : explicit, implicit, rodas, grpcnt, &
                                 nadv_mass, adv_mass, pcnstm1, &
                                 drydep_cnt, drydep_lst, &
@@ -25,6 +26,15 @@ logical                       :: module_is_initialized = .false.
                                 hetcnt, het_lst, extcnt, extfrc_lst, &
                                 rxt_alias_cnt, rxt_alias_lst, rxt_alias_map, &
                                 ngrp, grp_mem_cnt, grp_lst
+#else
+      use AM3_CHEM_MODS_MOD, only : explicit, implicit, rodas, grpcnt, &
+                                nadv_mass, adv_mass, pcnstm1, &
+                                drydep_cnt, drydep_lst, &
+                                srfems_cnt, srfems_lst, &
+                                hetcnt, het_lst, extcnt, extfrc_lst, &
+                                rxt_alias_cnt, rxt_alias_lst, rxt_alias_map, &
+                                ngrp, grp_mem_cnt, grp_lst
+#endif
       use M_TRACNAME_MOD,    only : tracnam, natsnam
 
       implicit none

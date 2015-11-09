@@ -1,7 +1,11 @@
 
       module mo_imp_sol_mod
 
+#ifndef AM3_CHEM
       use chem_mods_mod,        only : clscnt4
+#else
+      use AM3_chem_mods_mod,    only : clscnt4
+#endif
       use constants_mod,    only : PI
 
       implicit none
@@ -57,8 +61,13 @@ logical                       :: module_is_initialized = .false.
 !        ... initialize the implict solver
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : clscnt4, endrun, implicit
       use mo_grid_mod,    only : pcnstm1
+#else
+      use AM3_chem_mods_mod,  only : clscnt4, endrun, implicit
+      use AM3_mo_grid_mod,    only : pcnstm1
+#endif
       use mo_chem_utls_mod, only : get_spc_ndx, get_rxt_ndx
 
       implicit none
@@ -348,8 +357,9 @@ logical                       :: module_is_initialized = .false.
 !           the intel pentium and itanium cpus
 !-----------------------------------------------------------------------
 
-      use chem_mods_mod,         only : clscnt4, imp_nzcnt, clsze, rxntot, hetcnt, extcnt, implicit
       use m_tracname_mod,        only : tracnam
+#ifndef AM3_CHEM
+      use chem_mods_mod,         only : clscnt4, imp_nzcnt, clsze, rxntot, hetcnt, extcnt, implicit
       use mo_grid_mod,           only : pcnstm1
       use mo_indprd_mod,         only : indprd
       use mo_imp_prod_loss_mod,  only : imp_prod_loss
@@ -357,6 +367,16 @@ logical                       :: module_is_initialized = .false.
       use mo_imp_nln_matrix_mod, only : imp_nlnmat
       use mo_imp_factor_mod,     only : imp_lu_fac
       use mo_imp_solve_mod,      only : imp_lu_slv
+#else
+      use AM3_chem_mods_mod,         only : clscnt4, imp_nzcnt, clsze, rxntot, hetcnt, extcnt, implicit
+      use AM3_mo_grid_mod,           only : pcnstm1
+      use AM3_mo_indprd_mod,         only : indprd
+      use AM3_mo_imp_prod_loss_mod,  only : imp_prod_loss
+      use AM3_mo_imp_lin_matrix_mod, only : imp_linmat
+      use AM3_mo_imp_nln_matrix_mod, only : imp_nlnmat
+      use AM3_mo_imp_factor_mod,     only : imp_lu_fac
+      use AM3_mo_imp_solve_mod,      only : imp_lu_slv
+#endif
 
       implicit none
 

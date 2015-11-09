@@ -459,8 +459,11 @@ integer                       :: photo_clock
                         esfact, solar_phase, &
                         plonl )
 
+#ifndef AM3_CHEM
       use CHEM_MODS_MOD, only : ncol_abs, phtcnt
-!     use M_RXT_ID_MOD
+#else
+      use AM3_CHEM_MODS_MOD, only : ncol_abs, phtcnt
+#endif
 
       implicit none
 
@@ -1141,7 +1144,11 @@ Rate_loop : &
 !        ... Set the column densities at the upper boundary
 !---------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use CHEM_MODS_MOD, only : ncol_abs
+#else
+      use AM3_CHEM_MODS_MOD, only : ncol_abs
+#endif
 
       implicit none
 
@@ -1198,7 +1205,11 @@ Rate_loop : &
 !             ... Set the column densities
 !---------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use CHEM_MODS_MOD, only : ncol_abs
+#else
+      use AM3_CHEM_MODS_MOD, only : ncol_abs
+#endif
 
       implicit none
 

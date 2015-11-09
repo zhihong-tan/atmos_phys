@@ -5,8 +5,13 @@
 !           surface fluxes for the advected species.
 !-----------------------------------------------------------
 
+#ifndef AM3_CHEM
       use mo_grid_mod,   only : pcnst
       use chem_mods_mod, only : grpcnt
+#else
+      use AM3_mo_grid_mod,   only : pcnst
+      use AM3_chem_mods_mod, only : grpcnt
+#endif
 
       implicit none
 

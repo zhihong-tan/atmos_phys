@@ -21,7 +21,11 @@ logical                       :: module_is_initialized = .false.
       use MO_PHOTO_MOD,      only : prate_init
       use mo_chem_utls_mod,  only : chem_utls_init
       use mo_usrrxt_mod,     only : usrrxt_init
+#ifndef AM3_CHEM
       use CHEM_MODS_mod,     only : grpcnt, clscnt1, clscnt4, clscnt5, chem_mods_init
+#else
+      use AM3_CHEM_MODS_mod, only : grpcnt, clscnt1, clscnt4, clscnt5, chem_mods_init
+#endif
       use MO_EXP_SOL_mod,    only : exp_slv_init
       use MO_IMP_SOL_mod,    only : imp_slv_init
       use MO_RODAS_SOL_mod,  only : rodas_slv_init

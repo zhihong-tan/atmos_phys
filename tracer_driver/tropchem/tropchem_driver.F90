@@ -79,8 +79,13 @@ use              mo_chemdr_mod, only : chemdr, chemdr_init
 use              mo_setsox_mod, only : setsox_init
 use             mo_chemini_mod, only : chemini
 use             M_TRACNAME_MOD, only : tracnam         
+#ifndef AM3_CHEM
 use                MO_GRID_MOD, only : pcnstm1 
 use              CHEM_MODS_MOD, only : phtcnt, gascnt
+#else
+use            AM3_MO_GRID_MOD, only : pcnstm1 
+use          AM3_CHEM_MODS_MOD, only : phtcnt, gascnt
+#endif
 use               MOZ_HOOK_MOD, only : moz_hook_init
 use   strat_chem_utilities_mod, only : strat_chem_utilities_init, &
                                        strat_chem_dcly_dt, &

@@ -133,8 +133,13 @@ logical                       :: module_is_initialized = .false.
 !       ... xfrom from mass to volume mixing ratio
 !-----------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod, only : adv_mass
       use mo_grid_mod,   only : pcnstm1, pcnst
+#else
+      use AM3_chem_mods_mod, only : adv_mass
+      use AM3_mo_grid_mod,   only : pcnstm1, pcnst
+#endif
 
       implicit none
 
@@ -169,8 +174,13 @@ logical                       :: module_is_initialized = .false.
 !       ... xfrom from mass to volume mixing ratio
 !-----------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod, only : adv_mass, nadv_mass, grpcnt
       use mo_grid_mod,   only : pcnstm1, pcnst
+#else
+      use AM3_chem_mods_mod, only : adv_mass, nadv_mass, grpcnt
+      use AM3_mo_grid_mod,   only : pcnstm1, pcnst
+#endif
 
       implicit none
 
@@ -227,7 +237,11 @@ logical                       :: module_is_initialized = .false.
 !           replace with zero value
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use mo_grid_mod,    only : pcnstm1
+#else
+      use AM3_mo_grid_mod,    only : pcnstm1
+#endif
       use m_tracname_mod, only : tracnam
 
       implicit none
@@ -272,7 +286,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return overall species index associated with spc_name
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : pcnstm1
+#else
+      use AM3_chem_mods_mod,  only : pcnstm1
+#endif
       use m_tracname_mod, only : tracnam
 
       implicit none
@@ -302,7 +320,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return group index associated with spc_name
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : ngrp, grp_lst
+#else
+      use AM3_chem_mods_mod,  only : ngrp, grp_lst
+#endif
 
       implicit none
 
@@ -331,7 +353,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return group member index associated with spc_name
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : grpcnt
+#else
+      use AM3_chem_mods_mod,  only : grpcnt
+#endif
       use m_tracname_mod, only : natsnam
 
       implicit none
@@ -363,7 +389,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return overall het process index associated with spc_name
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : hetcnt, het_lst
+#else
+      use AM3_chem_mods_mod,  only : hetcnt, het_lst
+#endif
 
       implicit none
 
@@ -392,7 +422,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return overall external frcing index associated with spc_name
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : extcnt, extfrc_lst
+#else
+      use AM3_chem_mods_mod,  only : extcnt, extfrc_lst
+#endif
 
       implicit none
 
@@ -423,7 +457,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return overall external frcing index associated with spc_name
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : rxt_alias_cnt, rxt_alias_lst, rxt_alias_map
+#else
+      use AM3_chem_mods_mod,  only : rxt_alias_cnt, rxt_alias_lst, rxt_alias_map
+#endif
 
       implicit none
 
@@ -452,7 +490,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return logical for species dry deposition
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : drydep_cnt, drydep_lst
+#else
+      use AM3_chem_mods_mod,  only : drydep_cnt, drydep_lst
+#endif
 
       implicit none
 
@@ -481,7 +523,11 @@ logical                       :: module_is_initialized = .false.
 !     ... return logical for species surface emission
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : srfems_cnt, srfems_lst
+#else
+      use AM3_chem_mods_mod,  only : srfems_cnt, srfems_lst
+#endif
 
       implicit none
 

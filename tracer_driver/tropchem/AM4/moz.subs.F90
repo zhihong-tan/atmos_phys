@@ -1,37 +1,35 @@
-      module AM3_mo_setrxt_mod
 
-implicit none
+
+
+
+
+
+      module mo_setrxt_mod
+
       private
       public :: setrxt
 
-character(len=128), parameter :: version     = '$Id$'
-character(len=128), parameter :: tagname     = '$Name$'
-logical                       :: module_is_initialized = .false.
-
       contains
 
-!++lwh
       subroutine setrxt( rate, temp, m, plonl, plev, plnplv )
-!--lwh
 
-      use AM3_chem_mods_mod, only : rxntot
-      use mo_jpl_mod,    only : jpl
+
+      use CHEM_MODS_MOD, only : rxntot
+      use mo_jpl_mod, only : jpl
 
       implicit none
 
 !-------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !-------------------------------------------------------
-!++lwh
       integer, intent(in) :: plonl, plev, plnplv
-!--lwh
-      real, intent(in)    :: temp(plonl,plev), m(plonl,plev)
+      real, intent(in) :: temp(plonl,plev), m(plonl,plev)
       real, intent(inout) :: rate(plonl,plev,rxntot)
 
 !-------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !-------------------------------------------------------
-      real  ::  itemp(plonl,plev), exp_fac(plonl,plev)
+      real :: itemp(plonl,plev), exp_fac(plonl,plev)
       real, dimension(plonl,plev) :: ko, kinf
 
       rate(:,:,53) = 3.5e-12
@@ -216,11 +214,11 @@ logical                       :: module_is_initialized = .false.
       call jpl( rate(1,1,60), m, .6, ko, kinf, plnplv )
 
       ko(:,:) = 5.9e-33 * itemp(:,:)**1.4
-      kinf(:,:) = 1.1e-12 * itemp(:,:)**(-1.3)
+      kinf(:,:) = 1.1e-12 * itemp(:,:)**-1.3
       call jpl( rate(1,1,72), m, .6, ko, kinf, plnplv )
 
-      ko(:,:) = 1.5e-13 * itemp(:,:)**(-0.6)
-      kinf(:,:) = 2.1e9 * itemp(:,:)**(-6.1)
+      ko(:,:) = 1.5e-13 * itemp(:,:)**-0.6
+      kinf(:,:) = 2.1e9 * itemp(:,:)**-6.1
       call jpl( rate(1,1,73), m, .6, ko, kinf, plnplv )
 
       ko(:,:) = 8.e-27 * itemp(:,:)**3.5
@@ -269,9 +267,9 @@ logical                       :: module_is_initialized = .false.
 
       end subroutine setrxt
 
-      end module AM3_mo_setrxt_mod
+      end module mo_setrxt_mod
 
-      module AM3_mo_adjrxt_mod
+      module mo_adjrxt_mod
 
       private
       public :: adjrxt
@@ -280,21 +278,22 @@ logical                       :: module_is_initialized = .false.
 
       subroutine adjrxt( rate, inv, m, plnplv )
 
-      use AM3_chem_mods_mod, only : nfs, rxntot
+      use CHEM_MODS_MOD, only : nfs, rxntot
 
       implicit none
 
 !--------------------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !--------------------------------------------------------------------
       integer, intent(in) :: plnplv
-      real, intent(in)    :: inv(plnplv,nfs)
-      real, intent(in)    :: m(plnplv)
+      real, intent(in) :: inv(plnplv,nfs)
+      real, intent(in) :: m(plnplv)
       real, intent(inout) :: rate(plnplv,rxntot)
 
 !--------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !--------------------------------------------------------------------
+      real :: im(plnplv)
 
       rate(:, 44) = rate(:, 44) * inv(:, 2)
       rate(:, 45) = rate(:, 45) * inv(:, 3)
@@ -491,9 +490,9 @@ logical                       :: module_is_initialized = .false.
 
       end subroutine adjrxt
 
-      end module AM3_mo_adjrxt_mod
+      end module mo_adjrxt_mod
 
-      module AM3_mo_phtadj_mod
+      module mo_phtadj_mod
 
       private
       public :: phtadj
@@ -502,31 +501,31 @@ logical                       :: module_is_initialized = .false.
 
       subroutine phtadj( p_rate, inv, m, plnplv )
 
-      use AM3_chem_mods_mod, only : nfs, phtcnt
+      use CHEM_MODS_MOD, only : nfs, phtcnt
 
       implicit none
 
 !--------------------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !--------------------------------------------------------------------
       integer, intent(in) :: plnplv
-      real, intent(in)    :: inv(plnplv,nfs)
-      real, intent(in)    :: m(plnplv)
+      real, intent(in) :: inv(plnplv,nfs)
+      real, intent(in) :: m(plnplv)
       real, intent(inout) :: p_rate(plnplv,phtcnt)
 
 !--------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !--------------------------------------------------------------------
-      real    ::  im(plnplv)
+      real :: im(plnplv)
 
       im(:) = 1. / m(:)
-      p_rate(:,  1) = p_rate(:,  1)  * inv(:, 3) * im(:)
+      p_rate(:, 1) = p_rate(:, 1) * inv(:, 3) * im(:)
 
       end subroutine phtadj
 
-      end module AM3_mo_phtadj_mod
+      end module mo_phtadj_mod
 
-      module AM3_mo_rxt_mod
+      module mo_rxt_mod
 
       private
       public :: rxt_mod
@@ -535,24 +534,24 @@ logical                       :: module_is_initialized = .false.
 
       subroutine rxt_mod( rate, het_rates, grp_ratios, plnplv )
 
-      use AM3_chem_mods_mod, only : rxntot, hetcnt, grpcnt
+      use CHEM_MODS_MOD, only : rxntot, hetcnt, grpcnt
 
       implicit none
 
 !---------------------------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !---------------------------------------------------------------------------
-      integer, intent(in) ::  plnplv
-      real, intent(inout) ::  rate(plnplv,rxntot)
-      real, intent(inout) ::  het_rates(plnplv,hetcnt)
-      real, intent(in)    ::  grp_ratios(plnplv,grpcnt)
+      integer, intent(in) :: plnplv
+      real, intent(inout) :: rate(plnplv,rxntot)
+      real, intent(inout) :: het_rates(plnplv,hetcnt)
+      real, intent(in) :: grp_ratios(plnplv,grpcnt)
 
 
       end subroutine rxt_mod
 
-      end module AM3_mo_rxt_mod
+      end module mo_rxt_mod
 
-      module AM3_mo_make_grp_vmr_mod
+      module mo_make_grp_vmr_mod
 
       private
       public :: mak_grp_vmr
@@ -561,23 +560,24 @@ logical                       :: module_is_initialized = .false.
 
       subroutine mak_grp_vmr( vmr, group_ratios, group_vmrs, plonl )
 
-      use AM3_mo_grid_mod,   only : plev, pcnstm1
-      use AM3_chem_mods_mod, only : grpcnt
+      use MO_GRID_MOD, only : plev, pcnstm1
+      use CHEM_MODS_MOD, only : grpcnt
 
       implicit none
 
 !----------------------------------------------------------------------------
-!        ... Dummy arguments
+! ... Dummy arguments
 !----------------------------------------------------------------------------
       integer, intent(in) :: plonl
-      real, intent(in)    :: vmr(plonl,plev,pcnstm1)
-      real, intent(in)    :: group_ratios(plonl,plev,grpcnt)
-      real, intent(out)   :: group_vmrs(plonl,plev,grpcnt)
+      real, intent(in) :: vmr(plonl,plev,pcnstm1)
+      real, intent(in) :: group_ratios(plonl,plev,grpcnt)
+      real, intent(out) :: group_vmrs(plonl,plev,grpcnt)
 
 !----------------------------------------------------------------------------
-!        ... Local variables
+! ... Local variables
 !----------------------------------------------------------------------------
+      integer :: k
 
       end subroutine mak_grp_vmr
 
-      end module AM3_mo_make_grp_vmr_mod
+      end module mo_make_grp_vmr_mod
