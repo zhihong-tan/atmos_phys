@@ -254,7 +254,7 @@ logical                       :: module_is_initialized = .false.
       real, dimension(size(qin,1), naero_het)::drymass_het,&
                                         rd_het,re_het,sfca_het
       real :: uptk_het
-      real*8 :: gam_n2o5, gam_no3, gam_nh3
+      real :: gam_n2o5, gam_no3, gam_nh3
 
       plev = SIZE(temp,2)
       ilev = SIZE(temp,1)
