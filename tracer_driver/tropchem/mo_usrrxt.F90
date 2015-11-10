@@ -31,14 +31,14 @@ implicit none
       real, parameter :: d378 = 1. - d622
 ! setup for heteorogenous chemistry (jmao, 02/28/2012)      
       integer, parameter 		::  	A_HET	=1000		!dim = no. of Aerosol/cloud Mie sets FOR AM3(input data)     
-      character*78 			::	TITLE0_HET      	!Title of the first line in am3_scat.dat
-      character*20 			:: 	TITL_HET(A_HET)		! 
+      character(len=78)			::	TITLE0_HET      	!Title of the first line in am3_scat.dat
+      character(len=20)			:: 	TITL_HET(A_HET)		! 
       integer  				:: 	NAA_HET			!Number of categories for scattering phase functions for am3, is 880
       real*8  				::	MEE_HET(5,A_HET)	!Aerosol mass extinction efficiency, MEE*colume mass =od
       real*8  				::	SAA_HET(5,A_HET)	!Single scattering albedo
-      real*8  				::	PAA_HET(8,5,A_HET)	!Phase function: first 8 terms of expansion      
-      real*8  				::	WAA_HET(5,A_HET)	!Wavelengths for the NK supplied phase functions(nm)
-      real*8  				::	RAA_HET(A_HET)
+      real*8  				::      PAA_HET(8,5,A_HET)      !Phase function: first 8 terms of expansion      
+      real*8                            ::      WAA_HET(5,A_HET)        !Wavelengths for the NK supplied phase functions(nm)
+      real*8                            ::      RAA_HET(A_HET)
 
 character(len=128), parameter :: version     = '$Id$'
 character(len=128), parameter :: tagname     = '$Name$'
@@ -95,11 +95,11 @@ logical                       :: module_is_initialized = .false.
 
       !Note here we cannot use get_spc_ndx, because aerosols are not
       !tracnam, which is for get_spc_ndx in mo_chem_utls.F90. (jmao, 03/16/2012)
-      so4_ndx 	  = get_tracer_index(MODEL_ATMOS,'so4')
-      nh4_ndx 	  = get_tracer_index(MODEL_ATMOS,'nh4')
+      so4_ndx     = get_tracer_index(MODEL_ATMOS,'so4')
+      nh4_ndx     = get_tracer_index(MODEL_ATMOS,'nh4')
       nh4no3_ndx  = get_tracer_index(MODEL_ATMOS,'nh4no3')
       bc1_ndx     = get_tracer_index(MODEL_ATMOS,'bcphob')
-      bc2_ndx 	  = get_tracer_index(MODEL_ATMOS,'bcphil')
+      bc2_ndx     = get_tracer_index(MODEL_ATMOS,'bcphil')
       oc1_ndx     = get_tracer_index(MODEL_ATMOS,'omphob')
       oc2_ndx     = get_tracer_index(MODEL_ATMOS,'omphil')
       soa_ndx     = get_tracer_index(MODEL_ATMOS,'SOA')
@@ -109,7 +109,7 @@ logical                       :: module_is_initialized = .false.
       ssa_ndx(4)    = get_tracer_index(MODEL_ATMOS,'ssalt4')
       ssa_ndx(5)    = get_tracer_index(MODEL_ATMOS,'ssalt5')
       dust_ndx(1)   = get_tracer_index(MODEL_ATMOS,'dust1')
-      dust_ndx(2)   = get_tracer_index(MODEL_ATMOS,'dust2')			 
+      dust_ndx(2)   = get_tracer_index(MODEL_ATMOS,'dust2') 
       dust_ndx(3)   = get_tracer_index(MODEL_ATMOS,'dust3')
       dust_ndx(4)   = get_tracer_index(MODEL_ATMOS,'dust4')
       dust_ndx(5)   = get_tracer_index(MODEL_ATMOS,'dust5')
@@ -272,134 +272,6 @@ logical                       :: module_is_initialized = .false.
          if( uo_o2_ndx > 0 ) then
             rxt(:,k,uo_o2_ndx) = 6.e-34 * tp(:)**2.4
          end if
-#ifdef IBM
-!-----------------------------------------------------------------
-!        ... n2o5 + m --> no2 + no3 + m
-!-----------------------------------------------------------------
-         if( un2o5_ndx > 0 ) then
-            if( uno2_no3_ndx > 0 ) then
-               call vexp( exp_fac, -11000.*tinv, plonl )
-               rxt(:,k,un2o5_ndx) = rxt(:,k,uno2_no3_ndx) * 3.704e26 * exp_fac(:)
-            else
-               rxt(:,k,un2o5_ndx) = 0.
-            end if
-         end if
-
-!-----------------------------------------------------------------
-!        set rates for:
-!         ... hno3 + oh --> no3 + h2o
-!           ho2no2 + m --> ho2 + no2 + m
-!           co + oh --> co2 + ho2
-!-----------------------------------------------------------------
-         if( uoh_hno3_ndx > 0 ) then
-            call vexp( exp_fac, 1335.*tinv, plonl )
-            ko(:) = m(:,k) * 6.5e-34 * exp_fac(:)
-            call vexp( exp_fac, 2199.*tinv, plonl )
-            ko(:) = ko(:) / (1. + ko(:)/(2.7e-17*exp_fac(:)))
-            call vexp( exp_fac, 460.*tinv, plonl )
-            rxt(:,k,uoh_hno3_ndx) = ko(:) + 2.4e-14*exp_fac(:)
-         end if
-         if( uhno4_ndx > 0 ) then
-            if( uho2_no2_ndx > 0 ) then
-               call vexp( exp_fac, -10900.*tinv, plonl )
-               rxt(:,k,uhno4_ndx) = rxt(:,k,uho2_no2_ndx) * exp_fac(:) / 2.1e-27
-            else
-               rxt(:,k,uhno4_ndx) = 0.
-            end if
-         end if
-!        if( uco_oha_ndx > 0 ) then
-!           rxt(:,k,uco_oha_ndx) = 1.5e-13 * (1. + 6.e-7*boltz*m(:,k)*temp(:,k))
-!        end if
-
-!-----------------------------------------------------------------
-!        ... ho2 + ho2 --> h2o2
-!        note: this rate involves the water vapor number density
-!-----------------------------------------------------------------
-         if( uho2_ho2_ndx > 0 ) then
-            if( indexh2o > 0 ) then
-               tmp_indexh2o = indexh2o
-               call vexp( exp_fac, 2200.*tinv, plonl )
-               fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp_fac(:)
-            else if( h2o_ndx > 0 ) then
-               call vexp( exp_fac, 2200.*tinv, plonl )
-               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp_fac(:)
-            else
-               fc(:) = 1.
-            end if
-            call vexp( exp_fac, 430.*tinv, plonl )
-            ko(:)   = 3.5e-13 * exp_fac(:)
-            call vexp( exp_fac, 1000.*tinv, plonl )
-            kinf(:) = 1.7e-33 * m(:,k) * exp_fac(:)
-            rxt(:,k,uho2_ho2_ndx) = (ko(:) + kinf(:)) * fc(:)
-         end if
-
-!-----------------------------------------------------------------
-!            ... mco3 + no2 -> mpan
-!-----------------------------------------------------------------
-         if( umpan_f_ndx > 0 ) then
-            rxt(:,k,umpan_f_ndx) = 9.3e-12 * tp(:) / m(:,k)
-         end if
-
-!-----------------------------------------------------------------
-!        ... pan + m --> ch3co3 + no2 + m
-!-----------------------------------------------------------------
-         call vexp( exp_fac, -14000.*tinv, plonl )
-         if( upan_b_ndx > 0 ) then
-            if( upan_f_ndx > 0 ) then
-               rxt(:,k,upan_b_ndx) = rxt(:,k,upan_f_ndx) * 1.111e28 * exp_fac(:)
-            else
-               rxt(:,k,upan_b_ndx) = 0.
-            end if
-         end if
-
-!-----------------------------------------------------------------
-!        ... mpan + m --> mco3 + no2 + m
-!-----------------------------------------------------------------
-         if( umpan_b_ndx > 0 ) then
-            if( umpan_f_ndx > 0 ) then
-               rxt(:,k,umpan_b_ndx) = rxt(:,k,umpan_f_ndx) * 1.111e28 * exp_fac(:)
-            else
-               rxt(:,k,umpan_b_ndx) = 0.
-            end if
-         end if
-
-!-----------------------------------------------------------------
-!       ... xooh + oh -> h2o + oh
-!-----------------------------------------------------------------
-         if( uoh_xooh_ndx > 0 ) then
-            call vexp( exp_fac, 253.*tinv, plonl )
-            rxt(:,k,uoh_xooh_ndx) = temp(:,k)**2 * 7.69e-17 * exp_fac(:)
-         end if
-
-!-----------------------------------------------------------------
-!       ... ch3coch3 + oh -> ro2 + h2o
-!-----------------------------------------------------------------
-         if( uoh_acet_ndx > 0 ) then
-            call vexp( exp_fac, -2000.*tinv, plonl )
-            rxt(:,k,uoh_acet_ndx) = 3.82e-11 * exp_fac(:) + 1.33e-13
-         end if
-!-----------------------------------------------------------------
-!       ... DMS + OH -> .75 * SO2
-!-----------------------------------------------------------------
-         if( uoh_dms_ndx > 0 ) then
-            call vexp( exp_fac, 5820.*tinv, plonl )
-            call vexp( xr, 6280.*tinv, plonl )
-            ko(:) = 1. + 5.0e-30 * xr * m(:,k) * 0.21
-            rxt(:,k,uoh_dms_ndx) = 1.0e-39 * exp_fac * m(:,k) * 0.21 / ko(:)
-         end if
-
-!-----------------------------------------------------------------
-!        ... Cl2O2 + M -> 2*ClO + M
-!-----------------------------------------------------------------
-         if( strat38_ndx > 0 ) then
-            if( strat37_ndx > 0 ) then
-               call vexp( exp_fac, -8835.*tinv, plonl )
-               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 1.075e27 * exp_fac(:)
-            else
-               rxt(:,k,strat38_ndx) = 0.
-            end if
-         end if
-#else
 !-----------------------------------------------------------------
 !        ... n2o5 + m --> no2 + no3 + m
 !-----------------------------------------------------------------
@@ -514,7 +386,7 @@ logical                       :: module_is_initialized = .false.
                rxt(:,k,strat38_ndx) = 0.
             end if
          end if
-#endif
+
 if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
          if( n2o5h_ndx > 0 .or. no3h_ndx > 0 .or. nh3h_ndx > 0 ) then
 !-----------------------------------------------------------------
@@ -705,10 +577,8 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
                   end do
                end if
             end if
-! this end do is for the ilev.
-           end do
-! this if is for the hetchem.
-end if
+           end do ! (ilev)
+end if ! (trop_option%het_chem)
          if( strat72_ndx > 0 .or. strat73_ndx > 0 .or. strat74_ndx > 0 .or. &
              strat75_ndx > 0 .or. strat76_ndx > 0 .or. strat77_ndx > 0 .or. &
              strat78_ndx > 0 .or. strat79_ndx > 0 .or. strat80_ndx > 0 ) then
@@ -809,10 +679,10 @@ end if
 !      including dry radius(rd), effective radius(re, with rh correction), and surface area  
 !----------------------------------------------------------------
         implicit none
-        real, intent(in)    	:: r_(:,:)	!species, second dimension is species index
-        real, intent(in)    	:: rh(:),airdensity(:) 	!relative humidity
-        real, intent(out)   	:: drymass(:,:)	        !aerosol dry mass (g/cm3)
-        real, intent(out)   	:: rd(:,:), re(:,:), sfc_area(:,:)	!second dimension is aerosol index
+        real, intent(in)        :: r_(:,:)              !species, second dimension is species index
+        real, intent(in)        :: rh(:),airdensity(:)  !relative humidity
+        real, intent(out)       :: drymass(:,:)         !aerosol dry mass (g/cm3)
+        real, intent(out)       :: rd(:,:), re(:,:), sfc_area(:,:)  !second dimension is aerosol index
  
 !-----------------------------------------------------------------
 !     local parameter variables
@@ -832,26 +702,26 @@ end if
 !-----------------------------------------------------------------
 !     local variables
 !-----------------------------------------------------------------
-!        real, dimension(size(r,1),size(r,2))	::      so4, &		! ammonium sulfate (VMR)
-!             bc1, &		! Hydrophobic carbon (MMR)
-!             bc2, &		! Hydrophilic carbon (MMR)
-!							oc1, &
-!							oc2, &
-!							soa, &
-!							ssa1, &
-!							ssa2, &
-!							ssa3, &
-!							ssa4, &
-!							ssa5, &
-!			    				dust11, &		! dust1 (MMR)
-!			    				dust12, &		! dust1 (MMR)
-!			    				dust13, &		! dust1 (MMR)
-!			    				dust14, &		! dust1 (MMR)							
-!			    				dust1, &		! dust1 (MMR)
-!			    				dust2, &		! dust2 (MMR)			 
-!			    				dust3, &		! dust3 (MMR)
-!			    				dust4, & 			! dust4 (MMR)
-!			    				dust5, & 			! dust4 (MMR)
+!        real, dimension(size(r,1),size(r,2))  ::      so4, &           ! ammonium sulfate (VMR)
+!                                                      bc1, &           ! Hydrophobic black carbon (MMR)
+!                                                      bc2, &           ! Hydrophilic black carbon (MMR)
+!                                                      oc1, &           ! Hydrophobic organic carbon (MMR)
+!                                                      oc2, &           ! Hydrophilic organic carbon (MMR)
+!                                                      soa, &           ! Secondary organic aerosol (MMR)
+!                                                      ssa1, &          ! sea salt 1 (MMR)
+!                                                      ssa2, &          ! sea salt 2 (MMR)
+!                                                      ssa3, &          ! sea salt 3 (MMR)
+!                                                      ssa4, &          ! sea salt 4 (MMR)
+!                                                      ssa5, &          ! sea salt 5 (MMR)
+!                                                      dust11, &        ! dust1 (MMR)
+!                                                      dust12, &        ! dust1 (MMR)
+!                                                      dust13, &        ! dust1 (MMR)
+!                                                      dust14, &        ! dust1 (MMR)
+!                                                      dust1, &         ! dust1 (MMR)
+!                                                      dust2, &         ! dust2 (MMR) 
+!                                                      dust3, &         ! dust3 (MMR)
+!                                                      dust4, &         ! dust4 (MMR)
+!                                                      dust5, &         ! dust5 (MMR)
         real, dimension(size(r_,1))        ::     rh_het
         integer, dimension(size(r_,1))     ::     irh
         integer, dimension(size(r_,1),size(r_,2))     ::     aeroindx!to save index
