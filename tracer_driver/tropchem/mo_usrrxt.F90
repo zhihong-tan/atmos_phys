@@ -575,6 +575,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
 !-----------------------------------------------------------------
 !        ... ho2 + ho2 --> h2o2
 !        note: this rate involves the water vapor number density
+!        This reaction is updated from JPL11. (jmao,04/30/2013)         
 !-----------------------------------------------------------------
          if( uho2_ho2_ndx > 0 ) then
             if( indexh2o > 0 ) then
@@ -591,6 +592,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
          end if
 !-----------------------------------------------------------------
 !       ... DMS + OH -> .75 * SO2 
+!       This reaction is updated from JPL11. (jmao,04/30/2013)         
 !-----------------------------------------------------------------
          if( uoh_dms_ndx > 0 ) then
             ko(:) = 1. + 1.05e-5 * exp( 3644.*tinv(:) ) * 0.21
@@ -625,15 +627,6 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
                      uptk_het = 0.
                      if ( trop_option%gN2O5 .gt. 0. ) then !default
                         gam_n2o5 =  trop_option%gN2O5
-                     else if   (  trop_option%gN2O5 .gt. -2. .and.  trop_option%gN2O5 .le. -1 .and. &
-                          so4_ndx .gt. 0 .and. nh4no3_ndx .gt. 0 ) then !riemer
-                        if ( ( r(i,k,so4_ndx) * 96. + r(i,k,nh4no3_ndx) * 62. ) .gt. 1.e-25 ) then
-                           fso4_no3        = r(i,k,so4_ndx) * 96. / ( r(i,k,so4_ndx) * 96. + r(i,k,nh4no3_ndx) * 62. )
-                        else
-                           fso4_no3        = 1.
-                        end if
-                        gam_n2o5 =  0.02 * fso4_no3 + 0.002 * (1.-fso4_no3) !riemer 2003 (used by cmaq)
-                        !Impact of the heterogeneous hydrolysis of N2O5 on chemistry and nitrate aerosol formation in the lower troposphere under photosmog conditions. Journal of Geophysical Research 108 (D4), 4144.
                      else
                         gam_n2o5  = 0.
                      end if
