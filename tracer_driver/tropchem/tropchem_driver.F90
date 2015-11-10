@@ -1678,7 +1678,16 @@ end if
 
 
 !gammas to be added when het chem is working
-
+trop_option%gN2O5                    = gN2O5
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gN2O5:",trop_option%gN2O5
+trop_option%gNO3                     = gNO3
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gNO3:",trop_option%gNO3
+trop_option%gNO2                     = gNO2
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gNO2:",trop_option%gNO2
+trop_option%gHO2                     = gHO2
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gHO2:",trop_option%gHO2
+trop_option%gNH3                     = gNH3
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gNH3:",trop_option%gNH3
 trop_option%retain_cm3_bugs = retain_cm3_bugs
 trop_option%do_fastjx_photo = do_fastjx_photo
 trop_option%min_lwc_for_cloud_chem = min_lwc_for_cloud_chem
