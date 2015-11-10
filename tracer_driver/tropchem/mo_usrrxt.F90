@@ -76,7 +76,7 @@ logical                       :: module_is_initialized = .false.
       n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
       no3h_ndx = get_rxt_ndx( 'no3h' )
       ho2h_ndx = get_rxt_ndx( 'ho2h' )
-      ho2h_ndx = get_rxt_ndx( 'no2h' )
+      no2h_ndx = get_rxt_ndx( 'no2h' )
       nh3h_ndx = get_rxt_ndx( 'nh3h' )
       uoh_xooh_ndx = get_rxt_ndx( 'uoh_xooh' )
       uoh_acet_ndx = get_rxt_ndx( 'uoh_acet' )
@@ -206,9 +206,9 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
 !        ... density of sulfate aerosol
 !-----------------------------------------------------------------
-!     real, parameter :: gam1 = 0.04                    ! n2o5+sul ->2hno3
-      real, parameter :: gam1 = 0.10                    ! n2o5+sul ->2hno3
-      real, parameter :: gam4 = 0.05                    ! NH3 +SUL ->NH4SO4 (Dentener 1994)
+!      real, parameter :: gam1 = 0.04                    ! n2o5+sul ->2hno3
+!      real, parameter :: gam1 = 0.10                    ! n2o5+sul ->2hno3
+!      real, parameter :: gam4 = 0.05                    ! NH3 +SUL ->NH4SO4 (Dentener 1994)
       real, parameter :: wso4 = 98.
       real, parameter :: den  = 1.15                    ! each molecule of so4(aer) density g/cm3
 !-------------------------------------------------
@@ -254,7 +254,7 @@ logical                       :: module_is_initialized = .false.
       real, dimension(size(qin,1), naero_het)::drymass_het,&
                                         rd_het,re_het,sfca_het
       real :: uptk_het
-      real*8 :: gam_n2o5, fso4_no3
+      real*8 :: gam_n2o5, gam_no3, gam_nh3
 
       plev = SIZE(temp,2)
       ilev = SIZE(temp,1)
@@ -534,6 +534,10 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
 !-------------------------------------------------------------------------
 !         ... estimate sulfate particles surface area (cm2/cm3) in each grid
 !-------------------------------------------------------------------------
+                       gam_n2o5 =  trop_option%gN2O5
+                       gam_no3 =  trop_option%gNO3
+                       gam_nh3 =  trop_option%gNH3
+
             if( so4_ndx > 0 ) then
                sur(:)    = qin(:,k,so4_ndx)
             else
@@ -558,8 +562,8 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
 !       so that velo = 2.65e3*sqrt(t)  (ch2o)   gama>0.022
 !       so that velo = 3.75e3*sqrt(t)  (nh3)    gama=0.4
 !--------------------------------------------------------
-!           xr(:) = .25 * gam1 * sur(:) * 1.40e3 * sqrt( temp(:,k) )
-            xr(:) = 1./(rm1/dg + 4./(gam1+1.e-30)/(1.40e3 * sqrt( temp(:,k))))*sur(:)
+!           xr(:) = .25 * gam_n2o5 * sur(:) * 1.40e3 * sqrt( temp(:,k) )
+            xr(:) = 1./(rm1/dg + 4./(gam_n2o5+1.e-30)/(1.40e3 * sqrt( temp(:,k))))*sur(:)
             if( n2o5h_ndx > 0 ) then
                rxt(:,k,n2o5h_ndx) = xr(:)
             end if
@@ -568,7 +572,7 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
             end if
             if( nh3h_ndx > 0 ) then
                rxt(:,k,nh3h_ndx) = &
-                  1./(rm1/dg + 4./(gam4+1.e-30)/(3.75e3 * sqrt( temp(:,k))))*sur(:)
+                  1./(rm1/dg + 4./(gam_nh3+1.e-30)/(3.75e3 * sqrt( temp(:,k))))*sur(:)
             end if
          end if
 elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
