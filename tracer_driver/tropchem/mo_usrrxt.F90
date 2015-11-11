@@ -269,134 +269,6 @@ logical                       :: module_is_initialized = .false.
          if( uo_o2_ndx > 0 ) then
             rxt(:,k,uo_o2_ndx) = 6.e-34 * tp(:)**2.4
          end if
-#ifdef IBM
-!-----------------------------------------------------------------
-!        ... n2o5 + m --> no2 + no3 + m
-!-----------------------------------------------------------------
-         if( un2o5_ndx > 0 ) then
-            if( uno2_no3_ndx > 0 ) then
-               call vexp( exp_fac, -11000.*tinv, plonl )
-               rxt(:,k,un2o5_ndx) = rxt(:,k,uno2_no3_ndx) * 3.704e26 * exp_fac(:)
-            else
-               rxt(:,k,un2o5_ndx) = 0.
-            end if
-         end if
-
-!-----------------------------------------------------------------
-!        set rates for:
-!         ... hno3 + oh --> no3 + h2o
-!           ho2no2 + m --> ho2 + no2 + m
-!           co + oh --> co2 + ho2
-!-----------------------------------------------------------------
-         if( uoh_hno3_ndx > 0 ) then
-            call vexp( exp_fac, 1335.*tinv, plonl )
-            ko(:) = m(:,k) * 6.5e-34 * exp_fac(:)
-            call vexp( exp_fac, 2199.*tinv, plonl )
-            ko(:) = ko(:) / (1. + ko(:)/(2.7e-17*exp_fac(:)))
-            call vexp( exp_fac, 460.*tinv, plonl )
-            rxt(:,k,uoh_hno3_ndx) = ko(:) + 2.4e-14*exp_fac(:)
-         end if
-         if( uhno4_ndx > 0 ) then
-            if( uho2_no2_ndx > 0 ) then
-               call vexp( exp_fac, -10900.*tinv, plonl )
-               rxt(:,k,uhno4_ndx) = rxt(:,k,uho2_no2_ndx) * exp_fac(:) / 2.1e-27
-            else
-               rxt(:,k,uhno4_ndx) = 0.
-            end if
-         end if
-!        if( uco_oha_ndx > 0 ) then
-!           rxt(:,k,uco_oha_ndx) = 1.5e-13 * (1. + 6.e-7*boltz*m(:,k)*temp(:,k))
-!        end if
-
-!-----------------------------------------------------------------
-!        ... ho2 + ho2 --> h2o2
-!        note: this rate involves the water vapor number density
-!-----------------------------------------------------------------
-         if( uho2_ho2_ndx > 0 ) then
-            if( indexh2o > 0 ) then
-               tmp_indexh2o = indexh2o
-               call vexp( exp_fac, 2200.*tinv, plonl )
-               fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp_fac(:)
-            else if( h2o_ndx > 0 ) then
-               call vexp( exp_fac, 2200.*tinv, plonl )
-               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp_fac(:)
-            else
-               fc(:) = 1.
-            end if
-            call vexp( exp_fac, 430.*tinv, plonl )
-            ko(:)   = 3.5e-13 * exp_fac(:)
-            call vexp( exp_fac, 1000.*tinv, plonl )
-            kinf(:) = 1.7e-33 * m(:,k) * exp_fac(:)
-            rxt(:,k,uho2_ho2_ndx) = (ko(:) + kinf(:)) * fc(:)
-         end if
-
-!-----------------------------------------------------------------
-!            ... mco3 + no2 -> mpan
-!-----------------------------------------------------------------
-         if( umpan_f_ndx > 0 ) then
-            rxt(:,k,umpan_f_ndx) = 9.3e-12 * tp(:) / m(:,k)
-         end if
-
-!-----------------------------------------------------------------
-!        ... pan + m --> ch3co3 + no2 + m
-!-----------------------------------------------------------------
-         call vexp( exp_fac, -14000.*tinv, plonl )
-         if( upan_b_ndx > 0 ) then
-            if( upan_f_ndx > 0 ) then
-               rxt(:,k,upan_b_ndx) = rxt(:,k,upan_f_ndx) * 1.111e28 * exp_fac(:)
-            else
-               rxt(:,k,upan_b_ndx) = 0.
-            end if
-         end if
-
-!-----------------------------------------------------------------
-!        ... mpan + m --> mco3 + no2 + m
-!-----------------------------------------------------------------
-         if( umpan_b_ndx > 0 ) then
-            if( umpan_f_ndx > 0 ) then
-               rxt(:,k,umpan_b_ndx) = rxt(:,k,umpan_f_ndx) * 1.111e28 * exp_fac(:)
-            else
-               rxt(:,k,umpan_b_ndx) = 0.
-            end if
-         end if
-
-!-----------------------------------------------------------------
-!       ... xooh + oh -> h2o + oh
-!-----------------------------------------------------------------
-         if( uoh_xooh_ndx > 0 ) then
-            call vexp( exp_fac, 253.*tinv, plonl )
-            rxt(:,k,uoh_xooh_ndx) = temp(:,k)**2 * 7.69e-17 * exp_fac(:)
-         end if
-
-!-----------------------------------------------------------------
-!       ... ch3coch3 + oh -> ro2 + h2o
-!-----------------------------------------------------------------
-         if( uoh_acet_ndx > 0 ) then
-            call vexp( exp_fac, -2000.*tinv, plonl )
-            rxt(:,k,uoh_acet_ndx) = 3.82e-11 * exp_fac(:) + 1.33e-13
-         end if
-!-----------------------------------------------------------------
-!       ... DMS + OH -> .75 * SO2
-!-----------------------------------------------------------------
-         if( uoh_dms_ndx > 0 ) then
-            call vexp( exp_fac, 5820.*tinv, plonl )
-            call vexp( xr, 6280.*tinv, plonl )
-            ko(:) = 1. + 5.0e-30 * xr * m(:,k) * 0.21
-            rxt(:,k,uoh_dms_ndx) = 1.0e-39 * exp_fac * m(:,k) * 0.21 / ko(:)
-         end if
-
-!-----------------------------------------------------------------
-!        ... Cl2O2 + M -> 2*ClO + M
-!-----------------------------------------------------------------
-         if( strat38_ndx > 0 ) then
-            if( strat37_ndx > 0 ) then
-               call vexp( exp_fac, -8835.*tinv, plonl )
-               rxt(:,k,strat38_ndx) = rxt(:,k,strat37_ndx) * 1.075e27 * exp_fac(:)
-            else
-               rxt(:,k,strat38_ndx) = 0.
-            end if
-         end if
-#else
 !-----------------------------------------------------------------
 !        ... n2o5 + m --> no2 + no3 + m
 !-----------------------------------------------------------------
@@ -511,7 +383,7 @@ logical                       :: module_is_initialized = .false.
                rxt(:,k,strat38_ndx) = 0.
             end if
          end if
-#endif
+
 if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
          if( n2o5h_ndx > 0 .or. no3h_ndx > 0 .or. nh3h_ndx > 0 ) then
 !-----------------------------------------------------------------
