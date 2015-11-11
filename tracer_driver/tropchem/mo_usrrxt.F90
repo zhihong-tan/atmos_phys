@@ -208,8 +208,8 @@ logical                       :: module_is_initialized = .false.
 !        ... density of sulfate aerosol
 !-----------------------------------------------------------------
 !      real, parameter :: gam1 = 0.04                    ! n2o5+sul ->2hno3
-      real, parameter :: gam1 = 0.10                    ! n2o5+sul ->2hno3
-      real, parameter :: gam4 = 0.05                    ! NH3 +SUL ->NH4SO4 (Dentener 1994)
+!      real, parameter :: gam1 = 0.10                    ! n2o5+sul ->2hno3
+!      real, parameter :: gam4 = 0.05                    ! NH3 +SUL ->NH4SO4 (Dentener 1994)
       real, parameter :: wso4 = 98.
       real, parameter :: den  = 1.15                    ! each molecule of so4(aer) density g/cm3
 !-------------------------------------------------
@@ -436,7 +436,7 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
 !       so that velo = 3.75e3*sqrt(t)  (nh3)    gama=0.4
 !--------------------------------------------------------
 !           xr(:) = .25 * gam1 * sur(:) * 1.40e3 * sqrt( temp(:,k) )
-            xr(:) = 1./(rm1/dg + 4./(gam1+1.e-30)/(1.40e3 * sqrt( temp(:,k))))*sur(:)
+            xr(:) = 1./(rm1/dg + 4./(gam_n2o5+1.e-30)/(1.40e3 * sqrt( temp(:,k))))*sur(:)
             if( n2o5h_ndx > 0 ) then
                rxt(:,k,n2o5h_ndx) = xr(:)
             end if
@@ -445,7 +445,7 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
             end if
             if( nh3h_ndx > 0 ) then
                rxt(:,k,nh3h_ndx) = &
-                  1./(rm1/dg + 4./(gam4+1.e-30)/(3.75e3 * sqrt( temp(:,k))))*sur(:)
+                  1./(rm1/dg + 4./(gam_nh3+1.e-30)/(3.75e3 * sqrt( temp(:,k))))*sur(:)
             end if
          end if
 elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
