@@ -7,6 +7,7 @@
       use field_manager_mod,  only : MODEL_ATMOS   
       use tracer_manager_mod, only : get_tracer_index,  query_method
       use field_manager_mod,  only: parse             
+      use tropchem_types_mod, only : tropchem_opt, tropchem_diag
 
 implicit none
       public :: usrrxt_init, usrrxt
@@ -46,7 +47,7 @@ logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine usrrxt_init( verbose )
+      subroutine usrrxt_init( verbose, trop_option )
 !-----------------------------------------------------------------
 !        ... Intialize the user reaction constants module
 !-----------------------------------------------------------------
@@ -58,8 +59,10 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Dummy arguments
 !-----------------------------------------------------------------------
+      type(tropchem_opt), intent(in) :: trop_option
       integer,          intent(in) :: verbose
       integer           NJ1, I, J, K
+
       NJ1 =8 ! Use channel 8 to read files at the moment 
       uo_o2_ndx = get_rxt_ndx( 'uo_o2' )
       uno2_no3_ndx = get_rxt_ndx( 'uno2_no3' )
@@ -96,7 +99,11 @@ logical                       :: module_is_initialized = .false.
       !Note here we cannot use get_spc_ndx, because aerosols are not
       !tracnam, which is for get_spc_ndx in mo_chem_utls.F90. (jmao, 03/16/2012)
 !      so4_ndx 	  = get_tracer_index(MODEL_ATMOS,'so4')
+if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
       so4_ndx = get_spc_ndx( 'SO4' )
+elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
+! check wiki for this, search get_tracer_index.
+      so4_ndx 	  = get_tracer_index(MODEL_ATMOS,'so4')
       nh4_ndx 	  = get_tracer_index(MODEL_ATMOS,'nh4')
       nh4no3_ndx  = get_tracer_index(MODEL_ATMOS,'nh4no3')
       bc1_ndx     = get_tracer_index(MODEL_ATMOS,'bcphob')
@@ -114,7 +121,7 @@ logical                       :: module_is_initialized = .false.
       dust_ndx(3)   = get_tracer_index(MODEL_ATMOS,'dust3')
       dust_ndx(4)   = get_tracer_index(MODEL_ATMOS,'dust4')
       dust_ndx(5)   = get_tracer_index(MODEL_ATMOS,'dust5')
-      
+end if      
       h2o_ndx = get_spc_ndx( 'H2O' )
       hcl_ndx = get_spc_ndx( 'HCl' )
       clono2_ndx = get_spc_ndx( 'ClONO2' )
@@ -174,7 +181,6 @@ logical                       :: module_is_initialized = .false.
       use chem_mods_mod, only : nfs, rxntot, indexh2o
       use constants_mod, only : PI
       use m_rxt_id_mod
-      use tropchem_types_mod, only : tropchem_opt, tropchem_diag
 
       implicit none
 
@@ -500,24 +506,17 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
             do i=1,ilev
                if( n2o5h_ndx > 0 ) then
                   rxt(i,k,n2o5h_ndx)=0.
-                  do n=1, naero_het
-                     uptk_het = 0.
-                     if ( trop_option%gN2O5 .gt. 0. ) then !default
-                        gam_n2o5 =  trop_option%gN2O5
-                     else
-                        gam_n2o5  = 0.
-                     end if
-                     if ( gam_n2o5 .gt. 0. ) then
-                        call calc_hetrate(sfca_het(i,n),re_het(i,n)*1.D-4,m(i,k),gam_n2o5, &
+                 if ( trop_option%gN2O5 .gt. 0. ) then
+                    do n=1, naero_het
+                       uptk_het = 0.
+                        call calc_hetrate(sfca_het(i,n),re_het(i,n)*1.D-4,m(i,k),trop_option%gN2O5, &
                           sqrt( temp(i,k)),sqrt(mw_n2o5),uptk_het)
                         rxt(i,k,n2o5h_ndx) = rxt(i,k,n2o5h_ndx) + uptk_het
-                     end if
-
 !                     if (trop_diag%ind_gn2o5 .gt. 0) then
 !                        trop_diag_array(i,k,trop_diag%ind_gn2o5) = gam_n2o5
 !                     end if
-
-                  end do
+                    end do
+                 end if
                end if
 
                if( no3h_ndx > 0 ) then

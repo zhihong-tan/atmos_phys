@@ -1725,7 +1725,7 @@ end if
 !-----------------------------------------------------------------------
    call chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
                  o3_column_top, jno_scale_factor, verbose,   &
-                 retain_cm3_bugs, do_fastjx_photo)
+                 retain_cm3_bugs, do_fastjx_photo, trop_option)
    
 !-----------------------------------------------------------------------
 !     ... set initial value of indices
