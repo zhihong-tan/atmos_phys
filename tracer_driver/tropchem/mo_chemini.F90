@@ -13,7 +13,7 @@ logical                       :: module_is_initialized = .false.
 
       subroutine chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
                           o3_column_top, jno_scale_factor, verbose, &
-                          retain_cm3_bugs, do_fastjx_photo )
+                          retain_cm3_bugs, do_fastjx_photo , trop_option)
 !-----------------------------------------------------------------------
 !       ... Chemistry module intialization
 !-----------------------------------------------------------------------
@@ -32,6 +32,7 @@ logical                       :: module_is_initialized = .false.
 
       use MO_READ_SIM_CHM_mod, only : read_sim_chm
       use mo_fphoto_mod,     only : fprate_init
+      use tropchem_types_mod, only : tropchem_opt
 
       implicit none
 
@@ -46,6 +47,7 @@ logical                       :: module_is_initialized = .false.
       integer,          intent(in) :: verbose
       logical,          intent(in) :: retain_cm3_bugs
       logical,          intent(in) :: do_fastjx_photo
+      type(tropchem_opt), intent(in) :: trop_option        
 
 !-----------------------------------------------------------------------
 !       ... Local variables
@@ -129,7 +131,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Intialize the rxt rate constant module
 !-----------------------------------------------------------------------
-      call usrrxt_init( verbose )
+      call usrrxt_init( verbose , trop_option)
 
 !-----------------------------------------------------------------------
 !       ... Intialize the grp ratios module

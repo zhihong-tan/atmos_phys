@@ -7,6 +7,7 @@
       use field_manager_mod,  only : MODEL_ATMOS   
       use tracer_manager_mod, only : get_tracer_index,  query_method
       use field_manager_mod,  only: parse             
+      use tropchem_types_mod, only : tropchem_opt, tropchem_diag
 
 implicit none
       public :: usrrxt_init, usrrxt
@@ -30,15 +31,15 @@ implicit none
       real, parameter :: d622 = rdgas/rvgas
       real, parameter :: d378 = 1. - d622
 ! setup for heteorogenous chemistry (jmao, 02/28/2012)      
-      integer, parameter 		::  	A_HET	=1000		!dim = no. of Aerosol/cloud Mie sets FOR AM3(input data)     
-      character(len=78)			::	TITLE0_HET      	!Title of the first line in am3_scat.dat
-      character(len=20)			:: 	TITL_HET(A_HET)		! 
-      integer  				:: 	NAA_HET			!Number of categories for scattering phase functions for am3, is 880
-      real*8  				::	MEE_HET(5,A_HET)	!Aerosol mass extinction efficiency, MEE*colume mass =od
-      real*8  				::	SAA_HET(5,A_HET)	!Single scattering albedo
-      real*8  				::      PAA_HET(8,5,A_HET)      !Phase function: first 8 terms of expansion      
-      real*8                            ::      WAA_HET(5,A_HET)        !Wavelengths for the NK supplied phase functions(nm)
-      real*8                            ::      RAA_HET(A_HET)
+      integer, parameter           ::       A_HET     =1000     !dim = no. of Aerosol/cloud Mie sets FOR AM3(input data)     
+      character(len=78)            ::      TITLE0_HET           !Title of the first line in am3_scat.dat
+      character(len=20)            ::      TITL_HET(A_HET)      ! 
+      integer                      ::      NAA_HET              !Number of categories for scattering phase functions for am3, is 880
+      real(kind=8)                 ::      MEE_HET(5,A_HET)     !Aerosol mass extinction efficiency, MEE*colume mass =od
+      real(kind=8)                 ::      SAA_HET(5,A_HET)     !Single scattering albedo
+      real(kind=8)                 ::      PAA_HET(8,5,A_HET)   !Phase function: first 8 terms of expansion      
+      real(kind=8)                 ::      WAA_HET(5,A_HET)     !Wavelengths for the NK supplied phase functions(nm)
+      real(kind=8)                 ::      RAA_HET(A_HET)
 
 character(len=128), parameter :: version     = '$Id$'
 character(len=128), parameter :: tagname     = '$Name$'
@@ -46,7 +47,7 @@ logical                       :: module_is_initialized = .false.
 
       contains
 
-      subroutine usrrxt_init( verbose )
+      subroutine usrrxt_init( verbose, trop_option )
 !-----------------------------------------------------------------
 !        ... Intialize the user reaction constants module
 !-----------------------------------------------------------------
@@ -59,7 +60,13 @@ logical                       :: module_is_initialized = .false.
 !       ... Dummy arguments
 !-----------------------------------------------------------------------
       integer,          intent(in) :: verbose
+      type(tropchem_opt), intent(in) :: trop_option
+
+!-----------------------------------------------------------------
+!        ... local variables
+!-----------------------------------------------------------------
       integer           NJ1, I, J, K
+
       NJ1 =8 ! Use channel 8 to read files at the moment 
       uo_o2_ndx = get_rxt_ndx( 'uo_o2' )
       uno2_no3_ndx = get_rxt_ndx( 'uno2_no3' )
@@ -76,7 +83,7 @@ logical                       :: module_is_initialized = .false.
       n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
       no3h_ndx = get_rxt_ndx( 'no3h' )
       ho2h_ndx = get_rxt_ndx( 'ho2h' )
-      ho2h_ndx = get_rxt_ndx( 'no2h' )
+      no2h_ndx = get_rxt_ndx( 'no2h' )
       nh3h_ndx = get_rxt_ndx( 'nh3h' )
       uoh_xooh_ndx = get_rxt_ndx( 'uoh_xooh' )
       uoh_acet_ndx = get_rxt_ndx( 'uoh_acet' )
@@ -95,6 +102,11 @@ logical                       :: module_is_initialized = .false.
 
       !Note here we cannot use get_spc_ndx, because aerosols are not
       !tracnam, which is for get_spc_ndx in mo_chem_utls.F90. (jmao, 03/16/2012)
+!      so4_ndx     = get_tracer_index(MODEL_ATMOS,'so4')
+if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
+      so4_ndx = get_spc_ndx( 'SO4' )
+elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
+! check wiki for this, search get_tracer_index.
       so4_ndx     = get_tracer_index(MODEL_ATMOS,'so4')
       nh4_ndx     = get_tracer_index(MODEL_ATMOS,'nh4')
       nh4no3_ndx  = get_tracer_index(MODEL_ATMOS,'nh4no3')
@@ -113,7 +125,7 @@ logical                       :: module_is_initialized = .false.
       dust_ndx(3)   = get_tracer_index(MODEL_ATMOS,'dust3')
       dust_ndx(4)   = get_tracer_index(MODEL_ATMOS,'dust4')
       dust_ndx(5)   = get_tracer_index(MODEL_ATMOS,'dust5')
-      
+end if      
       h2o_ndx = get_spc_ndx( 'H2O' )
       hcl_ndx = get_spc_ndx( 'HCl' )
       clono2_ndx = get_spc_ndx( 'ClONO2' )
@@ -176,7 +188,6 @@ logical                       :: module_is_initialized = .false.
       use AM3_chem_mods_mod, only : nfs, rxntot, indexh2o
 #endif
       use constants_mod, only : PI
-      use tropchem_types_mod, only : tropchem_opt, tropchem_diag
 
       implicit none
 
@@ -210,8 +221,8 @@ logical                       :: module_is_initialized = .false.
 !        ... density of sulfate aerosol
 !-----------------------------------------------------------------
 !     real, parameter :: gam1 = 0.04                    ! n2o5+sul ->2hno3
-      real, parameter :: gam1 = 0.10                    ! n2o5+sul ->2hno3
-      real, parameter :: gam4 = 0.05                    ! NH3 +SUL ->NH4SO4 (Dentener 1994)
+!     real, parameter :: gam1 = 0.10                    ! n2o5+sul ->2hno3
+!     real, parameter :: gam4 = 0.05                    ! NH3 +SUL ->NH4SO4 (Dentener 1994)
       real, parameter :: wso4 = 98.
       real, parameter :: den  = 1.15                    ! each molecule of so4(aer) density g/cm3
 !-------------------------------------------------
@@ -257,7 +268,7 @@ logical                       :: module_is_initialized = .false.
       real, dimension(size(qin,1), naero_het)::drymass_het,&
                                         rd_het,re_het,sfca_het
       real :: uptk_het
-      real*8 :: gam_n2o5, fso4_no3
+      real :: gam_n2o5, gam_no3, gam_nh3
 
       plev = SIZE(temp,2)
       ilev = SIZE(temp,1)
@@ -409,6 +420,10 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
 !-------------------------------------------------------------------------
 !         ... estimate sulfate particles surface area (cm2/cm3) in each grid
 !-------------------------------------------------------------------------
+            gam_n2o5 =  trop_option%gN2O5
+            gam_no3  =  trop_option%gNO3
+            gam_nh3  =  trop_option%gNH3
+
             if( so4_ndx > 0 ) then
                sur(:)    = qin(:,k,so4_ndx)
             else
@@ -434,7 +449,7 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
 !       so that velo = 3.75e3*sqrt(t)  (nh3)    gama=0.4
 !--------------------------------------------------------
 !           xr(:) = .25 * gam1 * sur(:) * 1.40e3 * sqrt( temp(:,k) )
-            xr(:) = 1./(rm1/dg + 4./(gam1+1.e-30)/(1.40e3 * sqrt( temp(:,k))))*sur(:)
+            xr(:) = 1./(rm1/dg + 4./(gam_n2o5+1.e-30)/(1.40e3 * sqrt( temp(:,k))))*sur(:)
             if( n2o5h_ndx > 0 ) then
                rxt(:,k,n2o5h_ndx) = xr(:)
             end if
@@ -443,13 +458,14 @@ if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
             end if
             if( nh3h_ndx > 0 ) then
                rxt(:,k,nh3h_ndx) = &
-                  1./(rm1/dg + 4./(gam4+1.e-30)/(3.75e3 * sqrt( temp(:,k))))*sur(:)
+                  1./(rm1/dg + 4./(gam_nh3+1.e-30)/(3.75e3 * sqrt( temp(:,k))))*sur(:)
             end if
          end if
 elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
 !-----------------------------------------------------------------
 !        ... ho2 + ho2 --> h2o2
 !        note: this rate involves the water vapor number density
+!        This reaction is updated from JPL11. (jmao,04/30/2013)         
 !-----------------------------------------------------------------
          if( uho2_ho2_ndx > 0 ) then
             if( indexh2o > 0 ) then
@@ -466,6 +482,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
          end if
 !-----------------------------------------------------------------
 !       ... DMS + OH -> .75 * SO2 
+!       This reaction is updated from JPL11. (jmao,04/30/2013)         
 !-----------------------------------------------------------------
          if( uoh_dms_ndx > 0 ) then
             ko(:) = 1. + 1.05e-5 * exp( 3644.*tinv(:) ) * 0.21
@@ -496,33 +513,17 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
             do i=1,ilev
                if( n2o5h_ndx > 0 ) then
                   rxt(i,k,n2o5h_ndx)=0.
-                  do n=1, naero_het
-                     uptk_het = 0.
-                     if ( trop_option%gN2O5 .gt. 0. ) then !default
-                        gam_n2o5 =  trop_option%gN2O5
-                     else if   (  trop_option%gN2O5 .gt. -2. .and.  trop_option%gN2O5 .le. -1 .and. &
-                          so4_ndx .gt. 0 .and. nh4no3_ndx .gt. 0 ) then !riemer
-                        if ( ( r(i,k,so4_ndx) * 96. + r(i,k,nh4no3_ndx) * 62. ) .gt. 1.e-25 ) then
-                           fso4_no3        = r(i,k,so4_ndx) * 96. / ( r(i,k,so4_ndx) * 96. + r(i,k,nh4no3_ndx) * 62. )
-                        else
-                           fso4_no3        = 1.
-                        end if
-                        gam_n2o5 =  0.02 * fso4_no3 + 0.002 * (1.-fso4_no3) !riemer 2003 (used by cmaq)
-                        !Impact of the heterogeneous hydrolysis of N2O5 on chemistry and nitrate aerosol formation in the lower troposphere under photosmog conditions. Journal of Geophysical Research 108 (D4), 4144.
-                     else
-                        gam_n2o5  = 0.
-                     end if
-                     if ( gam_n2o5 .gt. 0. ) then
-                        call calc_hetrate(sfca_het(i,n),re_het(i,n)*1.D-4,m(i,k),gam_n2o5, &
+                 if ( trop_option%gN2O5 .gt. 0. ) then
+                    do n=1, naero_het
+                       uptk_het = 0.
+                        call calc_hetrate(sfca_het(i,n),re_het(i,n)*1.D-4,m(i,k),trop_option%gN2O5, &
                           sqrt( temp(i,k)),sqrt(mw_n2o5),uptk_het)
                         rxt(i,k,n2o5h_ndx) = rxt(i,k,n2o5h_ndx) + uptk_het
-                     end if
-
 !                     if (trop_diag%ind_gn2o5 .gt. 0) then
 !                        trop_diag_array(i,k,trop_diag%ind_gn2o5) = gam_n2o5
 !                     end if
-
-                  end do
+                    end do
+                 end if
                end if
 
                if( no3h_ndx > 0 ) then
@@ -725,9 +726,9 @@ end if ! (trop_option%het_chem)
         real, dimension(size(r_,1))        ::     rh_het
         integer, dimension(size(r_,1))     ::     irh
         integer, dimension(size(r_,1),size(r_,2))     ::     aeroindx!to save index
-        real, parameter :: avo   = 6.023e23               ! molecules/mole		
+        real, parameter :: avo   = 6.023e23               ! molecules/mole
         integer   :: i, st1
-		
+
         rh_het(:) = rh(:) *100.
         drymass(:,:)=0.
         sfc_area(:,:)=0.
@@ -896,14 +897,14 @@ end if ! (trop_option%het_chem)
         !this is routine is to find the index of rh for the whole array.
         implicit none
 
-        integer, intent(in)	:: t(:)         ! defined categories
-        real, intent(in)      :: tt(:) 	        ! model simulated values
-        integer, intent(out)	:: it(:)        ! index
+        integer, intent(in)   :: t(:)         ! defined categories
+        real, intent(in)      :: tt(:)        ! model simulated values
+        integer, intent(out)  :: it(:)        ! index
 
 
-        integer    	:: N_ 	! number of parameters
-        integer       	:: i
-        real, dimension(size(t,1)-1)          :: dt 
+        integer      :: N_   ! number of parameters
+        integer      :: i
+        real, dimension(size(t,1)-1) :: dt 
 
 
         N_ = size(t,1)

@@ -10,28 +10,24 @@ logical                       :: module_is_initialized = .false.
 
       contains
 
-!++lwh
       subroutine setrxt( rate, temp, m, plonl, plev, plnplv )
-!--lwh
 
       use AM3_chem_mods_mod, only : rxntot
-      use mo_jpl_mod,    only : jpl
+      use mo_jpl_mod, only : jpl
 
       implicit none
 
 !-------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !-------------------------------------------------------
-!++lwh
       integer, intent(in) :: plonl, plev, plnplv
-!--lwh
-      real, intent(in)    :: temp(plonl,plev), m(plonl,plev)
+      real, intent(in) :: temp(plonl,plev), m(plonl,plev)
       real, intent(inout) :: rate(plonl,plev,rxntot)
 
 !-------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !-------------------------------------------------------
-      real  ::  itemp(plonl,plev), exp_fac(plonl,plev)
+      real :: itemp(plonl,plev), exp_fac(plonl,plev)
       real, dimension(plonl,plev) :: ko, kinf
 
       rate(:,:,53) = 3.5e-12
@@ -285,15 +281,15 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !--------------------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !--------------------------------------------------------------------
       integer, intent(in) :: plnplv
-      real, intent(in)    :: inv(plnplv,nfs)
-      real, intent(in)    :: m(plnplv)
+      real, intent(in) :: inv(plnplv,nfs)
+      real, intent(in) :: m(plnplv)
       real, intent(inout) :: rate(plnplv,rxntot)
 
 !--------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !--------------------------------------------------------------------
 
       rate(:, 44) = rate(:, 44) * inv(:, 2)
@@ -507,20 +503,20 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !--------------------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !--------------------------------------------------------------------
       integer, intent(in) :: plnplv
-      real, intent(in)    :: inv(plnplv,nfs)
-      real, intent(in)    :: m(plnplv)
+      real, intent(in) :: inv(plnplv,nfs)
+      real, intent(in) :: m(plnplv)
       real, intent(inout) :: p_rate(plnplv,phtcnt)
 
 !--------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !--------------------------------------------------------------------
-      real    ::  im(plnplv)
+      real :: im(plnplv)
 
       im(:) = 1. / m(:)
-      p_rate(:,  1) = p_rate(:,  1)  * inv(:, 3) * im(:)
+      p_rate(:, 1) = p_rate(:, 1) * inv(:, 3) * im(:)
 
       end subroutine phtadj
 
@@ -540,12 +536,12 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !---------------------------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !---------------------------------------------------------------------------
-      integer, intent(in) ::  plnplv
-      real, intent(inout) ::  rate(plnplv,rxntot)
-      real, intent(inout) ::  het_rates(plnplv,hetcnt)
-      real, intent(in)    ::  grp_ratios(plnplv,grpcnt)
+      integer, intent(in) :: plnplv
+      real, intent(inout) :: rate(plnplv,rxntot)
+      real, intent(inout) :: het_rates(plnplv,hetcnt)
+      real, intent(in) :: grp_ratios(plnplv,grpcnt)
 
 
       end subroutine rxt_mod
@@ -567,15 +563,15 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !----------------------------------------------------------------------------
-!        ... Dummy arguments
+! ... Dummy arguments
 !----------------------------------------------------------------------------
       integer, intent(in) :: plonl
-      real, intent(in)    :: vmr(plonl,plev,pcnstm1)
-      real, intent(in)    :: group_ratios(plonl,plev,grpcnt)
-      real, intent(out)   :: group_vmrs(plonl,plev,grpcnt)
+      real, intent(in) :: vmr(plonl,plev,pcnstm1)
+      real, intent(in) :: group_ratios(plonl,plev,grpcnt)
+      real, intent(out) :: group_vmrs(plonl,plev,grpcnt)
 
 !----------------------------------------------------------------------------
-!        ... Local variables
+! ... Local variables
 !----------------------------------------------------------------------------
 
       end subroutine mak_grp_vmr
