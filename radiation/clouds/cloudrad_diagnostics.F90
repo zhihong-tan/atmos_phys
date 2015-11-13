@@ -1219,7 +1219,8 @@ if (Time_diag > Time) then
 !    combined cloud properties of all active cloud schemes when 
 !    stochastic clouds are not active.
 !---------------------------------------------------------------------
-      call Model_microphys%alloc( ix, jx, kx, 'model', Cldrad_control)
+      call Model_microphys%alloc( ix, jx, kx, Cloud_microphys(:)%scheme_name, &
+                                  Cldrad_control)
 
       if (Cldrad_control%do_stochastic_clouds) then
 !---------------------------------------------------------------------
@@ -1320,17 +1321,6 @@ if (Time_diag > Time) then
          Model_microphys%lsc_size_drop      = Cloud_microphys(strat_index)%size_drop
          Model_microphys%lsc_droplet_number = Cloud_microphys(strat_index)%droplet_number
       endif
-
-!----------------------------------------------------------------------
-!    cloud scheme name contains the names of all cloud schemes
-!----------------------------------------------------------------------
-     Model_microphys%scheme_name = ''
-     if (size(Cloud_microphys,1) > 0) then
-       Model_microphys%scheme_name = Cloud_microphys(1)%scheme_name
-       do nc = 2, size(Cloud_microphys,1)
-         Model_microphys%scheme_name = trim(Model_microphys%scheme_name)//','//trim(Cloud_microphys(nc)%scheme_name)
-       enddo
-     endif
 
 !---------------------------------------------------------------------
 !

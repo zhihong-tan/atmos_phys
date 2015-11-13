@@ -230,6 +230,7 @@ public microphysics_type
 
 type microphysics_type
 character(len=64) :: scheme_name
+logical :: use_for_diag
 real, dimension(:,:,:), pointer    :: conc_ice=>NULL(),   &
                                       conc_drop=>NULL(),      &
                                       size_ice=>NULL(),   &
@@ -279,7 +280,9 @@ real, dimension(:,:,:), pointer    :: lsc_conc_drop=>NULL(),      &
                                       lsc_droplet_number=>NULL()
 
    contains
-      procedure :: alloc=>microphysics_alloc
+      procedure :: microphysics_alloc
+      procedure :: microphysics_alloc_diag
+      generic :: alloc=>microphysics_alloc, microphysics_alloc_diag
       procedure :: dealloc=>microphysics_dealloc
 end type microphysics_type
 
@@ -569,6 +572,7 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
       nlwcb = Cldrad_control%num_lw_cloud_bands
 
       Cloud_microphys%scheme_name = trim(scheme_name)
+      Cloud_microphys%use_for_diag = .false.
 
 !---------------------------------------------------------------------
 !    allocate the arrays defining the microphysical parameters
@@ -601,7 +605,7 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
 !---------------------------------------------------------------------
 !    allocate the arrays unique to the large-scale stratiform clouds 
 !---------------------------------------------------------------------
-      if (trim(scheme_name) == 'strat_cloud' .or. trim(scheme_name) == 'model') then
+      if (trim(scheme_name) == 'strat_cloud' .or. trim(scheme_name) == 'diag') then
 
         allocate (Cloud_microphys%ice_number (ix, jx, kx) )
         Cloud_microphys%ice_number(:,:,:)= 0.0
@@ -644,14 +648,15 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
           enddo
 
         ! for diagnostics of all schemes
-          if (trim(scheme_name) == 'model') then
+          if (trim(scheme_name) == 'diag') then
             allocate (Cloud_microphys%stoch_cloud_type (ix, jx, kx, nlwcb + nswcb) )
+            Cloud_microphys%use_for_diag = .true.
           endif
 
         endif ! do_stochastic_clouds
 
       ! allocate arrays to store large-scale cloud diagnostics
-        if (trim(scheme_name) == 'model') then
+        if (trim(scheme_name) == 'diag') then
           allocate(Cloud_microphys%lsc_cldamt        (ix, jx, kx)) 
           allocate(Cloud_microphys%lsc_conc_drop     (ix, jx, kx)) 
           allocate(Cloud_microphys%lsc_size_drop     (ix, jx, kx)) 
@@ -664,10 +669,45 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
 
       endif ! strat_cloud
 
-
 !--------------------------------------------------------------------
 
 end subroutine microphysics_alloc
+
+!####################################################################
+
+subroutine microphysics_alloc_diag (Model_microphys, ix, jx, kx, &
+                                    scheme_names, Cldrad_control)
+
+class(microphysics_type),       intent(inout) :: Model_microphys
+integer,                        intent(in)    :: ix, jx, kx
+character(len=*), dimension(:), intent(in)    :: scheme_names
+type(cloudrad_control_type),    intent(in)    :: Cldrad_control
+!--------------------------------------------------------------------
+!  local variables
+
+      integer :: n
+      character(len=64) :: all_scheme_names
+
+!----------------------------------------------------------------------
+!    for the diagnostic microphysics_type the cloud scheme name
+!    contains a comma-separated list all cloud schemes names
+!    this is needed for determining stochastic cloud types in cosp
+!----------------------------------------------------------------------
+      all_scheme_names = ''
+      if (size(scheme_names(:)) > 0) then
+        all_scheme_names = scheme_names(1)
+        do n = 2, size(scheme_names(:))
+          all_scheme_names = trim(all_scheme_names)//','//trim(scheme_names(n))
+        enddo
+      endif
+
+      call Model_microphys%alloc( ix, jx, kx, 'diag', Cldrad_control)
+
+      Model_microphys%scheme_name = all_scheme_names
+
+!--------------------------------------------------------------------
+
+end subroutine microphysics_alloc_diag
 
 !####################################################################
 
@@ -697,8 +737,7 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
 !---------------------------------------------------------------------
 !    deallocate the arrays unique to the large-scale stratiform clouds 
 !---------------------------------------------------------------------
-      if (trim(Cloud_microphys%scheme_name) == 'strat_cloud' .or. &
-          trim(Cloud_microphys%scheme_name) == 'model') then
+      if (trim(Cloud_microphys%scheme_name) == 'strat_cloud' .or. Cloud_microphys%use_for_diag) then
 
         deallocate(Cloud_microphys%ice_number)
 
@@ -730,13 +769,13 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
           nullify (Cloud_microphys%sw_stoch_droplet_number)
           nullify (Cloud_microphys%sw_stoch_ice_number  )
 
-          if (trim(Cloud_microphys%scheme_name) == 'model') then
+          if (Cloud_microphys%use_for_diag) then
             deallocate (Cloud_microphys%stoch_cloud_type)
           endif
         endif ! do_stochastic_clouds
 
       ! deallocate arrays to store large-scale cloud diagnostics
-        if (trim(Cloud_microphys%scheme_name) == 'model') then
+        if (Cloud_microphys%use_for_diag) then
           deallocate(Cloud_microphys%lsc_cldamt        )
           deallocate(Cloud_microphys%lsc_conc_drop     )
           deallocate(Cloud_microphys%lsc_size_drop     )
@@ -746,6 +785,7 @@ type(cloudrad_control_type), intent(in)    :: Cldrad_control
       endif ! strat_cloud
 
       Cloud_microphys%scheme_name = ' '
+      Cloud_microphys%use_for_diag = .false.
 
 !--------------------------------------------------------------------
 
