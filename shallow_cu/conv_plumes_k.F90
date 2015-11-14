@@ -39,12 +39,12 @@ MODULE CONV_PLUMES_k_MOD
   type cpnlist
      integer :: mixing_assumption, mp_choice
      real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
-     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, &
+     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max,   &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
-     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let
+     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -1830,7 +1830,7 @@ contains
     hldef = min(0.,cp%umf(krel)*(cp%hlu (krel) - cp%hl (krel)))
     do k=1,krel-1
 !      ct%hlflx (k)=0.0; 
-       ct%hlflx (k)=0.0; !ct%hlflx (k-1) + hldef*sd%dp(k)/dpsum;
+       ct%hlflx (k)=ct%hlflx (k-1) + hldef*sd%dp(k)/dpsum;
 !      ct%thcflx(k)=0.0; !thcflx(k)=thcflx(k-1) + yy1*dp(k)/dpsum
        ct%qctflx(k)=ct%qctflx(k-1) + qtdef*sd%dp(k)/dpsum;
        ct%qtflxu(k)=ct%qtflxu(k-1) + qtdefu*sd%dp(k)/dpsum;
@@ -1839,12 +1839,19 @@ contains
        ct%qlflx(k)=0.0;
        ct%qiflx(k)=0.0;
        ct%qnflx(k)=0.0;
+       ct%qaflx(k)=0.0;
        ct%umflx(k)=0.0;
        ct%vmflx(k)=0.0;
        cp%pptr (k)=0.0; 
        cp%ppti (k)=0.0;
        cp%pptn (k)=0.0;
     enddo
+
+    if (cpn%do_hlflx_zero) then
+       do k=1,krel-1
+          ct%hlflx(k) =0.;
+       end do
+    end if
 
     if (cpn%do_qctflx_zero) then
        do k=1,krel-1
