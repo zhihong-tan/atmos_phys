@@ -123,6 +123,7 @@ MODULE UW_CONV_MOD
   logical :: do_stime  = .false.
   logical :: do_dtime  = .false.
   logical :: do_qctflx_zero = .false.
+  logical :: do_hlflx_zero  = .true.
   logical :: do_subcloud_flx = .false.
   logical :: do_detran_zero = .false.
   logical :: do_prog_tke  = .false.
@@ -163,7 +164,7 @@ MODULE UW_CONV_MOD
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
-       do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let,  &
+       do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, do_prog_tke, tau_tke, pblrat0, &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, tke0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, bfact, gfact, gfact3, gfact4, &
@@ -1097,6 +1098,7 @@ contains
     call ct_init_k(kd,ntracers,ct1)
     !pack namelist parameters into plume and closure structure
     cpn % do_qctflx_zero = do_qctflx_zero
+    cpn % do_hlflx_zero  = do_hlflx_zero
     cpn % do_subcloud_flx= do_subcloud_flx
     cpn % do_detran_zero = do_detran_zero
     cpn % rle       = rle
