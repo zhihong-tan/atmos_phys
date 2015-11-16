@@ -8,6 +8,7 @@
       use tracer_manager_mod, only : get_tracer_index,  query_method
       use field_manager_mod,  only: parse             
       use tropchem_types_mod, only : tropchem_opt, tropchem_diag
+      use fms_mod,    only : open_file, close_file
 
 implicit none
       public :: usrrxt_init, usrrxt
@@ -65,9 +66,8 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------
 !        ... local variables
 !-----------------------------------------------------------------
-      integer           NJ1, I, J, K
+      integer :: funit, I, J, K
 
-      NJ1 =8 ! Use channel 8 to read files at the moment 
       uo_o2_ndx = get_rxt_ndx( 'uo_o2' )
       uno2_no3_ndx = get_rxt_ndx( 'uno2_no3' )
       un2o5_ndx = get_rxt_ndx( 'un2o5' )
@@ -146,7 +146,7 @@ end if
 !------------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !     NAMFIL   Name of scattering data file (e.g., FJX_scat.dat)        
-!     NJ1      Channel number for reading data file                     
+!     funit  Channel number for reading data file                     
 !     NAA      Number of categories for scattering phase functions      
 !     QAA      Aerosol scattering phase functions                       
 !     NK       Number of wavelengths at which functions supplied (set as
@@ -155,25 +155,28 @@ end if
 !     RAA      Effective radius associated with aerosol type            
 !     SAA      Single scattering albedo                                 
 !-----------------------------------------------------------------------
-      open (NJ1,FILE='INPUT/am3_uptake.dat',status='old',form='formatted') 
+      funit = open_file(FILE='INPUT/am3_uptake.dat',form='formatted',action='read',threading='multi', &
+                        dist=.false.)
 
-      read (NJ1,'(i4,a78)') NAA_HET, TITLE0_HET 
+      read (funit,'(i4,a78)') NAA_HET, TITLE0_HET 
       if (NAA_HET .gt. A_HET) then 
          write(*,*) 'ATMOS:fastjx_init: too many scat-data sets for AM3:', NAA_HET, A_HET 
          stop 
       endif
  
       do J = 1,NAA_HET
-!         read (NJ1,'(3x,a20,32x,f6.3,15x,f5.3)')   
-         read (NJ1,'(3x,a20,32x,f6.3)')                       &
+         read (funit,'(3x,a20,32x,f6.3)')                       &
               &      TITL_HET(J),RAA_HET(J)                                
          ! ver 6.0 extend to 5 ref wavelengths for mie-sca
          do K = 1,5 
-            read (NJ1,'(f4.0,2e14.6,7f6.3,1x,f7.3,f8.4)')              &
+            read (funit,'(f4.0,2e14.6,7f6.3,1x,f7.3,f8.4)')              &
                  WAA_HET(K,J),MEE_HET(K,J),SAA_HET(K,J),(PAA_HET(I,K,J),I=2,8)                   
             PAA_HET(1,K,J) = 1.d0 
          enddo
        enddo  
+       
+       call close_file(funit,dist=.false.)
+
     end subroutine usrrxt_init
 
       subroutine usrrxt( rxt, temp, invariants, h2ovmr, pmid, m, &

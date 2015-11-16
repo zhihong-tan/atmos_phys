@@ -225,6 +225,8 @@ real               :: gNO3                  = 0.1
 real               :: gHO2                  = 1.
 real               :: small_value           = 1.e-20 !too big for isorropia
 
+character(len=128) :: sim_data_filename = 'sim.dat'      ! Input file for chemistry pre-processor
+
 
 
 type(tropchem_diag),  save :: trop_diag
@@ -279,7 +281,7 @@ namelist /tropchem_driver_nml/    &
                                do_fastjx_photo, &
                                clouds_in_fastjx, &
                                check_convergence, &
-	                           solar_flux_bugfix, &
+	                       solar_flux_bugfix, &
                                e90_tropopause_vmr, &                               
                                aerosol_thermo_method, &
                                gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
@@ -291,8 +293,8 @@ namelist /tropchem_driver_nml/    &
                                het_chem_fine_aerosol_only, &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
-                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2, small_value
-                              
+                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2, small_value, &
+			       sim_data_filename
 
 integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'

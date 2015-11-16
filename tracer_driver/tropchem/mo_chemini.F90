@@ -56,7 +56,7 @@ logical                       :: module_is_initialized = .false.
       character(len=80) ::   mspath
       character(len=32) ::   filename, filename_solarmin
       
-      character(len=128) ::  sim
+      character(len=128) ::  sim_data_flsp
       integer :: sim_file_cnt
 
 !-----------------------------------------------------------------------
@@ -67,8 +67,9 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Read sim.dat
 !-----------------------------------------------------------------------
-      sim = 'INPUT/sim.dat'
-      call read_sim_chm( sim, sim_file_cnt )
+!     sim_data_flsp = 'INPUT/sim.dat'
+      sim_data_flsp = 'INPUT/' // TRIM(trop_option%sim_data_flsp)
+      call read_sim_chm( sim_data_flsp, sim_file_cnt )
 
 !-----------------------------------------------------------------------
 !       ... Diagnostics initialization
