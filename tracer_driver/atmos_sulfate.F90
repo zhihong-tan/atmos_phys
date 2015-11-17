@@ -2236,11 +2236,7 @@ end subroutine atmos_SOx_emission
           if ( xlwc .gt. 1.e-10) then
           if ( cldfr(i,j,k) .gt. 1.e-10 )  xlwc = xlwc/cldfr(i,j,k)
 
-          call cloud_so2_chem(xpH,tk,xlwc,rso2_h2o2,rso2_o3)
-
-!check !!!
-          rso2_h2o2 = rso2_h2o2 * xlwc / const0 / xhnm
-          rso2_o3   = rso2_o3   * xlwc / const0 / xhnm
+          call cloud_so2_chem(pfull(i,j,k)/101325,xpH,tk,xlwc,rso2_h2o2,rso2_o3)
 
           !production via H2O2
           exp_factor = rso2_h2o2 * (xso2 - xh2o2) * dt

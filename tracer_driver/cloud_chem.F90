@@ -22,6 +22,7 @@ module cloud_chem
   integer, parameter     :: CLOUD_CHEM_LEGACY    = 1
   integer, parameter     :: CLOUD_CHEM_F1P       = 2
   
+  real*8, parameter      :: const0 = 1.e3/6.023e23
 
 contains
 
@@ -31,10 +32,10 @@ contains
 
     real*8, intent(in)     :: ihno3,iso2,inh3,ihcooh,ich3cooh !vmr
     real*8, intent(in)     :: iso4,ico2,ialk                  !vmr
-    real*8, intent(in)     :: xlw                        !l(water)/l(air)
-    real*8, intent(in)     :: air_dens                   !molec/cm3
-    real*8, intent(in)     :: tk                         !t[k]
-    real*8, intent(in)     :: patm                       !atmospheric pressure (atm)
+    real*8, intent(in)     :: xlw                             !l(water)/l(air)
+    real*8, intent(in)     :: air_dens                        !molec/cm3
+    real*8, intent(in)     :: tk                              !t[k]
+    real*8, intent(in)     :: patm                            !atmospheric pressure (atm)
     integer, intent(in)    :: cloud_solver                
 
     !ouput
@@ -55,7 +56,6 @@ contains
   subroutine cloud_pH_am3(ihno3,iso2,inh3,ihcooh,ich3cooh,iso4,ico2,tk,patm,xlw,air_dens,ch,diagnostics)
 
     real*8, parameter      :: ch0 = 1.e-5       
-    real*8, parameter      :: const0 = 1.e3/6.023e23
     integer, parameter   :: iter_max = 40
 
     !input
@@ -226,7 +226,6 @@ contains
   subroutine cloud_pH_cubic(ihno3,iso2,inh3,ihcooh,ich3cooh,iso4,ico2,tk,patm,xlw,air_dens,ch,diagnostics)
 
     real*8, parameter      :: ch0 = 1.e-5       
-    real*8, parameter      :: const0 = 1.e3/6.023e23
     integer, parameter     :: iter_max = 100
 
     !input
@@ -414,27 +413,24 @@ contains
   subroutine cloud_pH_bisection(ihno3,iso2,inh3,ihcooh,ich3cooh,iso4,ico2,ialk,tk,patm,xlw,air_dens,ch,diagnostics)
 
     real*8, parameter      :: ch0 = 1.e-5       
-    real*8, parameter      :: const0 = 1.e3/6.023e23
     integer, parameter     :: iter_max = 100
 
     !input
 
     real*8, intent(in)     :: ihno3,iso2,inh3,ihcooh,ich3cooh !vmr
     real*8, intent(in)     :: iso4,ico2, ialk                 !vmr
-    real*8, intent(in)     :: xlw                        !l(water)/l(air)
-    real*8, intent(in)     :: air_dens                   !molec/cm3
-    real*8, intent(in)     :: tk                         !t[k]
-    real*8, intent(in)     :: patm                       !atmospheric pressure (atm)
-
-    real*8, intent(out),optional, dimension(cloud_nb_diag)  :: diagnostics
+    real*8, intent(in)     :: xlw                             !l(water)/l(air)
+    real*8, intent(in)     :: air_dens                        !molec/cm3
+    real*8, intent(in)     :: tk                              !t[k]
+    real*8, intent(in)     :: patm                            !atmospheric pressure (atm)
 
     !ouput
 
-    real*8, intent(out)    :: ch                         !h concentration in mol/l
+    real*8, intent(out)    :: ch                              !h concentration in mol/l
+    real*8, intent(out),optional, dimension(cloud_nb_diag)  :: diagnostics
 
     !local variables
     real*8                 :: delta
-
     integer                :: iter
     logical                :: converged
     real*8                 :: kw
@@ -460,7 +456,7 @@ contains
     call co2aq(tk,h_co2,ka1_co2,ka2_co2)
     call kw_aq(tk,kw)
     
-    conv = ra*tk*xlw
+    conv = ra*tk*xlw !-> atm/(mol/l(air))
     
     h_x_ka_hno3               = h_hno3*ka_hno3
     h_x_ka1_so2               = h_so2*ka1_so2
@@ -481,7 +477,7 @@ contains
     alk     = max(ialk,0.)
     
     !independent of ph
-    e_so4 = 2.*so4*air_dens*const0/xlw
+    e_so4 = 2.*so4*air_dens*const0/xlw ! vmr*molec/cm3*cm3/l*mole/molec * l(air)/l(water) -> vmr * mole/l(water)
 
     e_alk = alk*air_dens*const0/xlw
 
@@ -662,17 +658,20 @@ contains
     
   end subroutine henry_eff
 
-  subroutine cloud_so2_chem(ch,tk,xl,rso4_h2o2,rso4_o3)
+  subroutine cloud_so2_chem(patm,ch,tk,xl,rso2_h2o2,rso2_o3)
+
+    !all second order reactions have rates in l/mol//s
 
     real*8, intent(in)  :: ch
     real*8, intent(in)  :: tk
     real*8, intent(in)  :: xl !l(h2o)/l(air)
+    real*8, intent(in)  :: patm
 
-    real*8, intent( out) :: rso4_o3,rso4_h2o2
+    real*8, intent( out) :: rso2_o3,rso2_h2o2
     
 
     !local variable
-    real*8                :: conv
+    real*8                :: conv,conv2
     real*8                :: h_so2,ka1_so2,ka2_so2
     real*8                :: h_o3,h_h2o2,ka_h2o2    
     real*8                :: he_so2,he_h2o2
@@ -694,25 +693,16 @@ contains
     gfrac_so2   = 1./(1.+he_so2  * conv)  !frac so2  in gas
     gfrac_o3    = 1./(1.+h_o3    * conv)  !frac o3   in gas
 
-!    write(*,*) 'he',h_o3,he_so2,he_h2o2,h_h2o2
-!    write(*,*) 'ka',ka1_so2,ka2_so2
-
 !so2+h2o2
 
     !h2o2 + hso3
     kh2o2_hso3 =7.45e7*exp(-15.96*(298.15/tk-1.)) / (1.+13.*ch) !j05 
 
-    rso4_h2o2  = kh2o2_hso3                           &
+    rso2_h2o2  = kh2o2_hso3                           &
                * gfrac_h2o2 * h_h2o2                  &
                * gfrac_so2  * h_so2  * ka1_so2 
-
     
-!    write(*,*) 'kh2o2_hso3',kh2o2_hso3*ch
-!    write(*,*) 'gfrac_h2o2*h_h2o2',gfrac_h2o2*h_h2o2
-!    write(*,*) 'grac_so2*h_so2*ka1',gfrac_so2*h_so2*ka1_so2/ch
-
 !so2+o3
-
     ko3_so2    = 2.4e4
     ko3_hso3   = 3.7e5 * exp( -18.56*(298.15/tk-1.))
     ko3_so3    = 1.5e9 * exp( -17.72*(298.15/tk-1.))
@@ -721,10 +711,18 @@ contains
     lfrac_hso3  = 1./(ch/ka1_so2 + 1. + ka2_so2/ch)
     lfrac_so3   = 1./(ch*ch/(ka1_so2*ka2_so2) + ch/ka2_so2 + 1.)
 
-    rso4_o3    = gfrac_o3   * h_o3                &
+    rso2_o3    = gfrac_o3   * h_o3                &
                * gfrac_so2  * he_so2              &
                * (lfrac_so2*ko3_so2 + lfrac_hso3*ko3_hso3 + lfrac_so3*ko3_so3)
 
+
+!at that stage, rates are in r_o3 and r_h2o2 are in M-1 s-1 * M/atm * M/atm = M/s 1/atm**2
+!if we multiply by Patm^2 and then multiply by LWC * Ra * T / P ( l(w)/l(air)*atm/(mol/l(air)*K) * K / atm = l(w)/mol(air)
+!result in vmr/s
+
+conv2 = patm*conv
+rso2_o3   = rso2_o3 * conv2
+rso2_h2o2 = rso2_h2o2 * conv2
     
   end subroutine cloud_so2_chem
 
