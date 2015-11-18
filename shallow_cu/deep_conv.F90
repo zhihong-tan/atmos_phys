@@ -90,9 +90,11 @@ contains
     type(cpnlist), intent(inout) :: dpn
 
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
+    dpn % do_hlflx_zero      = cpn % do_hlflx_zero
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_new_pevap       = cpn % do_new_pevap
+    dpn % stop_at_let        = cpn % stop_at_let
     dpn % do_limit_wmax      = cpn % do_limit_wmax
     dpn % plev_for           = cpn % plev_for
     dpn % do_detran_zero     = cpn % do_detran_zero
@@ -363,6 +365,26 @@ contains
               rkm_dp       = rkm_dp        * lofactor
               dpn % peff_l = dpn % peff_l  / lofactor
               dpn % peff_i = dpn % peff_i  / lofactor
+ 	  endif
+       else if (dpc%cgust_choice==1 .and. sd%land.gt.0.5) then
+       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+       	      dpn%do_forcedlifting = .true.
+              dpn%do_ppen  = .false.;
+              lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
+              rkm_dp       = rkm_dp        * lofactor
+              !dpn % peff_l = dpn % peff_l  / lofactor
+              !dpn % peff_i = dpn % peff_i  / lofactor
+ 	  endif
+       else if (dpc%cgust_choice==2 .and. sd%land.gt.0.5) then
+       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+       	      dpn%do_forcedlifting = .true.
+              dpn%do_ppen  = .false.;
+              lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
+              rkm_dp       = rkm_dp        * lofactor
+              !dpn % peff_l = dpn % peff_l  / lofactor
+              !dpn % peff_i = dpn % peff_i  / lofactor
  	  endif
        else if (dpc%cgust_choice==3 .and. sd%land.gt.0.5) then
        	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &

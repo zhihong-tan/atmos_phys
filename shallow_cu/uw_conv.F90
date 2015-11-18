@@ -123,6 +123,7 @@ MODULE UW_CONV_MOD
   logical :: do_stime  = .false.
   logical :: do_dtime  = .false.
   logical :: do_qctflx_zero = .false.
+  logical :: do_hlflx_zero  = .true.
   logical :: do_subcloud_flx = .false.
   logical :: do_detran_zero = .false.
   logical :: do_prog_tke  = .false.
@@ -131,6 +132,7 @@ MODULE UW_CONV_MOD
   logical :: use_new_let = .false.
   logical :: use_lcl_only =.false.
   logical :: do_new_pevap =.false.
+  logical :: stop_at_let  =.false.
   logical :: zero_out_conv_area = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
@@ -162,7 +164,7 @@ MODULE UW_CONV_MOD
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
-       do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let,  &
+       do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, do_prog_tke, tau_tke, pblrat0, &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, tke0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, bfact, gfact, gfact3, gfact4, &
@@ -170,7 +172,7 @@ MODULE UW_CONV_MOD
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
-       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for
+       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -1096,6 +1098,7 @@ contains
     call ct_init_k(kd,ntracers,ct1)
     !pack namelist parameters into plume and closure structure
     cpn % do_qctflx_zero = do_qctflx_zero
+    cpn % do_hlflx_zero  = do_hlflx_zero
     cpn % do_subcloud_flx= do_subcloud_flx
     cpn % do_detran_zero = do_detran_zero
     cpn % rle       = rle
@@ -1148,6 +1151,7 @@ contains
     cpn % use_new_let = use_new_let
     cpn % use_lcl_only= use_lcl_only
     cpn % do_new_pevap= do_new_pevap
+    cpn % stop_at_let = stop_at_let
     cpn % do_limit_wmax= do_limit_wmax
     cpn % plev_for = plev_for
     if (ntracers > 0) then
