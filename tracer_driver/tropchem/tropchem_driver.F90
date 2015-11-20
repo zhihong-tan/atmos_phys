@@ -1682,8 +1682,9 @@ elseif ( trim(het_chem_type) == 'j1m' ) then
    if(mpp_pe() == mpp_root_pe()) write(*,*) 'Using new (J1M) heterogeneous chemistry'
 end if
 
-
-
+! Chemical pre-processor input filename
+trop_option%sim_data_flsp = sim_data_filename
+if(mpp_pe() == mpp_root_pe()) write(*,*) 'Chemical pre-processor input filename: ', TRIM(sim_data_filename)
 
 !gammas to be added when het chem is working
 trop_option%gN2O5                    = gN2O5
