@@ -1062,6 +1062,118 @@ logical,         intent(in) :: do_lwaerosol
  
        end do
 
+        id_rlds = register_diag_field (mod_name,    &
+                'rlds', axes(1:2), Time, &
+                'Surface Downwelling Longwave Radiation', 'W m-2', &
+            standard_name = 'surface_downwelling_longwave_flux_in_air',&
+            area = area_id, &
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rldscs = register_diag_field (mod_name,    &
+                'rldscs', axes(1:2), Time, &
+                'Surface Downwelling Clear-Sky Longwave Radiation',  &
+                'W m-2', &
+           standard_name = &
+            'surface_downwelling_longwave_flux_in_air_assuming_clear_sky',&
+            area = area_id, &
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rlus = register_diag_field (mod_name,    &
+                'rlus', axes(1:2), Time, &
+                'Surface Upwelling Longwave Radiation', 'W m-2', &
+            standard_name = 'surface_upwelling_longwave_flux_in_air',&
+            area = area_id, &
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsds = register_diag_field (mod_name,     &
+                'rsds', axes(1:2), Time, &
+                'Surface Downwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'surface_downwelling_shortwave_flux_in_air',&
+            area = area_id, &
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsdscs = register_diag_field (mod_name,    &
+                'rsdscs', axes(1:2), Time, &
+                'Surface Downwelling Clear-Sky Shortwave Radiation',  &
+                'W m-2', &
+           standard_name = &
+           'surface_downwelling_shortwave_flux_in_air_assuming_clear_sky',&
+            area = area_id, &
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsus = register_diag_field (mod_name,     &
+                'rsus', axes(1:2), Time, &
+                'Surface Upwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'surface_upwelling_shortwave_flux_in_air',&
+            area = area_id, &
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsuscs = register_diag_field (mod_name,    &
+                'rsuscs', axes(1:2), Time, &
+                'Surface Upwelling Clear-Sky Shortwave Radiation',  &
+                'W m-2', &
+           standard_name = &
+           'surface_upwelling_shortwave_flux_in_air_assuming_clear_sky',&
+            area = area_id, &
+             missing_value = CMOR_MISSING_VALUE)
+
+        id_rsdt = register_diag_field (mod_name,   &
+                'rsdt', axes(1:2), Time, &
+                'TOA Incident Shortwave Radiation', &
+                'W m-2',   &
+                 standard_name = 'toa_incoming_shortwave_flux', &
+            area = area_id, &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rsut = register_diag_field (mod_name,    &
+                'rsut', axes(1:2), Time, &
+                'TOA Outgoing Shortwave Radiation', &
+                'W m-2',    &
+                 standard_name = 'toa_outgoing_shortwave_flux', &
+            area = area_id, &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rsutcs = register_diag_field (mod_name,    &
+                'rsutcs', axes(1:2), Time, &
+                'TOA Outgoing Clear-Sky Shortwave Radiation', &
+                'W m-2',    &
+                 standard_name =    &
+                      'toa_outgoing_shortwave_flux_assuming_clear_sky', &
+            area = area_id, &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rlut = register_diag_field (mod_name,   &
+                'rlut', axes(1:2), Time, &
+                'TOA Outgoing Longwave Radiation', &
+                'W m-2',    &
+                 standard_name = 'toa_outgoing_longwave_flux', &
+            area = area_id, &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rlutcs = register_diag_field (mod_name,   &
+                'rlutcs', axes(1:2), Time, &
+                'TOA Outgoing Clear-Sky Longwave Radiation', &
+                'W m-2',   &
+                 standard_name =    &
+                        'toa_outgoing_longwave_flux_assumimg_clear_sky', &
+            area = area_id, &
+                 missing_value = CMOR_MISSING_VALUE)
+
+        id_rtmt = register_diag_field (mod_name,   &
+                'rtmt', axes(1:2), Time, &
+                'Net Downward Flux at Top of Model', &
+                'W m-2',  &
+                standard_name =  &
+                 'net_downward_radiative_flux_at_top_of_atmosphere_model',&
+            area = area_id, &
+                missing_value=CMOR_MISSING_VALUE)
+
+         id_allradp   = register_diag_field (mod_name,   &
+                 'allradp', axes(1:3), Time, &
+                 'temperature tendency for SW + LW radiation', &
+                 'deg_K/sec', missing_value=missing_value)
+
+
          id_allradp   = register_diag_field (mod_name,   &
                  'allradp', axes(1:3), Time, &
                  'temperature tendency for SW + LW radiation', &
@@ -1223,6 +1335,55 @@ logical,         intent(in) :: do_lwaerosol
                    'rrvn2o', Time, &
                    'n2o mixing ratio', 'ppbv', &
                    missing_value=missing_value)
+
+      id_co2mass = register_diag_field (mod_name,    &
+                  'co2mass', Time, &
+                  'Total Atmospheric Mass of CO2', 'kg', &
+                  standard_name = 'atmosphere_mass_of_carbon_dioxide', &
+                  area = area_id, &
+                  missing_value=CMOR_MISSING_VALUE) 
+                           
+      id_cfc11global = register_diag_field (mod_name,    &
+                  'cfc11global', Time, &
+                  'Global Mean Mole Fraction of CFC11', '1e-12', &
+                  standard_name = 'mole_fraction_of_cfc11_in_air', &
+                   area = area_id, &
+                  missing_value=CMOR_MISSING_VALUE) 
+        
+      id_cfc12global = register_diag_field (mod_name,    &
+                  'cfc12global', Time, &
+                  'Global Mean Mole Fraction of CFC12', '1e-12', &
+                  standard_name = 'mole_fraction_of_cfc12_in_air', &
+                  area = area_id, &
+                  missing_value=CMOR_MISSING_VALUE) 
+
+      id_cfc113global = register_diag_field (mod_name,    &
+                   'cfc113global', Time, &
+                  'Global Mean Mole Fraction of CFC113', '1e-12', &
+                  standard_name = 'mole_fraction_of_cfc113_in_air', &
+                  area = area_id, &
+                  missing_value=CMOR_MISSING_VALUE) 
+ 
+       id_hcfc22global = register_diag_field (mod_name,    &
+                   'hcfc22global', Time, &
+                  'Global Mean Mole Fraction of HCFC22', '1e-12', &
+                  standard_name = 'mole_fraction_of_hcfc22_in_air', &
+                  area = area_id, &
+                  missing_value=CMOR_MISSING_VALUE) 
+
+       id_ch4global = register_diag_field (mod_name,    &
+                   'ch4global', Time, &
+                  'Global Mean Mole Fraction of CH4', '1e-9', &
+                  standard_name = 'mole_fraction_of_methane_in_air', &
+                  area = area_id, &
+                  missing_value=CMOR_MISSING_VALUE) 
+
+       id_n2oglobal = register_diag_field (mod_name,    &
+                   'n2oglobal', Time, &
+                  'Global Mean Mole Fraction of N2O', '1e-9', &
+                standard_name = 'mole_fraction_of_nitrous_oxide_in_air', &
+                  area = area_id, &
+                  missing_value=CMOR_MISSING_VALUE)
 
          id_alb_sfc_avg = register_diag_field (mod_name,    &
                  'averaged_alb_sfc', axes(1:2), Time, &
