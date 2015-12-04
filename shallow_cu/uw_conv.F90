@@ -1694,6 +1694,7 @@ contains
              cldqi (i,j,nk) = cp%qiu(k)
              cldqn (i,j,nk) = cp%qnu(k)
              cmf_s (i,j,nk) = cp%umf(k)
+             cmf   (i,j,nk) = cp%umf(k)
              wuo   (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
              fero  (i,j,nk) = cp%fer(k)
@@ -2063,9 +2064,9 @@ contains
           enddo
         enddo
       enddo
-      if (temp_max > 320. .or. temp_min < 170.) then
-      	 print *, 'temp_min=',temp_min, 'temp_max=',temp_max
-      endif
+!      if (temp_max > 350. .or. temp_min < 170.) then
+!      	 print *, 'temp_min=',temp_min, 'temp_max=',temp_max
+!      endif
 
 !     where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
 !        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
