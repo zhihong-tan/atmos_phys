@@ -29,7 +29,7 @@ use constants_mod,       only: RDGAS, RVGAS, GRAV, wtmair, &
 !   longwave radiation package modules:
 
 use longwave_utilities_mod,  only: looktab, longwave_tables3_type, &
-                               optical_path_type, &
+                                   optical_path_type, &
                                    gas_tf_type, table_alloc, &
                                    Sealw99_control
 
