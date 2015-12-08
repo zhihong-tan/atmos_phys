@@ -31,7 +31,11 @@ logical                       :: module_is_initialized = .false.
 !       ... Initialize the explicit solver
 !-----------------------------------------------------------------------      
 
+#ifndef AM3_CHEM
       use CHEM_MODS_MOD,   only : clscnt1, explicit
+#else
+      use AM3_CHEM_MODS_MOD,   only : clscnt1, explicit
+#endif
       use mo_chem_utls_mod, only : get_spc_ndx, get_rxt_ndx
 
       implicit none
@@ -140,10 +144,17 @@ logical                       :: module_is_initialized = .false.
 !                  altered to acount for this
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,        only : clscnt1, explicit, extcnt, hetcnt, rxntot
       use MO_INDPRD_MOD,        only : INDPRD
       use MO_EXP_PROD_LOSS_MOD, only : EXP_PROD_LOSS
       use mo_grid_mod,          only : pcnstm1
+#else
+      use AM3_chem_mods_mod,        only : clscnt1, explicit, extcnt, hetcnt, rxntot
+      use AM3_MO_INDPRD_MOD,        only : INDPRD
+      use AM3_MO_EXP_PROD_LOSS_MOD, only : EXP_PROD_LOSS
+      use AM3_mo_grid_mod,          only : pcnstm1
+#endif
 
       implicit none
 !-----------------------------------------------------------------------

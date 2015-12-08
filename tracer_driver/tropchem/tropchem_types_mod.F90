@@ -54,7 +54,8 @@ module tropchem_types_mod
      real                  :: frac_aerosol_incloud
      real                  :: max_rh_aerosol
      logical               :: limit_no3
-
+     integer               :: het_chem
+     character(len=128)    :: sim_data_flsp
   end type tropchem_opt
 
   CONTAINS
