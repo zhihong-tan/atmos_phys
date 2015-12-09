@@ -4127,7 +4127,7 @@ real, dimension(:), intent(in)    :: plm, pd
 !--------------------------------------------------------------------
 !   local variables:
 
-      real, dimension(1:KERAD-KSRAD+1) :: press, altquad, tempquad, &
+      real, dimension(1:KERAD-KSRAD+2) :: press, altquad, tempquad, &
                                           prsint, tmpint
       real, dimension(KSRAD:KERAD+1)   :: plmcgs 
 
