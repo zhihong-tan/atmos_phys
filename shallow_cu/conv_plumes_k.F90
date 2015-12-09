@@ -38,13 +38,13 @@ MODULE CONV_PLUMES_k_MOD
   public cpnlist
   type cpnlist
      integer :: mixing_assumption, mp_choice
-     real :: rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc
-     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit,  &
-             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep,  &
+     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
+     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max,   &
+             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
-     logical :: use_new_let, do_subcloud_flx, use_lcl_only
+     logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -727,8 +727,8 @@ contains
           !if (wtw.le.0. .and. k <= ac%klfc) then
           !nnn = max(ac%klnb, ac%klfc)
           !if (wtw.le.0. .and. k <= (ac%klfc+nnn)*0.5) then
-	  if (ac%plfc.eq.0. .or. ac%plfc.lt.50000.) then 
-	     plfc_tmp=50000.
+	  if (ac%plfc.eq.0. .or. ac%plfc.lt.cpn%plev_for) then 
+	     plfc_tmp=cpn%plev_for
 	  else
 	     plfc_tmp=ac%plfc
           endif
@@ -748,6 +748,9 @@ contains
        if(wtw.lt.wtwtop) exit
 
        cp%wu(k) = sqrt(wtw)
+       if(cpn%do_limit_wmax) then
+         cp%wu(k)=min(cp%wu(k),cpn%wmax)
+       endif
        if(cp%wu(k).gt.100.)then
           !print *, 'Very big wu in UW-ShCu',bogbot,bogtop,expfac,cp%fer(k)
 	  cp%cush = -1
@@ -834,6 +837,14 @@ contains
 
     if (cpn%do_ppen) then !Calculate penetrative entrainment
        call penetrative_mixing_k(cpn, sd, Uw_p, cp) 
+    else if (cpn%stop_at_let .and. cpn%do_forcedlifting) then
+       do k=let,ltop
+       	  cp%umf(k)=0.
+       enddo
+       ltop=let
+       cp%ltop=ltop;
+       cp%fdr(ltop) = 1./sd%dp(ltop)
+       cp%cldhgt = sd%z(ltop)-ac%zlcl
     else
        cp%fdr(ltop) = 1./sd%dp(ltop)
     end if
@@ -1819,7 +1830,7 @@ contains
     hldef = min(0.,cp%umf(krel)*(cp%hlu (krel) - cp%hl (krel)))
     do k=1,krel-1
 !      ct%hlflx (k)=0.0; 
-       ct%hlflx (k)=0.0; !ct%hlflx (k-1) + hldef*sd%dp(k)/dpsum;
+       ct%hlflx (k)=ct%hlflx (k-1) + hldef*sd%dp(k)/dpsum;
 !      ct%thcflx(k)=0.0; !thcflx(k)=thcflx(k-1) + yy1*dp(k)/dpsum
        ct%qctflx(k)=ct%qctflx(k-1) + qtdef*sd%dp(k)/dpsum;
        ct%qtflxu(k)=ct%qtflxu(k-1) + qtdefu*sd%dp(k)/dpsum;
@@ -1828,12 +1839,19 @@ contains
        ct%qlflx(k)=0.0;
        ct%qiflx(k)=0.0;
        ct%qnflx(k)=0.0;
+       ct%qaflx(k)=0.0;
        ct%umflx(k)=0.0;
        ct%vmflx(k)=0.0;
        cp%pptr (k)=0.0; 
        cp%ppti (k)=0.0;
        cp%pptn (k)=0.0;
     enddo
+
+    if (cpn%do_hlflx_zero) then
+       do k=1,krel-1
+          ct%hlflx(k) =0.;
+       end do
+    end if
 
     if (cpn%do_qctflx_zero) then
        do k=1,krel-1
@@ -2026,17 +2044,29 @@ contains
           ct%rain  = ct%rain  + cp%pptr(k)
        end do
        if (cpn%do_pevap .and. ct%snow+ct%rain > 0.) then
+        if (cpn%do_new_pevap) then
+           if (.not.sd%coldT) then
+              call precip_evap (sd, cp, cpn, ct, Uw_p, dpevap)
+              ct%tten (:)=ct%tten (:)+ct%tevap(:)
+              ct%qvten(:)=ct%qvten(:)+ct%qevap(:)
+              ct%qctten(:)=ct%qctten(:)+ct%qevap (:)
+              ct%pflx  (:)=ct%pflx  (:)-ct%pflx_e(:)
+              !ct%trwet(:,:)=ct%trwet(:,:)+ct%trevp(:,:)
+	      ct%rain  = ct%rain - dpevap
+           end if
+	else
           call precip_evap (sd, cp, cpn, ct, Uw_p, dpevap)
           ct%tten (:)=ct%tten (:)+ct%tevap(:)
           ct%qvten(:)=ct%qvten(:)+ct%qevap(:)
           ct%qctten(:)=ct%qctten(:)+ct%qevap (:)
           ct%pflx  (:)=ct%pflx  (:)-ct%pflx_e(:)
           !ct%trwet(:,:)=ct%trwet(:,:)+ct%trevp(:,:)
-         if (sd%coldT) then
+          if (sd%coldT) then
              ct%snow  = ct%snow - dpevap
           else
              ct%rain  = ct%rain - dpevap
           end if
+        end if
        end if
     end if
 
@@ -2106,33 +2136,40 @@ contains
 !    ct%cpool=-ct%cpool/ct%mslcl                   !unit:J/kg/s or m2/s2/s
 
 
-!   Add check to zero out tendencies if total UW causes the
-!   temperature to become unrealistically large
+!   Add check for tendencies larger than tten_max
     if (cpn%do_tten_max) then
       i = 0
       do k = 1,sd%kmax
-        if (ct%tten(k)*sd%delt+sd%t(k) > 363.15) then
+        if (ct%tten(k)*86400 > cpn%tten_max .or. ct%tten(k)*86400 < -cpn%tten_max) then
           i = i + 1
         end if
       end do
       if (i > 0) then
-        print *, 'WARNING: zeroing out large T tendencies in UW'
-        ct%tten = 0
-        ct%qvten = 0
-        ct%qlten = 0
-        ct%qiten = 0
-        ct%qaten = 0
-        ct%qnten = 0
-        ct%uten  = 0
-        ct%qctten = 0
-        ct%pflx = 0
-        ct%trwet = 0
-        ct%snow = 0
-        ct%rain = 0
-        cp%umf = 0
-        cp%emf = 0
+        print *, 'WARNING: tendencies larger than tten_max occurs in UW'
+        write(*,"(A6,F6.2,A6,F6.2,A6,F4.2,A6,F7.1)"),'lat=',sd%lat, ';lon=',sd%lon, ';land=',sd%land, ';zs=', sd%zs(1)
+        write(*,*), 'num=',i, 'krel=',krel, 'let=',cp%let, 'ltop=',cp%ltop
+        write(*,*), 'mixing_assumption=',cpn%mixing_assumption,'forced_lifting=',cpn%do_forcedlifting, &
+                    'do_ppen=',cpn%do_ppen
+        write(*,"(A6,F8.2,A6,F8.2)"), 'rain=',ct%rain*86400,'snow=',ct%snow*86400
+        write(*,"(15A6)"),'levl','pres','tten','buoy','Umf','Wu','ufrc','T-hl','T-qc','T-px',&
+			  'Tumf','Temf','hlflx','qlten','qiten','qaten','emf','rei','fer','fdr'
+        do k=1,sd%kmax
+           xx1 = ct%hlten(k)/Uw_p%cp_air*86400.
+           xx2 = (Uw_p%HLv*ct%qlten(k)+Uw_p%HLs*ct%qiten(k))/Uw_p%cp_air*86400.
+           xx3 = (Uw_p%HLv*cp%pptr(k) +Uw_p%HLs*cp%ppti(k))*Uw_p%grav/sd%dp(k)/Uw_p%cp_air*86400
+	   x1  = -Uw_p%grav*cp%umf(k)*sd%ssthc(k)*86400
+	   x2  = -Uw_p%grav*cp%emf(k)*sd%ssthc(k)*86400
+           write(*,"(I5,15F8.2,4F8.5)"),k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
+		                        cp%wu(k),cp%ufrc(k),xx1,xx2,xx3,x1,x2,ct%hlflx(k),  &
+ 					ct%qaten(k), ct%qlten(k)*86400,ct%qiten(k)*86400,   &
+					cp%emf(k),cp%rei(k),cp%fer(k),cp%fdr(k)
+        end do
+!        ct%tten  = 0; ct%qvten = 0; ct%qlten = 0; ct%qiten = 0;
+!        ct%qaten = 0; ct%qnten = 0; ct%uten  = 0; ct%qctten = 0
+!        ct%pflx  = 0; ct%trwet = 0; ct%snow  = 0; ct%rain   = 0
+!        cp%umf   = 0; cp%emf   = 0; 
       end if
-    end if  ! end maximum temperature tendency check
+    end if  ! end check for unrealistically large tendencies
 
 
   end subroutine cumulus_tend_k
@@ -2249,7 +2286,7 @@ contains
                              qs, ier, dqsdT=dqs) 
           def=(hcevap*sd%qs(k) - sd%qv(k))/(1.+(HL*hcevap*dqs/Uw_p%Cp_Air ))
           def=evef*def
-          def=MIN( def, prec/mass(k) )
+          def=MIN( def, prec/mass(k) - (1.e-15) )
           def=MAX( def, 0.0)
        else
           def=0.0

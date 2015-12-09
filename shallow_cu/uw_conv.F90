@@ -123,6 +123,7 @@ MODULE UW_CONV_MOD
   logical :: do_stime  = .false.
   logical :: do_dtime  = .false.
   logical :: do_qctflx_zero = .false.
+  logical :: do_hlflx_zero  = .true.
   logical :: do_subcloud_flx = .false.
   logical :: do_detran_zero = .false.
   logical :: do_prog_tke  = .false.
@@ -130,9 +131,12 @@ MODULE UW_CONV_MOD
   logical :: do_gust_qt = .false.
   logical :: use_new_let = .false.
   logical :: use_lcl_only =.false.
+  logical :: do_new_pevap =.false.
+  logical :: stop_at_let  =.false.
   logical :: zero_out_conv_area = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
+  real    :: plev_for   = 50000.
   real    :: tke0 = 0.1
   real    :: gama = 0.
   real    :: hgt0 = 500.
@@ -160,7 +164,7 @@ MODULE UW_CONV_MOD
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt,       &
-       do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let,  &
+       do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, do_prog_tke, tau_tke, pblrat0, &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, tke0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, bfact, gfact, gfact3, gfact4, &
@@ -168,13 +172,14 @@ MODULE UW_CONV_MOD
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
-       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only
+       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
   real    :: rpen     = 5.0    ! for entrainment efficiency
   real    :: rmaxfrac = 0.15   ! maximum allowable updraft fraction
   real    :: wmin     = 0.5    ! minimum vertical velocity for computing updraft fraction
+  real    :: wmax     = 50     ! maximum allowable vertical velocity
   real    :: rbuoy    = 1.0    ! for nonhydrostatic pressure effects on updraft
   real    :: rdrag    = 1.0 
   real    :: frac_drs = 0.0    ! 
@@ -202,15 +207,17 @@ MODULE UW_CONV_MOD
   real    :: pblfac    = 0.0
   real    :: ffldep    = 0.0
   logical :: do_weffect = .false.
+  logical :: do_limit_wmax =.false.
   real    :: weffect    = 0.5
   real    :: peff_l     = 1.0
   real    :: peff_i     = 1.0
   real    :: t00        = 295
+  real    :: tten_max   = 1000.
 
-  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, rbuoy, rdrag, frac_drs, bigc, ffldep, &
+  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, ffldep, do_limit_wmax,&
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
        mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, pblfac,&
-       do_weffect, weffect, peff_l, peff_i, t00
+       do_weffect, weffect, peff_l, peff_i, t00, tten_max
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -289,7 +296,7 @@ MODULE UW_CONV_MOD
   integer :: id_tdt_uwc, id_qdt_uwc, id_udt_uwc, id_vdt_uwc, id_prec_uwc, id_snow_uwc, &
        id_cin_uwc, id_cbmf_uwc, id_tke_uwc, id_tkep_uwc, id_plcl_uwc, id_zlcl_uwc, id_zinv_uwc,  &
        id_cush_uwc, id_pct_uwc, id_pcb_uwc, id_plfc_uwc, id_enth_uwc,  &
-       id_qldt_uwc, id_qidt_uwc, id_qadt_uwc, id_qndt_uwc, id_cmf_uwc, id_wu_uwc,   &
+       id_qldt_uwc, id_qidt_uwc, id_qadt_uwc, id_qndt_uwc, id_cmf_uwc, id_cmf_uws, id_wu_uwc,   &
        id_fer_uwc,  id_fdr_uwc, id_fdrs_uwc, id_cqa_uwc, id_cql_uwc,   &
        id_cqi_uwc,  id_cqn_uwc, id_hlflx_uwc, id_qtflx_uwc, id_nqtflx_uwc, &
        id_cape_uwc, id_dcin_uwc, id_dcape_uwc, id_crh_uwc, id_pblht_uwc, &
@@ -489,6 +496,8 @@ contains
          'V tendency from uw_conv', 'm/s2', missing_value=mv)
     id_cmf_uwc = register_diag_field ( mod_name, 'cmf_uwc', axes(1:3), Time, &
          'Cloud vert. mass flux from uw_conv', 'kg/m2/s', missing_value=mv)
+    id_cmf_uws = register_diag_field ( mod_name, 'cmf_uws', axes(1:3), Time, &
+         'Cloud vert. mass flux from shallow plume uw_conv', 'kg/m2/s', missing_value=mv)
     id_cfq_uwc = register_diag_field ( mod_name, 'cfq_uwc', axes(1:3), Time,   &
          'Convective frequency', 'none', missing_value=mv)
     id_peo_uwc = register_diag_field ( mod_name, 'peo_uwc', axes(1:3), Time,   &
@@ -968,7 +977,7 @@ contains
     real, intent(out), dimension(:,:,:,:)  :: trtend          ! calculated tracer tendencies
     real, intent(out), dimension(:,:,:)  :: uw_wetdep       ! calculated wet depostion for tracers
 
-    integer i, j, k, kl, klm, nk, naer, na, n, ksrc
+    integer i, j, k, kl, klm, nk, naer, na, n, ksrc, kinv
 
     real rhos0j, pblrat, pblht_old, pblht_cur
     real hlsrc, thcsrc, qctsrc, tmp, tmp1, lofactor, crh_th, tvs, qvs, gust_new, gust_dis
@@ -986,6 +995,7 @@ contains
          wrelo,      &     ! release level vertical velocity (m/s)
          ufrco,      &     ! cloud-base updraft fraction
          zinvo,      &     ! surface driven mixed-layer height
+         einso,      &     ! estimated inversion strength (K)
          denth,      &     
          dqtmp,      &
          dting,      &
@@ -1019,10 +1029,10 @@ contains
     real, dimension(size(qtflx,1),size(qtflx,2),size(qtflx,3)) :: qtflx_up, qtflx_dn, omega_up, omega_dn, hm_vadv
     real, dimension(size(qtflx,1),size(qtflx,2),size(qtflx,3)) :: omgmc_up, ddp_dyn_hm, nqtflx
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: wuo,fero,fdro,fdrso, tten_pevap, qvten_pevap
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, cfq, peo, hmo, hms, abu
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, cfq, peo, hmo, hms, abu, cmf_s
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
-    real :: tnew, qtin, dqt, temp_1
+    real :: tnew, qtin, dqt, temp_1, temp_max, temp_min
     
     !f1p
     real, dimension(size(tracers,1), size(tracers,2), size(tracers,3), size(tracers,4)) :: trtend_nc, rn_diag
@@ -1088,12 +1098,14 @@ contains
     call ct_init_k(kd,ntracers,ct1)
     !pack namelist parameters into plume and closure structure
     cpn % do_qctflx_zero = do_qctflx_zero
+    cpn % do_hlflx_zero  = do_hlflx_zero
     cpn % do_subcloud_flx= do_subcloud_flx
     cpn % do_detran_zero = do_detran_zero
     cpn % rle       = rle
     cpn % rpen      = rpen
     cpn % rmaxfrac  = rmaxfrac
     cpn % wmin      = wmin
+    cpn % wmax      = wmax
     cpn % rbuoy     = rbuoy
     cpn % rdrag     = rdrag  
     cpn % frac_drs  = frac_drs
@@ -1105,6 +1117,7 @@ contains
     cpn % do_emmax  = do_emmax
     cpn % do_pnqv   = do_pnqv
     cpn % do_tten_max   = do_tten_max
+    cpn % tten_max  = tten_max
     cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
@@ -1137,7 +1150,10 @@ contains
     cpn % use_online_aerosol = use_online_aerosol
     cpn % use_new_let = use_new_let
     cpn % use_lcl_only= use_lcl_only
-
+    cpn % do_new_pevap= do_new_pevap
+    cpn % stop_at_let = stop_at_let
+    cpn % do_limit_wmax= do_limit_wmax
+    cpn % plev_for = plev_for
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
@@ -1247,14 +1263,16 @@ contains
     tdt_tot_pbl=0.; tdt_tot_fre=0.; cpool=0.; bflux=0.; scale_uw=1.; scale_tr=1.;
     dgz_dyn_int=0.; ddp_dyn_int=0.;
 
-    cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; wuo=0.; peo=0.; 
-    fero=0.; fdro=0.; fdrso=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0;
+    cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; einso=0.; wuo=0.; peo=0.; 
+    fero=0.; fdro=0.; fdrso=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0; cmf_s=0.;
     dcapeo=0.; dcino=0.; xpsrc=0.; xhlsrc=0.; xqtsrc=0.; fdp=0.; rkm_s=0.;
     trtend=0.; qldet=0.; qidet=0.; qadet=0.; crho=0.; hmo=0.; hms=0.; abu=0.;
     trwet = 0.
     dting = 0.
     dissipative_heat = 0.; rhos=0; lhflx=0; shflx=0; 
     hmint_old=hmint; hmint=0;
+
+    cbmf_shallow = 0.
 
     naer = size(asol%aerosol,4)
 
@@ -1320,6 +1338,7 @@ contains
          else
             temp_1=pblht(i,j)
          endif
+         bflux(i,j) = 0.5*(0.6*ustar(i,j)*bstar(i,j)*temp_1)**(2./3.)
          temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
          if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
          tkeo(i,j) = MAX (tkemin, temp_1)
@@ -1425,11 +1444,16 @@ contains
           sd%cgust_max = cgust_max
           sd%sigma0    = sigma0
           sd%tke       = tkeo(i,j)
+          sd%lat       = lat(i,j)*180/3.1415926
+          sd%lon       = lon(i,j)*180/3.1415926
+
 	  if (do_prog_tke .or. use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
 
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
 
           zinvo(i,j) = sd%zinv
+          kinv       = sd%kinv
+	  einso(i,j) = (sd%hl(kinv+1)-sd%hl(kinv))/(sd%z(kinv+1)-sd%z(kinv))/cp_air
 
 	  tmp=sd%thvbot(1)*sd%exners(1)
           rhos(i,j)= sd%ps(0)/(rdgas*tmp)
@@ -1671,6 +1695,7 @@ contains
              cldql (i,j,nk) = cp%qlu(k)
              cldqi (i,j,nk) = cp%qiu(k)
              cldqn (i,j,nk) = cp%qnu(k)
+             cmf_s (i,j,nk) = cp%umf(k)
              cmf   (i,j,nk) = cp%umf(k)
              wuo   (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
@@ -1890,7 +1915,7 @@ contains
              hlflx (i,j,:) = hlflx (i,j,:) + hlflx_d (i,j,:) 
              qtflx (i,j,:) = qtflx (i,j,:) + qtflx_d (i,j,:)
              nqtflx(i,j,:) = nqtflx(i,j,:) + nqtflx_d(i,j,:)
-             cmf   (i,j,:) = cmf   (i,j,:) + cmf_d   (i,j,:)
+             cmf   (i,j,:) = cmf_s (i,j,:) + cmf_d   (i,j,:)
              tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:) 
              qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:) 
 
@@ -1979,6 +2004,8 @@ contains
     end if
 
     if ( prevent_unreasonable ) then
+      temp_min=300.
+      temp_max=200.
       scale_uw=HUGE(1.0)
       do k=1,kmax
         do j=1,jmax
@@ -2022,20 +2049,26 @@ contains
             endif
     !rescaling to prevent excessive temperature tendencies
             if (do_rescale_t) then
+              temp_max = max(temp_max,tb(i,j,k))
+              temp_min = min(temp_min,tb(i,j,k))
               tnew  =  tb(i,j,k) + tten(i,j,k) * delt
               if ( tnew > 363.15 ) then
                 temp_1 = 0.0
                 print *, 'WARNING: setting scale_uw to zero to prevent large T tendencies in UW'
+                print *, i,j,'lev=',k,'pressure=',pmid(i,j,k),'tb=',tb(i,j,k),'tten=',tten(i,j,k)*delt
+                print *, 'lat=', sd%lat, 'lon=', sd%lon, 'land=',sd%land
               else
                 temp_1 = 1.0
               endif
     !scaling factor for each column is the minimum value within that column
               scale_uw(i,j) = min( temp_1, scale_uw(i,j))
             endif
-
           enddo
         enddo
       enddo
+!      if (temp_max > 350. .or. temp_min < 170.) then
+!      	 print *, 'temp_min=',temp_min, 'temp_max=',temp_max
+!      endif
 
 !     where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
 !        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
@@ -2142,6 +2175,7 @@ contains
     used = send_data( id_udt_uwc,    uten*aday , Time, is, js, 1)
     used = send_data( id_vdt_uwc,    vten*aday,  Time, is, js, 1)
     used = send_data( id_cmf_uwc,    cmf,          Time, is, js, 1)
+    used = send_data( id_cmf_uws,    cmf_s,        Time, is, js, 1)
     used = send_data( id_cfq_uwc,    cfq,          Time, is, js, 1)
     used = send_data( id_wu_uwc,     wuo,          Time, is, js, 1)
     used = send_data( id_peo_uwc,    peo,          Time, is, js, 1)

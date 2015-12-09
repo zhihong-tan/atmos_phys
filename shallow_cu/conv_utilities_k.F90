@@ -33,7 +33,7 @@ MODULE CONV_UTILITIES_k_MOD
     integer  :: kmax, kinv, ktoppbl, ktopconv, ksrc, src_choice, gqt_choice
     real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, plev_cin
     real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre
-    real     :: tke, cgust, cgust0, cgust_max, sigma0
+    real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon
     real     :: dpsum, hmint, hm_vadv0
     real     :: tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int
     real     :: tdt_rad_pbl, tdt_dyn_pbl, tdt_dif_pbl, qdt_dyn_pbl, qdt_dif_pbl
@@ -170,6 +170,8 @@ contains
     sd%delt     = 0.0
     sd%crh      = 0.0
     sd%tke      = 0.0
+    sd%lat      = 0.0
+    sd%lon      = 0.0
     sd%cgust    = 0.0
     sd%dpsum    = 0.0
     sd%hmint    = 0.0
@@ -271,6 +273,8 @@ contains
     sd1% land = sd % land
     sd1% coldT= sd % coldT
     sd1% tke  = sd % tke
+    sd1% lat  = sd % lat
+    sd1% lon  = sd % lon
     sd1% do_gust_qt= sd % do_gust_qt
     sd1% cgust= sd % cgust
     sd1% cgust0= sd % cgust0

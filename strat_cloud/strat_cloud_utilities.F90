@@ -245,7 +245,7 @@ type strat_nml_type
 !-------------------------------------------------------------------------
 
   real    :: U00, rthresh, var_limit, sea_salt_scale,         &
-             om_to_oc,  N_land, N_ocean, U_evap, eros_scale,  &
+             om_to_oc,  N_land, N_ocean, U_evap, U_evap_snow, eros_scale,  &!miz
              eros_scale_c, eros_scale_t, mc_thresh,           &
              diff_thresh, qmin, Dmin, efact, vfact, cfact,    &
              iwc_crit,  vfall_const2, vfall_exp2,             &
