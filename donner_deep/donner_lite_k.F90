@@ -1059,6 +1059,7 @@ integer,                           intent(out)   :: error
         cpn % mp_choice = 0
         cpn % do_forcedlifting  = .true.
         cpn % wtwmin_ratio = Nml%wmin_ratio*Nml%wmin_ratio
+        cpn % plev_for        = 50000.
 ! Values for cpn for the following variables are not actually used in the donner_lite routine but 
 ! they should be initialized in order to pass debug tests where NaNs are trapped.
         cpn % rad_crit        = 14.0
