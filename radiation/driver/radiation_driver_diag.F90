@@ -311,20 +311,18 @@ logical :: module_is_initialized = .false.
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-subroutine radiation_driver_diag_init (Time, lonb, latb, axes, pref, &
+subroutine radiation_driver_diag_init (Time, id, jd, kmax, axes, &
                                        Rad_control, Aerosolrad_control)
 
 !--------------------------------------------------------------------
 type(time_type),               intent(in) :: Time
-real, dimension(:,:),          intent(in) :: lonb, latb
+integer,                       intent(in) :: id, jd, kmax
 integer, dimension(4),         intent(in) :: axes
-real, dimension(:,:),          intent(in) :: pref
 type(radiation_control_type),  intent(in) :: Rad_control
 type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !---------------------------------------------------------------------
 !   local variables
       integer           ::   unit, io, ierr, logunit
-      integer           ::   id, jd, kmax
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -368,13 +366,6 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
       logunit = stdlog()
        if (mpp_pe() == mpp_root_pe() ) &
             write (logunit, nml=radiation_driver_diag_nml)
-
-!--------------------------------------------------------------------
-!    define the model dimensions on the local processor.
-!---------------------------------------------------------------------
-      id = size(lonb,1)-1
-      jd = size(latb,2)-1
-      kmax  = size(pref,1) - 1 
 
 !---------------------------------------------------------------------
 !    save aerosol forcing flags as module variables

@@ -1299,8 +1299,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !---------------------------------------------------------------------
 !    initialize the diagnostics and solar interpolator module
 !---------------------------------------------------------------------
-      call radiation_driver_diag_init (Time, lonb, latb, axes, &
-                                       Radiation%glbl_qty%pref, &
+      call radiation_driver_diag_init (Time, id, jd, kmax, axes, &
                                        Rad_control, Aerosolrad_control)
 
 !-----------------------------------------------------------------------
