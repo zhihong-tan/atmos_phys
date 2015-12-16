@@ -1164,12 +1164,6 @@ logical,         intent(in) :: do_lwaerosol
                  'temperature tendency for SW + LW radiation', &
                  'deg_K/sec', missing_value=missing_value)
 
-
-         id_allradp   = register_diag_field (mod_name,   &
-                 'allradp', axes(1:3), Time, &
-                 'temperature tendency for SW + LW radiation', &
-                 'deg_K/sec', missing_value=missing_value)
-
          id_heat2d   = register_diag_field (mod_name,   &
                  'heat2d_rad', axes(1:2), Time, &
                  'integrated net radiative heating', 'watts/m2')
