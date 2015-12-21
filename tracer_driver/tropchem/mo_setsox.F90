@@ -9,7 +9,7 @@ module MO_SETSOX_MOD
   use tracer_manager_mod,    only: get_tracer_index,  query_method
   use field_manager_mod,     only: parse
 
-  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1p
+  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P
   use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA, NO_AERO
 
   implicit none
@@ -175,7 +175,7 @@ CONTAINS
        xH(:,k) = xH0                                    ! initial PH value
        if ( trop_option%cloud_chem .eq. CLOUD_CHEM_LEGACY ) then
           xlwc(:,k) = cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
-       elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1p) then
+       elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P) then
           xlwc(:,k) = frac_liq(:,k) * cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
        end if
        if( hno3_ndx > 0 ) then
@@ -266,7 +266,6 @@ CONTAINS
           qs = .622*es/pz                                    ! sat mass mix (H2O)
           RH = 100.*qz/qs                                    ! relative huminity(%)
           RH = MIN( 100.,MAX( RH,0. ) )
-          patm = pz/1013.           
 
           if( xl >= trop_option%min_lwc_for_cloud_chem ) then
 
@@ -275,6 +274,7 @@ CONTAINS
 
              if (trop_option%cloud_chem .eq. CLOUD_CHEM_LEGACY) then
 
+                patm = pz/1013.
                 t_fac(i) = 1. / tfld(i,k) - 1. / 298.
                 !-----------------------------------------------------------------------      
                 !        ... hno3
@@ -538,8 +538,9 @@ CONTAINS
 !                      * dtime                                        ! VMR
 
                 !<f1p: new cloud chemistry
-             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1p ) then
+             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P ) then
 
+                patm = pz/1013.25
                 if ( cldfr(i,k) .gt. 1.e-10 .and. xso2(i,k) .gt. 0. ) then
                    xl = xl/cldfr(i,k)
 
@@ -556,16 +557,15 @@ CONTAINS
                    
 
                    if (trop_option%cloud_H .lt. 0.) then                   
-                      call cloud_pH(thno3,xso2(i,k),tnh3,xhcooh(i,k)*frac_liq(i,k),xch3cooh(i,k)*frac_liq(i,k),xso4(i,k)*frac_ic_so4_eff(i,k),xco2(i,k),xalk(i,k),tfld(i,k),patm,xl,xhnm(i,k),trop_option%cloud_chem_ph_solver,xH(i,k),ediag)
+                      call cloud_pH(thno3, xso2(i,k), tnh3, xhcooh(i,k)*frac_liq(i,k), xch3cooh(i,k)*frac_liq(i,k), &
+		                    xso4(i,k)*frac_ic_so4_eff(i,k), xco2(i,k), xalk(i,k), tfld(i,k), patm, xl, xhnm(i,k),&
+				    trop_option%cloud_chem_ph_solver,xH(i,k), ediag)
                    else
                       xH(i,k)  = trop_option%cloud_H
                       ediag(:) = 0.
                    end if
-                   call cloud_so2_chem(xH(i,k),tfld(i,k),xl,rso2_h2o2,rso2_o3)
 
-
-                   rso2_h2o2 = rso2_h2o2 * xl / const0 / xhnm(i,k)
-                   rso2_o3   = rso2_o3   * xl / const0 / xhnm(i,k)
+                   call cloud_so2_chem(patm, xH(i,k), tfld(i,k), xl, rso2_h2o2, rso2_o3)
 
                    !amount of so4 formed
                    !SO2i*(1 - exp(kdt/a))/(1-SO2i/H2O2i exp(kdt/a)) with a = 1/SO20 - H2O20
