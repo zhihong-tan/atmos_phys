@@ -42,6 +42,9 @@ use block_control_mod,  only: block_control_type
                                              flux_sw_vis_dif        _NULL, &
                                              flux_lw                _NULL, &
                                              coszen                 _NULL
+     contains
+         procedure :: alloc=>alloc_radiation_flux_block_type
+         procedure :: dealloc=>dealloc_radiation_flux_block_type
  end type radiation_flux_block_type
 
 !--- Radiation Flux control type
@@ -213,61 +216,13 @@ contains
       do nb = 1, Atm_block%nblks
         ix = Atm_block%ibe(nb) - Atm_block%ibs(nb) + 1
         jx = Atm_block%jbe(nb) - Atm_block%jbs(nb) + 1
-        allocate (Rad_flux(n)%block(nb)%tdt_rad               (ix,jx,npz), &
-                  Rad_flux(n)%block(nb)%tdt_lw                (ix,jx,npz), &
-                  Rad_flux(n)%block(nb)%flux_sw               (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_dir           (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_dif           (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_down_vis_dir  (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_down_vis_dif  (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_down_total_dir(ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_down_total_dif(ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_vis           (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_vis_dir       (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_sw_vis_dif       (ix,jx),     &
-                  Rad_flux(n)%block(nb)%flux_lw               (ix,jx),     &
-                  Rad_flux(n)%block(nb)%coszen                (ix,jx),     &
-                  Rad_flux(n)%block(nb)%extinction            (ix,jx,npz)  )
-      ! initial values - only used at t=0 when there is no restart
-        if (nonzero_init) then
-          Rad_flux(n)%block(nb)%tdt_rad                = 0.0
-          Rad_flux(n)%block(nb)%tdt_lw                 = 0.0
-          Rad_flux(n)%block(nb)%flux_sw                = 50.0
-          Rad_flux(n)%block(nb)%flux_sw_dir            = 25.0
-          Rad_flux(n)%block(nb)%flux_sw_dif            = 25.0
-          Rad_flux(n)%block(nb)%flux_sw_down_vis_dir   = 12.5 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_down_vis_dif   = 12.5 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_down_total_dir = 25.0 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_down_total_dif = 25.0 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_vis            = 25.0
-          Rad_flux(n)%block(nb)%flux_sw_vis_dir        = 12.5
-          Rad_flux(n)%block(nb)%flux_sw_vis_dif        = 12.5
-          Rad_flux(n)%block(nb)%flux_lw                = 50.0
-          Rad_flux(n)%block(nb)%coszen                 = 0.50
-          Rad_flux(n)%block(nb)%extinction             = 0.0
-        else
-          Rad_flux(n)%block(nb)%tdt_rad                = 0.0
-          Rad_flux(n)%block(nb)%tdt_lw                 = 0.0
-          Rad_flux(n)%block(nb)%flux_sw                = 0.0 !50.0
-          Rad_flux(n)%block(nb)%flux_sw_dir            = 0.0 !25.0
-          Rad_flux(n)%block(nb)%flux_sw_dif            = 0.0 !25.0
-          Rad_flux(n)%block(nb)%flux_sw_down_vis_dir   = 0.0 !12.5 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_down_vis_dif   = 0.0 !12.5 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_down_total_dir = 0.0 !25.0 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_down_total_dif = 0.0 !25.0 * 1.1
-          Rad_flux(n)%block(nb)%flux_sw_vis            = 0.0 !25.0
-          Rad_flux(n)%block(nb)%flux_sw_vis_dir        = 0.0 !12.5
-          Rad_flux(n)%block(nb)%flux_sw_vis_dif        = 0.0 !12.5
-          Rad_flux(n)%block(nb)%flux_lw                = 0.0 !50.0
-          Rad_flux(n)%block(nb)%coszen                 = 0.0 !0.50
-          Rad_flux(n)%block(nb)%extinction             = 0.0 !0.0
-        endif
+        call Rad_flux(n)%block(nb)%alloc ( ix, jx, npz, nonzero_init )
       end do
     end do
 
  end subroutine alloc_radiation_flux_type
 
-
+!######################################################################
 
  subroutine dealloc_radiation_flux_type (Rad_flux)
    type (radiation_flux_type), intent(inout) :: Rad_flux(:)
@@ -278,26 +233,100 @@ contains
 !---------------------------------------------------------------------
       do n = 1, size(Rad_flux,1)
         do nb = 1, size(Rad_flux(n)%block,1)
-          deallocate (Rad_flux(n)%block(nb)%tdt_rad,                &
-                      Rad_flux(n)%block(nb)%tdt_lw,                 &
-                      Rad_flux(n)%block(nb)%flux_sw,                &
-                      Rad_flux(n)%block(nb)%flux_sw_dir,            &
-                      Rad_flux(n)%block(nb)%flux_sw_dif,            &
-                      Rad_flux(n)%block(nb)%flux_sw_down_vis_dir,   &
-                      Rad_flux(n)%block(nb)%flux_sw_down_vis_dif,   &
-                      Rad_flux(n)%block(nb)%flux_sw_down_total_dir, &
-                      Rad_flux(n)%block(nb)%flux_sw_down_total_dif, &
-                      Rad_flux(n)%block(nb)%flux_sw_vis,            &
-                      Rad_flux(n)%block(nb)%flux_sw_vis_dir,        &
-                      Rad_flux(n)%block(nb)%flux_sw_vis_dif,        &
-                      Rad_flux(n)%block(nb)%flux_lw,                &
-                      Rad_flux(n)%block(nb)%coszen,                 &
-                      Rad_flux(n)%block(nb)%extinction              )
+          call Rad_flux(n)%block(nb)%dealloc
         enddo
         deallocate (Rad_flux(n)%block)
       end do
  end subroutine dealloc_radiation_flux_type
 
+!######################################################################
+
+ subroutine alloc_radiation_flux_block_type (Rad_flux_block, ix, jx, kx, nonzero_init)
+   class(radiation_flux_block_type), intent(inout) :: Rad_flux_block
+   integer,                          intent(in)    :: ix, jx, kx
+   logical, optional,                intent(in)    :: nonzero_init
+   logical :: nonzero_init_local
+
+   nonzero_init_local = .false.
+   if (present(nonzero_init)) nonzero_init_local = nonzero_init
+
+      allocate (Rad_flux_block%tdt_rad               (ix,jx,kx), &
+                Rad_flux_block%tdt_lw                (ix,jx,kx), &
+                Rad_flux_block%flux_sw               (ix,jx),    &
+                Rad_flux_block%flux_sw_dir           (ix,jx),    &
+                Rad_flux_block%flux_sw_dif           (ix,jx),    &
+                Rad_flux_block%flux_sw_down_vis_dir  (ix,jx),    &
+                Rad_flux_block%flux_sw_down_vis_dif  (ix,jx),    &
+                Rad_flux_block%flux_sw_down_total_dir(ix,jx),    &
+                Rad_flux_block%flux_sw_down_total_dif(ix,jx),    &
+                Rad_flux_block%flux_sw_vis           (ix,jx),    &
+                Rad_flux_block%flux_sw_vis_dir       (ix,jx),    &
+                Rad_flux_block%flux_sw_vis_dif       (ix,jx),    &
+                Rad_flux_block%flux_lw               (ix,jx),    &
+                Rad_flux_block%coszen                (ix,jx),    &
+                Rad_flux_block%extinction            (ix,jx,kx)  )
+
+      ! initial values - only used at t=0 when there is no restart
+      if (nonzero_init_local) then
+          Rad_flux_block%tdt_rad                = 0.0
+          Rad_flux_block%tdt_lw                 = 0.0
+          Rad_flux_block%flux_sw                = 50.0
+          Rad_flux_block%flux_sw_dir            = 25.0
+          Rad_flux_block%flux_sw_dif            = 25.0
+          Rad_flux_block%flux_sw_down_vis_dir   = 12.5 * 1.1
+          Rad_flux_block%flux_sw_down_vis_dif   = 12.5 * 1.1
+          Rad_flux_block%flux_sw_down_total_dir = 25.0 * 1.1
+          Rad_flux_block%flux_sw_down_total_dif = 25.0 * 1.1
+          Rad_flux_block%flux_sw_vis            = 25.0
+          Rad_flux_block%flux_sw_vis_dir        = 12.5
+          Rad_flux_block%flux_sw_vis_dif        = 12.5
+          Rad_flux_block%flux_lw                = 50.0
+          Rad_flux_block%coszen                 = 0.50
+          Rad_flux_block%extinction             = 0.0
+      else
+          Rad_flux_block%tdt_rad                = 0.0
+          Rad_flux_block%tdt_lw                 = 0.0
+          Rad_flux_block%flux_sw                = 0.0 !50.0
+          Rad_flux_block%flux_sw_dir            = 0.0 !25.0
+          Rad_flux_block%flux_sw_dif            = 0.0 !25.0
+          Rad_flux_block%flux_sw_down_vis_dir   = 0.0 !12.5 * 1.1
+          Rad_flux_block%flux_sw_down_vis_dif   = 0.0 !12.5 * 1.1
+          Rad_flux_block%flux_sw_down_total_dir = 0.0 !25.0 * 1.1
+          Rad_flux_block%flux_sw_down_total_dif = 0.0 !25.0 * 1.1
+          Rad_flux_block%flux_sw_vis            = 0.0 !25.0
+          Rad_flux_block%flux_sw_vis_dir        = 0.0 !12.5
+          Rad_flux_block%flux_sw_vis_dif        = 0.0 !12.5
+          Rad_flux_block%flux_lw                = 0.0 !50.0
+          Rad_flux_block%coszen                 = 0.0 !0.50
+          Rad_flux_block%extinction             = 0.0 !0.0
+      endif
+
+ end subroutine alloc_radiation_flux_block_type
+
+!######################################################################
+
+ subroutine dealloc_radiation_flux_block_type (Rad_flux_block)
+   class(radiation_flux_block_type), intent(inout) :: Rad_flux_block
+
+      deallocate (Rad_flux_block%tdt_rad,                &
+                  Rad_flux_block%tdt_lw,                 &
+                  Rad_flux_block%flux_sw,                &
+                  Rad_flux_block%flux_sw_dir,            &
+                  Rad_flux_block%flux_sw_dif,            &
+                  Rad_flux_block%flux_sw_down_vis_dir,   &
+                  Rad_flux_block%flux_sw_down_vis_dif,   &
+                  Rad_flux_block%flux_sw_down_total_dir, &
+                  Rad_flux_block%flux_sw_down_total_dif, &
+                  Rad_flux_block%flux_sw_vis,            &
+                  Rad_flux_block%flux_sw_vis_dir,        &
+                  Rad_flux_block%flux_sw_vis_dif,        &
+                  Rad_flux_block%flux_lw,                &
+                  Rad_flux_block%coszen,                 &
+                  Rad_flux_block%extinction              )
+
+ end subroutine dealloc_radiation_flux_block_type
+
+!######################################################################
 
  subroutine alloc_clouds_from_moist_type (Moist_clouds, Exch_ctrl, Atm_block)
    type (clouds_from_moist_type), intent(inout) :: Moist_clouds(:)

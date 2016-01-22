@@ -20,8 +20,7 @@ character(len=128)  :: tagname =  '$Name$'
 
 public :: esfsw_utilities_init, &
           esfsw_utilities_end, &
-          thickavg, thinavg, &
-          assignment(=)
+          thickavg, thinavg
 
 interface thickavg
    module procedure thickavg_3d
@@ -29,40 +28,6 @@ interface thickavg
    module procedure thickavg_1band
    module procedure thickavg_isccp
 end interface
-
-interface assignment(=)
-   module procedure sw_output_type_eq
-end interface
-
-!---------------------------------------------------------------------
-!------- public derived-types ------
-public :: sw_output_type
-
-type sw_output_type
-     real, dimension(:,:,:,:), pointer :: dfsw=>NULL(),   &
-                                          ufsw=>NULL(),  &
-                                          fsw=>NULL(),   &
-                                          hsw=>NULL()   
-     real, dimension(:,:,:,:), pointer :: dfswcf=>NULL(),   &
-                                          ufswcf=>NULL(),&
-                                          fswcf=>NULL(),  &
-                                          hswcf=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc=>NULL(),   &
-                                         ufsw_vis_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dir_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: ufsw_dir_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dir_sfc_clr=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dif_sfc=>NULL(),   &
-                                         ufsw_dif_sfc=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_dif_sfc_clr=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dir=>NULL()
-      real, dimension(:,:,:), pointer :: ufsw_vis_sfc_dir=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_clr=>NULL()
-      real, dimension(:,:,:), pointer :: dfsw_vis_sfc_dif=>NULL(),   &
-                                         ufsw_vis_sfc_dif=>NULL()
-      real, dimension(:,:,:,:), pointer :: bdy_flx=>NULL()
-      real, dimension(:,:,:,:), pointer :: bdy_flx_clr=>NULL()
-end type sw_output_type
 
 !---------------------------------------------------------------------
 !------- private data ------
@@ -126,42 +91,6 @@ subroutine esfsw_utilities_end
 end subroutine esfsw_utilities_end
 
 !#####################################################################
-
-subroutine sw_output_type_eq(sw_output_out,sw_output_in)
-
-   type(sw_output_type), intent(inout) :: sw_output_out
-   type(sw_output_type), intent(in)    :: sw_output_in
-
-!  Need to add error trap to catch unallocated sw_output_in
-   sw_output_out%fsw              = sw_output_in%fsw
-   sw_output_out%dfsw             = sw_output_in%dfsw
-   sw_output_out%ufsw             = sw_output_in%ufsw
-   sw_output_out%hsw              = sw_output_in%hsw
-   sw_output_out%dfsw_dir_sfc     = sw_output_in%dfsw_dir_sfc
-   sw_output_out%ufsw_dir_sfc     = sw_output_in%ufsw_dir_sfc
-   sw_output_out%dfsw_dif_sfc     = sw_output_in%dfsw_dif_sfc
-   sw_output_out%ufsw_dif_sfc     = sw_output_in%ufsw_dif_sfc
-   sw_output_out%dfsw_vis_sfc     = sw_output_in%dfsw_vis_sfc
-   sw_output_out%ufsw_vis_sfc     = sw_output_in%ufsw_vis_sfc
-   sw_output_out%ufsw_vis_sfc_dir = sw_output_in%ufsw_vis_sfc_dir
-   sw_output_out%dfsw_vis_sfc_dir = sw_output_in%dfsw_vis_sfc_dir
-   sw_output_out%dfsw_vis_sfc_dif = sw_output_in%dfsw_vis_sfc_dif
-   sw_output_out%ufsw_vis_sfc_dif = sw_output_in%ufsw_vis_sfc_dif
-   sw_output_out%bdy_flx          = sw_output_in%bdy_flx
-   if (ASSOCIATED(sw_output_in%fswcf))then
-       sw_output_out%fswcf            = sw_output_in%fswcf
-       sw_output_out%dfswcf           = sw_output_in%dfswcf
-       sw_output_out%ufswcf           = sw_output_in%ufswcf
-       sw_output_out%hswcf            = sw_output_in%hswcf
-       sw_output_out%dfsw_dir_sfc_clr = sw_output_in%dfsw_dir_sfc_clr
-       sw_output_out%dfsw_dif_sfc_clr = sw_output_in%dfsw_dif_sfc_clr
-       sw_output_out%dfsw_vis_sfc_clr = sw_output_in%dfsw_vis_sfc_clr
-       sw_output_out%bdy_flx_clr      = sw_output_in%bdy_flx_clr
-   endif
-
-end subroutine sw_output_type_eq
-
-!##################################################################
 
 ! <SUBROUTINE NAME="thickavg_3d">
 !  <OVERVIEW>

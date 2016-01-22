@@ -83,7 +83,6 @@ use diag_manager_mod,        only: register_diag_field, send_data
 
 !    shared radiation package modules:
 
-use rad_utilities_mod,       only: rad_utilities_init
 use aerosol_types_mod,       only: aerosol_type, aerosol_time_vary_type
 
 use physics_radiation_exch_mod, only: exchange_control_type, &
@@ -568,7 +567,6 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 !    later in this subroutine have already been initialized.
 !---------------------------------------------------------------------
       call fms_init
-      call rad_utilities_init
       call time_manager_init
       call tracer_manager_init
       call field_manager_init (ndum)

@@ -72,15 +72,13 @@ character(len=128)  :: tagname =  '$Name$'
 public           &
        aerosolrad_package_init, aerosol_radiative_properties, &
        aerosolrad_package_time_vary, aerosolrad_package_endts, &
-       aerosolrad_package_end, number_of_lw_aerosol_bands, &
-       aerosolrad_diag_dealloc
+       aerosolrad_package_end, number_of_lw_aerosol_bands
      
 private          &
 
 !  called from aerosolrad_package_init: 
    assign_aerosol_opt_props, read_optical_input_file, &
-   sw_aerosol_interaction,  lw_aerosol_interaction, &
-   aerosolrad_diag_alloc
+   sw_aerosol_interaction,  lw_aerosol_interaction
        
 
 !---------------------------------------------------------------------
@@ -500,10 +498,6 @@ integer :: nfields_lw_ssa = 0   ! number of fields contained in
 integer :: nfields_lw_asy = 0   ! number of fields contained in 
                                 ! supplemental lw_asy file
 
-integer :: num_zenith_angles  ! number of high-res solar zenith angles
-                              ! that shortwave radiation is calculated
-                              ! for every every shortwave time step
-                              ! saved so that diag arrays can be allocated
 !-------------------------------------------------------------------
 !   arrays holding variable names:
 character(len=64), dimension(:), allocatable ::   &
@@ -594,7 +588,7 @@ integer, dimension(:), allocatable :: sul_ind, bc_ind
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine aerosolrad_package_init (kmax, nzens, aerosol_names, lonb, latb, &
+subroutine aerosolrad_package_init (kmax, aerosol_names, lonb, latb, &
                                     Aerosolrad_control)
 
 !---------------------------------------------------------------------
@@ -605,7 +599,6 @@ subroutine aerosolrad_package_init (kmax, nzens, aerosol_names, lonb, latb, &
 !---------------------------------------------------------------------
 !character(len=64), dimension(:), intent(in)  :: aerosol_names
 integer,                        intent(in)    :: kmax
-integer,                        intent(in)    :: nzens
 character(len=*), dimension(:), intent(in)    :: aerosol_names
 real, dimension(:,:),           intent(in)    :: lonb,latb
 type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
@@ -616,8 +609,6 @@ type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
 !  intent(in) variables:
 !
 !      kmax              number of model levels
-!      nzens             number of high-res solar zenith angles
-!                        calculated per shortwave timestep
 !      aerosol_names     the names assigned to each of the activated
 !                        aerosol species
 !       lonb           2d array of model longitudes at cell corners
@@ -1083,12 +1074,6 @@ type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
      endif
 
 !---------------------------------------------------------------------
-!   save the number of solar zenith angles calculated each
-!   shortwave timestep, will be used to allocate diag arrays
-!---------------------------------------------------------------------
-     num_zenith_angles = nzens
-
-!---------------------------------------------------------------------
 !    mark the module as initialized.
 !---------------------------------------------------------------------
       module_is_initialized = .true.
@@ -1284,82 +1269,6 @@ type(aerosolrad_control_type),  intent(in) :: Aerosolrad_control
 
 end subroutine aerosolrad_package_time_vary 
 
-!######################################################################
-
-subroutine aerosolrad_diag_alloc (ix, jx, kx, nfld, &
-                                  Aerosolrad_control, &
-                                  Aerosolrad_diags)
-
-integer,                        intent(in)  :: ix, jx, kx, nfld
-type(aerosolrad_control_type),  intent(in)  :: Aerosolrad_control
-type(aerosolrad_diag_type),     intent(out) :: Aerosolrad_diags
-
-!---------------------------------------------------------------------------
-
-      allocate (Aerosolrad_diags%extopdep (ix, jx, kx, nfld, 10))
-      allocate (Aerosolrad_diags%absopdep (ix, jx, kx, nfld, 10))
-      allocate (Aerosolrad_diags%asymdep  (ix, jx, kx, nfld, 10))
-      Aerosolrad_diags%extopdep = 0.0
-      Aerosolrad_diags%absopdep = 0.0
-      Aerosolrad_diags%asymdep = 0.0
-
-      if (Aerosolrad_control%volcanic_sw_aerosols) then
-        allocate (Aerosolrad_diags%extopdep_vlcno   (ix, jx, kx, 3))
-        allocate (Aerosolrad_diags%absopdep_vlcno   (ix, jx, kx, 3))
-        allocate (Aerosolrad_diags%sw_heating_vlcno (ix, jx, kx, num_zenith_angles))
-        Aerosolrad_diags%extopdep_vlcno = 0.0
-        Aerosolrad_diags%absopdep_vlcno = 0.0
-        Aerosolrad_diags%sw_heating_vlcno = 0.0
-        allocate (Aerosolrad_diags%sw_ext (ix, jx, kx, nfields_sw_ext))
-        allocate (Aerosolrad_diags%sw_ssa (ix, jx, kx, nfields_sw_ssa))
-        allocate (Aerosolrad_diags%sw_asy (ix, jx, kx, nfields_sw_asy))
-      endif
-
-      if (Aerosolrad_control%volcanic_lw_aerosols) then
-        allocate (Aerosolrad_diags%lw_extopdep_vlcno (ix, jx, kx+1, 2))
-        allocate (Aerosolrad_diags%lw_absopdep_vlcno (ix, jx, kx+1, 2))
-        Aerosolrad_diags%lw_extopdep_vlcno = 0.0
-        Aerosolrad_diags%lw_absopdep_vlcno = 0.0
-        allocate (Aerosolrad_diags%lw_ext (ix, jx, kx, nfields_lw_ext))
-        allocate (Aerosolrad_diags%lw_ssa (ix, jx, kx, nfields_lw_ssa))
-        allocate (Aerosolrad_diags%lw_asy (ix, jx, kx, nfields_lw_asy))
-      endif
-
-!--------------------------------------------------------------------
-
-end subroutine aerosolrad_diag_alloc
-
-!####################################################################
-
-subroutine aerosolrad_diag_dealloc (Aerosolrad_diags)
-
-type(aerosolrad_diag_type), intent(inout) :: Aerosolrad_diags
-
-      deallocate (Aerosolrad_diags%extopdep)
-      deallocate (Aerosolrad_diags%absopdep)
-      deallocate (Aerosolrad_diags%asymdep)
-
-  !BW if (Aerosolrad_control%volcanic_sw_aerosols) then 
-      if (associated(Aerosolrad_diags%extopdep_vlcno)) then
-        deallocate (Aerosolrad_diags%extopdep_vlcno)
-        deallocate (Aerosolrad_diags%absopdep_vlcno)
-        deallocate (Aerosolrad_diags%sw_heating_vlcno)
-        deallocate (Aerosolrad_diags%sw_ext)
-        deallocate (Aerosolrad_diags%sw_ssa)
-        deallocate (Aerosolrad_diags%sw_asy)
-      endif
-
-  !BW if (Aerosolrad_control%volcanic_lw_aerosols) then 
-      if (associated(Aerosolrad_diags%lw_extopdep_vlcno)) then
-        deallocate (Aerosolrad_diags%lw_extopdep_vlcno)
-        deallocate (Aerosolrad_diags%lw_absopdep_vlcno)
-        deallocate (Aerosolrad_diags%lw_ext)
-        deallocate (Aerosolrad_diags%lw_ssa)
-        deallocate (Aerosolrad_diags%lw_asy)
-      endif
-
-end subroutine aerosolrad_diag_dealloc
-
 !####################################################################
 
 subroutine aerosolrad_package_endts
@@ -1492,10 +1401,21 @@ real, dimension(:,:,:,:),      intent(out)   :: aerooptdep, aerooptdep_volc, &
 !    allocate and initialize arrays to hold aerosol diagnostics.
 !---------------------------------------------------------------------
 
-      call aerosolrad_diag_alloc ( ie-is+1, je-js+1, &
+      call Aerosolrad_diags%alloc ( ie-is+1, je-js+1, &
                                    size(Aerosol%aerosol,3), &
                                    size(Aerosol%aerosol,4), &
-                                   Aerosolrad_control, Aerosolrad_diags )
+                                   nfields_sw_ext, &
+                                   nfields_sw_ssa, &
+                                   nfields_sw_asy, &
+                                   nfields_lw_ext, &
+                                   nfields_lw_ssa, &
+                                   nfields_lw_asy, &
+                                   Aerosolrad_control )
+     !call aerosolrad_diag_alloc ( Aerosolrad_diags, &
+     !                             ie-is+1, je-js+1, &
+     !                             size(Aerosol%aerosol,3), &
+     !                             size(Aerosol%aerosol,4), &
+     !                             Aerosolrad_control)
 
 !--------------------------------------------------------------------
 !    if the volcanic sw aerosol extinction is being supplied, obtain

@@ -25,7 +25,7 @@ use fms_mod,            only: open_namelist_file, fms_init, &
 
 !  shared radiation package modules:
 
-use longwave_utilities_mod, only: lw_diagnostics_type
+use longwave_types_mod, only: lw_diagnostics_type
 
 !---------------------------------------------------------------------
 

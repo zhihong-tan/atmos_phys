@@ -24,8 +24,8 @@ implicit none
 
 private
 
-character(len=128) :: version = '$Id: topo_drag.F90,v 19.0.12.2 2014/05/08 13:39:09 Chris.Golaz Exp $'
-character(len=128) :: tagname = '$Name: tikal_topo_drag_garner_cjg $'
+character(len=128) :: version = '$Id$'
+character(len=128) :: tagname = '$Name$'
 
 logical :: module_is_initialized = .false.
 

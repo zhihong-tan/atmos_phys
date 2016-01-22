@@ -33,16 +33,17 @@ use aerosol_types_mod, only:  aerosol_type
 
 !  radiation package shared modules:
 
-use rad_utilities_mod, only:  radiation_control_type, &
-                              rad_output_type
+use radiation_driver_types_mod, only:  radiation_control_type, &
+                                       rad_output_type
 
 use aerosolrad_types_mod, only:  aerosolrad_control_type, &
                                  aerosolrad_diag_type
 
 use cloudrad_types_mod,   only:  cld_specification_type
 
-use esfsw_driver_mod,     only:  esfsw_bands, sw_output_type
-use sealw99_mod,          only:  lw_output_type
+use esfsw_driver_mod,     only:  esfsw_bands
+use shortwave_types_mod,  only:  sw_output_type
+use longwave_types_mod,   only:  lw_output_type
 
 !--------------------------------------------------------------------
 
@@ -547,7 +548,6 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
       integer   :: n, k, na, nfamilies, nl
       integer   :: nv
       integer   :: co_indx, bnd_indx
-      integer   :: nzens, nz
 
 !----------------------------------------------------------------------
 !  local variables:
@@ -606,12 +606,6 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
             any(id_asymdep_fam_column(:,:)  > 0 )) Lasymdep = .true.
             
 !--------------------------------------------------------------------
-!    define the number of zenith angles that the sw was calculated 
-!    for on this step.
-!--------------------------------------------------------------------
-        nzens = Rad_control%nzens
-
-!--------------------------------------------------------------------
 !    if the file is to be written, define the number of model layers.
 !--------------------------------------------------------------------
         kerad = ubound(temp,3)
@@ -621,26 +615,13 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
 !--------------------------------------------------------------------
         psj   (:,:)     = phalf(:,:,kerad+1)
 
-        radp = 0.
-        radswp = 0.
-        fsw = 0.
-        ufsw = 0.
-        bdy_flx_mean = 0.
-        do nz = 1, nzens
-          radp(:,:,:)     = radp(:,:,:) +    &
-                                 Rad_output%tdt_rad(is:ie,js:je,:,nz)
-          radswp(:,:,:)   = radswp(:,:,:) +    &
-                                 Rad_output%tdtsw  (is:ie,js:je,:,nz)
-          fsw(:,:,:)    = fsw(:,:,:) + Sw_output% fsw(:,:,:,nz)
-          ufsw(:,:,:)   = ufsw(:,:,:) + Sw_output%ufsw(:,:,:,nz)
-          bdy_flx_mean(:,:,:) = bdy_flx_mean(:,:,:) +  &
-                                  Sw_output%bdy_flx(:,:,:,nz) 
-        end do
-        radp = radp/float(nzens)
-        radswp = radswp/float(nzens)
-        fsw = fsw/float(nzens)
-        ufsw = ufsw/float(nzens)
-        bdy_flx_mean = bdy_flx_mean/float(nzens)
+        ! for reproducibility
+        radp   = Rad_output%tdt_rad(is:ie,js:je,:)/float(1)
+        radswp = Rad_output%tdtsw  (is:ie,js:je,:)/float(1)
+        fsw  = Sw_output%fsw (:,:,:)/float(1)
+        ufsw = Sw_output%ufsw(:,:,:)/float(1)
+        bdy_flx_mean = Sw_output%bdy_flx(:,:,:)/float(1)
+
 !BW     cirrfgd_dir(:,:)    = Surface%asfc_nir_dir(:,:)
 !BW     cvisrfgd_dir(:,:)   = Surface%asfc_vis_dir(:,:)
 !BW     cirrfgd_dif(:,:)    = Surface%asfc_nir_dif(:,:)
@@ -657,26 +638,12 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
           ptop(:,:) = 0.01*phalf(:,:,1)
 
         if (Rad_control%do_totcld_forcing) then 
-          fswcf = 0.
-          ufswcf = 0.
-          radpcf = 0.
-          radswpcf = 0.
-          bdy_flx_clr_mean = 0.
-          do nz=1,nzens
-            fswcf(:,:,:)    = fswcf(:,:,:) + Sw_output%fswcf(:,:,:,nz)
-            ufswcf(:,:,:)   = ufswcf(:,:,:) + Sw_output%ufswcf(:,:,:,nz)
-            radpcf(:,:,:)   = radpcf(:,:,:) +    &
-                                Rad_output%tdt_rad_clr(is:ie,js:je,:,nz)
-            radswpcf(:,:,:) = radswpcf(:,:,:) +    &
-                                Rad_output%tdtsw_clr  (is:ie,js:je,:,nz)
-            bdy_flx_clr_mean(:,:,:) = bdy_flx_clr_mean(:,:,:) +  &
-                                  Sw_output%bdy_flx_clr(:,:,:,nz) 
-          end do
-          fswcf = fswcf/float(nzens)
-          ufswcf = ufswcf/float(nzens)
-          radpcf = radpcf/float(nzens)
-          radswpcf = radswpcf/float(nzens)
-          bdy_flx_clr_mean = bdy_flx_clr_mean/float(nzens)
+          ! for reproducibility
+          fswcf  = Sw_output%fswcf(:,:,:)/float(1)
+          ufswcf = Sw_output%ufswcf(:,:,:)/float(1)
+          radpcf = Rad_output%tdt_rad_clr(is:ie,js:je,:)/float(1)
+          radswpcf = Rad_output%tdtsw_clr  (is:ie,js:je,:)/float(1)
+          bdy_flx_clr_mean = Sw_output%bdy_flx_clr(:,:,:)/float(1)
           flxnetcf(:,:,:) = Lw_output%flxnetcf(:,:,:)
         endif
 
@@ -1151,14 +1118,7 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
                                 Time_diag, is, js,1)
             endif
             if (id_swheat_vlcno  > 0 ) then
-
-              v_heat = 0.0
-              do nz = 1,nzens
-                v_heat(:,:,:) = v_heat(:,:,:)  +  &
-                              Aerosolrad_diags%sw_heating_vlcno(:,:,:,nz)
-              end do
-              v_heat = v_heat/float(nzens)
-
+              v_heat = Aerosolrad_diags%sw_heating_vlcno(:,:,:)/float(1) ! for repro
               used = send_data (id_swheat_vlcno ,    &
 !                               Aerosolrad_diags%sw_heating_vlcno(:,:,:), &
                                 v_heat(:,:,:), &

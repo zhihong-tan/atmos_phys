@@ -125,17 +125,14 @@ integer          :: num_sw_bands, num_lw_bands
 !  </TEMPLATE>
 ! </SUBROUTINE>
 !  
-subroutine strat_clouds_W_init(latb, lonb, nswcldb, nlwcldb, Cldrad_control)
+subroutine strat_clouds_W_init(latb, lonb, Cldrad_control)
   real, dimension(:,:),        intent(in) :: latb, lonb
-  integer,                     intent(in) :: nswcldb, nlwcldb
   type(cloudrad_control_type), intent(in) :: Cldrad_control
 !---------------------------------------------------------------------
 !    strat_clouds_W_init is the constructor for strat_clouds_W_mod.
 !---------------------------------------------------------------------
 !       lonb      2d array of model longitudes on cell corners [ radians ]
 !       latb      2d array of model latitudes at cell corners [radians]
-!       nswcldb   number of parameterized shortwave bands
-!       nlwcldb   number of parameterized longwave bands
 
 
 !----------------------------------------------------------------------
@@ -160,8 +157,8 @@ subroutine strat_clouds_W_init(latb, lonb, nswcldb, nlwcldb, Cldrad_control)
 !---------------------------------------------------------------------
 !    Save copy of number of sw and lw bands
 !---------------------------------------------------------------------
-      num_sw_bands = nswcldb
-      num_lw_bands = nlwcldb
+      num_sw_bands = Cldrad_control%num_sw_cloud_bands
+      num_lw_bands = Cldrad_control%num_lw_cloud_bands
 !---------------------------------------------------------------------
 !    verify that modules used by this module that are not called later
 !    have already been initialized.

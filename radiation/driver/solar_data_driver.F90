@@ -1,4 +1,4 @@
-module solar_data_mod
+module solar_data_driver_mod
 
 !   shared modules:
 
@@ -24,7 +24,9 @@ character(len=128) :: tagname = '$Name$'
 !---------------------------------------------------------------------
 !------ interfaces -----
 
-public solar_data_init, solar_data_time_vary, solar_data_end
+public solar_data_driver_init, &
+       solar_data_driver_time_vary, &
+       solar_data_driver_end
 
 !---------------------------------------------------------------------
 !------- namelist ---------
@@ -34,7 +36,7 @@ real    :: solar_scale_factor = -1.0  ! factor to multiply incoming solar
                                       ! perform no computation. used to 
                                       ! change "solar constant"
 
-namelist /solar_data_nml/ solar_scale_factor
+namelist /solar_data_driver_nml/ solar_scale_factor
 
 !--------------------------------------------------------------------
 ! miscellaneous variables and indices
@@ -64,7 +66,7 @@ CONTAINS
 
 !######################################################################
 
-subroutine solar_data_init (nbands, ierror)
+subroutine solar_data_driver_init (nbands, ierror)
 
 integer, intent(in)  :: nbands
 integer, intent(out) :: ierror
@@ -92,14 +94,14 @@ integer ::   unit, io, ierr, logunit
 !    read namelist.
 !---------------------------------------------------------------------
 #ifdef INTERNAL_FILE_NML
-      read (input_nml_file, nml=solar_data_nml, iostat=io)
-      ierr = check_nml_error(io,'solar_data_nml')
+      read (input_nml_file, nml=solar_data_driver_nml, iostat=io)
+      ierr = check_nml_error(io,'solar_data_driver_nml')
 #else   
       if ( file_exist('input.nml')) then
         unit =  open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
-        read  (unit, nml=solar_data_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'solar_data_nml')
+        read  (unit, nml=solar_data_driver_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'solar_data_driver_nml')
         enddo
 10      call close_file (unit)
       endif
@@ -178,11 +180,11 @@ integer ::   unit, io, ierr, logunit
 
 !----------------------------------------------------------------------
 
-end subroutine solar_data_init
+end subroutine solar_data_driver_init
 
 !######################################################################
 
-subroutine solar_data_time_vary (Solar_time, solar_constant, solflxband)
+subroutine solar_data_driver_time_vary (Solar_time, solar_constant, solflxband)
 
 type(time_type),    intent(in)  :: Solar_time
 real,               intent(out) :: solar_constant
@@ -203,7 +205,7 @@ integer :: year, month, dum
 
 !--------------------------------------------------------------------
 
-end subroutine solar_data_time_vary
+end subroutine solar_data_driver_time_vary
 
 !######################################################################
 
@@ -221,12 +223,12 @@ integer :: nband
 !   first some error checks
 
       if (years_of_data_lean == 0) then
-          call error_mesg ('solar_data_mod', &
+          call error_mesg ('solar_data_driver_mod', &
              'no lean data found, data file may not exist', FATAL)
       endif
 
       if (size(solflxband(:)) /= numbands_lean) then
-        call error_mesg ('solar_data_mod', &
+        call error_mesg ('solar_data_driver_mod', &
               'bands present in solar constant time data differs from &
                &model parameterization band number', FATAL)
       endif
@@ -256,7 +258,7 @@ end subroutine get_solar_data
 
 !######################################################################
 
-subroutine solar_data_end
+subroutine solar_data_driver_end
 
 !--------------------------------------------------------------------
 
@@ -268,8 +270,8 @@ subroutine solar_data_end
       module_is_initialized = .false.
 
 !--------------------------------------------------------------------
-end subroutine solar_data_end
+end subroutine solar_data_driver_end
 
 !######################################################################
 
-end module solar_data_mod
+end module solar_data_driver_mod
