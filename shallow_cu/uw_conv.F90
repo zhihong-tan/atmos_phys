@@ -1695,7 +1695,7 @@ contains
              cldql (i,j,nk) = cp%qlu(k)
              cldqi (i,j,nk) = cp%qiu(k)
              cldqn (i,j,nk) = cp%qnu(k)
-             cmf_s (i,j,nk) = cp%umf(k)
+             cmf_s (i,j,nk) = cp%umf(k) ! Save the shallow cmf for diagnostic
              cmf   (i,j,nk) = cp%umf(k)
              wuo   (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
