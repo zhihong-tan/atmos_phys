@@ -9,7 +9,7 @@ module MO_SETSOX_MOD
   use tracer_manager_mod,    only: get_tracer_index,  query_method
   use field_manager_mod,     only: parse
 
-  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P
+  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG
   use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA, NO_AERO
 
   implicit none
@@ -175,7 +175,8 @@ CONTAINS
        xH(:,k) = xH0                                    ! initial PH value
        if ( trop_option%cloud_chem .eq. CLOUD_CHEM_LEGACY ) then
           xlwc(:,k) = cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
-       elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P) then
+       elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P .or. &
+                trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG ) then
           xlwc(:,k) = frac_liq(:,k) * cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
        end if
        if( hno3_ndx > 0 ) then
@@ -538,9 +539,14 @@ CONTAINS
 !                      * dtime                                        ! VMR
 
                 !<f1p: new cloud chemistry
-             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P ) then
+             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P .or. &
+                      trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG ) then
 
-                patm = pz/1013.25
+                if (trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG) then
+                   patm = pz/1013.
+                else
+                   patm = pz/1013.25
+                end if
                 if ( cldfr(i,k) .gt. 1.e-10 .and. xso2(i,k) .gt. 0. ) then
                    xl = xl/cldfr(i,k)
 
@@ -565,7 +571,14 @@ CONTAINS
                       ediag(:) = 0.
                    end if
 
-                   call cloud_so2_chem(patm, xH(i,k), tfld(i,k), xl, rso2_h2o2, rso2_o3)
+                   if (trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG) then
+                      call cloud_so2_chem(patm, xH(i,k), tfld(i,k), xl, rso2_h2o2, rso2_o3, &
+                                          do_am3_bug=.true.)
+                      rso2_h2o2 = rso2_h2o2 * xl / const0 / xhnm(i,k)
+                      rso2_o3   = rso2_o3   * xl / const0 / xhnm(i,k)
+                   else
+                      call cloud_so2_chem(patm, xH(i,k), tfld(i,k), xl, rso2_h2o2, rso2_o3)
+                   end if
 
                    !amount of so4 formed
                    !SO2i*(1 - exp(kdt/a))/(1-SO2i/H2O2i exp(kdt/a)) with a = 1/SO20 - H2O20

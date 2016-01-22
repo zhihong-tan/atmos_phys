@@ -52,7 +52,8 @@ use           interpolator_mod, only : interpolate_type, interpolator_init, &
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR, PSTD_MKS
 
 !f1p
-use cloud_chem, only : cloud_so2_chem, CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P
+use cloud_chem, only : cloud_so2_chem, CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, &
+                       CLOUD_CHEM_F1P_BUG
 
 implicit none
 
@@ -818,6 +819,8 @@ integer :: n, m, nsulfate
       cloud_chem_type = CLOUD_CHEM_LEGACY
    elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p" ) then
       cloud_chem_type = CLOUD_CHEM_F1P
+   elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p_bug" ) then
+      cloud_chem_type = CLOUD_CHEM_F1P_BUG
    else
       call error_mesg ('atmos_sulfate_mod', &
            'unknown cloud chem solver', FATAL)
@@ -2030,7 +2033,8 @@ end subroutine atmos_SOx_emission
 !f1p
        if ( cloud_chem_type .eq. CLOUD_CHEM_LEGACY ) then
           xlwc  = lwc(i,j,k)*rho_air *1.e-3 !L(water)/L(air)
-       elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P ) then
+       elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
           xlwc  = lwc(i,j,k)*min(max(fliq(i,j,k),0.),1.)*rho_air *1.e-3 !only liquid water
        end if
        DMS_0 = max(0.,DMS(i,j,k))
@@ -2226,7 +2230,8 @@ end subroutine atmos_SOx_emission
             xso4 = xso4 + ccc2                           ! mozart2
             xso2 = max(xso2 - ccc2, small_value)         ! mozart2
        end if
-       elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P ) then
+       elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
 !f1p cloud chem
        !calculate in cloud-production   
           !first calculate in-cloud liquid
@@ -2235,7 +2240,14 @@ end subroutine atmos_SOx_emission
           if ( xlwc .gt. 1.e-10) then
           if ( cldfr(i,j,k) .gt. 1.e-10 )  xlwc = xlwc/cldfr(i,j,k)
 
-          call cloud_so2_chem(pfull(i,j,k)/PSTD_MKS, xpH, tk, xlwc, rso2_h2o2, rso2_o3)
+          if ( cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
+             call cloud_so2_chem(pfull(i,j,k)/PSTD_MKS, xpH, tk, xlwc, rso2_h2o2, rso2_o3, &
+                                 do_am3_bug=.true.)
+             rso2_h2o2 = rso2_h2o2 * xlwc / const0 / xhnm
+             rso2_o3   = rso2_o3   * xlwc / const0 / xhnm
+          else
+             call cloud_so2_chem(pfull(i,j,k)/PSTD_MKS, xpH, tk, xlwc, rso2_h2o2, rso2_o3)
+          end if
 
           !production via H2O2
           exp_factor = rso2_h2o2 * (xso2 - xh2o2) * dt

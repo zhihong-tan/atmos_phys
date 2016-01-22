@@ -9,7 +9,7 @@ module cloud_chem
   public :: cloud_ph, cloud_so2_chem, cloud_nb_diag
 
   public :: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, CLOUD_CHEM_PH_CUBIC
-  public :: CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P
+  public :: CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG
 
   private
 
@@ -23,6 +23,7 @@ module cloud_chem
 
   integer, parameter     :: CLOUD_CHEM_LEGACY    = 1
   integer, parameter     :: CLOUD_CHEM_F1P       = 2
+  integer, parameter     :: CLOUD_CHEM_F1P_BUG   = 3
   
   real*8, parameter      :: const0 = 1.e3/AVOGNO
 
@@ -660,7 +661,7 @@ contains
     
   end subroutine henry_eff
 
-  subroutine cloud_so2_chem(patm,ch,tk,xl,rso2_h2o2,rso2_o3)
+  subroutine cloud_so2_chem(patm,ch,tk,xl,rso2_h2o2,rso2_o3,do_am3_bug)
 
     !all second order reactions have rates in l/mol//s
 
@@ -668,6 +669,7 @@ contains
     real*8, intent(in)  :: tk
     real*8, intent(in)  :: xl !l(h2o)/l(air)
     real*8, intent(in)  :: patm
+    logical, intent(in), optional  :: do_am3_bug
 
     real*8, intent( out) :: rso2_o3,rso2_h2o2
     
@@ -722,9 +724,17 @@ contains
 !if we multiply by Patm^2 and then multiply by LWC * Ra * T / P ( l(w)/l(air)*atm/(mol/l(air)*K) * K / atm = l(w)/mol(air)
 !result in vmr/s
 
-conv2 = patm*conv
-rso2_o3   = rso2_o3 * conv2
-rso2_h2o2 = rso2_h2o2 * conv2
+! If do_am3_bug, then return rates in original units,
+! and do (incorrect) units conversion in calling routine
+if (.not. present(do_am3_bug)) then
+   conv2 = patm*conv
+   rso2_o3   = rso2_o3 * conv2
+   rso2_h2o2 = rso2_h2o2 * conv2
+else if (.not. do_am3_bug) then
+   conv2 = patm*conv
+   rso2_o3   = rso2_o3 * conv2
+   rso2_h2o2 = rso2_h2o2 * conv2
+end if
     
   end subroutine cloud_so2_chem
 
