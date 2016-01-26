@@ -23,9 +23,10 @@
 
     end subroutine monin_obukhov_diff
 
-    _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
+    _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,             &
           & error, zeta_min, max_iter, small,                         &
-          & neutral, stable_option, rich_crit, zeta_trans, drag_min,  &
+          & neutral, stable_option, rich_crit, zeta_trans,            &
+          & drag_min_heat, drag_min_moist, drag_min_mom,              &
           & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
           & drag_q, u_star, b_star, lavail, avail, ier)
 
@@ -37,7 +38,8 @@
        real   , intent(in   )                :: small    ! = 1.e-04
        logical, intent(in   )                :: neutral
        integer, intent(in   )                :: stable_option
-       real   , intent(in   )                :: rich_crit, zeta_trans, drag_min
+       real   , intent(in   )                :: rich_crit, zeta_trans 
+       real   , intent(in   )                :: drag_min_heat,drag_min_moist,drag_min_mom
        integer, intent(in   )                :: n
        real   , intent(in   ), dimension(n)  :: pt      ! potential temperature
        real   , intent(in   ), dimension(n)  :: pt0     ! reference potential temperature
