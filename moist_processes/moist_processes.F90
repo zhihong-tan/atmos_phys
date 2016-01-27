@@ -4407,7 +4407,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
 
    id_prc = register_diag_field ( mod_name, &
      'prc', axes(1:2), Time, &
-     'Convective precipitation',   'kg m-2 s-1', &
+     'Convective Precipitation',   'kg m-2 s-1', &
      standard_name = 'convective_precipitation_flux', &
      area=area_id, &
      missing_value = CMOR_MISSING_VALUE, &
@@ -4425,7 +4425,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
 
    id_prsn  = register_diag_field ( mod_name, &
      'prsn', axes(1:2), Time, &
-     'Snowfall flux',       'kg m-2 s-1', &
+     'Snowfall Flux',       'kg m-2 s-1', &
      standard_name = 'snowfall_flux', &
      area=area_id, &
      missing_value = CMOR_MISSING_VALUE, &
@@ -4749,7 +4749,7 @@ endif
 
    id_pr = register_diag_field ( mod_name, &
      'pr', axes(1:2), Time, &
-     'Precipitation',                     'kg m-2 s-1', &
+     'Precipitation (liquid and solid)',  'kg m-2 s-1', &
       standard_name='precipitation_flux', &
      area=area_id, &
       missing_value = CMOR_MISSING_VALUE, &
