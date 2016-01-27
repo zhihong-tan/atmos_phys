@@ -1,17 +1,8 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
-
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
-
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
+! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/cosp_utils.F90 $
 ! 
 ! Redistribution and use in source and binary forms, with or without modification, are permitted 
 ! provided that the following conditions are met:
@@ -41,6 +32,9 @@
 
 MODULE MOD_COSP_UTILS
   USE MOD_COSP_CONSTANTS
+#ifdef COSP_GFDL
+  use fms_mod, only : mpp_pe
+#endif
   IMPLICIT NONE
 
   INTERFACE Z_TO_DBZ
@@ -282,8 +276,13 @@ END SUBROUTINE  ZERO_REAL
       endif    
     endif    
     
+#ifdef COSP_GFDL
+    if (l_min) print *,'----- WARNING: '//trim(pro_name)//': minimum value of '//trim(vname)//' set to: ',min_val, ', pe =', mpp_pe()
+    if (l_max) print *,'----- WARNING: '//trim(pro_name)//': maximum value of '//trim(vname)//' set to: ',max_val, ', pe =', mpp_pe()
+#else
     if (l_min) print *,'----- WARNING: '//trim(pro_name)//': minimum value of '//trim(vname)//' set to: ',min_val
     if (l_max) print *,'----- WARNING: '//trim(pro_name)//': maximum value of '//trim(vname)//' set to: ',max_val
+#endif
   END SUBROUTINE COSP_CHECK_INPUT_1D
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !----------------- SUBROUTINES COSP_CHECK_INPUT_2D ---------------
@@ -317,8 +316,13 @@ END SUBROUTINE  ZERO_REAL
       endif    
     endif    
     
+#ifdef COSP_GFDL
+    if (l_min) print *,'----- WARNING: '//trim(pro_name)//': minimum value of '//trim(vname)//' set to: ',min_val, ', pe =', mpp_pe()
+    if (l_max) print *,'----- WARNING: '//trim(pro_name)//': maximum value of '//trim(vname)//' set to: ',max_val, ', pe =', mpp_pe()
+#else
     if (l_min) print *,'----- WARNING: '//trim(pro_name)//': minimum value of '//trim(vname)//' set to: ',min_val
     if (l_max) print *,'----- WARNING: '//trim(pro_name)//': maximum value of '//trim(vname)//' set to: ',max_val
+#endif
   END SUBROUTINE COSP_CHECK_INPUT_2D
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !----------------- SUBROUTINES COSP_CHECK_INPUT_3D ---------------
@@ -352,12 +356,17 @@ END SUBROUTINE  ZERO_REAL
       endif    
     endif    
     
+#ifdef COSP_GFDL
+    if (l_min) print *,'----- WARNING: '//trim(pro_name)//': minimum value of '//trim(vname)//' set to: ',min_val, ', pe =', mpp_pe()
+    if (l_max) print *,'----- WARNING: '//trim(pro_name)//': maximum value of '//trim(vname)//' set to: ',max_val, ', pe =', mpp_pe()
+#else
     if (l_min) print *,'----- WARNING: '//trim(pro_name)//': minimum value of '//trim(vname)//' set to: ',min_val
     if (l_max) print *,'----- WARNING: '//trim(pro_name)//': maximum value of '//trim(vname)//' set to: ',max_val
+#endif
   END SUBROUTINE COSP_CHECK_INPUT_3D
 
 #ifdef COSP_GFDL
-
+ 
 !########################################################################
 
 subroutine flip_vert_index_2D (in, dim,out)
@@ -366,7 +375,7 @@ subroutine flip_vert_index_2D (in, dim,out)
   real,dimension(:,:), intent(out) :: out
  
   integer k, kinv
-
+ 
   do k=1,dim
     kinv = dim - k +1
     out(:,k) = in(:,kinv)
@@ -382,7 +391,7 @@ subroutine flip_vert_index_3D (in, dim,out)
   real,dimension(:,:,:), intent(in) :: in
   integer, intent(in)   :: dim
   real,dimension(:,:,:), intent(out) :: out
-
+ 
   integer k, kinv
 
   do k=1,dim
@@ -393,14 +402,14 @@ subroutine flip_vert_index_3D (in, dim,out)
 end subroutine flip_vert_index_3D
 
 !#####################################################################
-
+ 
 subroutine flip_vert_index_4D (in, dim,out)
   real,dimension(:,:,:,:), intent(in) :: in
   integer, intent(in)   :: dim
   real,dimension(:,:,:,:), intent(out) :: out
-
+ 
   integer k, kinv
-
+ 
   do k=1,dim
     kinv = dim - k +1
     out(:,:,:,k) = in(:,:,:,kinv)

@@ -1,15 +1,6 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
- 
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
-
+! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/quickbeam/array_lib.f90 $
 ! ARRAY_LIB: Array procedures for F90
 ! Compiled/Modified:
 !   07/01/06  John Haynes (haynes@atmos.colostate.edu)
@@ -18,6 +9,9 @@
 ! lin_interpolate (function)
   
   module array_lib
+#ifdef COSP_GFDL
+use fms_mod, only : error_mesg, FATAL
+#endif
   implicit none
 
   contains
@@ -153,8 +147,13 @@
   do i=1,nxx
     iloc = infind(xsort,xxarr(i),dist=d)
     if (d > tol) then
+#ifdef COSP_GFDL
+      call error_mesg ('array_lib/lin_interpolate', &
+                                        'interpolation error', FATAL)
+#else
       print *, 'interpolation error'
       stop
+#endif
     endif
     if (iloc == nx) then
 !     :: set to the last value

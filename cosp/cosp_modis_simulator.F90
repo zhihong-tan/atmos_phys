@@ -1,18 +1,9 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
-
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
-
 ! (c) 2009, Regents of the Unversity of Colorado
 !   Author: Robert Pincus, Cooperative Institute for Research in the Environmental Sciences
 ! All rights reserved.
+! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/cosp_modis_simulator.F90 $
 ! 
 ! Redistribution and use in source and binary forms, with or without modification, are permitted 
 ! provided that the following conditions are met:
@@ -82,7 +73,6 @@ MODULE MOD_COSP_Modis_Simulator
         Column_Cloud_Top_Pressure, &
         retrievedPhase
 #endif
-
      !
      ! Also need the ISCCP-type optical thickness/cloud top pressure histogram
      !
@@ -103,7 +93,7 @@ contains
     type(cosp_isccp),   intent(in   ) :: isccpSim    ! ISCCP simulator output
 #ifdef COSP_GFDL
     integer,            intent(in   ) :: nSunlit     ! Are there any sunlit points?
-#endif 
+#endif
     type(cosp_modis),   intent(  out) :: modisSim    ! MODIS simulator subcol output
     
     ! ------------------------------------------------------------
@@ -111,9 +101,9 @@ contains
     !   Leave space only for sunlit points
     
 #ifdef COSP_GFDL
-    integer :: nPoints, nSubCols, nLevels, i
+    integer :: nPoints, nSubCols, nLevels, i, j, k
 #else
-    integer :: nPoints, nSubCols, nLevels, nSunlit, i
+    integer :: nPoints, nSubCols, nLevels, nSunlit, i, j, k
 #endif
     
 #ifdef COSP_GFDL
@@ -250,34 +240,59 @@ contains
       end where
       else
 #endif
+
       where(subCols%frac_out(sunlit(:), :, :) == I_LSC)
-        opticalThickness(:, :, :) = & 
-                       spread(gridBox%dtau_s      (sunlit(:),    :), dim = 2, nCopies = nSubCols)
+        !opticalThickness(:, :, :) = & 
+        !               spread(gridBox%dtau_s      (sunlit(:),    :), dim   = 2, nCopies = nSubCols)
         cloudWater(:, :, :) = subcolHydro%mr_hydro(sunlit(:), :, :, I_LSCLIQ)
         waterSize (:, :, :) = subcolHydro%reff    (sunlit(:), :, :, I_LSCLIQ)
         cloudIce  (:, :, :) = subcolHydro%mr_hydro(sunlit(:), :, :, I_LSCICE)
         iceSize   (:, :, :) = subcolHydro%reff    (sunlit(:), :, :, I_LSCICE)
       elsewhere
-        opticalThickness(:, :, :) = 0.
+!       opticalThickness(:, :, :) = 0.
         cloudWater      (:, :, :) = 0.
         cloudIce        (:, :, :) = 0.
         waterSize       (:, :, :) = 0.
         iceSize         (:, :, :) = 0.
       end where 
+
+      ! Loop version of spread above - intrinsic doesn't work on certain platforms. 
+      do k = 1, nLevels
+        do j = 1, nSubCols
+          do i = 1, nSunlit
+            if(subCols%frac_out(sunlit(i), j, k) == I_LSC) then
+              opticalThickness(i, j, k) = gridBox%dtau_s(sunlit(i), k)
+            else
+              opticalThickness(i, j, k) = 0.   
+            end if 
+          end do 
+        end do
+      end do
+
       !
-      ! .. then add convective cloud 
+      ! .. then add convective cloud...
       !
       where(subCols%frac_out(sunlit(:), :, :) == I_CVC) 
-        opticalThickness(:, :, :) = &
-                       spread(gridBox%dtau_c(      sunlit(:),    :), dim = 2, nCopies = nSubCols)
+        !opticalThickness(:, :, :) = &
+        !               spread(gridBox%dtau_c(      sunlit(:),    :), dim = 2, nCopies = nSubCols)
         cloudWater(:, :, :) = subcolHydro%mr_hydro(sunlit(:), :, :, I_CVCLIQ)
         waterSize (:, :, :) = subcolHydro%reff    (sunlit(:), :, :, I_CVCLIQ)
         cloudIce  (:, :, :) = subcolHydro%mr_hydro(sunlit(:), :, :, I_CVCICE)
         iceSize   (:, :, :) = subcolHydro%reff    (sunlit(:), :, :, I_CVCICE)
       end where
+
+      ! Loop version of spread above - intrinsic doesn't work on certain platforms. 
+      do k = 1, nLevels
+        do j = 1, nSubCols
+          do i = 1, nSunlit
+            if(subCols%frac_out(sunlit(i), j, k) == I_CVC) opticalThickness(i, j, k) = gridBox%dtau_c(sunlit(i), k)
+          end do 
+        end do
+      end do
 #ifdef COSP_GFDL
      endif
 #endif
+
       !
       ! Reverse vertical order 
       !
@@ -416,7 +431,7 @@ contains
   
       modisSim%Liquid_Water_Path_Mean(:) = R_UNDEF
       modisSim%Ice_Water_Path_Mean   (:) = R_UNDEF
-  
+
 #ifdef COSP_GFDL
       modisSim%Column_Particle_Size(:,:) = R_UNDEF
       modisSim%retrievedPhase      (:,:) = R_UNDEF
@@ -485,13 +500,13 @@ contains
     
     allocate(x%Liquid_Water_Path_Mean(x%nPoints)) 
     allocate(x%Ice_Water_Path_Mean(x%nPoints)) 
-      
 #ifdef COSP_GFDL
     allocate(x%Column_Particle_Size(x%nPoints,x%nColumns))
     allocate(x%retrievedPhase      (x%nPoints,x%nColumns))
     allocate(x%Column_Optical_Thickness(x%nPoints,x%nColumns))
     allocate(x%Column_Cloud_Top_Pressure(x%nPoints,x%nColumns))
 #endif
+      
     allocate(x%Optical_Thickness_vs_Cloud_Top_Pressure(nPoints, numModisTauBins+1, numModisPressureBins))
     x%Optical_Thickness_vs_Cloud_Top_Pressure(:, :, :) = R_UNDEF
   END SUBROUTINE CONSTRUCT_COSP_MODIS
