@@ -91,6 +91,7 @@ contains
 
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_hlflx_zero      = cpn % do_hlflx_zero
+    dpn % do_varying_rpen    = cpn % do_varying_rpen
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_new_pevap       = cpn % do_new_pevap
@@ -100,6 +101,7 @@ contains
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
+    dpn % eis_max            = cpn % eis_max
     dpn % rmaxfrac           = cpn % rmaxfrac
     dpn % wmin               = cpn % wmin
     dpn % wmax               = cpn % wmax
@@ -383,8 +385,8 @@ contains
               dpn%do_ppen  = .false.;
               lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
               rkm_dp       = rkm_dp        * lofactor
-              !dpn % peff_l = dpn % peff_l  / lofactor
-              !dpn % peff_i = dpn % peff_i  / lofactor
+              dpn % peff_l = dpn % peff_l  * lofactor
+              dpn % peff_i = dpn % peff_i  * lofactor
  	  endif
        else if (dpc%cgust_choice==3 .and. sd%land.gt.0.5) then
        	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
