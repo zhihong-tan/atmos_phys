@@ -53,8 +53,8 @@ module tke_turb_mod
 
  real, parameter :: aa1     =  0.92
  real, parameter :: aa2     =  0.74
- real, parameter :: bb1     = 16.0
- real, parameter :: bb2     = 10.0
+ real, parameter :: bb1     = 16.6  !bqx (orig: 16.0)
+ real, parameter :: bb2     = 10.1  !bqx (orig: 10.0)
  real, parameter :: ccc     =  0.08
  real, parameter :: cc1     =  0.27
  real, parameter :: t00     =  2.7248e2 
@@ -94,17 +94,24 @@ module tke_turb_mod
  real    :: akmin_land       =  5.0
  real    :: akmin_sea        =  0.0
  integer :: nk_lim           =  2
+! real    :: el0max           =  1.0e6
  real    :: el0max           =  1.0e6
  real    :: el0min           =  0.0
  real    :: alpha_land       =  0.10
  real    :: alpha_sea        =  0.10
+ integer :: el_sl            =  1        ! bqx start level to calculate el0
+ integer :: leng_option      =  1        ! bqx add another option 2
+ integer :: el_sl_option     =  1        ! bqx starting level based on level or pressure above surface
+ real    :: pcrit_from_sfc   =  2000.e2  ! bqx critical level (pressure) above surface
 
  namelist / tke_turb_nml /                            &
          tke_option, buoync_option,                   &
          pbl_depth_option, tkecrit, parcel_buoy,      &
          tkemax,   tkemin,                            &
          akmax,    akmin_land, akmin_sea, nk_lim,     &
-         el0max,   el0min,  alpha_land,  alpha_sea
+         el0max,   el0min,  alpha_land,  alpha_sea,   &
+         leng_option, el_sl_option, el_sl,            &!bqx+
+         pcrit_from_sfc                                !bqx+ 
 
 !---------------------------------------------------------------------
 !--- Diagnostic fields       
@@ -656,6 +663,10 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
   real, dimension(size(um,1),size(um,2))              :: tke_avg_tmp, qa_tmp !h1g, 2015-08-11
   real, dimension(size(um,1),size(um,2))              :: dthetav, dtheta, dqt
   real, dimension(size(um,1),size(um,2),size(um,3))   :: Aclr_3D, Bclr_3D, Acld_3D, Bcld_3D
+  real, dimension(size(um,1),size(um,2),size(um,3))   :: bfact  ! bqx+
+  real :: cleng !bqx
+
+  cleng = 3. !bqx
 
 !====================================================================
 
@@ -792,12 +803,28 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
       Acld_3D(:,:,k) = ( 1.0 - qt(:,:,k) + (1.0+d608)*(qsl + T(:,:,k)*qslT) )  &
              / ( 1.0 + gamma )
       Bcld_3D(:,:,k) = cp_air_inv*hleff * Acld_3D(:,:,k) - T(:,:,k)
+    elseif (buoync_option == 6) then !bqx+ option 6
+
+      bfact(:,:,k) = grav / (T(:,:,k) * ( 1.0 + d608 * qv(:,:,k) - ql(:,:,k) - qi(:,:,k)) )
+      call compute_qs(T(:,:,k), pfull(:,:,k), qsl, dqsdT=qslT)
+      ! gamma
+      gamma = cp_air_inv * hleff * qslT
+
+      ! Clear sky coefficients
+      Aclr_3D(:,:,k) = (1.0 + d608*qt(:,:,k)) * bfact(:,:,k) * cp_air_inv   
+      Bclr_3D(:,:,k) = d608*T(:,:,k) * bfact(:,:,k)          
+
+      ! Cloud sky coefficients
+
+      Acld_3D(:,:,k) = ( ( 1.0 + ( 1.0+d608 )*gamma*cp_air*T(:,:,k)/hleff**2) / (1.0+gamma/hleff ))*bfact(:,:,k)*cp_air_inv 
+      Bcld_3D(:,:,k) = hleff * Acld_3D(:,:,k) - bfact(:,:,k) * T(:,:,k) 
+
     end if
 
   end do
 
 !---> h1g, 2015-08-31
-  if (buoync_option == 5) then
+  if (buoync_option == 5 .or. buoync_option==6) then
     do k=1,kxm
       Aclr(:,:) = 0.5 * ( Aclr_3D(:,:,k) + Aclr_3D(:,:,k+1) )
       Bclr(:,:) = 0.5 * ( Bclr_3D(:,:,k) + Bclr_3D(:,:,k+1) )
@@ -854,7 +881,15 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
     xxm5(:,:,1:kxm) = 0.5*( sv(:,:,1:kxm) + sv(:,:,2:kx) )
 
     buoync = grav * dsdzh / xxm5 * ( xxm1*xxm2 + xxm3*xxm4 )
+!bqx+ option 6
+  elseif(buoync_option == 6) then
+    xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx)
+    xxm2(:,:,1:kxm) = bhl(:,:,1:kxm)
+    xxm3(:,:,1:kxm) = qt(:,:,1:kxm) - qt(:,:,2:kx)
+    xxm4(:,:,1:kxm) = bqt(:,:,1:kxm)
 
+    buoync =  dsdzh * ( cp_air * xxm1*xxm2 + xxm3*xxm4 )
+! bqx + end
   else
     xxm1(:,:,1:kxm) = sl(:,:,1:kxm) - sl(:,:,2:kx) 
     xxm2(:,:,1:kxm) = 0.5*( bhl(:,:,1:kxm) + bhl(:,:,2:kx) )
@@ -885,25 +920,45 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
 !====================================================================
 ! --- Characteristic length scale                         
 !====================================================================
-
-  xx1(:,:,1:kxm) = sqrte(:,:,2:kx)*( pfull(:,:,2:kx) - pfull(:,:,1:kxm) )
+  xx1(:,:,1:kxm) = sqrt (2.0) * sqrte(:,:,2:kx)*( pfull(:,:,2:kx) - pfull(:,:,1:kxm) )  ! bqx updated but no impact on el0
 
   do k = 1, kxm
      xx2(:,:,k) = xx1(:,:,k)  * ( zhalf(:,:,k+1) - zsfc(:,:) )
   end do
 
-  xx1(:,:,kx) =  sqrte(:,:,kxp) * ( phalf(:,:,kxp) - pfull(:,:,kx) )
+  xx1(:,:,kx) =  sqrt (2.0) * sqrte(:,:,kxp) * ( phalf(:,:,kxp) - pfull(:,:,kx) ) ! bqx updated but no impact on el0
+
   xx2(:,:,kx) = xx1(:,:,kx) * z0(:,:)
 
-  x1 = sum( xx1, 3 )
-  x2 = sum( xx2, 3 )
+! bqx +
+ if (el_sl_option == 1) then
+  x1 = sum( xx1(:,:,el_sl:kx), 3 )
+  x2 = sum( xx2(:,:,el_sl:kx), 3 )
+ elseif (el_sl_option == 2) then  ! bqx+ option 2
+  do j=1,jx
+  do i=1,ix
+   do k=1,kx
+    do while ( (phalf (i,j,kxp) - phalf(i,j,k)) >= pcrit_from_sfc) 
+     el_sl = k
+    enddo
+   enddo 
+    x1(i,j) = sum( xx1(i,j,el_sl:kx))
+    x2(i,j) = sum( xx2(i,j,el_sl:kx))
+  enddo
+  enddo
+ else
+    call error_mesg( 'tke_turb',  &
+                     'el_sl_option only has 2 options now', FATAL)
+ endif 
+! bqx end
 
 !---- should never be equal to zero ----
   if (count(x1 <= 0.0) > 0) call error_mesg( ' tke_turb',  &
                              'divid by zero, x1 <= 0.0', FATAL)
-  el0 = x2 / x1
-  el0 = el0 * (alpha_land*fracland + alpha_sea*(1.-fracland))
-
+   el0 = x2 / x1
+   el0 = el0 * (alpha_land*fracland + alpha_sea*(1.-fracland))
+!  write(0,*) 'el0=',el0
+!  write(0,*) 'pblh_tke=',pblh_tke
   el0 = min( el0, el0max )
   el0 = max( el0, el0min )
 
@@ -918,9 +973,19 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
   x1(:,:) = vonkarm * z0(:,:) 
   xx1(:,:,kx) = x1(:,:)
 
+ !bqx add option 2 for leng_option 
   do k = 1,kx
+   if (leng_option == 1 ) then
     el(:,:,k+1) = xx1(:,:,k) / ( 1.0 + xx1(:,:,k) / el0(:,:) )
+   elseif(leng_option == 2) then 
+    el(:,:,k+1) = ( xx1(:,:,k)**(-cleng) + el0(:,:)**(-cleng) )**(-1./cleng)
+   else
+    call error_mesg( 'tke_turb',  &
+                     'leng_option only has 2 options now', FATAL)
+   endif
   end do
+ !bqx+ end
+
     el(:,:,1)   = el0(:,:)
 
 !====================================================================
@@ -930,17 +995,20 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
   Gh => xxm1; Sm => xxm2; Sh => xxm3
 
   Gh(:,:,1:kxm) = - buoync(:,:,1:kxm) * (el(:,:,2:kx)*el(:,:,2:kx)) &
-                    / max( tke(:,:,2:kx), small)
+                    / max( 2.0 * tke(:,:,2:kx), small)   ! bqx updated
+ 
   Gh(:,:,1:kxm) = min( Gh(:,:,1:kxm), 0.0233 )
 
   Sm = (alpha1+alpha2*Gh) / ((1.0+alpha3*Gh)*(1.0+alpha4*Gh))
   Sh = alpha5 / (1.0+alpha3*Gh)
 
   akm(:,:,1)    = 0.0
-  akm(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx)
+
+  akm(:,:,2:kx) = Sm * el(:,:,2:kx) * sqrte(:,:,2:kx) * sqrt(2.0)  ! bqx updated
 
   akh(:,:,1)    = 0.0
-  akh(:,:,2:kx) = Sh * el(:,:,2:kx) * sqrte(:,:,2:kx)
+
+  akh(:,:,2:kx) = Sh * el(:,:,2:kx) * sqrte(:,:,2:kx) * sqrt (2.0) ! bqx updated 
 
   nullify(Gh,Sm,Sh) 
 
@@ -973,7 +1041,7 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
 !-------------------------------------------------------------------
 ! --- Part of linearized energy dissipation term 
 !-------------------------------------------------------------------
-
+ 
   xxm1(:,:,1:kxm) = bedt * sqrte(:,:,2:kx) / el(:,:,2:kx)
 
 !-------------------------------------------------------------------
@@ -995,11 +1063,11 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
   do k=1,kxm
   do j=1,jx
   do i=1,ix
-    aaa(i,j,k) = -kedt * xx1(i,j,k+1) * dsdzh(i,j,k)
+    aaa(i,j,k) = -kedt * xx1(i,j,k+1) * dsdzh(i,j,k) 
     ccc(i,j,k) = -kedt * xx1(i,j,k  ) * dsdzh(i,j,k)
     bbb(i,j,k) =   1.0 - aaa(i,j,k  ) -   ccc(i,j,k) 
     bbb(i,j,k) =         bbb(i,j,k  ) +  xxm1(i,j,k)
-    ddd(i,j,k) =         tke(i,j,k+1)
+    ddd(i,j,k) =         tke(i,j,k+1) 
   enddo
   enddo
   enddo
@@ -1445,6 +1513,111 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
 
   return
   end subroutine tri_invert
+
+ subroutine bulk_Ri(t,qv,u,v,t_ca,q_ca,pfull,zfull,phalf,zhalf,Ri)
+
+! This subroutine computes the height where the bulk Richardson number
+! reaches 0.25. This height can be regarded an approximation to the
+! PBL height. The algorithm was constructed to enable straight-forward 
+! comparisons with radiosondes data.
+!
+! Reference: Seidel et al. 2012 (doi:10.1029/2012JD018143)
+
+!-----------------------------------------------------------------------
+!
+!      variables
+!
+!      -----
+!      input
+!      -----
+!
+!      t         temperature (K)
+!      qv        water vapor specific humidity (kg vapor/kg air)
+!      u         zonal wind (m/s)
+!      v         meridional wind (m/s)
+!      t_ca      canopy air temperature (K)
+!      q_ca      canopy air specific humidity (kg vapor/kg air)
+!      zfull     height of full levels (m)
+!      zhalf     height of half levels (m)
+!      pfull     pressure at full levels (Pa)
+!      phalf     pressure at half levels (Pa)
+!
+!      ------------
+!      output
+!      ------------
+!
+!      Ri  bluk Richardson 
+
+! Input/output variables
+
+real,            intent(in),    dimension(:,:,:) :: t, qv, u, v
+real,            intent(in),    dimension(:,:)   :: t_ca, q_ca
+real,            intent(in),    dimension(:,:,:) :: pfull, zfull
+real,            intent(in),    dimension(:,:,:) :: phalf, zhalf
+
+! Local variables
+
+integer                                          :: i, j, k
+integer                                          :: nlev, nlat, nlon
+real, dimension(size(t,1),size(t,2))             :: zsurf
+real, dimension(size(t,1),size(t,2),size(t,3))   :: zfull_ag
+real, dimension(size(t,1),size(t,2),size(t,3)+1) :: zhalf_ag
+
+real thetavs, thetavh, zs, us, vs, vv
+real, dimension(size(t,3)+1) :: Ri, z
+
+! Constants
+! Constants
+real, parameter :: eps = 1.0e-8
+real, parameter :: Ri_crit = 0.25
+real, parameter :: p00 = 1000.0e2
+
+!-----------------------------------------------------------------------
+
+! Initialization
+  nlev = size(t,3)
+  nlat = size(t,2)
+  nlon = size(t,1)
+
+! Compute height above surface
+  zsurf(:,:) = zhalf(:,:,nlev+1)
+  do k = 1, nlev
+     zfull_ag(:,:,k) = zfull(:,:,k) - zsurf(:,:)
+     zhalf_ag(:,:,k) = zhalf(:,:,k) - zsurf(:,:)
+  end do
+  zhalf_ag(:,:,nlev+1) = zhalf(:,:,nlev+1) - zsurf(:,:)
+
+! Horizontal loop
+  do j=1,nlat
+    do i=1,nlon
+
+!      Extended height
+       z(1:nlev) = zfull_ag(i,j,:)
+       z(nlev+1) = 2.0         ! Assumed reference (canopy) air height
+
+!      Canopy level properties
+       thetavs = t_ca(i,j) * (p00/phalf(i,j,nlev+1))**kappa  &
+                           * ( 1.0 + 0.61*q_ca(i,j)/(1.0-q_ca(i,j)) )
+       zs = z(nlev+1)
+       us = 0.0
+       vs = 0.0
+       Ri(nlev+1) = 0.0
+
+!      Vertical upward loop
+       do k = nlev,1,-1
+
+         thetavh = t(i,j,k) * (p00/pfull(i,j,k))**kappa   &
+                            * ( 1.0 + 0.61*qv(i,j,k)/(1.0-qv(i,j,k)) )
+         vv = max( (u(i,j,k)-us)**2 + (v(i,j,k)-vs)**2, eps )
+         Ri(k) = grav * (thetavh-thetavs) * (z(k)-zs) / (thetavs*vv)
+
+       end do
+
+    end do
+  end do
+
+end subroutine bulk_Ri
+
 
 !#######################################################################
 

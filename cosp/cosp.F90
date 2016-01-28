@@ -1,12 +1,12 @@
 #include "cosp_defs.H"
 #ifdef COSP_GFDL
-
+ 
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
 ! $Id$
 ! $Name$
-! cosp_version = 1.3.2
+! cosp_version = 1.4.0
 
 #endif
 
@@ -34,7 +34,6 @@
 ! IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT 
 ! OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 #ifndef COSP_GFDL
 #include "cosp_defs.h"
 #endif
@@ -42,6 +41,9 @@ MODULE MOD_COSP
   USE MOD_COSP_TYPES
   USE MOD_COSP_SIMULATOR
   USE MOD_COSP_MODIS_SIMULATOR
+#ifdef COSP_GFDL
+  use fms_mod, only : error_mesg, FATAL, NOTE
+#endif
   IMPLICIT NONE
 
 CONTAINS
@@ -83,7 +85,7 @@ SUBROUTINE COSP(overlap,Ncolumns,cfg,vgrid,gbx,sgx,sgradar,sglidar,isccp,misr,mo
 #ifdef COSP_GFDL
   type(cosp_sghydro), intent(inout)   :: sghydro   ! Subgrid info for hydrometeors en each iteration
   real, dimension(gbx%Npoints, Ncolumns, gbx%Nlevels),  &
-                   intent(in), optional ::  cloud_type
+                   intent(in)           ::  cloud_type
 #endif
 
   ! Local variables 
@@ -118,11 +120,17 @@ SUBROUTINE COSP(overlap,Ncolumns,cfg,vgrid,gbx,sgx,sgradar,sglidar,isccp,misr,mo
 #endif
   type(cosp_radarstats) :: stradar_it
   type(cosp_lidarstats) :: stlidar_it
-  
-  !++++++++++ Dimensions ++++++++++++
+
+!++++++++++ Dimensions ++++++++++++
   Npoints  = gbx%Npoints
   Nlevels  = gbx%Nlevels
   Nhydro   = gbx%Nhydro
+
+!++++++++++ Depth of model layers ++++++++++++
+  do i=1,Nlevels-1
+    gbx%dlev(:,i) = gbx%zlev_half(:,i+1) - gbx%zlev_half(:,i)
+  enddo
+  gbx%dlev(:,Nlevels) = 2.0*(gbx%zlev(:,Nlevels) - gbx%zlev_half(:,Nlevels))
 
 !++++++++++ Apply sanity checks to inputs ++++++++++
   call cosp_check_input('longitude',gbx%longitude,min_val=0.0,max_val=360.0)
@@ -164,11 +172,16 @@ SUBROUTINE COSP(overlap,Ncolumns,cfg,vgrid,gbx,sgx,sgradar,sglidar,isccp,misr,mo
   endif
   if ((.not. gbx%use_reff) .and. (reff_zero)) then ! No Reff in radar. Default in lidar
         gbx%Reff = DEFAULT_LIDAR_REFF
+#ifdef COSP_GFDL
+       call error_mesg ('cosp.F90/cosp', &
+        'Using default Reff in lidar simulations', NOTE)
+#else
         print *, '---------- COSP WARNING ------------'
         print *, ''
         print *, 'Using default Reff in lidar simulations'
         print *, ''
         print *, '----------------------------------'
+#endif
   endif
   
   ! Aerosols concentration and distribution parameters
@@ -346,7 +359,6 @@ SUBROUTINE COSP(overlap,Ncolumns,cfg,vgrid,gbx,sgx,sgradar,sglidar,isccp,misr,mo
 #endif
             if (cfg%Lradar_sim) call cosp_radarstats_cpsection(ix,iy,stradar,stradar_it)
             if (cfg%Llidar_sim) call cosp_lidarstats_cpsection(ix,iy,stlidar,stlidar_it)
-!             print *,'---------ix: ',ix
 #ifdef RTTOV
 #ifdef COSP_GFDL
             call cosp_iter(overlap,seed(ix(1):ix(2)),cfg,vgrid_it,gbx_it,sgx_it,sgradar_it, &
@@ -436,11 +448,10 @@ SUBROUTINE COSP_ITER(overlap,seed,cfg,vgrid,gbx,sgx,sgradar,sglidar,isccp,misr,m
   type(cosp_radarstats),intent(inout) :: stradar ! Summary statistics from radar simulator
   type(cosp_lidarstats),intent(inout) :: stlidar ! Summary statistics from lidar simulator
 #ifdef COSP_GFDL
-  type(cosp_sghydro), intent(inout)   :: sghydro   ! Subgrid info for hydrometeors en each iteration
-  real, dimension(gbx%Npoints, gbx%Ncolumns, gbx%Nlevels),  &
-                  intent(in), optional ::  cloud_type
+  type(cosp_sghydro), intent(inout)   :: sghydro   ! Subgrid info for hydrometeors on each iteration
+ real, dimension(gbx%Npoints, gbx%Ncolumns, gbx%Nlevels),  &
+                  intent(in)           ::  cloud_type
 #endif
-
 
   ! Local variables 
   integer :: Npoints   ! Number of gridpoints
@@ -450,6 +461,7 @@ SUBROUTINE COSP_ITER(overlap,seed,cfg,vgrid,gbx,sgx,sgradar,sglidar,isccp,misr,m
   integer :: i,j,k
   integer :: I_HYDRO 
   real,dimension(:,:),pointer :: column_frac_out ! Array with one column of frac_out
+  real,dimension(:,:),pointer :: column_prec_out ! Array with one column of prec_frac
   integer :: scops_debug=0    !  set to non-zero value to print out inputs for debugging in SCOPS
   real,dimension(:, :),allocatable :: cca_scops,ls_p_rate,cv_p_rate, &
                      tca_scops ! Cloud cover in each model level (HORIZONTAL gridbox fraction) of total cloud.
@@ -489,6 +501,20 @@ ELSE
         cca_scops = gbx%cca(:,Nlevels:1:-1)
 
         ! Call to SCOPS
+!--------------------------------------------------------------------------
+!   if debugging of scops is desired (scops_debug /= 0), it will be wise
+!   to limit the output to that from a single pe (or even a single column)
+!   which will require recoding of the write statements in scops and 
+!   additional control logic. As is, enabling debug will get output from 
+!   all pes in an unusable form. If desired, fix code and disable error 
+!   message which follows.
+!-------------------------------------------------------------------------
+        if (scops_debug /= 0) then
+          call error_mesg ('cosp.F90/cosp_iter', &
+           'If enabling scops_debug, must modify write statements  in scops&
+            &to apply to specific pe, or will get undecipherable output', &
+                                                                    FATAL)
+         endif
         ! strat and conv arrays are passed with levels from TOA to SURFACE.
         call scops(Npoints,Nlevels,Ncolumns,seed,tca_scops,cca_scops,overlap,sgx%frac_out,scops_debug)
 ENDIF
@@ -569,40 +595,78 @@ ELSE
 
                 sghydro%Reff(:,k,:,I_LSCLIQ)     = gbx%Reff(:,:,I_LSCLIQ)
                 sghydro%Reff(:,k,:,I_LSCICE)     = gbx%Reff(:,:,I_LSCICE)
-                sghydro%Reff(:,k,:,I_LSRAIN)     = gbx%Reff(:,:,I_LSRAIN)
-                sghydro%Reff(:,k,:,I_LSSNOW)     = gbx%Reff(:,:,I_LSSNOW)
-                sghydro%Reff(:,k,:,I_LSGRPL)     = gbx%Reff(:,:,I_LSGRPL)
+
+                sghydro%Np(:,k,:,I_LSCLIQ)     = gbx%Np(:,:,I_LSCLIQ)
+                sghydro%Np(:,k,:,I_LSCICE)     = gbx%Np(:,:,I_LSCICE)
+
             elsewhere (column_frac_out == I_CVC) !+++++++++++ CONV clouds ++++++++
                 sghydro%mr_hydro(:,k,:,I_CVCLIQ) = gbx%mr_hydro(:,:,I_CVCLIQ)
                 sghydro%mr_hydro(:,k,:,I_CVCICE) = gbx%mr_hydro(:,:,I_CVCICE)
- 
+
                 sghydro%Reff(:,k,:,I_CVCLIQ)     = gbx%Reff(:,:,I_CVCLIQ)
                 sghydro%Reff(:,k,:,I_CVCICE)     = gbx%Reff(:,:,I_CVCICE)
-                sghydro%Reff(:,k,:,I_CVRAIN)     = gbx%Reff(:,:,I_CVRAIN)
-                sghydro%Reff(:,k,:,I_CVSNOW)     = gbx%Reff(:,:,I_CVSNOW)
+
+                sghydro%Np(:,k,:,I_CVCLIQ)     = gbx%Np(:,:,I_CVCLIQ)
+                sghydro%Np(:,k,:,I_CVCICE)     = gbx%Np(:,:,I_CVCICE)
+
             end where
 ENDIF
+            column_prec_out => sgx%prec_frac(:,k,:)
+            where ((column_prec_out == 1) .or. (column_prec_out == 3) )  !++++ LS precip ++++
+                sghydro%Reff(:,k,:,I_LSRAIN) = gbx%Reff(:,:,I_LSRAIN)
+                sghydro%Reff(:,k,:,I_LSSNOW) = gbx%Reff(:,:,I_LSSNOW)
+                sghydro%Reff(:,k,:,I_LSGRPL) = gbx%Reff(:,:,I_LSGRPL)
+
+                sghydro%Np(:,k,:,I_LSRAIN)     = gbx%Np(:,:,I_LSRAIN)
+                sghydro%Np(:,k,:,I_LSSNOW)     = gbx%Np(:,:,I_LSSNOW)
+                sghydro%Np(:,k,:,I_LSGRPL)     = gbx%Np(:,:,I_LSGRPL)
+            elsewhere ((column_prec_out == 2) .or. (column_prec_out == 3)) !++++ CONV precip ++++
+                sghydro%Reff(:,k,:,I_CVRAIN) = gbx%Reff(:,:,I_CVRAIN)
+                sghydro%Reff(:,k,:,I_CVSNOW) = gbx%Reff(:,:,I_CVSNOW)
+
+                sghydro%Np(:,k,:,I_CVRAIN)     = gbx%Np(:,:,I_CVRAIN)
+                sghydro%Np(:,k,:,I_CVSNOW)     = gbx%Np(:,:,I_CVSNOW)
+            end where
 #else
-            !--------- Mixing ratios for clouds and Reff for Clouds and precip -------
+       !--------- Mixing ratios for clouds and Reff for Clouds and precip -------
             column_frac_out => sgx%frac_out(:,k,:)
             where (column_frac_out == I_LSC)     !+++++++++++ LS clouds ++++++++
                 sghydro%mr_hydro(:,k,:,I_LSCLIQ) = gbx%mr_hydro(:,:,I_LSCLIQ)
                 sghydro%mr_hydro(:,k,:,I_LSCICE) = gbx%mr_hydro(:,:,I_LSCICE)
-                
+
                 sghydro%Reff(:,k,:,I_LSCLIQ)     = gbx%Reff(:,:,I_LSCLIQ)
                 sghydro%Reff(:,k,:,I_LSCICE)     = gbx%Reff(:,:,I_LSCICE)
-                sghydro%Reff(:,k,:,I_LSRAIN)     = gbx%Reff(:,:,I_LSRAIN)
-                sghydro%Reff(:,k,:,I_LSSNOW)     = gbx%Reff(:,:,I_LSSNOW)
-                sghydro%Reff(:,k,:,I_LSGRPL)     = gbx%Reff(:,:,I_LSGRPL)
+
+                sghydro%Np(:,k,:,I_LSCLIQ)     = gbx%Np(:,:,I_LSCLIQ)
+                sghydro%Np(:,k,:,I_LSCICE)     = gbx%Np(:,:,I_LSCICE)
+
             elsewhere (column_frac_out == I_CVC) !+++++++++++ CONV clouds ++++++++
-                sghydro%mr_hydro(:,k,:,I_CVCLIQ) = gbx%mr_hydro(:,:,I_CVCLIQ) 
-                sghydro%mr_hydro(:,k,:,I_CVCICE) = gbx%mr_hydro(:,:,I_CVCICE) 
-                
-                sghydro%Reff(:,k,:,I_CVCLIQ)     = gbx%Reff(:,:,I_CVCLIQ) 
-                sghydro%Reff(:,k,:,I_CVCICE)     = gbx%Reff(:,:,I_CVCICE) 
-                sghydro%Reff(:,k,:,I_CVRAIN)     = gbx%Reff(:,:,I_CVRAIN) 
-                sghydro%Reff(:,k,:,I_CVSNOW)     = gbx%Reff(:,:,I_CVSNOW) 
-            end where 
+                sghydro%mr_hydro(:,k,:,I_CVCLIQ) = gbx%mr_hydro(:,:,I_CVCLIQ)
+                sghydro%mr_hydro(:,k,:,I_CVCICE) = gbx%mr_hydro(:,:,I_CVCICE)
+
+                sghydro%Reff(:,k,:,I_CVCLIQ)     = gbx%Reff(:,:,I_CVCLIQ)
+                sghydro%Reff(:,k,:,I_CVCICE)     = gbx%Reff(:,:,I_CVCICE)
+
+                sghydro%Np(:,k,:,I_CVCLIQ)     = gbx%Np(:,:,I_CVCLIQ)
+                sghydro%Np(:,k,:,I_CVCICE)     = gbx%Np(:,:,I_CVCICE)
+
+            end where
+            column_prec_out => sgx%prec_frac(:,k,:)
+            where ((column_prec_out == 1) .or. (column_prec_out == 3) )  !++++ LS precip ++++
+                sghydro%Reff(:,k,:,I_LSRAIN) = gbx%Reff(:,:,I_LSRAIN)
+                sghydro%Reff(:,k,:,I_LSSNOW) = gbx%Reff(:,:,I_LSSNOW)
+                sghydro%Reff(:,k,:,I_LSGRPL) = gbx%Reff(:,:,I_LSGRPL)
+
+                sghydro%Np(:,k,:,I_LSRAIN)     = gbx%Np(:,:,I_LSRAIN)
+                sghydro%Np(:,k,:,I_LSSNOW)     = gbx%Np(:,:,I_LSSNOW)
+                sghydro%Np(:,k,:,I_LSGRPL)     = gbx%Np(:,:,I_LSGRPL)
+            elsewhere ((column_prec_out == 2) .or. (column_prec_out == 3)) !++++ CONV precip ++++
+                sghydro%Reff(:,k,:,I_CVRAIN) = gbx%Reff(:,:,I_CVRAIN)
+                sghydro%Reff(:,k,:,I_CVSNOW) = gbx%Reff(:,:,I_CVSNOW)
+
+                sghydro%Np(:,k,:,I_CVRAIN)     = gbx%Np(:,:,I_CVRAIN)
+                sghydro%Np(:,k,:,I_CVSNOW)     = gbx%Np(:,:,I_CVSNOW)
+            end where
 #endif
             !--------- Precip -------
             if (.not. gbx%use_precipitation_fluxes) then
@@ -611,8 +675,8 @@ ENDIF
                     sghydro%mr_hydro(:,k,:,I_LSSNOW) = gbx%mr_hydro(:,:,I_LSSNOW)
                     sghydro%mr_hydro(:,k,:,I_LSGRPL) = gbx%mr_hydro(:,:,I_LSGRPL)
                 elsewhere (column_frac_out == I_CVC) !+++++++++++ CONV Precipitation ++++++++
-                    sghydro%mr_hydro(:,k,:,I_CVRAIN) = gbx%mr_hydro(:,:,I_CVRAIN) 
-                    sghydro%mr_hydro(:,k,:,I_CVSNOW) = gbx%mr_hydro(:,:,I_CVSNOW) 
+                    sghydro%mr_hydro(:,k,:,I_CVRAIN) = gbx%mr_hydro(:,:,I_CVRAIN)
+                    sghydro%mr_hydro(:,k,:,I_CVSNOW) = gbx%mr_hydro(:,:,I_CVSNOW)
                 end where 
             endif
         enddo
@@ -625,13 +689,13 @@ IF (sgx%cols_input_from_model) then
 ELSE
                 !--------- Clouds -------
                 if (frac_ls(j,k) .ne. 0.) then
-                    sghydro%mr_hydro(j,:,k,I_LSCLIQ) = sghydro%mr_hydro(j,:, k,I_LSCLIQ)/frac_ls(j,k)
-                    sghydro%mr_hydro(j,:,k,I_LSCICE) = sghydro%mr_hydro(j,:, k,I_LSCICE)/frac_ls(j,k)
-                 endif
-                 if (frac_cv(j,k) .ne. 0.) then
-                     sghydro%mr_hydro(j,:,k,I_CVCLIQ) = sghydro%mr_hydro(j,:,k,I_CVCLIQ)/frac_cv(j,k)
-                     sghydro%mr_hydro(j,:,k,I_CVCICE) = sghydro%mr_hydro(j,:,k,I_CVCICE)/frac_cv(j,k)
-                 endif
+                    sghydro%mr_hydro(j,:,k,I_LSCLIQ) = sghydro%mr_hydro(j,:,k,I_LSCLIQ)/frac_ls(j,k)
+                    sghydro%mr_hydro(j,:,k,I_LSCICE) = sghydro%mr_hydro(j,:,k,I_LSCICE)/frac_ls(j,k)
+                endif
+                if (frac_cv(j,k) .ne. 0.) then
+                    sghydro%mr_hydro(j,:,k,I_CVCLIQ) = sghydro%mr_hydro(j,:,k,I_CVCLIQ)/frac_cv(j,k)
+                    sghydro%mr_hydro(j,:,k,I_CVCICE) = sghydro%mr_hydro(j,:,k,I_CVCICE)/frac_cv(j,k)
+                endif
 ENDIF
 #else
                 !--------- Clouds -------
@@ -671,6 +735,19 @@ ENDIF
         deallocate(frac_ls,prec_ls,frac_cv,prec_cv)
         
         if (gbx%use_precipitation_fluxes) then
+        
+#ifdef MMF_V3p5_TWO_MOMENT
+
+#ifdef COSP_GFDL
+        call error_mesg ('cosp.F90/cosp_iter', &
+        'Precipitation Flux to Mixing Ratio conversion not (yet?) &
+                    &supported for MMF3.5 Two Moment Microphysics', FATAL)
+#else
+        write(*,*) 'Precipitation Flux to Mixing Ratio conversion not (yet?) supported ', &
+               'for MMF3.5 Two Moment Microphysics'
+        stop
+#endif
+#else
             ! Density
             allocate(rho(Npoints,Nlevels))
             I_HYDRO = I_LSRAIN
@@ -704,6 +781,8 @@ ENDIF
                     gamma_1(I_HYDRO),gamma_2(I_HYDRO),gamma_3(I_HYDRO),gamma_4(I_HYDRO), &
                     gbx%grpl_ls,sghydro%mr_hydro(:,:,:,I_HYDRO),sghydro%Reff(:,:,:,I_HYDRO))
             if(allocated(rho)) deallocate(rho)
+#endif
+
         endif
    !++++++++++ CRM mode ++++++++++
    else
@@ -712,6 +791,8 @@ ENDIF
 #endif
       sghydro%mr_hydro(:,1,:,:) = gbx%mr_hydro
       sghydro%Reff(:,1,:,:) = gbx%Reff
+      sghydro%Np(:,1,:,:) = gbx%Np      ! added by Roj with Quickbeam V3.0
+      
       !--------- Clouds -------
       where ((gbx%dtau_s > 0.0))
              sgx%frac_out(:,1,:) = 1  ! Subgrid cloud array. Dimensions (Npoints,Ncolumns,Nlevels)

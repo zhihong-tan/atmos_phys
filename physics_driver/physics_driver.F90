@@ -412,7 +412,7 @@ logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has
                                       ! been activated?
 integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
-integer   :: ncol                     ! number of stochastic columns
+!integer   :: ncol                     ! number of stochastic columns
  
 integer   :: num_uw_tracers
 
@@ -1987,7 +1987,7 @@ real,dimension(:,:),    intent(inout)             :: gust
                              fl_lsgrpl_loc, &
                              fl_donmca_rain_loc, fl_donmca_snow_loc, &
                              fl_ccrain_loc, fl_ccsnow_loc, mr_ozone_loc
-      real, dimension(ie-is+1, je-js+1, npz, ncol) ::  &
+      real, dimension(ie-is+1, je-js+1, npz, Exch_ctrl%ncol) ::  &
                              stoch_mr_liq, stoch_mr_ice, &
                              stoch_size_liq, stoch_size_frz
       type(aerosol_type) :: Aerosol
@@ -2457,7 +2457,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 !----------------------------------------------------------------------
           tca = 0.
           cca = 0.
-          do n=1,ncol                      
+          do n=1,Exch_ctrl%ncol                      
             where (Cosp_block%stoch_cloud_type(:,:,:,n) > 0.) 
               tca(:,:,:)  = tca(:,:,:) +  1.0
             end where
@@ -2465,8 +2465,8 @@ real,dimension(:,:),    intent(inout)             :: gust
               cca(:,:,:)  = cca(:,:,:) +  1.0
             end where
           end do
-          tca = tca/ float(ncol)                
-          cca = cca/ float(ncol)
+          tca = tca/ float(Exch_ctrl%ncol)                
+          cca = cca/ float(Exch_ctrl%ncol)
 
 !--------------------------------------------------------------------
 !    define the atmospheric density to use in converting concentrations
@@ -2485,7 +2485,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 !   convert the condensate concentrations in each stochastic column to 
 !   mixing ratios. 
 !--------------------------------------------------------------------
-          do n=1,ncol                       
+          do n=1,Exch_ctrl%ncol                       
             do k=1, size(Cosp_block%stoch_cloud_type,3)
               do j=1, size(t,2)
                 do i=1, size(t,1)
@@ -2525,7 +2525,7 @@ real,dimension(:,:),    intent(inout)             :: gust
               do i=1, size(t,1)
                 nls = 0
                 ncc = 0
-                do n=1,ncol                       
+                do n=1,Exch_ctrl%ncol                       
                   if (Cosp_block%stoch_cloud_type(i,j,k,n) == 1.) then
                     nls = nls + 1
                     lsliq(i,j,k) = lsliq(i,j,k) +  &
@@ -2597,7 +2597,7 @@ real,dimension(:,:),    intent(inout)             :: gust
               flag_ls = 0
               flag_cc = 0
               do k=1, size(Cosp_block%stoch_cloud_type,3)
-                do n=1,ncol                        
+                do n=1,Exch_ctrl%ncol                        
                   if (Cosp_block%stoch_cloud_type(i,j,k,n) == 1.) then
                     flag_ls = 1
                     exit

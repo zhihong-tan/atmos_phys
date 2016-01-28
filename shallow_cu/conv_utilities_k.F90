@@ -31,7 +31,7 @@ MODULE CONV_UTILITIES_k_MOD
  type sounding
     logical  :: coldT, do_gust_qt
     integer  :: kmax, kinv, ktoppbl, ktopconv, ksrc, src_choice, gqt_choice
-    real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, plev_cin
+    real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, plev_cin, lts, eis, gam, z700
     real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre
     real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon
     real     :: dpsum, hmint, hm_vadv0
@@ -166,6 +166,10 @@ contains
     sd%thvinv   = 0.0
     sd%land     = 0.0
     sd%pblht    = 0.0
+    sd%lts      = 0.0
+    sd%eis      = 0.0
+    sd%gam      = 0.0
+    sd%z700     = 0.0
     sd%qint     = 0.0
     sd%delt     = 0.0
     sd%crh      = 0.0
@@ -333,6 +337,7 @@ contains
     ac%plnb    = 0.0
     ac%cape    = 0.0
     ac%cin     = 0.0
+
     allocate ( ac%t     (1:kd)); ac%t    =0.;
     allocate ( ac%qv    (1:kd)); ac%qv   =0.;
     allocate ( ac%ql    (1:kd)); ac%ql   =0.;
@@ -454,7 +459,7 @@ contains
     real    :: hl0bot, thc0bot, qct0bot, hl0top, thc0top, qct0top
     real    :: thj, qvj, qlj, qij, qse, qs_sum, qt_sum, dpsum, tmp
     real, dimension(size(sd%tr,2)) :: sstr0a, sstr0b
-    real    :: x1, x2, x3, xx1, xx2, xx3, q1, q2
+    real    :: x1, x2, x3, xx1, xx2, xx3, q1, q2, p700, thc700, t700, p850
     integer :: kp1, km1, ksrc
   
     sd % exners(0) = exn_k(sd%ps(0),Uw_p);
@@ -697,6 +702,27 @@ contains
 !       end if
      end do
 !MSE end---------------------
+
+!LTS and EIS
+    p700  =70000.
+    p850  =85000.
+    thc700=sd%thc(1)
+    do k=1, sd%ktopconv
+      if (sd%p(k).gt.p700 .and. sd%p(k+1).lt.p700) then
+          thc700 =(sd%thc(k)*(p700-sd%p(k+1))+sd%thc(k+1)*(sd%p(k)-p700))/(sd%p(k)-sd%p(k+1))
+          sd%z700=(sd%z  (k)*(p700-sd%p(k+1))+sd%z(k+1)  *(sd%p(k)-p700))/(sd%p(k)-sd%p(k+1))
+	  t700  = thc700 * exn_k(p700, Uw_p)
+          !x1=(t700+sd%t(1))*0.5; q1=qsat_k(x1, p850, Uw_p)
+	  x1=t700; q1=qsat_k(t700, p700, Uw_p)
+          xx1=1.+Uw_p%HLv*q1/(Uw_p%rdgas*x1)
+          xx2=1.+Uw_p%HLv*Uw_p%HLv*q1/(Uw_p%cp_air*461.*x1*x1)
+	  sd%gam=(Uw_p%grav/Uw_p%cp_air)*(1.-xx1/xx2)
+          sd%lts=thc700-sd%thc(1);
+	  sd%eis=sd%lts
+	  exit;
+      endif
+    end do
+
   end subroutine extend_sd_k
 
 !#####################################################################
@@ -842,7 +868,7 @@ contains
     endif
     ac % cin =max(cin,0.); !CIN has been estimated
     ac % plfc=plfc;
-    
+
     if (dofast .and. (ac%plfc .lt. 50000.) ) return; !miz
 
     !calculate cape=================

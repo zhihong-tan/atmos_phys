@@ -1,14 +1,7 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
+! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/icarus-scops-4    .1-bsd/scops.f $
 
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
       subroutine scops(npoints,nlev,ncol,seed,cc,conv,
      &                 overlap,frac_out,ncolprint)
 
@@ -108,6 +101,7 @@
       INTEGER irand,i2_16,huge32,overflow_32  ! variables for RNG
       PARAMETER(huge32=2147483647)
       i2_16=65536
+
 
       do ibox=1,ncol
         do j=1,npoints 

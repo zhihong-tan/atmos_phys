@@ -39,12 +39,13 @@ MODULE CONV_PLUMES_k_MOD
   type cpnlist
      integer :: mixing_assumption, mp_choice
      real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
-     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max,   &
+     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, eis_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
+     logical :: do_varying_rpen
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -1644,9 +1645,16 @@ contains
 
     integer :: k, ltop, let
     real    :: rhos0j, bogtop, bogbot
-    real    :: aquad, bquad, cquad, xs1, xs2, ppen
+    real    :: aquad, bquad, cquad, xs1, xs2, ppen, rpen0
     real    :: thj, qvj, qse, thvj, qctulet, hlulet, umflet
     real    :: dqct1, dqct2, qctflxkm1, tmp
+
+    rpen0=cpn%rpen
+    if (cpn%do_varying_rpen) then
+       tmp=sd%eis/cpn%eis_max
+       tmp=min(max(tmp,0.0),1.0)
+       rpen0=cpn%rpen*(1.0-tmp)
+    end if
 
     ltop=cp%ltop
     let =cp%let
@@ -1705,14 +1713,14 @@ contains
           if(xs1.eq.-9.99e33.or.xs2.eq.-9.99e33) ppen=0.
           !Calculate returning mass flux
           cp%emf (k)=max(cp%umf(k)*ppen*cp%rei(ltop)*  &
-                                                 cpn%rpen,-0.1*rhos0j)
+                                                 rpen0,-0.1*rhos0j)
           cp%hlu (k)=cp%hl (ltop)+sd%sshl (ltop)*(cp%ps(k)-cp%p(ltop))
           cp%qctu(k)=cp%qct(ltop)+sd%ssqct(ltop)*(cp%ps(k)-cp%p(ltop))
           cp%tru(k,:)=cp%tr(ltop,:)+sd%sstr(ltop,:)*   &
                                                  (cp%ps(k)-cp%p(ltop))
        else
           cp%emf (k)=max(cp%emf(k+1)-cp%umf(k)*cp%dp(k+1)*  &
-                                      cp%rei(k+1)*cpn%rpen,-0.1*rhos0j)
+                                      cp%rei(k+1)*rpen0,-0.1*rhos0j)
           if (cp%emf(k).ne.0) then
             cp%hlu (k)=(cp%hlu (k+1)*cp%emf(k+1)+cp%hl (k+1)* &
                                         (cp%emf(k)-cp%emf(k+1)))/cp%emf(k)

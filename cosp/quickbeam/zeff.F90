@@ -1,15 +1,6 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
- 
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
-
+! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/quickbeam/zeff.f90 $
   subroutine zeff(freq,D,N,nsizes,k2,tt,ice,xr,z_eff,z_ray,kr,qe,qs,rho_e)
   use math_lib
   use optics_lib
@@ -26,7 +17,7 @@
 !   [N]         discrete concentrations (cm^-3 um^-1)
 !   [nsizes]    number of discrete drop sizes
 !   [k2]        |K|^2, -1=use frequency dependent default 
-!   [tt]        hydrometeor temperature (C)
+!   [tt]        hydrometeor temperature (K)
 !   [ice]       indicates volume consists of ice
 !   [xr]        perform Rayleigh calculations?
 !   [qe]        if using a mie table, these contain ext/sca ...
@@ -62,6 +53,7 @@
   qbsca, &               ! backscatter efficiency
   rho_ice, &             ! bulk density ice (kg m^-3)
   f                 ! ice fraction
+  real*8, dimension(nsizes) :: xtemp
   real*8 :: &
   wl, &                  ! wavelength (m)
   cr                            ! kr(dB/km) = cr * kr(1/km)
@@ -138,7 +130,8 @@
   if (size(D0) == 1) then
     eta_sum = qbsca(1)*(n(1)*1E6)*D0(1)**2
   else
-    call avint(qbsca*N0*D0**2,D0,nsizes,D0(1),D0(size(D0,1)),eta_sum)
+    xtemp = qbsca*N0*D0**2
+    call avint(xtemp,D0,nsizes,D0(1),D0(size(D0,1)),eta_sum)
   endif
  
   eta_mie = eta_sum*0.25*pi
@@ -151,7 +144,8 @@
   if (size(D0) == 1) then
     k_sum = qext(1)*(n(1)*1E6)*D0(1)**2
   else
-    call avint(qext*N0*D0**2,D0,nsizes,D0(1),D0(size(D0,1)),k_sum)
+    xtemp = qext*N0*D0**2
+    call avint(xtemp,D0,nsizes,D0(1),D0(size(D0,1)),k_sum)
   endif
   cr = 10./log(10.)
   kr = k_sum*0.25*pi*(1000.*cr)
@@ -162,7 +156,8 @@
     if (size(D0) == 1) then
       z0_ray = (n(1)*1E6)*D0(1)**6
     else
-      call avint(N0*D0**6,D0,nsizes,D0(1),D0(size(D0)),z0_ray)
+      xtemp = N0*D0**6
+      call avint(xtemp,D0,nsizes,D0(1),D0(size(D0)),z0_ray)
     endif
   endif
   
