@@ -206,7 +206,7 @@ real   , dimension(size(t,1),size(t,2),size(t,3))   :: tt, qq, uu, vv
 real   , dimension(size(t,1),size(t,2),size(t,3))   :: qlin, qiin, qain
 real    :: dt_tke
 integer :: ie, je, nlev, sec, day, nt
-integer :: ii,jj,kk
+integer :: i,j,kk
 logical :: used
 !-->h1g, 2012-08-07
 real   , dimension(size(diff_t,1),size(diff_t,2), &
@@ -589,12 +589,12 @@ end if
         
          rh_Ri_025(:,:) = missing_value
 
-         do ii = is, ie 
-           do jj = js, je
+         do i = 1, size(z_full,1) 
+           do j = 1, size(z_full,2)
 !      Vertical upward loop
              do kk = nlev, 1, -1 
-               if ( z_full(ii,jj,kk) >= z_Ri_025(ii, jj) + z_half(ii,jj, nlev+1) ) then
-                 rh_Ri_025(ii,jj) = RH_3D_tmp(ii,jj,kk) * 100.
+               if ( z_full(i,j,kk) >= z_Ri_025(i,j) + z_half(i,j,nlev+1) ) then
+                 rh_Ri_025(i,j) = RH_3D_tmp(i,j,kk) * 100.
                  exit
                endif
              enddo

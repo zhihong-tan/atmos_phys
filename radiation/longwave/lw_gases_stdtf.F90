@@ -4392,7 +4392,7 @@ logical,                 intent(in)  :: do_triangle
             if (ca_hiv(kp,k) .lt. 0.0) then
           !               call error_mesg('lw_gases_stdtf_mod', &
           !                    'intcoef_2d, ca_hiv set to 0' , NOTE)
-              ca_hiv(kp,k) = xa_hiv(kp,k) ** (-1./uexp_hiv(kp,k)) 
+              ca_hiv(kp,k) = 0!xa_hiv(kp,k) ** (-1./uexp_hiv(kp,k)) 
             endif
           endif
         enddo
@@ -4594,7 +4594,7 @@ logical,                 intent(in)  :: do_triangle
             if (ca_hiv(kp,k) .lt. 0.0) then
           !               call error_mesg('lw_gases_stdtf_mod', &
           !                    'intcoef_2d, ca_hiv set to 0' , NOTE)
-              ca_hiv(kp,k) = xa_hiv(kp,k) ** (-1./uexp_hiv(kp,k)) 
+              ca_hiv(kp,k) = 0!xa_hiv(kp,k) ** (-1./uexp_hiv(kp,k)) 
             endif
           endif
         enddo
