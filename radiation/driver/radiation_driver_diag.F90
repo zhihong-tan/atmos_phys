@@ -2317,7 +2317,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         endif
         if ( id_rsdsdiff > 0 ) then
          used = send_data ( id_rsdsdiff,  &
-                    Rad_output%flux_sw_down_total_dif(is:ie,js:je,nz),  &
+                    Rad_output%flux_sw_down_total_dif(is:ie,js:je),  &
                     Time_diag, is, js )
         endif
 
