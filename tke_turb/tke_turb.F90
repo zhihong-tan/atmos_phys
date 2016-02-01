@@ -816,7 +816,7 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
 
       ! Cloud sky coefficients
 
-      Acld_3D(:,:,k) = ( ( 1.0 + ( 1.0+d608 )*gamma*cp_air*T(:,:,k)/hleff**2) / (1.0+gamma/hleff ))*bfact(:,:,k)*cp_air_inv 
+      Acld_3D(:,:,k) = ( ( 1.0 + ( 1.0+d608 )*gamma*cp_air*T(:,:,k)/hleff) / (1.0+gamma ))*bfact(:,:,k)*cp_air_inv 
       Bcld_3D(:,:,k) = hleff * Acld_3D(:,:,k) - bfact(:,:,k) * T(:,:,k) 
 
     end if
