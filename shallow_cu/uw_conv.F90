@@ -1279,9 +1279,7 @@ contains
     trwet = 0.
     dting = 0.
     dissipative_heat = 0.; rhos=0; lhflx=0; shflx=0; 
-    hmint_old=hmint; hmint=0; lts=0.; eis=0.;
-
-    cbmf_shallow = 0.
+    hmint_old=hmint; hmint=0; lts=0.; eis=0.; lofactor=1.;
 
     naer = size(asol%aerosol,4)
 
@@ -1542,8 +1540,8 @@ contains
           end if
 	  if (do_peff_land) then
              lofactor= 1.- sd%land*(1.- lofactor0)
-             cpn % peff_l = cpn % peff_l  * lofactor
-             cpn % peff_i = cpn % peff_i  * lofactor
+             cpn % peff_l = peff_l  * lofactor
+             cpn % peff_i = peff_i  * lofactor
           end if
 
           call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, do_fast, do_ice, ac)
@@ -1712,7 +1710,7 @@ contains
              cldql (i,j,nk) = cp%qlu(k)
              cldqi (i,j,nk) = cp%qiu(k)
              cldqn (i,j,nk) = cp%qnu(k)
-             cmf_s (i,j,nk) = cp%umf(k) ! Save the shallow cmf for diagnostic
+             cmf_s (i,j,nk) = cp%umf(k)
              cmf   (i,j,nk) = cp%umf(k)
              wuo   (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
