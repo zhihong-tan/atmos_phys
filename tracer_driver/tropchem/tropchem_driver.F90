@@ -216,7 +216,6 @@ logical            :: do_h2so4_nucleation   = .false.
 logical            :: cloud_ho2_h2o2        = .true.
 real               :: gNO3                  = 0.1
 real               :: gHO2                  = 1.
-real               :: small_value           = 1.e-20 !too big for isorropia
 
 
 
@@ -284,7 +283,7 @@ namelist /tropchem_driver_nml/    &
                                het_chem_fine_aerosol_only, &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
-                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2, small_value
+                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2
                               
 
 integer                     :: nco2 = 0
@@ -1553,6 +1552,8 @@ function tropchem_driver_init( r, mask, axes, Time, &
    real, intent(in),dimension(:,:,:) :: phalf
    type(interpolate_type), intent(out) :: drydep_data(:)
 
+   real    :: small_value
+
    logical :: Ltropchem
    integer :: flag_file, flag_spec, flag_fixed
    integer :: n,i
@@ -2278,6 +2279,12 @@ end if
    call chemdr_init(trop_option)
 
 !initialize diag array
+   if ( trop_option%aerosol_thermo == AERO_ISORROPIA ) then
+      small_value = 1.e-25
+   else
+      small_value = 1.e-20
+   end if
+
    call tropchem_types_init(trop_diag,small_value)
    if ( id_pso4_h2o2 > 0 ) then
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
