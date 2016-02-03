@@ -87,8 +87,11 @@ private          &
 !-------- namelist  ---------
 
 integer, parameter   ::        &
-             MAX_OPTICAL_FIELDS = 1000  ! maximum number of aerosol 
+             MAX_OPTICAL_FIELDS = 1100 ! maximum number of aerosol 
                                        ! optical property types
+
+integer, parameter   ::        &
+             NUM_AERO_INDICES   = 12   ! Last dimension of opt_indices
 logical              ::        &
              do_lwaerosol = .false.    ! aerosol efects included in lw
                                        ! radiation ?
@@ -211,6 +214,13 @@ integer :: volcano_year_used = 0      ! year of volcanic data to repeat
                                       ! .true.
 logical :: using_im_bcsul = .false.   ! bc and sulfate aerosols are 
                                       ! treated as an internal mixture ?
+integer, dimension(0:100) ::  nitrate_indices = (/        &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
+                             0  /)
 integer, dimension(0:100) ::  omphilic_indices = (/        &
                              0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
                              0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, &
@@ -290,17 +300,6 @@ integer, dimension(0:100) ::  sulfate_indices = (/      &
                            70,70,70,75,75,75,75,75,80,80,80,80,82,82, &
                            84,84,86,86,88,88,90,91,92,93,94,95,96,97, &
                            98,99,100 /)
-
-!f1p
-integer, dimension(0:100) ::  nitrate_indices = (/      &
-                           30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
-                           30,30,30,30,30,30,30,30,30,30,30,30,30,30, &
-                           30,30,30,30,30,35,35,35,35,35,40,40,40,40, &
-                           40,45,45,45,45,45,50,50,50,50,50,55,55,55, &
-                           55,55,60,60,60,60,60,65,65,65,65,65,70,70, &
-                           70,70,70,75,75,75,75,75,80,80,80,80,82,82, &
-                           84,84,86,86,88,88,90,91,92,93,94,95,96,97, &
-                           98,99,100 /)
 !yim
 integer, dimension(0:100) ::  sulfate_vol_indices = (/      &
                              100,98,98,96,96,94,94,92,92,90,90,88,88,86,86,84,84,82,82,80, &
@@ -317,7 +316,6 @@ namelist / aerosolrad_package_nml /                          &
                                     aerosol_data_set, &
                                     aerosol_optical_names, &
                                     sulfate_indices, &
-                                    nitrate_indices, &
                                     sulfate_vol_indices, &
                                     omphilic_indices, &
                                     bcphilic_indices, &
@@ -329,6 +327,7 @@ namelist / aerosolrad_package_nml /                          &
                                     seasalt_aitken_indices, &
                                     seasalt_fine_indices, &
                                     seasalt_coarse_indices, &
+                                    nitrate_indices,  &
                                     optical_filename   , &
                                     using_volcanic_sw_files, &
                                     using_volcanic_lw_files, &
@@ -413,10 +412,11 @@ integer, PARAMETER ::  SEASALT5_FLAG = -7
 integer, PARAMETER ::  SEASALTA_FLAG = -8
 integer, PARAMETER ::  SEASALTF_FLAG = -9
 integer, PARAMETER ::  SEASALTC_FLAG = -10
+integer, PARAMETER ::  NITRATE_FLAG  = -11
+! Add additional aerosols before BC_FLAG which is a dummy. 
+! Then BC_FLAG should be the lowest flag number-1
 !yim
-integer, PARAMETER ::  BC_FLAG = -11
-!f1p
-integer, PARAMETER ::  NITRATE_FLAG = -12
+integer, PARAMETER ::  BC_FLAG = -12 
 !integer, PARAMETER ::  NOT_IN_USE = -2000
 
 !----------------------------------------------------------------------
@@ -428,7 +428,6 @@ integer, dimension(:,:), allocatable :: sulfate_index_MOD
 integer, dimension(:),   allocatable :: optical_index_MOD
 integer, dimension(:),   allocatable :: omphilic_index_MOD
 integer, dimension(:),   allocatable :: bcphilic_index_MOD
-integer, dimension(:),   allocatable :: nitrate_index_MOD
 integer, dimension(:),   allocatable :: seasalt1_index_MOD
 integer, dimension(:),   allocatable :: seasalt2_index_MOD
 integer, dimension(:),   allocatable :: seasalt3_index_MOD
@@ -437,6 +436,7 @@ integer, dimension(:),   allocatable :: seasalt5_index_MOD
 integer, dimension(:),   allocatable :: seasalt_aitken_index_MOD
 integer, dimension(:),   allocatable :: seasalt_fine_index_MOD
 integer, dimension(:),   allocatable :: seasalt_coarse_index_MOD
+integer, dimension(:),   allocatable :: nitrate_index_MOD
 
 !---------------------------------------------------------------------
 !    the following arrays related to sw aerosol effects are allocated 
@@ -1858,7 +1858,6 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !    deallocate module arrays
 !---------------------------------------------------------------------
       if (allocated(sulfate_index_MOD )) deallocate(sulfate_index_MOD )
-      if (allocated(nitrate_index_MOD )) deallocate(nitrate_index_MOD )
       if (allocated(bcphilic_index_MOD)) deallocate(bcphilic_index_MOD)
       if (allocated(omphilic_index_MOD)) deallocate(omphilic_index_MOD)
       if (allocated(seasalt1_index_MOD)) deallocate(seasalt1_index_MOD)
@@ -1866,6 +1865,10 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
       if (allocated(seasalt3_index_MOD)) deallocate(seasalt3_index_MOD)
       if (allocated(seasalt4_index_MOD)) deallocate(seasalt4_index_MOD)
       if (allocated(seasalt5_index_MOD)) deallocate(seasalt5_index_MOD)
+      if (allocated(seasalt_aitken_index_MOD)) deallocate(seasalt_aitken_index_MOD)
+      if (allocated(seasalt_fine_index_MOD)) deallocate(seasalt_fine_index_MOD)
+      if (allocated(seasalt_coarse_index_MOD)) deallocate(seasalt_coarse_index_MOD)
+      if (allocated(nitrate_index_MOD)) deallocate(nitrate_index_MOD)
       if (allocated(optical_index_MOD )) deallocate(optical_index_MOD )
 
       
@@ -2049,7 +2052,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
                 seasalt_aitken_index_MOD(0:100 ), &
                 seasalt_fine_index_MOD(0:100 ), &
                 seasalt_coarse_index_MOD(0:100 ), &
-                nitrate_index_mod(0:100))
+                nitrate_index_MOD(0:100 ) )
       allocate (optical_index_MOD(nfields) )
       optical_index_MOD    = 0
       sulfate_index_MOD    = 0
@@ -2063,7 +2066,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
       seasalt_aitken_index_MOD = 0
       seasalt_fine_index_MOD   = 0
       seasalt_coarse_index_MOD = 0
-      nitrate_index_mod = 0
+      nitrate_index_MOD    = 0
 
 !----------------------------------------------------------------------
 !    match aerosol optical property indices with aerosol indices.
@@ -2075,6 +2078,7 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
       ibc = 1
       do n=1,nfields
         name_in = trim(aerosol_names(n))
+
         if (name_in == 'so4' .or. name_in == 'so4_anthro' .or. name_in == 'so4_natural') then
           optical_index_MOD(n) = SULFATE_FLAG
           if (using_im_bcsul) then
@@ -2091,8 +2095,8 @@ character(len=*), dimension(:), intent(in) :: aerosol_names
               bc_ind(ibc) = n
               ibc = ibc + 1
            endif
-        else if ( name_in == "nh4no3" .or. name_in == "nit" ) then
-            optical_index_mod(n) = NITRATE_FLAG           
+        else if (name_in == "nitrate") then
+            optical_index_MOD(n) = NITRATE_FLAG
         else if (name_in == "seasalt1") then
             optical_index_MOD(n) = SEASALT1_FLAG
         else if (name_in == "seasalt2") then
@@ -3293,7 +3297,8 @@ real, intent(out), dimension (size(Aerosol%aerosol,1),  &
                                                      aerooptdepspec_cn
       integer, dimension (size(Aerosol%aerosol,1),  &
                           size(Aerosol%aerosol,2),  &
-                          size(Aerosol%aerosol,3),12)  :: opt_indices
+                          size(Aerosol%aerosol,3),  &
+                          NUM_AERO_INDICES) :: opt_indices
 
     ! real, dimension (size(Aerosol%aerosol,3)+1) :: bsum
 
@@ -3591,7 +3596,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aeroextopdep, &
                       sum_g_omega_tau, sum_ext,      sum_sct
 
       integer :: irh
-      integer, dimension (size(relhum,3),11) :: opt_indices
+      integer, dimension (size(relhum,3),NUM_AERO_INDICES) :: opt_indices
 
       real, dimension (size(aerextband_MOD,2))   ::            &
                       aerext,          aerssalb,       aerasymm
