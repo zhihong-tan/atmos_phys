@@ -40,7 +40,9 @@ private
 
 public  atmos_dust_sourcesink, atmos_dust_init, atmos_dust_end, &
         atmos_dust_time_vary, atmos_dust_endts, is_dust_tracer, &
-        dust_has_surf_setl_flux, get_dust_surf_setl_flux
+        atmos_dust_flux_init, atmos_dust_gather_data,           &
+        dust_has_surf_setl_flux, get_dust_surf_setl_flux,       &
+        atmos_dust_wetdep_flux_set,atmos_dust_drydep_flux_set 
 
 public do_dust, n_dust_tracers, dust_tracers
 
@@ -64,6 +66,11 @@ type :: dust_data_type
 end type dust_data_type
 
 logical :: do_dust = .FALSE.
+integer, save   :: ind_dry_dep_esm_dust_flux = 0
+integer, save   :: ind_wet_dep_esm_dust_flux = 0
+real, allocatable :: dry_dep_esm_dust_flux(:,:)
+real, allocatable :: wet_dep_esm_dust_flux(:,:)
+
 ! ---- module data ----
 logical :: module_is_initialized = .FALSE.
 logical :: do_emission = .TRUE. ! indicates that dust emission is done on atmos. side 
@@ -169,11 +176,13 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, &
      endif
 
      ! Accumulate total emission and deposition fluxes for output
-     if (id_dust_ddep > 0) then
-        ! accumulate total dust deposition flux
-        all_dust_setl(:,:) = all_dust_setl(:,:) &
-               + dust_tracers(i)%dust_setl(is:ie,js:je) + pwt(:,:,kd)*dsinku(:,:,ndust) ! shouldn't kd be kbot?
-     endif
+     ! accumulate total dust deposition flux
+     all_dust_setl(:,:) = all_dust_setl(:,:) &
+          + dust_tracers(i)%dust_setl(is:ie,js:je) + pwt(:,:,kd)*dsinku(:,:,ndust) ! shouldn't kd be kbot?
+
+!     all_dust_setl(:,:) = 1.0-frac_land(:,:)  !The exchanged flux of this becomes >1 at some points within ocean near shore!!
+     call atmos_dust_drydep_flux_set(all_dust_setl, is,ie,js,je)
+     
      if (id_dust_emis > 0) then
         ! accumulate total dust emission flux
         all_dust_emis(:,:) = all_dust_emis(:,:) + dust_emis(:,:) 
@@ -531,11 +540,148 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
                           vert_interp=(/INTERP_WEIGHTED_P/) )
   endif
 
+  !Allocate the array to contain the total dust flux for ESM
+  allocate(dry_dep_esm_dust_flux(size(lonb)-1,size(latb)-1)); dry_dep_esm_dust_flux=0.0
+  allocate(wet_dep_esm_dust_flux(size(lonb)-1,size(latb)-1)); wet_dep_esm_dust_flux=0.0
+
+
   do_dust = .TRUE.
   module_is_initialized = .TRUE.
 
  end subroutine atmos_dust_init
 !</SUBROUTINE>
+!#######################################################################
+
+!<SUBROUTINE NAME ="atmos_dust_flux_init">
+
+!<OVERVIEW>
+! Subroutine to initialize the dust flux
+!</OVERVIEW>
+
+ subroutine atmos_dust_flux_init
+
+   use tracer_manager_mod,    only : get_tracer_index, tracer_manager_init
+   use atmos_ocean_fluxes_mod, only: aof_set_coupler_flux
+
+   !
+   !-----------------------------------------------------------------------
+   !     arguments
+   !-----------------------------------------------------------------------
+   !
+
+   !
+   !-----------------------------------------------------------------------
+   !     local variables
+   !-----------------------------------------------------------------------
+   !
+
+   integer :: ind
+
+   !
+   !-----------------------------------------------------------------------
+   !     local parameters
+   !-----------------------------------------------------------------------
+   !
+
+   character(len=64), parameter    :: mod_name = 'atmos_dust'
+   character(len=64), parameter    :: sub_name = 'atmos_dust_flux_init'
+   character(len=256), parameter   :: error_header =                               &
+        '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: warn_header =                                &
+        '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: note_header =                                &
+        '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+   integer :: outunit
+   outunit = stdout()
+
+   ! find out if there is a dust_diag tracer (to be used to pass dust fluxes to Ocean BGC)
+   call tracer_manager_init      
+   ind = get_tracer_index(MODEL_ATMOS,'esm_dust')
+   if (ind > 0) then
+      write (outunit,*) trim(note_header), ' esm_dust was initialized as tracer number ', ind
+   else
+      write (outunit,*) trim(note_header), ' esm_dust was not found ', ind
+      return
+   endif
+
+   !
+   !       initialize coupler flux for the total dust flux to ocean
+   !
+
+   if (ind > 0) then
+      ind_dry_dep_esm_dust_flux = aof_set_coupler_flux('dry_dep_esm_dust',     &
+           flux_type = 'air_sea_deposition', implementation = 'dry',    &
+           atm_tr_index = ind,                                          &
+           param = (/ 1.0,1.0 /),                          &
+           caller = trim(mod_name) // '(' // trim(sub_name) // ')')
+
+      ind_wet_dep_esm_dust_flux = aof_set_coupler_flux('wet_dep_esm_dust',     &
+           flux_type = 'air_sea_deposition', implementation = 'wet',    &
+           atm_tr_index = ind,                                          &
+           param = (/ 1.0,1.0 /),                          &
+           caller = trim(mod_name) // '(' // trim(sub_name) // ')')
+   endif
+
+
+ end subroutine atmos_dust_flux_init
+!</SUBROUTINE>
+!#######################################################################
+
+!<SUBROUTINE NAME ="atmos_dust_gather_data">
+!<OVERVIEW>
+!  A subroutine to gather fields needed for calculating the dust flux for ESM
+!</OVERVIEW>
+!
+
+subroutine atmos_dust_gather_data (gas_fields, tr_bot)
+
+use coupler_types_mod, only: coupler_2d_bc_type, ind_pcair
+
+implicit none
+
+!-----------------------------------------------------------------------
+
+type(coupler_2d_bc_type), intent(inout) :: gas_fields
+real, dimension(:,:,:), intent(in)      :: tr_bot
+
+!
+!-----------------------------------------------------------------------
+!     local parameters
+!-----------------------------------------------------------------------
+!
+
+character(len=64), parameter    :: mod_name = 'atmos_dust'
+character(len=64), parameter    :: sub_name = 'atmos_dust_gather_data'
+character(len=256), parameter   :: error_header =                               &
+     '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: warn_header =                                &
+     '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: note_header =                                &
+     '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+!-----------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+
+! 2008/06/17 JPD/jgj: OCMIP calculation expects pco2 in dry vmr (mol/mol) units 
+! atm co2 is in moist mass mixing ratio (kg co2/kg moist air)
+! tr_bot: co2 bottom layer moist mass mixing ratio
+! convert to dry_mmr and then to dry_vmr for ocean model.
+! dry_mmr = wet_mmr / (1-Q); co2vmr = (wair/wco2) * co2mmr
+!(tr_bot(:,:,ind_co2)/(1.0 - tr_bot(:,:,ind_sphum))) * (WTMAIR/gas_fields%bc(ind_co2_flux)%mol_wt)
+
+if (ind_dry_dep_esm_dust_flux .gt. 0) then
+  gas_fields%bc(ind_dry_dep_esm_dust_flux)%field(ind_pcair)%values(:,:) = -dry_dep_esm_dust_flux(:,:)!sign flip
+endif
+if (ind_wet_dep_esm_dust_flux .gt. 0) then
+  gas_fields%bc(ind_wet_dep_esm_dust_flux)%field(ind_pcair)%values(:,:) = wet_dep_esm_dust_flux(:,:)
+endif
+
+end subroutine atmos_dust_gather_data
+!</SUBROUTINE >
+
+!#######################################################################
 
 !#######################################################################
 ! read the specified parameter from the input string, and report a
@@ -598,6 +744,20 @@ subroutine atmos_dust_endts
       call unset_interpolator_time_flag (dust_source_interp)
 end subroutine atmos_dust_endts 
 
+!######################################################################
+
+subroutine atmos_dust_wetdep_flux_set(array, is,ie,js,je)
+  real, dimension(is:ie,js:je), intent(in) :: array
+  integer,              intent(in) :: is,ie,js,je
+  wet_dep_esm_dust_flux(is:ie,js:je) = array(is:ie,js:je)
+end subroutine atmos_dust_wetdep_flux_set
+
+subroutine atmos_dust_drydep_flux_set(array, is,ie,js,je)
+  real, dimension(is:ie,js:je), intent(in) :: array
+  integer,              intent(in) :: is,ie,js,je
+  dry_dep_esm_dust_flux(is:ie,js:je) = array(is:ie,js:je)
+end subroutine atmos_dust_drydep_flux_set
+
 
 !#######################################################################
 !<SUBROUTINE NAME="atmos_dust_end">
@@ -617,6 +777,8 @@ end subroutine atmos_dust_endts
        deallocate(dust_tracers(i)%dsetl_dtr)
     enddo
     deallocate(dust_tracers)
+    deallocate(dry_dep_esm_dust_flux)
+    deallocate(wet_dep_esm_dust_flux)
  end subroutine atmos_dust_end
 !</SUBROUTINE>
 
