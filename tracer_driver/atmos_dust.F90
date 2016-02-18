@@ -638,42 +638,14 @@ subroutine atmos_dust_gather_data (gas_fields, tr_bot)
 
 use coupler_types_mod, only: coupler_2d_bc_type, ind_pcair
 
-implicit none
-
-!-----------------------------------------------------------------------
-
 type(coupler_2d_bc_type), intent(inout) :: gas_fields
 real, dimension(:,:,:), intent(in)      :: tr_bot
 
-!
-!-----------------------------------------------------------------------
-!     local parameters
-!-----------------------------------------------------------------------
-!
-
-character(len=64), parameter    :: mod_name = 'atmos_dust'
-character(len=64), parameter    :: sub_name = 'atmos_dust_gather_data'
-character(len=256), parameter   :: error_header =                               &
-     '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-character(len=256), parameter   :: warn_header =                                &
-     '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-character(len=256), parameter   :: note_header =                                &
-     '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-
-!-----------------------------------------------------------------------
-
-!-----------------------------------------------------------------------
-
-! 2008/06/17 JPD/jgj: OCMIP calculation expects pco2 in dry vmr (mol/mol) units 
-! atm co2 is in moist mass mixing ratio (kg co2/kg moist air)
-! tr_bot: co2 bottom layer moist mass mixing ratio
-! convert to dry_mmr and then to dry_vmr for ocean model.
-! dry_mmr = wet_mmr / (1-Q); co2vmr = (wair/wco2) * co2mmr
-!(tr_bot(:,:,ind_co2)/(1.0 - tr_bot(:,:,ind_sphum))) * (WTMAIR/gas_fields%bc(ind_co2_flux)%mol_wt)
 
 if (ind_dry_dep_esm_dust_flux .gt. 0) then
   gas_fields%bc(ind_dry_dep_esm_dust_flux)%field(ind_pcair)%values(:,:) = -dry_dep_esm_dust_flux(:,:)!sign flip
 endif
+
 if (ind_wet_dep_esm_dust_flux .gt. 0) then
   gas_fields%bc(ind_wet_dep_esm_dust_flux)%field(ind_pcair)%values(:,:) = wet_dep_esm_dust_flux(:,:)
 endif
