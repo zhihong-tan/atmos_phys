@@ -13,7 +13,7 @@ logical                       :: module_is_initialized = .false.
 
       subroutine chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
                           o3_column_top, jno_scale_factor, verbose, &
-                          retain_cm3_bugs, do_fastjx_photo )
+                          retain_cm3_bugs, do_fastjx_photo , trop_option)
 !-----------------------------------------------------------------------
 !       ... Chemistry module intialization
 !-----------------------------------------------------------------------
@@ -21,13 +21,18 @@ logical                       :: module_is_initialized = .false.
       use MO_PHOTO_MOD,      only : prate_init
       use mo_chem_utls_mod,  only : chem_utls_init
       use mo_usrrxt_mod,     only : usrrxt_init
+#ifndef AM3_CHEM
       use CHEM_MODS_mod,     only : grpcnt, clscnt1, clscnt4, clscnt5, chem_mods_init
+#else
+      use AM3_CHEM_MODS_mod, only : grpcnt, clscnt1, clscnt4, clscnt5, chem_mods_init
+#endif
       use MO_EXP_SOL_mod,    only : exp_slv_init
       use MO_IMP_SOL_mod,    only : imp_slv_init
       use MO_RODAS_SOL_mod,  only : rodas_slv_init
 
       use MO_READ_SIM_CHM_mod, only : read_sim_chm
       use mo_fphoto_mod,     only : fprate_init
+      use tropchem_types_mod, only : tropchem_opt
 
       implicit none
 
@@ -42,6 +47,7 @@ logical                       :: module_is_initialized = .false.
       integer,          intent(in) :: verbose
       logical,          intent(in) :: retain_cm3_bugs
       logical,          intent(in) :: do_fastjx_photo
+      type(tropchem_opt), intent(in) :: trop_option        
 
 !-----------------------------------------------------------------------
 !       ... Local variables
@@ -50,7 +56,7 @@ logical                       :: module_is_initialized = .false.
       character(len=80) ::   mspath
       character(len=32) ::   filename, filename_solarmin
       
-      character(len=128) ::  sim
+      character(len=128) ::  sim_data_flsp
       integer :: sim_file_cnt
 
 !-----------------------------------------------------------------------
@@ -61,8 +67,9 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Read sim.dat
 !-----------------------------------------------------------------------
-      sim = 'INPUT/sim.dat'
-      call read_sim_chm( sim, sim_file_cnt )
+!     sim_data_flsp = 'INPUT/sim.dat'
+      sim_data_flsp = 'INPUT/' // TRIM(trop_option%sim_data_flsp)
+      call read_sim_chm( sim_data_flsp, sim_file_cnt )
 
 !-----------------------------------------------------------------------
 !       ... Diagnostics initialization
@@ -125,7 +132,7 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Intialize the rxt rate constant module
 !-----------------------------------------------------------------------
-      call usrrxt_init( verbose )
+      call usrrxt_init( verbose , trop_option)
 
 !-----------------------------------------------------------------------
 !       ... Intialize the grp ratios module

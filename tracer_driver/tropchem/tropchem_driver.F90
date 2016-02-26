@@ -79,8 +79,13 @@ use              mo_chemdr_mod, only : chemdr, chemdr_init
 use              mo_setsox_mod, only : setsox_init
 use             mo_chemini_mod, only : chemini
 use             M_TRACNAME_MOD, only : tracnam         
+#ifndef AM3_CHEM
 use                MO_GRID_MOD, only : pcnstm1 
 use              CHEM_MODS_MOD, only : phtcnt, gascnt
+#else
+use            AM3_MO_GRID_MOD, only : pcnstm1 
+use          AM3_CHEM_MODS_MOD, only : phtcnt, gascnt
+#endif
 use               MOZ_HOOK_MOD, only : moz_hook_init
 use   strat_chem_utilities_mod, only : strat_chem_utilities_init, &
                                        strat_chem_dcly_dt, &
@@ -104,8 +109,11 @@ use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp
 use fms_io_mod, only: read_data
 
-use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1p, CLOUD_CHEM_LEGACY
+use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
+                      CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P, &
+                      CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
+use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
 implicit none
 
 private
@@ -201,12 +209,13 @@ real               :: max_rh_aerosol             = 9999      !max rh used for ae
 logical            :: limit_no3                  = .true.   !for isorropia/stratosphere
 
 character(len=64)  :: aerosol_thermo_method = 'legacy'               ! other choice isorropia
+character(len=64)  :: het_chem_type          = 'legacy'
 real               :: gN2O5                 = 0.1
 real               :: gNO2                  = 1e-4
 real               :: gSO2                  = 0.
 real               :: gSO2_dust             = 0.
 integer            :: gSO2_dynamic          = 0
-real               :: gNH3                  = 0.04
+real               :: gNH3                  = 0.05
 real               :: gHNO3_dust            = 0.
 real               :: gNO3_dust             = 0.
 real               :: gN2O5_dust            = 0.
@@ -216,6 +225,8 @@ logical            :: do_h2so4_nucleation   = .false.
 logical            :: cloud_ho2_h2o2        = .true.
 real               :: gNO3                  = 0.1
 real               :: gHO2                  = 1.
+
+character(len=128) :: sim_data_filename = 'sim.dat'      ! Input file for chemistry pre-processor
 
 
 
@@ -271,7 +282,7 @@ namelist /tropchem_driver_nml/    &
                                do_fastjx_photo, &
                                clouds_in_fastjx, &
                                check_convergence, &
-	                           solar_flux_bugfix, &
+	                       solar_flux_bugfix, &
                                e90_tropopause_vmr, &                               
                                aerosol_thermo_method, &
                                gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
@@ -283,8 +294,8 @@ namelist /tropchem_driver_nml/    &
                                het_chem_fine_aerosol_only, &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
-                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2
-                              
+                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &                              
+			       sim_data_filename
 
 integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
@@ -1637,10 +1648,12 @@ if ( (gNO3_dust .gt. 0. .or. gN2O5_dust .gt. 0.) .and. .not. het_chem_fine_aeros
 end if
 
 if ( trim(cloud_chem_type) == 'legacy' ) then
-   trop_option%cloud_chem = cloud_chem_legacy
+   trop_option%cloud_chem = CLOUD_CHEM_LEGACY
    if(mpp_pe() == mpp_root_pe()) write(*,*) 'legacy_cloud'
 elseif ( trim(cloud_chem_type) == 'f1p' ) then
-   trop_option%cloud_chem = cloud_chem_f1p
+   trop_option%cloud_chem = CLOUD_CHEM_F1P
+elseif ( trim(cloud_chem_type) == 'f1p_bug' ) then
+   trop_option%cloud_chem = CLOUD_CHEM_F1P_BUG
 end if
 
 !cloud chem pH solver
@@ -1666,12 +1679,29 @@ end if
    if(mpp_pe() == mpp_root_pe()) write(*,*) 'cloud_H',trop_option%cloud_H
 
 
+if ( trim(het_chem_type) == 'legacy' ) then
+   trop_option%het_chem = HET_CHEM_LEGACY
+   if(mpp_pe() == mpp_root_pe()) write(*,*) 'Using legacy heterogeneous chemistry'
+elseif ( trim(het_chem_type) == 'j1m' ) then
+   trop_option%het_chem = HET_CHEM_J1M
+   if(mpp_pe() == mpp_root_pe()) write(*,*) 'Using new (J1M) heterogeneous chemistry'
+end if
 
-
-
+! Chemical pre-processor input filename
+trop_option%sim_data_flsp = sim_data_filename
+if(mpp_pe() == mpp_root_pe()) write(*,*) 'Chemical pre-processor input filename: ', TRIM(sim_data_filename)
 
 !gammas to be added when het chem is working
-
+trop_option%gN2O5                    = gN2O5
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gN2O5:",trop_option%gN2O5
+trop_option%gNO3                     = gNO3
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gNO3:",trop_option%gNO3
+trop_option%gNO2                     = gNO2
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gNO2:",trop_option%gNO2
+trop_option%gHO2                     = gHO2
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gHO2:",trop_option%gHO2
+trop_option%gNH3                     = gNH3
+if(mpp_pe() == mpp_root_pe())    write(*,*)     "gNH3:",trop_option%gNH3
 trop_option%retain_cm3_bugs = retain_cm3_bugs
 trop_option%do_fastjx_photo = do_fastjx_photo
 trop_option%min_lwc_for_cloud_chem = min_lwc_for_cloud_chem
@@ -1709,7 +1739,7 @@ end if
 !-----------------------------------------------------------------------
    call chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
                  o3_column_top, jno_scale_factor, verbose,   &
-                 retain_cm3_bugs, do_fastjx_photo)
+                 retain_cm3_bugs, do_fastjx_photo, trop_option)
    
 !-----------------------------------------------------------------------
 !     ... set initial value of indices

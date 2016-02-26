@@ -419,7 +419,11 @@
                          qfld, &
                          r  )
 
+#ifndef AM3_CHEM
       use CHEM_MODS_MOD, only : ncol_abs, phtcnt
+#else
+      use AM3_CHEM_MODS_MOD, only : ncol_abs, phtcnt
+#endif
       use time_manager_mod, only : time_type      
 
       implicit none
@@ -927,7 +931,13 @@ subroutine set_aerosol_mc(r,pwt,rh,aerop,aeron)
       
       v1(:,:) = so4(:,:)/denso4
       v2(:,:) = (bc1(:,:)+bc2(:,:))/denbc
-      v1(:,:) = v1(:,:)/(v1(:,:)+v2(:,:))*100.
+!<f1p
+      where ( v1(:,:)+v2(:,:) .gt. 0. ) 
+         v1(:,:) = v1(:,:)/(v1(:,:)+v2(:,:))*100.
+      elsewhere
+         v1(:,:) = 0.
+      end where
+!>
 !      if (mpp_pe() == mpp_root_pe() ) then 
 !             write(*,*) 'fphoto: v1=',v1(2,:)      
 !      end if     

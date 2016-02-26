@@ -9,7 +9,7 @@ module MO_SETSOX_MOD
   use tracer_manager_mod,    only: get_tracer_index,  query_method
   use field_manager_mod,     only: parse
 
-  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1p
+  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG
   use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA, NO_AERO
 
   implicit none
@@ -175,7 +175,8 @@ CONTAINS
        xH(:,k) = xH0                                    ! initial PH value
        if ( trop_option%cloud_chem .eq. CLOUD_CHEM_LEGACY ) then
           xlwc(:,k) = cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
-       elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1p) then
+       elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P .or. &
+                trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG ) then
           xlwc(:,k) = frac_liq(:,k) * cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
        end if
        if( hno3_ndx > 0 ) then
@@ -266,7 +267,6 @@ CONTAINS
           qs = .622*es/pz                                    ! sat mass mix (H2O)
           RH = 100.*qz/qs                                    ! relative huminity(%)
           RH = MIN( 100.,MAX( RH,0. ) )
-          patm = pz/1013.           
 
           if( xl >= trop_option%min_lwc_for_cloud_chem ) then
 
@@ -275,6 +275,7 @@ CONTAINS
 
              if (trop_option%cloud_chem .eq. CLOUD_CHEM_LEGACY) then
 
+                patm = pz/1013.
                 t_fac(i) = 1. / tfld(i,k) - 1. / 298.
                 !-----------------------------------------------------------------------      
                 !        ... hno3
@@ -538,8 +539,14 @@ CONTAINS
 !                      * dtime                                        ! VMR
 
                 !<f1p: new cloud chemistry
-             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1p ) then
+             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P .or. &
+                      trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG ) then
 
+                if (trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG) then
+                   patm = pz/1013.
+                else
+                   patm = pz/1013.25
+                end if
                 if ( cldfr(i,k) .gt. 1.e-10 .and. xso2(i,k) .gt. 0. ) then
                    xl = xl/cldfr(i,k)
 
@@ -556,16 +563,22 @@ CONTAINS
                    
 
                    if (trop_option%cloud_H .lt. 0.) then                   
-                      call cloud_pH(thno3,xso2(i,k),tnh3,xhcooh(i,k)*frac_liq(i,k),xch3cooh(i,k)*frac_liq(i,k),xso4(i,k)*frac_ic_so4_eff(i,k),xco2(i,k),xalk(i,k),tfld(i,k),patm,xl,xhnm(i,k),trop_option%cloud_chem_ph_solver,xH(i,k),ediag)
+                      call cloud_pH(thno3, xso2(i,k), tnh3, xhcooh(i,k)*frac_liq(i,k), xch3cooh(i,k)*frac_liq(i,k), &
+		                    xso4(i,k)*frac_ic_so4_eff(i,k), xco2(i,k), xalk(i,k), tfld(i,k), patm, xl, xhnm(i,k),&
+				    trop_option%cloud_chem_ph_solver,xH(i,k), ediag)
                    else
                       xH(i,k)  = trop_option%cloud_H
                       ediag(:) = 0.
                    end if
-                   call cloud_so2_chem(xH(i,k),tfld(i,k),xl,rso2_h2o2,rso2_o3)
 
-
-                   rso2_h2o2 = rso2_h2o2 * xl / const0 / xhnm(i,k)
-                   rso2_o3   = rso2_o3   * xl / const0 / xhnm(i,k)
+                   if (trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG) then
+                      call cloud_so2_chem(patm, xH(i,k), tfld(i,k), xl, rso2_h2o2, rso2_o3, &
+                                          do_am3_bug=.true.)
+                      rso2_h2o2 = rso2_h2o2 * xl / const0 / xhnm(i,k)
+                      rso2_o3   = rso2_o3   * xl / const0 / xhnm(i,k)
+                   else
+                      call cloud_so2_chem(patm, xH(i,k), tfld(i,k), xl, rso2_h2o2, rso2_o3)
+                   end if
 
                    !amount of so4 formed
                    !SO2i*(1 - exp(kdt/a))/(1-SO2i/H2O2i exp(kdt/a)) with a = 1/SO20 - H2O20
@@ -793,21 +806,6 @@ CONTAINS
        frac_ic_nh4_snow = frac_ic_nh4
     end if
 
-
-    if ( trop_option%frac_aerosol_incloud .ge. 0. ) then
-       !overwrite
-       frac_ic_nh4 = trop_option%frac_aerosol_incloud
-       frac_ic_no3 = trop_option%frac_aerosol_incloud
-       frac_ic_so4 = trop_option%frac_aerosol_incloud
-    end if
-
-
-    if (mpp_root_pe() .eq. mpp_pe()) then
-       write(*,'(a,2e18.3)') 'frac_ic_nh4',frac_ic_nh4,frac_ic_nh4_snow
-       write(*,'(a,2e18.3)') 'frac_ic_no3',frac_ic_no3,frac_ic_no3_snow
-       write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
-    endif
-
     if ( nh4no3_ndx .gt. 0 ) then
        flag = query_method ('wet_deposition',MODEL_ATMOS,&
             get_tracer_index(MODEL_ATMOS,'nh4no3'), &
@@ -827,6 +825,23 @@ CONTAINS
     elseif ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
        nh4no3_is_no3 = .true.
     end if
+
+
+    if ( trop_option%frac_aerosol_incloud .ge. 0. ) then
+       !overwrite
+       frac_ic_nh4 = trop_option%frac_aerosol_incloud
+       frac_ic_no3 = trop_option%frac_aerosol_incloud
+       frac_ic_so4 = trop_option%frac_aerosol_incloud
+    end if
+
+
+    if (mpp_root_pe() .eq. mpp_pe()) then
+       write(*,'(a,2e18.3)') 'frac_ic_nh4',frac_ic_nh4,frac_ic_nh4_snow
+       write(*,'(a,2e18.3)') 'frac_ic_no3',frac_ic_no3,frac_ic_no3_snow
+       write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
+    endif
+
+
  ! ELSEIF ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
 !        nh4no3_ndx  = get_spc_ndx( 'ANO3' )
 !        if ( nh4no3_ndx .gt. 0 ) then

@@ -20,7 +20,7 @@ module atmos_sulfate_mod
 ! </CONTACT>
 !-----------------------------------------------------------------------
 
-use mpp_mod, only: input_nml_file 
+use                    mpp_mod, only : input_nml_file 
 use                    fms_mod, only : file_exist,              &
                                        write_version_number,    &
                                        mpp_pe,                  &
@@ -30,13 +30,12 @@ use                    fms_mod, only : file_exist,              &
                                        check_nml_error, error_mesg, &
                                        open_namelist_file, FATAL, NOTE, WARNING, &
                                        lowercase !f1p
-
 use           time_manager_mod, only : time_type, &
                                        days_in_month, days_in_year, &
                                        set_date, set_time, get_date_julian, &
                                        print_date, get_date, &
                                        operator(>), operator(+), operator(-)
-use time_interp_mod,            only:  fraction_of_year, &
+use            time_interp_mod, only : fraction_of_year, &
                                        time_interp_init
 use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
@@ -45,15 +44,16 @@ use           diag_manager_mod, only : send_data,               &
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
-use           interpolator_mod, only:  interpolate_type, interpolator_init, &
-                                      obtain_interpolator_time_slices, &
-                                      unset_interpolator_time_flag, &
+use           interpolator_mod, only : interpolate_type, interpolator_init, &
+                                       obtain_interpolator_time_slices, &
+                                       unset_interpolator_time_flag, &
                                        interpolator, interpolator_end,     &
                                        CONSTANT, INTERP_WEIGHTED_P
-use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR
+use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR, PSTD_MKS
 
 !f1p
-use cloud_chem, only : cloud_so2_chem, cloud_chem_legacy, cloud_chem_f1p
+use cloud_chem, only : cloud_so2_chem, CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, &
+                       CLOUD_CHEM_F1P_BUG
 
 implicit none
 
@@ -816,9 +816,11 @@ integer :: n, m, nsulfate
 
 !cloud chemistry
    if ( lowercase(trim(cloud_chem_solver)) .eq. "legacy" ) then
-      cloud_chem_type = cloud_chem_legacy
+      cloud_chem_type = CLOUD_CHEM_LEGACY
    elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p" ) then
-      cloud_chem_type = cloud_chem_f1p
+      cloud_chem_type = CLOUD_CHEM_F1P
+   elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p_bug" ) then
+      cloud_chem_type = CLOUD_CHEM_F1P_BUG
    else
       call error_mesg ('atmos_sulfate_mod', &
            'unknown cloud chem solver', FATAL)
@@ -1912,7 +1914,7 @@ end subroutine atmos_SOx_emission
       real :: o2
       real, parameter        :: small_value=1.e-21
       real, parameter        :: t0 = 298.
-      real, parameter        :: Ra = 8314./101325.
+      real, parameter        :: Ra = 8314./PSTD_MKS
       real, parameter        :: xkw = 1.e-14 ! water acidity
       real, parameter        :: const0 = 1.e3/6.022e23
 
@@ -2029,9 +2031,10 @@ end subroutine atmos_SOx_emission
        xhnm  = rho_air * f
        O2    = xhnm * 0.21
 !f1p
-       if ( cloud_chem_type .eq. cloud_chem_legacy ) then
+       if ( cloud_chem_type .eq. CLOUD_CHEM_LEGACY ) then
           xlwc  = lwc(i,j,k)*rho_air *1.e-3 !L(water)/L(air)
-       elseif ( cloud_chem_type .eq. cloud_chem_f1p ) then
+       elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
           xlwc  = lwc(i,j,k)*min(max(fliq(i,j,k),0.),1.)*rho_air *1.e-3 !only liquid water
        end if
        DMS_0 = max(0.,DMS(i,j,k))
@@ -2111,7 +2114,7 @@ end subroutine atmos_SOx_emission
 ! ****************************************************************************
        xso4 = SO4_0 + LSO2*xso2 * dt
 !f1p
-       if ( cloud_chem_type .eq. cloud_chem_legacy ) then
+       if ( cloud_chem_type .eq. CLOUD_CHEM_LEGACY ) then
 
 ! ****************************************************************************
 ! < Cloud chemistry (above 258K): >
@@ -2227,7 +2230,8 @@ end subroutine atmos_SOx_emission
             xso4 = xso4 + ccc2                           ! mozart2
             xso2 = max(xso2 - ccc2, small_value)         ! mozart2
        end if
-       elseif ( cloud_chem_type .eq. cloud_chem_f1p ) then
+       elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
 !f1p cloud chem
        !calculate in cloud-production   
           !first calculate in-cloud liquid
@@ -2236,11 +2240,14 @@ end subroutine atmos_SOx_emission
           if ( xlwc .gt. 1.e-10) then
           if ( cldfr(i,j,k) .gt. 1.e-10 )  xlwc = xlwc/cldfr(i,j,k)
 
-          call cloud_so2_chem(xpH,tk,xlwc,rso2_h2o2,rso2_o3)
-
-!check !!!
-          rso2_h2o2 = rso2_h2o2 * xlwc / const0 / xhnm
-          rso2_o3   = rso2_o3   * xlwc / const0 / xhnm
+          if ( cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
+             call cloud_so2_chem(pfull(i,j,k)/PSTD_MKS, xpH, tk, xlwc, rso2_h2o2, rso2_o3, &
+                                 do_am3_bug=.true.)
+             rso2_h2o2 = rso2_h2o2 * xlwc / const0 / xhnm
+             rso2_o3   = rso2_o3   * xlwc / const0 / xhnm
+          else
+             call cloud_so2_chem(pfull(i,j,k)/PSTD_MKS, xpH, tk, xlwc, rso2_h2o2, rso2_o3)
+          end if
 
           !production via H2O2
           exp_factor = rso2_h2o2 * (xso2 - xh2o2) * dt
