@@ -35,7 +35,7 @@ use fms_mod,             only: open_namelist_file, fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
                                file_exist, write_version_number, &
                                check_nml_error, error_mesg, &
-                               FATAL, NOTE, close_file, &
+                               FATAL, WARNING, NOTE, close_file, &
                                open_restart_file, read_data
 use fms_io_mod,          only: get_restart_io_mode, &
                                register_restart_field, restart_file_type, &
@@ -46,13 +46,11 @@ use field_manager_mod,   only: MODEL_ATMOS
 
 !  shared radiation package modules:
 
-use rad_utilities_mod,   only: rad_utilities_init, &
-                               radiation_control_type, &
-                               radiative_gases_type
-
 use sealw99_mod,         only: get_control_gas_tf
 
-! component modules:
+! radiative gas component modules:
+
+use radiative_gases_types_mod, only: radiative_gases_type
 
 use ozone_mod,           only: ozone_driver, ozone_init,  &
                                ozone_time_vary, ozone_endts, ozone_end
@@ -73,8 +71,7 @@ private
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-character(len=128)  :: version =  &
-'$Id$'
+character(len=128)  :: version =  '$Id$'
 character(len=128)  :: tagname =  '$Name$'
 
 !---------------------------------------------------------------------
@@ -83,13 +80,8 @@ character(len=128)  :: tagname =  '$Name$'
 public     &
          radiative_gases_init, define_radiative_gases,  &
          radiative_gases_time_vary, radiative_gases_endts,  &
-         radiative_gases_end, radiative_gases_dealloc,  &
-         radiative_gases_restart, assignment(=)
-
-! public assignment operator
-interface assignment(=)
-  module procedure radiative_gases_type_eq
-end interface
+         radiative_gases_end, radiative_gases_restart, &
+         get_longwave_gas_flag
 
 private    &
 ! called from radiative_gases_init:
@@ -320,14 +312,33 @@ logical            ::  &
 
 logical              :: time_varying_restart_bug = .false.
 logical              :: use_globally_uniform_co2 = .true.
-logical              :: use_co2_10um = .false.
 logical              :: do_NxCO2 = .false. !miz
-integer		     :: NNN = 1            !miz
+integer              :: NNN = 1            !miz
+
+logical :: do_h2o         = .true.    !  h2o radiative effects are 
+                                      !  included in the radiation 
+                                      !  calculation ? 
+logical :: do_o3          = .true.    !  o3 radiative effects are 
+                                      !  included in the radiation 
+                                      !  calculation ? 
+
+logical :: do_ch4_lw      = .true.    !  ch4 radiative effects are 
+                                      !  included in the longwave
+                                      !  radiation calculation ? 
+logical :: do_n2o_lw      = .true.    !  n2o radiative effects are 
+                                      !  included in the longwave
+                                      !  radiation calculation ? 
+logical :: do_co2_lw      = .true.    !  co2 radiative effects are 
+                                      !  included in the longwave
+                                      !  radiation calculation ? 
+logical :: do_cfc_lw      = .true.    !  cfc radiative effects are 
+                                      !  included in the longwave
+                                      !  radiation calculation ? 
+logical :: use_co2_10um = .false.
+
 namelist /radiative_gases_nml/ verbose, &
-        do_NxCO2, &
-        NNN, &
+        do_NxCO2, NNN, &
         use_globally_uniform_co2, &
-        use_co2_10um, &
         gas_printout_freq, time_varying_restart_bug, &
         co2_dataset_entry, ch4_dataset_entry, n2o_dataset_entry,  &
         f11_dataset_entry, f12_dataset_entry, f113_dataset_entry, &
@@ -389,8 +400,11 @@ namelist /radiative_gases_nml/ verbose, &
                           calc_n2o_tfs_on_first_step, &
                           use_current_n2o_for_tf, &
                           n2o_tf_calc_intrvl, &
-                          n2o_tf_time_displacement
+                          n2o_tf_time_displacement, &
 
+            do_h2o, do_o3, &
+            do_ch4_lw, do_n2o_lw, do_co2_lw, do_cfc_lw, &
+            use_co2_10um
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -551,6 +565,8 @@ integer    ::  month_of_co2_tf_calc = 0
 integer    ::  month_of_ch4_tf_calc = 0
 integer    ::  month_of_n2o_tf_calc = 0
 
+logical :: do_co2_10um
+
 !---------------------------------------------------------------------
 !---------------------------------------------------------------------
 
@@ -590,8 +606,7 @@ integer    ::  month_of_n2o_tf_calc = 0
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine radiative_gases_init (lw_rad_time_step, pref, latb, lonb, &
-                                 Rad_control)
+subroutine radiative_gases_init (lw_rad_time_step, pref, latb, lonb)
 
 !---------------------------------------------------------------------
 !    radiative_gases_init is the constructor for radiative_gases_mod.
@@ -600,7 +615,6 @@ subroutine radiative_gases_init (lw_rad_time_step, pref, latb, lonb, &
 integer,                      intent(in)    :: lw_rad_time_step
 real, dimension(:,:),         intent(in)    :: pref
 real, dimension(:,:),         intent(in)    :: latb, lonb
-type(radiation_control_type), intent(inout) :: Rad_control
 
 !---------------------------------------------------------------------
 !   intent(in) variables:
@@ -812,18 +826,26 @@ type(radiation_control_type), intent(inout) :: Rad_control
 !    define logical variable indicating whether ch4 is active.
 !---------------------------------------------------------------------
       if ((.not. time_varying_ch4) .and. rch4 == 0.0) then
-        Rad_control%do_ch4_lw = .false.
+        if (do_ch4_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_ch4_lw changed from true to false.', WARNING)
+        do_ch4_lw = .false.
       else
-        Rad_control%do_ch4_lw = .true.
+        if (.not.do_ch4_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_ch4_lw changed from false to true.', WARNING)
+        do_ch4_lw = .true.
       endif
 
 !---------------------------------------------------------------------
 !    define logical variable indicating whether n2o is active.
 !---------------------------------------------------------------------
       if ((.not. time_varying_n2o) .and. rn2o == 0.0) then
-        Rad_control%do_n2o_lw = .false.
+        if (do_n2o_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_n2o_lw changed from true to false.', WARNING)
+        do_n2o_lw = .false.
       else
-        Rad_control%do_n2o_lw = .true.
+        if (.not.do_n2o_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_n2o_lw changed from false to true.', WARNING)
+        do_n2o_lw = .true.
       endif
 
 !---------------------------------------------------------------------
@@ -834,9 +856,13 @@ type(radiation_control_type), intent(inout) :: Rad_control
           (.not. time_varying_f12) .and. rf12 == 0.0 .and. &
           (.not. time_varying_f113) .and. rf113 == 0.0 .and. &
           (.not. time_varying_f22) .and. rf22 == 0.0 )  then 
-        Rad_control%do_cfc_lw = .false.
+        if (do_cfc_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_cfc_lw changed from true to false.', WARNING)
+        do_cfc_lw = .false.
       else
-        Rad_control%do_cfc_lw = .true.
+        if (.not.do_cfc_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_cfc_lw changed from false to true.', WARNING)
+        do_cfc_lw = .true.
       endif
 
 !---------------------------------------------------------------------
@@ -844,16 +870,22 @@ type(radiation_control_type), intent(inout) :: Rad_control
 !    activated. currently co2 must be activated. 
 !---------------------------------------------------------------------
       if ((.not. time_varying_co2) .and. rco2 == 0.0) then
-        Rad_control%do_co2_lw = .false.
+        if (do_co2_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_co2_lw changed from true to false.', WARNING)
+        do_co2_lw = .false.
       else
-        Rad_control%do_co2_lw = .true.
+        if (.not.do_co2_lw) call error_mesg ('radiative_gases_mod', &
+            'value of do_co2_lw changed from false to true.', WARNING)
+        do_co2_lw = .true.
       endif
 
       if (.not. use_co2_10um .or. &
          (use_co2_10um .and. (.not. time_varying_co2) .and. rco2 == 0.0)) then
-        Rad_control%do_co2_10um = .false.
+        if (use_co2_10um) call error_mesg ('radiative_gases_mod', &
+            'value of use_co2_10um changed from true to false.', WARNING)
+        do_co2_10um = .false.
       else
-        Rad_control%do_co2_10um = .true.
+        do_co2_10um = .true.
       endif
 
 !--------------------------------------------------------------------
@@ -1039,7 +1071,7 @@ end subroutine radiative_gases_init
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call define_radiative_gases (is, ie, js, je, Rad_time, lat, &
-!                                pflux, Time_next, Rad_gases)
+!                                pflux, Rad_gases)
 !  </TEMPLATE>
 !  <IN NAME="is,ie,js,je" TYPE="integer">
 !   starting/ending subdomain i,j indices of data in 
@@ -1055,10 +1087,6 @@ end subroutine radiative_gases_init
 !  <IN NAME="pflux" TYPE="real">
 !   Pressure at the interface between model levels [pascals]
 !  </IN>
-!  <IN NAME="Time_next" TYPE="time_type">
-!   time on next timestep, used as stamp for diagnostic 
-!                   output  [ time_type  (days, seconds) ]
-!  </IN>
 !  <INOUT NAME="Rad_gases" TYPE="radiative_gases_type">
 !   radiative_gases_type variable containing the radi-
 !                   ative gas input fields needed by the radiation 
@@ -1067,7 +1095,7 @@ end subroutine radiative_gases_init
 ! </SUBROUTINE>
 !
 subroutine define_radiative_gases (is, ie, js, je, Rad_time, lat, &
-                                   pflux, r, Time_next, Rad_gases)
+                                   pflux, r, Rad_gases)
 
 !-------------------------------------------------------------------
 !    define_radiative_gases returns the current values of the radiative 
@@ -1075,7 +1103,7 @@ subroutine define_radiative_gases (is, ie, js, je, Rad_time, lat, &
 !-------------------------------------------------------------------
 
 integer,                    intent(in)    :: is, ie, js, je
-type(time_type),            intent(in)    :: Rad_time, Time_next
+type(time_type),            intent(in)    :: Rad_time
 real, dimension(:,:),       intent(in)    :: lat
 real, dimension(:,:,:),     intent(in)    :: pflux
 real, dimension(:,:,:,:),   intent(in)    :: r
@@ -1089,8 +1117,6 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !                   the physics_window being integrated
 !      Rad_Time     time at which radiation is to be calculated
 !                   [ time_type (days, seconds) ] 
-!      Time_next    time on next timestep, used as stamp for diagnostic 
-!                   output  [ time_type  (days, seconds) ]  
 !      lat          latitude of model points  [ radians ]
 !      pflux        pressure [in pascals] at the interface between
 !                   model levels
@@ -1198,8 +1224,9 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
 !    model ozone field at the current time. call ozone_driver to define
 !    this field for use in the radiation calculation.
 !--------------------------------------------------------------------
-      allocate (Rad_gases%qo3(ie-is+1, je-js+1,size(pflux,3)-1))
-      Rad_gases%qo3 = 0.
+
+      call Rad_gases%alloc (ie-is+1, je-js+1,size(pflux,3)-1)
+
       call ozone_driver (is, ie, js, je, lat, Rad_time, pflux, &
                          r, Rad_gases)
 
@@ -1213,7 +1240,7 @@ end subroutine define_radiative_gases
 !#####################################################################
 
 subroutine radiative_gases_time_vary (Rad_time, gavg_rrv, &
-                                      Rad_control, Rad_gases_tv)
+                                      do_lw_rad, Rad_gases_tv)
 
 !---------------------------------------------------------------------
 !     subroutine radiative_gases_time_vary calculates time-dependent, space-
@@ -1222,7 +1249,7 @@ subroutine radiative_gases_time_vary (Rad_time, gavg_rrv, &
 
 type(time_type),    intent(in)   :: Rad_time
 real, dimension(:), intent(in)   :: gavg_rrv
-type(radiation_control_type), intent(in)    :: Rad_control
+logical,            intent(in)   :: do_lw_rad
 type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 
 !---------------------------------------------------------------------
@@ -1491,10 +1518,10 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
                    co2_tfs_needed = .false.
                  endif
 !miz
-		 if (do_NxCO2) then
-	     	   rrvco2=NNN*rrvco2
+                 if (do_NxCO2) then
+                   rrvco2=NNN*rrvco2
                    co2_for_next_tf_calc = NNN*co2_for_next_tf_calc
-	  	 endif
+                 endif
 !miz
 !---------------------------------------------------------------------
 !    if time-variation is desired, but it is not yet time to begin
@@ -1525,7 +1552,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    print out the current gas mixing ratios, if desired.
 !---------------------------------------------------------------------
       if ((mpp_pe() == mpp_root_pe()) .and. verbose >= 3) then
-        if (Rad_control%do_lw_rad) then
+        if (do_lw_rad) then
           print_alarm = print_alarm - lw_rad_time_step_saved
         endif
         if (print_alarm <= 0) then
@@ -1635,7 +1662,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    define the tfs.
 !--------------------------------------------------------------------
       if (Rad_gases_tv%time_varying_ch4) then
-        if (Rad_control%do_ch4_lw) then
+        if (do_ch4_lw) then
           if (do_ch4_tf_calc) then
             gas_name = 'ch4 '
             call obtain_gas_tfs (gas_name, Rad_time,   &
@@ -1660,13 +1687,13 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    the calculation has been done.
 !---------------------------------------------------------------------
       else ! (time_varying_ch4)
-        if (Rad_control%do_ch4_lw .and. do_ch4_tf_calc ) then
+        if (do_ch4_lw .and. do_ch4_tf_calc ) then
          !call ch4_time_vary (Rad_gases_tv%rrvch4)
           Rad_gases_tv%use_ch4_for_tf_calc = .true.
           Rad_gases_tv%ch4_for_tf_calc = Rad_gases_tv%rrvch4
           do_ch4_tf_calc = .false.
           do_ch4_tf_calc_init = .false.
-        else if (.not. Rad_control%do_ch4_lw .or. .not.do_ch4_tf_calc) then
+        else if (.not. do_ch4_lw .or. .not.do_ch4_tf_calc) then
           Rad_gases_tv%use_ch4_for_tf_calc = .false.
           do_ch4_tf_calc = .false.
           do_ch4_tf_calc_init = .false.
@@ -1679,7 +1706,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    define the tfs.
 !--------------------------------------------------------------------
       if (Rad_gases_tv%time_varying_n2o) then
-        if (Rad_control%do_n2o_lw) then
+        if (do_n2o_lw) then
           if (do_n2o_tf_calc) then
             gas_name = 'n2o '
             call obtain_gas_tfs (gas_name, Rad_time,   &
@@ -1703,13 +1730,13 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    the calculation has been done.
 !---------------------------------------------------------------------
       else
-        if (Rad_control%do_n2o_lw .and. do_n2o_tf_calc) then
+        if (do_n2o_lw .and. do_n2o_tf_calc) then
          !call n2o_time_vary (Rad_gases_tv%rrvn2o)
           Rad_gases_tv%use_n2o_for_tf_calc = .true.
           Rad_gases_tv%n2o_for_tf_calc = Rad_gases_tv%rrvn2o
           do_n2o_tf_calc = .false.
           do_n2o_tf_calc_init = .false.
-        else if (.not. Rad_control%do_n2o_lw .or. .not.do_n2o_tf_calc) then
+        else if (.not. do_n2o_lw .or. .not.do_n2o_tf_calc) then
           Rad_gases_tv%use_n2o_for_tf_calc = .false.
           do_n2o_tf_calc = .false.
           do_n2o_tf_calc_init = .false.
@@ -1723,7 +1750,7 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    define the tfs.
 !--------------------------------------------------------------------
       if (Rad_gases_tv%time_varying_co2) then
-        if (Rad_control%do_co2_lw) then
+        if (do_co2_lw) then
           if (do_co2_tf_calc) then
             gas_name = 'co2 '
             call obtain_gas_tfs (gas_name, Rad_time,  &
@@ -1768,13 +1795,13 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
                endif
             endif
          else  !(Rad_gases_tv%use_model_supplied_co2)
-            if (Rad_control%do_co2_lw .and. do_co2_tf_calc) then
+            if (do_co2_lw .and. do_co2_tf_calc) then
               !call co2_time_vary (Rad_gases_tv%rrvco2)
                Rad_gases_tv%use_co2_for_tf_calc = .true.
                Rad_gases_tv%co2_for_tf_calc = Rad_gases_tv%rrvco2
                do_co2_tf_calc = .false.
                do_co2_tf_calc_init = .false.
-            else if (.not. Rad_control%do_co2_lw .or. .not.do_co2_tf_calc) then
+            else if (.not. do_co2_lw .or. .not.do_co2_tf_calc) then
                Rad_gases_tv%use_co2_for_tf_calc = .false.
                do_co2_tf_calc = .false.
                do_co2_tf_calc_init = .false.
@@ -1784,21 +1811,28 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 
 
 !--------------------------------------------------------------------
+!    save the value of the gas mixing ratio used to calculate the gas
+!    transmission functions (it may have been updated on this step)
+!    so that it is available to write to the restart file.
+!--------------------------------------------------------------------
+      co2_for_last_tf_calc = Rad_gases_tv%co2_for_last_tf_calc
+      ch4_for_last_tf_calc = Rad_gases_tv%ch4_for_last_tf_calc
+      n2o_for_last_tf_calc = Rad_gases_tv%n2o_for_last_tf_calc
+
+!--------------------------------------------------------------------
 
 
 end subroutine radiative_gases_time_vary
 
 
-
 !##################################################################
 
-subroutine radiative_gases_endts (Rad_control, Rad_gases_tv)
+subroutine radiative_gases_endts (Rad_gases_tv)
 
-type(radiation_control_type), intent(in)  :: Rad_control
 type(radiative_gases_type),   intent(inout)  :: Rad_gases_tv
 
       if (Rad_gases_tv%time_varying_ch4) then
-         if (Rad_control%do_ch4_lw) then
+         if (do_ch4_lw) then
            if (.not. calc_ch4_tfs_on_first_step) then
               do_ch4_tf_calc = .true.
            endif
@@ -1806,7 +1840,7 @@ type(radiative_gases_type),   intent(inout)  :: Rad_gases_tv
       endif
 
       if (Rad_gases_tv%time_varying_n2o) then
-         if (Rad_control%do_n2o_lw) then
+         if (do_n2o_lw) then
            if (.not. calc_n2o_tfs_on_first_step) then
              do_n2o_tf_calc = .true.
           endif
@@ -1814,7 +1848,7 @@ type(radiative_gases_type),   intent(inout)  :: Rad_gases_tv
       endif
 
       if (Rad_gases_tv%time_varying_co2) then
-        if (Rad_control%do_co2_lw) then
+        if (do_co2_lw) then
           if (.not. calc_co2_tfs_on_first_step) then
             do_co2_tf_calc = .true.
           endif
@@ -1823,11 +1857,9 @@ type(radiative_gases_type),   intent(inout)  :: Rad_gases_tv
 
       call ozone_endts
 
+!--------------------------------------------------------------------
 
 end subroutine radiative_gases_endts
-
-
-!##################################################################
 
 !####################################################################
 ! <SUBROUTINE NAME="radiative_gases_end">
@@ -1906,112 +1938,43 @@ subroutine radiative_gases_restart(timestamp)
 
 end subroutine radiative_gases_restart
 ! </SUBROUTINE>
+!#######################################################################
 
-!####################################################################
-! <SUBROUTINE NAME="radiative_gases_dealloc">
-!  <OVERVIEW>
-!    radiative_gases_end is the destructor for radiative_gases_mod.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    radiative_gases_end is the destructor for radiative_gases_mod.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call radiative_gases_dealloc (Rad_gases)
-!  </TEMPLATE>
-!  <INOUT NAME="Rad_gases" TYPE="radiative_gases_type">
-!   radiative_gases_type variable containing the radi-
-!              ative gas input fields needed by the radiation package
-!  </INOUT>
-! </SUBROUTINE>
-!
-subroutine radiative_gases_dealloc (Rad_gases)
+function get_longwave_gas_flag (gas)
+character(len=*), intent(in) :: gas
+logical :: get_longwave_gas_flag
 
-!---------------------------------------------------------------------
-!
 !--------------------------------------------------------------------
 
-type(radiative_gases_type), intent(inout)  :: Rad_gases
-
-!---------------------------------------------------------------------
-!  intent(inout) variable:
-!
-!     Rad_gases
-!
-!---------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!    be sure module has been initialized.
-!---------------------------------------------------------------------
       if (.not. module_is_initialized ) then
         call error_mesg ( 'radiative_gases_mod', &
-             'module has not been initialized', FATAL )
+               'module has not been initialized', FATAL )
       endif
 
 !--------------------------------------------------------------------
-!    deallocate the variables in Rad_gases.
+      
+      if (trim(gas) .eq. 'h2o') then
+          get_longwave_gas_flag = do_h2o
+      else if (trim(gas) .eq. 'o3') then
+          get_longwave_gas_flag = do_o3
+      else if (trim(gas) .eq. 'ch4') then
+          get_longwave_gas_flag = do_ch4_lw
+      else if (trim(gas) .eq. 'n2o') then
+          get_longwave_gas_flag = do_n2o_lw
+      else if (trim(gas) .eq. 'co2') then
+          get_longwave_gas_flag = do_co2_lw
+      else if (trim(gas) .eq. 'cfc') then
+          get_longwave_gas_flag = do_cfc_lw
+      else if (trim(gas) .eq. 'co2_10um') then
+          get_longwave_gas_flag = do_co2_10um
+      else
+          call error_mesg ( 'radiative_gases_mod', &
+             'invalid gas as input to get_longwave_gas_flag', FATAL )
+      end if
+
 !--------------------------------------------------------------------
-      deallocate (Rad_gases%qo3)
 
-
-!--------------------------------------------------------------------
-!    save the value of the gas mixing ratio used to calculate the gas
-!    transmission functions (it may have been updated on this step)
-!    so that it is available to write to the restart file.
-!--------------------------------------------------------------------
-      co2_for_last_tf_calc = Rad_gases%co2_for_last_tf_calc
-      ch4_for_last_tf_calc = Rad_gases%ch4_for_last_tf_calc
-      n2o_for_last_tf_calc = Rad_gases%n2o_for_last_tf_calc
-
-!---------------------------------------------------------------------
-
-
-end subroutine radiative_gases_dealloc 
-
-
-!####################################################################
-
-subroutine radiative_gases_type_eq (Rad_gases_out, Rad_gases_in)
-type(radiative_gases_type), intent(inout) :: Rad_gases_out
-type(radiative_gases_type), intent(in)    :: Rad_gases_in
-
-!---------------------------------------------------------------------
-!   copy all the data except ozone
-!   that will allocated and assigned elsewhere
-!---------------------------------------------------------------------
-
-      Rad_gases_out%ch4_tf_offset = Rad_gases_in%ch4_tf_offset
-      Rad_gases_out%n2o_tf_offset = Rad_gases_in%n2o_tf_offset
-      Rad_gases_out%co2_tf_offset = Rad_gases_in%co2_tf_offset
-      Rad_gases_out%ch4_for_next_tf_calc = Rad_gases_in%ch4_for_next_tf_calc
-      Rad_gases_out%n2o_for_next_tf_calc = Rad_gases_in%n2o_for_next_tf_calc
-      Rad_gases_out%co2_for_next_tf_calc = Rad_gases_in%co2_for_next_tf_calc
-      Rad_gases_out%rrvch4  = Rad_gases_in%rrvch4
-      Rad_gases_out%rrvn2o  = Rad_gases_in%rrvn2o
-      Rad_gases_out%rrvf11  = Rad_gases_in%rrvf11
-      Rad_gases_out%rrvf12  = Rad_gases_in%rrvf12
-      Rad_gases_out%rrvf113 = Rad_gases_in%rrvf113
-      Rad_gases_out%rrvf22  = Rad_gases_in%rrvf22
-      Rad_gases_out%rrvco2  = Rad_gases_in%rrvco2
-      Rad_gases_out%time_varying_co2  = Rad_gases_in%time_varying_co2
-      Rad_gases_out%time_varying_ch4  = Rad_gases_in%time_varying_ch4
-      Rad_gases_out%time_varying_n2o  = Rad_gases_in%time_varying_n2o
-      Rad_gases_out%time_varying_f11  = Rad_gases_in%time_varying_f11
-      Rad_gases_out%time_varying_f12  = Rad_gases_in%time_varying_f12
-      Rad_gases_out%time_varying_f113 = Rad_gases_in%time_varying_f113
-      Rad_gases_out%time_varying_f22  = Rad_gases_in%time_varying_f22
-      Rad_gases_out%Co2_time = Rad_gases_in%Co2_time
-      Rad_gases_out%Ch4_time = Rad_gases_in%Ch4_time
-      Rad_gases_out%N2o_time = Rad_gases_in%N2o_time
-      Rad_gases_out%use_model_supplied_co2 = Rad_gases_in%use_model_supplied_co2
-
-      Rad_gases_out%co2_for_last_tf_calc = Rad_gases_in%co2_for_last_tf_calc
-      Rad_gases_out%ch4_for_last_tf_calc = Rad_gases_in%ch4_for_last_tf_calc
-      Rad_gases_out%n2o_for_last_tf_calc = Rad_gases_in%n2o_for_last_tf_calc
-
-!---------------------------------------------------------------------
-
-end subroutine radiative_gases_type_eq
-
+end function get_longwave_gas_flag
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !                                
@@ -2322,15 +2285,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rch4_ipcc_80  = 1.56900E-06
-      real       ::  rch4_ipcc_92  = 1.71400E-06
-      real       ::  rch4_icrccm   = 1.75000E-06
-      real       ::  rch4_ipcc_98  = 1.82120E-06
-
-
 
 
       integer    :: inrad   ! unit number for i/o
@@ -2340,10 +2294,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial ch4 mixing ratios to be used.
-!    'icrccm'     --> rch4_icrccm
-!    'ipcc80'     --> rch4_ipcc_80
-!    'ipcc92'     --> rch4_ipcc_92
-!    'ipcc98'     --> rch4_ipcc_98
 !    'input'      --> file INPUT/id1ch4n2o, record 1
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2361,37 +2311,21 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (ch4_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rch4   = rch4_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rch4   = rch4_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rch4   = rch4_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rch4   = rch4_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
-        if (trim(ch4_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)')  rch4
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired ch4_n2o input file is not present', FATAL)
-          endif
-        else
+      if (trim(data_source) == 'input') then
+        if (trim(ch4_specification_type) == 'time_series') then
           gas_name = 'ch4 '
           call read_gas_timeseries (gas_name, ch4_value, &
                                     Ch4_time_list, time_varying_ch4, &
                                     ch4_dataset_entry, rch4)   
+        else if (trim(ch4_specification_type) == 'base_and_trend') then
+          rch4 = ch4_base_value
+        else 
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid ch4 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -2407,46 +2341,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') rch4
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor ch4 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of ch4 is obtained from the namelist
+!    variable ch4_base_value.
+!    Current, predicted values of ch4 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') rch4
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor ch4 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rch4 = ch4_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'ch4 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of ch4 is obtained
@@ -2480,9 +2387,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
 end subroutine define_ch4
-
 
 
 !#####################################################################
@@ -2529,16 +2434,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rn2o_ipcc_80  = 3.02620E-07
-      real       ::  rn2o_ipcc_92  = 3.11000E-07
-      real       ::  rn2o_icrccm   = 2.80000E-07
-      real       ::  rn2o_ipcc_98  = 3.16000E-07
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -2547,10 +2442,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial n2o mixing ratios to be used.
-!    'icrccm'     --> rn2o_icrccm
-!    'ipcc80'     --> rn2o_ipcc_80
-!    'ipcc92'     --> rn2o_ipcc_92
-!    'ipcc98'     --> rn2o_ipcc_98
 !    'input'      --> file INPUT/id1ch4n2o, record 2
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2568,38 +2459,21 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (n2o_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rn2o   = rn2o_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rn2o   = rn2o_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rn2o   = rn2o_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rn2o   = rn2o_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
-        if (trim(n2o_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rn2o
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired ch4_n2o input file is not present', FATAL)
-          endif
-        else
+      if (trim(data_source) == 'input') then
+        if (trim(n2o_specification_type) == 'time_series') then
           gas_name = 'n2o '
           call read_gas_timeseries (gas_name, n2o_value,   &
                                     N2o_time_list, time_varying_n2o, &
                                     n2o_dataset_entry, rn2o)   
+        else if (trim(n2o_specification_type) == 'base_and_trend') then
+          rn2o = ch4_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid n2o specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -2615,48 +2489,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rn2o
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor n2o input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of n2o is obtained from the namelist
+!    variable n2o_base_value.
+!    Current, predicted values of n2o can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1ch4n2o') ) then
-            inrad = open_namelist_file ('INPUT/id1ch4n2o')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rn2o
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor n2o input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rn2o = ch4_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'n2o data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of n2o is obtained
@@ -2691,10 +2536,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_n2o
-
 
 
 !#####################################################################
@@ -2741,16 +2583,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf11_icrccm   = 1.00000E-09
-      real       ::  rf11_ipcc_80  = 1.57500E-10
-      real       ::  rf11_ipcc_92  = 2.68000E-10
-      real       ::  rf11_ipcc_98  = 2.68960E-10
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -2759,10 +2591,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f11 mixing ratios to be used.
-!    'icrccm'     --> rf11_icrccm
-!    'ipcc80'     --> rf11_ipcc_80
-!    'ipcc92'     --> rf11_ipcc_92
-!    'ipcc98'     --> rf11_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 1
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2778,39 +2606,23 @@ character(len=8)     :: gas_name ! name associated with current
       if (trim(f11_specification_type) /= 'time_series') then
         allocate (F11_time_list(1))
         allocate (f11_value(1))
-     endif
-
-      if (trim(data_source)      == 'icrccm') then
-        rf11   = rf11_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf11   = rf11_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf11   = rf11_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf11   = rf11_ipcc_98
+      endif
 
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
-        if (trim(f11_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  rf11
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired cfc input file is not present', FATAL)
-          endif
-        else
+      if (trim(data_source) == 'input') then
+        if (trim(f11_specification_type) == 'time_series') then
           gas_name = 'f11 '
           call read_gas_timeseries (gas_name, f11_value,   &
                                     F11_time_list, time_varying_f11, &
                                     f11_dataset_entry, rf11)   
+        else if (trim(f11_specification_type) == 'base_and_trend') then
+          rf11 = f11_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f11 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -2826,46 +2638,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') rf11
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f11 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f11 is obtained from the namelist
+!    variable f11_base_value.
+!    Current, predicted values of f11 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') rf11
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f11 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf11 = f11_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f11 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f11 is obtained
@@ -2899,11 +2684,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f11
-
-
 
 
 !#####################################################################
@@ -2950,16 +2731,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf12_icrccm   = 1.00000E-09
-      real       ::  rf12_ipcc_80  = 2.72500E-10
-      real       ::  rf12_ipcc_92  = 5.03000E-10
-      real       ::  rf12_ipcc_98  = 5.31510E-10
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -2968,10 +2739,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f12 mixing ratios to be used.
-!    'icrccm'     --> rf12_icrccm
-!    'ipcc80'     --> rf12_ipcc_80
-!    'ipcc92'     --> rf12_ipcc_92
-!    'ipcc98'     --> rf12_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 2
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -2989,38 +2756,21 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (f12_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rf12   = rf12_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf12   = rf12_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf12   = rf12_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf12   = rf12_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
-        if (trim(f12_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rf12
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired cfc input file is not present', FATAL)
-          endif
-        else
+      if (trim(data_source) == 'input') then
+        if (trim(f12_specification_type) == 'time_series') then
           gas_name = 'f12 '
           call read_gas_timeseries (gas_name, f12_value,   &
                                     F12_time_list, time_varying_f12, &
                                     f12_dataset_entry, rf12)
+        else if (trim(f12_specification_type) == 'base_and_trend') then
+          rf12 = f12_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f12 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -3036,48 +2786,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf12
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f12 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f12 is obtained from the namelist
+!    variable f12_base_value.
+!    Current, predicted values of f12 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf12
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f12 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf12 = f12_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f12 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f12 is obtained
@@ -3111,11 +2832,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f12
-
-
 
 
 !#####################################################################
@@ -3162,16 +2879,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf113_icrccm  = 1.00000E-09
-      real       ::  rf113_ipcc_80 = 2.31400E-11
-      real       ::  rf113_ipcc_92 = 8.20000E-11
-      real       ::  rf113_ipcc_98 = 8.58100E-11
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -3180,10 +2887,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f113 mixing ratios to be used.
-!    'icrccm'     --> rf113_icrccm
-!    'ipcc80'     --> rf113_ipcc_80
-!    'ipcc92'     --> rf113_ipcc_92
-!    'ipcc98'     --> rf113_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 3
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -3201,39 +2904,21 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (f113_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rf113   = rf113_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf113   = rf113_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf113   = rf113_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf113   = rf113_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
-        if (trim(f113_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rf113
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired f113 input file is not present', FATAL)
-          endif
-        else
+      if (trim(data_source) == 'input') then
+        if (trim(f113_specification_type) == 'time_series') then
           gas_name = 'f113'
           call read_gas_timeseries (gas_name, f113_value,   &
                                   F113_time_list, time_varying_f113, &
                                   f113_dataset_entry, rf113 )
+        else if (trim(f113_specification_type) == 'base_and_trend') then
+          rf113 = f113_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f113 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -3249,50 +2934,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf113
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f113 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f113 is obtained from the namelist
+!    variable f113_base_value.
+!    Current, predicted values of f113 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf113
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f113 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf113 = f113_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f113 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f113 is obtained
@@ -3326,10 +2980,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f113
-
 
 
 !#####################################################################
@@ -3376,16 +3027,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rf22_icrccm   = 1.00000E-09
-      real       ::  rf22_ipcc_80  = 6.20200E-11
-      real       ::  rf22_ipcc_92  = 1.05000E-10
-      real       ::  rf22_ipcc_98  = 1.26520E-10
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -3394,10 +3035,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial f22 mixing ratios to be used.
-!    'icrccm'     --> rf22_icrccm
-!    'ipcc80'     --> rf22_ipcc_80
-!    'ipcc92'     --> rf22_ipcc_92
-!    'ipcc98'     --> rf22_ipcc_98
 !    'input'      --> file INPUT/id1cfc, record 4
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -3415,40 +3052,21 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (f22_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rf22   = rf22_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rf22   = rf22_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rf22   = rf22_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rf22   = rf22_ipcc_98
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
-        if (trim(f22_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  
-            read (inrad, FMT = '(5e18.10)')  rf22
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired cfc input file is not present', FATAL)
-          endif
-        else
+      if (trim(data_source) == 'input') then
+        if (trim(f22_specification_type) == 'time_series') then
           gas_name = 'f22 '
           call read_gas_timeseries (gas_name, f22_value,  &
                                     F22_time_list, time_varying_f22, &
                                     f22_dataset_entry, rf22)
+        else if (trim(f22_specification_type) == 'base_and_trend') then
+          rf22 = f22_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid f22 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -3464,52 +3082,19 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf22
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f22 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of f22 is obtained from the namelist
+!    variable f22_base_value.
+!    Current, predicted values of f22 can not be used in radiation.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1cfc') ) then
-            inrad = open_namelist_file ('INPUT/id1cfc')
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') 
-            read (inrad, FMT = '(5e18.10)') rf22
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor f22 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rf22 = f22_base_value
         endif
+        call error_mesg ( 'radiative_gases_mod', &
+          'f22 data_source = "predicted" is currently not supported', &
+           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of f22 is obtained
@@ -3543,10 +3128,7 @@ character(len=8)     :: gas_name ! name associated with current
 !---------------------------------------------------------------------
 
 
-
-
 end subroutine define_f22
-
 
 
 !#####################################################################
@@ -3593,19 +3175,6 @@ character(len=*), intent(in)    ::  data_source
 !   local variables:
 !
 !---------------------------------------------------------------------
-!    initial trace gas volume mixing ratios in (no./no.) from various
-!    sources.
-!---------------------------------------------------------------------
-      real       ::  rco2_icrccm   = 3.00000E-04
-      real       ::  rco2_ipcc_92  = 3.56000E-04
-      real       ::  rco2_ipcc_80  = 3.37320E-04
-      real       ::  rco2_ipcc_98  = 3.69400E-04
-      real       ::  rco2_330ppm   = 3.30000E-04
-      real       ::  rco2_660ppm   = 6.60000E-04
-      real       ::  rco2_720ppm   = 7.20000E-04
-
-
-
 
       integer    :: inrad   ! unit number for i/o
 
@@ -3614,12 +3183,6 @@ character(len=8)     :: gas_name ! name associated with current
 
 !---------------------------------------------------------------------
 !    define initial co2 mixing ratios to be used.
-!    'icrccm'     --> rco2_icrccm
-!    'ipcc80'     --> rco2_ipcc_80
-!    'ipcc92'     --> rco2_ipcc_92
-!    'ipcc98'     --> rco2_ipcc_98
-!    '330ppm'     --> rco2_330ppm 
-!    '660ppm'     --> rco2_660ppm 
 !    'input'      --> file INPUT/id1co2, record 2
 !    'restart'    --> values read from restart file
 !    'prescribed' --> from restart file; if restart not present, 
@@ -3637,46 +3200,21 @@ character(len=8)     :: gas_name ! name associated with current
         allocate (co2_value(1))
       endif
 
-      if (trim(data_source)      == 'icrccm') then
-        rco2   = rco2_icrccm
-
-      else if (trim(data_source) == 'ipcc_80') then
-        rco2   = rco2_ipcc_80
-
-      else if (trim(data_source) == 'ipcc_92') then
-        rco2   = rco2_ipcc_92  
-
-      else if (trim(data_source) == 'ipcc_98') then
-        rco2   = rco2_ipcc_98
-
-      else if (trim(data_source) == '330ppm') then
-        rco2   = rco2_330ppm
-
-      else if (trim(data_source) == '660ppm') then
-        rco2   = rco2_660ppm
-
-      else if (trim(data_source) == '720ppm') then
-        rco2   = rco2_720ppm
-
 !--------------------------------------------------------------------
 !    if data_source is an input file, determine if it is present. if so,
 !    open and read.  if not present, write an error message and stop.
 !--------------------------------------------------------------------
-      else if (trim(data_source) == 'input') then
-        if (trim(co2_specification_type) /= 'time_series') then
-          if (file_exist ('INPUT/id1co2') ) then
-            inrad = open_namelist_file ('INPUT/id1co2')
-            read (inrad, FMT = '(5e18.10)')  rco2
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-                   'desired co2 input file is not present', FATAL)
-          endif
-        else
+      if (trim(data_source) == 'input') then
+        if (trim(co2_specification_type) == 'time_series') then
           gas_name = 'co2 '
           call read_gas_timeseries (gas_name, co2_value, &
                                     Co2_time_list, time_varying_co2, &
                                     co2_dataset_entry, rco2)
+        else if (trim(co2_specification_type) == 'base_and_trend') then
+          rco2 = co2_base_value
+        else
+          call error_mesg ( 'radiative_gases_mod', &
+                            'invalid co2 specification_type', FATAL)
         endif
 
 !--------------------------------------------------------------------
@@ -3692,46 +3230,14 @@ character(len=8)     :: gas_name ! name associated with current
         endif
 
 !--------------------------------------------------------------------
-!    if data_source is 'prescribed' and a restart file is present, the 
-!    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
-!--------------------------------------------------------------------
-      else if (trim(data_source) == 'prescribed') then
-        if (.not. restart_present) then
-          if (file_exist ('INPUT/id1co2') ) then
-            inrad = open_namelist_file ('INPUT/id1co2')
-            read (inrad, FMT = '(5e18.10)') rco2
-            call close_file (inrad)
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor co2 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"prescribed" ', FATAL)
-          endif
-        endif
-
-!--------------------------------------------------------------------
 !    if data_source is 'predicted' and a restart file is present, the 
 !    value to be used has been previously read. if a restart file is
-!    not present, check for an input file. if it is present, read the
-!    file; if not, write an error message and stop. set the time_vary-
-!    ing flag to .true.
+!    not present, the value of co2 is obtained from the namelist
+!    variable co2_base_value.
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          if (file_exist ('INPUT/id1co2') ) then
-            inrad = open_namelist_file ('INPUT/id1co2')
-            read (inrad, FMT = '(5e18.10)') rco2
-            call close_file (inrad)
-            co2_for_last_tf_calc = rco2
-          else
-            call error_mesg ( 'radiative_gases_mod', &
-              'neither restart nor co2 input file is present. one '//&
-          'of these is required when the data_source is  '//&
-          '"predicted" ', FATAL)
-          endif
+          rco2 = co2_base_value
         endif
 
 !-------------------------------------------------------------------

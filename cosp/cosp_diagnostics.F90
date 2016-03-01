@@ -46,9 +46,7 @@ use diag_manager_mod,         only: register_diag_field, send_data,  &
 USE MOD_COSP_TYPES,           only: cosp_config, cosp_gridbox,   &
                                     cosp_subgrid, cosp_sgradar,  &
                                     cosp_sglidar, cosp_isccp, &
-#ifdef RTTOV
                                     cosp_rttov, &
-#endif
                                     cosp_vgrid, cosp_radarstats,  &
                                     cosp_lidarstats, &
                                     cosp_sghydro,  cosp_misr, &
@@ -66,7 +64,9 @@ use MOD_COSP_CONSTANTS,       only: DBZE_BINS,SR_BINS, PARASOL_NREFL,  &
                                     I_CVSNOW, &
                                     N_HYDRO, ISCCP_TAU_BNDS,&
                                     RTTOV_MAX_CHANNELS, MISR_N_CTH,  &
-                                    MISR_CTH_BNDS
+                                    MISR_CTH_BNDS,  &
+                                    LIDAR_NTEMP, LIDAR_PHASE_TEMP, &
+                                    ISCCP_PC, MISR_CTH
 use MOD_LMD_IPSL_STATS,       only: define_srbval
 use MOD_COSP_Modis_Simulator, only: COSP_MODIS
 use mod_modis_sim,            only: numTauHistogramBins,   &
@@ -87,6 +87,7 @@ public cosp_diagnostics_init, output_cosp_fields, cosp_diagnostics_end, &
 
 character(len=128)  :: version =  '$Id $'
 character(len=128)  :: tagname =  '$Name $'
+!   cosp_version = 1.4.0
 
 !---------------------------------------------------------------------
 !namelist variables
@@ -108,7 +109,7 @@ namelist/cosp_diagnostics_nml/ output_p_and_z_by_index, &
 
 character(len=16)       :: mod_name = 'cosp'
 
-integer, dimension(14)  :: cosp_axes
+integer, dimension(18)  :: cosp_axes
 
 integer :: id_lat, id_lon, id_p, id_ph, id_z, id_zh, id_T, id_sh, &
            id_u_wind, id_v_wind, id_mr_ozone, &
@@ -126,16 +127,24 @@ integer :: id_lat, id_lon, id_p, id_ph, id_z, id_zh, id_T, id_sh, &
            id_sfcht, id_sunlit
 integer :: id_cltcalipso_sat, id_cllcalipso_sat, id_clmcalipso_sat,  &
            id_clhcalipso_sat
+integer :: id_cllcalipsoice, id_cllcalipsoliq, id_cllcalipsoun, &
+           id_clmcalipsoice, id_clmcalipsoliq, id_clmcalipsoun, &
+           id_clhcalipsoice, id_clhcalipsoliq, id_clhcalipsoun, &
+           id_cltcalipsoice, id_cltcalipsoliq, id_cltcalipsoun
+integer :: id_clcalipsotmp, id_clcalipsotmpice, id_clcalipsotmpliq, &
+           id_clcalipsotmpun
 integer :: id_cltcalipso, id_cllcalipso, id_clmcalipso, id_clhcalipso, &
            id_cltlidarradar, id_tclisccp, id_ctpisccp, id_tauisccp, &
            id_tbisccp, id_tbclrisccp, &
            id_betamol532, &
            id_albisccp, id_clcalipso, id_clcalipso2, &
+           id_clcalipsoice, id_clcalipsoliq, id_clcalipsoun, &
            id_clcalipso_sat, id_clcalipso2_sat, &
            id_clcalipso_mdl, id_clcalipso2_mdl, &
            id_boxtauisccp, id_boxptopisccp, id_parasolrefl, &
            id_parasolrefl_sat, &
            id_sampling_sat, id_location_sat, id_lat_sat, id_lon_sat
+integer :: id_tbrttov
 integer :: id_tclmodis, id_lclmodis, id_iclmodis, id_ttaumodis, &
            id_ltaumodis, id_itaumodis, id_tlogtaumodis, &
            id_llogtaumodis, id_ilogtaumodis, id_lremodis, &
@@ -169,7 +178,8 @@ logical, dimension(:,:,:,:), allocatable   :: lflag_array_temp, &
                                               lflag_array_parasol
 real, dimension(:,:,:), allocatable        :: flag_array
 type(time_type), dimension(:), allocatable :: Time_start, Time_end
-integer   :: imax, jmax, nlr, nlevels, ncolumns
+integer   :: imax, jmax, nlr, nlevels, ncolumns, nchannels
+integer, dimension(:), allocatable :: channels
 integer   :: nsat_time_prev
 integer   :: nsat_time
 logical   :: use_vgrid, csat_vgrid
@@ -184,7 +194,7 @@ contains
 
 subroutine cosp_diagnostics_init     &
              (imax_in, jmax_in, Time, axes, nlevels_in, ncolumns_in, cfg, &
-              use_vgrid_in, csat_vgrid_in, nlr_in)       
+              use_vgrid_in, csat_vgrid_in, nlr_in, nchannels_in, channels_in)       
 
 type(time_type), intent(in) :: Time
 integer, dimension(4), intent(in) :: axes
@@ -193,7 +203,8 @@ integer, intent(in) :: nlevels_in, ncolumns_in
 logical, intent(in) :: use_vgrid_in
 type(cosp_config), intent(in) :: cfg   ! Configuration options
 logical, intent(in) :: csat_vgrid_in
-integer, intent (in) :: nlr_in
+integer, intent (in) :: nlr_in, nchannels_in
+integer, dimension(:), intent(in) :: channels_in
 
    integer :: io, unit, ierr, logunit
 
@@ -230,8 +241,11 @@ integer, intent (in) :: nlr_in
     nlr = nlr_in
     nlevels = nlevels_in
     ncolumns = ncolumns_in
+    nchannels = nchannels_in
     use_vgrid = use_vgrid_in
     csat_vgrid = csat_vgrid_in
+    allocate (channels(nchannels))
+    channels(1:nchannels) = channels_in(1:nchannels)
 
     if (generate_orbital_output) then
       if (sat_begin_time(1) == 0 .or. sat_begin_time(2) == 0 .or. &
@@ -279,6 +293,7 @@ type(time_type), intent(in) :: Time
 integer, dimension(4), intent(in) :: axes
 type(cosp_config), intent(in) :: cfg   ! Configuration options
 
+   real :: channel_ax(Nchannels)
    real :: column_ax(Ncolumns)
    real :: level_ax(Nlevels )
    real :: isccp_ax(7)           
@@ -290,6 +305,9 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    real :: csat_ax(NLR)
    real :: month_ax(12)
    real :: hr_ax(num_sat_periods)
+   real :: misr_ax(MISR_N_CTH)
+   real :: temp_ax(LIDAR_NTEMP)
+   real :: press2_ax(7)
    integer :: parasol_ax(PARASOL_NREFL)
    integer, dimension(3) :: halfindx = (/1,2,4/)
    integer, dimension(3) :: columnindx = (/1,2,5/)
@@ -302,6 +320,10 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    integer, dimension(3) :: csatindx = (/1,2,10/)
    integer, dimension(3) :: samplingindx = (/1,2,13/)
    integer, dimension(3) :: samplingindx2 = (/1,2,14/)
+   integer, dimension(3) :: channelindx = (/1,2,15/)
+   integer, dimension(3) :: phasetempindx = (/1,2,16/)
+   integer, dimension(3) :: isccppindx = (/1,2,17/)
+   integer, dimension(3) :: misrbinindx = (/1,2,18/)
    integer :: i, n, m
    integer :: id_columnindx, id_parasolindx, id_dbzeindx, id_lidarindx
    integer :: id_levelindx
@@ -310,6 +332,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    integer :: id_csatindx
    integer :: id_monindx
    integer :: id_3hrindx
+   integer :: id_channelindx
+   integer :: id_tempindx, id_press2indx, id_misrindx
    character(len=2) :: chvers, chvers4
    character(len=8) :: chvers2, chvers3, chvers5, chvers6
    type(cosp_gridbox) :: gbx_t ! Gridbox information. Input for COSP
@@ -363,14 +387,33 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    cosp_axes(7) = id_dbzeindx
 
 !--------------------------------------------------------------------
-!  a lidar bin counter:
+!  a lidar bin axis:
 !--------------------------------------------------------------------
 
    call define_srbval (srbval)
 
-   sratio_bounds(1,:) = srbval(:)
-   sratio_bounds(2,1:SR_BINS-1) = srbval(2:SR_BINS)
-   sratio_bounds(2,SR_BINS) = srbval(SR_BINS) +10.0
+!---------------------------------------------------------------------
+!  the following bin bounds were previously defined:
+!  sratio_bounds(1,:) = srbval(:)
+!  sratio_bounds(2,1:SR_BINS-1) = srbval(2:SR_BINS)
+!  sratio_bounds(2,SR_BINS) = srbval(SR_BINS) +10.0
+!  since lidarindx not used for any diagnostics at this time, this change
+!  will have no impact on output.
+!---------------------------------------------------------------------
+   
+!------------------------------------------------------------------------
+! Lidar scattering ratio bounds (They are output by 
+! cosp_cfad_sr->diag_lidar in lmd_ipsl_stats.f90)
+! srbval contains the upper limits from lmd_ipsl_stats.f90
+! The upper limit of 1.e5  matches with Chepfer et al., JGR, 2009. 
+! However, it is not consistent with the upper limit in lmd_ipsl_stats.f90,
+! which is LIDAR_UNDEF-1=998.999
+!------------------------------------------------------------------------
+   sratio_bounds(2,:)         =         srbval(:) 
+   sratio_bounds(1,2:SR_BINS) =         srbval(1:SR_BINS-1)
+   sratio_bounds(1,1)         = 0.0
+   sratio_bounds(2,SR_BINS)   = 1.e5 
+
    lidar_ax(1:SR_BINS) = (sratio_bounds(1,1:SR_BINS) +    &
                                            sratio_bounds(2,1:SR_BINS))/2.0
    id_lidarindx = diag_axis_init  ('lidarindx', lidar_ax, &
@@ -379,7 +422,7 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    cosp_axes(8) = id_lidarindx
 
 !--------------------------------------------------------------------
-!  an isccp tau bin counter:
+!  an isccp tau bin axis:
 !--------------------------------------------------------------------
    isccp_ax = isccp_tau
    id_tauindx = diag_axis_init  ('tauindx', isccp_ax, &
@@ -388,7 +431,7 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    cosp_axes(9) = id_tauindx
 
 !--------------------------------------------------------------------
-!  a modis tau bin counter:
+!  a modis tau bin axis:
 !--------------------------------------------------------------------
    modis_ax = nominalTauHistogramCenters
    id_modistauindx = diag_axis_init  ('modistauindx', modis_ax, &
@@ -397,7 +440,7 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    cosp_axes(12) = id_modistauindx
 
 !--------------------------------------------------------------------
-!  a specified vertical index needed when use_vgrid = .true. 
+!  a specified vertical axis needed when use_vgrid = .true. 
 !--------------------------------------------------------------------
    gbx_t%Npoints = 256       
    gbx_t%Ncolumns = ncolumns    
@@ -414,6 +457,10 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    cosp_axes(10) = id_csatindx
    deallocate (gbx_t%zlev, gbx_t%zlev_half) 
    call free_cosp_vgrid (vgrid_t)
+
+!--------------------------------------------------------------------
+!  a month axis used with the orbital output diagnostics.   
+!--------------------------------------------------------------------
    do i=1,12
      month_ax(i) = i
    end do
@@ -422,6 +469,9 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
            set_name =  mod_name)
    cosp_axes(13) = id_monindx
    
+!--------------------------------------------------------------------
+!  a time period axis used with the orbital output diagnostics.   
+!--------------------------------------------------------------------
    do i=1,num_sat_periods
      hr_ax(i) = i
    end do
@@ -429,6 +479,51 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
           'samplingindx2', 'n', '3hr index', & 
            set_name =  mod_name)
    cosp_axes(14) = id_3hrindx
+
+!--------------------------------------------------------------------
+!  a channels axis used with the rttov output diagnostics.   
+!--------------------------------------------------------------------
+   do i=1,nchannels
+     channel_ax(i) = channels(i)
+   end do
+
+   id_channelindx = diag_axis_init ('channelindx', channel_ax, &
+                 'channelindx', 'n', 'channel index', &
+                  set_name = mod_name)
+   cosp_axes(15) = id_channelindx
+
+!--------------------------------------------------------------------
+! an axis for lidar water phase output
+!--------------------------------------------------------------------
+   do i=1,LIDAR_NTEMP
+   temp_ax(i) = LIDAR_PHASE_TEMP(i)
+   end do
+   id_tempindx = diag_axis_init ('tempindx', temp_ax, &
+                    'tempindx', 'n', 'temperature index', &
+                     set_name = mod_name)
+   cosp_axes(16) = id_tempindx
+
+!--------------------------------------------------------------------
+! an axis for isccp output
+!--------------------------------------------------------------------
+   do i=1,7
+   press2_ax(i) = ISCCP_PC(i)          
+   end do
+   id_press2indx = diag_axis_init ('press2indx', press2_ax, &
+                    'press2indx', 'n', 'isccp pressure index', &
+                     set_name = mod_name)
+   cosp_axes(17) = id_press2indx
+
+!--------------------------------------------------------------------
+! an axis for misr output
+!--------------------------------------------------------------------
+   do i=1,MISR_N_CTH
+   misr_ax(i) = MISR_CTH(i)          
+   end do
+   id_misrindx = diag_axis_init ('misrindx', misr_ax, &
+                    'misrindx', 'n', 'misr bin index', &
+                     set_name = mod_name)
+   cosp_axes(18) = id_misrindx
    
 !--------------------------------------------------------------------
 !    register input fields with diag_manager.
@@ -648,6 +743,7 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
            'Cloud type present in column ' // trim(chvers), 'none')
    end do
 
+
    if (cfg%Llidar_sim) then
      id_cltcalipso = register_diag_field &
       (mod_name, 'cltcalipso', axes(1:2), Time, &
@@ -667,6 +763,66 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      id_clhcalipso = register_diag_field &
       (mod_name, 'clhcalipso', axes(1:2), Time, &
           'Lidar High-level Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_cltcalipsoice = register_diag_field &
+      (mod_name, 'cltcalipsoice', axes(1:2), Time, &
+          'Lidar Total Ice Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_cllcalipsoice = register_diag_field &
+      (mod_name, 'cllcalipsoice', axes(1:2), Time, &
+          'Lidar Low-level Ice Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clmcalipsoice = register_diag_field &
+      (mod_name, 'clmcalipsoice', axes(1:2), Time, &
+          'Lidar Mid-level Ice Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clhcalipsoice = register_diag_field &
+      (mod_name, 'clhcalipsoice', axes(1:2), Time, &
+          'Lidar High-level Ice Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_cltcalipsoliq = register_diag_field &
+      (mod_name, 'cltcalipsoliq', axes(1:2), Time, &
+          'Lidar Total Liquid Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_cllcalipsoliq = register_diag_field &
+      (mod_name, 'cllcalipsoliq', axes(1:2), Time, &
+          'Lidar Low-level Liquid Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clmcalipsoliq = register_diag_field &
+      (mod_name, 'clmcalipsoliq', axes(1:2), Time, &
+          'Lidar Mid-level Liquid Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clhcalipsoliq = register_diag_field &
+      (mod_name, 'clhcalipsoliq', axes(1:2), Time, &
+          'Lidar High-level Liquid Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_cltcalipsoun = register_diag_field &
+      (mod_name, 'cltcalipsoun', axes(1:2), Time, &
+          'Lidar Total Undefined Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_cllcalipsoun = register_diag_field &
+      (mod_name, 'cllcalipsoun', axes(1:2), Time, &
+          'Lidar Low-level Undefined Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clmcalipsoun = register_diag_field &
+      (mod_name, 'clmcalipsoun', axes(1:2), Time, &
+          'Lidar Mid-level Undefined Cloud Fraction',  'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clhcalipsoun = register_diag_field &
+      (mod_name, 'clhcalipsoun', axes(1:2), Time, &
+          'Lidar High-level Undefined Cloud Fraction',  'percent', &
           mask_variant = .true., missing_value=missing_value)
 
      if (generate_orbital_output) then
@@ -726,6 +882,41 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      id_clcalipso = register_diag_field &
       (mod_name, 'clcalipso', cosp_axes(csatindx), Time, &
        'Lidar Cloud Fraction (532 nm)', 'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clcalipsoice = register_diag_field &
+      (mod_name, 'clcalipsoice', cosp_axes(csatindx), Time, &
+       'Lidar Ice Cloud Fraction (532 nm)', 'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clcalipsoliq = register_diag_field &
+      (mod_name, 'clcalipsoliq', cosp_axes(csatindx), Time, &
+       'Lidar Liquid Cloud Fraction (532 nm)', 'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clcalipsoun = register_diag_field &
+      (mod_name, 'clcalipsoun', cosp_axes(csatindx), Time, &
+       'Lidar Undefined Cloud Fraction (532 nm)', 'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clcalipsotmp = register_diag_field &
+      (mod_name, 'clcalipsotmp', cosp_axes(phasetempindx), Time, &
+       'Lidar Total Cloud Fraction (532 nm) in temp bins', 'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clcalipsotmpice = register_diag_field &
+      (mod_name, 'clcalipsotmpice', cosp_axes(phasetempindx), Time, &
+       'Lidar Ice Cloud Fraction (532 nm) in temp bins', 'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clcalipsotmpliq = register_diag_field &
+      (mod_name, 'clcalipsotmpliq', cosp_axes(phasetempindx), Time, &
+       'Lidar Liquid Cloud Fraction (532 nm) in temp bins', 'percent', &
+          mask_variant = .true., missing_value=missing_value)
+
+     id_clcalipsotmpun = register_diag_field &
+      (mod_name, 'clcalipsotmpun', cosp_axes(phasetempindx), Time, &
+       'Lidar Undefined Cloud Fraction (532 nm) in temp bins', 'percent', &
           mask_variant = .true., missing_value=missing_value)
 
      id_clcalipso_mdl = register_diag_field &
@@ -1219,6 +1410,12 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
  endif !(Lmodis_sim)
 
 
+   if (cfg%Lrttov_sim) then
+     id_tbrttov = register_diag_field &
+      (mod_name, 'tbrttov', axes(channelindx), Time, &
+          'Rttov Brightness Temperature',  'K', &
+          mask_variant = .true., missing_value=missing_value)
+   endif
 
 
   end subroutine diag_field_init 
@@ -1267,7 +1464,7 @@ end subroutine cosp_diagnostics_endts
 
 subroutine output_cosp_fields   &
         (nlon,nlat,npoints, geomode, stlidar, stradar, isccp, modis,   &
-         misr, sgradar, sglidar, sg, Time_diag, is, js, cloud_type,   &
+         misr, sgradar, rttov, sglidar, sg, Time_diag, is, js, cloud_type,   &
          gbx, cfg, phalf_plus, zhalf_plus)
 
 !---------------------------------------------------------------------
@@ -1286,6 +1483,7 @@ type(cosp_isccp     ), intent(in) :: isccp
 type(cosp_modis     ), intent(in) :: modis
 type(cosp_misr      ), intent(in) :: misr   
 type(cosp_sgradar   ), intent(in) :: sgradar
+type(cosp_rttov     ), intent(in) :: rttov
 type(cosp_sglidar   ), intent(in) :: sglidar
 type(cosp_subgrid   ), intent(in) :: sg
 type(time_type)      , intent(in) :: Time_diag
@@ -1358,7 +1556,7 @@ endif
    call map_point_to_ll (Nlon, Nlat, geomode, x1=gbx%v_wind, y2 = y2)
    used = send_data (id_v_wind    , y2, Time_diag, is, js )
 
-   call map_point_to_ll (Nlon, Nlat, geomode, x1=gbx%sfc_height, y2 = y2)
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=gbx%zlev_half(:,1), y2 = y2)
    used = send_data (id_sfcht     , y2, Time_diag, is, js )
 
 !   3D fields:
@@ -1522,6 +1720,18 @@ endif
                                                                y2 = y2)
    used = send_data (id_cltcalipso,      y2, Time_diag, is, js , &
                                           mask = y2 /= missing_value )
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,4,1),&
+                                                               y2 = y2)
+   used = send_data (id_cltcalipsoice,      y2, Time_diag, is, js , &
+                                          mask = y2 /= missing_value )
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,4,2),&
+                                                               y2 = y2)
+   used = send_data (id_cltcalipsoliq,      y2, Time_diag, is, js , &
+                                          mask = y2 /= missing_value )
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,4,3),&
+                                                               y2 = y2)
+   used = send_data (id_cltcalipsoun,      y2, Time_diag, is, js , &
+                                          mask = y2 /= missing_value )
 
    if (generate_orbital_output) then
      used = send_data (id_cltcalipso_sat,      y2, Time_diag, is, js , &
@@ -1532,6 +1742,19 @@ endif
    call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayer(:,1),&
                                                                y2 = y2)
    used = send_data (id_cllcalipso,      y2, Time_diag, is, js , &
+                           mask = y2 /= missing_value )
+
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,1,1),&
+                                                               y2 = y2)
+   used = send_data (id_cllcalipsoice,      y2, Time_diag, is, js , &
+                           mask = y2 /= missing_value )
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,1,2),&
+                                                               y2 = y2)
+   used = send_data (id_cllcalipsoliq,      y2, Time_diag, is, js , &
+                           mask = y2 /= missing_value )
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,1,3),&
+                                                               y2 = y2)
+   used = send_data (id_cllcalipsoun,      y2, Time_diag, is, js , &
                            mask = y2 /= missing_value )
 
    if (generate_orbital_output) then
@@ -1545,6 +1768,21 @@ endif
    used = send_data (id_clmcalipso,      y2, Time_diag, is, js , &
                            mask = y2 /= missing_value )
 
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,2,1),&
+                                                               y2 = y2)
+   used = send_data (id_clmcalipsoice,      y2, Time_diag, is, js , &
+                           mask = y2 /= missing_value )
+
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,2,2),&
+                                                               y2 = y2)
+   used = send_data (id_clmcalipsoliq,      y2, Time_diag, is, js , &
+                           mask = y2 /= missing_value )
+
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,2,3),&
+                                                               y2 = y2)
+   used = send_data (id_clmcalipsoun,      y2, Time_diag, is, js , &
+                           mask = y2 /= missing_value )
+
    if (generate_orbital_output) then
      used = send_data (id_clmcalipso_sat,      y2, Time_diag, is, js , &
                                      mask = y2 /= missing_value  .and. &
@@ -1554,6 +1792,21 @@ endif
    call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayer(:,3),&
                                                                y2 = y2)
    used = send_data (id_clhcalipso,      y2, Time_diag, is, js , &
+                                           mask = y2 /= missing_value )
+
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,3,1),&
+                                                               y2 = y2)
+   used = send_data (id_clhcalipsoice,      y2, Time_diag, is, js , &
+                                           mask = y2 /= missing_value )
+
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,3,2),&
+                                                               y2 = y2)
+   used = send_data (id_clhcalipsoliq,      y2, Time_diag, is, js , &
+                                           mask = y2 /= missing_value )
+
+   call map_point_to_ll (Nlon, Nlat, geomode, x1=stlidar%cldlayerphase(:,3,3),&
+                                                               y2 = y2)
+   used = send_data (id_clhcalipsoun,      y2, Time_diag, is, js , &
                                            mask = y2 /= missing_value )
 
    if (generate_orbital_output) then
@@ -1842,6 +2095,42 @@ endif
                                                              y3 = z3)
      used = send_data (id_clcalipso,      z3 , Time_diag, is, js, 1,  &
                                   mask = z3 (:,:,:) /= missing_value )
+
+     call map_point_to_ll (Nlon, Nlat, geomode, x2=stlidar%lidarcldphase(:,:,1),&
+                                                             y3 = z3)
+     used = send_data (id_clcalipsoice,      z3 , Time_diag, is, js, 1,  &
+                                  mask = z3 (:,:,:) /= missing_value )
+
+     call map_point_to_ll (Nlon, Nlat, geomode, x2=stlidar%lidarcldphase(:,:,2),&
+                                                             y3 = z3)
+     used = send_data (id_clcalipsoliq,      z3 , Time_diag, is, js, 1,  &
+                                  mask = z3 (:,:,:) /= missing_value )
+
+     call map_point_to_ll (Nlon, Nlat, geomode, x2=stlidar%lidarcldphase(:,:,3),&
+                                                             y3 = z3)
+     used = send_data (id_clcalipsoun,      z3 , Time_diag, is, js, 1,  &
+                                  mask = z3 (:,:,:) /= missing_value )
+
+     call map_point_to_ll (Nlon, Nlat, geomode, x2=stlidar%lidarcldtmp(:,:,1),&
+                                                             y3 = z3)
+     used = send_data (id_clcalipsotmp,      z3 , Time_diag, is, js, 1,  &
+                                  mask = z3 (:,:,:) /= missing_value )
+
+     call map_point_to_ll (Nlon, Nlat, geomode, x2=stlidar%lidarcldtmp(:,:,2),&
+                                                             y3 = z3)
+     used = send_data (id_clcalipsotmpice,      z3 , Time_diag, is, js, 1,  &
+                                  mask = z3 (:,:,:) /= missing_value )
+
+     call map_point_to_ll (Nlon, Nlat, geomode, x2=stlidar%lidarcldtmp(:,:,3),&
+                                                             y3 = z3)
+     used = send_data (id_clcalipsotmpliq,      z3 , Time_diag, is, js, 1,  &
+                                  mask = z3 (:,:,:) /= missing_value )
+
+     call map_point_to_ll (Nlon, Nlat, geomode, x2=stlidar%lidarcldtmp(:,:,4),&
+                                                             y3 = z3)
+     used = send_data (id_clcalipsotmpun,      z3 , Time_diag, is, js, 1,  &
+                                  mask = z3 (:,:,:) /= missing_value )
+
      if (generate_orbital_output) then
        used = send_data (id_clcalipso_sat,   z3 , Time_diag, is, js, 1,  &
                                mask = (z3 (:,:,:) /= missing_value) .and.& 
@@ -2044,6 +2333,14 @@ endif
                           is, js, mask = y10(:,:,m,n) /= missing_value )
      end do
    end do
+ endif
+
+ if (cfg%Lrttov_sim) then
+   call map_point_to_ll (Nlon, Nlat, geomode,   &
+                                       x2=rttov%tbs, y3 = z3)
+!    call flip_vert_index    (y3, nlevels,y3a   )
+   used = send_data (id_tbrttov, z3, Time_diag, is, js, 1 , &
+                                          mask = z3 /= missing_value )
  endif
 
 !-------------------------------------------------------------------

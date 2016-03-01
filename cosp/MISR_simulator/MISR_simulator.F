@@ -1,17 +1,9 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
-
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
 ! 
 ! Copyright (c) 2009,  Roger Marchand, version 1.2
 ! All rights reserved.
+! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/MISR_simulator/MISR_simulator.f $
 ! 
 ! Redistribution and use in source and binary forms, with or without modification, are permitted 
 ! provided that the following conditions are met:
@@ -43,12 +35,12 @@
      &     dtau_s,
      &     dtau_c,
      &     frac_out,
-     &     missing_value, 
+     &     missing_value,
      &     fq_MISR_TAU_v_CTH,
      &     dist_model_layertops,
      &     MISR_mean_ztop,
      &     MISR_cldarea,
-     &     dtau_col 
+     &     dtau_col
      & )
 #else
       SUBROUTINE MISR_simulator(
@@ -209,8 +201,8 @@
 #ifdef COSP_GFDL
            if (present(dtau_col)) then
                  dtau = dtau_col(j,ibox,ilev)
-              else
-#endif    
+           else
+#endif
              dtau=0
              
              if (frac_out(j,ibox,ilev).eq.1) then
@@ -362,6 +354,8 @@
          ! adjust based on neighboring subcolumns ....
 #ifdef COSP_GFDL
 !RSH ADDS j loop and uses j as index rather than just j=1:
+! Not certain this is proper but it is needed to provide reproducibility
+! across domain decomposition.
           do j=1,npoints
 #endif
          do ibox=2,ncol-1
@@ -379,25 +373,25 @@
                     box_MISR_ztop(1,ibox) =
      &                      box_MISR_ztop(1,ibox+1)    
 #else
-
-            if(box_MISR_ztop(j,ibox-1).gt.0 .and. 
+ 
+            if(box_MISR_ztop(j,ibox-1).gt.0 .and.
      &             box_MISR_ztop(j,ibox+1).gt.0        ) then
 
-                if( abs( box_MISR_ztop(j,ibox-1) -  
-     &                   box_MISR_ztop(j,ibox+1) ) .lt. 500 
+                if( abs( box_MISR_ztop(j,ibox-1) -
+     &                   box_MISR_ztop(j,ibox+1) ) .lt. 500
      &              .and.
-     &                   box_MISR_ztop(j,ibox) .lt. 
+     &                   box_MISR_ztop(j,ibox) .lt.
      &                   box_MISR_ztop(j,ibox+1)     ) then
-            
+
                     box_MISR_ztop(j,ibox) =
-     &                      box_MISR_ztop(j,ibox+1)    
+     &                      box_MISR_ztop(j,ibox+1)
 #endif
                 endif
 
             endif
          enddo
 #ifdef COSP_GFDL
-         enddo
+          enddo
 #endif
       
         endif

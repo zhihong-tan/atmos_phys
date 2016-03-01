@@ -36,23 +36,23 @@ use diag_manager_mod,     only: diag_manager_init, get_base_time
 
 !   shared radiation package modules:
  
-use rad_utilities_mod,    only: radiation_control_type, &
-                                radiative_gases_type,   &
-                                astronomy_type
-
-use aerosolrad_types_mod, only: aerosolrad_control_type
-
-!  radiation package modules:
+use radiation_driver_types_mod, only: radiation_control_type, &
+                                      astronomy_type
 
 use esfsw_driver_mod,     only: esfsw_driver_init, swresf,   &
                                 esfsw_driver_end, &
                                 shortwave_number_of_bands => esfsw_number_of_bands, &
-                                esfsw_solar_flux, &
-                                sw_output_type, assignment(=)
+                                esfsw_solar_flux
 
-use solar_data_mod,       only: solar_data_init, &
-                                solar_data_time_vary, &
-                                solar_data_end
+!  radiation package modules:
+
+use shortwave_types_mod,  only: sw_output_type, assignment(=)
+
+use radiative_gases_types_mod, only: radiative_gases_type
+
+use solar_data_driver_mod, only: solar_data_driver_init, &
+                                 solar_data_driver_time_vary, &
+                                 solar_data_driver_end
 
 !-------------------------------------------------------------------
 
@@ -82,8 +82,7 @@ public        &
           get_solar_flux_by_band, &
           get_solar_constant
 
-public    shortwave_number_of_bands, sw_output_type, assignment(=), &
-          shortwave_output_alloc, shortwave_output_dealloc
+public    shortwave_number_of_bands
 
 
 !---------------------------------------------------------------------
@@ -246,7 +245,6 @@ type(radiation_control_type), intent(inout) :: Rad_control
 !    sw package.
 !---------------------------------------------------------------------
       if (trim(swform) == 'esfsw99') then
-        Rad_control%do_esfsw = .true.
         call esfsw_driver_init
         call shortwave_number_of_bands(nbands)
         ! save reference solar data
@@ -268,7 +266,7 @@ type(radiation_control_type), intent(inout) :: Rad_control
 !    set up solar data
 !---------------------------------------------------------------------
 
-      call solar_data_init (nbands, ierr)
+      call solar_data_driver_init (nbands, ierr)
 
       ! if the error code returned is non-zero then
       ! the data file did not exist
@@ -324,7 +322,7 @@ type(radiation_control_type), intent(inout) :: Rad_control
                      str='Data used in this experiment is from solar &
                           &timeseries at time:')
                ! define time to be used for solar input data
-               call solar_data_time_vary (Solar_entry, solar_constant_used, solflxband)
+               call solar_data_driver_time_vary (Solar_entry, solar_constant_used, solflxband)
                solflxband_initialized = .true.
               !call esfsw_solar_flux_init (solar_constant_used, solflxband)
          endif
@@ -360,7 +358,7 @@ type(time_type) :: Solar_time
             Solar_time = Rad_time + Solar_offset
          endif
 
-        call solar_data_time_vary (Solar_time, solar_constant_used, solflxband)
+        call solar_data_driver_time_vary (Solar_time, solar_constant_used, solflxband)
        !call esfsw_solar_flux_init (solar_constant_used, solflxband)
         solflxband_initialized = .true.
       endif
@@ -414,7 +412,7 @@ subroutine shortwave_driver (press, pflux, temp, rh2o, &
                              asfc_vis_dif, asfc_nir_dif, Astro,   &
                              aeroasymfac, aerosctopdep, aeroextopdep,       &
                              Rad_gases, camtsw, cldsct, cldext, cldasymm,   &
-                             flag_stoch, Rad_control, Aerosolrad_control, Sw_output )
+                             flag_stoch, Rad_control, do_swaerosol, Sw_output )
 
 !---------------------------------------------------------------------
 !    shortwave_driver initializes shortwave radiation output variables, 
@@ -433,7 +431,7 @@ real, dimension(:,:,:,:),        intent(in)    :: camtsw
 real, dimension(:,:,:,:,:),      intent(in)    :: cldsct, cldext, cldasymm
 integer,                         intent(in)    :: flag_stoch
 type(radiation_control_type),    intent(in)    :: Rad_control
-type(aerosolrad_control_type),   intent(in)    :: Aerosolrad_control
+logical,                         intent(in)    :: do_swaerosol
 type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 
 !--------------------------------------------------------------------
@@ -467,12 +465,11 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !----------------------------------------------------------------------
 !  local variables:
 
-      type(sw_output_type) :: Sw_output_ad, Sw_output_std
       logical  :: skipswrad
-      logical  :: with_clouds
-      logical  :: calc_includes_aerosols
+      logical  :: use_aero
+      logical  :: do_swaerosol_forcing
       integer  :: naerosol_optical
-      integer  :: i, j       
+      integer  :: i, j, indx
       integer  :: ix, jx, kx
       real     :: aerozero(size(aeroasymfac,1), &
                            size(aeroasymfac,2), &
@@ -484,8 +481,9 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !
 !      skipswrad    bypass calling sw package because sun is not 
 !                   shining any where in current physics window ?
-!      with_clouds  are clouds to be considered in determining
-!                   the sw fluxes and heating rates ?
+!      do_swaerosol_forcing  if the output (type) array contains
+!                   more than one-dimension then aerosol forcing
+!                   is to be computed
 !      ix,jx,kx     dimensions of current physics window
 !      i,j          do-loop indices
 !
@@ -506,24 +504,15 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
       ix = size(press,1)
       jx = size(press,2)
       kx = size(press,3)
-!**************************************
-      ! This is a temporary fix! Sw_output needs to be allocated at a higher level!
-      ! Constructor and destructor for sw_output_type needs to be provided through
-      ! rad_utilities
-!**************************************
-      call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
-                                   Rad_control%do_totcld_forcing, &
-                                   Sw_output(1)) 
-      call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
-                                   Rad_control%do_totcld_forcing, &
-                                   Sw_output_std) 
-      if (Aerosolrad_control%do_swaerosol_forcing) then
-        call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
-                                     Rad_control%do_totcld_forcing, &
-                                     Sw_output_ad)
-        call shortwave_output_alloc (ix, jx, kx, Rad_control%nzens, &
-                                     Rad_control%do_totcld_forcing, &
-                                     Sw_output(Aerosolrad_control%indx_swaf)) 
+
+      do indx = 1, size(Sw_output,1)
+         call Sw_output(indx)%alloc (ix, jx, kx, Rad_control%do_totcld_forcing)
+      enddo
+
+      if (size(Sw_output,1) .gt. 1) then
+         do_swaerosol_forcing = .true.
+      else
+         do_swaerosol_forcing = .false.
       endif
 
 !--------------------------------------------------------------------
@@ -563,82 +552,18 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !    calculate shortwave radiative forcing and fluxes using the 
 !    exponential-sum-fit parameterization.
 !---------------------------------------------------------------------
-      else if (Rad_control%do_esfsw) then
+      else
 
 !---------------------------------------------------------------------
-!    if volcanic sw heating calculation desired, set up to call swresf
-!    twice.
-!---------------------------------------------------------------------
-       !if (Aerosolrad_control%calculate_volcanic_sw_heating ) then  
-       !  if (Aerosolrad_control%volcanic_sw_aerosols) then
-       !  else
-       !    call error_mesg ('shortwave_driver_mod', &
-       !     'cannot calculate volcanic sw heating when volcanic sw &
-       !                     &aerosols are not activated', FATAL)
-       !  endif
 
-!----------------------------------------------------------------------
-!    call swresf without including volcanic aerosol effects. save the 
-!    heating rate as Aerosolrad_diags%sw_heating_vlcno.
-!----------------------------------------------------------------------
-         !call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
-         !             Astro, camtsw, cldsct, cldext, cldasymm, &
-         !             aeroasymfac2, aerosctopdep2, aeroextopdep2, &
-         !             Sw_output_std)
-         !Aerosolrad_diags%sw_heating_vlcno = Sw_output_std%hsw 
+          do indx = 1, size(Sw_output,1)
 
-!----------------------------------------------------------------------
-!    reinitialize the sw outputs for the "real" call.
-!----------------------------------------------------------------------
-         !Sw_output_std%fsw   (:,:,:,:) = 0.0
-         !Sw_output_std%dfsw  (:,:,:,:) = 0.0
-         !Sw_output_std%ufsw  (:,:,:,:) = 0.0
-         !Sw_output_std%hsw   (:,:,:,:) = 0.0
-         !Sw_output_std%dfsw_dir_sfc = 0.0
-         !Sw_output_std%ufsw_dir_sfc = 0.0
-         !Sw_output_std%dfsw_dif_sfc  = 0.0
-         !Sw_output_std%ufsw_dif_sfc = 0.0
-         !Sw_output_std%dfsw_vis_sfc = 0.
-         !Sw_output_std%ufsw_vis_sfc = 0.
-         !Sw_output_std%dfsw_vis_sfc_dir = 0.
-         !Sw_output_std%ufsw_vis_sfc_dir = 0.
-         !Sw_output_std%dfsw_vis_sfc_dif = 0.
-         !Sw_output_std%ufsw_vis_sfc_dif = 0.
-         !Sw_output_std%swdn_special  (:,:,:,:) = 0.0
-         !Sw_output_std%swup_special  (:,:,:,:) = 0.0
-         !Sw_output_std%bdy_flx(:,:,:,:) = 0.0
-     !if (Rad_control%do_totcld_forcing) then
-         !Sw_output_std%fswcf (:,:,:,:) = 0.0
-         !Sw_output_std%dfswcf(:,:,:,:) = 0.0
-         !Sw_output_std%ufswcf(:,:,:,:) = 0.0
-         !Sw_output_std%hswcf (:,:,:,:) = 0.0
-         !Sw_output_std%dfsw_dir_sfc_clr = 0.             
-         !Sw_output_std%dfsw_dif_sfc_clr = 0.           
-         !Sw_output_std%dfsw_vis_sfc_clr = 0.
-         !Sw_output_std%swdn_special_clr  (:,:,:,:) = 0.0
-         !Sw_output_std%swup_special_clr  (:,:,:,:) = 0.0
-         !Sw_output_std%bdy_flx_clr(:,:,:,:) = 0.0
-     !endif
-         !call swresf (is, ie, js, je, Atmos_input, Surface, Rad_gases,&
-         !             Astro, camtsw, cldsct, cldext, cldasymm, &
-         !             aeroasymfac, aerosctopdep, aeroextopdep, &
-         !             Sw_output_std)
-
-!----------------------------------------------------------------------
-!    define the difference in heating rates betweenthe case with 
-!    volcanic aerosol and the case without. save in 
-!    Aerosolrad_diags%sw_heating_vlcno.
-!----------------------------------------------------------------------
-         !Aerosolrad_diags%sw_heating_vlcno = Sw_output_std%hsw  -   &
-         !                               Aerosolrad_diags%sw_heating_vlcno
-         !Sw_output(1) = Sw_output_std
-
-!----------------------------------------------------------------------
-!    if volcanic heating calculation not desired, simply call swresf.
-!----------------------------------------------------------------------
-       !else
- 
-          if (Aerosolrad_control%do_swaerosol_forcing) then
+             use_aero =.true.
+             if (indx .eq. size(Sw_output,1)) then
+                if (do_swaerosol .and. do_swaerosol_forcing) use_aero = .false.
+             else
+                if (.not.do_swaerosol .and. .not.do_swaerosol_forcing) use_aero = .false.
+             endif
 
 !-----------------------------------------------------------------------
 !    call swresf with aerosols (if model is being run without) or without
@@ -646,66 +571,39 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 !    in Sw_output_ad (which does not feed back into the model), but 
 !    which may be used to define the aerosol forcing.
 !-----------------------------------------------------------------------
-            if (Aerosolrad_control%do_swaerosol) then
-              aerozero = 0.0
-              call swresf_wrapper (Rad_control%nzens, &
-                                   press, pflux, temp, rh2o, deltaz,  &
-                                   asfc_vis_dir, asfc_nir_dir, &
-                                   asfc_vis_dif, asfc_nir_dif, &
-                                   Rad_gases, Astro, &
-                                   camtsw, cldsct, cldext, cldasymm, &
-                                   aerozero, aerozero, aerozero, &
-                                   Rad_control%do_totcld_forcing, &
-                                   flag_stoch, Sw_output(Aerosolrad_control%indx_swaf))
-            else
-              call swresf_wrapper (Rad_control%nzens, &
-                                   press, pflux, temp, rh2o, deltaz,  &
-                                   asfc_vis_dir, asfc_nir_dir, &
-                                   asfc_vis_dif, asfc_nir_dif, &
-                                   Rad_gases, Astro, &
-                                   camtsw, cldsct, cldext, cldasymm, &
-                                   aeroasymfac, aerosctopdep, aeroextopdep, &
-                                   Rad_control%do_totcld_forcing, &
-                                   flag_stoch, Sw_output(Aerosolrad_control%indx_swaf))
-            endif
+             if (use_aero) then
+                call swresf (press, pflux, temp, rh2o, deltaz,  &
+                             asfc_vis_dir, asfc_nir_dir, &
+                             asfc_vis_dif, asfc_nir_dif, &
+                             Rad_gases%qo3, Rad_gases%rrvco2,    &   
+                             Rad_gases%rrvch4, Rad_gases%rrvn2o, &
+                             solflxband, solar_constant_used, &
+                             Astro%rrsun, Astro%cosz, Astro%fracday, &
+                             camtsw, cldsct, cldext, cldasymm, &
+                             aeroasymfac, aerosctopdep, aeroextopdep, &
+                             Rad_control%do_totcld_forcing, &
+                             flag_stoch, Sw_output(indx))
+             else
+                aerozero = 0.0
+                call swresf (press, pflux, temp, rh2o, deltaz,  &
+                             asfc_vis_dir, asfc_nir_dir, &
+                             asfc_vis_dif, asfc_nir_dif, &
+                             Rad_gases%qo3, Rad_gases%rrvco2,    &   
+                             Rad_gases%rrvch4, Rad_gases%rrvn2o, &
+                             solflxband, solar_constant_used, &
+                             Astro%rrsun, Astro%cosz, Astro%fracday, &
+                             camtsw, cldsct, cldext, cldasymm, &
+                             aerozero, aerozero, aerozero, &
+                             Rad_control%do_totcld_forcing, &
+                             flag_stoch, Sw_output(indx))
+             endif
 
-          endif ! do_swaerosol_forcing
- 
-!----------------------------------------------------------------------
-!    standard call, where radiation output feeds back into the model.
-!----------------------------------------------------------------------
-          if (Aerosolrad_control%do_swaerosol) then
-            call swresf_wrapper (Rad_control%nzens, &
-                                 press, pflux, temp, rh2o, deltaz,  &
-                                 asfc_vis_dir, asfc_nir_dir, &
-                                 asfc_vis_dif, asfc_nir_dif, &
-                                 Rad_gases, Astro, &
-                                 camtsw, cldsct, cldext, cldasymm, &
-                                 aeroasymfac, aerosctopdep, aeroextopdep, &
-                                 Rad_control%do_totcld_forcing, &
-                                 flag_stoch, Sw_output(1))
-          else
-            aerozero = 0.0
-            call swresf_wrapper (Rad_control%nzens, &
-                                 press, pflux, temp, rh2o, deltaz,  &
-                                 asfc_vis_dir, asfc_nir_dir, &
-                                 asfc_vis_dif, asfc_nir_dif, &
-                                 Rad_gases, Astro, &
-                                 camtsw, cldsct, cldext, cldasymm, &
-                                 aerozero, aerozero, aerozero, &
-                                 Rad_control%do_totcld_forcing, &
-                                 flag_stoch, Sw_output(1))
-          endif
-       !endif
+          enddo  ! indx
 
-!---------------------------------------------------------------------
-      endif  
+!--------------------------------------------------------------------
 
+      endif  ! skipswrad
 
-      call shortwave_output_dealloc (Sw_output_std)
-      if (Aerosolrad_control%do_swaerosol_forcing) then
-        call shortwave_output_dealloc (Sw_output_ad)
-      endif
 !--------------------------------------------------------------------
 
 
@@ -724,12 +622,11 @@ end subroutine shortwave_driver
 !   call shortwave_driver_end
 !  </TEMPLATE>
 ! </SUBROUTINE>
-subroutine shortwave_driver_end (Rad_control)
+subroutine shortwave_driver_end
 
 !---------------------------------------------------------------------
 !    shortwave_driver_end is the destructor for shortwave_driver_mod.
 !---------------------------------------------------------------------
-type(radiation_control_type),  intent(in) :: Rad_control
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
@@ -742,11 +639,8 @@ type(radiation_control_type),  intent(in) :: Rad_control
 !--------------------------------------------------------------------
 !    close out the modules initialized by this module.
 !--------------------------------------------------------------------
-      if (Rad_control%do_esfsw) then
-        call esfsw_driver_end
-      endif
-
-      call solar_data_end
+      call esfsw_driver_end
+      call solar_data_driver_end
 
 !---------------------------------------------------------------------
 !    mark the module as uninitialized.
@@ -821,203 +715,7 @@ end subroutine get_solar_constant
 !                                
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-!###################################################################
-! <SUBROUTINE NAME="shortwave_output_alloc">
-!  <OVERVIEW>
-!   Code that allocates and initializes shortwave output variables
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Shortwave_output_alloc allocates and initializes the components
-!   of the sw_output_type variable Sw_output, which is used to hold
-!   output data from shortwave_driver_mod.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call shortwave_output_alloc (ix, jx, kx, Sw_output)
-!  </TEMPLATE>
-!  <IN NAME="ix" TYPE="integer">
-!   x dimention of the radiation grid where shortwave output is desired
-!  </IN>
-!  <IN NAME="jx" TYPE="integer">
-!   y dimention of the radiation grid where shortwave output is desired
-!  </IN>
-!  <IN NAME="kx" TYPE="integer">
-!   z dimention of the radiation grid where shortwave output is desired
-!  </IN>
-!  <INOUT NAME="Sw_output" TYPE="sw_output_type">
-!   shortwave radiation output variable
-!  </INOUT>
-! </SUBROUTINE>
-!
-subroutine shortwave_output_alloc (ix, jx, kx, nzens, &
-                                   do_totcld_forcing, Sw_output) 
-
-!--------------------------------------------------------------------
-!    shortwave_output_alloc allocates and initializes the components
-!    of the sw_output_type variable Sw_output, which is used to hold
-!    output data from shortwave_driver_mod.
-!--------------------------------------------------------------------
-
-integer,              intent(in)     ::  ix, jx, kx, nzens
-logical,              intent(in)     ::  do_totcld_forcing
-type(sw_output_type), intent(inout)  ::  Sw_output 
-
-!-------------------------------------------------------------------
-!  intent(in) variables:
-!
-!    ix, jx, kx   dimensions of the radiation grid on which output 
-!                 will be produced
-!
-!  intent(inout) variables:
-!
-!      Sw_output  sw_output_type variable containing shortwave 
-!                 radiation output data 
-!
-!--------------------------------------------------------------------
-!--------------------------------------------------------------------
-!    allocate and initialize fields to contain net(up-down) sw flux 
-!    (fsw), upward sw flux (ufsw), downward sw flux(dfsw) at flux 
-!    levels and sw heating in model layers (hsw).
-!--------------------------------------------------------------------
-      allocate (Sw_output%fsw  (ix, jx, kx+1, nzens) )
-      allocate (Sw_output%ufsw (ix, jx, kx+1, nzens) )
-      allocate (Sw_output%dfsw (ix, jx, kx+1, nzens) )
-      allocate (Sw_output%hsw  (ix, jx, kx  , nzens) )
-      allocate (Sw_output%dfsw_dir_sfc (ix, jx, nzens) )
-      allocate (Sw_output%ufsw_dir_sfc (ix, jx, nzens) )
-      allocate (Sw_output%ufsw_dif_sfc (ix, jx, nzens) )
-      allocate (Sw_output%dfsw_dif_sfc (ix, jx, nzens) )
-      allocate (Sw_output%dfsw_vis_sfc (ix, jx, nzens  ) )
-      allocate (Sw_output%ufsw_vis_sfc (ix, jx, nzens  ) )
-      allocate (Sw_output%dfsw_vis_sfc_dir (ix, jx, nzens  ) )
-      allocate (Sw_output%ufsw_vis_sfc_dir (ix, jx, nzens  ) )
-      allocate (Sw_output%dfsw_vis_sfc_dif (ix, jx, nzens  ) )
-      allocate (Sw_output%ufsw_vis_sfc_dif (ix, jx, nzens  ) )
-      allocate (Sw_output%bdy_flx          (ix, jx, 4, nzens) )
-
-      Sw_output%fsw   (:,:,:,:) = 0.0
-      Sw_output%dfsw  (:,:,:,:) = 0.0
-      Sw_output%ufsw  (:,:,:,:) = 0.0
-      Sw_output%hsw   (:,:,:,:) = 0.0
-      Sw_output%dfsw_dir_sfc = 0.0
-      Sw_output%ufsw_dir_sfc = 0.0
-      Sw_output%dfsw_dif_sfc  = 0.0
-      Sw_output%ufsw_dif_sfc = 0.0
-      Sw_output%dfsw_vis_sfc = 0.
-      Sw_output%ufsw_vis_sfc = 0.
-      Sw_output%dfsw_vis_sfc_dir = 0.
-      Sw_output%ufsw_vis_sfc_dir = 0.
-      Sw_output%dfsw_vis_sfc_dif = 0.
-      Sw_output%ufsw_vis_sfc_dif = 0.
-      Sw_output%bdy_flx(:,:,:,:) = 0.0       
-
-!---------------------------------------------------------------------
-!    if the cloud-free values are desired, allocate and initialize 
-!    arrays for the fluxes and heating rate in the absence of clouds.
-!----------------------------------------------------------------------
-      if (do_totcld_forcing) then
-        allocate (Sw_output%fswcf  (ix, jx, kx+1, nzens) )
-        allocate (Sw_output%dfswcf (ix, jx, kx+1, nzens) )
-        allocate (Sw_output%ufswcf (ix, jx, kx+1, nzens) )
-        allocate (Sw_output%hswcf  (ix, jx, kx, nzens  ) )
-        allocate (Sw_output%dfsw_dir_sfc_clr (ix, jx, nzens) )
-        allocate (Sw_output%dfsw_dif_sfc_clr (ix, jx, nzens) )
-        allocate (Sw_output%dfsw_vis_sfc_clr (ix, jx, nzens  ) )
-        allocate (Sw_output%bdy_flx_clr      (ix, jx, 4, nzens) )
-
-        Sw_output%fswcf (:,:,:,:) = 0.0
-        Sw_output%dfswcf(:,:,:,:) = 0.0
-        Sw_output%ufswcf(:,:,:,:) = 0.0
-        Sw_output%hswcf (:,:,:,:) = 0.0
-        Sw_output%dfsw_dir_sfc_clr = 0.0
-        Sw_output%dfsw_dif_sfc_clr  = 0.0
-        Sw_output%dfsw_vis_sfc_clr = 0.
-        Sw_output%bdy_flx_clr (:,:,:,:) = 0.0
-      endif
-
-!--------------------------------------------------------------------
-
-end  subroutine shortwave_output_alloc
-
-
-!###################################################################
-! <SUBROUTINE NAME="shortwave_output_dealloc">
-!  <OVERVIEW>
-!   Code that allocates and initializes shortwave output variables
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Shortwave_output_dealloc allocates and initializes the components
-!   of the sw_output_type variable Sw_output, which is used to hold
-!   output data from shortwave_driver_mod.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call shortwave_output_dealloc (Sw_output)
-!  </TEMPLATE>
-!  <INOUT NAME="Sw_output" TYPE="sw_output_type">
-!   shortwave radiation output variable
-!  </INOUT>
-! </SUBROUTINE>
-!
-subroutine shortwave_output_dealloc (Sw_output)
-
-!--------------------------------------------------------------------
-!    shortwave_output_dealloc deallocates the components
-!    of the sw_output_type variable Sw_output, which is used to hold
-!    output data from shortwave_driver_mod.
-!--------------------------------------------------------------------
-
-type(sw_output_type), intent(inout)  ::  Sw_output
-
-!-------------------------------------------------------------------
-!  intent(inout) variables:
-!
-!      Sw_output  sw_output_type variable containing shortwave 
-!                 radiation output data 
-!
-!--------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!    deallocate fields to contain net(up-down) sw flux 
-!    (fsw), upward sw flux (ufsw), downward sw flux(dfsw) at flux 
-!    levels and sw heating in model layers (hsw).
-!--------------------------------------------------------------------
-      deallocate (Sw_output%fsw)
-      deallocate (Sw_output%ufsw)
-      deallocate (Sw_output%dfsw)
-      deallocate (Sw_output%hsw)
-      deallocate (Sw_output%dfsw_dir_sfc)
-      deallocate (Sw_output%ufsw_dir_sfc)
-      deallocate (Sw_output%ufsw_dif_sfc)
-      deallocate (Sw_output%dfsw_dif_sfc)
-      deallocate (Sw_output%dfsw_vis_sfc)
-      deallocate (Sw_output%ufsw_vis_sfc)
-      deallocate (Sw_output%dfsw_vis_sfc_dir)
-      deallocate (Sw_output%ufsw_vis_sfc_dir)
-      deallocate (Sw_output%dfsw_vis_sfc_dif)
-      deallocate (Sw_output%ufsw_vis_sfc_dif)
-      deallocate (Sw_output%bdy_flx)
-!---------------------------------------------------------------------
-!    if the cloud-free values are desired, allocate and initialize 
-!    arrays for the fluxes and heating rate in the absence of clouds.
-!----------------------------------------------------------------------
-      if (ASSOCIATED(Sw_output%hswcf)) then
-        deallocate (Sw_output%fswcf)
-        deallocate (Sw_output%dfswcf)
-        deallocate (Sw_output%ufswcf)
-        deallocate (Sw_output%hswcf)
-        deallocate (Sw_output%dfsw_dir_sfc_clr)
-        deallocate (Sw_output%dfsw_dif_sfc_clr)
-        deallocate (Sw_output%dfsw_vis_sfc_clr)
-        deallocate (Sw_output%bdy_flx_clr)
-      endif
-
-!--------------------------------------------------------------------
-
-end subroutine shortwave_output_dealloc
-
-!####################################################################
-
-subroutine swresf_wrapper ( nzens, press, pflux, temp, rh2o, deltaz,  &
+subroutine swresf_wrapper ( press, pflux, temp, rh2o, deltaz,  &
                             asfc_vis_dir, asfc_nir_dir, &
                             asfc_vis_dif, asfc_nir_dif, &
                             Rad_gases, Astro, &
@@ -1025,7 +723,6 @@ subroutine swresf_wrapper ( nzens, press, pflux, temp, rh2o, deltaz,  &
                             aeroasymfac, aerosctopdep, aeroextopdep, &
                             do_totcld_forcing, flag_stoch, Sw_output )
 
-integer,                    intent(in)    :: nzens
 real, dimension(:,:,:),     intent(in)    :: press, pflux, temp, rh2o, deltaz
 real, dimension(:,:),       intent(in)    :: asfc_vis_dir, asfc_nir_dir, &
                                              asfc_vis_dif, asfc_nir_dif
@@ -1039,20 +736,11 @@ integer,                    intent(in)    :: flag_stoch
 type(sw_output_type),       intent(inout) :: Sw_output
 
 real, dimension(size(Astro%cosz,1), &
-                size(Astro%cosz,2), &
-                nzens) :: cosz, fracday
+                size(Astro%cosz,2)) :: cosz, fracday
 integer :: kx
 
    kx = size (press,3)
 
-   if (nzens .gt. 1) then
-      cosz = Astro%cosz_p
-      fracday = Astro%fracday_p
-   else
-      cosz(:,:,1) = Astro%cosz
-      fracday(:,:,1) = Astro%fracday
-   endif
-      
    call swresf (press (:,:,1:kx),   &
                 pflux (:,:,1:kx+1), &
                 temp  (:,:,1:kx),   &
@@ -1063,7 +751,7 @@ integer :: kx
                 Rad_gases%qo3, Rad_gases%rrvco2,    &
                 Rad_gases%rrvch4, Rad_gases%rrvn2o, &
                 solflxband, solar_constant_used, &
-                Astro%rrsun, cosz, fracday, &
+                Astro%rrsun, Astro%cosz, Astro%fracday, &
                 camtsw, cldsct, cldext, cldasymm, &
                 aeroasymfac, aerosctopdep, aeroextopdep, &
                 do_totcld_forcing, flag_stoch, Sw_output)

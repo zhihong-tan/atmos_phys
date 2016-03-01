@@ -1,15 +1,6 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
-
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
-
+! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/quickbeam/atmos_lib.f90 $
 ! ATMOS_LIB: Atmospheric science procedures for F90
 ! Compiled/Modified:
 !   07/01/06  John Haynes (haynes@atmos.colostate.edu)
@@ -17,6 +8,9 @@
 ! mcclatchey (subroutine)
   
   module atmos_lib
+#ifdef COSP_GFDL
+use fms_mod, only : error_mesg, FATAL
+#endif
   implicit none
   
   contains
@@ -137,8 +131,13 @@
             0.000162076,0.000362055,7.68645e-06/)
          
   case default
+#ifdef COSP_GFDL
+    call error_mesg ('atmos_lib/mcclatchey', &
+                              'Must enter a profile type', FATAL)
+#else
     print *, 'Must enter a profile type'
     stop
+#endif
     
   end select
   

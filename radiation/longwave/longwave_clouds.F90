@@ -27,7 +27,8 @@ use constants_mod,     only: constants_init, radcon
 
 !  shared radiation package modules:
 
-use longwave_utilities_mod, only: lw_output_type, lw_clouds_type
+use longwave_utilities_mod, only: lw_clouds_type
+use longwave_types_mod,     only: lw_output_type
 
 !---------------------------------------------------------------------
 

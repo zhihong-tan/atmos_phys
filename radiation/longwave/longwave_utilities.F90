@@ -21,8 +21,7 @@ character(len=128)  :: tagname =  '$Name$'
 public :: longwave_utilities_init, &
           longwave_utilities_end, &
           locate_in_table,  &
-          looktab, table_alloc, &
-          assignment(=)
+          looktab, table_alloc
 
 interface looktab
     module procedure  looktab_type1, looktab_type2, looktab_type3
@@ -30,11 +29,6 @@ end interface
 
 interface table_alloc
    module procedure    table1_alloc, table2_alloc, table3_alloc
-end interface
-
-interface assignment(=)
-   module procedure lw_output_type_eq
-   module procedure lw_diagnostics_type_eq
 end interface
 
 !---------------------------------------------------------------------
@@ -101,36 +95,6 @@ type lw_clouds_type
                                             taucld_mxolw=>NULL(), &
                                             taunbl_mxolw=>NULL()
 end type lw_clouds_type
-
-!------------------------------------------------------------------
-
-public lw_diagnostics_type
-
-type lw_diagnostics_type
-     real, dimension(:,:),   pointer   :: flx1e1=>NULL(),  &
-                                          gxcts=>NULL()
-     real, dimension(:,:,:), pointer   :: flx1e1f=>NULL(),  &
-                                          excts=>NULL(),&
-                                          fctsg=>NULL()
-     real, dimension(:,:,:,:), pointer :: fluxn=>NULL(),   &
-                                          fluxncf=>NULL(),   &
-                                          exctsn=>NULL(),  &
-                                          cts_out=>NULL(), &
-                                          cts_outcf=>NULL()
-end type lw_diagnostics_type
-
-!-------------------------------------------------------------------
-
-public lw_output_type
-
-type lw_output_type
-     real, dimension(:,:,:), pointer :: heatra=>NULL(), &
-                                        flxnet=>NULL(),  &
-                                        heatracf=>NULL(), &
-                                        flxnetcf=>NULL()
-     real, dimension(:,:,:), pointer :: bdy_flx=>NULL(), &
-                                        bdy_flx_clr=>NULL()
-end type lw_output_type
 
 !------------------------------------------------------------------
 
@@ -958,49 +922,6 @@ integer,                     intent(in)     :: dim1, dim2
 end subroutine table3_alloc
 
 !##################################################################
-
-subroutine lw_output_type_eq (Lw_output_out, Lw_output_in)
-
-   type(lw_output_type), intent(inout) :: Lw_output_out
-   type(lw_output_type), intent(in)    :: Lw_output_in
-
-!  Need to add error trap to catch unallocated Lw_output_in
-   Lw_output_out%heatra        = Lw_output_in%heatra
-   Lw_output_out%flxnet        = Lw_output_in%flxnet
-   Lw_output_out%bdy_flx       = Lw_output_in%bdy_flx
-   if (ASSOCIATED(Lw_output_in%heatracf))then
-       Lw_output_out%heatracf          = Lw_output_in%heatracf
-       Lw_output_out%flxnetcf          = Lw_output_in%flxnetcf
-       Lw_output_out%bdy_flx_clr       = Lw_output_in%bdy_flx_clr
-   endif
-
-end subroutine lw_output_type_eq
-
-!##################################################################
-
-subroutine lw_diagnostics_type_eq (Lw_diagnostics_out, Lw_diagnostics_in)
-
-   type(lw_diagnostics_type), intent(inout) :: Lw_diagnostics_out
-   type(lw_diagnostics_type), intent(in)    :: Lw_diagnostics_in
-
-!  Need to add error trap to catch unallocated Lw_diagnostics_in
-   Lw_diagnostics_out%flx1e1    = Lw_diagnostics_in%flx1e1
-   Lw_diagnostics_out%cts_out   = Lw_diagnostics_in%cts_out
-   Lw_diagnostics_out%gxcts     = Lw_diagnostics_in%gxcts
-   Lw_diagnostics_out%excts     = Lw_diagnostics_in%excts
-   Lw_diagnostics_out%exctsn    = Lw_diagnostics_in%exctsn
-   Lw_diagnostics_out%fctsg     = Lw_diagnostics_in%fctsg
-   Lw_diagnostics_out%flx1e1f   = Lw_diagnostics_in%flx1e1f
-   Lw_diagnostics_out%fluxn     = Lw_diagnostics_in%fluxn
-   Lw_diagnostics_out%cts_outcf = Lw_diagnostics_in%cts_outcf
-   
-   if (ASSOCIATED(Lw_diagnostics_in%fluxncf)) then
-      Lw_diagnostics_out%fluxncf = Lw_diagnostics_in%fluxncf
-   end if
-
-end subroutine lw_diagnostics_type_eq
-
-!####################################################################
 
 end module longwave_utilities_mod
 

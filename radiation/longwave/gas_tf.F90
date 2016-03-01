@@ -4127,8 +4127,9 @@ real, dimension(:), intent(in)    :: plm, pd
 !--------------------------------------------------------------------
 !   local variables:
 
-      real, dimension(:), allocatable  ::  press, altquad, tempquad, & 
-                                           prsint, plmcgs,  tmpint
+      real, dimension(1:KERAD-KSRAD+2) :: press, altquad, tempquad, &
+                                          prsint, tmpint
+      real, dimension(KSRAD:KERAD+1)   :: plmcgs 
 
       real       ::  delzap = 0.5
       real       ::  dlogp, znint, dz, ht, rk1,  &
@@ -4162,12 +4163,6 @@ real, dimension(:), intent(in)    :: plm, pd
 !-------------------------------------------------------------------
       allocate ( gtemp    (KSRAD:KERAD+1) )
       allocate ( stemp    (KSRAD:KERAD+1) )
-      allocate ( plmcgs   (KSRAD:KERAD+1) )
-      allocate ( press    (1:nlay+1) )
-      allocate ( altquad  (1:nlay+1) )
-      allocate ( tempquad (1:nlay+1) )
-      allocate ( prsint   (1:nlay+1) )
-      allocate ( tmpint   (1:nlay+1) )
 
 !--------------------------------------------------------------------
 !    the gtemp code below assumes plmcgs in cgs units
@@ -4261,18 +4256,10 @@ real, dimension(:), intent(in)    :: plm, pd
         stemp(k)=tmpint(nlay+KSRAD+1-k)
       enddo
  
-!--------------------------------------------------------------------
-      deallocate ( tmpint   )
-      deallocate ( prsint   )
-      deallocate ( tempquad )
-      deallocate ( altquad  )
-      deallocate ( press    )
-      deallocate ( plmcgs   )
-
 !------------------------------------------------------------------
 
-end subroutine ptz
 
+end subroutine ptz
 
 
 !###################################################################

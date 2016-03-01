@@ -23,11 +23,6 @@ use aerosol_types_mod,     only: aerosol_type
 
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 
-!  radiation modules:
-
-use sea_esf_rad_mod,       only: shortwave_number_of_bands, &
-                                 longwave_number_of_bands
-
 !  cloud radiation modules:
 
 use cloudrad_types_mod,    only: cld_specification_type, &
@@ -36,13 +31,10 @@ use cloudrad_types_mod,    only: cld_specification_type, &
 
 use cloud_spec_mod,        only: cloud_spec_init, &
                                  cloud_spec_end, &
-                                 cloud_spec, &
-                                 cloud_spec_dealloc, &
-                                 dealloc_microphysics_type
+                                 cloud_spec
 
 use cloudrad_package_mod,  only: cloudrad_package_init, &
                                  cloud_radiative_properties, &
-                                 cldrad_props_dealloc, &
                                  cloudrad_package_end
 
 !--------------------------------------------------------------------
@@ -62,8 +54,6 @@ character(len=128) :: tagname = '$Name$'
 public    cloudrad_driver_init, &
           cloudrad_driver, &
           cloudrad_driver_end
-
-public    cloud_spec_dealloc
 
 !--------------------------------------------------------------------
 !------- namelist ---------
@@ -90,6 +80,8 @@ logical ::  module_is_initialized = .false. ! module initialized?
 subroutine cloudrad_driver_init (Time, rad_time_step,  &
                                  lonb, latb, axes, pref, &
                                  donner_meso_is_largescale, &
+                                 num_sw_cloud_bands, &
+                                 num_lw_cloud_bands, &
                                  Cldrad_control, &
                                  cloud_type_form_out)
 
@@ -105,6 +97,8 @@ real, dimension(:,:),        intent(in)    :: lonb, latb
 integer, dimension(4),       intent(in)    :: axes
 real, dimension(:,:),        intent(in)    :: pref
 logical,                     intent(in)    :: donner_meso_is_largescale
+integer,                     intent(in)    :: num_sw_cloud_bands, &
+                                              num_lw_cloud_bands
 type(cloudrad_control_type), intent(inout) :: Cldrad_control
 character(len=16),           intent(out)   :: cloud_type_form_out
 !----------------------------------------------------------------------
@@ -137,7 +131,6 @@ character(len=16),           intent(out)   :: cloud_type_form_out
 !    subroutine data_override is called.
 !---------------------------------------------------------------------
       call fms_init
-!BW   call rad_utilities_init
       call tracer_manager_init
 
 !---------------------------------------------------------------------
@@ -165,6 +158,12 @@ character(len=16),           intent(out)   :: cloud_type_form_out
       if (mpp_pe() == mpp_root_pe() ) &
            write (logunit, nml=cloudrad_driver_nml)
 
+!---------------------------------------------------------------------
+!    save the number of shortwave and longwave cloud bands
+!---------------------------------------------------------------------
+      Cldrad_control%num_sw_cloud_bands = num_sw_cloud_bands
+      Cldrad_control%num_lw_cloud_bands = num_lw_cloud_bands
+
 !--------------------------------------------------------------------
 !    initialize the modules that are accessed from radiation_driver_mod.
 !---------------------------------------------------------------------
@@ -174,12 +173,6 @@ character(len=16),           intent(out)   :: cloud_type_form_out
 
       call cloudrad_package_init   (pref, lonb, latb, axes, Time, &
                                     donner_meso_is_largescale, Cldrad_control)
-
-!---------------------------------------------------------------------
-!    get the number of shortwave and longwave cloud bands
-!---------------------------------------------------------------------
-      call shortwave_number_of_bands (Cldrad_control%num_sw_cloud_bands)
-      call longwave_number_of_bands  (Cldrad_control%num_lw_cloud_bands)
 
 !---------------------------------------------------------------------
 !    set flag to indicate that module has been successfully initialized.
@@ -243,7 +236,7 @@ type(microphysics_type), allocatable, dimension(:) :: Cloud_microphys
 !                     cloud schemes, passed through to lower
 !                     level routines
 
-integer :: i, istrat
+integer :: n
 
 !-------------------------------------------------------------------
 !    verify that this module has been initialized. if not, exit.
@@ -286,7 +279,10 @@ integer :: i, istrat
 !    deallocate the components of the derived type arrays
 !---------------------------------------------------------------------
 
-      call dealloc_microphysics_type (Cldrad_control, Cloud_microphys)
+      do n = 1, size(Cloud_microphys,1)
+        call Cloud_microphys(n)%dealloc(Cldrad_control)
+      enddo
+      deallocate(Cloud_microphys)
 
 !---------------------------------------------------------------------
 

@@ -1,14 +1,6 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
-
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
+! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/icarus-scops-     4.1-bsd/icarus.f $
 
 #ifdef COSP_GFDL
       SUBROUTINE ICARUS(          &
@@ -369,7 +361,7 @@ use fms_mod,only: stdlog, error_mesg, FATAL
       ncolprint=0
 
 #ifdef COSP_GFDL
-      logunit = stdlog()
+!      logunit = stdlog()  h1g, comment-out suggested by Rick, 2016-01-27
 #endif
       if ( debug.ne.0 ) then
           j=1
@@ -595,9 +587,9 @@ use fms_mod,only: stdlog, error_mesg, FATAL
 
 #ifdef COSP_GFDL
         if (rangeerror.ne.0) then
-              write (logunit,*) 'Input variable out of range'
-              write (logunit,*) 'rangevec:'
-              write (logunit,*) rangevec
+!              write (logunit,*) 'Input variable out of range'  h1g, comment-out suggested by Rick 2016-01-27
+!              write (logunit,*) 'rangevec:'                    h1g, 2016-01-27
+!              write (logunit,*) rangevec                       h1g, 2016-01-27
               call error_mesg('ICARUS','Input variable out of range',FATAL)
 
         endif
@@ -606,7 +598,6 @@ use fms_mod,only: stdlog, error_mesg, FATAL
               write (6,*) 'Input variable out of range'
               write (6,*) 'rangevec:'
               write (6,*) rangevec
-              call flush(6)
               STOP
         endif
 #endif

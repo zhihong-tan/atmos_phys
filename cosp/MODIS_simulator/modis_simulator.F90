@@ -1,18 +1,9 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
-
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
-
 ! (c) 2009-2010, Regents of the Unversity of Colorado
 !   Author: Robert Pincus, Cooperative Institute for Research in the Environmental Sciences
 ! All rights reserved.
+! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/MODIS_simulator/modis_simulator.F90 $
 ! 
 ! Redistribution and use in source and binary forms, with or without modification, are permitted 
 ! provided that the following conditions are met:
@@ -65,6 +56,7 @@ module mod_modis_sim
 #ifdef COSP_GFDL
   use fms_mod, only : error_mesg, FATAL
 #endif
+
   implicit none
   ! ------------------------------
   ! Algorithmic parameters
@@ -110,10 +102,10 @@ module mod_modis_sim
 
   real, private :: dummy_real 
   real, dimension(numTauHistogramBins + 1),      parameter :: &
-    tauHistogramBoundaries = (/ min_OpticalThickness, 1.3, 3.6, 9.4, 23., 60., huge(dummy_real) /) 
+    tauHistogramBoundaries = (/ min_OpticalThickness, 1.3, 3.6, 9.4, 23., 60., 10000. /) 
   real, dimension(numPressureHistogramBins + 1), parameter :: & ! Units Pa 
-    pressureHistogramBoundaries = (/ 0., 18000., 31000., 44000., 56000., 68000., 80000., huge(dummy_real) /) 
-  real, parameter :: highCloudPressureLimit = 440. * 100., lowCloudPressureLimit = 680.  * 100.
+    pressureHistogramBoundaries = (/ 0., 18000., 31000., 44000., 56000., 68000., 80000., 1000000. /) 
+  real, parameter :: highCloudPressureLimit = 440. * 100., lowCloudPressureLimit = 680. * 100.
   !
   ! For output - nominal bin centers and  bin boundaries. On output pressure bins are highest to lowest. 
   !
@@ -479,66 +471,18 @@ contains
     where (Cloud_Fraction_Water_Mean == 0) Cloud_Fraction_Water_Mean = -1.
     where (Cloud_Fraction_Ice_Mean   == 0) Cloud_Fraction_Ice_Mean   = -1.
     
-#ifdef COSP_GFDL
-    Optical_Thickness_Total_Mean = 0.0
-    Optical_Thickness_Water_Mean = 0.0
-    Optical_Thickness_Ice_Mean   = 0.0
-    Optical_Thickness_Total_MeanLog10 = 0.0
-    Optical_Thickness_Water_MeanLog10 = 0.0
-    Optical_Thickness_Ice_MeanLog10  = 0.0
-    Cloud_Particle_Size_Water_Mean = 0.0
-    Cloud_Particle_Size_Ice_Mean   = 0.0
-    Cloud_Top_Pressure_Total_Mean = 0.0
-    Liquid_Water_Path_Mean = 0.0
-    Ice_Water_Path_Mean    = 0.0
-
-    do j = 1, size(optical_thickness,2)
-      do i = 1, size(optical_thickness,1)
-        if (cloudMask(i,j)) then
-          Optical_Thickness_Total_Mean(i)      = Optical_Thickness_Total_Mean(i)      + optical_thickness(i,j)
-          Optical_Thickness_Total_MeanLog10(i) = Optical_Thickness_Total_MeanLog10(i) + log10(optical_thickness(i,j))
-          Cloud_Top_Pressure_Total_Mean(i)   = Cloud_Top_Pressure_Total_Mean(i)   + cloud_top_pressure(i,j)
-        endif
-        if (waterCloudMask(i,j)) then
-          Optical_Thickness_Water_Mean(i)      = Optical_Thickness_Water_Mean(i)      + optical_thickness(i,j)
-          Optical_Thickness_Water_MeanLog10(i) = Optical_Thickness_Water_MeanLog10(i) + log10(optical_thickness(i,j))
-          Cloud_Particle_Size_Water_Mean(i)    = Cloud_Particle_Size_Water_Mean(i)    + particle_size(i,j)
-          Liquid_Water_Path_Mean(i)            = Liquid_Water_Path_Mean(i)            + &
-                                                 LWP_conversion * particle_size(i,j) * optical_thickness(i,j)
-        endif
-        if (iceCloudMask(i,j)) then
-          Optical_Thickness_Ice_Mean(i)        = Optical_Thickness_Ice_Mean     (i)   + optical_thickness(i,j)
-          Optical_Thickness_Ice_MeanLog10(i)   = Optical_Thickness_Ice_MeanLog10(i)   + log10(optical_thickness(i,j))
-          Cloud_Particle_Size_Ice_Mean(i)      = Cloud_Particle_Size_Ice_Mean(i)      + particle_size(i,j)
-          Ice_Water_Path_Mean(i)               = Ice_Water_Path_Mean(i)               + &
-                                                 LWP_conversion * ice_density * particle_size(i,j) * optical_thickness(i,j)
-       endif
-      enddo
-    enddo
-    Optical_Thickness_Total_Mean(:)      = Optical_Thickness_Total_Mean(:)      / Cloud_Fraction_Total_Mean(:)
-    Optical_Thickness_Water_Mean(:)      = Optical_Thickness_Water_Mean(:)      / Cloud_Fraction_Water_Mean(:)
-    Optical_Thickness_Ice_Mean(:)        = Optical_Thickness_Ice_Mean(:)        / Cloud_Fraction_Ice_Mean(:)
-
-    Optical_Thickness_Total_MeanLog10(:) = Optical_Thickness_Total_MeanLog10(:) / Cloud_Fraction_Total_Mean(:)
-    Optical_Thickness_Water_MeanLog10(:) = Optical_Thickness_Water_MeanLog10(:) / Cloud_Fraction_Water_Mean(:)
-    Optical_Thickness_Ice_MeanLog10(:)   = Optical_Thickness_Ice_MeanLog10(:)   / Cloud_Fraction_Ice_Mean(:)
-
-    Cloud_Particle_Size_Water_Mean(:)    = Cloud_Particle_Size_Water_Mean(:)    / Cloud_Fraction_Water_Mean(:)
-    Cloud_Particle_Size_Ice_Mean(:)      = Cloud_Particle_Size_Ice_Mean(:)      / Cloud_Fraction_Ice_Mean(:)
-
-    Cloud_Top_Pressure_Total_Mean(:)     = Cloud_Top_Pressure_Total_Mean(:)     / max(1, count(cloudMask, dim = 2))
- 
-    Liquid_Water_Path_Mean(:)            = Liquid_Water_Path_Mean(:)            / Cloud_Fraction_Water_Mean(:)
-    Ice_Water_Path_Mean(:)               = Ice_Water_Path_Mean(:)               / Cloud_Fraction_Ice_Mean(:)
-
-#else   
     Optical_Thickness_Total_Mean = sum(optical_thickness, mask = cloudMask,      dim = 2) / Cloud_Fraction_Total_Mean(:) 
     Optical_Thickness_Water_Mean = sum(optical_thickness, mask = waterCloudMask, dim = 2) / Cloud_Fraction_Water_Mean(:)
     Optical_Thickness_Ice_Mean   = sum(optical_thickness, mask = iceCloudMask,   dim = 2) / Cloud_Fraction_Ice_Mean(:)
    
-    Optical_Thickness_Total_MeanLog10 = sum(log10(optical_thickness), mask = cloudMask,      dim = 2) / Cloud_Fraction_Total_Mean(:)
-    Optical_Thickness_Water_MeanLog10 = sum(log10(optical_thickness), mask = waterCloudMask, dim = 2) / Cloud_Fraction_Water_Mean(:)
-    Optical_Thickness_Ice_MeanLog10   = sum(log10(optical_thickness), mask = iceCloudMask,   dim = 2) / Cloud_Fraction_Ice_Mean(:)
+    ! We take the absolute value of optical thickness here to satisfy compilers that complains when we 
+    !   evaluate the logarithm of a negative number, even though it's not included in the sum. 
+    Optical_Thickness_Total_MeanLog10 = sum(log10(abs(optical_thickness)), mask = cloudMask,      dim = 2) / &
+                                        Cloud_Fraction_Total_Mean(:)
+    Optical_Thickness_Water_MeanLog10 = sum(log10(abs(optical_thickness)), mask = waterCloudMask, dim = 2) / &
+                                        Cloud_Fraction_Water_Mean(:)
+    Optical_Thickness_Ice_MeanLog10   = sum(log10(abs(optical_thickness)), mask = iceCloudMask,   dim = 2) / &
+                                        Cloud_Fraction_Ice_Mean(:)
    
     Cloud_Particle_Size_Water_Mean = sum(particle_size, mask = waterCloudMask, dim = 2) / Cloud_Fraction_Water_Mean(:)
     Cloud_Particle_Size_Ice_Mean   = sum(particle_size, mask = iceCloudMask,   dim = 2) / Cloud_Fraction_Ice_Mean(:)
@@ -551,7 +495,6 @@ contains
     Ice_Water_Path_Mean    = LWP_conversion * ice_density &
                              * sum(particle_size * optical_thickness, mask = iceCloudMask,   dim = 2) &
                              / Cloud_Fraction_Ice_Mean(:)
-#endif
 
     !
     ! Normalize pixel counts to fraction
@@ -890,7 +833,7 @@ contains
     
     logical, dimension(size(tau))         :: cloudMask
 #ifdef COSP_GFDL
-   integer, dimension(cnt_tau) :: cloudIndicies
+    integer, dimension(cnt_tau) :: cloudIndicies
     real,    dimension(cnt_tau) :: Refl,     Trans
 #else
     integer, dimension(count(tau(:) > 0)) :: cloudIndicies
@@ -1099,7 +1042,6 @@ contains
 #else
     write(6, *) "Failure in MODIS simulator" 
     write(6, *)  trim(message) 
-    flush(6)
     stop
 #endif
   end subroutine complain_and_die

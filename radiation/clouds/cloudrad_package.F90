@@ -22,18 +22,14 @@ use fms_mod,                  only: fms_init, open_namelist_file, &
                                     FATAL, close_file
 use time_manager_mod,         only: time_type, time_manager_init
 
-! shared radiation package modules:
-
-use sea_esf_rad_mod,          only: shortwave_number_of_bands, &
-                                    longwave_number_of_bands
-
 ! cloud radiation modules:
 
 use cloudrad_types_mod,       only: cld_specification_type, &
-                                     cldrad_properties_type, &
-                                     microrad_properties_type, &
-                                     microphysics_type, &
-                                     cloudrad_control_type
+                                    cldrad_properties_type, &
+                                    microrad_properties_type, &
+                                    microphysics_type, &
+                                    cloudrad_control_type, &
+                                    microrad_properties_alloc
 
 use cloudrad_diagnostics_mod, only: cloudrad_diagnostics_init, &
                                     cloudrad_netcdf, &
@@ -74,13 +70,12 @@ character(len=128)  :: tagname =  '$Name$'
 
 public          &
          cloudrad_package_init, cloud_radiative_properties, &
-         cldrad_props_dealloc, cloudrad_package_end
+         cloudrad_package_end
 
 
 private          &
 !  called from cloud_radiative_properties:
-         initialize_cldrad_props, combine_cloud_properties,  &
-         cloudrad_package_dealloc
+         combine_cloud_properties
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -123,13 +118,6 @@ namelist /cloudrad_package_nml /     &
 
 !----------------------------------------------------------------------
 !----  private data -------
-!
-!     num_sw_bands     number of spectral bands resolved by the 
-!                      sw radiation package
-!     num_lw_bands     number of frequency bands for which longwave
-!                      emissivities are defined
-
-integer :: num_sw_bands, num_lw_bands
 
 logical :: module_is_initialized = .false.  ! module initialized?
 
@@ -278,13 +266,6 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !BW                                                              FATAL)
 !BW   endif
 
-
-!--------------------------------------------------------------------
-!    save the number of longwave and shortwave bands
-!--------------------------------------------------------------------
-      call shortwave_number_of_bands (num_sw_bands)
-      call longwave_number_of_bands  (num_lw_bands)
-
 !-------------------------------------------------------------------
 !    define variables which denote whether microphysically-based cloud
 !    radiative properties will be defined for the longwave and shortwave
@@ -294,7 +275,7 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !    then do_lw_micro will be .true..
 !----------------------------------------------------------------------
      !if (Lw_control%do_lwcldemiss) then
-      if (num_lw_bands > 1) then
+      if (Cldrad_control%num_lw_cloud_bands > 1) then
         Cldrad_control%do_lw_micro = .true.
       endif
 !BW   if (Sw_control%do_esfsw) then
@@ -436,7 +417,7 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
       if (Cldrad_control%do_bulk_microphys) then
         call bulkphys_rad_init (min_cld_drop_rad, max_cld_drop_rad, &
                                 min_cld_ice_size, max_cld_ice_size, &
-                                pref, lonb, latb, num_sw_bands, num_lw_bands, &
+                                pref, lonb, latb, &
                                 Cldrad_control)
       endif
 
@@ -451,7 +432,7 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
                                   min_cld_ice_size, max_cld_ice_size, &
                                         axes, Time, &
                                   donner_meso_is_largescale, &
-                                  num_sw_bands, num_lw_bands, Cldrad_control)
+                                  Cldrad_control)
       endif
 
 !--------------------------------------------------------------------
@@ -646,11 +627,14 @@ real, dimension(:,:,:,:,:),   intent(out)              :: cldsct, cldext, cldasy
       kx = size(Cld_spec%camtsw,3)
 
 !--------------------------------------------------------------------
-!    call initialize_cldrad_props to allocate and initialize the cloud 
-!    radiative property arrays.
+!    allocate and initialize the cloud radiative property arrays
 !---------------------------------------------------------------------
-      call initialize_cldrad_props (ix, jx, kx, Cldrad_control, &
-                                    Microrad_props, Cldrad_props)
+      call Cldrad_props%alloc (ix, jx, kx, Cldrad_control)
+
+      do n = 1, size(Microrad_props,1)
+         call microrad_properties_alloc (Microrad_props(n), ix, jx, kx, Cldrad_control)
+        !Microrad_props(n)%alloc (ix, jx, kx, Cldrad_control)
+      enddo
 
 !--------------------------------------------------------------------
 !    if bulkphys_rad routines are needed, limit the condensate sizes
@@ -851,75 +835,17 @@ real, dimension(:,:,:,:,:),   intent(out)              :: cldsct, cldext, cldasy
 !    call cloudrad_package_dealloc to deallocate the local derived type
 !    variable arrays.
 !--------------------------------------------------------------------
-      call cloudrad_package_dealloc (Microrad_props)
-      call cldrad_props_dealloc (Cldrad_props)
+     !call microrad_properties_dealloc (Microrad_props)
+     !call cldrad_props_dealloc (Cldrad_props)
+      do n = 1, size(Microrad_props(:))
+        call Microrad_props(n)%dealloc
+      enddo
+      call Cldrad_props%dealloc
 
 !---------------------------------------------------------------------
 
 
 end subroutine cloud_radiative_properties     
-
-
-
-!#####################################################################
-! <SUBROUTINE NAME="cldrad_properties_dealloc">
-!  <OVERVIEW>
-!    Subroutine to deallocate the array elements of the
-!    cldrad_properties_type variable that is input.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    Subroutine to deallocate the array elements of the
-!    cldrad_properties_type variable that is input.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call cldrad_props_dealloc (Cldrad_props)
-!  </TEMPLATE>
-!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
-!   cldrad_properties_type variable containing cloud 
-!   radiative properties
-!  </INOUT>
-! </SUBROUTINE>
-!
-subroutine cldrad_props_dealloc (Cldrad_props)
-
-!------------------------------------------------------------------
-!    cldrad_props_dealloc deallocates the array elements of the
-!    cldrad_properties_type variable that is input.
-!------------------------------------------------------------------
-
-type(cldrad_properties_type), intent(inout) :: Cldrad_props
-
-!-------------------------------------------------------------------
-!  intent(inout) variables:
-!
-!    Cldrad_props    cldrad_properties_type variable containing
-!                    cloud radiative properties
-!
-!--------------------------------------------------------------------
-
-!------------------------------------------------------------------
-!    deallocate the array elements of Cldrad_props. different variables
-!    exist dependent on the sw parameterization being used.
-!-------------------------------------------------------------------
-      deallocate (Cldrad_props%emmxolw   )
-      deallocate (Cldrad_props%emrndlw   )
-      deallocate (Cldrad_props%abscoeff  )
-      deallocate (Cldrad_props%cldemiss  )
-
-!BW   if ( Cldrad_control%do_sw_micro ) then
-        deallocate (Cldrad_props%cldext    )
-        deallocate (Cldrad_props%cldasymm  )
-        deallocate (Cldrad_props%cldsct    )
-!BW   else
-!BW     deallocate (Cldrad_props%cvisrfsw  )
-!BW     deallocate (Cldrad_props%cirabsw   )
-!BW     deallocate (Cldrad_props%cirrfsw   )
-!BW   endif
-
-!-------------------------------------------------------------------
-
-
-end subroutine cldrad_props_dealloc
 
 
 !####################################################################
@@ -966,9 +892,7 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
 !---------------------------------------------------------------------
 
 
-
 end subroutine cloudrad_package_end
-
 
 
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -976,179 +900,6 @@ end subroutine cloudrad_package_end
 !                    PRIVATE SUBROUTINES
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-
-
-!####################################################################
-! <SUBROUTINE NAME="initialize_cldrad_props">
-!  <OVERVIEW>
-!   initialize_cldrad_props allocates and initializes those fields
-!    which define the cloud radiative properties needed by the
-!    radiation package.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   initialize_cldrad_props allocates and initializes those fields
-!    which define the cloud radiative properties needed by the
-!    radiation package.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call initialize_cldrad_props (ix, jx, kx, Lscrad_props,    &
-!                                    Mesorad_props, Cellrad_props, &
-!                                    Shallowrad_props, Cldrad_props )
-!  </TEMPLATE>
-!  <IN NAME="ix, jx, kx" TYPE="integer">
-!       ix             size of i dimension of physics window
-!       jx             size of j dimension of physics window
-!       kx             size of k dimension of physics window
-!  </IN>
-!  <INOUT NAME="Lscrad_props" TYPE="microrad_properties_type">
-!   cloud radiative properties for the large-scale 
-!                      clouds   
-!  </INOUT>
-!  <INOUT NAME="Mesorad_props" TYPE="microrad_properties_type">
-!   cloud radiative properties for the meso-scale
-!                      clouds assciated with donner convection
-!  </INOUT>
-!  <INOUT NAME="Cellrad_props" TYPE="microrad_properties_type">
-!   cloud radiative properties for the convective cell
-!                      clouds associated with donner convection 
-!  </INOUT>
-!  <INOUT NAME="Shallowrad_props" TYPE="microrad_properties_type">
-!   cloud radiative properties for the 
-!                      clouds associated with uw shallow convection 
-!  </INOUT>
-!  <INOUT NAME="Cldrad_props" TYPE="cldrad_properties_type">
-!   cloud radiative properties on model grid
-!  </INOUT>
-! </SUBROUTINE>
-!
-subroutine initialize_cldrad_props (ix, jx, kx, Cldrad_control, &
-                                    Microrad_props, Cldrad_props )
-
-!--------------------------------------------------------------------
-!    initialize_cldrad_props allocates and initializes those fields
-!    which define the cloud radiative properties needed by the
-!    radiation package.
-!---------------------------------------------------------------------
-
-integer,                        intent(in)    :: ix, jx, kx
-type(cloudrad_control_type),    intent(in)    :: Cldrad_control
-type(microrad_properties_type), intent(inout) :: Microrad_props(:)
-type(cldrad_properties_type),   intent(inout) :: Cldrad_props
-
-!----------------------------------------------------------------------
-!    intent(in) variables:
-! 
-!       ix             size of i dimension of physics window
-!       jx             size of j dimension of physics window
-!       kx             size of k dimension of physics window
-!
-!   intent(inout) variables:
-!
-!       Microrad_props  cloud radiative properties for 
-!                       all cloud schemes [ microrad_properties_type ]
-!          the components of a microrad_structure are:
-!            %cldext   parameterization band values of the cloud      
-!                      extinction coefficient [ km**(-1) ]   
-!            %cldsct   parameterization band values of the cloud      
-!                      scattering coefficient [ km**(-1) ]
-!            %cldasymm parameterization band values of the asymmetry  
-!                      factor [ dimensionless ]
-!            %abscoeff combined absorption coefficient for clouds in 
-!                      each of the longwave frequency bands [ km**(-1) ]
-!
-!       Cldrad_props   cloud radiative properties on model grid,
-!                      [ cldrad_properties_type ]
-!          the components of a cldrad_properties_type strucure are:
-!            %emmxolw  longwave cloud emissivity for maximally over-
-!                      lapped clouds [ dimensionless ] 
-!            %emrndlw  longwave cloud emissivity for randomly overlapped
-!                      clouds  [ dimensionless ]
-!            %cldext   parameterization band values of the cloud      
-!                      extinction coefficient [ km**(-1) ]   
-!            %cldsct   parameterization band values of the cloud      
-!                      scattering coefficient [ km**(-1) ]
-!            %cldasymm parameterization band values of the asymmetry  
-!                      factor [ dimensionless ]
-!            %abscoeff combined absorption coefficient for clouds in 
-!                      each of the longwave frequency bands [ km**(-1) ]
-!            %cldemiss longwave emissivity calculated using abscoeff
-!                      [ dimensionless ]
-!            %cirabsw  absorptivity of clouds in the infrared frequency 
-!                      band. may be zenith angle dependent. 
-!                      [ dimensionless ]
-!            %cirrfsw  reflectivity of clouds in the infrared frequency
-!                      band. may be zenith angle dependent.
-!                      [ dimensionless ]
-!            %cvisrfsw reflectivity of clouds in the visible frequency 
-!                      band. may be zenith angle dependent.
-!                      [ dimensionless ]
-!
-!---------------------------------------------------------------------
-      integer :: n
-
-!-------------------------------------------------------------------
-!    allocate the arrays used to define the longwave cloud radiative
-!    properties. initialize to appropriate non-cloudy values.
-!--------------------------------------------------------------------
-      if (Cldrad_control%do_ica_calcs) then
-        allocate (Cldrad_props%emmxolw  (ix, jx, kx, num_lw_bands,num_lw_bands) )
-        allocate (Cldrad_props%emrndlw  (ix, jx, kx, num_lw_bands,num_lw_bands) )
-        allocate (Cldrad_props%abscoeff (ix, jx, kx, num_lw_bands,num_lw_bands) )
-        allocate (Cldrad_props%cldemiss (ix, jx, kx, num_lw_bands,num_lw_bands) )
-      else
-        allocate (Cldrad_props%emmxolw  (ix, jx, kx, num_lw_bands,1) )
-        allocate (Cldrad_props%emrndlw  (ix, jx, kx, num_lw_bands,1) )
-        allocate (Cldrad_props%abscoeff (ix, jx, kx, num_lw_bands,1) )
-        allocate (Cldrad_props%cldemiss (ix, jx, kx, num_lw_bands,1) )
-      endif
-      Cldrad_props%emmxolw           = 1.0E+00
-      Cldrad_props%emrndlw           = 1.0E+00
-      Cldrad_props%abscoeff          = 0.0E+00
-      Cldrad_props%cldemiss          = 0.0E+00
-
-!---------------------------------------------------------------------
-!    allocate and initialize the microphysically-based shortwave cloud 
-!    radiative properties.
-!---------------------------------------------------------------------
-      if (Cldrad_control%do_ica_calcs) then
-        allocate (Cldrad_props%cldext  (ix, jx, kx, num_sw_bands, &
-                  num_sw_bands) )
-        allocate (Cldrad_props%cldsct  (ix, jx, kx, num_sw_bands, &
-                  num_sw_bands) )
-        allocate (Cldrad_props%cldasymm(ix, jx, kx, num_sw_bands, &
-                  num_sw_bands) )
-      else
-        allocate (Cldrad_props%cldext  (ix, jx, kx, num_sw_bands, 1))
-        allocate (Cldrad_props%cldsct  (ix, jx, kx, num_sw_bands, 1))
-        allocate (Cldrad_props%cldasymm(ix, jx, kx, num_sw_bands, 1))
-      endif
-      Cldrad_props%cldsct            = 0.0E+00
-      Cldrad_props%cldext            = 0.0E+00
-      Cldrad_props%cldasymm          = 1.0E+00
-
-!---------------------------------------------------------------------
-!    allocate and initialize the cloud radiative properties associated
-!    with cloud schemes
-!---------------------------------------------------------------------
-
-      do n = 1, size(Microrad_props(:))
-        allocate (Microrad_props(n)%cldext  (ix, jx, kx, num_sw_bands))
-        allocate (Microrad_props(n)%cldsct  (ix, jx, kx, num_sw_bands))
-        allocate (Microrad_props(n)%cldasymm(ix, jx, kx, num_sw_bands))
-        allocate (Microrad_props(n)%abscoeff (ix, jx, kx, num_lw_bands))
-        Microrad_props(n)%cldext   = 0.
-        Microrad_props(n)%cldsct   = 0.
-        Microrad_props(n)%cldasymm = 1.
-        Microrad_props(n)%abscoeff = 0.
-      enddo
-
-!----------------------------------------------------------------------
-
-
-end subroutine initialize_cldrad_props         
-
 
 !#####################################################################
 ! <SUBROUTINE NAME="combine_cloud_properties">
@@ -1304,72 +1055,6 @@ type(cldrad_properties_type),   intent(inout) :: Cldrad_props
 
 end subroutine  combine_cloud_properties 
 
-
-!####################################################################
-! <SUBROUTINE NAME="cloudrad_package_dealloc">
-!  <OVERVIEW>
-!   Subroutine to deallocate the space cloud radiative properties use
-!   in the model
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Subroutine to deallocate the space cloud radiative properties use
-!   in the model
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call  cloudrad_package_dealloc (Lscrad_props, Mesorad_props,  &
-!                                   Cellrad_props)
-!  </TEMPLATE>
-!  <IN NAME="Lscrad_props" TYPE="microrad_properties_type">
-!   cloud radiative properties for the large-scale 
-!                      clouds   
-!  </IN>
-!  <IN NAME="Mesorad_props" TYPE="microrad_properties_type">
-!   cloud radiative properties for the meso-scale
-!                      clouds   
-!  </IN>
-!  <IN NAME="Cellrad_props" TYPE="cldrad_prperties_type">
-!   cldrad_prperties_type variable containing the cloud radiative
-!   properties for the donner cell clouds
-!  </IN>
-!  <IN NAME="Shallowrad_props" TYPE="cldrad_properties_type">
-!   cldrad_prperties_type variable containing the cloud radiative
-!   properties for the uw shallow clouds
-!  </IN>
-! </SUBROUTINE>
-!
-subroutine cloudrad_package_dealloc (Microrad_props)
-
-!---------------------------------------------------------------------
-!    cloudrad_package_dealloc deallocates the components of the local
-!    derived-type variables.
-!---------------------------------------------------------------------
-        
-type(microrad_properties_type), intent(inout) :: Microrad_props(:)
-
-!---------------------------------------------------------------------
-!   intent(inout) variables:
-!
-!     Microrad_props  cloud radiative properties for all cloud types
-!                      [ microrad_properties_type ]
-!
-!---------------------------------------------------------------------
-
-integer :: n
-
-!--------------------------------------------------------------------
-!    deallocate the elements of Microrad_props
-!---------------------------------------------------------------------
-
-      do n = 1, size(Microrad_props(:))
-        deallocate (Microrad_props(n)%cldext  )
-        deallocate (Microrad_props(n)%cldsct  )
-        deallocate (Microrad_props(n)%cldasymm)
-        deallocate (Microrad_props(n)%abscoeff)
-      enddo
-
-!---------------------------------------------------------------------
-
-end subroutine cloudrad_package_dealloc
 
 !###################################################################
 

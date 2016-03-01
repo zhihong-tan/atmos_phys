@@ -48,7 +48,7 @@ use field_manager_mod,   only: MODEL_ATMOS
 
 !   shared radiation package modules:
 
-use rad_utilities_mod,   only:  radiative_gases_type
+use radiative_gases_types_mod, only:  radiative_gases_type
 
 !---------------------------------------------------------------------
 

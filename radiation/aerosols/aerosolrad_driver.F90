@@ -27,10 +27,7 @@ use aerosolrad_package_mod, only: aerosolrad_package_init,    &
                                   aerosolrad_package_time_vary, &
                                   aerosol_radiative_properties, &
                                   aerosolrad_package_end, &
-                                  number_of_lw_aerosol_bands, &
-                                  aerosolrad_diag_dealloc
-
-use sea_esf_rad_mod,        only: shortwave_number_of_bands
+                                  number_of_lw_aerosol_bands
 
 !--------------------------------------------------------------------
 
@@ -93,12 +90,15 @@ logical ::  module_is_initialized = .false. ! module initialized?
 
 !######################################################################
 
-subroutine aerosolrad_driver_init (lonb, latb, kmax, nzens, &
+subroutine aerosolrad_driver_init (lonb, latb, kmax,   &
+                                   num_sw_bands, num_lw_bands, &
                                    Aerosolrad_control, &
                                    aerosol_names, aerosol_family_names)
 
 real, dimension(:,:),       intent(in)    :: lonb, latb
-integer,                    intent(in)    :: kmax, nzens
+integer,                    intent(in)    :: kmax
+integer,                    intent(in)    :: num_sw_bands, &
+                                             num_lw_bands
 type(aerosolrad_control_type), intent(inout) :: Aerosolrad_control
 character(len=64), pointer, intent(out)   :: aerosol_names(:), &
                                              aerosol_family_names(:)
@@ -163,13 +163,14 @@ character(len=64), pointer, intent(out)   :: aerosol_names(:), &
       call aerosol_init (lonb, latb, Aerosol_rad, &
                          aerosol_names, aerosol_family_names)
 
-      call aerosolrad_package_init (kmax, nzens, aerosol_names, lonb, latb, &
+      call aerosolrad_package_init (kmax, aerosol_names, lonb, latb, &
                                     Aerosolrad_control)
 
 !---------------------------------------------------------------------
-!    return the number of shortwave and longwave aerosols
+!    save the number of shortwave and longwave aerosols
+!    NOTE: number of LW aerosols is determined by aerosolrad package
 !---------------------------------------------------------------------
-      call shortwave_number_of_bands  (Aerosolrad_control%num_sw_aerosol_bands)
+      Aerosolrad_control%num_sw_aerosol_bands = num_sw_bands
       call number_of_lw_aerosol_bands (Aerosolrad_control%num_lw_aerosol_bands)
 
 !---------------------------------------------------------------------
@@ -310,7 +311,8 @@ type(aerosolrad_diag_type), intent(inout) :: Aerosolrad_diags
 !---------------------------------------------------------------------
 
       call aerosol_dealloc (Aerosol)
-      call aerosolrad_diag_dealloc (Aerosolrad_diags)
+     !call aerosolrad_diag_dealloc (Aerosolrad_diags)
+      call Aerosolrad_diags%dealloc
 
 !-------------------------------------------------------------------
 
