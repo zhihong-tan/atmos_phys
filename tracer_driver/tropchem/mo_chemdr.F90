@@ -7,6 +7,9 @@
       use mo_chem_utls_mod,   only : get_spc_ndx      
       use tracer_manager_mod, only : get_tracer_index        
       use field_manager_mod,  only : MODEL_ATMOS
+      use mpp_mod,            only : mpp_clock_id,         &
+                                     mpp_clock_begin,      &
+                                     mpp_clock_end
 !>
       implicit none
 
@@ -15,7 +18,8 @@
       integer :: nh4_ndx, nh3_ndx
       integer :: so2_ndx, so4_ndx
       integer :: ox_ndx, o3s_ndx
-      integer  :: o3s_e90_ndx, e90_ndx
+      integer :: o3s_e90_ndx, e90_ndx
+      integer :: implicit_clock_id, photo_clock_id, cloud_clock_id
 !>
       private
       public :: chemdr
@@ -402,6 +406,7 @@ logical                       :: module_is_initialized = .false.
 !             ... Calculate the photodissociation rates
 !-----------------------------------------------------------------------      
 !<f1p: replace cwat by cliq+cice
+   call mpp_clock_begin(photo_clock_id)
          if (.not. trop_option%do_fastjx_photo) then
            call photo( reaction_rates(:,:,:phtcnt), pmid, pdel, tfld, zmid, &
                      col_dens, &
@@ -426,6 +431,7 @@ logical                       :: module_is_initialized = .false.
                          r &            
                           )
          end if
+   call mpp_clock_end(photo_clock_id)
 
 !-----------------------------------------------------------------------      
 !       ...  History output for instantaneous photo rates
@@ -548,6 +554,7 @@ logical                       :: module_is_initialized = .false.
 !        ... Solve for "Implicit" species
 !-----------------------------------------------------------------------
 !prod_ox and loss_ox are added to implicit solver. (jmao,1/1/2011)
+   call mpp_clock_begin(implicit_clock_id)
          call imp_sol( vmr, reaction_rates, &
                        het_rates, extfrc, &
                        nstep, delt, &
@@ -557,6 +564,7 @@ logical                       :: module_is_initialized = .false.
                        imp_slv_nonconv, &
                        plonl, plnplv, &
                        prod_ox, loss_ox)
+   call mpp_clock_end(implicit_clock_id)
       end if
       if( clscnt5 > 0 .and. rxntot > 0 ) then
 !-----------------------------------------------------------------------
@@ -645,12 +653,14 @@ logical                       :: module_is_initialized = .false.
 !-----------------------------------------------------------------------
 !       ... Heterogeneous+cloud chemistry
 !-----------------------------------------------------------------------
+   call mpp_clock_begin(cloud_clock_id)
       if( so2_ndx > 0 .and. so4_ndx > 0 ) then
          call setsox( pmid, plonl, delt, tfld, sh, &
                       cwat, fliq, cldfr, invariants(:,:,indexm), &
                       vmr, co2, &
                       trop_diag_array,trop_option,trop_diag)
       end if
+   call mpp_clock_end(cloud_clock_id)
 
 !-----------------------------------------------------------------------      
 !         ... Check for negative values and reset to zero
@@ -730,6 +740,10 @@ logical                       :: module_is_initialized = .false.
 
         e90_ndx = get_tracer_index( MODEL_ATMOS,'e90' )
         o3s_e90_ndx = get_spc_ndx( 'O3S_E90' )
+
+        implicit_clock_id = mpp_clock_id('Chemistry: Implicit solver')
+        photo_clock_id = mpp_clock_id('Chemistry: Photolysis')
+        cloud_clock_id = mpp_clock_id('Chemistry: Cloud Chemistry')
 
         module_is_initialized = .true.
      
