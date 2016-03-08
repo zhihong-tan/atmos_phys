@@ -271,7 +271,8 @@ integer, dimension(2)        :: id_tdt_sw,   id_tdt_lw,  &
 integer                      :: id_rlds, id_rldscs, id_rlus, id_rsds,   &
                                 id_rsdscs, id_rsus, id_rsuscs, id_rsdt, &
                                 id_rsut, id_rsutcs, id_rlut, id_rlutcs, &
-                                id_rtmt, id_rsdsdiff
+                                id_rtmt, id_rsdsdiff, &
+                                id_tntrs, id_tntrscs, id_tntrl, id_tntrlcs
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
                                         id_netlw_special
@@ -1052,6 +1053,34 @@ logical,         intent(in) :: do_lwaerosol
                  'watts/m2', missing_value=missing_value)
  
        end do
+
+        id_tntrs = register_diag_field (mod_name,   &
+                'tntrs', axes(1:3), Time, & 
+                'Tendency of Air Temperature due to Shortwave Radiative Heating', &
+                'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_shortwave_heating', &
+                area = area_id, missing_value = CMOR_MISSING_VALUE)
+
+        id_tntrscs = register_diag_field (mod_name,   &
+                'tntrscs', axes(1:3), Time, & 
+                'Tendency of Air Temperature due to Clear Sky Shortwave Radiative Heating', &
+                'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_shortwave_heating', &
+                area = area_id, missing_value = CMOR_MISSING_VALUE)
+
+        id_tntrl = register_diag_field (mod_name,   &
+                'tntrl', axes(1:3), Time, & 
+                'Tendency of Air Temperature due to Longwave Radiative Heating', &
+                'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_longwave_heating', &
+                area = area_id, missing_value = CMOR_MISSING_VALUE)
+
+        id_tntrlcs = register_diag_field (mod_name,   &
+                'tntrlcs', axes(1:3), Time, & 
+                'Tendency of Air Temperature due to Clear Sky Longwave Radiative Heating', &
+                'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_longwave_heating', &
+                area = area_id, missing_value = CMOR_MISSING_VALUE)
 
         id_rlds = register_diag_field (mod_name,    &
                 'rlds', axes(1:2), Time, &
@@ -1910,6 +1939,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         endif
      endif
 
+!------- sw tendency -----------
+        if (id_tntrs > 0 ) then
+          used = send_data (id_tntrs, Rad_output%tdtsw(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
 !------- downward sw flux surface -------
         if (id_rsds > 0 ) then
           used = send_data (id_rsds, swdns,   &
@@ -2043,6 +2078,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         endif
 
      endif
+
+!------- sw tendency -----------
+          if (id_tntrscs > 0 ) then
+            used = send_data (id_tntrscs, Rad_output%tdtsw_clr(is:ie,js:je,:),  &
+                              Time_diag, is, js, 1)
+          endif
 
 !------- downward sw flux surface -------
           if (id_rsdscs > 0 ) then
@@ -2575,6 +2616,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !  longwave data for cmip names
 !----------------------------------------
 
+!------- lw tendency -----------
+        if (id_tntrl > 0 ) then
+          used = send_data (id_tntrl, tdtlw,    &
+                            Time_diag, is, js, 1)
+        endif
+
 !------- downward lw flux surface -------
         if (id_rlds > 0 ) then
           used = send_data (id_rlds, lwdns,    &
@@ -2676,6 +2723,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------------------------------------------
 !  longwave clear-sky data for cmip names
 !------------------------------------------
+
+!------- lw tendency -----------
+        if (id_tntrlcs > 0 ) then
+          used = send_data (id_tntrlcs, tdtlw_clr,    &
+                            Time_diag, is, js, 1)
+        endif
 
 !------- downward lw flux surface -------
           if (id_rldscs > 0 ) then

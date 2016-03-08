@@ -21,7 +21,8 @@
 use sat_vapor_pres_mod,    only: compute_qs, lookup_es
 use time_manager_mod,      only: time_type, get_time
 use diag_manager_mod,      only: register_diag_field, send_data, &
-                                 get_diag_field_id, DIAG_FIELD_NOT_FOUND
+                                 get_diag_field_id, DIAG_FIELD_NOT_FOUND, &
+                                 diag_field_add_attribute
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, WARNING, NOTE, &
@@ -261,6 +262,8 @@ private
    real :: gustconst = 10./SECONDS_PER_DAY ! constant in kg/m2/sec, default =
                                            ! 1 cm/day = 10 mm/day
 
+   logical :: use_cf_metadata = .true.
+
 namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,     &
                                do_donner_before_uw, use_updated_profiles_for_uw, &
                                only_one_conv_scheme_per_column, do_diag_clouds,  &
@@ -273,6 +276,7 @@ namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,    
                                gustconst, do_liq_num, force_donner_moist_conserv,&
                                do_donner_conservation_checks, do_donner_mca,     &
                                do_limit_uw, do_limit_donner, using_fms,          &
+                               use_cf_metadata,                                  &
                                do_bm, do_bmmass, do_bmomp, do_simple, &
                                do_ice_num, do_legacy_strat_cloud, &
                                detrain_liq_num, detrain_ice_num,  &
@@ -294,7 +298,7 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_ci, &
            id_tdt_ls  , id_qdt_ls  , id_prec_ls  , id_snow_ls  , &
            id_precip  , id_WVP, id_LWP, id_IWP, id_AWP, id_gust_conv, &
-           id_pr, id_prw, id_prc, id_prsn, &
+           id_pr, id_prw, id_prc, id_prrc, id_prsn, &
            id_clt,   &
            id_tot_cloud_area,  id_tot_liq_amt,  id_tot_ice_amt,  &
            id_cl, id_clw, id_cli, &
@@ -309,6 +313,7 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_hur, &
            id_conv_cld_base, id_conv_cld_top, &
            id_ccb, id_cct, &
+           id_tntc, id_tntscp, id_tnhusc, id_tnhusscp, &
            id_tdt_deep_donner, id_qdt_deep_donner, &
            id_qadt_deep_donner, id_qldt_deep_donner, &
            id_qidt_deep_donner, &
@@ -2154,11 +2159,13 @@ logical, intent(out), dimension(:,:)     :: convect
 !    temperature change due to dry and moist convection:
 !---------------------------------------------------------------------
    used = send_data (id_tdt_conv, ttnd_conv, Time, is, js, 1, rmask=mask)
+   used = send_data (id_tntc,     ttnd_conv, Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
 !    vapor specific humidity change due to convection:
 !---------------------------------------------------------------------
    used = send_data (id_qdt_conv, qtnd_conv, Time, is, js, 1, rmask=mask)
+   used = send_data (id_tnhusc,   qtnd_conv, Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
 !    total precipitation due to convection:
@@ -2170,6 +2177,11 @@ logical, intent(out), dimension(:,:)     :: convect
 !    frozen precipitation (snow) due to convection:
 !---------------------------------------------------------------------
    used = send_data (id_snow_conv, fprec, Time, is, js)
+
+!---------------------------------------------------------------------
+!    liquid precipitation (rain) due to convection:
+!---------------------------------------------------------------------
+   used = send_data (id_prrc, lprec, Time, is, js)
 
 !---------------------------------------------------------------------
 !    convective frequency
@@ -2632,6 +2644,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    temperature change due to large-scale condensation:
 !---------------------------------------------------------------------
     used = send_data (id_tdt_ls, ttnd, Time, is, js, 1, rmask=mask)
+    used = send_data (id_tntscp, ttnd, Time, is, js, 1, rmask=mask)
 !---------------------------------------------------------------------
 !    dry static energy tendency due to large-scale condensation:
 !---------------------------------------------------------------------
@@ -2646,7 +2659,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    specific humidity change due to large-scale condensation:
 !---------------------------------------------------------------------
-    used = send_data (id_qdt_ls, qtnd, Time, is, js, 1, rmask=mask)
+    used = send_data (id_qdt_ls,   qtnd, Time, is, js, 1, rmask=mask)
+    used = send_data (id_tnhusscp, qtnd, Time, is, js, 1, rmask=mask)
 
     used = send_data (id_lsc_precip, rain + snow, Time, is, js)
         
@@ -4199,10 +4213,12 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
   integer, intent(in) :: num_donner_tracers
   integer, intent(in) :: num_tracers
 
-  character(len=32) :: tracer_units, tracer_name
+  character(len=32) :: tracer_units, tracer_name, assoc_fields
   character(len=128) :: diaglname, diaglname_uw,diaglname_donner
   integer, dimension(3) :: half = (/1,2,4/)
   integer   :: n, nn
+
+  assoc_fields = 'ap b ap_bnds b_bnds lev_bnds'
 
 !------------ initializes diagnostic fields in this module -------------
 
@@ -4318,10 +4334,22 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      'Temperature tendency from convection ',    'deg_K/s',  &
                         missing_value=missing_value               )
 
+   id_tntc = register_diag_field ( mod_name, 'tntc', axes(1:3), Time, &
+           'Tendency of Air Temperature Due to Convection ', 'K s-1', &
+       standard_name='tendency_of_air_temperature_due_to_convection', &
+       area=area_id, missing_value=CMOR_MISSING_VALUE )
+   call diag_field_add_attribute ( id_tntc, 'associated_fields', assoc_fields )
+
    id_qdt_conv = register_diag_field ( mod_name, &
      'qdt_conv', axes(1:3), Time, &
      'Spec humidity tendency from convection ',  'kg/kg/s',  &
                         missing_value=missing_value               )
+
+   id_tnhusc = register_diag_field ( mod_name, 'tnhusc', axes(1:3), Time, &
+           'Tendency of Specific Humidity Due to Convection ', 'K s-1', &
+       standard_name='tendency_of_specific_humidity_due_to_convection', &
+       area=area_id, missing_value=CMOR_MISSING_VALUE )
+   call diag_field_add_attribute ( id_tnhusc, 'associated_fields', assoc_fields )
 
    id_q_conv_col = register_diag_field ( mod_name, &
      'q_conv_col', axes(1:2), Time, &
@@ -4412,6 +4440,12 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      area=area_id, &
      missing_value = CMOR_MISSING_VALUE, &
      interp_method = "conserve_order1" )
+
+   id_prrc = register_diag_field ( mod_name, 'prrc', axes(1:2), Time, &
+                            'Convective Rainfall Rate', 'kg m-2 s-1', &
+                            standard_name='convective_rainfall_flux', &
+                            area=area_id, missing_value=CMOR_MISSING_VALUE, &
+                            interp_method="conserve_order1" )
 
    id_snow_conv = register_diag_field ( mod_name, &
      'snow_conv', axes(1:2), Time, &
@@ -4590,10 +4624,22 @@ if ( do_lsc ) then
        'Temperature tendency from large-scale cond',   'deg_K/s',  &
                         missing_value=missing_value               )
 
+   id_tntscp = register_diag_field ( mod_name, 'tntscp', axes(1:3), Time, &
+       'Tendency of Air Temperature Due to Stratiform Clouds and Precipitation', 'K s-1', &
+       standard_name='tendency_of_air_temperature_due_to_stratiform_clouds_and_precipitation', &
+       area=area_id, missing_value=CMOR_MISSING_VALUE )
+   call diag_field_add_attribute ( id_tntscp, 'associated_fields', assoc_fields )
+
    id_qdt_ls = register_diag_field ( mod_name, &
      'qdt_ls', axes(1:3), Time, &
      'Spec humidity tendency from large-scale cond', 'kg/kg/s',  &
                         missing_value=missing_value               )
+
+   id_tnhusscp = register_diag_field ( mod_name, 'tnhusscp', axes(1:3), Time, &
+       'Tendency of Specific Humidity Due to Stratiform Clouds and Precipitation', 's-1', &
+       standard_name='tendency_of_specific_humidity_due_to_stratiform_clouds_and_precipitation', &
+       area=area_id, missing_value=CMOR_MISSING_VALUE )
+   call diag_field_add_attribute ( id_tnhusscp, 'associated_fields', assoc_fields )
 
    id_prec_ls = register_diag_field ( mod_name, &
      'prec_ls', axes(1:2), Time, &
@@ -4768,13 +4814,25 @@ endif
 
 if ( do_strat ) then
 
-   id_LWP = register_diag_field ( mod_name, &
-     'LWP', axes(1:2), Time, &
-        'Liquid water path',                            'kg/m2'   )
+   if (use_cf_metadata) then
+     id_LWP = register_diag_field ( mod_name, 'lwp', axes(1:2), Time, &
+                                   'Liquid Water Path', 'kg m-2', &
+                     standard_name='atmosphere_cloud_liquid_water_content', &
+                          area=area_id, missing_value=CMOR_MISSING_VALUE )
 
-   id_IWP = register_diag_field ( mod_name, &
-     'IWP', axes(1:2), Time, &
-        'Ice water path',                               'kg/m2'   )
+     id_IWP = register_diag_field ( mod_name, 'iwp', axes(1:2), Time, &
+                                   'Ice Water Path', 'kg m-2', &
+                     standard_name='atmosphere_cloud_ice_content', &
+                          area=area_id, missing_value=CMOR_MISSING_VALUE )
+   else
+     id_LWP = register_diag_field ( mod_name, &
+       'LWP', axes(1:2), Time, &
+          'Liquid water path',                            'kg/m2'   )
+  
+     id_IWP = register_diag_field ( mod_name, &
+       'IWP', axes(1:2), Time, &
+          'Ice water path',                               'kg/m2'   )
+   endif
 
    id_AWP = register_diag_field ( mod_name, &
      'AWP', axes(1:2), Time, &
@@ -4799,8 +4857,8 @@ if ( do_strat ) then
       'cl', axes(1:3), Time, &
       'Cloud Area Fraction', '%',    &
        standard_name='cloud_area_fraction_in_atmosphere_layer', &
-     area=area_id, &
-        missing_value=CMOR_MISSING_VALUE)
+       area=area_id, missing_value=CMOR_MISSING_VALUE)
+    call diag_field_add_attribute ( id_cl, 'associated_fields', assoc_fields )
 
     id_tot_h2o     = register_diag_field ( mod_name, &
       'tot_h2o', axes(1:3), Time, &
@@ -4818,8 +4876,8 @@ if ( do_strat ) then
       'clw', axes(1:3), Time, &
       'Mass Fraction of Cloud Liquid Water', '1',   &
        standard_name='mass_fraction_of_cloud_liquid_water_in_air', &
-     area=area_id, &
-        missing_value=CMOR_MISSING_VALUE)
+       area=area_id, missing_value=CMOR_MISSING_VALUE)
+    call diag_field_add_attribute ( id_clw, 'associated_fields', assoc_fields )
 
     id_tot_ice_amt = register_diag_field ( mod_name, &
       'tot_ice_amt', axes(1:3), Time, &
@@ -4829,8 +4887,8 @@ if ( do_strat ) then
       'cli', axes(1:3), Time, &
       'Mass Fraction of Cloud Ice', '1',   &
        standard_name='mass_fraction_of_cloud_ice_in_air', &
-     area=area_id, &
-        missing_value=CMOR_MISSING_VALUE)
+       area=area_id, missing_value=CMOR_MISSING_VALUE)
+    call diag_field_add_attribute ( id_cli, 'associated_fields', assoc_fields )
 
     id_lsc_cloud_area = register_diag_field ( mod_name, &
       'lsc_cloud_area', axes(1:3), Time, &
@@ -4864,8 +4922,7 @@ if ( do_strat ) then
       'clwvi', axes(1:2), Time, &
       'Condensed Water Path',        'kg m-2', &
       standard_name = 'atmosphere_cloud_condensed_water_content', &
-     area=area_id, &
-      missing_value=CMOR_MISSING_VALUE   )
+      area=area_id, missing_value=CMOR_MISSING_VALUE   )
 
     id_LWP_all_clouds = register_diag_field ( mod_name, &
       'LWP_all_clouds', axes(1:2), Time, &
@@ -4879,8 +4936,7 @@ if ( do_strat ) then
       'clivi', axes(1:2), Time, &
       'Ice Water Path',              'kg m-2', &
        standard_name='atmosphere_cloud_ice_content', &
-     area=area_id, &
-       missing_value=CMOR_MISSING_VALUE   )
+       area=area_id, missing_value=CMOR_MISSING_VALUE   )
 
 endif
 
@@ -4908,8 +4964,8 @@ endif
      'hur', axes(1:3), Time, &
      'Relative Humidity',                            '%',  &
       standard_name='relative_humidity', &
-     area=area_id, &
-                      missing_value=CMOR_MISSING_VALUE          )
+     area=area_id, missing_value=CMOR_MISSING_VALUE          )
+   call diag_field_add_attribute ( id_hur, 'associated_fields', assoc_fields )
 
 if (do_donner_deep) then
 
