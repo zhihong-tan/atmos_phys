@@ -38,14 +38,14 @@ MODULE CONV_PLUMES_k_MOD
   public cpnlist
   type cpnlist
      integer :: mixing_assumption, mp_choice
-     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
+     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, mfact
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, eis_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
-     logical :: do_varying_rpen
+     logical :: do_varying_rpen, do_new_pblfac
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -91,7 +91,7 @@ MODULE CONV_PLUMES_k_MOD
      real, _ALLOCATABLE :: hlflx (:) _NULL, hlten (:) _NULL, pflx_e(:) _NULL
      real, _ALLOCATABLE :: tevap (:) _NULL, qevap (:) _NULL, nqtflx(:) _NULL
      real, _ALLOCATABLE :: qldet (:) _NULL, qidet (:) _NULL, qadet (:) _NULL
-     real, _ALLOCATABLE :: qndet (:) _NULL
+     real, _ALLOCATABLE :: qndet (:) _NULL, udet  (:) _NULL, vdet  (:) _NULL
 !++++yim
      real, _ALLOCATABLE :: trflx(:,:) _NULL,trten (:,:) _NULL, trwet(:,:) _NULL
      real, _ALLOCATABLE :: trevp(:,:) _NULL, dtring(:) _NULL
@@ -216,6 +216,8 @@ contains
     allocate ( ct%qidet (1:kd)); ct%qidet =0.;
     allocate ( ct%qadet (1:kd)); ct%qadet =0.;
     allocate ( ct%qndet (1:kd)); ct%qndet =0.;
+    allocate ( ct%udet  (1:kd)); ct%udet  =0.;
+    allocate ( ct%vdet  (1:kd)); ct%vdet  =0.;
     allocate ( ct%hlten (1:kd)); ct%hlten =0.;
     allocate ( ct%thcten(1:kd)); ct%thcten=0.;
     allocate ( ct%qctten(1:kd)); ct%qctten=0.;
@@ -253,7 +255,7 @@ contains
     type(ctend), intent(inout) :: ct
     deallocate (ct%uten, ct%vten, ct%tten, ct%qvten, ct%qlten,  &
                 ct%qiten, ct%qaten, ct%qnten, ct%hlten, ct%thcten, &
-                ct%qldet, ct%qidet, ct%qadet, ct%qndet,            &
+                ct%qldet, ct%qidet, ct%qadet, ct%qndet, ct%udet, ct%vdet,      &
                 ct%qctten, ct%qvdiv, ct%qldiv, ct%qidiv, ct%hlflx, &
                 ct%thcflx, ct%qctflx, ct%qtflxu, ct%qvflx, ct%qlflx, ct%qiflx, &
                 ct%qaflx, ct%qnflx, ct%umflx, ct%vmflx, ct%pflx, ct%pflx_e, ct%nqtflx, &
@@ -269,7 +271,7 @@ contains
     ct%uten  =0.;    ct%vten  =0.;    ct%tten  =0.;
     ct%qvten =0.;    ct%qlten =0.;    ct%qiten =0.;
     ct%qaten =0.;    ct%qnten =0.;    ct%thcten=0.;
-    ct%qctten=0.;    
+    ct%qctten=0.;    ct%udet  =0.;    ct%vdet  =0.; 
     ct%qldet =0.;    ct%qidet =0.;    ct%qadet =0.;    ct%qndet =0.;    
     ct%qvdiv =0.;    ct%qldiv =0.;    ct%qidiv =0.;
     ct%thcflx=0.;    ct%qctflx=0.;    ct%qvflx =0.;    ct%qtflxu=0.; 
@@ -1775,7 +1777,7 @@ contains
     real    :: dpsum, qtdef, qtdefu, hldef, umftmp, qlutmp, qiutmp, qnutmp, fdrtmp
     real, dimension(size(cp%tr,2)) :: trdef
     real    :: dpevap, x1, x2, x3, xx1, xx2, xx3, q1, q2, emftmp
-    real    :: dqt
+    real    :: dqt, uutmp, vutmp
 
     call ct_clear_k (ct);
 
@@ -1922,12 +1924,16 @@ contains
        qlutmp = (cp%qlu(km1)*x1+cp%qlu(k)*x2)/x3
        qiutmp = (cp%qiu(km1)*x1+cp%qiu(k)*x2)/x3
        qnutmp = (cp%qnu(km1)*x1+cp%qnu(k)*x2)/x3
+       uutmp  = (cp%uu (km1)*x1+cp%uu (k)*x2)/x3
+       vutmp  = (cp%vu (km1)*x1+cp%vu (k)*x2)/x3
 
        fdrtmp = cp%fdrsat(k)*cp%fdr(k)
        ct%qldet(k) =  Uw_p%grav*(umftmp       )*(fdrtmp*(qlutmp-sd%ql(k)))
        ct%qidet(k) =  Uw_p%grav*(umftmp       )*(fdrtmp*(qiutmp-sd%qi(k)))
        ct%qadet(k) =  Uw_p%grav*(umftmp-emftmp)*(fdrtmp*(1.    -sd%qa(k)))
        ct%qndet(k) =  Uw_p%grav*(umftmp       )*(fdrtmp*(qnutmp-sd%qn(k)))
+       ct%udet(k)  =  Uw_p%grav*(umftmp       )*(fdrtmp*(uutmp -sd%u (k)))
+       ct%vdet(k)  =  Uw_p%grav*(umftmp       )*(fdrtmp*(vutmp -sd%v (k)))
 
        x1 =sd%ps(k)  -sd%p (kp1)
        x2 =sd%p (k)  -sd%ps(k)
@@ -1955,12 +1961,25 @@ contains
        q1=(sd%qn(km1)*xx1 + sd%qn(k)  *xx2 )/xx3
        ct%qnten(k) = - Uw_p%grav*(umftmp * (sd%qn(k)-q2      )/x2 + &
                                   emftmp * (q1      -sd%qn(k))/xx1 )
+
+       q2=(sd%u(k)   *x1  + sd%u(kp1)*x2  )/x3
+       q1=(sd%u(km1) *xx1 + sd%u(k)  *xx2 )/xx3
+       ct%uten(k)  = - Uw_p%grav*(umftmp * (sd%u(k) -q2      )/x2 + &
+                                  emftmp * (q1      -sd%u(k))/xx1 )
+
+       q2=(sd%v(k)   *x1  + sd%v(kp1)*x2  )/x3
+       q1=(sd%v(km1) *xx1 + sd%v(k)  *xx2 )/xx3
+       ct%vten(k)  = - Uw_p%grav*(umftmp * (sd%v(k) -q2      )/x2 + &
+                                  emftmp * (q1      -sd%v(k))/xx1 )
     end do
 
     ct%qlten = ct%qlten + ct%qldet 
     ct%qiten = ct%qiten + ct%qidet
     ct%qaten = ct%qaten + ct%qadet
     ct%qnten = ct%qnten + ct%qndet
+
+    ct%uten  = ct%uten *cpn%mfact  + ct%udet
+    ct%vten  = ct%vten *cpn%mfact  + ct%vdet
 
     if (cpn%do_detran_zero) then
        ct%qlten = 0.
@@ -1973,8 +1992,8 @@ contains
     do k = 1,ltop
        km1 = k-1
        kp1 = k+1
-       ct%uten (k) = (ct%umflx(km1)-ct%umflx(k))*Uw_p%grav/sd%dp(k)
-       ct%vten (k) = (ct%vmflx(km1)-ct%vmflx(k))*Uw_p%grav/sd%dp(k)
+!       ct%uten (k) = (ct%umflx(km1)-ct%umflx(k))*Uw_p%grav/sd%dp(k)
+!       ct%vten (k) = (ct%vmflx(km1)-ct%vmflx(k))*Uw_p%grav/sd%dp(k)
 
        ct%thcten(k) = (ct%thcflx(km1) - ct%thcflx(k))*   &
                                                    Uw_p%grav/sd%dp(k)
@@ -2269,6 +2288,16 @@ contains
     trflx_evap(:,:)= 0.0
 
     do k = cp%ltop, 1, -1
+
+     if (cpn%do_new_pblfac) then
+       if (k <= cp%krel) then
+       	  cfrac =cpn%cfrac + cpn%pblfac*cpn%cfrac
+          hcevap=1.0 !cpn%hcevap+ cpn%pblfac*(1.-cpn%hcevap)
+       else
+       	  cfrac =cpn%cfrac
+   	  hcevap=cpn%hcevap
+       end if
+     else
        if (k <= cp%krel) then
        	  cfrac =cpn%cfrac +cpn%pblfac*(1.-cpn%cfrac)
     	  hcevap=cpn%hcevap+cpn%pblfac*(1.-cpn%hcevap)
@@ -2276,6 +2305,8 @@ contains
        	  cfrac =cpn%cfrac
    	  hcevap=cpn%hcevap
        end if
+     end if
+
        dpcu = dpcu + pptp(k)
        prec = MAX(dpcu - dpevap, 0.0 )
        do n=1,size(cp%tru,2)

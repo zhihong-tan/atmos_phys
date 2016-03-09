@@ -156,6 +156,7 @@ MODULE UW_CONV_MOD
   real    :: sigma0 = 0.5
   real    :: stime0 = 0.5
   real    :: dtime0 = 0.5
+  real    :: mfact  = 0.7
 
   integer :: tracer_check_type = -999 !legacy
   !< select realizability checks to be applied to tracers
@@ -174,7 +175,7 @@ MODULE UW_CONV_MOD
        do_debug, cush_choice, pcp_min, pcp_max, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
        rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
-       do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,&
+       do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice, mfact, &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
 
   !namelist parameters for UW convective plume
@@ -209,6 +210,7 @@ MODULE UW_CONV_MOD
   real    :: hcevap    = 0.8
   real    :: pblfac    = 0.0
   real    :: ffldep    = 0.0
+  logical :: do_new_pblfac = .false.
   logical :: do_weffect = .false.
   logical :: do_limit_wmax =.false.
   real    :: weffect    = 0.5
@@ -220,7 +222,7 @@ MODULE UW_CONV_MOD
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, ffldep, do_limit_wmax,&
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
        mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, pblfac,&
-       do_weffect, weffect, peff_l, peff_i, t00, tten_max
+       do_weffect, do_new_pblfac, weffect, peff_l, peff_i, t00, tten_max
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -243,6 +245,7 @@ MODULE UW_CONV_MOD
   real    :: cbmf_dp_frac2 = 1.
   real    :: crh_th_ocean  = 0.5
   real    :: crh_th_land   = 0.5
+  real    :: crh_max       = 1.0001
   real    :: cape_th       = 10.
   real    :: cin_th        = 5.
   real    :: cwfn_th       = 0.
@@ -287,7 +290,7 @@ MODULE UW_CONV_MOD
                  cape_th, cin_th, cwfn_th, tau_dp, rpen_d, mixing_assumption_d, norder, dcwfndm_th, &
                  do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, pblfac_d, ffldep_d, lofactor_d, dcapedm_th, &
                  auto_th0_d, tcrit_d, do_lod_rkm, do_lod_cfrac, do_lod_tcrit, do_lod_cape, &
-		 peff_l_d, peff_i_d, do_lod_tau, do_lod_cush, cgust_choice, tau_dp_fact, &
+		 peff_l_d, peff_i_d, do_lod_tau, do_lod_cush, cgust_choice, tau_dp_fact, crh_max, &
                  do_stochastic_rkm, frac_rkm_pert, do_cgust_dp, gustmax, cpool_gust, src_choice_d
 !========Option for deep convection=======================================
 
@@ -1155,6 +1158,7 @@ contains
     cpn % rad_crit = rad_crit
     cpn % wrel_min = wrel_min
     cpn % do_weffect = do_weffect
+    cpn % do_new_pblfac = do_new_pblfac
     cpn % weffect    = weffect
     cpn % use_online_aerosol = use_online_aerosol
     cpn % use_new_let = use_new_let
@@ -1163,6 +1167,7 @@ contains
     cpn % stop_at_let = stop_at_let
     cpn % do_limit_wmax= do_limit_wmax
     cpn % plev_for = plev_for
+    cpn % mfact    = mfact
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
@@ -1764,7 +1769,7 @@ contains
 	     crh_th = sd%land*dpc%crh_th_land+(1.-sd%land)*dpc%crh_th_ocean
              tmp = max(min (sd%crh, 1.0), 0.0)
 	     del_crh = tmp - crh_th
-             dcrh0  = 1.0001-crh_th
+             dcrh0  = crh_max-crh_th
 	     if (del_crh .gt. 0.) then
 	        cbmf_deep = 0.0001 !first assuming existence of deep convective cloud base mass flux
 	        dcrh = del_crh/dcrh0
@@ -2012,7 +2017,7 @@ contains
         cp_inv    = 1. / Uw_p%cp_air
 	dissipative_heat(:,:,:) = -((ub(:,:,:) + half_delt*uten(:,:,:))*uten(:,:,:) + &
                                     (vb(:,:,:) + half_delt*vten(:,:,:))*vten(:,:,:))*cp_inv
-	tten(:,:,:) = tten(:,:,:) + dissipative_heat(:,:,:)
+	!tten(:,:,:) = tten(:,:,:) + dissipative_heat(:,:,:)
     else 
     	uten=0.;
     	vten=0.;

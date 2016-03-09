@@ -144,12 +144,14 @@ contains
     dpn % rad_crit           = cpn % rad_crit
     dpn % wrel_min           = cpn % wrel_min
     dpn % do_weffect         = cpn % do_weffect
+    dpn % do_new_pblfac      = cpn % do_new_pblfac
     dpn % weffect            = cpn % weffect
     dpn % use_online_aerosol = cpn % use_online_aerosol
     dpn % isdeep             = cpn % isdeep
     dpn % use_new_let        = cpn % use_new_let
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
+    dpn % mfact              = cpn % mfact
 
   end subroutine cpn_copy
 
@@ -349,7 +351,7 @@ contains
 
     ier = 0
     ermesg = ' '
-    cwfn = 0.; dcwfndm=0.; dcapedm=0.; wrel0=0.1;
+    cwfn = 0.; dcwfndm=0.; dcapedm=0.; wrel0=0.1; lofactor=1.0;
     taudp = dpc%tau_dp;
 
     if ( cbmf_deep.eq.0 ) then
