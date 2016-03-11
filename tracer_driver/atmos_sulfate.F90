@@ -1588,6 +1588,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 
 ! --- Assuming biomass burning emission within the PBL -------
         fbb(:) = 0.
+        fbb(kd) = 1.
         ze1=100.
         ze2=500.
         fbt=0.

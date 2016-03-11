@@ -638,6 +638,7 @@ real, parameter                            :: yield_soa = 0.1
 ! Calculate fraction of emission at every levels for open fires
 !
         fbb(:,:)=0.
+        fbb(kd,:)=1.
 !
 ! In case of multiple levels, which are fixed
 !
