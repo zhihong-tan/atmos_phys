@@ -2291,8 +2291,8 @@ contains
 
      if (cpn%do_new_pblfac) then
        if (k <= cp%krel) then
-       	  cfrac =cpn%cfrac + cpn%pblfac*cpn%cfrac
-          hcevap=1.0 !cpn%hcevap+ cpn%pblfac*(1.-cpn%hcevap)
+       	  cfrac =cpn%pblfac * cpn%cfrac
+          hcevap=1.0
        else
        	  cfrac =cpn%cfrac
    	  hcevap=cpn%hcevap
