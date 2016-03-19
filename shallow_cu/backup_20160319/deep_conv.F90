@@ -67,7 +67,11 @@ MODULE DEEP_CONV_MOD
      real    :: peff_l_d
      real    :: peff_i_d
      integer :: src_choice_d
+     real    :: gama
+     real    :: tke0
+     real    :: hgt0
      real    :: cwfn_th
+!     real    :: cgust0
      real    :: cin_fact
      real    :: wcrit_min_gust
      real    :: tau_dp_fact
@@ -97,7 +101,7 @@ contains
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
-    dpn % nbuo_max           = cpn % nbuo_max
+    dpn % negbuo_max         = cpn % negbuo_max
     dpn % rmaxfrac           = cpn % rmaxfrac
     dpn % wmin               = cpn % wmin
     dpn % wmax               = cpn % wmax

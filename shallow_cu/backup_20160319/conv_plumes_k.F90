@@ -39,7 +39,7 @@ MODULE CONV_PLUMES_k_MOD
   type cpnlist
      integer :: mixing_assumption, mp_choice
      real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, mfact
-     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, &
+     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, negbuo_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
@@ -54,7 +54,7 @@ MODULE CONV_PLUMES_k_MOD
   public cplume
   type cplume
      integer :: ltop, let, krel
-     real    :: cush, cldhgt, prel, zrel, nbuo, pdep
+     real    :: cush, cldhgt, prel, zrel, negbuo
      real    :: maxcldfrac
      real, _ALLOCATABLE :: thcu  (:) _NULL, qctu  (:) _NULL, uu    (:) _NULL
      real, _ALLOCATABLE :: vu    (:) _NULL, qlu   (:) _NULL, qiu   (:) _NULL
@@ -190,8 +190,7 @@ contains
     cp%clu   =0.;    cp%ciu   =0.;    cp%buo   =0.;    cp%t     =0.;cp%rhu=0.;
     cp%crate =0.;    cp%prate =0.;    cp%peff  =0.;    !cp%maxcldfrac = 1.;
     cp%ltop  =0;     cp%let   =0;     cp%krel  =0;     cp%cush  =-1;
-    cp%cldhgt=0.;    cp%prel  =0.;    cp%zrel  =0.;    
-    cp%nbuo  =0.;    cp%pdep  =0.;
+    cp%cldhgt=0.;    cp%prel  =0.;    cp%zrel  =0.;    cp%negbuo=0.; 
 
     cp%pptn  =0.;    cp%tr    =0.;    cp%tru   =0.;    cp%tru_dwet = 0.
   end subroutine cp_clear_k
@@ -1654,26 +1653,25 @@ contains
     real    :: rhos0j, bogtop, bogbot
     real    :: aquad, bquad, cquad, xs1, xs2, ppen, rpen0
     real    :: thj, qvj, qse, thvj, qctulet, hlulet, umflet
-    real    :: dqct1, dqct2, qctflxkm1, nbuo, dpsum, tmp
+    real    :: dqct1, dqct2, qctflxkm1, negbuo, dpsum, tmp
 
     ltop=cp%ltop
     let =cp%let
     rpen0=cpn%rpen
-    cp%pdep=sd%z(ltop)-sd%z(let);
+
     if (cpn%do_varying_rpen) then
-       cp%nbuo=0.
+       cp%negbuo=0.
        if (ltop .gt. let) then
        	  dpsum=0.;
-       	  do k=let+1,ltop
-       	     cp%nbuo=cp%nbuo + cp%buo(k)*cp%dp(k)
+       	  do k=let,ltop
+       	     cp%negbuo=cp%negbuo + cp%buo(k)*cp%dp(k)
 	     dpsum    =dpsum     + cp%dp(k)
        	  end do
-       	  cp%nbuo = cp%nbuo/dpsum
+       	  cp%negbuo = cp%negbuo/dpsum
 
-       	  !cp%nbuo = -(sd%thv(ltop)-sd%thv(let))/(sd%z(ltop)-sd%z(let))*1000.
-       	  !cp%nbuo = (sd%p(ltop)-sd%p(let))
+       	  cp%negbuo = -(sd%thv(ltop)-sd%thv(let))/(sd%z(ltop)-sd%z(let))*1000.
 
-       	  tmp = cp%nbuo/cpn%nbuo_max
+       	  tmp = cp%negbuo/cpn%negbuo_max
        	  tmp = min(max(tmp,0.0),1.0)
        	  rpen0 = cpn%rpen * (1.-tmp)
        else

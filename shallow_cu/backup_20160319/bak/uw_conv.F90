@@ -77,6 +77,7 @@ MODULE UW_CONV_MOD
   logical :: do_coldT = .true.
   logical :: do_lands = .false.
   logical :: do_peff_land = .false.
+  logical :: do_lclht = .false.
   logical :: do_uwcmt = .false.   
   logical :: do_fast  = .false.
   logical :: do_ice   = .true.
@@ -127,6 +128,7 @@ MODULE UW_CONV_MOD
   logical :: do_varying_rpen  = .false.
   logical :: do_subcloud_flx = .false.
   logical :: do_detran_zero = .false.
+  logical :: do_prog_tke  = .false.
   logical :: do_prog_gust = .false.
   logical :: do_gust_qt = .false.
   logical :: use_new_let = .false.
@@ -136,11 +138,19 @@ MODULE UW_CONV_MOD
   logical :: zero_out_conv_area = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
-  real    :: nbuo_max   = -10.
+  real    :: eis_max   = 10.
   real    :: plev_for   = 50000.
+  real    :: tke0 = 0.1
+  real    :: gama = 0.
+  real    :: hgt0 = 500.
   real    :: duration = 10800
+  real    :: pblrat0  = 2.0
+  real    :: bfact  = 0.05
+  real    :: tau_tke  = 7200
   real    :: tau_gust = 7200
   real    :: gfact  = 1.0
+  real    :: gfact3 = 0.01
+  real    :: gfact4 = 1
   real    :: cgust0 = 1.
   real    :: cgust_max = 10.
   real    :: sigma0 = 0.5
@@ -156,14 +166,14 @@ MODULE UW_CONV_MOD
 
   logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
-  NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, nbuo_max, do_peff_land, &
+  NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, eis_max, do_peff_land, &
        do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt, do_varying_rpen, &
-       do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
-       atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin,                      &
-       wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
-       do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, gfact, &
+       do_fast, do_ice, do_ppen, do_forcedlifting, do_lclht, do_gust_qt, use_new_let, do_hlflx_zero, &
+       atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, do_prog_tke, tau_tke, pblrat0, &
+       wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, tke0, lofactor0, lochoice, &
+       do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, bfact, gfact, gfact3, gfact4, &
        do_debug, cush_choice, pcp_min, pcp_max, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
-       rh0, do_qctflx_zero, do_detran_zero, duration, do_stime, do_dtime, stime0, dtime0, &
+       rh0, do_qctflx_zero, do_detran_zero, gama, hgt0, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
        do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice, mfact, &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
@@ -177,7 +187,7 @@ MODULE UW_CONV_MOD
   real    :: rbuoy    = 1.0    ! for nonhydrostatic pressure effects on updraft
   real    :: rdrag    = 1.0 
   real    :: frac_drs = 0.0    ! 
-  real    :: bigc     = 0.0    ! for momentum transfer
+  real    :: bigc     = 0.7    ! for momentum transfer
   real    :: auto_th0 = 0.5e-3 ! threshold for precipitation
   real    :: auto_rate= 1.e-3
   real    :: tcrit    = -60.0  ! critical temperature 
@@ -290,17 +300,16 @@ MODULE UW_CONV_MOD
   logical :: do_qn = .false.    ! use droplet number tracer field ?
 
   integer :: id_tdt_uwc, id_qdt_uwc, id_udt_uwc, id_vdt_uwc, id_prec_uwc, id_snow_uwc, &
-       id_prec_uws, id_snow_uws,                                                       &
        id_cin_uwc, id_cbmf_uwc, id_tke_uwc, id_tkep_uwc, id_plcl_uwc, id_zlcl_uwc, id_zinv_uwc,  &
-       id_cush_uws, id_pct_uwc, id_pcb_uwc, id_plfc_uwc, id_enth_uwc,  &
-       id_qldt_uwc, id_qidt_uwc, id_qadt_uwc, id_qndt_uwc, id_cmf_uwc, id_cmf_uws, id_wuo_uws,   &
-       id_fer_uwc,  id_fdr_uwc, id_fdrs_uwc, id_cqa_uws, id_cql_uws, id_cqi_uws,  id_cqn_uws,    &
-       id_hlflx_uwc, id_qtflx_uwc, id_nqtflx_uwc, &
+       id_cush_uwc, id_pct_uwc, id_pcb_uwc, id_plfc_uwc, id_enth_uwc,  &
+       id_qldt_uwc, id_qidt_uwc, id_qadt_uwc, id_qndt_uwc, id_cmf_uwc, id_cmf_uws, id_wu_uwc,   &
+       id_fer_uwc,  id_fdr_uwc, id_fdrs_uwc, id_cqa_uwc, id_cql_uwc,   &
+       id_cqi_uwc,  id_cqn_uwc, id_hlflx_uwc, id_qtflx_uwc, id_nqtflx_uwc, &
        id_cape_uwc, id_dcin_uwc, id_dcape_uwc, id_crh_uwc, id_pblht_uwc, &
        id_ocode_uwc, id_plnb_uwc, id_wrel_uwc, id_ufrc_uwc, id_qtmp_uwc,id_gust_uwc, &
        id_tdt_pevap_uwc, id_qdt_pevap_uwc, id_xpsrc_uwc, id_xhlsrc_uwc, id_xqtsrc_uwc,&
        id_qldet_uwc, id_qidet_uwc, id_qadet_uwc, id_qtdt_uwc, id_dting_uwc, &
-       id_cfq_uws, id_fdp_uwc, id_fsh_uwc, id_hmo_uwc, id_hms_uwc, id_abu_uwc, id_peo_uwc, &
+       id_cfq_uwc, id_fdp_uwc, id_hmo_uwc, id_hms_uwc, id_abu_uwc, id_peo_uwc, &
        id_tten_rad_uwc, id_tdt_forc_uwc, id_qdt_forc_uwc, id_tdt_diss_uwc, &
        id_hm_vadv_uwc, id_pflx_uwc, id_lhflx_uwc, id_shflx_uwc, &
        id_tdt_rad_uwc, id_tdt_dyn_uwc, id_tdt_dif_uwc, id_qdt_dyn_uwc, id_qdt_dif_uwc, &
@@ -308,8 +317,7 @@ MODULE UW_CONV_MOD
        id_tdt_rad_pbl, id_tdt_dyn_pbl, id_tdt_dif_pbl, id_qdt_dyn_pbl, id_qdt_dif_pbl, &
        id_tdt_rad_fre, id_tdt_dyn_fre, id_tdt_dif_fre, id_qdt_dyn_fre, id_qdt_dif_fre, &
        id_tdt_tot_pbl, id_tdt_tot_fre, id_cpool_uwc, id_bflux_uwc, &
-       id_dgz_dyn_uwc, id_ddp_dyn_uwc, id_dgz_dyn_int, id_ddp_dyn_int, id_lts_uwc, &
-       id_nbuo_uws, id_buo_uws, id_pdep_uws,                                       &
+       id_dgz_dyn_uwc, id_ddp_dyn_uwc, id_dgz_dyn_int, id_ddp_dyn_int, id_lts_uwc, id_eis_uwc, &
        id_hmint_uwc, id_hm_vadv0_uwc, id_hm_hadv0_uwc, id_hm_tot0_uwc, id_hm_total_uwc,&
        id_qtflx_up_uwc, id_qtflx_dn_uwc, id_omega_up_uwc, id_omega_dn_uwc, &
        id_omgmc_up_uwc, id_rkm_uwc, id_stime_uwc, id_scale_uwc, id_scaletr_uwc
@@ -323,12 +331,11 @@ MODULE UW_CONV_MOD
 !========Option for deep convection=======================================
   integer :: id_tdt_uwd, id_qdt_uwd, id_qtdt_uwd, id_prec_uwd, id_snow_uwd,   &
        id_cbmf_uwd, id_enth_uwd, id_qldt_uwd, id_qidt_uwd,&
-       id_qndt_uwd, id_qadt_uwd, id_cmf_uwd, id_wuo_uwd, id_fer_uwd,    &
-       id_fdr_uwd, id_fdrs_uwd, id_cqa_uwd, id_cql_uwd, id_cqi_uwd, id_cqn_uwd, &
-       id_hlflx_uwd, id_qtflx_uwd, id_nqtflx_uwd, id_dcin_uwd, &
+       id_qndt_uwd, id_qadt_uwd, id_cmf_uwd, id_wu_uwd, id_fer_uwd,    &
+       id_fdr_uwd, id_fdrs_uwd, id_cqa_uwd, id_cql_uwd, id_cqi_uwd,    &
+       id_cqn_uwd, id_hlflx_uwd, id_qtflx_uwd, id_nqtflx_uwd, id_dcin_uwd, &
        id_dcapedm_uwd, id_dcwfndm_uwd, id_ocode_uwd, id_cush_uwd,      &
-       id_tdt_pevap_uwd, id_qdt_pevap_uwd, id_rkm_uwd, id_buo_uwd,     &
-       id_nbuo_uwd, id_pdep_uwd, id_cfq_uwd, &
+       id_tdt_pevap_uwd, id_qdt_pevap_uwd, id_rkm_uwd, id_cbu_uwd,     &
        id_rand_uwd, id_taudp_uwd, id_pwfn_uwd, id_cwfn_uwd, id_dcwfndt_dpc, &
        id_dcwfndt_fre, id_dcwfndt_pbl, id_cwfn3d_uwd, id_cape3d_uwd, id_dtime_uwd
 !========Option for deep convection=======================================
@@ -466,6 +473,13 @@ contains
        end do
     endif
 
+!---> h1g, 2015-08-11
+    if ( do_prog_tke .and. use_turb_tke )  then
+        call error_mesg ('uw_conv_mod',  &
+                '  do_prog_tke and use_turb_tke cannot be true at the same time', FATAL)
+    endif
+!<--- h1g, 2015-08-11
+
     id_xpsrc_uwc  = register_diag_field (mod_name,'xpsrc_uwc', axes(1:2), Time, &
          'xpsrc', 'hPa' )
     id_xhlsrc_uwc = register_diag_field (mod_name,'xhlsrc_uwc', axes(1:2), Time, &
@@ -490,8 +504,8 @@ contains
          'Cloud vert. mass flux from uw_conv', 'kg/m2/s', missing_value=mv)
     id_cmf_uws = register_diag_field ( mod_name, 'cmf_uws', axes(1:3), Time, &
          'Cloud vert. mass flux from shallow plume uw_conv', 'kg/m2/s', missing_value=mv)
-    id_cfq_uws = register_diag_field ( mod_name, 'cfq_uws', axes(1:3), Time,   &
-         'Convective frequency for shallow plume', 'none', missing_value=mv)
+    id_cfq_uwc = register_diag_field ( mod_name, 'cfq_uwc', axes(1:3), Time,   &
+         'Convective frequency', 'none', missing_value=mv)
     id_peo_uwc = register_diag_field ( mod_name, 'peo_uwc', axes(1:3), Time,   &
          'Convective precipitation efficiency', 'none', missing_value=mv)
     id_hmo_uwc = register_diag_field ( mod_name, 'hmo_uwc', axes(1:3), Time,   &
@@ -500,23 +514,21 @@ contains
          'moist static energy', 'J/kg', missing_value=mv)
     id_abu_uwc = register_diag_field ( mod_name, 'abu_uwc', axes(1:3), Time,   &
          'adiabatic buoyancy', 'K', missing_value=mv)
-    id_buo_uws= register_diag_field ( mod_name, 'buo_uws', axes(1:3), Time,    &
-            'shallow plume buoyancy', 'K', missing_value=mv)
-    id_wuo_uws = register_diag_field ( mod_name, 'wuo_uws', axes(1:3), Time,   &
-         'Shallow plume updraft velocity from uw_conv', 'm/s', missing_value=mv)
+    id_wu_uwc = register_diag_field ( mod_name, 'wu_uwc', axes(1:3), Time,   &
+         'Updraft vert. velocity from uw_conv', 'm/s', missing_value=mv)
     id_fer_uwc = register_diag_field ( mod_name, 'fer_uwc', axes(1:3), Time, &
          'Fractional entrainment rate from uw_conv', '1/Pa', missing_value=mv)
     id_fdr_uwc = register_diag_field ( mod_name, 'fdr_uwc', axes(1:3), Time, &
          'Fractional detrainment rate from uw_conv', '1/Pa', missing_value=mv)
     id_fdrs_uwc = register_diag_field (mod_name,'fdrs_uwc', axes(1:3), Time, &
          'Detrainment rate for sat. air from uw_conv', '1/Pa', missing_value=mv)
-    id_cqa_uws = register_diag_field ( mod_name, 'cqa_uws', axes(1:3), Time, &
+    id_cqa_uwc = register_diag_field ( mod_name, 'cqa_uwc', axes(1:3), Time, &
          'Updraft fraction from uw_conv', 'none', missing_value=mv)
-    id_cql_uws = register_diag_field ( mod_name, 'cql_uws', axes(1:3), Time, &
+    id_cql_uwc = register_diag_field ( mod_name, 'cql_uwc', axes(1:3), Time, &
          'Updraft liquid from uw_conv', 'kg/kg', missing_value=mv)
-    id_cqi_uws = register_diag_field ( mod_name, 'cqi_uws', axes(1:3), Time, &
+    id_cqi_uwc = register_diag_field ( mod_name, 'cqi_uwc', axes(1:3), Time, &
          'Updraft ice from uw_conv', 'kg/kg', missing_value=mv)
-    id_cqn_uws = register_diag_field ( mod_name, 'cqn_uws', axes(1:3), Time, &
+    id_cqn_uwc = register_diag_field ( mod_name, 'cqn_uwc', axes(1:3), Time, &
          'Updraft liquid drop from uw_conv', '/kg', missing_value=mv)
     id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(1:3),Time, &
          'Liq.wat.pot.temp. flux from uw_conv', 'W/m2', missing_value=mv)
@@ -541,10 +553,8 @@ contains
 
     id_lts_uwc = register_diag_field (mod_name,'lts_uwc', axes(1:2), Time, &
          'low tropospheric stability', 'K', interp_method = "conserve_order1" )
-    id_nbuo_uws = register_diag_field (mod_name,'nbuo_uws', axes(1:2), Time, &
-         'negative buoyancy for penetrative plume', 'K', interp_method = "conserve_order1" )
-    id_pdep_uws = register_diag_field (mod_name,'pdep_uws', axes(1:2), Time, &
-         'penetrative depth for shallow plume', 'm', interp_method = "conserve_order1" )
+    id_eis_uwc = register_diag_field (mod_name,'eis_uwc', axes(1:2), Time, &
+         'estimated inversion strength', 'K', interp_method = "conserve_order1" )
     id_lhflx_uwc = register_diag_field (mod_name,'lhflx_uwc', axes(1:2), Time, &
          'surface latent heat flux from uw_conv', 'W/m2',                      &
          interp_method = "conserve_order1" )
@@ -655,12 +665,6 @@ contains
     id_snow_uwc = register_diag_field (mod_name,'snow_uwc', axes(1:2), Time, &
          'Frozen precip. rate from uw_conv', 'kg/m2/sec',                       &
          interp_method = "conserve_order1" )
-    id_prec_uws = register_diag_field (mod_name,'prec_uws', axes(1:2), Time, &
-         'Precipitation rate from shallow plume', 'kg/m2/sec',                     &
-         interp_method = "conserve_order1" )
-    id_snow_uws = register_diag_field (mod_name,'snow_uws', axes(1:2), Time, &
-         'Frozen precip. rate from shallow plume', 'kg/m2/sec',                       &
-         interp_method = "conserve_order1" )
     id_cin_uwc = register_diag_field ( mod_name, 'cin_uwc', axes(1:2), Time, &
          'CIN from uw_conv', 'm2/s2' )
     id_cape_uwc= register_diag_field ( mod_name,'cape_uwc', axes(1:2), Time, &
@@ -695,7 +699,7 @@ contains
          'Cloud-top pressure from uw_conv', 'hPa' )
     id_pcb_uwc = register_diag_field ( mod_name, 'pcb_uwc', axes(1:2), Time, &
          'Cloud-base pressure from uw_conv', 'hPa' )
-    id_cush_uws = register_diag_field (mod_name,'cush_uws', axes(1:2), Time, &
+    id_cush_uwc = register_diag_field (mod_name,'cush_uwc', axes(1:2), Time, &
          'Convective scale height from uw_conv', 'm' )
     id_dcin_uwc = register_diag_field (mod_name, 'dcin_uwc', axes(1:2), Time, &
          'dCIN/cbmf from uw_conv', 'm2/s2/(kg/m2/s)' )
@@ -710,9 +714,7 @@ contains
     id_ocode_uwc = register_diag_field (mod_name,'ocode_uwc', axes(1:2), Time, &
          'Out code from uw_conv', 'none' )
     id_fdp_uwc = register_diag_field (mod_name, 'fdp_uwc',   axes(1:2), Time,   &
-         'Deep convection frequency', 'none', missing_value=mv)
-    id_fsh_uwc = register_diag_field (mod_name, 'fsh_uwc',   axes(1:2), Time,   &
-         'Shallow convection frequency', 'none', missing_value=mv)
+         'Deep convective frequency', 'none', missing_value=mv)
     id_rkm_uwc = register_diag_field (mod_name, 'rkm_uwc', axes(1:2), Time, &
             'rkm for shallow_conv', 'none' )
     id_stime_uwc = register_diag_field (mod_name, 'stime_uwc', axes(1:2), Time, &
@@ -769,11 +771,9 @@ contains
             'Total water spec. humidity tendency from deep_conv', 'kg/kg/s', missing_value=mv)
        id_cmf_uwd = register_diag_field ( mod_name, 'cmf_uwd', axes(1:3), Time, &
             'Cloud vert. mass flux from deep_conv', 'kg/m2/s', missing_value=mv)
-       id_cfq_uwd = register_diag_field ( mod_name, 'cfq_uwd', axes(1:3), Time,   &
-            'Convective frequency for deep plume', 'none', missing_value=mv)
-       id_wuo_uwd = register_diag_field ( mod_name, 'wuo_uwd', axes(1:3), Time,   &
-            'Deep plume updraft velocity from deep_conv', 'm/s', missing_value=mv)
-       id_buo_uwd= register_diag_field ( mod_name, 'buo_uwd', axes(1:3), Time,   &
+       id_wu_uwd = register_diag_field ( mod_name, 'wu_uwd', axes(1:3), Time,   &
+            'Updraft vert. velocity from deep_conv', 'm/s', missing_value=mv)
+       id_cbu_uwd= register_diag_field ( mod_name, 'cbu_uwd', axes(1:3), Time,   &
             'deep plume buoyancy', 'K', missing_value=mv)
        id_fer_uwd = register_diag_field ( mod_name, 'fer_uwd', axes(1:3), Time, &
          'Fractional entrainment rate from deep_conv', '1/Pa', missing_value=mv)
@@ -821,10 +821,6 @@ contains
          'rand_uwd', 'none' )
        id_dtime_uwd= register_diag_field (mod_name,'dtime_uwd',axes(1:2), Time, &
             'dtime for deep_conv', 's' )
-       id_nbuo_uwd = register_diag_field (mod_name,'nbuo_uwd', axes(1:2), Time, &
-            'negative buoyancy for penetrative plume', 'K', interp_method = "conserve_order1" )
-       id_pdep_uwd = register_diag_field (mod_name,'pdep_uwd', axes(1:2), Time, &
-            'penetrative depth for deep plume', 'm', interp_method = "conserve_order1" )
        if ( do_strat ) then
           id_qldt_uwd= register_diag_field (mod_name,'qldt_uwd',axes(1:3),Time, &
                'Liquid water tendency from deep_conv', 'kg/kg/s', missing_value=mv)
@@ -993,7 +989,7 @@ contains
 
     integer i, j, k, kl, klm, nk, naer, na, n, ksrc, kinv
 
-    real rhos0j
+    real rhos0j, pblrat, pblht_old, pblht_cur
     real hlsrc, thcsrc, qctsrc, tmp, tmp1, lofactor, crh_th, tvs, qvs, gust_new, gust_dis
     real zsrc, psrc, cbmf_shallow, cbmf_old, cbmf_deep, rkm_shallow, rkm_dp, cbmf_dp_frac
     real del_crh, dcrh, dcrh0, dpsum
@@ -1025,10 +1021,8 @@ contains
          crho,       &
          rkm_s,      &
          rkm_d,      &
-         cush_s,     &
          cush_d,     &
          fdp,        &
-         fsh,        &
 	 rhos,       &
 	 lhflx,      &
 	 shflx,      &
@@ -1040,14 +1034,12 @@ contains
 	 tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int, &  
 	 tdt_rad_pbl, tdt_dyn_pbl, tdt_dif_pbl, qdt_dyn_pbl, qdt_dif_pbl, &
 	 tdt_rad_fre, tdt_dyn_fre, tdt_dif_fre, qdt_dyn_fre, qdt_dif_fre, &
-         tdt_tot_pbl, tdt_tot_fre, cpool, bflux,dgz_dyn_int, ddp_dyn_int, lts, & 
-	 nbuo_s, nbuo_d, pdep_s, pdep_d
+         tdt_tot_pbl, tdt_tot_fre, cpool, bflux,dgz_dyn_int, ddp_dyn_int, lts, eis
 
     real, dimension(size(qtflx,1),size(qtflx,2),size(qtflx,3)) :: qtflx_up, qtflx_dn, omega_up, omega_dn, hm_vadv
     real, dimension(size(qtflx,1),size(qtflx,2),size(qtflx,3)) :: omgmc_up, ddp_dyn_hm, nqtflx
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: wuo_s,fero,fdro,fdrso, tten_pevap, qvten_pevap
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, peo, hmo, hms, abu, buo_s, cmf_s
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: cfq_s, cfq_d, cqa_s, cql_s, cqi_s, cqn_s
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: wuo,fero,fdro,fdrso, tten_pevap, qvten_pevap
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, cfq, peo, hmo, hms, abu, cmf_s
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
     real :: tnew, qtin, dqt, temp_1, temp_max, temp_min
@@ -1057,8 +1049,8 @@ contains
 
 !========Option for deep convection=======================================
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: uten_d, vten_d, tten_d, &
-         qvten_d, qlten_d, qiten_d, qaten_d, qnten_d, cmf_d, buo_d, pflx_d, hlflx_d, qtflx_d, nqtflx_d, qtten_d, &
-         wuo_d, fero_d, fdro_d, fdrso_d, cqa_d, cql_d, cqi_d, cqn_d, tten_pevap_d, qvten_pevap_d
+         qvten_d, qlten_d, qiten_d, qaten_d, qnten_d, cmf_d, cbu_d, pflx_d, hlflx_d, qtflx_d, nqtflx_d, qtten_d, &
+         wuo_d, fero_d, fdro_d, fdrso_d, cldql_d, cldqi_d, cldqa_d, cldqn_d, tten_pevap_d, qvten_pevap_d
     real, dimension(size(tb,1),size(tb,2)) :: rain_d, snow_d, cwfn_d
     real, dimension(size(tb,1),size(tb,2)) :: dcapedm_d, dcwfndm_d, denth_d, dting_d, dqtmp_d, cbmf_d
     real, dimension(size(tracers,1),size(tracers,2),size(tracers,3),size(tracers,4)) :: trevp_d, trevp_s
@@ -1122,7 +1114,7 @@ contains
     cpn % do_detran_zero = do_detran_zero
     cpn % rle       = rle
     cpn % rpen      = rpen
-    cpn % nbuo_max  = nbuo_max
+    cpn % eis_max   = eis_max
     cpn % rmaxfrac  = rmaxfrac
     cpn % wmin      = wmin
     cpn % wmax      = wmax
@@ -1247,6 +1239,9 @@ contains
     dpc % tcrit_d             = tcrit_d
     dpc % peff_l_d            = peff_l_d
     dpc % peff_i_d            = peff_i_d
+    dpc % gama                = gama
+    dpc % tke0                = tke0
+    dpc % hgt0                = hgt0
     dpc % do_cgust_dp         = do_cgust_dp
     dpc % cgust_choice        = cgust_choice
     dpc % tau_dp_fact         = tau_dp_fact
@@ -1269,8 +1264,7 @@ contains
 
     tten=0.; qvten=0.; qlten=0.; qiten=0.; qaten=0.; qnten=0.;
     uten=0.; vten =0.; rain =0.; snow =0.; plcl =0.; plfc=0.; plnb=0.;  
-    cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.; zlcl=0.; 
-    cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
+    cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.; zlcl=0.;
     hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.;
     tten_pevap=0.; qvten_pevap=0.;
     ice_pflx = 0. ; liq_pflx = 0.; qtflx_up=0.; qtflx_dn=0.; 
@@ -1283,25 +1277,25 @@ contains
     tdt_tot_pbl=0.; tdt_tot_fre=0.; cpool=0.; bflux=0.; scale_uw=1.; scale_tr=1.;
     dgz_dyn_int=0.; ddp_dyn_int=0.;
 
-    cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; einso=0.; wuo_s=0.; peo=0.; 
-    fero=0.; fdro=0.; fdrso=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0; cmf_s=0.; cfq_s=0.;
-    dcapeo=0.; dcino=0.; xpsrc=0.; xhlsrc=0.; xqtsrc=0.; fdp=0.; fsh=0.; rkm_s=0.;
+    cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; einso=0.; wuo=0.; peo=0.; 
+    fero=0.; fdro=0.; fdrso=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0; cmf_s=0.;
+    dcapeo=0.; dcino=0.; xpsrc=0.; xhlsrc=0.; xqtsrc=0.; fdp=0.; rkm_s=0.;
     trtend=0.; qldet=0.; qidet=0.; qadet=0.; crho=0.; hmo=0.; hms=0.; abu=0.;
     trwet = 0.
-    dting = 0.; cush_s=-1.;
-    dissipative_heat = 0.; rhos=0; lhflx=0; shflx=0; pdep_s=0.; pdep_d=0.;
-    hmint_old=hmint; hmint=0; lts=0.; nbuo_s=0.; nbuo_d=0.; lofactor=1.;
+    dting = 0.
+    dissipative_heat = 0.; rhos=0; lhflx=0; shflx=0; 
+    hmint_old=hmint; hmint=0; lts=0.; eis=0.; lofactor=1.;
 
     naer = size(asol%aerosol,4)
 
 !========Option for deep convection=======================================
     tten_d=0.; qvten_d=0.; qlten_d=0.; qiten_d=0.; qaten_d=0.; qnten_d=0.;
-    uten_d=0.; vten_d =0.; rain_d =0.; snow_d =0.; qtten_d=0.; cfq_d=0.;
-    trevp_d=0.; trevp_s=0.; cush_d=-1.; 
-    cqa_d=0.; cql_d=0.; cqi_d=0.; cqn_d=0.;
+    uten_d=0.; vten_d =0.; rain_d =0.; snow_d =0.; qtten_d=0.;
+    trevp_d=0.; trevp_s=0.; cush_d=0.;
+    cldqa_d=0.; cldql_d=0.; cldqi_d=0.; cldqn_d=0.;
     hlflx_d=0.; qtflx_d=0.; nqtflx_d=0.; pflx_d=0.;
     wuo_d=0.; fero_d=0.; fdro_d=0.; fdrso_d=0.; 
-    cmf_d=0.; buo_d=0.; buo_s=0.;
+    cmf_d=0.; cbu_d=0.;
     denth_d=0.; dting_d=0.; dqtmp_d=0.; cbmf_d=0.; cwfn_d=0.;
     dcapedm_d=0.; dcwfndm_d=0.;
     dcino=0.; 
@@ -1360,6 +1354,23 @@ contains
          temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
          if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
          tkeo(i,j) = MAX (tkemin, temp_1)
+
+	 if (do_prog_tke) then
+    	    pblht_old=pblhto(i,j)
+    	    pblht_cur=pblht (i,j)
+	    pblht_cur=min(max(pblht_cur,10.),5000.)
+     	    pblrat=pblht_old/pblht_cur
+    	    pblhto(i,j)=pblht_cur
+            !Buoyancy flux B=rhos(i,j)*ustar(i,j)*bstar(i,j); unit:kg/m/s3 or (kg/m3 * m2/s3)
+	    bflux(i,j)=ustar(i,j)*bstar(i,j) !buoyancy flux in kinematic unit: m2/s3 or (m/s2) *(m/2)
+	    !solve tke implicitly
+	    if (pblrat.gt.pblrat0 .or. bflux(i,j).le.0) then
+	       tkep(i,j)=tkep(i,j)/(1.+delt/tau_tke)
+            else
+	       tkep(i,j)=((bfact*bflux(i,j)*delt+tkep(i,j))*pblrat)/(1.+delt/tau_tke)
+	    endif
+            tkep(i,j) = MAX (tkemin, tkep(i,j))
+       	 endif
 
          cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
@@ -1448,7 +1459,7 @@ contains
           sd%lat       = lat(i,j)*180/3.1415926
           sd%lon       = lon(i,j)*180/3.1415926
 
-	  if (use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
+	  if (do_prog_tke .or. use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
 
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
 
@@ -1554,8 +1565,8 @@ contains
           xqtsrc(i,j)= ac%qctsrc; 
           crho(i,j)  = sd%crh;
 	  lts  (i,j) = sd%lts;
-          !sd%eis     = sd%lts - sd%gam * max(sd%z700-ac%zlcl,0.)
-	  !eis  (i,j) = sd%eis;
+          sd%eis     = sd%lts - sd%gam * max(sd%z700-ac%zlcl,0.)
+	  eis  (i,j) = sd%eis;
 
           do k = 1,kmax
              nk = kmax+1-k
@@ -1564,6 +1575,13 @@ contains
              abu  (i,j,nk) = ac%buo(k);
           end do
 
+!          if (do_lclht .and. sd%land.gt.0.5) then
+!	      tmp = hgt0/zlcl(i,j) !tmp = hgt0/sd%pblht
+!             tmp = min(max(tmp,0.1),10.)
+!             rkm_shallow = rkm_sh * tmp
+!             cpn % auto_th0 = auto_th0 * (1. + landfact_m * sd%land)
+!          end if
+
 	  if (do_stime) then
              tmp=rkm_sh1-stime(i,j)*(rkm_sh1-rkm_sh)
  	     if (stime(i,j).eq.0 .or. rkmo(i,j).gt.tmp) then
@@ -1571,6 +1589,31 @@ contains
              endif
 	     rkm_shallow=rkmo(i,j)
 	  endif
+
+!	  if (do_prog_gust) then
+!	     rkm_shallow = rkm_shallow/max(gusto(i,j),1.0)
+!          endif
+
+!	  if (do_tke_cgust) then
+!	     cpn % do_forcedlifting = do_forcedlifting
+!	     cpn % do_ppen  = do_ppen
+!             cc  % rkfre    = rkfre
+!             sd  % tke      = sd%cgust
+!             sd  % tke      = sd%tke   * (1. - gfact2     * sd%land)
+!             cpn % auto_th0 = auto_th0 * (1. + landfact_m * sd%land)
+!	     if (sd%land.gt.0.5) then
+! 	     	if (sd%cgust.gt.sd%cgust0 .and. ac%cape.gt.ac%cin) then
+!             	   ac  % cin = 0
+!             	   cpn % do_forcedlifting = .true.
+!	     	   cpn % do_ppen = .false.
+!	           rkm_shallow = rkm_sh
+!              	   tmp = sd%cgust/(sd%cgust0+sd%cgust)
+!	     	   tmp = (1.-sqrt(tmp))
+!             	   rkm_shallow = rkm_shallow * tmp * gfact3
+!                   cc  % rkfre = min(cc % rkfre / tmp * gfact4, 10.)
+!                endif
+! 	     endif
+!          endif
 
 	  rkm_s(i,j) = rkm_shallow
 
@@ -1668,20 +1711,13 @@ contains
              tten_pevap (i,j,nk) = ct%tevap (k)
              qvten_pevap(i,j,nk) = ct%qevap (k)
              
-             cqa_s (i,j,nk) = cp%ufrc(k)
-             cql_s (i,j,nk) = cp%qlu(k)
-             cqi_s (i,j,nk) = cp%qiu(k)
-             cqn_s (i,j,nk) = cp%qnu(k)
-
-             cldqa (i,j,nk) = cqa_s (i,j,nk)
-             cldql (i,j,nk) = cql_s (i,j,nk)
-             cldqi (i,j,nk) = cqi_s (i,j,nk)
-             cldqn (i,j,nk) = cqn_s (i,j,nk)
- 
-             cmf_s (i,j,nk) = cp%umf(k) !+ cp%emf(k)
-             cmf   (i,j,nk) = cp%umf(k) !+ cp%emf(k)
-             buo_s (i,j,nk) = cp%buo(k)
-             wuo_s (i,j,nk) = cp%wu (k)
+             cldqa (i,j,nk) = cp%ufrc(k)
+             cldql (i,j,nk) = cp%qlu(k)
+             cldqi (i,j,nk) = cp%qiu(k)
+             cldqn (i,j,nk) = cp%qnu(k)
+             cmf_s (i,j,nk) = cp%umf(k)
+             cmf   (i,j,nk) = cp%umf(k)
+             wuo   (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
              fero  (i,j,nk) = cp%fer(k)
              fdro  (i,j,nk) = cp%fdr(k)
@@ -1691,15 +1727,13 @@ contains
               trevp_s(i,j,nk,n) = ct%trevp(k,n)
              enddo
           enddo
-          cush_s(i,j)  = cp%cush
+          cush  (i,j)  = cp%cush
           snow  (i,j)  = ct%snow
           rain  (i,j)  = ct%rain
           denth (i,j)  = ct%denth
           dqtmp (i,j)  = ct%dqtmp
           dting (i,j)  = ct%dting
           cpool (i,j)  = ct%cpool
-          nbuo_s(i,j)  = cp%nbuo
-          pdep_s(i,j)  = cp%pdep
 
 ! make sure the predicted tracer tendencies do not produce negative
 ! tracers due to convective tendencies. if necessary, adjust the 
@@ -1759,6 +1793,13 @@ contains
                  rkm_dp = rkm_dp * frac_rkm_pert * rand(i,j)
                 end if
 
+!		if (do_lclht .and. sd%land.gt.0.5) then
+!		   tmp = hgt0/zlcl(i,j) !tmp = hgt0/sd%pblht
+!             	   tmp = min(max(tmp,0.1),10.)
+!                  rkm_dp = dpc%rkm_dp2*tmp
+!                  dpc % tau_dp = tau_dp * tmp
+!                  dpc % auto_th0_d = auto_th0_d * (1. + landfact_m * sd%land)
+!		end if
 	     end if
 
 	     if (do_dtime) then
@@ -1809,11 +1850,11 @@ contains
 	     	   call conv_forced(dpc, dpn, Uw_p, sd, ac, do_coldT, do_ice, rkm_dp, cbmf_deep,&
                                     cp1, ct1, lat(i,j), lon(i,j), ier, ermesg)
              end if
-             !if (cbmf_deep .eq.0) then 
-             !	fdp(i,j) = 0
-             !else
-             !	fdp(i,j) = 1
-             !end if
+             if (cbmf_deep .eq.0) then 
+             	fdp(i,j) = 0
+             else
+          	fdp(i,j) = 1
+             end if
 	     !if (cp1%cush .gt. cush_ref) then
 	     if (cbmf_deep .gt. 0.0) then
 	     	exist_dpconv(i,j,1) = 1
@@ -1834,12 +1875,12 @@ contains
                 hlflx_d (i,j,nk) = ct1%hlflx(k) 
                 qtflx_d (i,j,nk) = ct1%qctflx(k-1)
                 nqtflx_d(i,j,nk) = ct1%nqtflx(k-1)
-                cqa_d   (i,j,nk) = cp1%ufrc(k)
-                cql_d   (i,j,nk) = cp1%qlu(k)
-                cqi_d   (i,j,nk) = cp1%qiu(k)
-                cqn_d   (i,j,nk) = cp1%qnu(k)
-                cmf_d   (i,j,nk) = cp1%umf(k) + cp1%emf(k) !emf to be commented off
-                buo_d   (i,j,nk) = cp1%buo(k)
+                cldqa_d (i,j,nk) = cp1%ufrc(k)
+                cldql_d (i,j,nk) = cp1%qlu(k)
+                cldqi_d (i,j,nk) = cp1%qiu(k)
+                cldqn_d (i,j,nk) = cp1%qnu(k)
+                cmf_d   (i,j,nk) = cp1%umf(k) + cp1%emf(k)
+                cbu_d   (i,j,nk) = cp1%buo(k)
                 tten_pevap_d (i,j,nk) = ct1%tevap (k)
                 qvten_pevap_d(i,j,nk) = ct1%qevap (k)
                 wuo_d   (i,j,nk) = cp1%wu (k)
@@ -1858,8 +1899,6 @@ contains
              dqtmp_d (i,j)  = ct1%dqtmp
              cush_d  (i,j)  = cp1%cush
              rkm_d   (i,j)  = rkm_dp;
-             nbuo_d  (i,j)  = cp1%nbuo
-             pdep_d  (i,j)  = cp1%pdep
 
              trtend_t = trtend_t+ct1%trten
              trwet_t  = trwet_t +ct1%trwet
@@ -1900,10 +1939,10 @@ contains
              tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:) 
              qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:) 
 
-             cldql (i,j,:) = cql_s (i,j,:) + cql_d(i,j,:)
-             cldqi (i,j,:) = cqi_s (i,j,:) + cqi_d(i,j,:)
+             cldql (i,j,:) = cldql (i,j,:) + cldql_d(i,j,:)
+             cldqi (i,j,:) = cldqi (i,j,:) + cldqi_d(i,j,:)
 	     do k = 1,kmax
-	     	cldqa (i,j,k) = max(cqa_s (i,j,k),cqa_d(i,j,k))
+	     	cldqa (i,j,k) = max(cldqa (i,j,k),cldqa_d(i,j,k))
    	     end do
 
              snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
@@ -2081,18 +2120,16 @@ contains
       end if
     endif
 
-    do i=1,imax
-       do j=1,jmax
-          cush(i,j) = cush_s(i,j)
-       	  if (cush_s(i,j) .gt. 0) fsh(i,j)=1.;
-	  if (cush_d(i,j) .gt. 0) fdp(i,j)=1.;
-       	  do k=1,kmax
-             cfq_s(i,j,k) = 0.
-             cfq_d(i,j,k) = 0.
-             if (cmf_s(i,j,k) .gt. 0.) cfq_s(i,j,k) = 1.
-             if (cmf_d(i,j,k) .gt. 0.) cfq_d(i,j,k) = 1.
-          enddo
-       enddo
+
+    do k=1,kmax
+      do j=1,jmax
+        do i=1,imax
+          cfq(i,j,k) = 0
+          if (wuo(i,j,k) .gt. 0.) then
+            cfq(i,j,k) = 1
+          endif
+        enddo
+      enddo
     enddo
 
     if (do_imposing_rad_cooling) then
@@ -2150,25 +2187,25 @@ contains
     used = send_data( id_xpsrc_uwc,        xpsrc,              Time, is, js)
     used = send_data( id_xhlsrc_uwc,       xhlsrc,             Time, is, js)
     used = send_data( id_xqtsrc_uwc,       xqtsrc,             Time, is, js)
-    used = send_data( id_tdt_pevap_uwc,    tten_pevap,         Time, is, js, 1)
-    used = send_data( id_qdt_pevap_uwc,    qvten_pevap,        Time, is, js, 1)
+    used = send_data( id_tdt_pevap_uwc,    tten_pevap*aday , Time, is, js, 1)
+    used = send_data( id_qdt_pevap_uwc,    qvten_pevap*aday, Time, is, js, 1)
 
-    used = send_data( id_tdt_uwc,    tten ,        Time, is, js, 1)
-    used = send_data( id_qdt_uwc,    qvten,        Time, is, js, 1)
-    used = send_data( id_udt_uwc,    uten,         Time, is, js, 1)
-    used = send_data( id_vdt_uwc,    vten,         Time, is, js, 1)
+    used = send_data( id_tdt_uwc,    tten*aday , Time, is, js, 1)
+    used = send_data( id_qdt_uwc,    qvten*aday, Time, is, js, 1)
+    used = send_data( id_udt_uwc,    uten*aday , Time, is, js, 1)
+    used = send_data( id_vdt_uwc,    vten*aday,  Time, is, js, 1)
     used = send_data( id_cmf_uwc,    cmf,          Time, is, js, 1)
     used = send_data( id_cmf_uws,    cmf_s,        Time, is, js, 1)
-    used = send_data( id_cfq_uws,    cfq_s,        Time, is, js, 1)
-    used = send_data( id_wuo_uws,    wuo_s,        Time, is, js, 1)
+    used = send_data( id_cfq_uwc,    cfq,          Time, is, js, 1)
+    used = send_data( id_wu_uwc,     wuo,          Time, is, js, 1)
     used = send_data( id_peo_uwc,    peo,          Time, is, js, 1)
     used = send_data( id_fer_uwc,    fero,         Time, is, js, 1)
     used = send_data( id_fdr_uwc,    fdro,         Time, is, js, 1)
     used = send_data( id_fdrs_uwc,   fdrso,        Time, is, js, 1)
-    used = send_data( id_cqa_uws,    cqa_s,        Time, is, js, 1)
-    used = send_data( id_cql_uws,    cql_s,        Time, is, js, 1)
-    used = send_data( id_cqi_uws,    cqi_s,        Time, is, js, 1)
-    used = send_data( id_cqn_uws,    cqn_s,        Time, is, js, 1)
+    used = send_data( id_cqa_uwc,    cldqa,        Time, is, js, 1)
+    used = send_data( id_cql_uwc,    cldql,        Time, is, js, 1)
+    used = send_data( id_cqi_uwc,    cldqi,        Time, is, js, 1)
+    used = send_data( id_cqn_uwc,    cldqn,        Time, is, js, 1)
     used = send_data( id_hlflx_uwc,  hlflx,        Time, is, js, 1)
     used = send_data( id_qtflx_uwc,  qtflx,        Time, is, js, 1)
     used = send_data( id_nqtflx_uwc, nqtflx,       Time, is, js, 1)
@@ -2182,7 +2219,6 @@ contains
     used = send_data( id_hmo_uwc,    hmo,          Time, is, js, 1)
     used = send_data( id_hms_uwc,    hms,          Time, is, js, 1)
     used = send_data( id_abu_uwc,    abu,          Time, is, js, 1)
-    used = send_data( id_buo_uws,    buo_s,        Time, is, js, 1)
 
     used = send_data( id_tdt_rad_uwc,  tdt_rad,  Time, is, js, 1)
     used = send_data( id_tdt_dyn_uwc,  tdt_dyn,  Time, is, js, 1)
@@ -2193,8 +2229,7 @@ contains
     used = send_data( id_ddp_dyn_uwc,  ddp_dyn_hm,  Time, is, js, 1)
 
     used = send_data( id_lts_uwc,      lts,      Time, is, js )
-    used = send_data( id_nbuo_uws,     nbuo_s,   Time, is, js )
-    used = send_data( id_pdep_uws,     pdep_s,   Time, is, js )
+    used = send_data( id_eis_uwc,      eis,      Time, is, js )
     used = send_data( id_lhflx_uwc,    lhflx,    Time, is, js )
     used = send_data( id_shflx_uwc,    shflx,    Time, is, js )
     used = send_data( id_hmint_uwc,    hmint,    Time, is, js )
@@ -2213,10 +2248,8 @@ contains
 
 !    used = send_data( id_tdt_rad0_uwc, tdt_rad0, Time, is, js )
  
-    used = send_data( id_prec_uws, (rain+snow-rain_d-snow_d), Time, is, js )
-    used = send_data( id_snow_uws, (snow-snow_d),      Time, is, js )
-    used = send_data( id_prec_uwc, (rain+snow),        Time, is, js )
-    used = send_data( id_snow_uwc, (snow),             Time, is, js )
+    used = send_data( id_prec_uwc, (rain+snow-rain_d-snow_d)*aday, Time, is, js )
+    used = send_data( id_snow_uwc, (snow-snow_d)*aday,      Time, is, js )
     used = send_data( id_cin_uwc,  (cino),             Time, is, js )
     used = send_data( id_cape_uwc, (capeo),            Time, is, js )
     used = send_data( id_gust_uwc, (gusto),            Time, is, js )
@@ -2234,7 +2267,7 @@ contains
     used = send_data( id_plfc_uwc, (plfc*0.01),        Time, is, js )
     used = send_data( id_plnb_uwc, (plnb*0.01),        Time, is, js )
     used = send_data( id_zinv_uwc, (zinvo),            Time, is, js )
-    used = send_data( id_cush_uws, (cush_s),           Time, is, js )
+    used = send_data( id_cush_uwc, (cush),             Time, is, js )
     used = send_data( id_dcin_uwc, (dcino),            Time, is, js )
     used = send_data( id_dcape_uwc,(dcapeo),           Time, is, js )
 !    used = send_data( id_dwfn_uwc, (dwfno),            Time, is, js )
@@ -2242,7 +2275,6 @@ contains
     used = send_data( id_qtmp_uwc, (dqtmp),            Time, is, js )
     used = send_data( id_dting_uwc,(dting),            Time, is, js )
     used = send_data( id_ocode_uwc,(ocode),            Time, is, js )
-    used = send_data( id_fsh_uwc,  (fsh),              Time, is, js )
     used = send_data( id_fdp_uwc,  (fdp),              Time, is, js )
     used = send_data( id_rkm_uwc,  (rkm_s),            Time, is, js )
     used = send_data( id_stime_uwc,(stime),            Time, is, js )
@@ -2250,18 +2282,18 @@ contains
     used = send_data( id_scaletr_uwc,(scale_tr),       Time, is, js )
 
     if ( do_uwcmt ) then
-      used = send_data( id_tdt_diss_uwc,  dissipative_heat, Time, is, js, 1)
+      used = send_data( id_tdt_diss_uwc,  dissipative_heat*aday , Time, is, js, 1)
     end if
 
     if ( do_strat ) then
-       used = send_data( id_qldt_uwc,   qlten,  Time, is, js, 1)
-       used = send_data( id_qidt_uwc,   qiten,  Time, is, js, 1)
-       used = send_data( id_qadt_uwc,   qaten,  Time, is, js, 1)
-       used = send_data( id_qndt_uwc,   qnten,  Time, is, js, 1)
-       used = send_data( id_qldet_uwc,  qldet,  Time, is, js, 1)
-       used = send_data( id_qidet_uwc,  qidet,  Time, is, js, 1)
-       used = send_data( id_qadet_uwc,  qadet,  Time, is, js, 1)
-       used = send_data( id_qtdt_uwc, (qvten+qlten+qiten),Time, is, js, 1)
+       used = send_data( id_qldt_uwc, qlten*aday,    Time, is, js, 1)
+       used = send_data( id_qidt_uwc, qiten*aday,    Time, is, js, 1)
+       used = send_data( id_qadt_uwc, qaten*aday,    Time, is, js, 1)
+       used = send_data( id_qndt_uwc, qnten*aday,    Time, is, js, 1)
+       used = send_data( id_qldet_uwc,  qldet*aday,  Time, is, js, 1)
+       used = send_data( id_qidet_uwc,  qidet*aday,  Time, is, js, 1)
+       used = send_data( id_qadet_uwc,  qadet*aday,  Time, is, js, 1)
+       used = send_data( id_qtdt_uwc,(qvten+qlten+qiten)*aday,Time, is, js, 1)
     end if
 !f1p
     if ( allocated(id_rn) ) then
@@ -2358,30 +2390,29 @@ contains
 
 !========Option for deep convection=======================================
     if (do_deep) then
-       used=send_data( id_tdt_pevap_uwd, tten_pevap_d, Time, is, js, 1)
-       used=send_data( id_qdt_pevap_uwd, qvten_pevap_d,Time, is, js, 1)
-       used=send_data( id_tdt_uwd,   tten_d,         Time, is, js, 1)
-       used=send_data( id_qdt_uwd,   qvten_d,        Time, is, js, 1)
-       used=send_data( id_qtdt_uwd,  qtten_d,        Time, is, js, 1)
+       used=send_data( id_tdt_pevap_uwd,    tten_pevap_d*aday , Time, is, js, 1)
+       used=send_data( id_qdt_pevap_uwd,    qvten_pevap_d*aday, Time, is, js, 1)
+       used=send_data( id_tdt_uwd,   tten_d*aday , Time, is, js, 1)
+       used=send_data( id_qdt_uwd,   qvten_d*aday, Time, is, js, 1)
+       used=send_data( id_qtdt_uwd,  qtten_d*aday, Time, is, js, 1)
        used=send_data( id_cmf_uwd,   cmf_d,          Time, is, js, 1)
-       used=send_data( id_cfq_uwd,   cfq_d,          Time, is, js, 1)
-       used=send_data( id_buo_uwd,   buo_d,          Time, is, js, 1)
-       used=send_data( id_wuo_uwd,   wuo_d,          Time, is, js, 1)
+       used=send_data( id_cbu_uwd,   cbu_d,          Time, is, js, 1)
+       used=send_data( id_wu_uwd,    wuo_d,          Time, is, js, 1)
        used=send_data( id_fer_uwd,   fero_d,         Time, is, js, 1)
        used=send_data( id_fdr_uwd,   fdro_d,         Time, is, js, 1)
        used=send_data( id_fdrs_uwd,  fdrso_d,        Time, is, js, 1)
-       used=send_data( id_cqa_uwd,   cqa_d,          Time, is, js, 1)
-       used=send_data( id_cql_uwd,   cql_d,          Time, is, js, 1)
-       used=send_data( id_cqi_uwd,   cqi_d,          Time, is, js, 1)
-       used=send_data( id_cqn_uwd,   cqn_d,          Time, is, js, 1)
+       used=send_data( id_cqa_uwd,   cldqa_d,        Time, is, js, 1)
+       used=send_data( id_cql_uwd,   cldql_d,        Time, is, js, 1)
+       used=send_data( id_cqi_uwd,   cldqi_d,        Time, is, js, 1)
+       used=send_data( id_cqn_uwd,   cldqn_d,        Time, is, js, 1)
        used=send_data( id_hlflx_uwd, hlflx_d,        Time, is, js, 1)
        used=send_data( id_qtflx_uwd, qtflx_d,        Time, is, js, 1)
        used=send_data( id_nqtflx_uwd,nqtflx_d,       Time, is, js, 1)
 !       used=send_data( id_trtend_uwd, trtend,        Time, is, js, 1)
 !       used=send_data( id_trwet_uwd,  trwet,         Time, is, js, 1)
       
-       used=send_data( id_prec_uwd, (rain_d+snow_d),       Time, is, js )
-       used=send_data( id_snow_uwd, (snow_d),              Time, is, js )
+       used=send_data( id_prec_uwd, (rain_d+snow_d)*aday,Time, is, js )
+       used=send_data( id_snow_uwd, (snow_d)*aday,       Time, is, js )
        used=send_data( id_cbmf_uwd, (cbmf_d),              Time, is, js )
        used=send_data( id_dcapedm_uwd,(dcapedm_d),         Time, is, js )
        used=send_data( id_dcwfndm_uwd,(dcwfndm_d),         Time, is, js )
@@ -2392,13 +2423,11 @@ contains
        used=send_data( id_rkm_uwd,  (rkm_d),               Time, is, js )
        used=send_data( id_rand_uwd, (rand),                Time, is, js )
        used=send_data( id_dtime_uwd,(dtime),               Time, is, js )
-       used=send_data( id_nbuo_uwd, nbuo_d,                Time, is, js )
-       used=send_data( id_pdep_uwd, pdep_d,                Time, is, js )
              
        if ( do_strat ) then
-          used=send_data( id_qldt_uwd, qlten_d,     Time, is, js, 1)
-          used=send_data( id_qidt_uwd, qiten_d,     Time, is, js, 1)
-          used=send_data( id_qadt_uwd, qaten_d,     Time, is, js, 1)
+          used=send_data( id_qldt_uwd, qlten_d*aday,     Time, is, js, 1)
+          used=send_data( id_qidt_uwd, qiten_d*aday,     Time, is, js, 1)
+          used=send_data( id_qadt_uwd, qaten_d*aday,     Time, is, js, 1)
        end if
        if ( allocated(id_trevp_uwd) ) then
          do n = 1,size(id_trevp_uwd)
