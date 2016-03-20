@@ -56,6 +56,7 @@ MODULE DEEP_CONV_MOD
      logical :: do_pevap_d
      real    :: cfrac_d
      real    :: hcevap_d
+     real    :: hcevappbl_d
      real    :: pblfac_d
      real    :: ffldep_d
      real    :: dcapedm_th
@@ -119,6 +120,7 @@ contains
     dpn % do_ppen            = cpn % do_ppen
     dpn % do_pevap           = cpn % do_pevap
     dpn % hcevap             = cpn % hcevap
+    dpn % hcevappbl          = cpn % hcevappbl
     dpn % cfrac              = cpn % cfrac
     dpn % pblfac             = cpn % pblfac
     dpn % ffldep             = cpn % ffldep
@@ -131,8 +133,6 @@ contains
     dpn % peff_l             = cpn % peff_l
     dpn % peff_i             = cpn % peff_i
     dpn % peff               = cpn % peff
-    dpn % t00                = cpn % t00
-    dpn % rh0                = cpn % rh0
     dpn % do_forcedlifting   = cpn % do_forcedlifting
     dpn % atopevap           = cpn % atopevap
     dpn % wtwmin_ratio       = cpn % wtwmin_ratio
@@ -147,7 +147,6 @@ contains
     dpn % use_new_let        = cpn % use_new_let
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
-    dpn % mfact              = cpn % mfact
 
   end subroutine cpn_copy
 

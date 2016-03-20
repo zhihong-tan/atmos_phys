@@ -108,10 +108,6 @@ MODULE UW_CONV_MOD
   real    :: t_strato = 200.0    !K
   real    :: tau_rad  = 5.0      !day
 !miz
-  integer :: cush_choice  = 0
-  real    :: pcp_min      = 3e-5
-  real    :: pcp_max      = 1.5e-3
-  real    :: rh0          = 0.8
   real    :: cush_ref     = 0.
   real    :: plev_cin     = 60000.
   real    :: pblht0 = 500.
@@ -146,7 +142,6 @@ MODULE UW_CONV_MOD
   real    :: sigma0 = 0.5
   real    :: stime0 = 0.5
   real    :: dtime0 = 0.5
-  real    :: mfact  = 0.7
 
   integer :: tracer_check_type = -999 !legacy
   !< select realizability checks to be applied to tracers
@@ -162,10 +157,10 @@ MODULE UW_CONV_MOD
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin,                      &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, gfact, &
-       do_debug, cush_choice, pcp_min, pcp_max, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
-       rh0, do_qctflx_zero, do_detran_zero, duration, do_stime, do_dtime, stime0, dtime0, &
+       do_debug, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
+       do_qctflx_zero, do_detran_zero, duration, do_stime, do_dtime, stime0, dtime0, &
        do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
-       do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice, mfact, &
+       do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,      &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
 
   !namelist parameters for UW convective plume
@@ -177,7 +172,7 @@ MODULE UW_CONV_MOD
   real    :: rbuoy    = 1.0    ! for nonhydrostatic pressure effects on updraft
   real    :: rdrag    = 1.0 
   real    :: frac_drs = 0.0    ! 
-  real    :: bigc     = 0.0    ! for momentum transfer
+  real    :: bigc     = 0.0    ! for momentum transfer default set to 0 assuming as tracers
   real    :: auto_th0 = 0.5e-3 ! threshold for precipitation
   real    :: auto_rate= 1.e-3
   real    :: tcrit    = -60.0  ! critical temperature 
@@ -198,6 +193,7 @@ MODULE UW_CONV_MOD
   logical :: do_pevap = .false.
   real    :: cfrac     = 0.1
   real    :: hcevap    = 0.8
+  real    :: hcevappbl = 1.0
   real    :: pblfac    = 0.0
   real    :: ffldep    = 0.0
   logical :: do_new_pblfac = .false.
@@ -206,13 +202,13 @@ MODULE UW_CONV_MOD
   real    :: weffect    = 0.5
   real    :: peff_l     = 1.0
   real    :: peff_i     = 1.0
-  real    :: t00        = 295
+!  real    :: t00        = 295
   real    :: tten_max   = 1000.
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, ffldep, do_limit_wmax,&
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
-       mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, pblfac,&
-       do_weffect, do_new_pblfac, weffect, peff_l, peff_i, t00, tten_max
+       mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, hcevappbl, pblfac,&
+       do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -248,6 +244,7 @@ MODULE UW_CONV_MOD
   real    :: cfrac_d     = 0.05
   real    :: hcevap_d    = 0.8
   real    :: pblfac_d    = 0.0
+  real    :: hcevappbl_d = 1.0
   real    :: ffldep_d    = 0.0
   real    :: dcapedm_th  = 0
   real    :: dcwfndm_th  = 0
@@ -278,7 +275,7 @@ MODULE UW_CONV_MOD
   NAMELIST / deep_conv_nml / cbmf0, rkm_dp1, rkm_dp2, cbmf_dp_frac1, cbmf_dp_frac2, do_forced_conv, &
                  crh_th_ocean, crh_th_land, do_forcedlifting_d, frac_limit_d, wcrit_min_gust, cin_fact,&
                  cape_th, cin_th, cwfn_th, tau_dp, rpen_d, mixing_assumption_d, norder, dcwfndm_th, &
-                 do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, pblfac_d, ffldep_d, lofactor_d, dcapedm_th, &
+                 do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, pblfac_d, hcevappbl_d, ffldep_d, lofactor_d, dcapedm_th, &
                  auto_th0_d, tcrit_d, do_lod_rkm, do_lod_cfrac, do_lod_tcrit, do_lod_cape, &
 		 peff_l_d, peff_i_d, do_lod_tau, do_lod_cush, cgust_choice, tau_dp_fact, crh_max, &
                  do_stochastic_rkm, frac_rkm_pert, do_cgust_dp, gustmax, cpool_gust, src_choice_d
@@ -1146,6 +1143,7 @@ contains
     cpn % do_ppen   = do_ppen
     cpn % do_pevap  = do_pevap
     cpn % hcevap    = hcevap
+    cpn % hcevappbl = hcevappbl
     cpn % cfrac     = cfrac
     cpn % pblfac    = pblfac
     cpn % ffldep    = ffldep
@@ -1157,8 +1155,6 @@ contains
     cpn % r_thresh  = r_thresh
     cpn % peff_l    = peff_l
     cpn % peff_i    = peff_i
-    cpn % t00       = t00
-    cpn % rh0       = rh0
     cpn % do_forcedlifting= do_forcedlifting
     cpn % atopevap  = atopevap
     cpn % wtwmin_ratio = wmin_ratio*wmin_ratio
@@ -1175,7 +1171,6 @@ contains
     cpn % stop_at_let = stop_at_let
     cpn % do_limit_wmax= do_limit_wmax
     cpn % plev_for = plev_for
-    cpn % mfact    = mfact
     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
@@ -1236,6 +1231,7 @@ contains
     dpc % do_pevap_d          = do_pevap_d
     dpc % cfrac_d             = cfrac_d
     dpc % hcevap_d            = hcevap_d
+    dpc % hcevappbl_d         = hcevappbl_d
     dpc % pblfac_d            = pblfac_d
     dpc % ffldep_d            = ffldep_d
     dpc % frac_limit_d        = frac_limit_d
@@ -1778,6 +1774,7 @@ contains
              dpn % do_pevap = dpc % do_pevap_d
              dpn % cfrac    = dpc % cfrac_d
              dpn % hcevap   = dpc % hcevap_d
+             dpn % hcevappbl= dpc % hcevappbl_d
              dpn % pblfac   = dpc % pblfac_d
              dpn % ffldep   = dpc % ffldep_d
              dpn % tcrit    = dpc % tcrit_d

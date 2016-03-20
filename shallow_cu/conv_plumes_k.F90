@@ -38,10 +38,10 @@ MODULE CONV_PLUMES_k_MOD
   public cpnlist
   type cpnlist
      integer :: mixing_assumption, mp_choice
-     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, mfact
+     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, &
-             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, &
-             Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, rh0, cfrac,hcevap, weffect,t00
+             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, &
+             Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, peff, cfrac,hcevap, weffect
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, isdeep, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
@@ -551,8 +551,6 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.3) then
-!          scaleh1 = cpn%t00*Uw_p%rdgas/Uw_p%grav*log(cp%p(1)/cp%p(k))
-!          scaleh1 = max (1000., scaleh1)
           scaleh1 = 2000.*(cp%p(k)/cp%p(1))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),      &
@@ -567,13 +565,12 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else
-          scaleh1 = cpn%t00*Uw_p%rdgas/Uw_p%grav*log(cp%p(1)/cp%p(k))
-          scaleh1 = max (1000., scaleh1)
+          scaleh1 = max(1000., cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
-                         qct_env_k, cp%hlu(km1), cp%thcu(km1),      &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
+                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        end if
 
        !Calculate the mass flux
@@ -593,12 +590,13 @@ contains
           cp%uu(k)=cp%uu(km1) - sd%dudp(k)*cp%dp(k)
           cp%vu(k)=cp%vu(km1) - sd%dvdp(k)*cp%dp(k)
        else
-          cp%uu(k)=cp%u(k)-cpn%bigc*sd%dudp(k)/cp%fer(k)-  &
-                   exp(-cp%fer(k)*cp%dp(k))* &
-                  (cp%u(k)-cpn%bigc*sd%dudp(k)/cp%fer(k) - cp%uu(km1))
-          cp%vu(k)=cp%v(k)-cpn%bigc*sd%dvdp(k)/cp%fer(k)-  &
-                   exp(-cp%fer(k)*cp%dp(k))* &
-                  (cp%v(k)-cpn%bigc*sd%dvdp(k)/cp%fer(k) - cp%vu(km1))
+!comment out assuming it behaves as tracers (Romps 2012), then scale total tendency by (1-bigc)
+!          cp%uu(k)=cp%u(k)-cpn%bigc*sd%dudp(k)/cp%fer(k)-  &
+!                   exp(-cp%fer(k)*cp%dp(k))* &
+!                  (cp%u(k)-cpn%bigc*sd%dudp(k)/cp%fer(k) - cp%uu(km1))
+!          cp%vu(k)=cp%v(k)-cpn%bigc*sd%dvdp(k)/cp%fer(k)-  &
+!                   exp(-cp%fer(k)*cp%dp(k))* &
+!                  (cp%v(k)-cpn%bigc*sd%dvdp(k)/cp%fer(k) - cp%vu(km1))
 
           cp%uu(k)=cp%u(k) - exp(-cp%fer(k)*cp%dp(k))*(cp%u(k)- cp%uu(km1))
           cp%vu(k)=cp%v(k) - exp(-cp%fer(k)*cp%dp(k))*(cp%v(k)- cp%vu(km1))
@@ -624,11 +622,6 @@ contains
                                 hlu_new, qctu_new, qlu_new, qiu_new, &
                                 clu_new, ciu_new, temp, cpn%do_ice, &
                                 delta_qn, Uw_p, kbelowlet, sd%dp(k))        
-!          call precip_new_k    (cp%zs(k), cp%ps(k), cp%hlu(k), &
-!                                cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
-!                                hlu_new, qctu_new, qlu_new, qiu_new, &
-!                                clu_new, ciu_new, temp, cpn%do_ice, &
-!                                delta_qn, Uw_p, kbelowlet, sd%land, sd%delt, cp%wu(km1))
        else if (cpn%mp_choice.eq.3) then
           call precip3_k       (cp%zs(k), cp%ps(k), cp%hlu(k), &
                                 cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
@@ -664,7 +657,13 @@ contains
                                 cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
                                 hlu_new, qctu_new, qlu_new, qiu_new, &
                                 clu_new, ciu_new, temp, cpn%do_ice, &
-                                delta_qn, Uw_p, kbelowlet, sd%dp(k))        
+                                delta_qn, Uw_p, kbelowlet, sd%dp(k))
+       else
+          call precip_new_k    (cp%zs(k), cp%ps(k), cp%hlu(k), &
+                                cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
+                                hlu_new, qctu_new, qlu_new, qiu_new, &
+                                clu_new, ciu_new, temp, cpn%do_ice, &
+                                delta_qn, Uw_p, kbelowlet, sd%land, sd%delt, cp%wu(km1))
        end if
 
        cp%qctu(k)=qctu_new
@@ -838,10 +837,6 @@ contains
 
     !convective scale height
     cp % cush=sd%z(ltop) - sd%zs(0)
-
-    if (cpn%mixing_assumption.eq.2) then
-    	 cp % cush = cpn%t00*Uw_p%rdgas/Uw_p%grav*log(cp%p(1)/cp%p(k))
-    endif	 
 
     if (cpn%do_ppen) then !Calculate penetrative entrainment
        call penetrative_mixing_k(cpn, sd, Uw_p, cp) 
@@ -1982,24 +1977,22 @@ contains
        ct%qnten(k) = - Uw_p%grav*(umftmp * (sd%qn(k)-q2      )/x2 + &
                                   emftmp * (q1      -sd%qn(k))/xx1 )
 
-       q2=(sd%u(k)   *x1  + sd%u(kp1)*x2  )/x3
-       q1=(sd%u(km1) *xx1 + sd%u(k)  *xx2 )/xx3
-       ct%uten(k)  = - Uw_p%grav*(umftmp * (sd%u(k) -q2      )/x2 + &
-                                  emftmp * (q1      -sd%u(k))/xx1 )
-
-       q2=(sd%v(k)   *x1  + sd%v(kp1)*x2  )/x3
-       q1=(sd%v(km1) *xx1 + sd%v(k)  *xx2 )/xx3
-       ct%vten(k)  = - Uw_p%grav*(umftmp * (sd%v(k) -q2      )/x2 + &
-                                  emftmp * (q1      -sd%v(k))/xx1 )
+!       q2=(sd%u(k)   *x1  + sd%u(kp1)*x2  )/x3
+!       q1=(sd%u(km1) *xx1 + sd%u(k)  *xx2 )/xx3
+!       ct%uten(k)  = - Uw_p%grav*(umftmp * (sd%u(k) -q2      )/x2 + &
+!                                  emftmp * (q1      -sd%u(k))/xx1 )
+!       q2=(sd%v(k)   *x1  + sd%v(kp1)*x2  )/x3
+!       q1=(sd%v(km1) *xx1 + sd%v(k)  *xx2 )/xx3
+!       ct%vten(k)  = - Uw_p%grav*(umftmp * (sd%v(k) -q2      )/x2 + &
+!                                  emftmp * (q1      -sd%v(k))/xx1 )
     end do
 
     ct%qlten = ct%qlten + ct%qldet 
     ct%qiten = ct%qiten + ct%qidet
     ct%qaten = ct%qaten + ct%qadet
     ct%qnten = ct%qnten + ct%qndet
-
-    ct%uten  = ct%uten  + ct%udet
-    ct%vten  = ct%vten  + ct%vdet
+!    ct%uten  = ct%uten  + ct%udet
+!    ct%vten  = ct%vten  + ct%vdet
 
     if (cpn%do_detran_zero) then
        ct%qlten = 0.
@@ -2040,8 +2033,8 @@ contains
     enddo
 
 !take into account the pressure effect on cumulums momentum transport
-    ct%uten  = cpn%mfact * ct%uten
-    ct%vten  = cpn%mfact * ct%vten
+    ct%uten  = (1.-cpn%bigc) * ct%uten
+    ct%vten  = (1.-cpn%bigc) * ct%vten
 
     do k = cp%let,ltop
        if (ct%qctten(k).gt.0 .and. ct%qvten(k).lt.0) then
@@ -2316,7 +2309,7 @@ contains
      if (cpn%do_new_pblfac) then
        if (k <= cp%krel) then
        	  cfrac =cpn%pblfac * cpn%cfrac
-          hcevap=1.0
+          hcevap=cpn%hcevappbl
        else
        	  cfrac =cpn%cfrac
    	  hcevap=cpn%hcevap
