@@ -241,7 +241,7 @@ character(len=80)  :: cloud_chem_solver = 'legacy' !f1p
 real               :: pH_cloud = -999. !f1p
 real               :: H_cloud
 
-
+logical            :: reproduce_AM3_fbb = .true.     ! h1g
 namelist /simple_sulfate_nml/  &
        critical_sea_fraction,     &
       runtype,                         &
@@ -257,7 +257,7 @@ namelist /simple_sulfate_nml/  &
         ship_time_dependency_type, ship_dataset_entry, &
       aircraft_source, aircraft_emission_name, aircraft_filename, &
         aircraft_time_dependency_type, aircraft_dataset_entry, so2_aircraft_EI,&
-      cont_volc_source, expl_volc_source, cloud_chem_solver, pH_cloud
+      cont_volc_source, expl_volc_source, cloud_chem_solver, pH_cloud, reproduce_AM3_fbb
 
 type(time_type) :: anthro_time, biobur_time, ship_time, aircraft_time
 type(time_type)        :: gas_conc_time
@@ -1580,6 +1580,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
            call interpolator( aerocom_emission_interp, model_time, SO2_expl_volc(:,:,ivolc_lev), &
 !                             trim(expl_volc_emission_name(ivolc_lev)), is, js )
                               trim(aerocom_emission_name(std_aerocom_emission+num_volc_levels+ivolc_lev)), is, js )
+
         end do
       endif
 
@@ -1588,7 +1589,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 
 ! --- Assuming biomass burning emission within the PBL -------
         fbb(:) = 0.
-        fbb(kd) = 1.
+        if ( .not. reproduce_AM3_fbb )  fbb(kd) = 1.  ! h1g
         ze1=100.
         ze2=500.
         fbt=0.

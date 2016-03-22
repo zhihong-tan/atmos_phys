@@ -265,6 +265,9 @@ real                  :: frac_bcbb_phobic = 0.8
 real                  :: frac_bcbb_philic = 0.2
 real                  :: frac_om_phobic = 0.5
 real                  :: frac_om_philic = 0.5
+
+logical            :: reproduce_AM3_fbb = .true.     ! h1g
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!
 namelist /carbon_aerosol_nml/ &
  bcff_source, bcff_input_name, bcff_filename, &
@@ -294,7 +297,7 @@ namelist /carbon_aerosol_nml/ &
  frac_bc_phobic, frac_bc_philic, frac_om_phobic, frac_om_philic, &
  frac_bcbb_philic, frac_bcbb_phobic,&
  soa_source, gas_conc_name,soa_filename, &
- soa_time_dependency_type, soa_dataset_entry
+ soa_time_dependency_type, soa_dataset_entry, reproduce_AM3_fbb
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -638,7 +641,7 @@ real, parameter                            :: yield_soa = 0.1
 ! Calculate fraction of emission at every levels for open fires
 !
         fbb(:,:)=0.
-        fbb(kd,:)=1.
+        if ( .not. reproduce_AM3_fbb )  fbb(kd,:)=1.  ! h1g  
 !
 ! In case of multiple levels, which are fixed
 !
