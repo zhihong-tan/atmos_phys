@@ -43,8 +43,6 @@ MODULE DEEP_CONV_MOD
      real    :: cbmf0
      real    :: rkm_dp1
      real    :: rkm_dp2
-     real    :: cbmf_dp_frac1
-     real    :: cbmf_dp_frac2
      real    :: crh_th_land
      real    :: crh_th_ocean
      real    :: cape_th 
@@ -132,7 +130,6 @@ contains
     dpn % r_thresh           = cpn % r_thresh
     dpn % peff_l             = cpn % peff_l
     dpn % peff_i             = cpn % peff_i
-    dpn % peff               = cpn % peff
     dpn % do_forcedlifting   = cpn % do_forcedlifting
     dpn % atopevap           = cpn % atopevap
     dpn % wtwmin_ratio       = cpn % wtwmin_ratio
@@ -143,7 +140,6 @@ contains
     dpn % do_new_pblfac      = cpn % do_new_pblfac
     dpn % weffect            = cpn % weffect
     dpn % use_online_aerosol = cpn % use_online_aerosol
-    dpn % isdeep             = cpn % isdeep
     dpn % use_new_let        = cpn % use_new_let
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
@@ -174,7 +170,7 @@ contains
     integer,            intent(out) :: ier
     character(len=256), intent(out) :: ermesg
 
-    real          :: zcldtop, dcrh, cbmf_dp_frac
+    real          :: zcldtop, dcrh
 
     ier = 0
     ermesg = ' '

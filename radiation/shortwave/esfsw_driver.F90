@@ -124,14 +124,16 @@ logical      ::  do_rayleigh     = .true.       ! is rayleigh scattering
                                                 ! turned on?
 logical      ::  reproduce_ulm   = .true.       ! reproduce ulm code
 logical      ::  do_four_stream  = .false.      !
-                              
+                             
+logical      ::  remain_hu_bug   = .true.
+ 
 namelist / esfsw_driver_nml /    &
                                do_rayleigh_all_bands, &
                                do_herzberg, do_quench, &
                                do_h2o_sw_effects, do_o3_sw_effects, &
                                do_ch4_sw_effects, do_n2o_sw_effects, &
                                do_co2_sw_effects, do_o2_sw_effects, &
-                               do_sw_continuum, do_rayleigh, reproduce_ulm, do_four_stream
+                               do_sw_continuum, do_rayleigh, reproduce_ulm, do_four_stream, remain_hu_bug
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -886,12 +888,18 @@ subroutine esfsw_driver_init
 !           betaddensitymol is the quantity which multiples the       
 !           molecular density to yield the rayleigh scattering      
 !           coefficient.                                           
-!           1.39E-02 is the depolorization factor.              
+!           2.79E-02 is the depolorization factor.              
 !-----------------------------------------------------------------
       refquanray = densmolref * temprefray / pressrefray 
-      corrfac = ( 6.0E+00 + 3.0E+00 * 1.39E-02 )/( 6.0E+00 - 7.0E+00 * &
-                  1.39E-02 )
-      gamma = 1.39E-02 / ( 2.0E+00 - 1.39E-02 )
+      if ( remain_hu_bug ) then
+        corrfac = ( 6.0E+00 + 3.0E+00 * 1.39E-02 )/( 6.0E+00 - 7.0E+00 * &
+                    1.39E-02 )
+        gamma = 1.39E-02 / ( 2.0E+00 - 1.39E-02 )
+      else
+        corrfac = ( 6.0E+00 + 3.0E+00 * 2.79E-02 )/( 6.0E+00 - 7.0E+00 * &
+                    2.79E-02 )
+        gamma = 2.79E-02 / ( 2.0E+00 - 2.79E-02 )
+      endif
       f1 = 7.5E-01 / ( gamma * 2.0E+00 + 1.0E+00 )
       f2 = gamma * 3.0E+00 + 1.0E+00 
       f3 = 1.0E+00 - gamma 

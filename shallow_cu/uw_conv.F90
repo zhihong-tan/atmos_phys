@@ -72,8 +72,6 @@ MODULE UW_CONV_MOD
   real    :: landfact_m   = 0.5
   integer :: idpchoice = 0  
   logical :: do_deep = .false.
-  logical :: do_relaxcape = .false.
-  logical :: do_relaxwfn  = .false.
   logical :: do_coldT = .true.
   logical :: do_lands = .false.
   logical :: do_peff_land = .false.
@@ -94,20 +92,6 @@ MODULE UW_CONV_MOD
   logical :: do_rescale   = .false.
   logical :: do_rescale_t = .false.
   logical :: do_debug     = .false.
-!miz
-  logical :: do_imposing_forcing = .false.
-  real    :: tdt_rate = 0.0             
-  real    :: qdt_rate = 0.0
-  real    :: pres_min = 0.0
-  real    :: pres_max = 0.0
-  integer :: klevel = 10
-  logical :: use_klevel   = .true.
-  logical :: do_imposing_rad_cooling = .false.
-  real    :: cooling_rate = -1.5 !K/day
-  real    :: t_thresh = 207.5    !K
-  real    :: t_strato = 200.0    !K
-  real    :: tau_rad  = 5.0      !day
-!miz
   real    :: cush_ref     = 0.
   real    :: plev_cin     = 60000.
   real    :: pblht0 = 500.
@@ -136,7 +120,6 @@ MODULE UW_CONV_MOD
   real    :: plev_for   = 50000.
   real    :: duration = 10800
   real    :: tau_gust = 7200
-  real    :: gfact  = 1.0
   real    :: cgust0 = 1.
   real    :: cgust_max = 10.
   real    :: sigma0 = 0.5
@@ -152,15 +135,13 @@ MODULE UW_CONV_MOD
   logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, nbuo_max, do_peff_land, &
-       do_deep, idpchoice, do_relaxcape, do_relaxwfn, do_coldT, do_lands, do_uwcmt, do_varying_rpen, &
+       do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen,                           &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin,                      &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
-       do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, gfact, &
-       do_debug, cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,&
-       do_qctflx_zero, do_detran_zero, duration, do_stime, do_dtime, stime0, dtime0, &
-       do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, klevel, use_klevel, do_subcloud_flx,&
-       do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad, src_choice, gqt_choice,      &
+       do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, do_debug, &
+       cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
+       duration, do_stime, do_dtime, stime0, dtime0, do_subcloud_flx, src_choice, gqt_choice,        &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
 
   !namelist parameters for UW convective plume
@@ -227,8 +208,6 @@ MODULE UW_CONV_MOD
   real    :: cbmf0         = 0.0001
   real    :: rkm_dp1       = 10.
   real    :: rkm_dp2       = 1.
-  real    :: cbmf_dp_frac1 = 0.
-  real    :: cbmf_dp_frac2 = 1.
   real    :: crh_th_ocean  = 0.5
   real    :: crh_th_land   = 0.5
   real    :: crh_max       = 1.0001
@@ -272,7 +251,7 @@ MODULE UW_CONV_MOD
   real    :: cin_fact    = 1
   real    :: wcrit_min_gust = 0.2
   integer :: cgust_choice = 0
-  NAMELIST / deep_conv_nml / cbmf0, rkm_dp1, rkm_dp2, cbmf_dp_frac1, cbmf_dp_frac2, do_forced_conv, &
+  NAMELIST / deep_conv_nml / cbmf0, rkm_dp1, rkm_dp2, do_forced_conv, &
                  crh_th_ocean, crh_th_land, do_forcedlifting_d, frac_limit_d, wcrit_min_gust, cin_fact,&
                  cape_th, cin_th, cwfn_th, tau_dp, rpen_d, mixing_assumption_d, norder, dcwfndm_th, &
                  do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, pblfac_d, hcevappbl_d, ffldep_d, lofactor_d, dcapedm_th, &
@@ -280,6 +259,23 @@ MODULE UW_CONV_MOD
 		 peff_l_d, peff_i_d, do_lod_tau, do_lod_cush, cgust_choice, tau_dp_fact, crh_max, &
                  do_stochastic_rkm, frac_rkm_pert, do_cgust_dp, gustmax, cpool_gust, src_choice_d
 !========Option for deep convection=======================================
+
+!===option for idealized forcing===================
+  logical :: do_imposing_forcing = .false.
+  real    :: tdt_rate = 0.0             
+  real    :: qdt_rate = 0.0
+  real    :: pres_min = 0.0
+  real    :: pres_max = 0.0
+  integer :: klevel = 10
+  logical :: use_klevel   = .true.
+  logical :: do_imposing_rad_cooling = .false.
+  real    :: cooling_rate = -1.5 !K/day
+  real    :: t_thresh = 207.5    !K
+  real    :: t_strato = 200.0    !K
+  real    :: tau_rad  = 5.0      !day
+  NAMELIST / idealized_forcing_nml / do_imposing_forcing, tdt_rate, qdt_rate, pres_min, pres_max, &
+  	   klevel, use_klevel, do_imposing_rad_cooling, cooling_rate, t_thresh, t_strato, tau_rad
+!===option for idealized forcing====================
 
 !------------------------------------------------------------------------
 
@@ -381,6 +377,8 @@ contains
       ierr = check_nml_error(io,'uw_plume_nml')
       read (input_nml_file, nml=deep_conv_nml, iostat=io)
       ierr = check_nml_error(io,'deep_conv_nml')
+      read (input_nml_file, nml=idealized_forcing_nml, iostat=io)
+      ierr = check_nml_error(io,'idealized_forcing_nml')
 #else   
     if( FILE_EXIST( 'input.nml' ) ) then
        unit = OPEN_NAMELIST_FILE ()
@@ -416,6 +414,15 @@ contains
        end do
 40     call close_file ( unit )
 !========Option for deep convection=======================================
+!========Option for idealized forcing=====================================
+       unit = OPEN_NAMELIST_FILE ()
+       io = 1
+       do while ( io .ne. 0 )
+          READ( unit, nml = idealized_forcing_nml, iostat = io, end = 40 )
+          ierr = check_nml_error(io,'idealized_forcing_nml')
+       end do
+50     call close_file ( unit )
+!========Option for idealized forcing=====================================
     end if
 #endif
     call write_version_number (version, tagname)
@@ -424,6 +431,7 @@ contains
     WRITE( logunit, nml = uw_conv_nml )
     WRITE( logunit, nml = uw_plume_nml )
     WRITE( logunit, nml = deep_conv_nml )
+    WRITE( logunit, nml = idealized_forcing_nml )
 
     if ( use_online_aerosol ) call aer_ccn_act_init
 
@@ -992,7 +1000,7 @@ contains
 
     real rhos0j
     real hlsrc, thcsrc, qctsrc, tmp, tmp1, lofactor, crh_th, tvs, qvs, gust_new, gust_dis
-    real zsrc, psrc, cbmf_shallow, cbmf_old, cbmf_deep, rkm_shallow, rkm_dp, cbmf_dp_frac
+    real zsrc, psrc, cbmf_shallow, cbmf_old, cbmf_deep, rkm_shallow, rkm_dp
     real del_crh, dcrh, dcrh0, dpsum
     real pblfact, numx
     real, dimension(size(tb,1),size(tb,2)) :: &
@@ -1217,8 +1225,6 @@ contains
     dpc % cbmf0               = cbmf0
     dpc % rkm_dp1             = rkm_dp1
     dpc % rkm_dp2             = rkm_dp2
-    dpc % cbmf_dp_frac1       = cbmf_dp_frac1
-    dpc % cbmf_dp_frac2       = cbmf_dp_frac2
     dpc % crh_th_ocean        = crh_th_ocean
     dpc % crh_th_land         = crh_th_land
     dpc % cape_th             = cape_th
@@ -1629,13 +1635,6 @@ contains
              ocode(i,j)=5; cbmf_shallow=0.; goto 100
           end if
 
-          !cpn%isdeep=.false.
-          !if (cpn%isdeep .EQV. .true.) then 
-          !   fdp(i,j) = 1
-          !else
-          !   fdp(i,j) = 0
-          !end if
-
 !========Calculate cumulus produced tendencies===============================
 
           call cumulus_tend_k(cpn, sd, Uw_p, cp, ct, do_coldT)
@@ -1915,7 +1914,7 @@ contains
 !========End of do_deep, Option for deep convection=======================================
 
 	  if (do_prog_gust) then
-	     gusto(i,j)=(gusto(i,j)+gfact*cpool(i,j)*delt)/(1+delt/tau_gust)
+	     gusto(i,j)=(gusto(i,j)+cpool(i,j)*delt)/(1+delt/tau_gust)
 
 !	     tmp  =sd%thvbot(1)*sd%exners(1)
 !	     tvs  =tmp*(1+0.608*sd%qv(1))

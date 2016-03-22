@@ -1070,7 +1070,6 @@ integer,                           intent(out)   :: error
         cpn % Nl_ocean        = 100000000.0
         cpn % r_thresh        = 1.2e-05
         cpn % qi_thresh       = 0.0001
-        cpn % peff            = 1.0
         cpn % cfrac           = 0.05
         cpn % hcevap          = 0.8
         cpn % weffect         = 0.5
