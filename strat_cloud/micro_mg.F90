@@ -383,6 +383,9 @@ real              :: r_cri  = 0.0
 real              :: q_cri
 logical           :: use_RK_auto = .false.
 logical           :: use_RK_accr = .false.
+
+logical           :: liq_sedi_mass_only = .false.   ! h1g, 2016-03-07
+logical           :: no_liq_sedi        = .false.   ! h1g, 2016-03-07
 !<--- h1g, 2014-05-19
 
 
@@ -409,7 +412,8 @@ namelist / micro_mg_nml /   &
                  include_homo_freez_in_qn,                                  & !h1g
                  include_contact_freez_in_qn,                               & !h1g
                  include_immersion_freez_in_qn, r_cri,                      & !h1g
-                 use_RK_auto,  use_RK_accr
+                 use_RK_auto,  use_RK_accr,                                 & !h1g
+                 liq_sedi_mass_only, no_liq_sedi            !h1g 2016-03-07
 #endif
 
 
@@ -3566,6 +3570,10 @@ endif !ActNew
 
   mnuccdtot=mnuccdtot/real(iter)
 
+  if ( liq_sedi_mass_only .and. no_liq_sedi        ) &
+        call error_mesg ('micro_mg_mod',  &
+           'liq_sedi_mass_only and no_liq_sedi cannot be true at the same time', FATAL)
+
   sed_col_loop: do i=1,mgncol
 
      do k=1,nlev
@@ -3583,7 +3591,7 @@ endif !ActNew
         dumni(i,k) = max((ni(i,k)+nitend(i,k)*deltat)/icldm(i,k),0._r8)
 
         ! hm add 6/2/11 switch for specification of droplet and crystal number
-        if (nccons) then
+        if (nccons  .or. liq_sedi_mass_only) then       ! h1g, 2016-03-07
            dumnc(i,k)=ncnst/rho(i,k)
         end if
 
@@ -3613,6 +3621,14 @@ endif !ActNew
            fnc(k) = g*rho(i,k)* &
                 acn(i,k)*gamma(1._r8+bc+pgam(i,k))/ &
                 (lamc(i,k)**bc*gamma(pgam(i,k)+1._r8))
+
+!---> h1g, 2016-03-07
+           if ( no_liq_sedi ) then
+              fc(k)  = 0.0
+              fnc(k) = 0.0
+           endif 
+!<--- h1g, 2016-03-07
+
         else
            fc(k) = 0._r8
            fnc(k)= 0._r8
