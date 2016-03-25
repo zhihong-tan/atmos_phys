@@ -585,22 +585,24 @@ end if
          if ( alternate_zpbl == 1 ) z_pbl = z_Ri_025
 
 !--->h1g: calculate relative humidity, 2015-04-02
-         call rh_calc ( p_full,  tt, qq, RH_3D_tmp, .false., do_cmip=.true.)
+         if ( id_rh_Ri_025 > 0 ) then
+           call rh_calc ( p_full,  tt, qq, RH_3D_tmp, .false., do_cmip=.true.)
         
-         rh_Ri_025(:,:) = missing_value
+           rh_Ri_025(:,:) = missing_value
 
-         do i = 1, size(z_full,1) 
-           do j = 1, size(z_full,2)
+           do i = 1, size(z_full,1) 
+             do j = 1, size(z_full,2)
 !      Vertical upward loop
-             do kk = nlev, 1, -1 
-               if ( z_full(i,j,kk) >= z_Ri_025(i,j) + z_half(i,j,nlev+1) ) then
-                 rh_Ri_025(i,j) = RH_3D_tmp(i,j,kk) * 100.
-                 exit
-               endif
+               do kk = nlev, 1, -1 
+                 if ( z_full(i,j,kk) >= z_Ri_025(i,j) + z_half(i,j,nlev+1) ) then
+                   rh_Ri_025(i,j) = RH_3D_tmp(i,j,kk) * 100.
+                   exit
+                 endif
+               enddo
              enddo
            enddo
-         enddo
-         used = send_data ( id_rh_Ri_025, rh_Ri_025, Time_next, is, js )
+           used = send_data ( id_rh_Ri_025, rh_Ri_025, Time_next, is, js )
+         endif  ! if  id_rh_Ri_025 > 0
 !<---h1g,  2015-04-02
       endif
 !<--cjg
