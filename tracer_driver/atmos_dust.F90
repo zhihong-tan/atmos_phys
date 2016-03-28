@@ -81,8 +81,10 @@ character(len=32)  :: dust_source_filename = 'dust_source_1x1.nc'
 character(len=32)  :: dust_source_name(1) = 'source'
 real               :: uthresh=-999.
 real               :: coef_emis =-999.
+logical            :: use_sj_sedimentation_solver = .FALSE.
 
-namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis
+namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis, use_sj_sedimentation_solver
+
 !---- version number -----
 character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
@@ -96,7 +98,7 @@ contains
 !#######################################################################
 ! this subroutine calculates tendencies for all dust tracers, and reports
 ! total fields, like total dust emission and settling
-subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, &
+subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
        zhalf, pfull, w10m, t, rh, tracer, dsinku, rdt, Time, is,ie,js,je, kbot)
 
   real, intent(in) :: lon(:,:), lat(:,:) ! geographical coordinates, units?
@@ -109,6 +111,7 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, &
   real, intent(in) :: rh(:,:,:) ! relative humidity 
   real, intent(in) :: tracer(:,:,:,:) ! tracer concentrations
   real, intent(in) :: dsinku(:,:,:) ! dry deposition flux at the surface, for diag only
+  real, intent(in) :: dt ! model timestep
   real, intent(inout) :: rdt(:,:,:,:) ! tendency of tracers, to be updated for dust tracers
   type(time_type), intent(in) :: Time ! current model time
   integer, intent(in) :: is, ie, js, je ! boundaries of physical window
@@ -149,7 +152,7 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, &
   do i = 1,n_dust_tracers
      ndust = dust_tracers(i)%tr
      ! calculate sources and sinks for each individual dust tracer
-     call atmos_dust_sourcesink1(frac_land, pwt, &
+     call atmos_dust_sourcesink1(frac_land, pwt, dt, &
         dust_tracers(i)%dustden, dust_tracers(i)%dustref, dust_tracers(i)%frac_s, source, &
         pfull, w10m, t, rh, &
         tracer(:,:,:,ndust), dust_dt, dust_emis, &
@@ -192,12 +195,13 @@ end subroutine atmos_dust_sourcesink
 !#######################################################################
 ! Given dust properties and atmospheric variables, calculate dust tendencies
 subroutine atmos_dust_sourcesink1 ( &
-       frac_land, pwt, &
+       frac_land, pwt, dt, &
        dustden, dustref, frac_s, source, &
        pfull, w10m, t, rh, &
        dust, dust_dt, dust_emis, dust_setl, dsetl_dtr, do_surf_exch, is,ie,js,je,kbot)
 
   real, intent(in),  dimension(:,:)   :: frac_land
+  real, intent(in) :: dt ! model timestep
   real, intent(in) :: dustref ! effective radius of the dry dust particles, m
   real, intent(in) :: dustden ! density of dry dust particles, kg/m3
   real, intent(in) :: frac_s  ! fraction of source
@@ -214,19 +218,22 @@ subroutine atmos_dust_sourcesink1 ( &
   logical, intent(in)  :: do_surf_exch
 
   ! ---- local vars
+  integer :: logunit, outunit, unit, ierr, io
   integer  i, j, k, id, jd, kd, kb
-  real, dimension(size(dust,3)) :: setl
+  real, dimension(size(dust,3)) :: vdep, setl, dz, air_dens, qn, qn1
 
   real, parameter :: mtcm = 100.  ! meter to cm
   real, parameter :: mtv  = 1.    ! factor conversion for mixing ratio of dust
   real, parameter :: ptmb = 0.01  ! pascal to mb
 
   real :: rhb, rcm
-  real :: ratio_r, rho_wet_dust,vdep
+  real :: ratio_r, rho_wet_dust
   real :: rho_air
   real :: rwet
 
   id=size(dust,1); jd=size(dust,2); kd=size(dust,3)
+
+  logunit = stdlog()
 
   dust_emis(:,:) = 0.0
   dust_setl(:,:) = 0.0
@@ -239,6 +246,7 @@ subroutine atmos_dust_sourcesink1 ( &
 
   dust_dt(:,:,kd)=dust_dt(:,:,kd)+dust_emis(:,:)/pwt(:,:,kd)*mtv
 
+
   rcm=dustref*mtcm            ! Particles radius in centimeters
 !------------------------------------------
 !       Solve at the model TOP (layer plev-10)
@@ -246,6 +254,8 @@ subroutine atmos_dust_sourcesink1 ( &
   do j=1,jd
   do i=1,id
      setl(:)=0.
+     air_dens(:)=pfull(i,j,:)/t(i,j,:)/RDGAS
+     dz(:) = pwt(i,j,:)/air_dens(:)
      if (present(kbot)) then
         kb=kbot(i,j)
      else
@@ -260,20 +270,35 @@ subroutine atmos_dust_sourcesink1 ( &
         rwet         = dustref                     ! Add any particle growth here
         ratio_r      = (dustref/rwet)**3           ! Ratio dry over wet radius cubic power
         rho_wet_dust = ratio_r*dustden+(1.-ratio_r)*DENS_H2O ! Density of wet aerosol [kg/m3]
-        vdep         = sedimentation_velocity(t(i,j,k),pfull(i,j,k),rwet,rho_wet_dust) ! Settling velocity [m/s]
-        rho_air = pfull(i,j,k)/t(i,j,k)/RDGAS      ! Air density [kg/m3]
-        if (dust(i,j,k) > 0.0) then
-          setl(k)=dust(i,j,k)*rho_air/mtv*vdep     ! settling flux [kg/m2/s]
-        endif
+        vdep(k)      = sedimentation_velocity(t(i,j,k),pfull(i,j,k),rwet,rho_wet_dust) ! Settling velocity [m/s]
      enddo
+     if (use_sj_sedimentation_solver) then
+       qn(:)=dust(i,j,:)
+       qn1(1)=qn(1)*dz(1)/(dz(1)+dt*vdep(1))
+       do k=2,kb 
+         qn1(k)=(qn(k)*dz(k)+dt*qn1(k-1)*vdep(k-1)*air_dens(k-1)/air_dens(k))/(dz(k)+dt*vdep(k))
+       enddo
+       dust_dt(i,j,:)=dust_dt(i,j,:)+(qn1(:)-qn(:))/dt
+       setl(kb) = qn1(kb)*air_dens(kb)/mtv*vdep(k)
+!  if (mpp_pe()==mpp_root_pe()) then
+!      write(logunit,'("DUST ",2i5," qn(kb)=",e12.4," qn1(kb)=",e12.4," vdep(kb)=",e12.4," air_dens(kb)=",e12.4," dz(kb)=",e12.4," dt=",e12.4," dust_dt=",e12.4," setl=",e12.4)')  &
+!               i,j,qn(kb),qn1(kb),vdep(kb),air_dens(kb),dz(kb),dt,dust_dt(i,j,kb),setl(kb)
+!  endif
+     else
+       do k=1,kb
+        if (dust(i,j,k) > 0.0) then
+          setl(k)=dust(i,j,k)*air_dens(k)/mtv*vdep(k)    ! settling flux [kg/m2/s]
+        endif
+       enddo
+       dust_dt(i,j,1)=dust_dt(i,j,1)-setl(1)/pwt(i,j,1)*mtv
+       dust_dt(i,j,2:kb)=dust_dt(i,j,2:kb) &
+          + ( setl(1:kb-1) - setl(2:kb) )/pwt(i,j,2:kb)*mtv
+     endif
      dust_setl(i,j)  = setl(kb)          ! at the bottom of the atmos
-     dsetl_dtr(i,j) = rho_air/mtv*vdep ! derivative of settling flux w.r.t tracer conc
+     dsetl_dtr(i,j) = rho_air/mtv*vdep(kb) ! derivative of settling flux w.r.t tracer conc
      if (do_surf_exch) &
-         setl(kb) = setl(kb)*(1-frac_land(i,j)) ! settlement tendency in the  
-         ! near-surface layer over land will be handled by flux exchange
-     dust_dt(i,j,1)=dust_dt(i,j,1)-setl(1)/pwt(i,j,1)*mtv
-     dust_dt(i,j,2:kb)=dust_dt(i,j,2:kb) &
-        + ( setl(1:kb-1) - setl(2:kb) )/pwt(i,j,2:kb)*mtv
+       setl(kb) = setl(kb)*(1-frac_land(i,j)) ! settlement tendency in the  
+       ! near-surface layer over land will be handled by flux exchange
   enddo
   enddo 
 end subroutine atmos_dust_sourcesink1
