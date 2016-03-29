@@ -66,6 +66,7 @@ character(len=80) :: scheme = " "
 real, save :: coef1
 real, save :: coef2
 real, save :: ch_fine, ch_coarse
+logical    :: use_sj_sedimentation_solver = .FALSE.
 !---------------------------------------------------------------------
 real :: coef_emis1=-999.
 real :: coef_emis2=-999.
@@ -79,7 +80,8 @@ logical :: ulm_ssalt_deposition=.false.  ! Ulm backward compatibility flag
 
 namelist /ssalt_nml/  scheme, coef_emis1, coef_emis2, &
                       coef_emis_fine, coef_emis_coarse, &
-                      critical_sea_fraction, ulm_ssalt_deposition
+                      critical_sea_fraction, ulm_ssalt_deposition, &
+                      use_sj_sedimentation_solver
 
 !-----------------------------------------------------------------------
 integer, parameter :: nrh= 65   ! number of RH in look-up table
@@ -239,6 +241,7 @@ subroutine atmos_seasalt_sourcesink1 ( &
   real :: rho_air
   real :: a1, a2, Bcoef, r, dr, rmid
   real, dimension(size(pfull,3))  :: vdep, seasalt_conc0, seasalt_conc1
+  real, dimension(size(pfull,3))  :: dz, air_dens, qn, qn1
   integer :: logunit, istep, nstep
 
   id=size(seasalt,1); jd=size(seasalt,2); kd=size(seasalt,3)
@@ -246,6 +249,8 @@ subroutine atmos_seasalt_sourcesink1 ( &
   seasalt_emis(:,:) = 0.0
   seasalt_setl(:,:) = 0.0
   seasalt_dt(:,:,:) = 0.0
+
+  logunit = stdlog()
 
 !----------- compute seasalt emission ------------
   if (seasalt_scheme .eq. "Martensson") then !  ie, Martensson et al., JGR-Atm, 2003
@@ -259,7 +264,6 @@ subroutine atmos_seasalt_sourcesink1 ( &
               if (ocn_flx_fraction (i,j).gt.critical_sea_fraction) then
                 if (seasaltra .lt. 0.01e-6 .and. mpp_pe() == mpp_root_pe()) then
 !$OMP critical (SEA_SALT_WRITE_LOG)
-                  logunit = stdlog()
                   write (logunit,*) "***WARNING (atmos_sea_salt): lowest radius of seasalt aerosol should be greater than 0.01E-6 m"
 !$OMP end critical (SEA_SALT_WRITE_LOG)
                 endif
@@ -346,6 +350,8 @@ subroutine atmos_seasalt_sourcesink1 ( &
   do j=1,jd
     do i=1,id
       setl(:)=0.
+      air_dens(:)=pfull(i,j,:)/t(i,j,:)/RDGAS
+      dz(:) = pwt(i,j,:)/air_dens(:)
       if (present(kbot)) then
          kb=kbot(i,j)
       else
@@ -372,40 +378,57 @@ subroutine atmos_seasalt_sourcesink1 ( &
           ! New calculation drops effective radius seasaltref in favor of rwet
           vdep(k)= sedimentation_velocity(t(i,j,k),pfull(i,j,k),rwet,rho_wet_seasalt) ! Settling velocity [m/s]
         endif
-        step = (zhalf(i,j,k)-zhalf(i,j,k+1)) / vdep(k) / 2.
-        nstep = max(nstep, int( dt/ step) )
+      enddo
+      if (use_sj_sedimentation_solver) then
+        qn(:)=seasalt(i,j,:)
+        qn1(1)=qn(1)*dz(1)/(dz(1)+dt*vdep(1))
+        do k=2,kb
+          qn1(k)=(qn(k)*dz(k)+dt*qn1(k-1)*vdep(k-1)*air_dens(k-1)/air_dens(k))/(dz(k)+dt*vdep(k))
+        enddo
+        seasalt_dt(i,j,:)=seasalt_dt(i,j,:)+(qn1(:)-qn(:))/dt
+        seasalt_setl(i,j) = qn1(kb)*air_dens(kb)/mtv*vdep(k)
+!  if (mpp_pe()==mpp_root_pe()) then
+!      write(logunit,'("SALT ",2i5," qn(kb)=",e12.4," qn1(kb)=",e12.4," vdep(kb)=",e12.4," air_dens(kb)=",e12.4," dz(kb)=",e12.4," dt=",e12.4," dust_dt=",e12.4," setl=",e12.4)')  &
+!                i,j,qn(kb),qn1(kb),vdep(kb),air_dens(kb),dz(kb),dt,seasalt_dt(i,j,kb),seasalt_setl(i,j)
+!  endif
+
+      else
+        do k=1,kb
+          step = (zhalf(i,j,k)-zhalf(i,j,k+1)) / vdep(k) / 2.
+          nstep = max(nstep, int( dt/ step) )
 !!! To avoid spending too much time on cycling the settling in case
 !!! of very large particles falling through a tiny layer, impose
 !!! maximum speed for the selected nstep_max. This is not physically
 !!! correct, but as these particles are very large there will be removed
 !!! fast enough to not change significantly their lifetime. The proper
 !!! way would be to implement semi-lagrangian technique.
-        if (nstep.gt.nstep_max) then
-          nstep = nstep_max
-          vdep(k)=(zhalf(i,j,k)-zhalf(i,j,k+1))*nstep / 2. /dt
-        endif
-      enddo
-      step = dt / nstep
-      seasalt_conc1(:) = seasalt(i,j,:)
-      do istep = 1, nstep
-        seasalt_conc0(:) = seasalt_conc1(:)
-        do k=1,kb
-          rho_air = pfull(i,j,k)/t(i,j,k)/RDGAS ! Air density [kg/m3]
-          if (seasalt_conc0(k).gt.0.) then
-!!!         settling flux [kg/m2/s]
-            setl(k)=seasalt_conc0(k)*rho_air/mtv*vdep(k)
-          else
-            setl(k)=0.
+          if (nstep.gt.nstep_max) then
+            nstep = nstep_max
+            vdep(k)=(zhalf(i,j,k)-zhalf(i,j,k+1))*nstep / 2. /dt
           endif
         enddo
-        seasalt_setl(i,j)=seasalt_setl(i,j)+setl(kb)*step
-        seasalt_conc1(1) = seasalt_conc0(1) - setl(1)/pwt(i,j,1)*mtv * step
-        seasalt_conc1(2:kb)= seasalt_conc0(2:kb) &
-        + ( setl(1:kb-1) - setl(2:kb) )/pwt(i,j,2:kb)*mtv * step
-        where (seasalt_conc1 < 0 ) seasalt_conc1=0.0
-      enddo
-      seasalt_dt(i,j,:)=seasalt_dt(i,j,:)+ (seasalt_conc1(:)-seasalt(i,j,:))/dt
-      seasalt_setl(i,j)=seasalt_setl(i,j)/dt
+        step = dt / nstep
+        seasalt_conc1(:) = seasalt(i,j,:)
+        do istep = 1, nstep
+          seasalt_conc0(:) = seasalt_conc1(:)
+          do k=1,kb
+            rho_air = pfull(i,j,k)/t(i,j,k)/RDGAS ! Air density [kg/m3]
+            if (seasalt_conc0(k).gt.0.) then
+!!!           settling flux [kg/m2/s]
+              setl(k)=seasalt_conc0(k)*rho_air/mtv*vdep(k)
+            else
+              setl(k)=0.
+            endif
+          enddo
+          seasalt_setl(i,j)=seasalt_setl(i,j)+setl(kb)*step
+          seasalt_conc1(1) = seasalt_conc0(1) - setl(1)/pwt(i,j,1)*mtv * step
+          seasalt_conc1(2:kb)= seasalt_conc0(2:kb) &
+            + ( setl(1:kb-1) - setl(2:kb) )/pwt(i,j,2:kb)*mtv * step
+          where (seasalt_conc1 < 0 ) seasalt_conc1=0.0
+        enddo
+        seasalt_dt(i,j,:)=seasalt_dt(i,j,:)+ (seasalt_conc1(:)-seasalt(i,j,:))/dt
+        seasalt_setl(i,j)=seasalt_setl(i,j)/dt
+      endif
     enddo
   enddo
 
