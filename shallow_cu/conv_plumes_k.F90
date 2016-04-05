@@ -41,7 +41,7 @@ MODULE CONV_PLUMES_k_MOD
      real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, &
-             Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect
+             Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, use_online_aerosol
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
@@ -2084,7 +2084,7 @@ contains
           ct%rain  = ct%rain  + cp%pptr(k)
        end do
        if (cpn%do_pevap .and. ct%snow+ct%rain > 0.) then
-        if (cpn%do_new_pevap) then
+        if (cpn%do_new_pevap .and. cp%cldhgt >= cpn%cldhgt_max_shallow) then
            if (.not.sd%coldT) then
               call precip_evap (sd, cp, cpn, ct, Uw_p, dpevap)
               ct%tten (:)=ct%tten (:)+ct%tevap(:)
@@ -2095,6 +2095,7 @@ contains
 	      ct%rain  = ct%rain - dpevap
            end if
 	else
+         if (cp%cldhgt >= cpn%cldhgt_max_shallow) then
           call precip_evap (sd, cp, cpn, ct, Uw_p, dpevap)
           ct%tten (:)=ct%tten (:)+ct%tevap(:)
           ct%qvten(:)=ct%qvten(:)+ct%qevap(:)
@@ -2106,6 +2107,7 @@ contains
           else
              ct%rain  = ct%rain - dpevap
           end if
+         end if
         end if
        end if
     end if

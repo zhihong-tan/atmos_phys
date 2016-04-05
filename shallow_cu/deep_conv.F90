@@ -114,6 +114,7 @@ contains
     dpn % auto_rate          = cpn % auto_rate
     dpn % tcrit              = cpn % tcrit  
     dpn % cldhgt_max         = cpn % cldhgt_max
+    dpn % cldhgt_max_shallow = cpn % cldhgt_max_shallow
     dpn % do_ice             = cpn % do_ice
     dpn % do_ppen            = cpn % do_ppen
     dpn % do_pevap           = cpn % do_pevap
