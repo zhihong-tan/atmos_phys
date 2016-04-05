@@ -73,10 +73,27 @@ public  longwave_number_of_bands, longwave_get_tables, &
 !-------- namelist  ---------
 
 character(len=16) :: lwform= 'sealw99'
+logical :: lw_cs = .false.        !LGS: .True. for longwave-cloud-radiative effects turned off. 
+
+integer :: clear_min_lw = 0    !mtp: If lw_cs .EQ. .true., clear_min_lw specifies the minimum layer at which
+                               !     clouds are turned off. (only works if clear_max_lw .ne. 0 as well)
+integer :: clear_max_lw = 0    !mtp: If lw_cs .EQ. .true., clear_max_lw specifies the maximum layer at which
+                               !     clouds are turned off. (only works if clear_min_lw .ne. 0 as well)
+
+logical :: no_lw_cloud_heating_at_levs = .false. ! mtp: Turns of shortwave cloud heating 
+                                                 ! from level no_cloud_min to level
+                                                 ! no_cloud_max if .true.
+
+integer :: no_heating_min_lw = 1           ! level=1 for top layer         
+integer :: no_heating_max_lw = 1           ! level= 32/48 is bottom layer (in 32/48 layer model) 
  
 
-namelist / longwave_driver_nml /    &
-                                 lwform
+
+
+namelist / longwave_driver_nml /   lwform, lw_cs,                        &
+                                   no_lw_cloud_heating_at_levs,          &
+                                   no_heating_min_lw, no_heating_max_lw, &
+                                   clear_min_lw, clear_max_lw                
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -370,6 +387,9 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
       integer :: ix, jx, kx  ! dimensions of current physics window
       integer :: indx
 
+      real    :: crndlw_local(size(crndlw,1),size(crndlw,2),size(crndlw,3),size(crndlw,4))
+      real    :: cmxolw_local(size(cmxolw,1),size(cmxolw,2),size(cmxolw,3))
+
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
 !---------------------------------------------------------------------
@@ -401,6 +421,18 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
 !--------------------------------------------------------------------
       if (do_sealw99) then
 
+          !LGS
+          crndlw_local=crndlw
+          cmxolw_local=cmxolw
+          if (lw_cs) then
+             if (clear_min_lw .EQ. 0 .OR. clear_max_lw .EQ. 0) then
+               crndlw_local=0.0
+               cmxolw_local=0.0
+             else
+               crndlw_local(:,:,clear_min_lw:clear_max_lw,:)=0.0
+               cmxolw_local(:,:,clear_min_lw:clear_max_lw)=0.0
+             end if
+          endif
              
 !--------------------------------------------------------------------
 !    call sealw99 to use the simplified-exchange-approximation (sea)
@@ -425,11 +457,22 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
                      Rad_gases%qo3, Rad_gases%rrvco2,      &
                      Rad_gases%rrvf11, Rad_gases%rrvf12,   &
                      Rad_gases%rrvf113, Rad_gases%rrvf22,  &
-                     emrndlw, emmxolw, crndlw, cmxolw, &
+                     emrndlw, emmxolw, crndlw_local, cmxolw_local, &
                      aerooptdep, aerooptdep_volc, Lw_output(indx), &
                      Lw_diagnostics, flag_stoch, &
                      Rad_control%do_totcld_forcing, calc_includes_aerosols, &
                      volcanic_lw_aerosols)
+!-------------------------------------------------------------------------------
+ ! mtp: replacing lw-all-sky heating rates by clear sky heating rates from
+ ! level no_cloud_min to level no_cloud_max
+ ! level 1=top layer, level 32 = surface layer (for 32 layer atmosphere)
+ ! levl 20 = 663 hPa
+
+           if (no_lw_cloud_heating_at_levs) then
+             Lw_output(indx)%heatra(:,:,no_heating_min_lw:no_heating_max_lw) = &
+              Lw_output(indx)%heatracf(:,:,no_heating_min_lw:no_heating_max_lw)
+           end if
+!--------------------------------------------------------------------------------
          endif
  
 !----------------------------------------------------------------------
@@ -440,11 +483,22 @@ type(lw_diagnostics_type),    intent(inout)  :: Lw_diagnostics
                      Rad_gases%qo3, Rad_gases%rrvco2,      &   
                      Rad_gases%rrvf11, Rad_gases%rrvf12,   &   
                      Rad_gases%rrvf113, Rad_gases%rrvf22,  &
-                     emrndlw, emmxolw, crndlw, cmxolw, &
+                     emrndlw, emmxolw, crndlw_local, cmxolw_local, &
                      aerooptdep, aerooptdep_volc, Lw_output(1),  &
                      Lw_diagnostics, flag_stoch, &
                      Rad_control%do_totcld_forcing, do_lwaerosol, &
                      volcanic_lw_aerosols)
+ 
+!-------------------------------------------------------------------------------
+ ! mtp: replacing lw-all-sky heating rates by clear sky heating rates from
+ ! level no_cloud_min to level no_cloud_max
+ ! level 1=top layer, level 32 = surface layer (for 32 layer atmosphere)
+ ! levl 20 = 663 hPa
+
+if (no_lw_cloud_heating_at_levs) then
+  Lw_output(1)%heatra(:,:,no_heating_min_lw:no_heating_max_lw) = Lw_output(1)%heatracf(:,:,no_heating_min_lw:no_heating_max_lw)
+end if
+!--------------------------------------------------------------------------------
       else
 
 !--------------------------------------------------------------------
