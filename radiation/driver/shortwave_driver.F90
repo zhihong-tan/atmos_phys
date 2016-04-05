@@ -582,11 +582,20 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 
           do indx = 1, size(Sw_output,1)
 
-             use_aero =.true.
-             if (indx .eq. size(Sw_output,1)) then
-                if (do_swaerosol .and. do_swaerosol_forcing) use_aero = .false.
+         !------------------------------------------------------------
+         !  determine how aerosols are computed (or not computed)
+         !  in the shortwave code
+         !------------------------------------------------------------
+             if ( .not. do_swaerosol_forcing ) then
+              ! when aero forcing is not computed, shortwave is
+              ! called once with the value of 'do_swaerosol'
+                use_aero = do_swaerosol
              else
-                if (.not.do_swaerosol .and. .not.do_swaerosol_forcing) use_aero = .false.
+              ! when aero forcing is computed, shortwave is called
+              ! twice: first time with the value of 'do_swaerosol',
+              ! second time with the opposite value
+                if (indx .eq. 1) use_aero = do_swaerosol
+                if (indx .eq. 2) use_aero = .not.do_swaerosol
              endif
 
 !-----------------------------------------------------------------------
