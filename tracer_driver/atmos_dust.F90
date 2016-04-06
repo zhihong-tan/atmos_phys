@@ -82,8 +82,10 @@ character(len=32)  :: dust_source_name(1) = 'source'
 real               :: uthresh=-999.
 real               :: coef_emis =-999.
 logical            :: use_sj_sedimentation_solver = .FALSE.
+logical            :: dust_debug = .false.
+integer            :: logunit
 
-namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis, use_sj_sedimentation_solver
+namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis, use_sj_sedimentation_solver, dust_debug
 
 !---- version number -----
 character(len=128) :: version = '$Id$'
@@ -218,7 +220,7 @@ subroutine atmos_dust_sourcesink1 ( &
   logical, intent(in)  :: do_surf_exch
 
   ! ---- local vars
-  integer :: logunit, outunit, unit, ierr, io
+  integer :: outunit, unit, ierr, io
   integer  i, j, k, id, jd, kd, kb
   real, dimension(size(dust,3)) :: vdep, setl, dz, air_dens, qn, qn1
 
@@ -233,8 +235,7 @@ subroutine atmos_dust_sourcesink1 ( &
 
   id=size(dust,1); jd=size(dust,2); kd=size(dust,3)
 
-  logunit = stdlog()
-
+  
   dust_emis(:,:) = 0.0
   dust_setl(:,:) = 0.0
   dsetl_dtr(:,:) = 0.0
@@ -280,10 +281,19 @@ subroutine atmos_dust_sourcesink1 ( &
        enddo
        dust_dt(i,j,:)=dust_dt(i,j,:)+(qn1(:)-qn(:))/dt
        setl(kb) = qn1(kb)*air_dens(kb)/mtv*vdep(k)
-!  if (mpp_pe()==mpp_root_pe()) then
-!      write(logunit,'("DUST ",2i5," qn(kb)=",e12.4," qn1(kb)=",e12.4," vdep(kb)=",e12.4," air_dens(kb)=",e12.4," dz(kb)=",e12.4," dt=",e12.4," dust_dt=",e12.4," setl=",e12.4)')  &
-!               i,j,qn(kb),qn1(kb),vdep(kb),air_dens(kb),dz(kb),dt,dust_dt(i,j,kb),setl(kb)
-!  endif
+
+!---> h1g, 2016-04-05
+       if( dust_debug ) then
+!$OMP CRITICAL
+
+     !  if (mpp_pe()==mpp_root_pe()) then
+     !      write(logunit,'("DUST ",2i5," qn(kb)=",e12.4," qn1(kb)=",e12.4," vdep(kb)=",e12.4," air_dens(kb)=",e12.4," dz(kb)=",e12.4," dt=",e12.4," dust_dt=",e12.4," setl=",e12.4)')  &
+     !               i,j,qn(kb),qn1(kb),vdep(kb),air_dens(kb),dz(kb),dt,dust_dt(i,j,kb),setl(kb)
+     !  endif
+!$OMP END CRITICAL  
+       end if ! dust_debug
+!<--- h1g, 2016-04-05
+
      else
        do k=1,kb
         if (dust(i,j,k) > 0.0) then
@@ -384,7 +394,7 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   real, optional,   intent(in) :: mask(:,:,:)
 
   ! ---- local vars
-  integer :: logunit, outunit, unit, ierr, io
+  integer :: outunit, unit, ierr, io
   integer :: n_atm_tracers ! number of prognostic atmos tracers
   integer :: tr ! atmos tracer iterator
   integer :: i  ! running index of dust tracers
