@@ -78,10 +78,12 @@ real :: critical_sea_fraction = 0.0   ! sea-salt aerosol production
 logical :: ulm_ssalt_deposition=.false.  ! Ulm backward compatibility flag
                                          ! to be removed at Verona
 
+logical            :: ssalt_debug = .false.
+integer            :: logunit
 namelist /ssalt_nml/  scheme, coef_emis1, coef_emis2, &
                       coef_emis_fine, coef_emis_coarse, &
                       critical_sea_fraction, ulm_ssalt_deposition, &
-                      use_sj_sedimentation_solver
+                      use_sj_sedimentation_solver, ssalt_debug
 
 !-----------------------------------------------------------------------
 integer, parameter :: nrh= 65   ! number of RH in look-up table
@@ -242,15 +244,13 @@ subroutine atmos_seasalt_sourcesink1 ( &
   real :: a1, a2, Bcoef, r, dr, rmid
   real, dimension(size(pfull,3))  :: vdep, seasalt_conc0, seasalt_conc1
   real, dimension(size(pfull,3))  :: dz, air_dens, qn, qn1
-  integer :: logunit, istep, nstep
+  integer :: istep, nstep
 
   id=size(seasalt,1); jd=size(seasalt,2); kd=size(seasalt,3)
 
   seasalt_emis(:,:) = 0.0
   seasalt_setl(:,:) = 0.0
   seasalt_dt(:,:,:) = 0.0
-
-  logunit = stdlog()
 
 !----------- compute seasalt emission ------------
   if (seasalt_scheme .eq. "Martensson") then !  ie, Martensson et al., JGR-Atm, 2003
@@ -387,10 +387,18 @@ subroutine atmos_seasalt_sourcesink1 ( &
         enddo
         seasalt_dt(i,j,:)=seasalt_dt(i,j,:)+(qn1(:)-qn(:))/dt
         seasalt_setl(i,j) = qn1(kb)*air_dens(kb)/mtv*vdep(k)
+
+!---> h1g, 2016-04-05
+       if( ssalt_debug ) then
+!$OMP CRITICAL
+
 !  if (mpp_pe()==mpp_root_pe()) then
 !      write(logunit,'("SALT ",2i5," qn(kb)=",e12.4," qn1(kb)=",e12.4," vdep(kb)=",e12.4," air_dens(kb)=",e12.4," dz(kb)=",e12.4," dt=",e12.4," dust_dt=",e12.4," setl=",e12.4)')  &
 !                i,j,qn(kb),qn1(kb),vdep(kb),air_dens(kb),dz(kb),dt,seasalt_dt(i,j,kb),seasalt_setl(i,j)
 !  endif
+!$OMP END CRITICAL  
+       end if ! ssalt_debug
+!<--- h1g, 2016-04-05
 
       else
         do k=1,kb
@@ -516,7 +524,7 @@ subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
   real, optional,   intent(in) :: mask(:,:,:)
 
   ! ---- local vars
-  integer :: logunit, outunit, unit, ierr, io
+  integer :: outunit, unit, ierr, io
   integer :: n_atm_tracers ! number of prognostic atmos tracers
   integer :: tr ! atmos tracer iterator
   integer :: i  ! running index of seasalt tracers
