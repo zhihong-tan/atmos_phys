@@ -69,6 +69,7 @@ MODULE UW_CONV_MOD
   real    :: rkm_sh1  = 10.0  
   real    :: rkm_sh   = 3.0    ! fractional lateral mixing rate for shallow
   real    :: cldhgt_max   = 50.e3
+  real    :: cldhgt_max_shallow = 0.
   real    :: landfact_m   = 0.5
   integer :: idpchoice = 0  
   logical :: do_deep = .false.
@@ -137,7 +138,7 @@ MODULE UW_CONV_MOD
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, nbuo_max, do_peff_land, &
        do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen,                           &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
-       atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin,                      &
+       atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, cldhgt_max_shallow,           &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, do_debug, &
        cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
@@ -1147,6 +1148,7 @@ contains
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
     cpn % cldhgt_max= cldhgt_max
+    cpn % cldhgt_max_shallow= cldhgt_max_shallow
     cpn % do_ice    = do_ice
     cpn % do_ppen   = do_ppen
     cpn % do_pevap  = do_pevap
