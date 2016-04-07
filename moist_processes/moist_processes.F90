@@ -728,9 +728,9 @@ logical, intent(out), dimension(:,:)     :: convect
                                                mca_frz, mca_liq, &
                                                frz_meso, liq_meso, & 
                                                frz_cell, liq_cell, &
-                                               det0, det_cmt, cmf,  &
+                                               det0, det_cmt,      &
                                                wetdeptnd, massflux, RH, qsat
-   real, dimension(size(t,1),size(t,2),size(t,3)+1) :: ice_precflxh, liq_precflxh, & 
+   real, dimension(size(t,1),size(t,2),size(t,3)+1) :: ice_precflxh, liq_precflxh, cmf, & 
                                                        mc_half, mc_donner_half, &
                                                        mca_frzh, mca_liqh, &
                                                        frz_mesoh, liq_mesoh, &
