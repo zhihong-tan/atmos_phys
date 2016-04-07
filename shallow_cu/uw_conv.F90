@@ -106,6 +106,7 @@ MODULE UW_CONV_MOD
   logical :: do_qctflx_zero = .false.
   logical :: do_hlflx_zero  = .true.
   logical :: do_varying_rpen  = .false.
+  logical :: do_new_cldqc = .false.
   logical :: do_subcloud_flx = .false.
   logical :: do_detran_zero = .false.
   logical :: do_prog_gust = .false.
@@ -136,7 +137,7 @@ MODULE UW_CONV_MOD
   logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, nbuo_max, do_peff_land, &
-       do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen,                           &
+       do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_cldqc,             &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, aerol, tkemin, cldhgt_max_shallow,           &
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
@@ -357,7 +358,9 @@ contains
     integer   :: ntracers, n, nn, ierr, logunit
     logical   :: flag
     character(len=200) :: text_in_scheme, control
-     real :: frac_junk, frac_junk2
+    real :: frac_junk, frac_junk2
+
+    integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
  
     ntracers = count(tracers_in_uw)
 
@@ -492,11 +495,11 @@ contains
          'U tendency from uw_conv', 'm/s2', missing_value=mv )
     id_vdt_uwc = register_diag_field ( mod_name, 'vdt_uwc', axes(1:3), Time, &
          'V tendency from uw_conv', 'm/s2', missing_value=mv)
-    id_cmf_uwc = register_diag_field ( mod_name, 'cmf_uwc', axes(1:3), Time, &
-         'Cloud vert. mass flux from uw_conv', 'kg/m2/s', missing_value=mv)
-    id_cmf_uws = register_diag_field ( mod_name, 'cmf_uws', axes(1:3), Time, &
-         'Cloud vert. mass flux from shallow plume uw_conv', 'kg/m2/s', missing_value=mv)
-    id_cfq_uws = register_diag_field ( mod_name, 'cfq_uws', axes(1:3), Time,   &
+    id_cmf_uwc = register_diag_field ( mod_name, 'cmf_uwc', axes(half), Time, &
+         'Total convective mass flux from uw_conv', 'kg/m2/s', missing_value=mv)
+    id_cmf_uws = register_diag_field ( mod_name, 'cmf_uws', axes(half), Time, &
+         'Convective mass flux from shallow plume uw_conv', 'kg/m2/s', missing_value=mv)
+    id_cfq_uws = register_diag_field ( mod_name, 'cfq_uws', axes(half), Time,   &
          'Convective frequency for shallow plume', 'none', missing_value=mv)
     id_peo_uwc = register_diag_field ( mod_name, 'peo_uwc', axes(1:3), Time,   &
          'Convective precipitation efficiency', 'none', missing_value=mv)
@@ -508,7 +511,7 @@ contains
          'adiabatic buoyancy', 'K', missing_value=mv)
     id_buo_uws= register_diag_field ( mod_name, 'buo_uws', axes(1:3), Time,    &
             'shallow plume buoyancy', 'K', missing_value=mv)
-    id_wuo_uws = register_diag_field ( mod_name, 'wuo_uws', axes(1:3), Time,   &
+    id_wuo_uws = register_diag_field ( mod_name, 'wuo_uws', axes(half), Time,   &
          'Shallow plume updraft velocity from uw_conv', 'm/s', missing_value=mv)
     id_fer_uwc = register_diag_field ( mod_name, 'fer_uwc', axes(1:3), Time, &
          'Fractional entrainment rate from uw_conv', '1/Pa', missing_value=mv)
@@ -516,14 +519,14 @@ contains
          'Fractional detrainment rate from uw_conv', '1/Pa', missing_value=mv)
     id_fdrs_uwc = register_diag_field (mod_name,'fdrs_uwc', axes(1:3), Time, &
          'Detrainment rate for sat. air from uw_conv', '1/Pa', missing_value=mv)
-    id_cqa_uws = register_diag_field ( mod_name, 'cqa_uws', axes(1:3), Time, &
-         'Updraft fraction from uw_conv', 'none', missing_value=mv)
-    id_cql_uws = register_diag_field ( mod_name, 'cql_uws', axes(1:3), Time, &
-         'Updraft liquid from uw_conv', 'kg/kg', missing_value=mv)
-    id_cqi_uws = register_diag_field ( mod_name, 'cqi_uws', axes(1:3), Time, &
-         'Updraft ice from uw_conv', 'kg/kg', missing_value=mv)
-    id_cqn_uws = register_diag_field ( mod_name, 'cqn_uws', axes(1:3), Time, &
-         'Updraft liquid drop from uw_conv', '/kg', missing_value=mv)
+    id_cqa_uws = register_diag_field ( mod_name, 'cqa_uws', axes(half), Time, &
+         'Updraft fraction from shallow plume', 'none', missing_value=mv)
+    id_cql_uws = register_diag_field ( mod_name, 'cql_uws', axes(half), Time, &
+         'Updraft liquid water mixing ratio from shallow plume', 'kg/kg', missing_value=mv)
+    id_cqi_uws = register_diag_field ( mod_name, 'cqi_uws', axes(half), Time, &
+         'Updraft ice water mixing ratio from shallow plume', 'kg/kg', missing_value=mv)
+    id_cqn_uws = register_diag_field ( mod_name, 'cqn_uws', axes(half), Time, &
+         'Updraft liquid drop number from shallow plume', '/kg', missing_value=mv)
     id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(1:3),Time, &
          'Liq.wat.pot.temp. flux from uw_conv', 'W/m2', missing_value=mv)
     id_qtflx_uwc = register_diag_field (mod_name,'qtflx_uwc',axes(1:3),Time, &
@@ -763,81 +766,81 @@ contains
 !========Option for deep convection=======================================
     if (do_deep) then
        id_tdt_pevap_uwd = register_diag_field ( mod_name, 'tdt_pevap_uwd', axes(1:3), Time, &
-            'Temperature tendency due to pevap from deep_conv', 'K/s', missing_value=mv )
+            'Temperature tendency due to pevap from deep plume', 'K/s', missing_value=mv )
        id_qdt_pevap_uwd = register_diag_field ( mod_name, 'qdt_pevap_uwd', axes(1:3), Time, &
-            'Spec. humidity tendency due to pevap from deep_conv', 'kg/kg/s', missing_value=mv)
+            'Spec. humidity tendency due to pevap from deep plume', 'kg/kg/s', missing_value=mv)
 
        id_tdt_uwd = register_diag_field ( mod_name, 'tdt_uwd', axes(1:3), Time, &
-            'Temperature tendency from deep_conv', 'K/s', missing_value=mv )
+            'Temperature tendency from deep plume', 'K/s', missing_value=mv )
        id_qdt_uwd = register_diag_field ( mod_name, 'qdt_uwd', axes(1:3), Time, &
-            'Spec. humidity tendency from deep_conv', 'kg/kg/s', missing_value=mv)
+            'Spec. humidity tendency from deep plume', 'kg/kg/s', missing_value=mv)
        id_qtdt_uwd= register_diag_field ( mod_name, 'qtdt_uwd', axes(1:3), Time, &
-            'Total water spec. humidity tendency from deep_conv', 'kg/kg/s', missing_value=mv)
-       id_cmf_uwd = register_diag_field ( mod_name, 'cmf_uwd', axes(1:3), Time, &
-            'Cloud vert. mass flux from deep_conv', 'kg/m2/s', missing_value=mv)
-       id_cfq_uwd = register_diag_field ( mod_name, 'cfq_uwd', axes(1:3), Time,   &
+            'Total water spec. humidity tendency from deep plume', 'kg/kg/s', missing_value=mv)
+       id_cmf_uwd = register_diag_field ( mod_name, 'cmf_uwd', axes(half), Time, &
+            'Convective mass flux from deep plume', 'kg/m2/s', missing_value=mv)
+       id_cfq_uwd = register_diag_field ( mod_name, 'cfq_uwd', axes(half), Time,   &
             'Convective frequency for deep plume', 'none', missing_value=mv)
-       id_wuo_uwd = register_diag_field ( mod_name, 'wuo_uwd', axes(1:3), Time,   &
-            'Deep plume updraft velocity from deep_conv', 'm/s', missing_value=mv)
+       id_wuo_uwd = register_diag_field ( mod_name, 'wuo_uwd', axes(half), Time,   &
+            'Updraft velocity from deep plume', 'm/s', missing_value=mv)
        id_buo_uwd= register_diag_field ( mod_name, 'buo_uwd', axes(1:3), Time,   &
             'deep plume buoyancy', 'K', missing_value=mv)
        id_fer_uwd = register_diag_field ( mod_name, 'fer_uwd', axes(1:3), Time, &
-         'Fractional entrainment rate from deep_conv', '1/Pa', missing_value=mv)
+         'Fractional entrainment rate from deep plume', '1/Pa', missing_value=mv)
        id_fdr_uwd = register_diag_field ( mod_name, 'fdr_uwd', axes(1:3), Time, &
-            'Fractional detrainment rate from deep_conv', '1/Pa', missing_value=mv)
+            'Fractional detrainment rate from deep plume', '1/Pa', missing_value=mv)
        id_fdrs_uwd = register_diag_field (mod_name,'fdrs_uwd', axes(1:3), Time, &
-            'Detrainment rate for sat. air from deep_conv', '1/Pa', missing_value=mv)
-       id_cqa_uwd = register_diag_field ( mod_name, 'cqa_uwd', axes(1:3), Time, &
-            'Updraft fraction from deep_conv', 'none', missing_value=mv)
-       id_cql_uwd = register_diag_field ( mod_name, 'cql_uwd', axes(1:3), Time, &
-         'Updraft liquid from deep_conv', 'kg/kg', missing_value=mv)
-       id_cqi_uwd = register_diag_field ( mod_name, 'cqi_uwd', axes(1:3), Time, &
-            'Updraft ice from deep_conv', 'kg/kg', missing_value=mv)
-       id_cqn_uwd = register_diag_field ( mod_name, 'cqn_uwd', axes(1:3), Time, &
-            'Updraft liquid drop from deep_conv', '/kg', missing_value=mv)
+            'Detrainment rate for sat. air from deep plume', '1/Pa', missing_value=mv)
+       id_cqa_uwd = register_diag_field ( mod_name, 'cqa_uwd', axes(half), Time, &
+            'Updraft fraction from deep plume', 'none', missing_value=mv)
+       id_cql_uwd = register_diag_field ( mod_name, 'cql_uwd', axes(half), Time, &
+            'Updraft liquid water mixing ratio from deep plume', 'kg/kg', missing_value=mv)
+       id_cqi_uwd = register_diag_field ( mod_name, 'cqi_uwd', axes(half), Time, &
+            'Updraft ice water mixing ratio from deep plume', 'kg/kg', missing_value=mv)
+       id_cqn_uwd = register_diag_field ( mod_name, 'cqn_uwd', axes(half), Time, &
+            'Updraft liquid drop number from deep plume', '/kg', missing_value=mv)
        id_hlflx_uwd=register_diag_field (mod_name,'hlflx_uwd',axes(1:3),Time, &
-            'Liq.wat.pot.temp. flux from deep_conv', 'W/m2', missing_value=mv)
+            'Liq.wat.pot.temp. flux from deep plume', 'W/m2', missing_value=mv)
        id_qtflx_uwd = register_diag_field (mod_name,'qtflx_uwd',axes(1:3),Time, &
-            'Total water flux from deep_conv', 'W/m2', missing_value=mv)
+            'Total water flux from deep plume', 'W/m2', missing_value=mv)
        id_nqtflx_uwd = register_diag_field (mod_name,'nqtflx_uwd',axes(1:3),Time, &
-            'net total water flux from deep_conv', 'W/m2', missing_value=mv)
+            'net total water flux from deep plume', 'W/m2', missing_value=mv)
        id_prec_uwd = register_diag_field (mod_name,'prec_uwd', axes(1:2), Time, &
-            'Precipitation rate from deep_conv', 'kg/m2/sec' )
+            'Precipitation rate from deep plume', 'kg/m2/sec' )
        id_snow_uwd = register_diag_field (mod_name,'snow_uwd', axes(1:2), Time, &
-            'Frozen precip. rate from deep_conv', 'kg/m2/sec' )
+            'Frozen precip. rate from deep plume', 'kg/m2/sec' )
        id_cbmf_uwd = register_diag_field (mod_name,'cbmf_uwd', axes(1:2), Time, &
-            'Cloud-base mass flux from deep_conv', 'kg/m2/s' )
+            'Cloud-base mass flux from deep plume', 'kg/m2/s' )
        id_cwfn_uwd = register_diag_field (mod_name,'cwfn_uwd', axes(1:2), Time, &
-            'Cloud work function from deep_conv', 'kg/m2/s' )
+            'Cloud work function from deep plume', 'kg/m2/s' )
        id_dcapedm_uwd= register_diag_field (mod_name, 'dcapedm_uwd', axes(1:2), Time, &
-            'dCAPE/cbmf from deep_conv', 'm2/s2/(kg/m2/s)' )
+            'dCAPE/cbmf from deep plume', 'm2/s2/(kg/m2/s)' )
        id_dcwfndm_uwd= register_diag_field (mod_name, 'dcwfndm_uwd', axes(1:2), Time, &
-            'dCWFN/cbmf from deep_conv', '(m2/s2)/(kg/m2/s)' )
+            'dCWFN/cbmf from deep plume', '(m2/s2)/(kg/m2/s)' )
        id_taudp_uwd= register_diag_field (mod_name, 'taudp_uwd', axes(1:2), Time, &
-            'taudp from deep_conv', 's' )
+            'taudp from deep plume', 's' )
        id_cush_uwd = register_diag_field (mod_name, 'cush_uwd',  axes(1:2), Time, &
-            'convective depth from deep_conv', 'm' )
+            'convective depth from deep plume', 'm' )
        id_enth_uwd = register_diag_field (mod_name,'enth_uwd', axes(1:2), Time, &
-            'Column-integrated enthalpy tendency from deep_conv', 'K/s' )
+            'Column-integrated enthalpy tendency from deep plume', 'K/s' )
        id_ocode_uwd = register_diag_field (mod_name,'ocode_uwd', axes(1:2), Time, &
-            'Out code from deep_conv', 'none' )
+            'Out code from deep plume', 'none' )
        id_rkm_uwd = register_diag_field (mod_name,'rkm_uwd', axes(1:2), Time, &
-            'rkm for deep_conv', 'none' )
+            'rkm for deep plume', 'none' )
        id_rand_uwd = register_diag_field (mod_name,'rand_uwd', axes(1:2), Time, &
          'rand_uwd', 'none' )
        id_dtime_uwd= register_diag_field (mod_name,'dtime_uwd',axes(1:2), Time, &
-            'dtime for deep_conv', 's' )
+            'dtime for deep plume', 's' )
        id_nbuo_uwd = register_diag_field (mod_name,'nbuo_uwd', axes(1:2), Time, &
             'negative buoyancy for penetrative plume', 'K', interp_method = "conserve_order1" )
        id_pdep_uwd = register_diag_field (mod_name,'pdep_uwd', axes(1:2), Time, &
             'penetrative depth for deep plume', 'm', interp_method = "conserve_order1" )
        if ( do_strat ) then
           id_qldt_uwd= register_diag_field (mod_name,'qldt_uwd',axes(1:3),Time, &
-               'Liquid water tendency from deep_conv', 'kg/kg/s', missing_value=mv)
+               'Liquid water tendency from deep plume', 'kg/kg/s', missing_value=mv)
           id_qidt_uwd= register_diag_field (mod_name,'qidt_uwd',axes(1:3),Time, &
-               'Ice water tendency from deep_conv', 'kg/kg/s', missing_value=mv)
+               'Ice water tendency from deep plume', 'kg/kg/s', missing_value=mv)
           id_qadt_uwd= register_diag_field (mod_name,'qadt_uwd',axes(1:3),Time, &
-               'CLD fraction tendency from deep_conv', '1/s', missing_value=mv )
+               'CLD fraction tendency from deep plume', '1/s', missing_value=mv )
        end if
     end if
 !========Option for deep convection=======================================
@@ -1051,9 +1054,11 @@ contains
 
     real, dimension(size(qtflx,1),size(qtflx,2),size(qtflx,3)) :: qtflx_up, qtflx_dn, omega_up, omega_dn, hm_vadv
     real, dimension(size(qtflx,1),size(qtflx,2),size(qtflx,3)) :: omgmc_up, ddp_dyn_hm, nqtflx
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: wuo_s,fero,fdro,fdrso, tten_pevap, qvten_pevap
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, peo, hmo, hms, abu, buo_s, cmf_s
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: cfq_s, cfq_d, cqa_s, cql_s, cqi_s, cqn_s
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: fero,fdro,fdrso, tten_pevap, qvten_pevap
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet, qidet, qadet, peo, hmo, hms, abu, buo_s
+
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_s, cqa_s, cql_s, cqi_s, cqn_s, wuo_s, cmf_s
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_d, cqa_d, cql_d, cqi_d, cqn_d, wuo_d, cmf_d
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
     real :: tnew, qtin, dqt, temp_1, temp_max, temp_min
@@ -1063,8 +1068,8 @@ contains
 
 !========Option for deep convection=======================================
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: uten_d, vten_d, tten_d, &
-         qvten_d, qlten_d, qiten_d, qaten_d, qnten_d, cmf_d, buo_d, pflx_d, hlflx_d, qtflx_d, nqtflx_d, qtten_d, &
-         wuo_d, fero_d, fdro_d, fdrso_d, cqa_d, cql_d, cqi_d, cqn_d, tten_pevap_d, qvten_pevap_d
+         qvten_d, qlten_d, qiten_d, qaten_d, qnten_d, buo_d, pflx_d, hlflx_d, qtflx_d, nqtflx_d, qtten_d, &
+         fero_d, fdro_d, fdrso_d, tten_pevap_d, qvten_pevap_d
     real, dimension(size(tb,1),size(tb,2)) :: rain_d, snow_d, cwfn_d
     real, dimension(size(tb,1),size(tb,2)) :: dcapedm_d, dcwfndm_d, denth_d, dting_d, dqtmp_d, cbmf_d
     real, dimension(size(tracers,1),size(tracers,2),size(tracers,3),size(tracers,4)) :: trevp_d, trevp_s
@@ -1898,11 +1903,19 @@ contains
              tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:) 
              qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:) 
 
-             cldql (i,j,:) = cql_s (i,j,:) + cql_d(i,j,:)
-             cldqi (i,j,:) = cqi_s (i,j,:) + cqi_d(i,j,:)
 	     do k = 1,kmax
 	     	cldqa (i,j,k) = max(cqa_s (i,j,k),cqa_d(i,j,k))
-   	     end do
+             end do
+
+	     if (do_new_cldqc) then
+	     	do k = 1,kmax
+             	   cldql (i,j,k) = (cql_s(i,j,k)*cqa_s(i,j,k) + cql_d(i,j,k)*cqa_d(i,j,k))/cldqa(i,j,k)
+             	   cldqi (i,j,k) = (cqi_s(i,j,k)*cqa_s(i,j,k) + cqi_d(i,j,k)*cqa_d(i,j,k))/cldqa(i,j,k)
+           	end do
+	     else
+		cldql (i,j,:) = cql_s (i,j,:) + cql_d(i,j,:)
+             	cldqi (i,j,:) = cqi_s (i,j,:) + cqi_d(i,j,:)
+   	     end if
 
              snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
              rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
