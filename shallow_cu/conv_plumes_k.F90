@@ -42,7 +42,7 @@ MODULE CONV_PLUMES_k_MOD
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
-     logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, use_online_aerosol
+     logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, use_online_aerosol, do_umf_pbl, do_minmse
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
      logical :: do_varying_rpen, do_new_pblfac
@@ -54,7 +54,7 @@ MODULE CONV_PLUMES_k_MOD
   public cplume
   type cplume
      integer :: ltop, let, krel
-     real    :: cush, cldhgt, prel, zrel, nbuo, pdep
+     real    :: cush, cldhgt, prel, zrel, nbuo, pdep, ptop
      real    :: maxcldfrac
      real, _ALLOCATABLE :: thcu  (:) _NULL, qctu  (:) _NULL, uu    (:) _NULL
      real, _ALLOCATABLE :: vu    (:) _NULL, qlu   (:) _NULL, qiu   (:) _NULL
@@ -191,7 +191,7 @@ contains
     cp%crate =0.;    cp%prate =0.;    cp%peff  =0.;    !cp%maxcldfrac = 1.;
     cp%ltop  =0;     cp%let   =0;     cp%krel  =0;     cp%cush  =-1;
     cp%cldhgt=0.;    cp%prel  =0.;    cp%zrel  =0.;    
-    cp%nbuo  =0.;    cp%pdep  =0.;
+    cp%nbuo  =0.;    cp%pdep  =0.;    cp%ptop  =0.;
 
     cp%pptn  =0.;    cp%tr    =0.;    cp%tru   =0.;    cp%tru_dwet = 0.
   end subroutine cp_clear_k
@@ -236,8 +236,8 @@ contains
     allocate ( ct%qnflx (0:kd)); ct%qnflx =0.;
     allocate ( ct%umflx (0:kd)); ct%umflx =0.;
     allocate ( ct%vmflx (0:kd)); ct%vmflx =0.;
-    allocate ( ct%pflx  (1:kd)); ct%pflx  =0.;
-    allocate ( ct%pflx_e(1:kd)); ct%pflx_e=0.;
+    allocate ( ct%pflx  (0:kd)); ct%pflx  =0.;
+    allocate ( ct%pflx_e(0:kd)); ct%pflx_e=0.;
     allocate ( ct%nqtflx(0:kd)); ct%nqtflx=0.;
     allocate ( ct%tevap (1:kd)); ct%tevap =0.;
     allocate ( ct%qevap (1:kd)); ct%qevap =0.;
@@ -731,22 +731,17 @@ contains
        wtwtop = max( cpn%wtwmin_ratio * wtw, wtwtop )
 
        if (cpn%do_forcedlifting) then
-          !if (wtw.le.0. .and. k <= ac%klfc) then
-          !nnn = max(ac%klnb, ac%klfc)
-          !if (wtw.le.0. .and. k <= (ac%klfc+nnn)*0.5) then
-	  if (ac%plfc.eq.0. .or. ac%plfc.lt.cpn%plev_for) then 
-	     plfc_tmp=cpn%plev_for
+       	  if (cpn%do_minmse) then
+	     ptmp=sd%p_minmse
+          else
+	     ptmp=cpn%plev_for
+          end if
+	  if (ac%plfc.eq.0. .or. ac%plfc.lt.ptmp) then 
+	     plfc_tmp=ptmp
 	  else
 	     plfc_tmp=ac%plfc
           endif
-	  if (ac%plnb.eq.0.) then
-	     plnb_tmp=plfc_tmp
-          else
-	     plnb_tmp=ac%plnb;
-	  endif
-          ptmp = max(plfc_tmp-plnb_tmp,0.);
-	  ptmp = plfc_tmp - cpn%ffldep * ptmp
-	  if (wtw.le.wtwtop .and. sd%p(k) > ptmp) then
+	  if (wtw.le.wtwtop .and. sd%p(k) > plfc_tmp) then
              wtw= max(wtwtop,1.);  !wrel*wrel
              kbelowlet = .true.
           end if
@@ -823,6 +818,7 @@ contains
     cp%let    = let
     cp%ltop   = ltop
     cp%cldhgt = sd%z(ltop)-ac%zlcl
+    cp%ptop   = sd%p(ltop)
 
     if (cpn%do_forcedlifting .and. cp%let.le.cp%krel+1) then
        cp%let = cp%krel+2
@@ -1882,8 +1878,12 @@ contains
        end do
     end if
 
-   end if
-
+     if (cpn%do_umf_pbl) then
+       do k=1,krel-1
+       	  cp%umf(k)=cp%umf(k-1) + cp%umf(krel)*sd%dp(k)/dpsum
+       end do
+     end if
+    end if
 
     do k = krel,ltop-1 !pzhu do k = krel,ltop
        kp1 = k+1
@@ -2130,7 +2130,7 @@ contains
        end do
     end if
 
-    do k = sd%kmax-1,1,-1
+    do k = sd%kmax-1,0,-1
        ct%pflx(k) = ct%pflx(k)+ct%pflx(k+1)
     enddo
 
