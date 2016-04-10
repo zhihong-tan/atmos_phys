@@ -241,6 +241,7 @@ private
    logical :: include_donmca_in_cosp = .true.
    logical :: use_tau=.false.
    logical :: do_gust_cv = .false.
+   logical :: do_gust_cv_new = .false.
    logical :: do_liq_num = .false.
    logical :: do_simple =.false.
    logical :: do_unified_convective_closure = .false.
@@ -269,7 +270,7 @@ namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,    
                                do_unified_convective_closure, tau_sg, k_sg,      &
                                do_lin_cld_microphys, use_tau, do_rh_clouds,      &
                                cmt_mass_flux_source, do_donner_deep, do_cmt,     &
-                               do_gust_cv, cmt_mass_flux_source, gustmax,        &
+                               do_gust_cv, do_gust_cv_new, cmt_mass_flux_source, gustmax,        &
                                gustconst, do_liq_num, force_donner_moist_conserv,&
                                do_donner_conservation_checks, do_donner_mca,     &
                                do_limit_uw, do_limit_donner, using_fms,          &
@@ -2060,6 +2061,9 @@ logical, intent(out), dimension(:,:)     :: convect
      end where
    end if
 
+   if (do_gust_cv_new) then
+       gust_cv = sqrt(cgust)
+   end if
 !---------------------------------------------------------------------
 !    save a diagnostic indicating whether or not convection has occurred
 !    within the column.
