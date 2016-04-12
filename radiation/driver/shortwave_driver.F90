@@ -109,6 +109,23 @@ real    :: solar_scale_factor = -1.0  ! factor to multiply incoming solar
                                       ! perform no computation. used to 
                                       ! change "solar constant"
   
+logical :: sw_cs = .false.            ! Turns of shortwave cloud radiative effects if .true.
+
+integer :: clear_min_sw = 0    !mtp: If sw_cs .EQ. .true., clear_min_lw specifies the minimum layer at which
+                               !     clouds are turned off. (only works if clear_max_lw .ne. 0 as well)
+integer :: clear_max_sw = 0    !mtp: If sw_cs .EQ. .true., clear_max_lw specifies the maximum layer at which
+                               !     clouds are turned off. (only works if clear_min_lw .ne. 0 as well)
+
+
+
+logical :: no_sw_cloud_heating_at_levs = .false. ! mtp: Turns of shortwave cloud heating 
+                                                 ! from level no_cloud_min to level
+                                                 ! no_cloud_max if .true.
+
+integer :: no_heating_min_sw = 1        ! level=1 for top layer         
+integer :: no_heating_max_sw = 1        ! level=32/48 for bottom layer (in 32/48 layer model) 
+
+
  
 namelist / shortwave_driver_nml /    do_cmip_diagnostics, &
 !                                    calculate_volcanic_sw_heating, &
@@ -116,7 +133,13 @@ namelist / shortwave_driver_nml /    do_cmip_diagnostics, &
                                      time_varying_solar_constant, &
                                      solar_dataset_entry, &
                                      solar_constant, &
-                                     solar_scale_factor
+                                     solar_scale_factor, &
+                                     sw_cs, &
+                                     no_sw_cloud_heating_at_levs, &
+                                     no_heating_min_sw, &
+                                     no_heating_max_sw, &
+                                     clear_min_sw, &
+                                     clear_max_sw  
                                      
 
 !---------------------------------------------------------------------
@@ -476,6 +499,7 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
                            size(aeroasymfac,3), &
                            size(aeroasymfac,4))
 
+      real     :: camtsw_local(size(camtsw,1),size(camtsw,2),size(camtsw,3),size(camtsw,4))
 !---------------------------------------------------------------------
 !   local variables:
 !
@@ -558,13 +582,37 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
 
           do indx = 1, size(Sw_output,1)
 
-             use_aero =.true.
-             if (indx .eq. size(Sw_output,1)) then
-                if (do_swaerosol .and. do_swaerosol_forcing) use_aero = .false.
+         !------------------------------------------------------------
+         !  determine how aerosols are computed (or not computed)
+         !  in the shortwave code
+         !------------------------------------------------------------
+             if ( .not. do_swaerosol_forcing ) then
+              ! when aero forcing is not computed, shortwave is
+              ! called once with the value of 'do_swaerosol'
+                use_aero = do_swaerosol
              else
-                if (.not.do_swaerosol .and. .not.do_swaerosol_forcing) use_aero = .false.
+              ! when aero forcing is computed, shortwave is called
+              ! twice: first time with the value of 'do_swaerosol',
+              ! second time with the opposite value
+                if (indx .eq. 1) use_aero = do_swaerosol
+                if (indx .eq. 2) use_aero = .not.do_swaerosol
              endif
 
+!-----------------------------------------------------------------------
+!    
+!     sw_cs = .true. turns off the sw cloud radiative effect
+!     default; sw_cs = .false.
+!-----------------------------------------------------------------------
+             camtsw_local= camtsw
+        
+             if (sw_cs) then
+               if (clear_min_sw .EQ. 0 .OR. clear_max_sw .EQ. 0) then
+                 camtsw_local= 0.0E+00
+               else
+                 camtsw_local(:,:,clear_min_sw:clear_max_sw,:) = 0.0E+00
+               end if 
+             endif
+!-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !    call swresf with aerosols (if model is being run without) or without
 !    aerosols (if model is being run with). save the radiation fluxes 
@@ -579,7 +627,7 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
                              Rad_gases%rrvch4, Rad_gases%rrvn2o, &
                              solflxband, solar_constant_used, &
                              Astro%rrsun, Astro%cosz, Astro%fracday, &
-                             camtsw, cldsct, cldext, cldasymm, &
+                             camtsw_local, cldsct, cldext, cldasymm, &
                              aeroasymfac, aerosctopdep, aeroextopdep, &
                              Rad_control%do_totcld_forcing, &
                              flag_stoch, Sw_output(indx))
@@ -592,13 +640,19 @@ type(sw_output_type), dimension(:), intent(inout) :: Sw_output
                              Rad_gases%rrvch4, Rad_gases%rrvn2o, &
                              solflxband, solar_constant_used, &
                              Astro%rrsun, Astro%cosz, Astro%fracday, &
-                             camtsw, cldsct, cldext, cldasymm, &
+                             camtsw_local, cldsct, cldext, cldasymm, &
                              aerozero, aerozero, aerozero, &
                              Rad_control%do_totcld_forcing, &
                              flag_stoch, Sw_output(indx))
              endif
 
+            if (no_sw_cloud_heating_at_levs) then
+            !  Sw_output%hsw(:,:,no_heating_min_sw:no_heating_max_sw) = 0.
+            Sw_output(indx)%hsw(:,:,no_heating_min_sw:no_heating_max_sw) = Sw_output(indx)%hswcf(:,:,no_heating_min_sw:no_heating_max_sw)
+            end if
+
           enddo  ! indx
+!--------------------------------------------------------------------------------
 
 !--------------------------------------------------------------------
 
@@ -737,7 +791,20 @@ type(sw_output_type),       intent(inout) :: Sw_output
 
 real, dimension(size(Astro%cosz,1), &
                 size(Astro%cosz,2)) :: cosz, fracday
+!real    :: camtsw_local(size(camtsw,1),size(camtsw,2),size(camtsw,3),size(camtsw,4))
 integer :: kx
+
+!%    camtsw_local= camtsw
+!%
+!%! sw_cs = .true. turns off the sw cloud radiative effect
+!%! default; sw_cs = .false.
+!%    if (sw_cs) then
+!%      if (clear_min_sw .EQ. 0 .OR. clear_max_sw .EQ. 0) then
+!%        camtsw_local= 0.0E+00
+!%      else
+!%        camtsw_local(:,:,clear_min_sw:clear_max_sw,:) = 0.0E+00
+!%      end if 
+!%    endif
 
    kx = size (press,3)
 
@@ -755,6 +822,17 @@ integer :: kx
                 camtsw, cldsct, cldext, cldasymm, &
                 aeroasymfac, aerosctopdep, aeroextopdep, &
                 do_totcld_forcing, flag_stoch, Sw_output)
+
+!-------------------------------------------------------------------------------
+ ! mtp: replace sw-all-sky heating rates by clear sky heating rates from
+ ! level no_cloud_min to level no_cloud_max
+ ! level 1=top layer, level 32 = surface layer (for 32 layer atmosphere)
+ ! levl 20 = 663 hPa
+
+!if (no_sw_cloud_heating_at_levs) then
+!!  Sw_output%hsw(:,:,no_heating_min_sw:no_heating_max_sw) = 0.
+!Sw_output%hsw(:,:,no_heating_min_sw:no_heating_max_sw) = Sw_output%hswcf(:,:,no_heating_min_sw:no_heating_max_sw)
+!end if
 
 end subroutine swresf_wrapper
 

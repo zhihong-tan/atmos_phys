@@ -101,12 +101,14 @@ logical :: ignore_donner_cells = .false.
                   ! when set to .true., the effects of donner cell clouds 
                   ! in the radiation code are ignored
 
+logical       ::  remain_hu_bug = .true.
+
 namelist /microphys_rad_nml /     &
                                lwem_form, &
                                do_orig_donner_stoch, &
                                do_delta_adj, &
                                do_const_asy, val_const_asy, &
-                               alpha, ignore_donner_cells, do_hu
+                               alpha, ignore_donner_cells, do_hu, remain_hu_bug
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -3593,16 +3595,29 @@ integer, intent(in), optional             ::   starting_band,  &
 !    microns.                               
 !----------------------------------------------------------------------
 !cstu
-!              if (size_d(i,j,k) <  min_cld_drop_rad) then   
-!                size_d(i,j,k) =  min_cld_drop_rad
-!              else if (size_d(i,j,k) > max_cld_drop_rad) then 
-!                size_d(i,j,k) = max_cld_drop_rad             
-!              endif
-              if (size_d(i,j,k) <  2.5) then
-                size_d(i,j,k) =  4.2
-              else if (size_d(i,j,k) > 60) then
-                size_d(i,j,k) = 16.6
+              if ( remain_hu_bug ) then 
+                if (size_d(i,j,k) <  2.5) then
+                  size_d(i,j,k) =  4.2
+                else if (size_d(i,j,k) > 60) then
+                  size_d(i,j,k) = 16.6
+                endif
+              else
+                if (size_d(i,j,k) <  min_cld_drop_rad) then   
+                  size_d(i,j,k) =  min_cld_drop_rad
+                else if (size_d(i,j,k) > max_cld_drop_rad) then 
+                  size_d(i,j,k) = max_cld_drop_rad             
+                endif
               endif
+
+
+             
+	     ! if (size_d(i,j,k) <  3.0) then
+             !
+	     !   size_d(i,j,k) =  3.0
+             ! else if (size_d(i,j,k) > 55) then
+             !   size_d(i,j,k) = 55
+             !
+	    !  endif
 
 !---------------------------------------------------------------------
 !    define values of extinction coefficient, single-scattering albedo
@@ -3619,22 +3634,43 @@ integer, intent(in), optional             ::   starting_band,  &
                     cldasymmivlliq(i,j,k,ni) = a3(ni,1)*size_d(i,j,k)**b3(ni,1) + c3(ni,1)
                   end do
                 end if
-                if (size_d(i,j,k).ge.12.5.and.size_d(i,j,k).lt.30.0) then
-                  do ni=nistart, niend
-                    cldextivlliq(i,j,k,ni) = conc_drop(i,j,k)* &
-                                             (a1(ni,2)*size_d(i,j,k)**b1(ni,2) + c1(ni,1))
-                    cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,2)*size_d(i,j,k)**b2(ni,2) + c2(ni,1) )
-                    cldasymmivlliq(i,j,k,ni) = a3(ni,2)*size_d(i,j,k)**b3(ni,2) + c3(ni,2)
-                  end do
-                end if
-                if (size_d(i,j,k).ge.30.and.size_d(i,j,k).le.60) then
-                  do ni=nistart, niend
-                    cldextivlliq(i,j,k,ni) =   conc_drop(i,j,k)* &
-                                             (a1(ni,3)*size_d(i,j,k)**b1(ni,3) + c1(ni,1))
-                    cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,3)*size_d(i,j,k)**b2(ni,3) + c2(ni,1) )
-                    cldasymmivlliq(i,j,k,ni) = a3(ni,3)*size_d(i,j,k)**b3(ni,3) + c3(ni,3)
-                  end do
-                end if
+
+                if ( remain_hu_bug ) then
+                  if (size_d(i,j,k).ge.12.5.and.size_d(i,j,k).lt.30.0) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) = conc_drop(i,j,k)* &
+                                               (a1(ni,2)*size_d(i,j,k)**b1(ni,2) + c1(ni,1))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,2)*size_d(i,j,k)**b2(ni,2) + c2(ni,1) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,2)*size_d(i,j,k)**b3(ni,2) + c3(ni,2)
+                    end do
+                  end if
+                  if (size_d(i,j,k).ge.30.and.size_d(i,j,k).le.60) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) =   conc_drop(i,j,k)* &
+                                               (a1(ni,3)*size_d(i,j,k)**b1(ni,3) + c1(ni,1))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,3)*size_d(i,j,k)**b2(ni,3) + c2(ni,1) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,3)*size_d(i,j,k)**b3(ni,3) + c3(ni,3)
+                    end do
+                  end if
+
+                else
+                  if (size_d(i,j,k).ge.12.5.and.size_d(i,j,k).lt.30.0) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) = conc_drop(i,j,k)* &
+                                               (a1(ni,2)*size_d(i,j,k)**b1(ni,2) + c1(ni,2))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,2)*size_d(i,j,k)**b2(ni,2) + c2(ni,2) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,2)*size_d(i,j,k)**b3(ni,2) + c3(ni,2)
+                    end do
+                  end if
+                  if (size_d(i,j,k).ge.30.and.size_d(i,j,k).le.60) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) =   conc_drop(i,j,k)* &
+                                               (a1(ni,3)*size_d(i,j,k)**b1(ni,3) + c1(ni,3))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,3)*size_d(i,j,k)**b2(ni,3) + c2(ni,3) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,3)*size_d(i,j,k)**b3(ni,3) + c3(ni,3)
+                    end do
+                  end if
+                endif  ! remain_hu_bug
             endif     
           end do
         end do

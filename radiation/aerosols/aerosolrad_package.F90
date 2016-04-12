@@ -1393,6 +1393,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aerooptdep, aerooptdep_volc, &
       integer  :: na, nw, ni, n       ! do-loop indices
       integer  :: iaer, i, j, k
       integer  :: nextinct
+      logical  :: including_swaerosols
       real, dimension (size(Aerosol%aerosol,1),  &
                        size(Aerosol%aerosol,2),  &
                        size(Aerosol%aerosol,3))  :: sul, bc
@@ -1700,6 +1701,12 @@ real, dimension(:,:,:,:),      intent(out)   :: aerooptdep, aerooptdep_volc, &
 
      ! calculate_volcanic_sw_heating in shortwave_driver_nml
 
+      if (Aerosolrad_control%do_swaerosol .or. Aerosolrad_control%do_swaerosol_forcing) then
+        including_swaerosols = .true.
+      else
+        including_swaerosols = .false.
+      endif
+
      !if (calculate_volcanic_sw_heating) then
      !    call sw_aerosol_optical_props     &    
      !              (Atmos_input%aerosolrelhum, Atmos_input%deltaz,
@@ -1713,7 +1720,7 @@ real, dimension(:,:,:,:),      intent(out)   :: aerooptdep, aerooptdep_volc, &
                     (relhum, deltaz, &
                      Aerosol, ivol, &
                      Aerosolrad_control%volcanic_sw_aerosols, Aerosolrad_diags,  &
-                     Aerosolrad_control%do_swaerosol, do_cmip_sw_diagnostics, &
+                     including_swaerosols, do_cmip_sw_diagnostics, &
                 !BW  .true., do_cmip_sw_diagnostics, &
                      daylight, aeroextopdep, aerosctopdep, aeroasymfac)
      !endif
