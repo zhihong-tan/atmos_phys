@@ -863,7 +863,6 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
   real, intent(out),   dimension(:,:,:)   :: uw_wetdep
 
   integer :: n, nn, nql, nqi, nqa, nqn, nqni
-  real, dimension(size(t,1), size(t,2), size(t,3)) :: thlflx, qtflx, precflx
   real, dimension(size(rdt,1), size(rdt,2), size(rdt,3), num_uw_tracers) :: trcr
 
       nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
@@ -891,8 +890,7 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                     hmint, lat, lon, cush, do_strat,  conv_calc_completed,       &
                     available_cf_for_uw, ttnd_uw, qtnd_uw, qltnd_uw,      &
                     qitnd_uw, qatnd_uw, qntnd_uw, utnd_uw, vtnd_uw,       &
-                    rain_uw, snow_uw, cmf,                                &
-                    thlflx, qtflx, precflx, liq_precflx, ice_precflx,     &
+                    rain_uw, snow_uw, cmf, liq_precflx, ice_precflx,      &
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
                     shallow_droplet_number, cbmf, cgust, tke, pblhto,     &
 		    rkmo, taudpo, exist_shconv, exist_dpconv,             &

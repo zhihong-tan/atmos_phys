@@ -56,7 +56,6 @@ MODULE DEEP_CONV_MOD
      real    :: hcevap_d
      real    :: hcevappbl_d
      real    :: pblfac_d
-     real    :: ffldep_d
      real    :: dcapedm_th
      real    :: dcwfndm_th
      real    :: frac_limit_d
@@ -84,6 +83,7 @@ contains
     type(cpnlist), intent(in)    :: cpn
     type(cpnlist), intent(inout) :: dpn
 
+    dpn % do_umf_pbl         = cpn % do_umf_pbl
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_hlflx_zero      = cpn % do_hlflx_zero
     dpn % do_varying_rpen    = cpn % do_varying_rpen
@@ -122,7 +122,7 @@ contains
     dpn % hcevappbl          = cpn % hcevappbl
     dpn % cfrac              = cpn % cfrac
     dpn % pblfac             = cpn % pblfac
-    dpn % ffldep             = cpn % ffldep
+    dpn % do_minmse          = cpn % do_minmse
     dpn % mixing_assumption  = cpn % mixing_assumption
     dpn % mp_choice          = cpn % mp_choice
     dpn % Nl_land            = cpn % Nl_land

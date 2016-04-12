@@ -33,7 +33,7 @@ MODULE CONV_UTILITIES_k_MOD
     integer  :: kmax, kinv, ktoppbl, ktopconv, ksrc, src_choice, gqt_choice
     real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, plev_cin, lts, eis, gam, z700
     real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre
-    real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon
+    real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon, p_minmse
     real     :: dpsum, hmint, hm_vadv0
     real     :: tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int
     real     :: tdt_rad_pbl, tdt_dyn_pbl, tdt_dif_pbl, qdt_dyn_pbl, qdt_dif_pbl
@@ -460,7 +460,7 @@ contains
     real    :: thj, qvj, qlj, qij, qse, qs_sum, qt_sum, dpsum, tmp
     real, dimension(size(sd%tr,2)) :: sstr0a, sstr0b
     real    :: x1, x2, x3, xx1, xx2, xx3, q1, q2, p700, thc700, t700, p850
-    integer :: kp1, km1, ksrc
+    integer :: kp1, km1, ksrc, k_minmse
   
     sd % exners(0) = exn_k(sd%ps(0),Uw_p);
     if (doice) then
@@ -614,18 +614,15 @@ contains
                             sd%sigma0, sd%land, sd%gqt_choice)
     endif
 
-!    dpsum=0.; sd%thcsrc=0.
-!    do k=1, sd%kinv-1
-!       sd%thcsrc = sd%thcsrc + sd%thc(k)*sd%dp(k)
-!       dpsum = dpsum + sd%dp(k)
-!    end do
-!    sd%thcsrc=sd%thcsrc/dpsum
-!    ksrc=sd%ksrc
-!    sd%zsrc  =sd%zs(ksrc)
-!    sd%psrc  =sd%ps(ksrc)
-!    sd%hlsrc =Uw_p%cp_air*sd%thcsrc*sd%exners(ksrc)+Uw_p%grav*sd%zsrc-&
-!                                 sd%leff(ksrc)*(sd%ql(ksrc)+sd%qi(ksrc))
-!    sd%qctsrc=sd%qct(ksrc)
+    k_minmse=1
+    tmp=sd%hm(1)
+    do k=1, sd%kmax
+       if (sd%hm(k) .lt. tmp) then
+       	  tmp=sd%hm(k)
+       	  k_minmse=k
+       end if
+    end do
+    sd%p_minmse = sd%p(k_minmse)
 
 !MSE begin-------------------
     dpsum=0.;
