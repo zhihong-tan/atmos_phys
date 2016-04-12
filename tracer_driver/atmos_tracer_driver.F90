@@ -925,7 +925,7 @@ character(len=32) :: tracer_units, tracer_name
 !------------------------------------------------------------------------
   call mpp_clock_begin (dust_clock)
    if (do_dust) then
-      call atmos_dust_sourcesink(lon,lat,land,pwt, &
+      call atmos_dust_sourcesink(lon,lat,land,pwt, dt, &
               z_half, pfull, w10m_land, t, rh, &
               tracer(:,:,:,:), dsinku(:,:,:), rdt(:,:,:,:), &
               Time, is,ie,js,je, kbot)
