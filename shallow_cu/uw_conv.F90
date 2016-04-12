@@ -1772,9 +1772,13 @@ contains
              dcrh0  = crh_max-crh_th
 	     if (del_crh .gt. 0.) then
 	        cbmf_deep = 0.0001 !first assuming existence of deep convective cloud base mass flux
-	        dcrh = del_crh/dcrh0
-		dcrh = dcrh**(1./norder)
-	        rkm_dp  = dpc%rkm_dp1 + dcrh * (dpc%rkm_dp2 - dpc%rkm_dp1)
+	        dcrh = del_crh/dcrh0; !dcrh = dcrh**(1./norder)
+		if (dcrh.gt.1) then
+		   rkm_dp = dpc%rkm_dp2
+	   	else
+		   rkm_dp  = dpc%rkm_dp1 + dcrh * (dpc%rkm_dp2 - dpc%rkm_dp1)
+		end if
+
                 lofactor= 1.- sd%land*(1.- dpc%lofactor_d) !option for introducing land difference
 	        if (do_lod_rkm) then
                	   rkm_dp       = rkm_dp  * lofactor
