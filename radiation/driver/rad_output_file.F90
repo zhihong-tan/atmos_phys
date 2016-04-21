@@ -26,6 +26,7 @@ use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
                              DIAG_FIELD_NOT_FOUND
+use diag_axis_mod,     only: get_axis_num
 use diag_data_mod,     only: CMOR_MISSING_VALUE
 use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE, pi
 
@@ -1416,6 +1417,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
       integer                  :: n, nl
       integer                  :: nfamilies
       real                     :: trange(2)
+      integer                  :: id_lev, cmip_axes(4)
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -1436,6 +1438,15 @@ logical,                        intent(in) :: volcanic_sw_aerosols
       bxes(3) = axes(4)
       bxes(4) = axes(4)
       trange =(/ 100., 400. /)
+
+!---------------------------------------------------------------------
+!    replace the vertical axes for CMIP fields
+!---------------------------------------------------------------------
+      cmip_axes = axes 
+      id_lev = get_axis_num('lev', 'cmip')
+      if (id_lev > 0) cmip_axes(3) = id_lev
+      id_lev = get_axis_num('levhalf', 'cmip')  ! does not exist yet
+      if (id_lev > 0) cmip_axes(4) = id_lev
 
 !---------------------------------------------------------------------
 !    register the potential diagnostic variables from this module.
@@ -1520,7 +1531,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                           '1.e-9', missing_value=missing_value)
 
       id_tro3    = &
-         register_diag_field (mod_name, 'tro3', axes(1:3), Time, &
+         register_diag_field (mod_name, 'tro3', cmip_axes(1:3), Time, &
                           'Mole Fraction of O3', &
                           '1e-9',    &
                        standard_name = 'mole_fraction_of_ozone_in_air', &

@@ -68,6 +68,7 @@ use fms_io_mod,            only: restore_state, &
 use diag_manager_mod,      only: register_diag_field, send_data, &
                                  diag_manager_init, get_base_time, &
                                  get_diag_field_id, DIAG_FIELD_NOT_FOUND
+use diag_axis_mod,         only: get_axis_num
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 use time_manager_mod,      only: time_manager_init, time_type, operator(>)
 use constants_mod,         only: constants_init, STEFAN, SECONDS_PER_DAY, &
@@ -847,6 +848,7 @@ logical,         intent(in) :: do_lwaerosol
       integer           ::   i, k, n
       character(len=16) ::   spec_names(MX_SPEC_LEVS)
       character(len=24) ::   spec_long_names(MX_SPEC_LEVS)
+      integer           ::   id_lev, cmip_axes(4)
 
 !--------------------------------------------------------------------
 !  local variables:
@@ -891,6 +893,16 @@ logical,         intent(in) :: do_lwaerosol
       else
         lwaer_prep = 'with'
       endif
+
+!---------------------------------------------------------------------
+!    replace the vertical axes for CMIP fields
+!---------------------------------------------------------------------
+      cmip_axes = axes
+      id_lev = get_axis_num('lev', 'cmip')
+      if (id_lev > 0) cmip_axes(3) = id_lev
+      id_lev = get_axis_num('levhalf', 'cmip')  ! does not exist yet
+      if (id_lev > 0) cmip_axes(4) = id_lev
+
 
 !---------------------------------------------------------------------
 !    generate names for standard and clear sky diagnostic fields. if 
@@ -1055,28 +1067,28 @@ logical,         intent(in) :: do_lwaerosol
        end do
 
         id_tntrs = register_diag_field (mod_name,   &
-                'tntrs', axes(1:3), Time, & 
+                'tntrs', cmip_axes(1:3), Time, & 
                 'Tendency of Air Temperature due to Shortwave Radiative Heating', &
                 'K s-1', &
             standard_name = 'tendency_of_air_temperature_due_to_shortwave_heating', &
                 area = area_id, missing_value = CMOR_MISSING_VALUE)
 
         id_tntrscs = register_diag_field (mod_name,   &
-                'tntrscs', axes(1:3), Time, & 
+                'tntrscs', cmip_axes(1:3), Time, & 
                 'Tendency of Air Temperature due to Clear Sky Shortwave Radiative Heating', &
                 'K s-1', &
             standard_name = 'tendency_of_air_temperature_due_to_clear_sky_shortwave_heating', &
                 area = area_id, missing_value = CMOR_MISSING_VALUE)
 
         id_tntrl = register_diag_field (mod_name,   &
-                'tntrl', axes(1:3), Time, & 
+                'tntrl', cmip_axes(1:3), Time, & 
                 'Tendency of Air Temperature due to Longwave Radiative Heating', &
                 'K s-1', &
             standard_name = 'tendency_of_air_temperature_due_to_longwave_heating', &
                 area = area_id, missing_value = CMOR_MISSING_VALUE)
 
         id_tntrlcs = register_diag_field (mod_name,   &
-                'tntrlcs', axes(1:3), Time, & 
+                'tntrlcs', cmip_axes(1:3), Time, & 
                 'Tendency of Air Temperature due to Clear Sky Longwave Radiative Heating', &
                 'K s-1', &
             standard_name = 'tendency_of_air_temperature_due_to_clear_sky_longwave_heating', &
