@@ -43,8 +43,6 @@ MODULE DEEP_CONV_MOD
      real    :: cbmf0
      real    :: rkm_dp1
      real    :: rkm_dp2
-     real    :: cbmf_dp_frac1
-     real    :: cbmf_dp_frac2
      real    :: crh_th_land
      real    :: crh_th_ocean
      real    :: cape_th 
@@ -56,8 +54,8 @@ MODULE DEEP_CONV_MOD
      logical :: do_pevap_d
      real    :: cfrac_d
      real    :: hcevap_d
+     real    :: hcevappbl_d
      real    :: pblfac_d
-     real    :: ffldep_d
      real    :: dcapedm_th
      real    :: dcwfndm_th
      real    :: frac_limit_d
@@ -67,11 +65,7 @@ MODULE DEEP_CONV_MOD
      real    :: peff_l_d
      real    :: peff_i_d
      integer :: src_choice_d
-     real    :: gama
-     real    :: tke0
-     real    :: hgt0
      real    :: cwfn_th
-!     real    :: cgust0
      real    :: cin_fact
      real    :: wcrit_min_gust
      real    :: tau_dp_fact
@@ -89,6 +83,7 @@ contains
     type(cpnlist), intent(in)    :: cpn
     type(cpnlist), intent(inout) :: dpn
 
+    dpn % do_umf_pbl         = cpn % do_umf_pbl
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_hlflx_zero      = cpn % do_hlflx_zero
     dpn % do_varying_rpen    = cpn % do_varying_rpen
@@ -101,7 +96,7 @@ contains
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
-    dpn % eis_max            = cpn % eis_max
+    dpn % nbuo_max           = cpn % nbuo_max
     dpn % rmaxfrac           = cpn % rmaxfrac
     dpn % wmin               = cpn % wmin
     dpn % wmax               = cpn % wmax
@@ -119,13 +114,15 @@ contains
     dpn % auto_rate          = cpn % auto_rate
     dpn % tcrit              = cpn % tcrit  
     dpn % cldhgt_max         = cpn % cldhgt_max
+    dpn % cldhgt_max_shallow = cpn % cldhgt_max_shallow
     dpn % do_ice             = cpn % do_ice
     dpn % do_ppen            = cpn % do_ppen
     dpn % do_pevap           = cpn % do_pevap
     dpn % hcevap             = cpn % hcevap
+    dpn % hcevappbl          = cpn % hcevappbl
     dpn % cfrac              = cpn % cfrac
     dpn % pblfac             = cpn % pblfac
-    dpn % ffldep             = cpn % ffldep
+    dpn % do_minmse          = cpn % do_minmse
     dpn % mixing_assumption  = cpn % mixing_assumption
     dpn % mp_choice          = cpn % mp_choice
     dpn % Nl_land            = cpn % Nl_land
@@ -134,9 +131,6 @@ contains
     dpn % r_thresh           = cpn % r_thresh
     dpn % peff_l             = cpn % peff_l
     dpn % peff_i             = cpn % peff_i
-    dpn % peff               = cpn % peff
-    dpn % t00                = cpn % t00
-    dpn % rh0                = cpn % rh0
     dpn % do_forcedlifting   = cpn % do_forcedlifting
     dpn % atopevap           = cpn % atopevap
     dpn % wtwmin_ratio       = cpn % wtwmin_ratio
@@ -144,9 +138,9 @@ contains
     dpn % rad_crit           = cpn % rad_crit
     dpn % wrel_min           = cpn % wrel_min
     dpn % do_weffect         = cpn % do_weffect
+    dpn % do_new_pblfac      = cpn % do_new_pblfac
     dpn % weffect            = cpn % weffect
     dpn % use_online_aerosol = cpn % use_online_aerosol
-    dpn % isdeep             = cpn % isdeep
     dpn % use_new_let        = cpn % use_new_let
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
@@ -177,7 +171,7 @@ contains
     integer,            intent(out) :: ier
     character(len=256), intent(out) :: ermesg
 
-    real          :: zcldtop, dcrh, cbmf_dp_frac
+    real          :: zcldtop, dcrh
 
     ier = 0
     ermesg = ' '
@@ -349,7 +343,7 @@ contains
 
     ier = 0
     ermesg = ' '
-    cwfn = 0.; dcwfndm=0.; dcapedm=0.; wrel0=0.1;
+    cwfn = 0.; dcwfndm=0.; dcapedm=0.; wrel0=0.1; lofactor=1.0;
     taudp = dpc%tau_dp;
 
     if ( cbmf_deep.eq.0 ) then
