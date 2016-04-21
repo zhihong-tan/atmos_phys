@@ -303,9 +303,16 @@ INTEGER,                         INTENT(IN)    :: otun
 !-----------------------------------------------------------------------
 !    Enhanced erosion in convective layers
 !-----------------------------------------------------------------------
+	      if (Nml%include_neg_mc) then
+                if (abs(Atmos_state%Mc(i,j,k)) .gt. Nml%mc_thresh) then !miz
+                  erosion_scale(i,j,k) = Nml%eros_scale_c
+                endif
+              else
                 if (Atmos_state%Mc(i,j,k) .gt. Nml%mc_thresh) then
                   erosion_scale(i,j,k) = Nml%eros_scale_c
                 endif
+              endif
+
                 if ((Atmos_state%diff_t(i,j,K) .gt.Nml%diff_thresh) .or.&
                     (Atmos_state%diff_t(i,j,min(k+1,KDIM)) .gt.  &
                                                    Nml%diff_thresh) ) then

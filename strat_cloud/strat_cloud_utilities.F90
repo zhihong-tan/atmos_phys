@@ -253,7 +253,7 @@ type strat_nml_type
              num_mass_ratio2, qcvar
 
   logical :: do_netcdf_restart, u00_profile, use_kk_auto,     &
-             use_online_aerosol, use_sub_seasalt,             &
+             use_online_aerosol, use_sub_seasalt, include_neg_mc, & !miz
              eros_choice, super_choice, tracer_advec,         &
              do_old_snowmelt, retain_cm3_bug, do_pdf_clouds,  &
              Single_Gaussion_pdf,  do_liq_num,                &
