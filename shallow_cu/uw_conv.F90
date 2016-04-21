@@ -157,6 +157,7 @@ MODULE UW_CONV_MOD
   real    :: rbuoy    = 1.0    ! for nonhydrostatic pressure effects on updraft
   real    :: rdrag    = 1.0 
   real    :: frac_drs = 0.0    ! 
+  real    :: frac_dr0 = 1.0    ! 
   real    :: bigc     = 0.0    ! for momentum transfer default set to 0 assuming as tracers
   real    :: auto_th0 = 0.5e-3 ! threshold for precipitation
   real    :: auto_rate= 1.e-3
@@ -171,6 +172,7 @@ MODULE UW_CONV_MOD
   real    :: emfrac_max = 1.0
   integer :: mixing_assumption = 0
   integer :: mp_choice = 1
+  integer :: de_choice = 0
   real    :: Nl_land   = 300.e6
   real    :: Nl_ocean  = 100.e6
   real    :: qi_thresh = 1.e-4
@@ -189,9 +191,9 @@ MODULE UW_CONV_MOD
 !  real    :: t00        = 295
   real    :: tten_max   = 1000.
 
-  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc, do_limit_wmax,&
+  NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, do_limit_wmax, &
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
-       mixing_assumption, mp_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, hcevappbl, pblfac,&
+       mixing_assumption, mp_choice, de_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, hcevappbl, pblfac,&
        do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
@@ -287,7 +289,8 @@ MODULE UW_CONV_MOD
   integer :: id_tdt_uwc, id_qdt_uwc, id_udt_uwc, id_vdt_uwc, id_prec_uwc, id_snow_uwc, &
              id_tdt_uws, id_qdt_uws, id_udt_uws, id_vdt_uws, id_prec_uws, id_snow_uws, &
 	     id_pct_uwc, id_pcb_uwc, id_pct_uws, id_pcb_uws, id_pct_uwd, id_pcb_uwd,   &
-	     id_cqa_uwc, id_cql_uwc, id_cqi_uwc, id_cqa_uws, id_cql_uws, id_cqi_uws,  id_cqn_uws,&
+	     id_cqa_uwc, id_cql_uwc, id_cqi_uwc, id_cqn_uwc,                           &
+	     id_cqa_uws, id_cql_uws, id_cqi_uws, id_cqn_uws,                           &
        id_cin_uwc, id_cbmf_uwc, id_tke_uwc, id_tkep_uwc, id_plcl_uwc, id_zlcl_uwc, id_zinv_uwc,  &
        id_cush_uws,  id_plfc_uwc, id_enth_uwc,  &
        id_qldt_uwc, id_qidt_uwc, id_qadt_uwc, id_qndt_uwc, id_qtdt_uwc, id_cmf_uwc, &
@@ -297,7 +300,7 @@ MODULE UW_CONV_MOD
        id_cape_uwc, id_dcin_uwc, id_dcape_uwc, id_crh_uwc, id_pblht_uwc, &
        id_ocode_uwc, id_plnb_uwc, id_wrel_uwc, id_ufrc_uwc, id_qtmp_uwc,id_gust_uwc, &
        id_tdt_pevap_uwc, id_qdt_pevap_uwc, id_xpsrc_uwc, id_xhlsrc_uwc, id_xqtsrc_uwc,&
-       id_qldet_uws, id_qidet_uws, id_qadet_uws, id_dting_uwc, &
+       id_qldet_uws, id_qidet_uws, id_qadet_uws, id_qndet_uws, id_dting_uwc, &
        id_cfq_uws, id_feq_uws, id_feq_uwc, id_hmo_uwc, id_hms_uwc, id_abu_uwc, id_peo_uwc, &
        id_tten_rad_uwc, id_tdt_forc_uwc, id_qdt_forc_uwc, id_tdt_diss_uwc, &
        id_hm_vadv_uwc, id_pflx_uwc, id_lhflx_uwc, id_shflx_uwc, &
@@ -524,12 +527,14 @@ contains
     id_fdrs_uws = register_diag_field (mod_name,'fdrs_uws', axes(1:3), Time, &
          'fractional detrainment rate for saturated air from shallow plume', '1/Pa', missing_value=mv)
 
-    id_cqa_uwc = register_diag_field ( mod_name, 'cqa_uwc', axes(half), Time, &
+    id_cqa_uwc = register_diag_field ( mod_name, 'cqa_uwc', axes(1:3), Time, &
          'convective cloud area fraction from uw_conv', 'none', missing_value=mv)
-    id_cql_uwc = register_diag_field ( mod_name, 'cql_uwc', axes(half), Time, &
+    id_cql_uwc = register_diag_field ( mod_name, 'cql_uwc', axes(1:3), Time, &
          'mass fraction of convective cloud liquid water from uw_conv', 'kg/kg', missing_value=mv)
-    id_cqi_uwc = register_diag_field ( mod_name, 'cqi_uwc', axes(half), Time, &
+    id_cqi_uwc = register_diag_field ( mod_name, 'cqi_uwc', axes(1:3), Time, &
          'mass fraction of convective cloud ice water from uw_conv', 'kg/kg', missing_value=mv)
+    id_cqn_uwc = register_diag_field ( mod_name, 'cqn_uwc', axes(1:3), Time, &
+         'Updraft liquid drop number from uw_conv', '/kg', missing_value=mv)
 
     id_cqa_uws = register_diag_field ( mod_name, 'cqa_uws', axes(half), Time, &
          'Updraft fractional area from shallow plume', 'none', missing_value=mv)
@@ -540,25 +545,25 @@ contains
     id_cqn_uws = register_diag_field ( mod_name, 'cqn_uws', axes(half), Time, &
          'Updraft liquid drop number from shallow plume', '/kg', missing_value=mv)
 
-    id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(1:3),Time, &
+    id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(half),Time, &
          'liquid water static energy flux from uw_conv', 'W/m2', missing_value=mv)
-    id_qtflx_uwc = register_diag_field (mod_name,'qtflx_uwc',axes(1:3),Time, &
+    id_qtflx_uwc = register_diag_field (mod_name,'qtflx_uwc',axes(half),Time, &
          'total water flux from uw_conv', 'kg/m2/s', missing_value=mv)
-    id_nqtflx_uwc = register_diag_field (mod_name,'nqtflx_uwc',axes(1:3),Time, &
+    id_nqtflx_uwc = register_diag_field (mod_name,'nqtflx_uwc',axes(half),Time, &
          'net total water flux from uw_conv', 'kg/m2/s', missing_value=mv)
-    id_qtflx_up_uwc = register_diag_field (mod_name,'qtflx_up_uwc',axes(1:3),Time, &
+    id_qtflx_up_uwc = register_diag_field (mod_name,'qtflx_up_uwc',axes(half),Time, &
          'Total water flux from resolved upward flow', 'kg/m2/s', missing_value=mv)
-    id_qtflx_dn_uwc = register_diag_field (mod_name,'qtflx_dn_uwc',axes(1:3),Time, &
+    id_qtflx_dn_uwc = register_diag_field (mod_name,'qtflx_dn_uwc',axes(half),Time, &
          'Total water flux from resolved downward flow', 'kg/m2/s', missing_value=mv)
-    id_omgmc_up_uwc = register_diag_field (mod_name,'omgmc_up_uwc',axes(1:3),Time, &
+    id_omgmc_up_uwc = register_diag_field (mod_name,'omgmc_up_uwc',axes(half),Time, &
          'Total upward mass flux', 'kg/m2/s', missing_value=mv)
-    id_omega_up_uwc = register_diag_field (mod_name,'omega_up_uwc',axes(1:3),Time, &
+    id_omega_up_uwc = register_diag_field (mod_name,'omega_up_uwc',axes(half),Time, &
          'Total mass flux from resolved upward flow', 'kg/m2/s', missing_value=mv)
-    id_omega_dn_uwc = register_diag_field (mod_name,'omega_dn_uwc',axes(1:3),Time, &
+    id_omega_dn_uwc = register_diag_field (mod_name,'omega_dn_uwc',axes(half),Time, &
          'Total mass flux from resolved downward flow', 'kg/m2/s', missing_value=mv)
-    id_hm_vadv_uwc = register_diag_field (mod_name,'hm_vadv_uwc',axes(1:3),Time, &
+    id_hm_vadv_uwc = register_diag_field (mod_name,'hm_vadv_uwc',axes(half),Time, &
          'Vertical advection of MSE', 'W/m2', missing_value=mv)
-    id_pflx_uwc = register_diag_field (mod_name,'pflx_uwc',axes(1:3),Time, &
+    id_pflx_uwc = register_diag_field (mod_name,'pflx_uwc',axes(half),Time, &
          'vertical distribution of precipitation flux', 'kg/m2/s', missing_value=mv)
 
     id_lts_uwc = register_diag_field (mod_name,'lts_uwc', axes(1:2), Time, &
@@ -751,21 +756,33 @@ contains
             'scaletr_uwc in shallow_conv', '' )
     if ( do_strat ) then
        id_qldt_uwc= register_diag_field (mod_name,'qldt_uwc',axes(1:3),Time, &
-            'Liquid water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
+            'liquid water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
        id_qidt_uwc= register_diag_field (mod_name,'qidt_uwc',axes(1:3),Time, &
-            'Ice water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
+            'ice water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
        id_qadt_uwc= register_diag_field (mod_name,'qadt_uwc',axes(1:3),Time, &
-            'CLD fraction tendency from uw_conv', '1/s', missing_value=mv )
+            'cloud amount tendency from uw_conv', '1/s', missing_value=mv )
        id_qndt_uwc= register_diag_field (mod_name,'qndt_uwc',axes(1:3),Time, &
-            'Cloud droplet number fraction tendency from uw_conv', '#/kg/s', missing_value=mv )
-       id_qldet_uws = register_diag_field (mod_name,'qldet_uws',axes(1:3),Time, &
-            'ql detrainment', 'kg/kg/s', missing_value=mv)
-       id_qidet_uws = register_diag_field (mod_name,'qidet_uws',axes(1:3),Time, &
-            'qi detrainment', 'kg/kg/s', missing_value=mv)
-       id_qadet_uws = register_diag_field (mod_name,'qadet_uws',axes(1:3),Time, &
-            'qa detrainment', '1/s', missing_value=mv)
+            'cloud droplet number fraction tendency from uw_conv', '#/kg/s', missing_value=mv )
        id_qtdt_uwc= register_diag_field (mod_name,'qtdt_uwc',axes(1:3),Time, &
-            'Total water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
+            'total water tendency from uw_conv', 'kg/kg/s', missing_value=mv)
+       id_qldt_uws= register_diag_field (mod_name,'qldt_uws',axes(1:3),Time, &
+            'liquid water tendency from shallow plume', 'kg/kg/s', missing_value=mv)
+       id_qidt_uws= register_diag_field (mod_name,'qidt_uws',axes(1:3),Time, &
+            'ice water tendency from shallow plume', 'kg/kg/s', missing_value=mv)
+       id_qadt_uws= register_diag_field (mod_name,'qadt_uws',axes(1:3),Time, &
+            'cloud amount tendency from shallow plume', '1/s', missing_value=mv )
+       id_qndt_uws= register_diag_field (mod_name,'qndt_uws',axes(1:3),Time, &
+            'cloud droplet number fraction tendency from shallow plume', '#/kg/s', missing_value=mv )
+       id_qtdt_uws= register_diag_field (mod_name,'qtdt_uws',axes(1:3),Time, &
+            'total water tendency from shallow plume', 'kg/kg/s', missing_value=mv)
+       id_qadet_uws = register_diag_field (mod_name,'qadet_uws',axes(1:3),Time, &
+            'qa detrainment from shallow plume', '1/s', missing_value=mv)
+       id_qldet_uws = register_diag_field (mod_name,'qldet_uws',axes(1:3),Time, &
+            'ql detrainment from shallow plume', 'kg/kg/s', missing_value=mv)
+       id_qidet_uws = register_diag_field (mod_name,'qidet_uws',axes(1:3),Time, &
+            'qi detrainment from shallow plume', 'kg/kg/s', missing_value=mv)
+       id_qndet_uws = register_diag_field (mod_name,'qndet_uws',axes(1:3),Time, &
+            'qn detrainment from shallow plume', '#/kg/s', missing_value=mv)
     end if
 
     if (do_imposing_rad_cooling) then
@@ -862,12 +879,20 @@ contains
             'penetrative depth for deep plume', 'm', interp_method = "conserve_order1" )
        if ( do_strat ) then
           id_qldt_uwd= register_diag_field (mod_name,'qldt_uwd',axes(1:3),Time, &
-               'Liquid water tendency from deep plume', 'kg/kg/s', missing_value=mv)
+               'liquid water tendency from deep plume', 'kg/kg/s', missing_value=mv)
           id_qidt_uwd= register_diag_field (mod_name,'qidt_uwd',axes(1:3),Time, &
-               'Ice water tendency from deep plume', 'kg/kg/s', missing_value=mv)
+               'ice water tendency from deep plume', 'kg/kg/s', missing_value=mv)
           id_qadt_uwd= register_diag_field (mod_name,'qadt_uwd',axes(1:3),Time, &
-               'CLD fraction tendency from deep plume', '1/s', missing_value=mv )
-       end if
+               'cloud fraction tendency from deep plume', '1/s', missing_value=mv )
+       	  id_qldet_uwd = register_diag_field (mod_name,'qldet_uwd',axes(1:3),Time, &
+               'ql detrainment from deep plume', 'kg/kg/s', missing_value=mv)
+       	  id_qidet_uwd = register_diag_field (mod_name,'qidet_uwd',axes(1:3),Time, &
+               'qi detrainment from deep plume', 'kg/kg/s', missing_value=mv)
+       	  id_qadet_uwd = register_diag_field (mod_name,'qadet_uwd',axes(1:3),Time, &
+               'qa detrainment from deep plume', '1/s', missing_value=mv)
+          id_qndet_uwd = register_diag_field (mod_name,'qndet_uwd',axes(1:3),Time, &
+               'qn detrainment from deep plume', '#/kg/s', missing_value=mv)
+      end if
     end if
 !========Option for deep convection=======================================
 
@@ -1084,6 +1109,7 @@ contains
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_s, cqa_s, cql_s, cqi_s, cqn_s, wuo_s, cmf_s
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_d, cqa_d, cql_d, cqi_d, cqn_d, wuo_d, cmf_d
+    real, dimension(size(tb,3)+1)                       :: cqa, cql, cqi, cqn
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
     real :: tnew, qtin, dqt, temp_1, temp_max, temp_min
@@ -1092,10 +1118,10 @@ contains
     real, dimension(size(tracers,1), size(tracers,2), size(tracers,3), size(tracers,4)) :: trtend_nc, rn_diag
 
 !========Option for deep convection=======================================
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: uten_d, vten_d, tten_d,         &
-         qvten_d, qlten_d, qiten_d, qaten_d, qnten_d, buo_d, pflx_d,  nqtflx_d, qtten_d, &
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: uten_d, vten_d, tten_d,    &
+         qvten_d, qlten_d, qiten_d, qaten_d, qnten_d, buo_d, qtten_d,               &
          fero_d, fdro_d, fdrso_d, tten_pevap_d, qvten_pevap_d
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx_d, qtflx_d
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx_d, qtflx_d, pflx_d, nqtflx_d
     real, dimension(size(tb,1),size(tb,2)) :: rain_d, snow_d, cwfn_d
     real, dimension(size(tb,1),size(tb,2)) :: dcapedm_d, dcwfndm_d, denth_d, dting_d, dqtmp_d, cbmf_d
     real, dimension(size(tracers,1),size(tracers,2),size(tracers,3),size(tracers,4)) :: trevp_d, trevp_s
@@ -1167,6 +1193,7 @@ contains
     cpn % rbuoy     = rbuoy
     cpn % rdrag     = rdrag  
     cpn % frac_drs  = frac_drs
+    cpn % frac_dr0  = frac_dr0
     cpn % bigc      = bigc    
     cpn % auto_th0  = auto_th0
     cpn % deltaqc0  = deltaqc0
@@ -1190,6 +1217,7 @@ contains
     cpn % pblfac    = pblfac
     cpn % mixing_assumption= mixing_assumption
     cpn % mp_choice = mp_choice
+    cpn % de_choice = de_choice
     cpn % Nl_land   = Nl_land
     cpn % Nl_ocean  = Nl_ocean
     cpn % qi_thresh = qi_thresh
@@ -1305,6 +1333,7 @@ contains
     tten=0.; qvten=0.; qlten=0.; qiten=0.; qaten=0.; qnten=0.;
     uten=0.; vten =0.; rain =0.; snow =0.; plcl =0.; plfc=0.; plnb=0.;  
     cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.; zlcl=0.; 
+    cqa  =0.; cql  =0.; cqi  =0.; cqn  =0.;
     cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
     hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.;
     tten_pevap=0.; qvten_pevap=0.;
@@ -1943,18 +1972,25 @@ contains
 
 
 	     if (do_new_convcld) then
+	        cqa(kmax+1)=0.; cql(kmax+1)=0.; cqi(kmax+1)=0.; cqn(kmax+1)=0.;
 	     	do k = 1,kmax
-	     	   cldqa(i,j,k) =cqa_s(i,j,k)+cqa_d(i,j,k)
-		   if (cldqa(i,j,k).ne.0.) then
-             	      cldql(i,j,k)=(cql_s(i,j,k)*cqa_s(i,j,k)+cql_d(i,j,k)*cqa_d(i,j,k))/cldqa(i,j,k)
-             	      cldqi(i,j,k)=(cqi_s(i,j,k)*cqa_s(i,j,k)+cqi_d(i,j,k)*cqa_d(i,j,k))/cldqa(i,j,k)
+	     	   cqa(k) =cqa_s(i,j,k)+cqa_d(i,j,k)
+		   if (cqa(k).ne.0.) then
+             	      cql(k)=(cql_s(i,j,k)*cqa_s(i,j,k)+cql_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+             	      cqi(k)=(cqi_s(i,j,k)*cqa_s(i,j,k)+cqi_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+             	      cqn(k)=(cqn_s(i,j,k)*cqa_s(i,j,k)+cqn_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
                    else
-             	      cldql(i,j,k)=0.
-             	      cldqi(i,j,k)=0.
+             	      cql(k)=0.
+             	      cqi(k)=0.
+             	      cqn(k)=0.
 		   end if
-	     	   cldqa (i,j,k) = min(cldqa(i,j,k),1.0)
-             	   !cldql (i,j,k) = cldql(i,j,k)*cldqa(i,j,k)
-             	   !cldqi (i,j,k) = cldqi(i,j,k)*cldqa(i,j,k)
+	     	   cqa(k) = min(cqa(k),1.0)
+            	end do
+	     	do k = 1,kmax
+		   cldqa(i,j,k)=(cqa(k)+cqa(k+1))*0.5
+		   cldql(i,j,k)=(cql(k)+cql(k+1))*0.5
+		   cldqi(i,j,k)=(cqi(k)+cqi(k+1))*0.5
+		   cldqn(i,j,k)=(cqn(k)+cqn(k+1))*0.5
             	end do
 	     else
 		do k = 1,kmax
@@ -2223,6 +2259,7 @@ contains
     used = send_data( id_cqa_uwc,    cldqa,        Time, is, js, 1)
     used = send_data( id_cql_uwc,    cldql,        Time, is, js, 1)
     used = send_data( id_cqi_uwc,    cldqi,        Time, is, js, 1)
+    used = send_data( id_cqn_uwc,    cldqn,        Time, is, js, 1)
     used = send_data( id_pcb_uwc,    pcb_c*0.01,   Time, is, js)
     used = send_data( id_pct_uwc,    pct_c*0.01,   Time, is, js)
 
@@ -2341,9 +2378,10 @@ contains
        used = send_data( id_qndt_uws,   qnten-qnten_d,  Time, is, js, 1)
        used = send_data( id_qtdt_uws,  (qvten+qlten+qiten-qvten_d-qlten_d-qiten_d),Time, is, js, 1)
 
-       used = send_data( id_qldet_uws,  qldet_s,Time, is, js, 1)
-       used = send_data( id_qidet_uws,  qidet_s,Time, is, js, 1)
-       used = send_data( id_qadet_uws,  qadet_s,Time, is, js, 1)
+       used = send_data( id_qldet_uws,  qldet_s, Time, is, js, 1)
+       used = send_data( id_qidet_uws,  qidet_s, Time, is, js, 1)
+       used = send_data( id_qadet_uws,  qadet_s, Time, is, js, 1)
+       used = send_data( id_qndet_uws,  qndet_s, Time, is, js, 1)
     end if
 !f1p
     if ( allocated(id_rn) ) then
@@ -2482,10 +2520,14 @@ contains
        used=send_data( id_pdep_uwd, pdep_d,                Time, is, js )
              
        if ( do_strat ) then
-          used=send_data( id_qldt_uwd, qlten_d,     Time, is, js, 1)
-          used=send_data( id_qidt_uwd, qiten_d,     Time, is, js, 1)
-          used=send_data( id_qadt_uwd, qaten_d,     Time, is, js, 1)
-          used=send_data( id_qtdt_uwd, (qvten_d+qlten_d+qiten_d),Time, is, js, 1)
+          used=send_data( id_qldt_uwd,  qlten_d, Time, is, js, 1)
+          used=send_data( id_qidt_uwd,  qiten_d, Time, is, js, 1)
+          used=send_data( id_qadt_uwd,  qaten_d, Time, is, js, 1)
+          used=send_data( id_qtdt_uwd,  (qvten_d+qlten_d+qiten_d),Time, is, js, 1)
+       	  used=send_data( id_qldet_uwd, qldet_d, Time, is, js, 1)
+       	  used=send_data( id_qidet_uwd, qidet_d, Time, is, js, 1)
+       	  used=send_data( id_qadet_uwd, qadet_d, Time, is, js, 1)
+       	  used=send_data( id_qndet_uwd, qndet_d, Time, is, js, 1)
        end if
        if ( allocated(id_trevp_uwd) ) then
          do n = 1,size(id_trevp_uwd)
@@ -2502,7 +2544,7 @@ contains
     end if
 
     if (zero_out_conv_area) then
-       cldql=0.; cldqi=0.; cldqa=0.;
+       cldql=0.; cldqi=0.; cldqa=0.; cldqn=0.;
     end if
 
     if (do_imposing_rad_cooling) then

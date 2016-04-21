@@ -37,8 +37,8 @@ MODULE CONV_PLUMES_k_MOD
 
   public cpnlist
   type cpnlist
-     integer :: mixing_assumption, mp_choice
-     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
+     integer :: mixing_assumption, mp_choice, de_choice
+     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
@@ -389,6 +389,7 @@ contains
        fdrsat  = 0.
     end if
     fdrsat  = max(fdrsat, cpn%frac_drs)
+    fdrsat  = fdrsat*cpn%frac_dr0
 
   end subroutine mixing_k
 
@@ -1784,7 +1785,7 @@ contains
     real    :: dpsum, qtdef, qtdefu, hldef, umftmp, qlutmp, qiutmp, qnutmp, fdrtmp
     real, dimension(size(cp%tr,2)) :: trdef
     real    :: dpevap, x1, x2, x3, xx1, xx2, xx3, q1, q2, emftmp
-    real    :: dqt, uutmp, vutmp
+    real    :: dqt, uutmp, vutmp, qctmp
 
     call ct_clear_k (ct);
 
@@ -2032,6 +2033,7 @@ contains
     ct%uten  = (1.-cpn%bigc) * ct%uten
     ct%vten  = (1.-cpn%bigc) * ct%vten
 
+  if (cpn%de_choice == 0) then
     do k = cp%let,ltop
        if (ct%qctten(k).gt.0 .and. ct%qvten(k).lt.0) then
           qlutmp     =(1.-sd%nu(k))*ct%qvten(k)
@@ -2042,6 +2044,22 @@ contains
           ct%tten (k)=ct%tten(k)+(Uw_p%HLv*qlutmp+Uw_p%HLs*qiutmp)/Uw_p%cp_air
        end if
     end do
+  else if (cpn%de_choice == 1) then
+    do k = cp%let,ltop
+       qlutmp=ct%qlten(k)
+       if (qlutmp.gt.0) then
+          ct%qvten(k)=ct%qvten(k)+qlutmp
+          ct%tten (k)=ct%tten(k)-Uw_p%HLv*qlutmp/Uw_p%cp_air
+          ct%qlten(k)=0.
+       end if
+       qiutmp=ct%qiten(k)
+       if (qiutmp.gt.0) then
+          ct%qvten(k)=ct%qvten(k)+qiutmp
+          ct%tten (k)=ct%tten(k)-Uw_p%HLs*qiutmp/Uw_p%cp_air
+          ct%qiten(k)=0.
+       end if
+    end do
+  end if
 
     ct%dtint=0.; ct%dqint=0.; ct%conint=0.; ct%freint=0.; !dpsum=0.;
 
@@ -2363,7 +2381,7 @@ contains
     dpevap      = min(dpevap, dpcu) / sd%delt
     ct%tevap(:) = (temp_new(:) - sd%t (:))/sd%delt
     ct%qevap(:) = (qvap_new(:) - sd%qv(:))/sd%delt
-    ct%pflx_e(:)= pflx_evap(:) / sd%delt
+    ct%pflx_e(1:sd%kmax)= pflx_evap(:) / sd%delt
     do n=1,size(cp%tru,2)
       trevap(n)     = min(trevap(n), dptr(n))  / sd%delt
       ct%trevp(:,n) = (trnew(:,n) - sd%tr(:,n))/ sd%delt
