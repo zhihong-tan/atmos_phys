@@ -1322,7 +1322,8 @@ logical, optional,            intent(in)    :: override_aerosols
                    frac_nh4_so4 = 2.*tracer(:,:,:,iso4)/(tracer(:,:,:,ino3)+2.*tracer(:,:,:,iso4))
                 elsewhere ( tracer(:,:,:,ino3) .gt. 0 ) 
                    frac_nh4_so4 = 0.
-                elsewhere ( tracer(:,:,:,iso4) .gt. 0 )
+!               elsewhere ( tracer(:,:,:,iso4) .gt. 0 )
+                elsewhere
                    frac_nh4_so4 = 1.
                 end where
                 frac_nh4_so4 = min(max(frac_nh4_so4,0.),1.)
