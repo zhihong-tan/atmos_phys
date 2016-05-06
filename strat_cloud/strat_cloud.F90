@@ -2371,6 +2371,7 @@ subroutine fill_nml_variable
       Nml%eros_scale_t = eros_scale_t
       Nml%eros_scale_c = eros_scale_c
       Nml%mc_thresh = mc_thresh
+      Nml%include_neg_mc = include_neg_mc
       Nml%diff_thresh = diff_thresh
       Nml%super_choice = super_choice
       Nml%tracer_advec = tracer_advec

@@ -103,6 +103,7 @@ contains
     dpn % rbuoy              = cpn % rbuoy
     dpn % rdrag              = cpn % rdrag  
     dpn % frac_drs           = cpn % frac_drs
+    dpn % frac_dr0           = cpn % frac_dr0
     dpn % bigc               = cpn % bigc    
     dpn % auto_th0           = cpn % auto_th0
     dpn % deltaqc0           = cpn % deltaqc0
@@ -125,6 +126,7 @@ contains
     dpn % do_minmse          = cpn % do_minmse
     dpn % mixing_assumption  = cpn % mixing_assumption
     dpn % mp_choice          = cpn % mp_choice
+    dpn % de_choice          = cpn % de_choice
     dpn % Nl_land            = cpn % Nl_land
     dpn % Nl_ocean           = cpn % Nl_ocean
     dpn % qi_thresh          = cpn % qi_thresh
@@ -144,6 +146,7 @@ contains
     dpn % use_new_let        = cpn % use_new_let
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
+    dpn % scaleh0            = cpn % scaleh0
 
   end subroutine cpn_copy
 
