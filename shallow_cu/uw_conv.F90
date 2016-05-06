@@ -124,6 +124,7 @@ MODULE UW_CONV_MOD
   real    :: plev_for   = 50000.
   real    :: duration = 10800
   real    :: tau_gust = 7200
+  real    :: geff   = 1.
   real    :: cgust0 = 1.
   real    :: cgust_max = 10.
   real    :: sigma0 = 0.5
@@ -139,12 +140,12 @@ MODULE UW_CONV_MOD
   logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, nbuo_max, do_peff_land, &
-       do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_convcld,           &
+       do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_convcld,  &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, do_minmse, aerol, tkemin, cldhgt_max_shallow,do_umf_pbl,&
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, do_debug, &
-       cush_ref, do_prog_gust, tau_gust, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
+       cush_ref, do_prog_gust, tau_gust, geff, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
        duration, do_stime, do_dtime, stime0, dtime0, do_subcloud_flx, src_choice, gqt_choice,        &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
 
@@ -168,6 +169,7 @@ MODULE UW_CONV_MOD
   logical :: do_emmax = .false.
   logical :: do_pnqv  = .false.
   logical :: do_tten_max = .false.
+  logical :: include_emf_s = .false.
   real    :: rad_crit = 14.0   ! critical droplet radius
   real    :: emfrac_max = 1.0
   integer :: mixing_assumption = 0
@@ -188,13 +190,13 @@ MODULE UW_CONV_MOD
   real    :: weffect    = 0.5
   real    :: peff_l     = 1.0
   real    :: peff_i     = 1.0
-!  real    :: t00        = 295
+  real    :: scaleh0    = 1000.
   real    :: tten_max   = 1000.
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, do_limit_wmax, &
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
-       mixing_assumption, mp_choice, de_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, hcevappbl, pblfac,&
-       do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max
+       mixing_assumption, mp_choice, de_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, &
+       hcevappbl, pblfac, include_emf_s, do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max, scaleh0
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -247,6 +249,7 @@ MODULE UW_CONV_MOD
   logical :: do_lod_cush  = .false.
   logical :: do_stochastic_rkm = .false.
   logical :: do_cgust_dp  = .false.
+  logical :: include_emf_d = .true.
   real    :: gustmax      = 3.  ! maximum gustiness wind (m/s)
   real    :: cpool_gust   = 10. ! constant for cool pool effect W/m2, default=10 W/m2
   logical :: do_forced_conv = .false.
@@ -255,7 +258,7 @@ MODULE UW_CONV_MOD
   real    :: cin_fact    = 1
   real    :: wcrit_min_gust = 0.2
   integer :: cgust_choice = 0
-  NAMELIST / deep_conv_nml / cbmf0, rkm_dp1, rkm_dp2, do_forced_conv, &
+  NAMELIST / deep_conv_nml / cbmf0, rkm_dp1, rkm_dp2, do_forced_conv, include_emf_d, &
                  crh_th_ocean, crh_th_land, do_forcedlifting_d, frac_limit_d, wcrit_min_gust, cin_fact,&
                  cape_th, cin_th, cwfn_th, tau_dp, rpen_d, mixing_assumption_d, norder, dcwfndm_th, &
                  do_ppen_d, do_pevap_d, cfrac_d, hcevap_d, pblfac_d, hcevappbl_d, lofactor_d, dcapedm_th, &
@@ -313,7 +316,7 @@ MODULE UW_CONV_MOD
        id_nbuo_uws, id_buo_uws, id_pdep_uws,                                       &
        id_hmint_uwc, id_hm_vadv0_uwc, id_hm_hadv0_uwc, id_hm_tot0_uwc, id_hm_total_uwc,&
        id_qtflx_up_uwc, id_qtflx_dn_uwc, id_omega_up_uwc, id_omega_dn_uwc, &
-       id_omgmc_up_uwc, id_rkm_uwc, id_stime_uwc, id_scale_uwc, id_scaletr_uwc
+       id_omgmc_up_uwc, id_rkm_uws, id_stime_uwc, id_scale_uwc, id_scaletr_uwc
 
 
   integer, allocatable :: id_tracerdt_uwc(:), id_tracerdt_uwc_col(:), &
@@ -746,8 +749,8 @@ contains
          'fraction of time convection occurs from uw_conv', 'none', missing_value=mv)
     id_feq_uws = register_diag_field (mod_name, 'feq_uws',   axes(1:2), Time,   &
          'fraction of time shallow plume occurs', 'none', missing_value=mv)
-    id_rkm_uwc = register_diag_field (mod_name, 'rkm_uwc', axes(1:2), Time, &
-            'rkm for shallow_conv', 'none' )
+    id_rkm_uws = register_diag_field (mod_name, 'rkm_uws', axes(1:2), Time, &
+            'lateral mixing rate parameter for shallow_plume', 'none' )
     id_stime_uwc = register_diag_field (mod_name, 'stime_uwc', axes(1:2), Time, &
             'stime for shallow_conv', 's' )
     id_scale_uwc = register_diag_field (mod_name, 'scale_uwc', axes(1:2), Time, &
@@ -868,7 +871,7 @@ contains
        id_ocode_uwd = register_diag_field (mod_name,'ocode_uwd', axes(1:2), Time, &
             'Out code from deep plume', 'none' )
        id_rkm_uwd = register_diag_field (mod_name,'rkm_uwd', axes(1:2), Time, &
-            'rkm for deep plume', 'none' )
+            'lateral mixing rate parameter for deep plume', 'none' )
        id_rand_uwd = register_diag_field (mod_name,'rand_uwd', axes(1:2), Time, &
          'rand_uwd', 'none' )
        id_dtime_uwd= register_diag_field (mod_name,'dtime_uwd',axes(1:2), Time, &
@@ -1130,7 +1133,7 @@ contains
     real, dimension(size(tracers,3),size(tracers,4)) :: trtend_t_nc, trwet_t_nc, rn
 !
     type(randomNumberStream), dimension(size(tb,1), size(tb,2)) :: streams
-    real, dimension(size(tb,1),size(tb,2)) :: rand
+    real, dimension(size(tb,1),size(tb,2)) :: rand_s, rand_d
     integer :: iseed
     real    :: seedwts(8) = (/3000.,1000.,300.,100.,30.,10.,3.,1./)
     real    :: tempseed(8)
@@ -1203,6 +1206,7 @@ contains
     cpn % do_pnqv   = do_pnqv
     cpn % do_tten_max   = do_tten_max
     cpn % tten_max  = tten_max
+    cpn % scaleh0   = scaleh0
     cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
@@ -1378,13 +1382,20 @@ contains
     if (do_stochastic_rkm) then
       do j = 1, jmax
         do i=1, imax
+          tempseed = tb(i,j,kmax)*seedwts
+	  thisseed = nint(tempseed)
+          streams(i,j) = initializeRandomNumberStream(ishftc(thisseed, seedperm))
+          call getRandomNumbers( streams(i,j), rand_s(i,j) )
+        enddo
+      enddo
+      do j = 1, jmax
+        do i=1, imax
           tempseed = tb(i,j,1)*seedwts
 	  thisseed = nint(tempseed)
           streams(i,j) = initializeRandomNumberStream(ishftc(thisseed, seedperm))
-          call getRandomNumbers( streams(i,j), rand(i,j) )
+          call getRandomNumbers( streams(i,j), rand_d(i,j) )
         enddo
       enddo
-      rand(:,:)=(rand(:,:)-0.5)*2.
     end if
 
     do j = 1, jmax
@@ -1583,6 +1594,10 @@ contains
 
           rkm_shallow=rkm_sh
 
+     	  if (do_stochastic_rkm) then
+             rkm_shallow = rkm_shallow * frac_rkm_pert * rand_s(i,j)
+ 	  endif   
+
 	  lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
       	  lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
       	  latx=lat(i,j)*180/3.1415926; lonx=lon(i,j)*180/3.1415926
@@ -1597,7 +1612,7 @@ contains
              cpn % auto_th0 = auto_th0 * (1. + landfact_m * sd%land)
              call qt_parcel_k (sd%qs(1), qstar(i,j), pblht(i,j), sd%tke, sd%land, 0.0, &
                   pblht0, 1.0, lofactor0, lochoice, qctsrc, lofactor)
-             rkm_shallow = rkm_sh   * lofactor
+             rkm_shallow = rkm_shallow  * lofactor
           end if
 	  if (do_peff_land) then
              lofactor= 1.- sd%land*(1.- lofactor0)
@@ -1739,8 +1754,13 @@ contains
              cldqi (i,j,nk) = cqi_s (i,j,nk)
              cldqn (i,j,nk) = cqn_s (i,j,nk)
  
-             cmf_s (i,j,nk) = cp%umf(k) !+ cp%emf(k)
-             cmf   (i,j,nk) = cp%umf(k) !+ cp%emf(k)
+	     if (include_emf_s) then
+             	cmf_s (i,j,nk) = cp%umf(k) + cp%emf(k)
+             	cmf   (i,j,nk) = cp%umf(k) + cp%emf(k)
+             else
+		cmf_s (i,j,nk) = cp%umf(k)
+             	cmf   (i,j,nk) = cp%umf(k)
+             end if
              buo_s (i,j,nk) = cp%buo(k)
              wuo_s (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
@@ -1822,8 +1842,7 @@ contains
  	        end if
 
 		if (do_stochastic_rkm) then
-                 !rkm_dp = dpc%rkm_dp1 + rand(i,j)*(dpc%rkm_dp2 -dpc%rkm_dp1)
-                 rkm_dp = rkm_dp * frac_rkm_pert * rand(i,j)
+                 rkm_dp = rkm_dp * frac_rkm_pert * rand_d(i,j)
                 end if
 
 	     end if
@@ -1908,7 +1927,12 @@ contains
                 cql_d   (i,j,nk) = cp1%qlu(k)
                 cqi_d   (i,j,nk) = cp1%qiu(k)
                 cqn_d   (i,j,nk) = cp1%qnu(k)
-                cmf_d   (i,j,nk) = cp1%umf(k) + cp1%emf(k) !emf to be commented off
+
+	     	if (include_emf_d) then
+                   cmf_d (i,j,nk) = cp1%umf(k) + cp1%emf(k)
+             	else
+		   cmf_d (i,j,nk) = cp1%umf(k)
+             	end if
                 buo_d   (i,j,nk) = cp1%buo(k)
                 wuo_d   (i,j,nk) = cp1%wu (k)
                 fero_d  (i,j,nk) = cp1%fer(k)
@@ -2016,7 +2040,7 @@ contains
 !========End of do_deep, Option for deep convection=======================================
 
 	  if (do_prog_gust) then
-	     gusto(i,j)=(gusto(i,j)+cpool(i,j)*delt)/(1+delt/tau_gust)
+	     gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
 
 !	     tmp  =sd%thvbot(1)*sd%exners(1)
 !	     tvs  =tmp*(1+0.608*sd%qv(1))
@@ -2356,7 +2380,7 @@ contains
     used = send_data( id_ocode_uwc,(ocode),            Time, is, js )
     used = send_data( id_feq_uwc,  (feq_c),            Time, is, js )
     used = send_data( id_feq_uws,  (feq_s),            Time, is, js )
-    used = send_data( id_rkm_uwc,  (rkm_s),            Time, is, js )
+    used = send_data( id_rkm_uws,  (rkm_s),            Time, is, js )
     used = send_data( id_stime_uwc,(stime),            Time, is, js )
     used = send_data( id_scale_uwc,(scale_uw),         Time, is, js )
     used = send_data( id_scaletr_uwc,(scale_tr),       Time, is, js )
@@ -2514,7 +2538,7 @@ contains
        used=send_data( id_cush_uwd, (cush_d),              Time, is, js )
        used=send_data( id_enth_uwd, (denth_d),             Time, is, js )
        used=send_data( id_rkm_uwd,  (rkm_d),               Time, is, js )
-       used=send_data( id_rand_uwd, (rand),                Time, is, js )
+       used=send_data( id_rand_uwd, (rand_d),              Time, is, js )
        used=send_data( id_dtime_uwd,(dtime),               Time, is, js )
        used=send_data( id_nbuo_uwd, nbuo_d,                Time, is, js )
        used=send_data( id_pdep_uwd, pdep_d,                Time, is, js )
