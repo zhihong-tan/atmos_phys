@@ -104,11 +104,6 @@ integer, dimension(6) :: solar_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /)
                                       ! onding to model initial time
                                       ! (yr, mo, dy, hr, mn, sc)
 
-real    :: solar_scale_factor = -1.0  ! factor to multiply incoming solar 
-                                      ! spectral irradiances. default is to
-                                      ! perform no computation. used to 
-                                      ! change "solar constant"
-  
 logical :: sw_cs = .false.            ! Turns of shortwave cloud radiative effects if .true.
 
 integer :: clear_min_sw = 0    !mtp: If sw_cs .EQ. .true., clear_min_lw specifies the minimum layer at which
@@ -133,7 +128,6 @@ namelist / shortwave_driver_nml /    do_cmip_diagnostics, &
                                      time_varying_solar_constant, &
                                      solar_dataset_entry, &
                                      solar_constant, &
-                                     solar_scale_factor, &
                                      sw_cs, &
                                      no_sw_cloud_heating_at_levs, &
                                      no_heating_min_sw, &
