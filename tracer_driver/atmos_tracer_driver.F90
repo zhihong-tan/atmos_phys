@@ -115,8 +115,9 @@ use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_tracer_indices, &
                                   adjust_positive_def
 use field_manager_mod,     only : MODEL_ATMOS
-use atmos_tracer_utilities_mod, only :                     &
-                                  dry_deposition,     &
+use atmos_tracer_utilities_mod, only :                      &
+                                  dry_deposition,           &
+                                  dry_deposition_init,      &
                                   dry_deposition_time_vary, &
                                   dry_deposition_endts,     &
                                   atmos_tracer_utilities_init, &
@@ -146,12 +147,18 @@ use atmos_ch3i_mod,        only : atmos_ch3i, &
                                   atmos_ch3i_end
 use atmos_sea_salt_mod,    only : atmos_sea_salt_sourcesink,     &
                                   atmos_sea_salt_init,    &
-                                  atmos_sea_salt_end
-use atmos_dust_mod,        only : atmos_dust_sourcesink,     &
-                                  atmos_dust_init,    &
+                                  atmos_sea_salt_end, &
+                                  is_seasalt_tracer,          &
+                                  do_seasalt
+use atmos_dust_mod,        only : atmos_dust_sourcesink,   &
+                                  atmos_dust_init,         &
                                   atmos_dust_time_vary,    &
                                   atmos_dust_endts,        &
-                                  atmos_dust_end
+                                  is_dust_tracer,          &
+                                  dust_has_surf_setl_flux, &
+                                  get_dust_surf_setl_flux, &
+                                  atmos_dust_end,          &
+                                  do_dust
 use atmos_sulfate_mod,     only : atmos_sulfate_init, &
                                   atmos_sulfate_time_vary, &
                                   atmos_sulfate_endts,     &
@@ -193,17 +200,19 @@ public  atmos_tracer_driver,            &
         atmos_tracer_driver_endts,       &
         atmos_tracer_driver_end,        &
         atmos_tracer_flux_init,         &
-        atmos_tracer_driver_gather_data
+        atmos_tracer_driver_gather_data, &
+        atmos_tracer_has_surf_setl_flux, &
+        get_atmos_tracer_surf_setl_flux
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
-logical :: prevent_flux_through_ice = .false.  
+logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! when true, tracers will only be fluxed 
                                ! through the non-ice-covered portions of
                                ! ocean grid boxes
                                              
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -232,7 +241,6 @@ integer :: co2_clock = 0
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
 logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
 
-integer, dimension(6) :: itime   ! JA's time (simpler than model time) 
 integer :: nsphum  ! Specific humidity parameter
 
 integer :: no3 = 0
@@ -245,16 +253,6 @@ integer :: nomphobic =0
 integer :: nomphilic =0
 integer :: nclay     =0
 integer :: nsilt     =0
-integer :: nseasalt1 =0
-integer :: nseasalt2 =0
-integer :: nseasalt3 =0
-integer :: nseasalt4 =0
-integer :: nseasalt5 =0
-integer :: ndust1    =0
-integer :: ndust2    =0
-integer :: ndust3    =0
-integer :: ndust4    =0
-integer :: ndust5    =0
 integer :: nsf6      =0
 integer :: nDMS      =0
 integer :: nSO2      =0
@@ -272,6 +270,9 @@ integer :: nSO2_cmip =0
 integer :: noh       =0
 integer :: ncodirect =0    
 integer :: ne90 =0          
+integer :: nsulfate  =0
+integer, dimension(5) :: tr_nbr_sulfate=0
+logical, dimension(5) :: do_tracer_sulfate=.false.
 
 real    :: ozon(11,48),cosp(14),cosphc(48),photo(132,14,11,48),   &
            solardata(1801),chlb(90,15),ozb(144,90,12),tropc(151,9),  &
@@ -297,11 +298,13 @@ integer, allocatable :: local_indices(:)
 ! This is the array of indices for the local model. 
 ! local_indices(1) = 5 implies that the first local tracer is the fifth
 ! tracer in the tracer_manager.
-  
+
+!<f1p
+integer, dimension(:), allocatable :: id_tracer_diag
+!>  
 integer :: id_landfr, id_seaicefr, id_snowfr, id_vegnfr, id_vegnlai
-integer :: id_om_ddep, id_bc_ddep, id_ssalt_ddep, id_dust_ddep, &
+integer :: id_om_ddep, id_bc_ddep, &
            id_nh4_ddep_cmip
-integer :: id_ssalt_emis, id_dust_emis
 integer :: id_nh4no3_col, id_nh4_col
 integer :: id_nh4no3_cmip, id_nh4_cmip
 integer :: id_nh4no3_cmipv2, id_nh4_cmipv2
@@ -349,7 +352,7 @@ contains
 !     Latitude of the centre of the model gridcells
 !   </IN>
 !   <IN NAME="land" TYPE="logical" DIM="(:,:)">
-!     Land/sea mask.
+!     fraction of land in grid cell.
 !   </IN>
 !   <IN NAME="phalf" TYPE="real" DIM="(:,:,:)">
 !     Pressures on the model half levels.
@@ -404,8 +407,8 @@ contains
 !   </IN>
  subroutine atmos_tracer_driver (is, ie, js, je, Time, lon, lat,  &
                            area, z_pbl, rough_mom, &
-                           frac_open_sea, &
-                           land, phalf, pfull,     &
+                           frac_open_sea,land,&
+                           phalf, pfull,           &
                            u, v, t, q, r,          &
                            rm, rdt, rdiag, dt,            &
                            u_star, b_star, q_star, &
@@ -447,8 +450,8 @@ real, intent(in), dimension(:,:,:),  optional :: mask
 !-----------------------------------------------------------------------
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnd, pwt, ozone, o3_prod, &
                                                   aerosol, rho
-real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndso2, rtndso4
-real, dimension(size(r,1),size(r,2),size(r,3)) :: rtnddms, rtndmsa, rtndh2o2
+real, dimension(size(r,1),size(r,2),size(r,3),5) :: rt_sulfate, tr_sulfate
+real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndso2, rtndso4,rtnddms
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndbcphob, rtndbcphil
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndomphob, rtndomphil
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rtndco2, rtndco2_emis
@@ -462,23 +465,23 @@ real :: rrsun
 real, dimension(size(r,1),size(r,2),size(r,3)) :: cldf ! cloud fraction
 real, dimension(size(r,1),size(r,2),size(r,3)) :: rh  ! relative humidity
 real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
-real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer
+real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
+real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
-real, dimension(size(r,1),size(r,2),5) ::  ssalt_settl, dust_settl              
-real, dimension(size(r,1),size(r,2),5) ::  ssalt_emis, dust_emis                
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl         
 real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 
-integer :: j, k, id, jd, kd, ntcheck
+integer :: isulf, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
 integer :: nql  ! index of cloud liquid specific humidity
 integer :: nqi  ! index of cloud ice water specific humidity
 integer :: nqa  ! index of cloud amount
 integer :: n, nnn
 logical :: used
+integer, dimension(6) :: itime   ! JA's time (simpler than model time) 
 
-
+character(len=32) :: tracer_units, tracer_name
 !-----------------------------------------------------------------------
 
 !   <ERROR MSG="tracer_driver_init must be called first." STATUS="FATAL">
@@ -497,10 +500,8 @@ logical :: used
       nql = get_tracer_index(MODEL_ATMOS,'liq_wat')
       nqq = get_tracer_index(MODEL_ATMOS,'sphum')
 
-      ssalt_settl = 0.
-      ssalt_emis = 0.
-      dust_settl = 0.
-      dust_emis = 0.
+      rt_sulfate(:,:,:,:)=0.0
+      tr_sulfate(:,:,:,:)=0.0
 !------------------------------------------------------------------------
 ! Make local copies of all the tracers
 !------------------------------------------------------------------------
@@ -563,6 +564,8 @@ logical :: used
       end if
 !--lwh
 
+      tracer_orig = tracer
+
 !------------------------------------------------------------------------
 ! Rediagnose meteoroligical variables. Note these parameterizations
 ! are not consistent with those used elsewhere in the GCM
@@ -588,6 +591,7 @@ logical :: used
         lwc(:,:,:) = 0.0
       endif
       if (nql > 0) lwc(:,:,:) = lwc(:,:,:) + max(tracer(:,:,:,nql),0.) 
+      fliq = max(tracer(:,:,:,nql),0.)/max(lwc(:,:,:),1.e-10)
 !-----------------------------------------------------------------------
 !--------- Cloud fraction -----------------------------
 !-----------------------------------------------------------------------
@@ -649,13 +653,16 @@ logical :: used
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
-                                 (land > 0.5), dsinku(:,:,n), &
+                                 land, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n))!, frland, frice, frsnow, &
 !                                 vegn_cover, vegn_lai, &
 !                                 b_star, z_pbl, rough_mom)
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
+            if ( step_update_tracer ) then 
+               tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
+            end if
          end if
       enddo
 
@@ -755,6 +762,9 @@ logical :: used
          call atmos_radon_sourcesink (lon,lat,land,pwt,tracer(:,:,:,nradon(nnn)),  &
                                  rtnd, Time, kbot)
        rdt(:,:,:,nradon(nnn))=rdt(:,:,:,nradon(nnn))+rtnd(:,:,:)
+       if ( step_update_tracer ) then
+          tracer(:,:,:,nradon(nnn)) = tracer(:,:,:,nradon(nnn)) + rtnd(:,:,:)*dt
+       end if
     endif
  
    end do
@@ -792,6 +802,10 @@ logical :: used
 ! chemistry to the radiation
 ! 
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,1:ntp) 
+      if (step_update_tracer) then
+         tracer(:,:,:,1:ntp) = tracer(:,:,:,1:ntp) + chem_tend(:,:,:,1:ntp)*dt
+      end if
+
       if(nt.gt.(ntp+1))  then
 ! Modify the diagnostic tracers.
         tracer(:,:,:,no3)      = ozone(:,:,:) 
@@ -909,85 +923,12 @@ logical :: used
 !------------------------------------------------------------------------
 ! Mineral Dust 
 !------------------------------------------------------------------------
-   call mpp_clock_begin (dust_clock)
-   if (ndust1 > 0) then
-         if (ndust1 > ntp ) call error_mesg ('Tracer_driver', &
-                   'Number of tracers .lt. number for dust', FATAL)
-         call atmos_dust_sourcesink (&
-              1, 0.1e-6, 1.0e-6, 0.75e-6, 2500., &
-              lon,lat,land,pwt, &
+  call mpp_clock_begin (dust_clock)
+   if (do_dust) then
+      call atmos_dust_sourcesink(lon,lat,land,pwt, dt, &
               z_half, pfull, w10m_land, t, rh, &
-              tracer(:,:,:,ndust1), rtnd, dust_emis(:,:,1), &
-              dust_settl(:,:,1), Time, Time_next, &
-              is,ie,js,je, kbot)
-      rdt(:,:,:,ndust1)=rdt(:,:,:,ndust1)+rtnd(:,:,:)
-   endif
-
-   if (ndust2 > 0) then
-         if (ndust2 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for dust', FATAL)
-         call atmos_dust_sourcesink (&
-              2, 1.e-6, 2.e-6, 1.5e-6, 2650., &
-              lon,lat,land,pwt, &
-              z_half, pfull, w10m_land, t, rh, &
-              tracer(:,:,:,ndust2), rtnd, dust_emis(:,:,2), &
-              dust_settl(:,:,2), Time, Time_next, &
-              is,ie,js,je, kbot)
-      rdt(:,:,:,ndust2)=rdt(:,:,:,ndust2)+rtnd(:,:,:)
-   endif
-
-   if (ndust3 > 0) then
-         if (ndust3 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for dust', FATAL)
-         call atmos_dust_sourcesink (&
-              3, 2.e-6, 3.e-6, 2.5e-6, 2650., &
-              lon,lat,land,pwt, &
-              z_half, pfull, w10m_land, t, rh, &
-              tracer(:,:,:,ndust3), rtnd, dust_emis(:,:,3), &
-              dust_settl(:,:,3), Time, Time_next, &
-              is,ie,js,je, kbot)
-      rdt(:,:,:,ndust3)=rdt(:,:,:,ndust3)+rtnd(:,:,:)
-   endif
-
-   if (ndust4 > 0) then
-         if (ndust4 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for dust', FATAL)
-         call atmos_dust_sourcesink (&
-              4, 3.e-6, 6.e-6, 4.5e-6, 2650., &
-              lon,lat,land,pwt, &
-              z_half, pfull, w10m_land, t, rh, &
-              tracer(:,:,:,ndust4), rtnd, dust_emis(:,:,4), &
-              dust_settl(:,:,4), Time, Time_next, &
-              is,ie,js,je, kbot)
-      rdt(:,:,:,ndust4)=rdt(:,:,:,ndust4)+rtnd(:,:,:)
-   endif
-
-   if (ndust5 > 0) then
-         if (ndust5 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for dust', FATAL)
-         call atmos_dust_sourcesink (&
-              5, 6.e-6, 10.e-6, 8.e-6, 2650., &
-              lon,lat,land,pwt, &
-              z_half, pfull, w10m_land, t, rh, &
-              tracer(:,:,:,ndust5), rtnd, dust_emis(:,:,5), &
-              dust_settl(:,:,5), Time, Time_next, &
-              is,ie,js,je, kbot)
-      rdt(:,:,:,ndust5)=rdt(:,:,:,ndust5)+rtnd(:,:,:)
-   endif
-   if (id_dust_ddep > 0) then
-     all_dust_settl(:,:) = dust_settl(:,:,1) +  &
-                dust_settl(:,:,2) +  dust_settl(:,:,3) +  &
-                dust_settl(:,:,4) +  dust_settl(:,:,5)
-     used  = send_data (id_dust_ddep,  all_dust_settl(:,:) + &
-        pwt(:,:,kd)*(dsinku(:,:,ndust1) + dsinku(:,:,ndust2) + &
-                     dsinku(:,:,ndust3) + dsinku(:,:,ndust4) + &
-                      dsinku(:,:,ndust5)), Time_next, is_in=is, js_in=js)
-   endif
-   if (id_dust_emis > 0) then
-     used  = send_data (id_dust_emis,  &
-                 dust_emis(:,:,1) + dust_emis(:,:,2) + &
-                 dust_emis(:,:,3) + dust_emis(:,:,4) + &
-                 dust_emis(:,:,5), Time_next, is_in=is, js_in=js)
+              tracer(:,:,:,:), dsinku(:,:,:), rdt(:,:,:,:), &
+              Time, is,ie,js,je, kbot)
    endif
    call mpp_clock_end (dust_clock)
 
@@ -995,92 +936,18 @@ logical :: used
 !sea salt
 !------------------------------------------------------------------------
    call mpp_clock_begin (seasalt_clock)
-   if (nseasalt1 > 0) then
-         if (nseasalt1 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for sea salt', FATAL)
-         rtnd(:,:,:) = 0.
-         call atmos_sea_salt_sourcesink ( &
-              1, 0.1e-6,0.5e-6,0.3e-6, 2200., &
-              lon,lat,ocn_flx_fraction,pwt, &
+   if (do_seasalt) then
+      call atmos_sea_salt_sourcesink(lon,lat,ocn_flx_fraction,pwt, &
               z_half, pfull, w10m_ocean, t, rh, &
-              tracer(:,:,:,nseasalt1), rtnd, dt, &
-               ssalt_settl(:,:,1), ssalt_emis(:,:,1), &
-              Time,Time_next,is,ie,js,je, kbot)
-      rdt(:,:,:,nseasalt1)=rdt(:,:,:,nseasalt1)+rtnd(:,:,:)
-   endif
-   if (nseasalt2 > 0) then
-         if (nseasalt2 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for sea salt', FATAL)
-         rtnd(:,:,:) = 0.
-         call atmos_sea_salt_sourcesink ( &
-              2, 0.5e-6,1.0e-6,0.75e-6, 2200., &
-              lon,lat,ocn_flx_fraction,pwt, &
-              z_half, pfull, w10m_ocean, t, rh, &
-              tracer(:,:,:,nseasalt2), rtnd, dt, &
-               ssalt_settl(:,:,2), ssalt_emis(:,:,2), &
-              Time,Time_next,is,ie,js,je, kbot)
-      rdt(:,:,:,nseasalt2)=rdt(:,:,:,nseasalt2)+rtnd(:,:,:)
-   endif
-   if (nseasalt3 > 0) then
-         if (nseasalt3 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for sea salt', FATAL)
-         rtnd(:,:,:) = 0.
-         call atmos_sea_salt_sourcesink ( &
-              3, 1.e-6,2.5e-6,1.75e-6, 2200., &
-              lon,lat,ocn_flx_fraction,pwt, &
-              z_half, pfull, w10m_ocean, t, rh, &
-              tracer(:,:,:,nseasalt3), rtnd, dt, &
-               ssalt_settl(:,:,3), ssalt_emis(:,:,3), &
-              Time,Time_next,is,ie,js,je, kbot)
-      rdt(:,:,:,nseasalt3)=rdt(:,:,:,nseasalt3)+rtnd(:,:,:)
-   endif
-   if (nseasalt4 > 0) then
-         if (nseasalt4 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for sea salt', FATAL)
-         rtnd(:,:,:) = 0.
-         call atmos_sea_salt_sourcesink ( &
-              4, 2.5e-6,5.0e-6,3.75e-6, 2200., &
-              lon,lat,ocn_flx_fraction,pwt, &
-              z_half, pfull, w10m_ocean, t, rh, &
-              tracer(:,:,:,nseasalt4), rtnd, dt, &
-               ssalt_settl(:,:,4), ssalt_emis(:,:,4), &
-              Time,Time_next,is,ie,js,je, kbot)
-      rdt(:,:,:,nseasalt4)=rdt(:,:,:,nseasalt4)+rtnd(:,:,:)
-   endif
-   if (nseasalt5 > 0) then
-         if (nseasalt5 > ntp ) call error_mesg ('Tracer_driver', &
-                            'Number of tracers .lt. number for sea salt', FATAL)
-         rtnd(:,:,:) = 0.
-         call atmos_sea_salt_sourcesink ( &
-              5, 5.e-6,10.0e-6,7.5e-6, 2200., &
-              lon,lat,ocn_flx_fraction,pwt, &
-              z_half, pfull, w10m_ocean, t, rh, &
-              tracer(:,:,:,nseasalt5), rtnd, dt, &
-               ssalt_settl(:,:,5), ssalt_emis(:,:,5), &
-              Time,Time_next,is,ie,js,je, kbot)
-      rdt(:,:,:,nseasalt5)=rdt(:,:,:,nseasalt5)+rtnd(:,:,:)
-   endif
-   if (id_ssalt_ddep > 0) then
-     all_salt_settl(:,:) = ssalt_settl(:,:,1) + ssalt_settl(:,:,2) +  &
-                         ssalt_settl(:,:,3) + ssalt_settl(:,:,4) + &
-                         ssalt_settl(:,:,5)
-     used  = send_data (id_ssalt_ddep, all_salt_settl(:,:) + &
-         pwt(:,:,kd)*(dsinku(:,:,nseasalt1) + dsinku(:,:,nseasalt2) + &
-                      dsinku(:,:,nseasalt3) + dsinku(:,:,nseasalt4) + &
-                      dsinku(:,:,nseasalt5)), Time_next, is_in=is, js_in=js)
-   endif
-   if (id_ssalt_emis > 0) then
-     used  = send_data (id_ssalt_emis,  &
-                    ssalt_emis(:,:,1) + ssalt_emis(:,:,2) + &
-                    ssalt_emis(:,:,3) + ssalt_emis(:,:,4) + &
-                    ssalt_emis(:,:,5), Time_next, is_in=is, js_in=js)
+              tracer(:,:,:,:), dsinku(:,:,:), rdt(:,:,:,:), dt, &
+              Time, is,ie,js,je, kbot)
    endif
    call mpp_clock_end (seasalt_clock)
 
 !------------------------------------------------------------------------
 ! Sulfur chemistry
 !------------------------------------------------------------------------
-   if (nDMS > 0 .and. nSO2 > 0 .and. nSO4 > 0 .and. nMSA > 0 ) then
+   if (nDMS > 0 .and. nSO2 > 0 .and. nSO4 > 0) then
       if (nDMS > ntp ) call error_mesg ('Tracer_driver', &
                      'Number of tracers .lt. number for DMS', FATAL)
       if (nSO2 > ntp ) call error_mesg ('Tracer_driver', &
@@ -1089,26 +956,29 @@ logical :: used
                      'Number of tracers .lt. number for SO4', FATAL)
 
       call mpp_clock_begin (sulfur_clock)
-      call atmos_DMS_emission(lon, lat, area, ocn_flx_fraction, t_surf_rad, &
+      if (nDMS > 0 ) then
+        call atmos_DMS_emission(lon, lat, area, ocn_flx_fraction, t_surf_rad, &
              w10m_ocean, pwt, rtnddms, Time, Time_next, is,ie,js,je,kbot)
-      rdt(:,:,kd,nDMS) = rdt(:,:,kd,nDMS) + rtnddms(:,:,kd)
+        rdt(:,:,kd,nDMS) = rdt(:,:,kd,nDMS) + rtnddms(:,:,kd)
+      endif
       call atmos_SOx_emission(lon, lat, area, land, &
-             z_pbl, z_half, phalf, pwt, rtndso2, rtndso4, &
-             Time, Time_next, is,ie,js,je,kbot)
-      rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
+               z_pbl, z_half, phalf, pwt, rtndso2, rtndso4, &
+               Time, Time_next, is,ie,js,je,kbot)
       rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
-      call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, &
+      rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
+      do isulf=1,nsulfate
+        if (do_tracer_sulfate(isulf)) tr_sulfate(:,:,:,isulf)= &
+              tracer(:,:,:,tr_nbr_sulfate(isulf))
+      enddo
+      call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, fliq, cldf, &
                 jday,hour,minute,second,lat,lon,    &
-                tracer(:,:,:,nSO2), tracer(:,:,:,nSO4), tracer(:,:,:,nDMS), &
-                tracer(:,:,:,nMSA), tracer(:,:,:,nH2O2), &
+                do_tracer_sulfate, tr_sulfate, rt_sulfate, &
                 tracer(:,:,:,noh), &
-                rtndso2, rtndso4, rtnddms, rtndmsa, rtndh2o2, &
                 Time,Time_next, is,ie,js,je,kbot)
-      rdt(:,:,:,nSO2) = rdt(:,:,:,nSO2) + rtndso2(:,:,:)
-      rdt(:,:,:,nSO4) = rdt(:,:,:,nSO4) + rtndso4(:,:,:)
-      rdt(:,:,:,nDMS) = rdt(:,:,:,nDMS) + rtnddms(:,:,:)
-      rdt(:,:,:,nMSA) = rdt(:,:,:,nMSA) + rtndmsa(:,:,:)
-      rdt(:,:,:,nH2O2) = rdt(:,:,:,nH2O2) + rtndh2o2(:,:,:)
+      do isulf=1,nsulfate
+        if (do_tracer_sulfate(isulf)) rdt(:,:,:,tr_nbr_sulfate(isulf))= &
+              rdt(:,:,:,tr_nbr_sulfate(isulf))+rt_sulfate(:,:,:,isulf)
+      enddo
       call mpp_clock_end (sulfur_clock)
    endif
 
@@ -1188,6 +1058,25 @@ logical :: used
       rdiag(:,:,:,ntp+1:nt) = tracer(:,:,:,ntp+1:nt)
    end if
 
+
+   !save tracer diagnostics
+   do n=1,nt
+      if ( id_tracer_diag(n) .gt. 0 ) then
+         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+              units = tracer_units)
+         if ( tracer_units .eq. "vmr" ) then
+            used  = send_data (id_tracer_diag(n),     &
+                 1.e3*rho(:,:,:)/WTMAIR * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 Time, is_in=is, js_in=js, ks_in=1)               
+         else
+            used  = send_data (id_tracer_diag(n),     &
+                 rho(:,:,:) * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 Time, is_in=is, js_in=js, ks_in=1)               
+         end if
+      end if
+   end do
+
+
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
 
@@ -1244,7 +1133,10 @@ type(time_type), intent(in)                                :: Time
 ! Local variables
 !-----------------------------------------------------------------------
       integer :: nbr_layers
-      integer :: unit, ierr, io, logunit
+      integer :: unit, ierr, io, logunit, n
+!<f1p
+      character(len=32) :: tracer_units, tracer_name
+!>
   
 !-----------------------------------------------------------------------
 !
@@ -1330,6 +1222,11 @@ type(time_type), intent(in)                                :: Time
 !------------------------------------------------------------------------
       allocate( drydep_data(nt) )
       do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf,drydep_data)
+      if ( .not. do_tropchem ) then
+          do n = 1,ntp
+             call dry_deposition_init(n,lonb,latb,drydep_data(n))
+          end do
+      end if
       tropchem_clock = mpp_clock_id( 'Tracer: Tropospheric chemistry', &
            grain=CLOCK_MODULE )
 
@@ -1347,21 +1244,37 @@ type(time_type), intent(in)                                :: Time
       nbcphilic = get_tracer_index(MODEL_ATMOS,'bcphil')
       nomphobic = get_tracer_index(MODEL_ATMOS,'omphob')
       nomphilic = get_tracer_index(MODEL_ATMOS,'omphil')
-      ndust1    = get_tracer_index(MODEL_ATMOS,'dust1')
-      ndust2    = get_tracer_index(MODEL_ATMOS,'dust2')
-      ndust3    = get_tracer_index(MODEL_ATMOS,'dust3')
-      ndust4    = get_tracer_index(MODEL_ATMOS,'dust4')
-      ndust5    = get_tracer_index(MODEL_ATMOS,'dust5')
-      nseasalt1 = get_tracer_index(MODEL_ATMOS,'ssalt1')
-      nseasalt2 = get_tracer_index(MODEL_ATMOS,'ssalt2')
-      nseasalt3 = get_tracer_index(MODEL_ATMOS,'ssalt3')
-      nseasalt4 = get_tracer_index(MODEL_ATMOS,'ssalt4')
-      nseasalt5 = get_tracer_index(MODEL_ATMOS,'ssalt5')
-      nDMS      = get_tracer_index(MODEL_ATMOS,'simpleDMS')
-      nSO2      = get_tracer_index(MODEL_ATMOS,'simpleSO2')
+      nsulfate=0
       nSO4      = get_tracer_index(MODEL_ATMOS,'simpleSO4')
-      nMSA      = get_tracer_index(MODEL_ATMOS,'simpleMSA')
+      if (nSO4 .gt. 0) then
+        nsulfate=nsulfate+1
+        tr_nbr_sulfate(1)=nSO4
+        do_tracer_sulfate(1)=.true.
+      endif
+      nSO2      = get_tracer_index(MODEL_ATMOS,'simpleSO2')
+      if (nSO2 .gt. 0) then
+        nsulfate=nsulfate+1
+        tr_nbr_sulfate(2)=nSO2
+        do_tracer_sulfate(2)=.true.
+      endif
+      nDMS      = get_tracer_index(MODEL_ATMOS,'simpleDMS')
+      if (nDMS .gt. 0) then
+        nsulfate=nsulfate+1
+        tr_nbr_sulfate(3)=nDMS
+        do_tracer_sulfate(3)=.true.
+      endif
       nH2O2     = get_tracer_index(MODEL_ATMOS,'simpleH2O2')
+      if (nH2O2 .gt. 0) then
+        nsulfate=nsulfate+1
+        tr_nbr_sulfate(4)=nH2O2
+        do_tracer_sulfate(4)=.true.
+      endif
+      nMSA      = get_tracer_index(MODEL_ATMOS,'simpleMSA')
+      if (nMSA .gt. 0) then
+        nsulfate=nsulfate+1
+        tr_nbr_sulfate(5)=nMSA
+        do_tracer_sulfate(5)=.true.
+      endif
       nnH4NO3   = get_tracer_index(MODEL_ATMOS,'nh4no3')
       nnH4      = get_tracer_index(MODEL_ATMOS,'nh4')
       nSOA      = get_tracer_index(MODEL_ATMOS,'SOA')
@@ -1387,22 +1300,19 @@ type(time_type), intent(in)                                :: Time
 
       endif
 !dust aerosols
-      if (ndust1 > 0.or.ndust2 > 0.or.ndust3 > 0 &
-        .or.ndust4 > 0.or.ndust5 > 0 ) then
-        call atmos_dust_init (lonb, latb, axes, Time, mask)
+      call atmos_dust_init (lonb, latb, axes, Time, mask)
+      if (do_dust) then
         dust_clock = mpp_clock_id( 'Tracer: Dust aerosol', &
                      grain=CLOCK_MODULE )
       endif
 !sea salt
-      if (nseasalt1 > 0.or.nseasalt2 > 0.or.nseasalt3 > 0 &
-        .or.nseasalt4 > 0.or.nseasalt5 > 0 ) then
-        call atmos_sea_salt_init (lonb, latb, axes, Time, mask)
+      call atmos_sea_salt_init (lonb, latb, axes, Time, mask)
+      if (do_seasalt) then
         seasalt_clock = mpp_clock_id( 'Tracer: Seasalt aerosol', &
-                        grain=CLOCK_MODULE )
+                     grain=CLOCK_MODULE )
       endif
 !sulfur cycle
-      if (nDMS > 0 .or. nSO2 > 0 .or. nSO4 > 0 &
-                   .or. nMSA > 0 .or. nH2O2 > 0 ) then
+      if (nsulfate > 0 ) then
         call atmos_sulfate_init ( lonb, latb, nbr_layers, axes, Time, mask)
         sulfur_clock = mpp_clock_id( 'Tracer: Sulfur', &
                        grain=CLOCK_MODULE )
@@ -1469,22 +1379,6 @@ type(time_type), intent(in)                                :: Time
           'bc_ddep', axes(1:2), Time, &
           'total dry deposition of bc', 'kg/m2/s')
 
-      id_ssalt_ddep = register_diag_field (mod_name, &
-          'ssalt_ddep', axes(1:2), Time, &
-          'dry deposition and settling of seasalt', 'kg/m2/s')
-
-      id_ssalt_emis = register_diag_field (mod_name, &
-          'ssalt_emis', axes(1:2), Time, &
-          'total emission of seasalt', 'kg/m2/s')
-
-      id_dust_ddep = register_diag_field (mod_name, &
-          'dust_ddep', axes(1:2), Time, &
-          'dry deposition and settling of dust', 'kg/m2/s')
-
-      id_dust_emis = register_diag_field (mod_name, &
-          'dust_emis', axes(1:2), Time, &
-          'total emission of dust', 'kg/m2/s')
-
       id_nh4_ddep_cmip = register_diag_field (mod_name, &
           'tot_nh4_ddep_cmip', axes(1:2), Time, &
           'total dry deposition of ammonium', 'kg/m2/s')
@@ -1528,6 +1422,26 @@ type(time_type), intent(in)                                :: Time
       id_dms_cmipv2  = register_diag_field (mod_name, &
           'dms_cmipv2', axes(1:3), Time, &
           'DMS', 'kg/m3')
+!<f1p: tracer diagnostics
+      allocate( id_tracer_diag(nt) )
+      id_tracer_diag(:) = 0
+
+      do n = 1,nt
+         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+              units = tracer_units)
+
+         if ( tracer_units .eq. "vmr" ) then
+            id_tracer_diag(n)  = register_diag_field (mod_name, &
+                 tracer_name, axes(1:3), Time, &
+                 tracer_name, 'mole/m3')
+         elseif ( tracer_units .eq. "mmr" ) then
+            id_tracer_diag(n)  = register_diag_field (mod_name, &
+                 tracer_name, axes(1:3), Time, &
+                 tracer_name, 'kg/m3')
+         end if
+
+      end do
+!>
 
       module_is_initialized = .TRUE.
 
@@ -1550,8 +1464,7 @@ type(time_type), intent(in) :: Time
         call atmos_ch3i_time_vary (Time)
       endif
 
-      if (ndust1 > 0.or.ndust2 > 0.or.ndust3 > 0 &
-          .or.ndust4 > 0.or.ndust5 > 0 ) then
+      if (do_dust) then
         call atmos_dust_time_vary (Time)
       endif
 
@@ -1591,8 +1504,7 @@ subroutine atmos_tracer_driver_endts
       if (nch3i > 0) then
         call atmos_ch3i_endts
       endif
-      if (ndust1 > 0.or.ndust2 > 0.or.ndust3 > 0 &
-          .or.ndust4 > 0.or.ndust5 > 0 ) then
+      if (do_dust) then
         call atmos_dust_endts
       endif
       if (nSOA > 0 ) then
@@ -1649,6 +1561,7 @@ integer :: logunit
       endif
       call atmos_age_tracer_end      
       call atmos_co2_end
+      deallocate( id_tracer_diag ) !f1p
 
       module_is_initialized = .FALSE.
 
@@ -1702,7 +1615,38 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 
  end subroutine atmos_tracer_driver_gather_data
 ! </SUBROUTINE>
+!######################################################################
+! given a tracer index, returns true if this tracer has non-zero 
+! sedimentation flux at the bottom of the atmosphere
+function atmos_tracer_has_surf_setl_flux(tr) result(ret)
+   logical :: ret
+   integer, intent(in) :: tr ! tracer index
 
+   ret=.FALSE.
+   if(is_dust_tracer(tr)) then
+       ret = dust_has_surf_setl_flux(tr)
+   ! later we can add:
+   ! elseif (is_seasalt_tracer(tr)) then 
+   !   ret = salt_has_surf_setl_flux(tr)
+   ! etc...
+   endif
+end function
+
+!######################################################################
+! given a tracer index, returns sedimentation flux at the bottom of 
+! the atmosphere for this tracer
+subroutine get_atmos_tracer_surf_setl_flux(tr, setl_flux, dsetl_dtr)
+  integer, intent(in)  :: tr         ! tracer index
+  real,    intent(out) :: setl_flux(:,:) ! sedimentation flux at the bottom of the atmosphere
+  real,    intent(out) :: dsetl_dtr(:,:) ! derivative of sedimentation flux w.r.t. 
+       ! the tracer concentration in the bottom layer
+
+  setl_flux(:,:) = 0.0 ; dsetl_dtr(:,:) = 0.0
+  if (is_dust_tracer(tr)) &
+     call get_dust_surf_setl_flux(tr, setl_flux, dsetl_dtr)
+  !if (is_seasalt_tracer(tr)) &
+  !   call get_seasalt_surf_setl_flux(tr, setl_flux, dsetl_dtr)
+end subroutine
 !######################################################################
 
 

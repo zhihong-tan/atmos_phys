@@ -1,32 +1,33 @@
-      module MO_EXP_PROD_LOSS_MOD
 
-implicit none
-character(len=128), parameter :: version     = '$Id$'
-character(len=128), parameter :: tagname     = '$Name$'
-logical                       :: module_is_initialized = .false.
+
+
+
+
+
+      module mo_exp_prod_loss_mod
 
       contains
 
       subroutine exp_prod_loss( prod, loss, y, rxt, het_rates )
 
       use CHEM_MODS_MOD, only : clscnt1, rxntot, hetcnt
-      use MO_GRID_MOD,   only : pcnstm1
+      use MO_GRID_MOD, only : pcnstm1
 
       implicit none
 
 !--------------------------------------------------------------------
-!     ... Dummy args                                                                      
+! ... Dummy args
 !--------------------------------------------------------------------
       real, dimension(:,:), intent(out) :: &
             prod, &
             loss
-      real, intent(in)    ::  y(:,:)
-      real, intent(in)    ::  rxt(:,:)
-      real, intent(in)    ::  het_rates(:,:)
+      real, intent(in) :: y(:,:)
+      real, intent(in) :: rxt(:,:)
+      real, intent(in) :: het_rates(:,:)
 
 
 !--------------------------------------------------------------------
-!       ... Loss and production for Explicit method
+! ... Loss and production for Explicit method
 !--------------------------------------------------------------------
 
       loss(:,1) = ((rxt(:,47) +rxt(:,48))* y(:,3) + rxt(:,4))* y(:,4)
@@ -51,33 +52,33 @@ logical                       :: module_is_initialized = .false.
 
       end subroutine exp_prod_loss
 
-      end module MO_EXP_PROD_LOSS_MOD
+      end module mo_exp_prod_loss_mod
 
-      module MO_IMP_PROD_LOSS_MOD
+      module mo_imp_prod_loss_mod
 
       contains
 
       subroutine imp_prod_loss( prod, loss, y, rxt, het_rates )
 
       use CHEM_MODS_MOD, only : clscnt4, rxntot, hetcnt, clsze
-      use MO_GRID_MOD,   only : pcnstm1
+      use MO_GRID_MOD, only : pcnstm1
 
       implicit none
 
 !--------------------------------------------------------------------
-!     ... Dummy args                                                                      
+! ... Dummy args
 !--------------------------------------------------------------------
       real, dimension(:), intent(out) :: &
             prod, &
             loss
-      real, intent(in)    ::  y(:)
-      real, intent(in)    ::  rxt(:)
-      real, intent(in)    ::  het_rates(:)
+      real, intent(in) :: y(:)
+      real, intent(in) :: rxt(:)
+      real, intent(in) :: het_rates(:)
 
 
 
 !--------------------------------------------------------------------
-!       ... Loss and production for Implicit method
+! ... Loss and production for Implicit method
 !--------------------------------------------------------------------
 
 
@@ -400,33 +401,33 @@ logical                       :: module_is_initialized = .false.
 
       end subroutine imp_prod_loss
 
-      end module MO_IMP_PROD_LOSS_MOD
+      end module mo_imp_prod_loss_mod
 
-      module MO_RODAS_PROD_LOSS_MOD
+      module mo_rodas_prod_loss_mod
 
       contains
 
       subroutine rodas_prod_loss( prod, loss, y, rxt, het_rates )
 
       use CHEM_MODS_MOD, only : clscnt5, rxntot, hetcnt, clsze
-      use MO_GRID_MOD,   only : pcnstm1
+      use MO_GRID_MOD, only : pcnstm1
 
       implicit none
 
 !--------------------------------------------------------------------
-!     ... Dummy args                                                                      
+! ... Dummy args
 !--------------------------------------------------------------------
       real, dimension(:), intent(out) :: &
             prod, &
             loss
-      real, intent(in)    ::  y(:)
-      real, intent(in)    ::  rxt(:)
-      real, intent(in)    ::  het_rates(:)
+      real, intent(in) :: y(:)
+      real, intent(in) :: rxt(:)
+      real, intent(in) :: het_rates(:)
 
 
       end subroutine rodas_prod_loss
 
-      end module MO_RODAS_PROD_LOSS_MOD
+      end module mo_rodas_prod_loss_mod
 
       module MO_INDPRD_MOD
 
@@ -440,22 +441,22 @@ logical                       :: module_is_initialized = .false.
       implicit none
 
 !--------------------------------------------------------------------
-!       ... Dummy arguments
+! ... Dummy arguments
 !--------------------------------------------------------------------
       integer, intent(in) :: class
-      real, intent(in)    :: y(:,:)
-      real, intent(in)    :: rxt(:,:)
-      real, intent(in)    :: extfrc(:,:)
+      real, intent(in) :: y(:,:)
+      real, intent(in) :: rxt(:,:)
+      real, intent(in) :: extfrc(:,:)
       real, intent(inout) :: prod(:,:)
 
 !--------------------------------------------------------------------
-!       ... "Independent" production for Explicit species
+! ... "Independent" production for Explicit species
 !--------------------------------------------------------------------
       if( class == 1 ) then
          prod(:,1) =rxt(:,214)*y(:,7)*y(:,5)
-                                                                                          
+
          prod(:,2) =.080*rxt(:,85)*y(:,20)*y(:,1)
-                                                                                          
+
          prod(:,3) = (.560*rxt(:,85)*y(:,20) +.300*rxt(:,99)*y(:,21) + &
                  .500*rxt(:,110)*y(:,30) +.050*rxt(:,119)*y(:,34) + &
                  .200*rxt(:,121)*y(:,35) +.323*rxt(:,138)*y(:,41))*y(:,1) &
@@ -468,15 +469,15 @@ logical                       :: module_is_initialized = .false.
                  rxt(:,159)*y(:,8))*y(:,55) + (rxt(:,33) +.400*rxt(:,177)*y(:,17)) &
                  *y(:,49) +rxt(:,16)*y(:,23) +.700*rxt(:,23)*y(:,34) +1.340*rxt(:,22) &
                  *y(:,35) +rxt(:,30)*y(:,57)
- 
+
          prod(:,4) = 0.
 
          prod(:,5) = 0.
- 
+
          prod(:,6) =rxt(:,13)*y(:,15)
- 
+
          prod(:,7) = 0.
- 
+
          prod(:,8) = (rxt(:,58)*y(:,9) +rxt(:,61)*y(:,10) +rxt(:,69)*y(:,14) + &
                  rxt(:,71)*y(:,15) +rxt(:,80)*y(:,19) +rxt(:,81)*y(:,18) + &
                  rxt(:,82)*y(:,17) +rxt(:,89)*y(:,24) +rxt(:,90)*y(:,23) + &
@@ -486,190 +487,190 @@ logical                       :: module_is_initialized = .false.
                  rxt(:,192)*y(:,69) +rxt(:,208)*y(:,77))*y(:,17) &
                   + (rxt(:,215)*y(:,70) +rxt(:,220)*y(:,76))*y(:,69) &
                   + (rxt(:,221)*y(:,70) +rxt(:,222)*y(:,76))*y(:,77)
-                                                                                          
+
 !--------------------------------------------------------------------
-!       ... "Independent" production for Implicit species
+! ... "Independent" production for Implicit species
 !--------------------------------------------------------------------
       else if( class == 4 ) then
          prod(:,67) = 0.
-                                                                                          
-         prod(:,15) =rxt(:,4)*y(:,4)
-                                                                                          
-         prod(:,68) =2.000*rxt(:,1)
-                                                                                          
-         prod(:,14) = 0.
-                                                                                          
-         prod(:,70) = 0.
-                                                                                          
-         prod(:,76) = 0.
-                                                                                          
-         prod(:,65) = 0.
-                                                                                          
-         prod(:,39) = 0.
-                                                                                          
-         prod(:,19) = 0.
-                                                                                          
-         prod(:,29) = 0.
-                                                                                          
-         prod(:,64) = 0.
-                                                                                          
-         prod(:,25) = 0.
-                                                                                          
-         prod(:,74) = 0.
-                                                                                          
-         prod(:,75) =rxt(:,14)*y(:,84)
-                                                                                          
-         prod(:,71) = 0.
-                                                                                          
-         prod(:,10) = 0.
-                                                                                          
-         prod(:,50) = 0.
-                                                                                          
-         prod(:,47) = 0.
-                                                                                          
-         prod(:,41) = 0.
-                                                                                          
-         prod(:,51) = 0.
-                                                                                          
-         prod(:,32) = 0.
-                                                                                          
-         prod(:,62) = 0.
-                                                                                          
-         prod(:,30) = 0.
-                                                                                          
-         prod(:,33) = 0.
-                                                                                          
-         prod(:,17) = 0.
-                                                                                          
-         prod(:,20) = 0.
-                                                                                          
-         prod(:,6) = 0.
-                                                                                          
-         prod(:,35) = 0.
-                                                                                          
-         prod(:,60) = 0.
-                                                                                          
-         prod(:,58) = 0.
-                                                                                          
-         prod(:,56) = 0.
-                                                                                          
-         prod(:,61) = 0.
-                                                                                          
-         prod(:,21) = 0.
-                                                                                          
-         prod(:,63) = 0.
-                                                                                          
-         prod(:,40) = 0.
-                                                                                          
-         prod(:,22) = 0.
-                                                                                          
-         prod(:,48) = 0.
-                                                                                          
-         prod(:,45) = 0.
-                                                                                          
-         prod(:,23) = 0.
-                                                                                          
-         prod(:,37) = 0.
-                                                                                          
-         prod(:,24) = 0.
-                                                                                          
-         prod(:,34) = 0.
-                                                                                          
-         prod(:,18) = 0.
-                                                                                          
-         prod(:,42) = 0.
-                                                                                          
-         prod(:,55) = 0.
-                                                                                          
-         prod(:,28) = 0.
-                                                                                          
-         prod(:,11) = 0.
-                                                                                          
-         prod(:,31) = 0.
-                                                                                          
-         prod(:,44) = 0.
-                                                                                          
-         prod(:,54) = 0.
-                                                                                          
-         prod(:,43) = 0.
-                                                                                          
-         prod(:,52) = 0.
-                                                                                          
-         prod(:,59) = 0.
-                                                                                          
-         prod(:,12) = 0.
-                                                                                          
-         prod(:,36) = 0.
-                                                                                          
-         prod(:,8) = 0.
-                                                                                          
-         prod(:,1) = 0.
-                                                                                          
-         prod(:,13) = 0.
-                                                                                          
-         prod(:,5) = 0.
-                                                                                          
-         prod(:,2) = 0.
-                                                                                          
-         prod(:,3) = 0.
-                                                                                          
-         prod(:,69) = 0.
-                                                                                          
-         prod(:,38) = 0.
-                                                                                          
-         prod(:,46) = 0.
-                                                                                          
-         prod(:,57) = 0.
-                                                                                          
-         prod(:,66) = 0.
-                                                                                          
-         prod(:,7) = 0.
-                                                                                          
-         prod(:,9) = 0.
-                                                                                          
-         prod(:,49) = 0.
-                                                                                          
-         prod(:,53) = 0.
-                                                                                          
-         prod(:,16) = 0.
-                                                                                          
-         prod(:,72) = 0.
-                                                                                          
-         prod(:,73) = 0.
-                                                                                          
-         prod(:,26) = 0.
-                                                                                          
-         prod(:,4) = 0.
-                                                                                          
-         prod(:,27) =rxt(:,14)*y(:,84)
-                                                                                          
-      end if                                                                              
-                                                                                          
-      end subroutine INDPRD                                                               
-                                                                                          
-      end module MO_INDPRD_MOD                                                                
 
-      module MO_IMP_LIN_MATRIX_MOD
+         prod(:,15) =rxt(:,4)*y(:,4)
+
+         prod(:,68) =2.000*rxt(:,1)
+
+         prod(:,14) = 0.
+
+         prod(:,70) = 0.
+
+         prod(:,76) = 0.
+
+         prod(:,65) = 0.
+
+         prod(:,39) = 0.
+
+         prod(:,19) = 0.
+
+         prod(:,29) = 0.
+
+         prod(:,64) = 0.
+
+         prod(:,25) = 0.
+
+         prod(:,74) = 0.
+
+         prod(:,75) =rxt(:,14)*y(:,84)
+
+         prod(:,71) = 0.
+
+         prod(:,10) = 0.
+
+         prod(:,50) = 0.
+
+         prod(:,47) = 0.
+
+         prod(:,41) = 0.
+
+         prod(:,51) = 0.
+
+         prod(:,32) = 0.
+
+         prod(:,62) = 0.
+
+         prod(:,30) = 0.
+
+         prod(:,33) = 0.
+
+         prod(:,17) = 0.
+
+         prod(:,20) = 0.
+
+         prod(:,6) = 0.
+
+         prod(:,35) = 0.
+
+         prod(:,60) = 0.
+
+         prod(:,58) = 0.
+
+         prod(:,56) = 0.
+
+         prod(:,61) = 0.
+
+         prod(:,21) = 0.
+
+         prod(:,63) = 0.
+
+         prod(:,40) = 0.
+
+         prod(:,22) = 0.
+
+         prod(:,48) = 0.
+
+         prod(:,45) = 0.
+
+         prod(:,23) = 0.
+
+         prod(:,37) = 0.
+
+         prod(:,24) = 0.
+
+         prod(:,34) = 0.
+
+         prod(:,18) = 0.
+
+         prod(:,42) = 0.
+
+         prod(:,55) = 0.
+
+         prod(:,28) = 0.
+
+         prod(:,11) = 0.
+
+         prod(:,31) = 0.
+
+         prod(:,44) = 0.
+
+         prod(:,54) = 0.
+
+         prod(:,43) = 0.
+
+         prod(:,52) = 0.
+
+         prod(:,59) = 0.
+
+         prod(:,12) = 0.
+
+         prod(:,36) = 0.
+
+         prod(:,8) = 0.
+
+         prod(:,1) = 0.
+
+         prod(:,13) = 0.
+
+         prod(:,5) = 0.
+
+         prod(:,2) = 0.
+
+         prod(:,3) = 0.
+
+         prod(:,69) = 0.
+
+         prod(:,38) = 0.
+
+         prod(:,46) = 0.
+
+         prod(:,57) = 0.
+
+         prod(:,66) = 0.
+
+         prod(:,7) = 0.
+
+         prod(:,9) = 0.
+
+         prod(:,49) = 0.
+
+         prod(:,53) = 0.
+
+         prod(:,16) = 0.
+
+         prod(:,72) = 0.
+
+         prod(:,73) = 0.
+
+         prod(:,26) = 0.
+
+         prod(:,4) = 0.
+
+         prod(:,27) =rxt(:,14)*y(:,84)
+
+      end if
+
+      end subroutine INDPRD
+
+      end module MO_INDPRD_MOD
+
+      module MO_imp_LIN_MATRIX_MOD
 
       contains
 
       subroutine imp_linmat01( mat, y, rxt, het_rates )
 !----------------------------------------------
-!       ... Linear Matrix entries for Implicit species
+! ... Linear Matrix entries for Implicit species
 !----------------------------------------------
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, hetcnt, imp_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, hetcnt, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(in)    ::  het_rates(hetcnt)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(in) :: het_rates(hetcnt)
+      real, intent(inout) :: mat(imp_nzcnt)
 
          mat(560) = -( rxt(2) + rxt(3) )
          mat(578) = rxt(42)
@@ -911,80 +912,80 @@ logical                       :: module_is_initialized = .false.
 
       subroutine imp_linmat( mat, y, rxt, het_rates )
 !----------------------------------------------
-!       ... Linear Matrix entries for Implicit species
+! ... Linear Matrix entries for Implicit species
 !----------------------------------------------
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, hetcnt, imp_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, hetcnt, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(in)    ::  het_rates(hetcnt)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(in) :: het_rates(hetcnt)
+      real, intent(inout) :: mat(imp_nzcnt)
 
       call imp_linmat01( mat, y, rxt, het_rates )
 
       end subroutine imp_linmat
 
-      end module MO_IMP_LIN_MATRIX_MOD
+      end module MO_imp_LIN_MATRIX_MOD
 
-      module MO_ROD_LIN_MATRIX_MOD
+      module MO_rod_LIN_MATRIX_MOD
 
       contains
 
       subroutine rod_linmat( mat, y, rxt, het_rates )
 !----------------------------------------------
-!       ... Linear Matrix entries for Implicit species
+! ... Linear Matrix entries for Implicit species
 !----------------------------------------------
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, hetcnt, rod_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, hetcnt, rod_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(in)    ::  het_rates(hetcnt)
-      real, intent(inout) ::  mat(rod_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(in) :: het_rates(hetcnt)
+      real, intent(inout) :: mat(rod_nzcnt)
 
 
       end subroutine rod_linmat
 
-      end module MO_ROD_LIN_MATRIX_MOD
+      end module MO_rod_LIN_MATRIX_MOD
 
-      module MO_IMP_NLN_MATRIX_MOD
+      module MO_imp_NLN_MATRIX_MOD
 
       contains
 
       subroutine imp_nlnmat01( mat, y, rxt )
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(inout) :: mat(imp_nzcnt)
 
 
 !----------------------------------------------
-!       ... Local variables
+! ... Local variables
 !----------------------------------------------
 
 !----------------------------------------------
-!       ... Complete matrix entries Implicit species
+! ... Complete matrix entries Implicit species
 !----------------------------------------------
 
          mat(560) = -(rxt(43)*y(2) + rxt(50)*y(6) + rxt(52)*y(7) + rxt(77)*y(17) &
@@ -1007,7 +1008,7 @@ logical                       :: module_is_initialized = .false.
          mat(351) = -rxt(186)*y(1)
          mat(695) = -rxt(200)*y(1)
 
-         mat(560) = mat(560) + .100*rxt(99)*y(21) + .200*rxt(119)*y(34)  &
+         mat(560) = mat(560) + .100*rxt(99)*y(21) + .200*rxt(119)*y(34) &
                       + .200*rxt(121)*y(35)
          mat(680) = mat(680) + .300*rxt(94)*y(25) + .300*rxt(131)*y(38)
          mat(249) = mat(249) + .100*rxt(99)*y(1)
@@ -1086,15 +1087,15 @@ logical                       :: module_is_initialized = .false.
 
          mat(569) = mat(569) + rxt(50)*y(6) + .400*rxt(161)*y(57)
          mat(587) = mat(587) + rxt(213)*y(6)
-         mat(645) = rxt(50)*y(1) + rxt(213)*y(2) + 2.000*rxt(59)*y(8) + rxt(65)*y(13)  &
+         mat(645) = rxt(50)*y(1) + rxt(213)*y(2) + 2.000*rxt(59)*y(8) + rxt(65)*y(13) &
                       + rxt(49)*y(18) + rxt(87)*y(22) + rxt(92)*y(25) + .920*rxt(113) &
-                      *y(33) + rxt(122)*y(36) + rxt(129)*y(38) + rxt(101)*y(39)  &
-                      + rxt(145)*y(43) + rxt(107)*y(51) + rxt(150)*y(54)  &
-                      + 1.206*rxt(155)*y(56) + rxt(164)*y(58) + rxt(188)*y(73)  &
+                      *y(33) + rxt(122)*y(36) + rxt(129)*y(38) + rxt(101)*y(39) &
+                      + rxt(145)*y(43) + rxt(107)*y(51) + rxt(150)*y(54) &
+                      + 1.206*rxt(155)*y(56) + rxt(164)*y(58) + rxt(188)*y(73) &
                       + rxt(204)*y(80)
          mat(516) = mat(516) + 2.000*rxt(59)*y(6) + 4.000*rxt(212)*y(8) + rxt(53) &
-                      *y(18) + rxt(114)*y(33) + rxt(124)*y(36) + rxt(130)*y(38)  &
-                      + rxt(139)*y(41) + 1.206*rxt(156)*y(56) + rxt(162)*y(57)  &
+                      *y(18) + rxt(114)*y(33) + rxt(124)*y(36) + rxt(130)*y(38) &
+                      + rxt(139)*y(41) + 1.206*rxt(156)*y(56) + rxt(162)*y(57) &
                       + rxt(165)*y(58) + rxt(181)*y(65)
          mat(62) = rxt(61)*y(17)
          mat(113) = rxt(216)*y(69)
@@ -1195,7 +1196,7 @@ logical                       :: module_is_initialized = .false.
          mat(90) = .700*rxt(69)*y(17)
          mat(790) = .700*rxt(69)*y(14)
          mat(287) = .310*rxt(85)*y(1)
-         mat(435) = mat(435) + rxt(92)*y(6) + .900*rxt(95)*y(13) + 4.000*rxt(98)*y(25)  &
+         mat(435) = mat(435) + rxt(92)*y(6) + .900*rxt(95)*y(13) + 4.000*rxt(98)*y(25) &
                       + rxt(117)*y(33) + rxt(127)*y(36) + rxt(133)*y(38) + rxt(168) &
                       *y(58)
          mat(396) = mat(396) + rxt(117)*y(25)
@@ -1215,15 +1216,15 @@ logical                       :: module_is_initialized = .false.
          mat(354) = -rxt(196)*y(15)
          mat(702) = -rxt(207)*y(15)
 
-         mat(567) = .540*rxt(85)*y(20) + .600*rxt(99)*y(21) + rxt(110)*y(30)  &
+         mat(567) = .540*rxt(85)*y(20) + .600*rxt(99)*y(21) + rxt(110)*y(30) &
                       + .800*rxt(119)*y(34) + .700*rxt(121)*y(35) + 1.326*rxt(138) &
                       *y(41)
-         mat(643) = rxt(65)*y(13) + rxt(87)*y(22) + .550*rxt(113)*y(33)  &
-                      + .250*rxt(122)*y(36) + rxt(129)*y(38) + rxt(150)*y(54)  &
+         mat(643) = rxt(65)*y(13) + rxt(87)*y(22) + .550*rxt(113)*y(33) &
+                      + .250*rxt(122)*y(36) + rxt(129)*y(38) + rxt(150)*y(54) &
                       + .072*rxt(155)*y(56)
          mat(514) = mat(514) + .600*rxt(114)*y(33) + .250*rxt(124)*y(36) + rxt(130) &
                       *y(38) + .072*rxt(156)*y(56)
-         mat(480) = rxt(65)*y(6) + (4.000*rxt(66)+2.000*rxt(67))*y(13) + rxt(95)*y(25)  &
+         mat(480) = rxt(65)*y(6) + (4.000*rxt(66)+2.000*rxt(67))*y(13) + rxt(95)*y(25) &
                       + 1.200*rxt(116)*y(33) + .880*rxt(126)*y(36) + 2.000*rxt(132) &
                       *y(38) + .700*rxt(103)*y(39) + rxt(147)*y(43) + .700*rxt(167) &
                       *y(58)
@@ -1235,17 +1236,17 @@ logical                       :: module_is_initialized = .false.
          mat(292) = .540*rxt(85)*y(1)
          mat(252) = .600*rxt(99)*y(1)
          mat(190) = rxt(87)*y(6)
-         mat(440) = rxt(95)*y(13) + .600*rxt(117)*y(33) + .250*rxt(127)*y(36)  &
+         mat(440) = rxt(95)*y(13) + .600*rxt(117)*y(33) + .250*rxt(127)*y(36) &
                       + rxt(133)*y(38)
          mat(117) = .500*rxt(96)*y(17)
          mat(133) = rxt(175)*y(17)
          mat(67) = rxt(110)*y(1) + .500*rxt(106)*y(17)
          mat(145) = .500*rxt(174)*y(17)
-         mat(401) = .550*rxt(113)*y(6) + .600*rxt(114)*y(8) + 1.200*rxt(116)*y(13)  &
+         mat(401) = .550*rxt(113)*y(6) + .600*rxt(114)*y(8) + 1.200*rxt(116)*y(13) &
                       + .600*rxt(117)*y(25)
          mat(367) = .800*rxt(119)*y(1)
          mat(345) = .700*rxt(121)*y(1)
-         mat(419) = .250*rxt(122)*y(6) + .250*rxt(124)*y(8) + .880*rxt(126)*y(13)  &
+         mat(419) = .250*rxt(122)*y(6) + .250*rxt(124)*y(8) + .880*rxt(126)*y(13) &
                       + .250*rxt(127)*y(25)
          mat(453) = rxt(129)*y(6) + rxt(130)*y(8) + 2.000*rxt(132)*y(13) + rxt(133) &
                       *y(25) + 4.000*rxt(134)*y(38)
@@ -1262,25 +1263,25 @@ logical                       :: module_is_initialized = .false.
 
       subroutine imp_nlnmat02( mat, y, rxt )
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(inout) :: mat(imp_nzcnt)
 
 
 !----------------------------------------------
-!       ... Local variables
+! ... Local variables
 !----------------------------------------------
 
 !----------------------------------------------
-!       ... Complete matrix entries Implicit species
+! ... Complete matrix entries Implicit species
 !----------------------------------------------
 
          mat(801) = -(rxt(57)*y(7) + rxt(58)*y(9) + rxt(61)*y(10) + rxt(69)*y(14) &
@@ -1339,7 +1340,7 @@ logical                       :: module_is_initialized = .false.
          mat(534) = -(rxt(195) + rxt(210)) * y(17)
          mat(321) = -rxt(208)*y(17)
 
-         mat(568) = mat(568) + rxt(78)*y(18) + .330*rxt(85)*y(20) + .270*rxt(99)*y(21)  &
+         mat(568) = mat(568) + rxt(78)*y(18) + .330*rxt(85)*y(20) + .270*rxt(99)*y(21) &
                       + .120*rxt(110)*y(30) + .080*rxt(119)*y(34) + .215*rxt(121) &
                       *y(35) + 1.156*rxt(138)*y(41) + rxt(184)*y(83)
          mat(586) = mat(586) + rxt(76)*y(18) + rxt(205)*y(76)
@@ -1390,21 +1391,21 @@ logical                       :: module_is_initialized = .false.
          mat(718) = -rxt(203)*y(18)
          mat(699) = -rxt(206)*y(18)
 
-         mat(564) = mat(564) + rxt(77)*y(17) + .190*rxt(85)*y(20) + .060*rxt(99)*y(21)  &
+         mat(564) = mat(564) + rxt(77)*y(17) + .190*rxt(85)*y(20) + .060*rxt(99)*y(21) &
                       + .120*rxt(110)*y(30) + .060*rxt(119)*y(34) + .275*rxt(121) &
                       *y(35) + .102*rxt(138)*y(41) + rxt(161)*y(57)
-         mat(640) = mat(640) + rxt(65)*y(13) + rxt(87)*y(22) + rxt(113)*y(33)  &
-                      + .470*rxt(122)*y(36) + rxt(101)*y(39) + rxt(145)*y(43)  &
+         mat(640) = mat(640) + rxt(65)*y(13) + rxt(87)*y(22) + rxt(113)*y(33) &
+                      + .470*rxt(122)*y(36) + rxt(101)*y(39) + rxt(145)*y(43) &
                       + .794*rxt(155)*y(56) + 1.500*rxt(164)*y(58)
-         mat(513) = mat(513) + rxt(70)*y(15) + rxt(114)*y(33) + .470*rxt(124)*y(36)  &
+         mat(513) = mat(513) + rxt(70)*y(15) + rxt(114)*y(33) + .470*rxt(124)*y(36) &
                       + .794*rxt(156)*y(56) + rxt(162)*y(57) + 1.500*rxt(165)*y(58)
-         mat(479) = mat(479) + rxt(65)*y(6) + 4.000*rxt(66)*y(13) + .900*rxt(95)*y(25)  &
-                      + rxt(116)*y(33) + .730*rxt(126)*y(36) + rxt(132)*y(38)  &
+         mat(479) = mat(479) + rxt(65)*y(6) + 4.000*rxt(66)*y(13) + .900*rxt(95)*y(25) &
+                      + rxt(116)*y(33) + .730*rxt(126)*y(36) + rxt(132)*y(38) &
                       + rxt(103)*y(39) + rxt(147)*y(43) + rxt(167)*y(58)
          mat(735) = rxt(70)*y(8) + rxt(71)*y(17) + rxt(196)*y(72) + rxt(207)*y(79)
-         mat(797) = mat(797) + rxt(77)*y(1) + rxt(71)*y(15) + rxt(80)*y(19)  &
+         mat(797) = mat(797) + rxt(77)*y(1) + rxt(71)*y(15) + rxt(80)*y(19) &
                       + .250*rxt(106)*y(30) + .500*rxt(174)*y(32) + .200*rxt(128) &
-                      *y(37) + rxt(172)*y(47) + rxt(173)*y(48) + .600*rxt(177)*y(49)  &
+                      *y(37) + rxt(172)*y(47) + rxt(173)*y(48) + .600*rxt(177)*y(49) &
                       + rxt(176)*y(50) + rxt(160)*y(57) + rxt(195)*y(73)
          mat(684) = mat(684) + .794*rxt(157)*y(56)
          mat(20) = rxt(80)*y(17)
@@ -1415,7 +1416,7 @@ logical                       :: module_is_initialized = .false.
                       *y(36) + 1.500*rxt(168)*y(58)
          mat(66) = .120*rxt(110)*y(1) + .250*rxt(106)*y(17)
          mat(144) = .500*rxt(174)*y(17)
-         mat(400) = mat(400) + rxt(113)*y(6) + rxt(114)*y(8) + rxt(116)*y(13)  &
+         mat(400) = mat(400) + rxt(113)*y(6) + rxt(114)*y(8) + rxt(116)*y(13) &
                       + rxt(117)*y(25)
          mat(366) = .060*rxt(119)*y(1)
          mat(344) = .275*rxt(121)*y(1)
@@ -1520,25 +1521,25 @@ logical                       :: module_is_initialized = .false.
 
       subroutine imp_nlnmat03( mat, y, rxt )
 
-      use MO_GRID_MOD,   only : pcnstm1
+      use MO_GRID_MOD, only : pcnstm1
       use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(inout) :: mat(imp_nzcnt)
 
 
 !----------------------------------------------
-!       ... Local variables
+! ... Local variables
 !----------------------------------------------
 
 !----------------------------------------------
-!       ... Complete matrix entries Implicit species
+! ... Complete matrix entries Implicit species
 !----------------------------------------------
 
          mat(114) = -(rxt(96)*y(17))
@@ -1598,7 +1599,7 @@ logical                       :: module_is_initialized = .false.
          mat(671) = .039*rxt(157)*y(56)
          mat(245) = .200*rxt(99)*y(1)
          mat(429) = .350*rxt(117)*y(33)
-         mat(390) = .320*rxt(113)*y(6) + .350*rxt(114)*y(8) + .260*rxt(116)*y(13)  &
+         mat(390) = .320*rxt(113)*y(6) + .350*rxt(114)*y(8) + .260*rxt(116)*y(13) &
                       + .350*rxt(117)*y(25)
          mat(260) = .442*rxt(138)*y(1)
          mat(201) = .039*rxt(155)*y(6) + .039*rxt(156)*y(8) + .039*rxt(157)*y(18)
@@ -1614,7 +1615,7 @@ logical                       :: module_is_initialized = .false.
          mat(669) = .167*rxt(157)*y(56)
          mat(244) = .400*rxt(99)*y(1)
          mat(428) = .250*rxt(117)*y(33)
-         mat(389) = .230*rxt(113)*y(6) + .250*rxt(114)*y(8) + .190*rxt(116)*y(13)  &
+         mat(389) = .230*rxt(113)*y(6) + .250*rxt(114)*y(8) + .190*rxt(116)*y(13) &
                       + .250*rxt(117)*y(25)
          mat(259) = 1.122*rxt(138)*y(1)
          mat(200) = .167*rxt(155)*y(6) + .167*rxt(156)*y(8) + .167*rxt(157)*y(18)
@@ -1707,7 +1708,7 @@ logical                       :: module_is_initialized = .false.
          mat(136) = -(rxt(172)*y(17))
          mat(764) = -rxt(172)*y(47)
 
-         mat(459) = 2.000*rxt(67)*y(13) + .250*rxt(116)*y(33) + .250*rxt(126)*y(36)  &
+         mat(459) = 2.000*rxt(67)*y(13) + .250*rxt(116)*y(33) + .250*rxt(126)*y(36) &
                       + .300*rxt(103)*y(39) + .300*rxt(167)*y(58)
          mat(386) = .250*rxt(116)*y(13)
          mat(405) = .250*rxt(126)*y(13)
@@ -1727,9 +1728,9 @@ logical                       :: module_is_initialized = .false.
          mat(489) = .530*rxt(124)*y(36) + .250*rxt(165)*y(58)
          mat(462) = .260*rxt(126)*y(36) + .100*rxt(167)*y(58)
          mat(425) = .530*rxt(127)*y(36) + .250*rxt(168)*y(58)
-         mat(406) = .530*rxt(122)*y(6) + .530*rxt(124)*y(8) + .260*rxt(126)*y(13)  &
+         mat(406) = .530*rxt(122)*y(6) + .530*rxt(124)*y(8) + .260*rxt(126)*y(13) &
                       + .530*rxt(127)*y(25)
-         mat(372) = .250*rxt(164)*y(6) + .250*rxt(165)*y(8) + .100*rxt(167)*y(13)  &
+         mat(372) = .250*rxt(164)*y(6) + .250*rxt(165)*y(8) + .100*rxt(167)*y(13) &
                       + .250*rxt(168)*y(25)
 
          mat(330) = -(rxt(176)*y(17))
@@ -1742,9 +1743,9 @@ logical                       :: module_is_initialized = .false.
          mat(125) = .500*rxt(89)*y(17)
          mat(427) = .220*rxt(127)*y(36) + .250*rxt(168)*y(58)
          mat(141) = .500*rxt(174)*y(17)
-         mat(409) = .220*rxt(122)*y(6) + .220*rxt(124)*y(8) + .230*rxt(126)*y(13)  &
+         mat(409) = .220*rxt(122)*y(6) + .220*rxt(124)*y(8) + .230*rxt(126)*y(13) &
                       + .220*rxt(127)*y(25)
-         mat(374) = .250*rxt(164)*y(6) + .250*rxt(165)*y(8) + .100*rxt(167)*y(13)  &
+         mat(374) = .250*rxt(164)*y(6) + .250*rxt(165)*y(8) + .100*rxt(167)*y(13) &
                       + .250*rxt(168)*y(25)
 
          mat(102) = -(rxt(107)*y(6))
@@ -1766,7 +1767,7 @@ logical                       :: module_is_initialized = .false.
          mat(458) = .300*rxt(116)*y(33)
          mat(761) = mat(761) + .400*rxt(160)*y(57)
          mat(423) = .400*rxt(117)*y(33)
-         mat(385) = .370*rxt(113)*y(6) + .400*rxt(114)*y(8) + .300*rxt(116)*y(13)  &
+         mat(385) = .370*rxt(113)*y(6) + .400*rxt(114)*y(8) + .300*rxt(116)*y(13) &
                       + .400*rxt(117)*y(25)
          mat(303) = .400*rxt(161)*y(1) + .400*rxt(160)*y(17)
 
@@ -1791,10 +1792,10 @@ logical                       :: module_is_initialized = .false.
          mat(52) = rxt(153)*y(17)
          mat(357) = .950*rxt(119)*y(1)
          mat(337) = .800*rxt(121)*y(1)
-         mat(408) = .250*rxt(122)*y(6) + .250*rxt(124)*y(8) + .240*rxt(126)*y(13)  &
+         mat(408) = .250*rxt(122)*y(6) + .250*rxt(124)*y(8) + .240*rxt(126)*y(13) &
                       + .250*rxt(127)*y(25)
          mat(329) = rxt(176)*y(17)
-         mat(373) = .250*rxt(164)*y(6) + .250*rxt(165)*y(8) + .100*rxt(167)*y(13)  &
+         mat(373) = .250*rxt(164)*y(6) + .250*rxt(165)*y(8) + .100*rxt(167)*y(13) &
                       + .250*rxt(168)*y(25)
 
 
@@ -1802,25 +1803,25 @@ logical                       :: module_is_initialized = .false.
 
       subroutine imp_nlnmat04( mat, y, rxt )
 
-      use MO_GRID_MOD,   only : pcnstm1
+      use MO_GRID_MOD, only : pcnstm1
       use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(inout) :: mat(imp_nzcnt)
 
 
 !----------------------------------------------
-!       ... Local variables
+! ... Local variables
 !----------------------------------------------
 
 !----------------------------------------------
-!       ... Complete matrix entries Implicit species
+! ... Complete matrix entries Implicit species
 !----------------------------------------------
 
          mat(198) = -(rxt(155)*y(6) + rxt(156)*y(8) + rxt(157)*y(18))
@@ -2017,83 +2018,83 @@ logical                       :: module_is_initialized = .false.
 
       subroutine imp_nlnmat_finit( mat, lmat, dti )
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  dti
-      real, intent(in)    ::  lmat(imp_nzcnt)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: dti
+      real, intent(in) :: lmat(imp_nzcnt)
+      real, intent(inout) :: mat(imp_nzcnt)
 
 
 !----------------------------------------------
-!       ... Local variables
+! ... Local variables
 !----------------------------------------------
 
 !----------------------------------------------
-!       ... Complete matrix entries Implicit species
+! ... Complete matrix entries Implicit species
 !----------------------------------------------
 
-         mat(   4) = lmat(   4)
-         mat(   5) = lmat(   5)
-         mat(   6) = mat(   6) + lmat(   6)
-         mat(  11) = lmat(  11)
-         mat(  12) = lmat(  12)
-         mat(  13) = lmat(  13)
-         mat(  17) = lmat(  17)
-         mat(  18) = lmat(  18)
-         mat(  19) = mat(  19) + lmat(  19)
-         mat(  21) = mat(  21) + lmat(  21)
-         mat(  22) = lmat(  22)
-         mat(  23) = lmat(  23)
-         mat(  24) = lmat(  24)
-         mat(  25) = lmat(  25)
-         mat(  26) = mat(  26) + lmat(  26)
-         mat(  28) = mat(  28) + lmat(  28)
-         mat(  34) = mat(  34) + lmat(  34)
-         mat(  35) = mat(  35) + lmat(  35)
-         mat(  36) = mat(  36) + lmat(  36)
-         mat(  38) = lmat(  38)
-         mat(  39) = lmat(  39)
-         mat(  40) = lmat(  40)
-         mat(  41) = lmat(  41)
-         mat(  42) = lmat(  42)
-         mat(  43) = lmat(  43)
-         mat(  44) = lmat(  44)
-         mat(  45) = lmat(  45)
-         mat(  46) = lmat(  46)
-         mat(  47) = lmat(  47)
-         mat(  48) = lmat(  48)
-         mat(  49) = lmat(  49)
-         mat(  50) = lmat(  50)
-         mat(  59) = mat(  59) + lmat(  59)
-         mat(  60) = lmat(  60)
-         mat(  62) = mat(  62) + lmat(  62)
-         mat(  74) = mat(  74) + lmat(  74)
-         mat(  76) = mat(  76) + lmat(  76)
-         mat(  77) = lmat(  77)
-         mat(  78) = mat(  78) + lmat(  78)
-         mat(  79) = mat(  79) + lmat(  79)
-         mat(  80) = lmat(  80)
-         mat(  82) = lmat(  82)
-         mat(  83) = mat(  83) + lmat(  83)
-         mat(  84) = mat(  84) + lmat(  84)
-         mat(  86) = lmat(  86)
-         mat(  87) = lmat(  87)
-         mat(  88) = mat(  88) + lmat(  88)
-         mat(  89) = mat(  89) + lmat(  89)
-         mat(  91) = lmat(  91)
-         mat(  92) = mat(  92) + lmat(  92)
-         mat(  93) = mat(  93) + lmat(  93)
-         mat(  94) = lmat(  94)
-         mat(  95) = lmat(  95)
-         mat(  96) = lmat(  96)
-         mat(  97) = mat(  97) + lmat(  97)
-         mat(  99) = lmat(  99)
+         mat( 4) = lmat( 4)
+         mat( 5) = lmat( 5)
+         mat( 6) = mat( 6) + lmat( 6)
+         mat( 11) = lmat( 11)
+         mat( 12) = lmat( 12)
+         mat( 13) = lmat( 13)
+         mat( 17) = lmat( 17)
+         mat( 18) = lmat( 18)
+         mat( 19) = mat( 19) + lmat( 19)
+         mat( 21) = mat( 21) + lmat( 21)
+         mat( 22) = lmat( 22)
+         mat( 23) = lmat( 23)
+         mat( 24) = lmat( 24)
+         mat( 25) = lmat( 25)
+         mat( 26) = mat( 26) + lmat( 26)
+         mat( 28) = mat( 28) + lmat( 28)
+         mat( 34) = mat( 34) + lmat( 34)
+         mat( 35) = mat( 35) + lmat( 35)
+         mat( 36) = mat( 36) + lmat( 36)
+         mat( 38) = lmat( 38)
+         mat( 39) = lmat( 39)
+         mat( 40) = lmat( 40)
+         mat( 41) = lmat( 41)
+         mat( 42) = lmat( 42)
+         mat( 43) = lmat( 43)
+         mat( 44) = lmat( 44)
+         mat( 45) = lmat( 45)
+         mat( 46) = lmat( 46)
+         mat( 47) = lmat( 47)
+         mat( 48) = lmat( 48)
+         mat( 49) = lmat( 49)
+         mat( 50) = lmat( 50)
+         mat( 59) = mat( 59) + lmat( 59)
+         mat( 60) = lmat( 60)
+         mat( 62) = mat( 62) + lmat( 62)
+         mat( 74) = mat( 74) + lmat( 74)
+         mat( 76) = mat( 76) + lmat( 76)
+         mat( 77) = lmat( 77)
+         mat( 78) = mat( 78) + lmat( 78)
+         mat( 79) = mat( 79) + lmat( 79)
+         mat( 80) = lmat( 80)
+         mat( 82) = lmat( 82)
+         mat( 83) = mat( 83) + lmat( 83)
+         mat( 84) = mat( 84) + lmat( 84)
+         mat( 86) = lmat( 86)
+         mat( 87) = lmat( 87)
+         mat( 88) = mat( 88) + lmat( 88)
+         mat( 89) = mat( 89) + lmat( 89)
+         mat( 91) = lmat( 91)
+         mat( 92) = mat( 92) + lmat( 92)
+         mat( 93) = mat( 93) + lmat( 93)
+         mat( 94) = lmat( 94)
+         mat( 95) = lmat( 95)
+         mat( 96) = lmat( 96)
+         mat( 97) = mat( 97) + lmat( 97)
+         mat( 99) = lmat( 99)
          mat( 108) = mat( 108) + lmat( 108)
          mat( 109) = mat( 109) + lmat( 109)
          mat( 111) = lmat( 111)
@@ -2195,9 +2196,9 @@ logical                       :: module_is_initialized = .false.
          mat( 821) = mat( 821) + lmat( 821)
          mat( 823) = mat( 823) + lmat( 823)
          mat( 829) = mat( 829) + lmat( 829)
-         mat(   1) = 0.
-         mat(   2) = 0.
-         mat(   3) = 0.
+         mat( 1) = 0.
+         mat( 2) = 0.
+         mat( 3) = 0.
          mat( 103) = 0.
          mat( 105) = 0.
          mat( 106) = 0.
@@ -2331,33 +2332,33 @@ logical                       :: module_is_initialized = .false.
          mat( 822) = 0.
          mat( 825) = 0.
          mat( 827) = 0.
-         mat(   1) = -dti
-         mat(   2) = -dti
-         mat(   3) = -dti
-         mat(   4) = mat(   4) - dti
-         mat(   6) = mat(   6) - dti
-         mat(   8) = mat(   8) - dti
-         mat(  11) = mat(  11) - dti
-         mat(  15) = mat(  15) - dti
-         mat(  17) = mat(  17) - dti
-         mat(  19) = mat(  19) - dti
-         mat(  22) = mat(  22) - dti
-         mat(  26) = mat(  26) - dti
-         mat(  30) = mat(  30) - dti
-         mat(  34) = mat(  34) - dti
-         mat(  38) = mat(  38) - dti
-         mat(  46) = mat(  46) - dti
-         mat(  51) = mat(  51) - dti
-         mat(  55) = mat(  55) - dti
-         mat(  59) = mat(  59) - dti
-         mat(  63) = mat(  63) - dti
-         mat(  69) = mat(  69) - dti
-         mat(  74) = mat(  74) - dti
-         mat(  79) = mat(  79) - dti
-         mat(  84) = mat(  84) - dti
-         mat(  89) = mat(  89) - dti
-         mat(  94) = mat(  94) - dti
-         mat(  97) = mat(  97) - dti
+         mat( 1) = -dti
+         mat( 2) = -dti
+         mat( 3) = -dti
+         mat( 4) = mat( 4) - dti
+         mat( 6) = mat( 6) - dti
+         mat( 8) = mat( 8) - dti
+         mat( 11) = mat( 11) - dti
+         mat( 15) = mat( 15) - dti
+         mat( 17) = mat( 17) - dti
+         mat( 19) = mat( 19) - dti
+         mat( 22) = mat( 22) - dti
+         mat( 26) = mat( 26) - dti
+         mat( 30) = mat( 30) - dti
+         mat( 34) = mat( 34) - dti
+         mat( 38) = mat( 38) - dti
+         mat( 46) = mat( 46) - dti
+         mat( 51) = mat( 51) - dti
+         mat( 55) = mat( 55) - dti
+         mat( 59) = mat( 59) - dti
+         mat( 63) = mat( 63) - dti
+         mat( 69) = mat( 69) - dti
+         mat( 74) = mat( 74) - dti
+         mat( 79) = mat( 79) - dti
+         mat( 84) = mat( 84) - dti
+         mat( 89) = mat( 89) - dti
+         mat( 94) = mat( 94) - dti
+         mat( 97) = mat( 97) - dti
          mat( 102) = mat( 102) - dti
          mat( 108) = mat( 108) - dti
          mat( 114) = mat( 114) - dti
@@ -2412,19 +2413,19 @@ logical                       :: module_is_initialized = .false.
 
       subroutine imp_nlnmat( mat, y, rxt, lmat, dti )
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, imp_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  dti
-      real, intent(in)    ::  lmat(imp_nzcnt)
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(inout) ::  mat(imp_nzcnt)
+      real, intent(in) :: dti
+      real, intent(in) :: lmat(imp_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(inout) :: mat(imp_nzcnt)
 
       call imp_nlnmat01( mat, y, rxt )
       call imp_nlnmat02( mat, y, rxt )
@@ -2434,84 +2435,84 @@ logical                       :: module_is_initialized = .false.
 
       end subroutine imp_nlnmat
 
-      end module MO_IMP_NLN_MATRIX_MOD
+      end module MO_imp_NLN_MATRIX_MOD
 
-      module MO_ROD_NLN_MATRIX_MOD
+      module MO_rod_NLN_MATRIX_MOD
 
       contains
 
       subroutine rod_nlnmat( mat, y, rxt, lmat, dti )
 
-      use MO_GRID_MOD,   only : pcnstm1
-      use CHEM_MODS_MOD, only : rxntot, rod_nzcnt, clsze
+      use MO_GRID_MOD, only : pcnstm1
+      use CHEM_MODS_MOD, only : rxntot, rod_nzcnt
 
       implicit none
 
 !----------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !----------------------------------------------
-      real, intent(in)    ::  dti
-      real, intent(in)    ::  lmat(rod_nzcnt)
-      real, intent(in)    ::  y(pcnstm1)
-      real, intent(in)    ::  rxt(rxntot)
-      real, intent(inout) ::  mat(rod_nzcnt)
+      real, intent(in) :: dti
+      real, intent(in) :: lmat(rod_nzcnt)
+      real, intent(in) :: y(pcnstm1)
+      real, intent(in) :: rxt(rxntot)
+      real, intent(inout) :: mat(rod_nzcnt)
 
 
       end subroutine rod_nlnmat
 
-      end module MO_ROD_NLN_MATRIX_MOD
+      end module MO_rod_NLN_MATRIX_MOD
 
       module MO_IMP_FACTOR_MOD
 
       contains
-                                                                        
+
       subroutine imp_lu_fac01( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(1) = 1. / lu(1)
-                                                                        
+
          lu(2) = 1. / lu(2)
-                                                                        
+
          lu(3) = 1. / lu(3)
-                                                                        
+
          lu(4) = 1. / lu(4)
-                                                                        
+
          lu(6) = 1. / lu(6)
          lu(7) = lu(7) * lu(6)
          lu(801) = lu(801) - lu(7) * lu(743)
-                                                                        
+
          lu(8) = 1. / lu(8)
          lu(9) = lu(9) * lu(8)
          lu(10) = lu(10) * lu(8)
          lu(773) = lu(773) - lu(9) * lu(744)
          lu(801) = lu(801) - lu(10) * lu(744)
-                                                                        
+
          lu(11) = 1. / lu(11)
          lu(12) = lu(12) * lu(11)
          lu(13) = lu(13) * lu(11)
          lu(522) = lu(522) - lu(12) * lu(517)
          lu(525) = lu(525) - lu(13) * lu(517)
-                                                                        
+
          lu(15) = 1. / lu(15)
          lu(16) = lu(16) * lu(15)
          lu(32) = lu(32) - lu(16) * lu(29)
          lu(515) = lu(515) - lu(16) * lu(483)
          lu(801) = lu(801) - lu(16) * lu(745)
-                                                                        
+
          lu(17) = 1. / lu(17)
          lu(18) = lu(18) * lu(17)
          lu(165) = lu(165) - lu(18) * lu(161)
          lu(232) = lu(232) - lu(18) * lu(227)
          lu(596) = lu(596) - lu(18) * lu(588)
-                                                                        
+
          lu(19) = 1. / lu(19)
          lu(20) = lu(20) * lu(19)
          lu(21) = lu(21) * lu(19)
@@ -2519,7 +2520,7 @@ logical                       :: module_is_initialized = .false.
          lu(688) = lu(688) - lu(21) * lu(646)
          lu(797) = lu(797) - lu(20) * lu(746)
          lu(801) = lu(801) - lu(21) * lu(746)
-                                                                        
+
          lu(22) = 1. / lu(22)
          lu(23) = lu(23) * lu(22)
          lu(24) = lu(24) * lu(22)
@@ -2530,7 +2531,7 @@ logical                       :: module_is_initialized = .false.
          lu(617) = lu(617) - lu(23) * lu(610)
          lu(640) = lu(640) - lu(24) * lu(610)
          lu(643) = lu(643) - lu(25) * lu(610)
-                                                                        
+
          lu(26) = 1. / lu(26)
          lu(27) = lu(27) * lu(26)
          lu(28) = lu(28) * lu(26)
@@ -2540,7 +2541,7 @@ logical                       :: module_is_initialized = .false.
          lu(688) = lu(688) - lu(28) * lu(647)
          lu(785) = lu(785) - lu(27) * lu(747)
          lu(801) = lu(801) - lu(28) * lu(747)
-                                                                        
+
          lu(30) = 1. / lu(30)
          lu(31) = lu(31) * lu(30)
          lu(32) = lu(32) * lu(30)
@@ -2551,7 +2552,7 @@ logical                       :: module_is_initialized = .false.
          lu(791) = lu(791) - lu(31) * lu(748)
          lu(801) = lu(801) - lu(32) * lu(748)
          lu(802) = lu(802) - lu(33) * lu(748)
-                                                                        
+
          lu(34) = 1. / lu(34)
          lu(35) = lu(35) * lu(34)
          lu(36) = lu(36) * lu(34)
@@ -2562,7 +2563,7 @@ logical                       :: module_is_initialized = .false.
          lu(821) = lu(821) - lu(35) * lu(803)
          lu(823) = lu(823) - lu(36) * lu(803)
          lu(829) = lu(829) - lu(37) * lu(803)
-                                                                        
+
          lu(38) = 1. / lu(38)
          lu(39) = lu(39) * lu(38)
          lu(40) = lu(40) * lu(38)
@@ -2578,7 +2579,7 @@ logical                       :: module_is_initialized = .false.
          lu(564) = lu(564) - lu(43) * lu(536)
          lu(567) = lu(567) - lu(44) * lu(536)
          lu(568) = lu(568) - lu(45) * lu(536)
-                                                                        
+
          lu(46) = 1. / lu(46)
          lu(47) = lu(47) * lu(46)
          lu(48) = lu(48) * lu(46)
@@ -2592,21 +2593,21 @@ logical                       :: module_is_initialized = .false.
          lu(811) = - lu(48) * lu(804)
          lu(818) = lu(818) - lu(49) * lu(804)
          lu(825) = - lu(50) * lu(804)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac01
-                                                                        
+
       subroutine imp_lu_fac02( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(51) = 1. / lu(51)
          lu(52) = lu(52) * lu(51)
          lu(53) = lu(53) * lu(51)
@@ -2620,7 +2621,7 @@ logical                       :: module_is_initialized = .false.
          lu(780) = lu(780) - lu(52) * lu(749)
          lu(801) = lu(801) - lu(53) * lu(749)
          lu(802) = lu(802) - lu(54) * lu(749)
-                                                                        
+
          lu(55) = 1. / lu(55)
          lu(56) = lu(56) * lu(55)
          lu(57) = lu(57) * lu(55)
@@ -2634,7 +2635,7 @@ logical                       :: module_is_initialized = .false.
          lu(777) = lu(777) - lu(56) * lu(750)
          lu(797) = lu(797) - lu(57) * lu(750)
          lu(801) = lu(801) - lu(58) * lu(750)
-                                                                        
+
          lu(59) = 1. / lu(59)
          lu(60) = lu(60) * lu(59)
          lu(61) = lu(61) * lu(59)
@@ -2648,7 +2649,7 @@ logical                       :: module_is_initialized = .false.
          lu(824) = lu(824) - lu(60) * lu(805)
          lu(828) = lu(828) - lu(61) * lu(805)
          lu(829) = lu(829) - lu(62) * lu(805)
-                                                                        
+
          lu(63) = 1. / lu(63)
          lu(64) = lu(64) * lu(63)
          lu(65) = lu(65) * lu(63)
@@ -2665,7 +2666,7 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(66) * lu(752)
          lu(800) = lu(800) - lu(67) * lu(752)
          lu(801) = lu(801) - lu(68) * lu(752)
-                                                                        
+
          lu(69) = 1. / lu(69)
          lu(70) = lu(70) * lu(69)
          lu(71) = lu(71) * lu(69)
@@ -2683,7 +2684,7 @@ logical                       :: module_is_initialized = .false.
          lu(789) = lu(789) - lu(71) * lu(753)
          lu(797) = lu(797) - lu(72) * lu(753)
          lu(801) = lu(801) - lu(73) * lu(753)
-                                                                        
+
          lu(74) = 1. / lu(74)
          lu(75) = lu(75) * lu(74)
          lu(76) = lu(76) * lu(74)
@@ -2701,7 +2702,7 @@ logical                       :: module_is_initialized = .false.
          lu(777) = lu(777) - lu(76) * lu(754)
          lu(797) = lu(797) - lu(77) * lu(754)
          lu(801) = lu(801) - lu(78) * lu(754)
-                                                                        
+
          lu(79) = 1. / lu(79)
          lu(80) = lu(80) * lu(79)
          lu(81) = lu(81) * lu(79)
@@ -2719,7 +2720,7 @@ logical                       :: module_is_initialized = .false.
          lu(773) = lu(773) - lu(81) * lu(755)
          lu(797) = lu(797) - lu(82) * lu(755)
          lu(801) = lu(801) - lu(83) * lu(755)
-                                                                        
+
          lu(84) = 1. / lu(84)
          lu(85) = lu(85) * lu(84)
          lu(86) = lu(86) * lu(84)
@@ -2737,7 +2738,7 @@ logical                       :: module_is_initialized = .false.
          lu(788) = lu(788) - lu(86) * lu(756)
          lu(800) = lu(800) - lu(87) * lu(756)
          lu(801) = lu(801) - lu(88) * lu(756)
-                                                                        
+
          lu(89) = 1. / lu(89)
          lu(90) = lu(90) * lu(89)
          lu(91) = lu(91) * lu(89)
@@ -2755,21 +2756,21 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(91) * lu(757)
          lu(800) = lu(800) - lu(92) * lu(757)
          lu(801) = lu(801) - lu(93) * lu(757)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac02
-                                                                        
+
       subroutine imp_lu_fac03( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(94) = 1. / lu(94)
          lu(95) = lu(95) * lu(94)
          lu(96) = lu(96) * lu(94)
@@ -2785,7 +2786,7 @@ logical                       :: module_is_initialized = .false.
          lu(605) = - lu(96) * lu(589)
          lu(710) = lu(710) - lu(95) * lu(706)
          lu(719) = lu(719) - lu(96) * lu(706)
-                                                                        
+
          lu(97) = 1. / lu(97)
          lu(98) = lu(98) * lu(97)
          lu(99) = lu(99) * lu(97)
@@ -2802,7 +2803,7 @@ logical                       :: module_is_initialized = .false.
          lu(793) = lu(793) - lu(98) * lu(758)
          lu(797) = lu(797) - lu(99) * lu(758)
          lu(801) = lu(801) - lu(100) * lu(758)
-                                                                        
+
          lu(102) = 1. / lu(102)
          lu(103) = lu(103) * lu(102)
          lu(104) = lu(104) * lu(102)
@@ -2824,7 +2825,7 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(105) * lu(759)
          lu(800) = lu(800) - lu(106) * lu(759)
          lu(802) = lu(802) - lu(107) * lu(759)
-                                                                        
+
          lu(108) = 1. / lu(108)
          lu(109) = lu(109) * lu(108)
          lu(110) = lu(110) * lu(108)
@@ -2846,7 +2847,7 @@ logical                       :: module_is_initialized = .false.
          lu(818) = lu(818) - lu(111) * lu(806)
          lu(822) = - lu(112) * lu(806)
          lu(829) = lu(829) - lu(113) * lu(806)
-                                                                        
+
          lu(114) = 1. / lu(114)
          lu(115) = lu(115) * lu(114)
          lu(116) = lu(116) * lu(114)
@@ -2868,7 +2869,7 @@ logical                       :: module_is_initialized = .false.
          lu(790) = lu(790) - lu(116) * lu(760)
          lu(800) = lu(800) - lu(117) * lu(760)
          lu(801) = lu(801) - lu(118) * lu(760)
-                                                                        
+
          lu(119) = 1. / lu(119)
          lu(120) = lu(120) * lu(119)
          lu(121) = lu(121) * lu(119)
@@ -2888,7 +2889,7 @@ logical                       :: module_is_initialized = .false.
          lu(644) = lu(644) - lu(121) * lu(613)
          lu(785) = lu(785) - lu(120) * lu(761)
          lu(801) = lu(801) - lu(121) * lu(761)
-                                                                        
+
          lu(122) = 1. / lu(122)
          lu(123) = lu(123) * lu(122)
          lu(124) = lu(124) * lu(122)
@@ -2914,21 +2915,21 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(126) * lu(762)
          lu(800) = lu(800) - lu(127) * lu(762)
          lu(801) = lu(801) - lu(128) * lu(762)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac03
-                                                                        
+
       subroutine imp_lu_fac04( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(129) = 1. / lu(129)
          lu(130) = lu(130) * lu(129)
          lu(131) = lu(131) * lu(129)
@@ -2954,7 +2955,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = - lu(133) * lu(807)
          lu(828) = lu(828) - lu(134) * lu(807)
          lu(829) = lu(829) - lu(135) * lu(807)
-                                                                        
+
          lu(136) = 1. / lu(136)
          lu(137) = lu(137) * lu(136)
          lu(138) = lu(138) * lu(136)
@@ -2977,7 +2978,7 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(137) * lu(764)
          lu(800) = lu(800) - lu(138) * lu(764)
          lu(801) = lu(801) - lu(139) * lu(764)
-                                                                        
+
          lu(140) = 1. / lu(140)
          lu(141) = lu(141) * lu(140)
          lu(142) = lu(142) * lu(140)
@@ -3007,7 +3008,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(145) * lu(808)
          lu(828) = lu(828) - lu(146) * lu(808)
          lu(829) = lu(829) - lu(147) * lu(808)
-                                                                        
+
          lu(148) = 1. / lu(148)
          lu(149) = lu(149) * lu(148)
          lu(150) = lu(150) * lu(148)
@@ -3037,7 +3038,7 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(153) * lu(766)
          lu(800) = lu(800) - lu(154) * lu(766)
          lu(801) = lu(801) - lu(155) * lu(766)
-                                                                        
+
          lu(156) = 1. / lu(156)
          lu(157) = lu(157) * lu(156)
          lu(158) = lu(158) * lu(156)
@@ -3067,7 +3068,7 @@ logical                       :: module_is_initialized = .false.
          lu(788) = lu(788) - lu(158) * lu(767)
          lu(790) = lu(790) - lu(159) * lu(767)
          lu(801) = lu(801) - lu(160) * lu(767)
-                                                                        
+
          lu(163) = 1. / lu(163)
          lu(164) = lu(164) * lu(163)
          lu(165) = lu(165) * lu(163)
@@ -3099,21 +3100,21 @@ logical                       :: module_is_initialized = .false.
          lu(682) = lu(682) - lu(166) * lu(658)
          lu(685) = lu(685) - lu(167) * lu(658)
          lu(688) = lu(688) - lu(168) * lu(658)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac04
-                                                                        
+
       subroutine imp_lu_fac05( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(169) = 1. / lu(169)
          lu(170) = lu(170) * lu(169)
          lu(171) = lu(171) * lu(169)
@@ -3145,7 +3146,7 @@ logical                       :: module_is_initialized = .false.
          lu(818) = lu(818) - lu(170) * lu(809)
          lu(828) = lu(828) - lu(171) * lu(809)
          lu(829) = lu(829) - lu(172) * lu(809)
-                                                                        
+
          lu(176) = 1. / lu(176)
          lu(177) = lu(177) * lu(176)
          lu(178) = lu(178) * lu(176)
@@ -3182,7 +3183,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(181) * lu(769)
          lu(801) = lu(801) - lu(182) * lu(769)
          lu(802) = lu(802) - lu(183) * lu(769)
-                                                                        
+
          lu(185) = 1. / lu(185)
          lu(186) = lu(186) * lu(185)
          lu(187) = lu(187) * lu(185)
@@ -3219,7 +3220,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(190) * lu(770)
          lu(801) = lu(801) - lu(191) * lu(770)
          lu(802) = lu(802) - lu(192) * lu(770)
-                                                                        
+
          lu(193) = 1. / lu(193)
          lu(194) = lu(194) * lu(193)
          lu(195) = lu(195) * lu(193)
@@ -3257,7 +3258,7 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(195) * lu(771)
          lu(800) = lu(800) - lu(196) * lu(771)
          lu(801) = lu(801) - lu(197) * lu(771)
-                                                                        
+
          lu(198) = 1. / lu(198)
          lu(199) = lu(199) * lu(198)
          lu(200) = lu(200) * lu(198)
@@ -3299,7 +3300,7 @@ logical                       :: module_is_initialized = .false.
          lu(684) = lu(684) - lu(204) * lu(661)
          lu(687) = lu(687) - lu(205) * lu(661)
          lu(689) = lu(689) - lu(206) * lu(661)
-                                                                        
+
          lu(208) = 1. / lu(208)
          lu(209) = lu(209) * lu(208)
          lu(210) = lu(210) * lu(208)
@@ -3343,21 +3344,21 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(212) * lu(772)
          lu(801) = lu(801) - lu(213) * lu(772)
          lu(802) = lu(802) - lu(214) * lu(772)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac05
-                                                                        
+
       subroutine imp_lu_fac06( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(218) = 1. / lu(218)
          lu(219) = lu(219) * lu(218)
          lu(220) = lu(220) * lu(218)
@@ -3399,7 +3400,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(224) * lu(773)
          lu(801) = lu(801) - lu(225) * lu(773)
          lu(802) = lu(802) - lu(226) * lu(773)
-                                                                        
+
          lu(230) = 1. / lu(230)
          lu(231) = lu(231) * lu(230)
          lu(232) = lu(232) * lu(230)
@@ -3446,7 +3447,7 @@ logical                       :: module_is_initialized = .false.
          lu(825) = lu(825) - lu(237) * lu(810)
          lu(828) = lu(828) - lu(238) * lu(810)
          lu(829) = lu(829) - lu(239) * lu(810)
-                                                                        
+
          lu(241) = 1. / lu(241)
          lu(242) = lu(242) * lu(241)
          lu(243) = lu(243) * lu(241)
@@ -3500,7 +3501,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(252) * lu(774)
          lu(801) = lu(801) - lu(253) * lu(774)
          lu(802) = lu(802) - lu(254) * lu(774)
-                                                                        
+
          lu(257) = 1. / lu(257)
          lu(258) = lu(258) * lu(257)
          lu(259) = lu(259) * lu(257)
@@ -3558,21 +3559,21 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(269) * lu(775)
          lu(801) = lu(801) - lu(270) * lu(775)
          lu(802) = lu(802) - lu(271) * lu(775)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac06
-                                                                        
+
       subroutine imp_lu_fac07( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(273) = 1. / lu(273)
          lu(274) = lu(274) * lu(273)
          lu(275) = lu(275) * lu(273)
@@ -3623,7 +3624,7 @@ logical                       :: module_is_initialized = .false.
          lu(825) = lu(825) - lu(278) * lu(811)
          lu(826) = lu(826) - lu(279) * lu(811)
          lu(828) = lu(828) - lu(280) * lu(811)
-                                                                        
+
          lu(283) = 1. / lu(283)
          lu(284) = lu(284) * lu(283)
          lu(285) = lu(285) * lu(283)
@@ -3680,7 +3681,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(292) * lu(776)
          lu(801) = lu(801) - lu(293) * lu(776)
          lu(802) = lu(802) - lu(294) * lu(776)
-                                                                        
+
          lu(296) = 1. / lu(296)
          lu(297) = lu(297) * lu(296)
          lu(298) = lu(298) * lu(296)
@@ -3730,7 +3731,7 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(300) * lu(777)
          lu(801) = lu(801) - lu(301) * lu(777)
          lu(802) = lu(802) - lu(302) * lu(777)
-                                                                        
+
          lu(304) = 1. / lu(304)
          lu(305) = lu(305) * lu(304)
          lu(306) = lu(306) * lu(304)
@@ -3788,7 +3789,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(309) * lu(778)
          lu(801) = lu(801) - lu(310) * lu(778)
          lu(802) = lu(802) - lu(311) * lu(778)
-                                                                        
+
          lu(315) = 1. / lu(315)
          lu(316) = lu(316) * lu(315)
          lu(317) = lu(317) * lu(315)
@@ -3850,21 +3851,21 @@ logical                       :: module_is_initialized = .false.
          lu(825) = lu(825) - lu(319) * lu(812)
          lu(826) = lu(826) - lu(320) * lu(812)
          lu(828) = lu(828) - lu(321) * lu(812)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac07
-                                                                        
+
       subroutine imp_lu_fac08( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(323) = 1. / lu(323)
          lu(324) = lu(324) * lu(323)
          lu(325) = lu(325) * lu(323)
@@ -3926,7 +3927,7 @@ logical                       :: module_is_initialized = .false.
          lu(797) = lu(797) - lu(326) * lu(780)
          lu(801) = lu(801) - lu(327) * lu(780)
          lu(802) = lu(802) - lu(328) * lu(780)
-                                                                        
+
          lu(330) = 1. / lu(330)
          lu(331) = lu(331) * lu(330)
          lu(332) = lu(332) * lu(330)
@@ -4006,7 +4007,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(334) * lu(813)
          lu(828) = lu(828) - lu(335) * lu(813)
          lu(829) = lu(829) - lu(336) * lu(813)
-                                                                        
+
          lu(338) = 1. / lu(338)
          lu(339) = lu(339) * lu(338)
          lu(340) = lu(340) * lu(338)
@@ -4089,7 +4090,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(345) * lu(782)
          lu(801) = lu(801) - lu(346) * lu(782)
          lu(802) = lu(802) - lu(347) * lu(782)
-                                                                        
+
          lu(348) = 1. / lu(348)
          lu(349) = lu(349) * lu(348)
          lu(350) = lu(350) * lu(348)
@@ -4169,21 +4170,21 @@ logical                       :: module_is_initialized = .false.
          lu(822) = lu(822) - lu(352) * lu(814)
          lu(824) = lu(824) - lu(353) * lu(814)
          lu(827) = lu(827) - lu(354) * lu(814)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac08
-                                                                        
+
       subroutine imp_lu_fac09( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(359) = 1. / lu(359)
          lu(360) = lu(360) * lu(359)
          lu(361) = lu(361) * lu(359)
@@ -4275,7 +4276,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(367) * lu(784)
          lu(801) = lu(801) - lu(368) * lu(784)
          lu(802) = lu(802) - lu(369) * lu(784)
-                                                                        
+
          lu(375) = 1. / lu(375)
          lu(376) = lu(376) * lu(375)
          lu(377) = lu(377) * lu(375)
@@ -4367,7 +4368,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(382) * lu(785)
          lu(801) = lu(801) - lu(383) * lu(785)
          lu(802) = lu(802) - lu(384) * lu(785)
-                                                                        
+
          lu(392) = 1. / lu(392)
          lu(393) = lu(393) * lu(392)
          lu(394) = lu(394) * lu(392)
@@ -4457,7 +4458,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(401) * lu(786)
          lu(801) = lu(801) - lu(402) * lu(786)
          lu(802) = lu(802) - lu(403) * lu(786)
-                                                                        
+
          lu(411) = 1. / lu(411)
          lu(412) = lu(412) * lu(411)
          lu(413) = lu(413) * lu(411)
@@ -4539,7 +4540,7 @@ logical                       :: module_is_initialized = .false.
          lu(800) = lu(800) - lu(419) * lu(787)
          lu(801) = lu(801) - lu(420) * lu(787)
          lu(802) = lu(802) - lu(421) * lu(787)
-                                                                        
+
          lu(433) = 1. / lu(433)
          lu(434) = lu(434) * lu(433)
          lu(435) = lu(435) * lu(433)
@@ -4622,21 +4623,21 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(440) * lu(815)
          lu(828) = lu(828) - lu(441) * lu(815)
          lu(829) = lu(829) - lu(442) * lu(815)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac09
-                                                                        
+
       subroutine imp_lu_fac10( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(447) = 1. / lu(447)
          lu(448) = lu(448) * lu(447)
          lu(449) = lu(449) * lu(447)
@@ -4702,7 +4703,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(453) * lu(816)
          lu(828) = lu(828) - lu(454) * lu(816)
          lu(829) = lu(829) - lu(455) * lu(816)
-                                                                        
+
          lu(475) = 1. / lu(475)
          lu(476) = lu(476) * lu(475)
          lu(477) = lu(477) * lu(475)
@@ -4795,7 +4796,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(480) * lu(817)
          lu(828) = lu(828) - lu(481) * lu(817)
          lu(829) = lu(829) - lu(482) * lu(817)
-                                                                        
+
          lu(507) = 1. / lu(507)
          lu(508) = lu(508) * lu(507)
          lu(509) = lu(509) * lu(507)
@@ -4905,7 +4906,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(514) * lu(818)
          lu(828) = lu(828) - lu(515) * lu(818)
          lu(829) = lu(829) - lu(516) * lu(818)
-                                                                        
+
          lu(525) = 1. / lu(525)
          lu(526) = lu(526) * lu(525)
          lu(527) = lu(527) * lu(525)
@@ -5017,7 +5018,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(533) * lu(819)
          lu(828) = lu(828) - lu(534) * lu(819)
          lu(829) = lu(829) - lu(535) * lu(819)
-                                                                        
+
          lu(560) = 1. / lu(560)
          lu(561) = lu(561) * lu(560)
          lu(562) = lu(562) * lu(560)
@@ -5109,21 +5110,21 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(567) * lu(820)
          lu(828) = lu(828) - lu(568) * lu(820)
          lu(829) = lu(829) - lu(569) * lu(820)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac10
-                                                                        
+
       subroutine imp_lu_fac11( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
          lu(579) = 1. / lu(579)
          lu(580) = lu(580) * lu(579)
          lu(581) = lu(581) * lu(579)
@@ -5197,7 +5198,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(585) * lu(821)
          lu(828) = lu(828) - lu(586) * lu(821)
          lu(829) = lu(829) - lu(587) * lu(821)
-                                                                        
+
          lu(602) = 1. / lu(602)
          lu(603) = lu(603) * lu(602)
          lu(604) = lu(604) * lu(602)
@@ -5255,7 +5256,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(607) * lu(822)
          lu(828) = lu(828) - lu(608) * lu(822)
          lu(829) = lu(829) - lu(609) * lu(822)
-                                                                        
+
          lu(639) = 1. / lu(639)
          lu(640) = lu(640) * lu(639)
          lu(641) = lu(641) * lu(639)
@@ -5299,7 +5300,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(643) * lu(823)
          lu(828) = lu(828) - lu(644) * lu(823)
          lu(829) = lu(829) - lu(645) * lu(823)
-                                                                        
+
          lu(684) = 1. / lu(684)
          lu(685) = lu(685) * lu(684)
          lu(686) = lu(686) * lu(684)
@@ -5331,7 +5332,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(687) * lu(824)
          lu(828) = lu(828) - lu(688) * lu(824)
          lu(829) = lu(829) - lu(689) * lu(824)
-                                                                        
+
          lu(700) = 1. / lu(700)
          lu(701) = lu(701) * lu(700)
          lu(702) = lu(702) * lu(700)
@@ -5353,7 +5354,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(702) * lu(825)
          lu(828) = lu(828) - lu(703) * lu(825)
          lu(829) = lu(829) - lu(704) * lu(825)
-                                                                        
+
          lu(720) = 1. / lu(720)
          lu(721) = lu(721) * lu(720)
          lu(722) = lu(722) * lu(720)
@@ -5367,7 +5368,7 @@ logical                       :: module_is_initialized = .false.
          lu(827) = lu(827) - lu(721) * lu(826)
          lu(828) = lu(828) - lu(722) * lu(826)
          lu(829) = lu(829) - lu(723) * lu(826)
-                                                                        
+
          lu(738) = 1. / lu(738)
          lu(739) = lu(739) * lu(738)
          lu(740) = lu(740) * lu(738)
@@ -5375,27 +5376,27 @@ logical                       :: module_is_initialized = .false.
          lu(802) = lu(802) - lu(740) * lu(800)
          lu(828) = lu(828) - lu(739) * lu(827)
          lu(829) = lu(829) - lu(740) * lu(827)
-                                                                        
+
          lu(801) = 1. / lu(801)
          lu(802) = lu(802) * lu(801)
          lu(829) = lu(829) - lu(802) * lu(828)
-                                                                        
+
          lu(829) = 1. / lu(829)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_fac11
-                                                                        
+
       subroutine imp_lu_fac( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(imp_nzcnt)
-                                                                        
+      real, intent(inout) :: lu(imp_nzcnt)
+
       call imp_lu_fac01( lu )
       call imp_lu_fac02( lu )
       call imp_lu_fac03( lu )
@@ -5407,88 +5408,88 @@ logical                       :: module_is_initialized = .false.
       call imp_lu_fac09( lu )
       call imp_lu_fac10( lu )
       call imp_lu_fac11( lu )
-                                                                        
+
       end subroutine imp_lu_fac
-                                                                        
+
       end module MO_IMP_FACTOR_MOD
 
       module MO_ROD_FACTOR_MOD
 
       contains
-                                                                        
+
       subroutine rod_lu_fac( lu )
-                                                                        
+
       use CHEM_MODS_MOD, only : rod_nzcnt, clsze
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(inout) ::   lu(rod_nzcnt)
-                                                                        
-                                                                        
+      real, intent(inout) :: lu(rod_nzcnt)
+
+
       end subroutine rod_lu_fac
-                                                                        
+
       end module MO_ROD_FACTOR_MOD
 
       module MO_IMP_SOLVE_MOD
 
       contains
-                                                                        
+
       subroutine imp_lu_slv01( lu, b )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(imp_nzcnt)
-      real, intent(inout) ::   b(clscnt4)
-                                                                        
+      real, intent(in) :: lu(imp_nzcnt)
+      real, intent(inout) :: b(clscnt4)
+
 !-----------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !-----------------------------------------------------------------------
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Solve L * y = b
+! ... Solve L * y = b
 !-----------------------------------------------------------------------
-                                                                        
-                                                                        
-                                                                        
-                                                                        
+
+
+
+
          b(75) = b(75) - lu(7) * b(5)
-                                                                        
+
          b(45) = b(45) - lu(9) * b(6)
          b(75) = b(75) - lu(10) * b(6)
-                                                                        
+
          b(57) = b(57) - lu(12) * b(7)
          b(66) = b(66) - lu(13) * b(7)
-                                                                        
+
          b(75) = b(75) - lu(16) * b(8)
-                                                                        
+
          b(57) = b(57) - lu(18) * b(9)
-                                                                        
+
          b(71) = b(71) - lu(20) * b(10)
          b(75) = b(75) - lu(21) * b(10)
-                                                                        
+
          b(42) = b(42) - lu(23) * b(11)
          b(71) = b(71) - lu(24) * b(11)
          b(74) = b(74) - lu(25) * b(11)
-                                                                        
+
          b(59) = b(59) - lu(27) * b(12)
          b(75) = b(75) - lu(28) * b(12)
-                                                                        
+
          b(65) = b(65) - lu(31) * b(13)
          b(75) = b(75) - lu(32) * b(13)
          b(76) = b(76) - lu(33) * b(13)
-                                                                        
+
          b(68) = b(68) - lu(35) * b(14)
          b(70) = b(70) - lu(36) * b(14)
          b(76) = b(76) - lu(37) * b(14)
-                                                                        
+
          b(27) = b(27) - lu(39) * b(15)
          b(64) = b(64) - lu(40) * b(15)
          b(68) = b(68) - lu(41) * b(15)
@@ -5496,100 +5497,100 @@ logical                       :: module_is_initialized = .false.
          b(71) = b(71) - lu(43) * b(15)
          b(74) = b(74) - lu(44) * b(15)
          b(75) = b(75) - lu(45) * b(15)
-                                                                        
+
          b(39) = b(39) - lu(47) * b(16)
          b(49) = b(49) - lu(48) * b(16)
          b(65) = b(65) - lu(49) * b(16)
          b(72) = b(72) - lu(50) * b(16)
-                                                                        
+
          b(54) = b(54) - lu(52) * b(17)
          b(75) = b(75) - lu(53) * b(17)
          b(76) = b(76) - lu(54) * b(17)
-                                                                        
+
          b(51) = b(51) - lu(56) * b(18)
          b(71) = b(71) - lu(57) * b(18)
          b(75) = b(75) - lu(58) * b(18)
-                                                                        
+
          b(71) = b(71) - lu(60) * b(19)
          b(75) = b(75) - lu(61) * b(19)
          b(76) = b(76) - lu(62) * b(19)
-                                                                        
+
          b(28) = b(28) - lu(64) * b(20)
          b(67) = b(67) - lu(65) * b(20)
          b(71) = b(71) - lu(66) * b(20)
          b(74) = b(74) - lu(67) * b(20)
          b(75) = b(75) - lu(68) * b(20)
-                                                                        
+
          b(61) = b(61) - lu(70) * b(21)
          b(63) = b(63) - lu(71) * b(21)
          b(71) = b(71) - lu(72) * b(21)
          b(75) = b(75) - lu(73) * b(21)
-                                                                        
+
          b(40) = b(40) - lu(75) * b(22)
          b(51) = b(51) - lu(76) * b(22)
          b(71) = b(71) - lu(77) * b(22)
          b(75) = b(75) - lu(78) * b(22)
-                                                                        
+
          b(37) = b(37) - lu(80) * b(23)
          b(45) = b(45) - lu(81) * b(23)
          b(71) = b(71) - lu(82) * b(23)
          b(75) = b(75) - lu(83) * b(23)
-                                                                        
+
          b(44) = b(44) - lu(85) * b(24)
          b(62) = b(62) - lu(86) * b(24)
          b(74) = b(74) - lu(87) * b(24)
          b(75) = b(75) - lu(88) * b(24)
-                                                                        
+
          b(64) = b(64) - lu(90) * b(25)
          b(71) = b(71) - lu(91) * b(25)
          b(74) = b(74) - lu(92) * b(25)
          b(75) = b(75) - lu(93) * b(25)
-                                                                        
+
          b(57) = b(57) - lu(95) * b(26)
          b(72) = b(72) - lu(96) * b(26)
-                                                                        
+
          b(67) = b(67) - lu(98) * b(27)
          b(71) = b(71) - lu(99) * b(27)
          b(75) = b(75) - lu(100) * b(27)
-                                                                        
+
          b(42) = b(42) - lu(103) * b(28)
          b(70) = b(70) - lu(104) * b(28)
          b(71) = b(71) - lu(105) * b(28)
          b(74) = b(74) - lu(106) * b(28)
          b(76) = b(76) - lu(107) * b(28)
-                                                                        
+
          b(39) = b(39) - lu(109) * b(29)
          b(57) = b(57) - lu(110) * b(29)
          b(65) = b(65) - lu(111) * b(29)
          b(69) = b(69) - lu(112) * b(29)
          b(76) = b(76) - lu(113) * b(29)
-                                                                        
+
          b(62) = b(62) - lu(115) * b(30)
          b(64) = b(64) - lu(116) * b(30)
          b(74) = b(74) - lu(117) * b(30)
          b(75) = b(75) - lu(118) * b(30)
-                                                                        
+
          b(59) = b(59) - lu(120) * b(31)
          b(75) = b(75) - lu(121) * b(31)
-                                                                        
+
          b(41) = b(41) - lu(123) * b(32)
          b(51) = b(51) - lu(124) * b(32)
          b(55) = b(55) - lu(125) * b(32)
          b(71) = b(71) - lu(126) * b(32)
          b(74) = b(74) - lu(127) * b(32)
          b(75) = b(75) - lu(128) * b(32)
-                                                                        
+
          b(62) = b(62) - lu(130) * b(33)
          b(64) = b(64) - lu(131) * b(33)
          b(65) = b(65) - lu(132) * b(33)
          b(74) = b(74) - lu(133) * b(33)
          b(75) = b(75) - lu(134) * b(33)
          b(76) = b(76) - lu(135) * b(33)
-                                                                        
+
          b(71) = b(71) - lu(137) * b(34)
          b(74) = b(74) - lu(138) * b(34)
          b(75) = b(75) - lu(139) * b(34)
-                                                                        
+
          b(55) = b(55) - lu(141) * b(35)
          b(63) = b(63) - lu(142) * b(35)
          b(65) = b(65) - lu(143) * b(35)
@@ -5597,7 +5598,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(145) * b(35)
          b(75) = b(75) - lu(146) * b(35)
          b(76) = b(76) - lu(147) * b(35)
-                                                                        
+
          b(56) = b(56) - lu(149) * b(36)
          b(58) = b(58) - lu(150) * b(36)
          b(59) = b(59) - lu(151) * b(36)
@@ -5605,22 +5606,22 @@ logical                       :: module_is_initialized = .false.
          b(71) = b(71) - lu(153) * b(36)
          b(74) = b(74) - lu(154) * b(36)
          b(75) = b(75) - lu(155) * b(36)
-                                                                        
+
          b(44) = b(44) - lu(157) * b(37)
          b(62) = b(62) - lu(158) * b(37)
          b(64) = b(64) - lu(159) * b(37)
          b(75) = b(75) - lu(160) * b(37)
-                                                                        
+
          b(53) = b(53) - lu(164) * b(38)
          b(57) = b(57) - lu(165) * b(38)
          b(69) = b(69) - lu(166) * b(38)
          b(72) = b(72) - lu(167) * b(38)
          b(75) = b(75) - lu(168) * b(38)
-                                                                        
+
          b(65) = b(65) - lu(170) * b(39)
          b(75) = b(75) - lu(171) * b(39)
          b(76) = b(76) - lu(172) * b(39)
-                                                                        
+
          b(51) = b(51) - lu(177) * b(40)
          b(64) = b(64) - lu(178) * b(40)
          b(70) = b(70) - lu(179) * b(40)
@@ -5628,7 +5629,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(181) * b(40)
          b(75) = b(75) - lu(182) * b(40)
          b(76) = b(76) - lu(183) * b(40)
-                                                                        
+
          b(51) = b(51) - lu(186) * b(41)
          b(55) = b(55) - lu(187) * b(41)
          b(70) = b(70) - lu(188) * b(41)
@@ -5636,12 +5637,12 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(190) * b(41)
          b(75) = b(75) - lu(191) * b(41)
          b(76) = b(76) - lu(192) * b(41)
-                                                                        
+
          b(63) = b(63) - lu(194) * b(42)
          b(71) = b(71) - lu(195) * b(42)
          b(74) = b(74) - lu(196) * b(42)
          b(75) = b(75) - lu(197) * b(42)
-                                                                        
+
          b(52) = b(52) - lu(199) * b(43)
          b(56) = b(56) - lu(200) * b(43)
          b(58) = b(58) - lu(201) * b(43)
@@ -5650,14 +5651,14 @@ logical                       :: module_is_initialized = .false.
          b(71) = b(71) - lu(204) * b(43)
          b(74) = b(74) - lu(205) * b(43)
          b(76) = b(76) - lu(206) * b(43)
-                                                                        
+
          b(62) = b(62) - lu(209) * b(44)
          b(70) = b(70) - lu(210) * b(44)
          b(71) = b(71) - lu(211) * b(44)
          b(74) = b(74) - lu(212) * b(44)
          b(75) = b(75) - lu(213) * b(44)
          b(76) = b(76) - lu(214) * b(44)
-                                                                        
+
          b(51) = b(51) - lu(219) * b(45)
          b(62) = b(62) - lu(220) * b(45)
          b(64) = b(64) - lu(221) * b(45)
@@ -5666,7 +5667,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(224) * b(45)
          b(75) = b(75) - lu(225) * b(45)
          b(76) = b(76) - lu(226) * b(45)
-                                                                        
+
          b(53) = b(53) - lu(231) * b(46)
          b(57) = b(57) - lu(232) * b(46)
          b(65) = b(65) - lu(233) * b(46)
@@ -5676,7 +5677,7 @@ logical                       :: module_is_initialized = .false.
          b(72) = b(72) - lu(237) * b(46)
          b(75) = b(75) - lu(238) * b(46)
          b(76) = b(76) - lu(239) * b(46)
-                                                                        
+
          b(50) = b(50) - lu(242) * b(47)
          b(52) = b(52) - lu(243) * b(47)
          b(56) = b(56) - lu(244) * b(47)
@@ -5690,7 +5691,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(252) * b(47)
          b(75) = b(75) - lu(253) * b(47)
          b(76) = b(76) - lu(254) * b(47)
-                                                                        
+
          b(50) = b(50) - lu(258) * b(48)
          b(56) = b(56) - lu(259) * b(48)
          b(58) = b(58) - lu(260) * b(48)
@@ -5705,28 +5706,28 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(269) * b(48)
          b(75) = b(75) - lu(270) * b(48)
          b(76) = b(76) - lu(271) * b(48)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_slv01
-                                                                        
+
       subroutine imp_lu_slv02( lu, b )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(imp_nzcnt)
-      real, intent(inout) ::   b(clscnt4)
-                                                                        
+      real, intent(in) :: lu(imp_nzcnt)
+      real, intent(inout) :: b(clscnt4)
+
 !-----------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !-----------------------------------------------------------------------
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Solve L * y = b
+! ... Solve L * y = b
 !-----------------------------------------------------------------------
          b(53) = b(53) - lu(274) * b(49)
          b(57) = b(57) - lu(275) * b(49)
@@ -5735,7 +5736,7 @@ logical                       :: module_is_initialized = .false.
          b(72) = b(72) - lu(278) * b(49)
          b(73) = b(73) - lu(279) * b(49)
          b(75) = b(75) - lu(280) * b(49)
-                                                                        
+
          b(51) = b(51) - lu(284) * b(50)
          b(54) = b(54) - lu(285) * b(50)
          b(55) = b(55) - lu(286) * b(50)
@@ -5747,14 +5748,14 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(292) * b(50)
          b(75) = b(75) - lu(293) * b(50)
          b(76) = b(76) - lu(294) * b(50)
-                                                                        
+
          b(62) = b(62) - lu(297) * b(51)
          b(64) = b(64) - lu(298) * b(51)
          b(65) = b(65) - lu(299) * b(51)
          b(71) = b(71) - lu(300) * b(51)
          b(75) = b(75) - lu(301) * b(51)
          b(76) = b(76) - lu(302) * b(51)
-                                                                        
+
          b(59) = b(59) - lu(305) * b(52)
          b(65) = b(65) - lu(306) * b(52)
          b(67) = b(67) - lu(307) * b(52)
@@ -5762,27 +5763,27 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(309) * b(52)
          b(75) = b(75) - lu(310) * b(52)
          b(76) = b(76) - lu(311) * b(52)
-                                                                        
+
          b(57) = b(57) - lu(316) * b(53)
          b(68) = b(68) - lu(317) * b(53)
          b(69) = b(69) - lu(318) * b(53)
          b(72) = b(72) - lu(319) * b(53)
          b(73) = b(73) - lu(320) * b(53)
          b(75) = b(75) - lu(321) * b(53)
-                                                                        
+
          b(62) = b(62) - lu(324) * b(54)
          b(65) = b(65) - lu(325) * b(54)
          b(71) = b(71) - lu(326) * b(54)
          b(75) = b(75) - lu(327) * b(54)
          b(76) = b(76) - lu(328) * b(54)
-                                                                        
+
          b(62) = b(62) - lu(331) * b(55)
          b(65) = b(65) - lu(332) * b(55)
          b(71) = b(71) - lu(333) * b(55)
          b(74) = b(74) - lu(334) * b(55)
          b(75) = b(75) - lu(335) * b(55)
          b(76) = b(76) - lu(336) * b(55)
-                                                                        
+
          b(61) = b(61) - lu(339) * b(56)
          b(62) = b(62) - lu(340) * b(56)
          b(63) = b(63) - lu(341) * b(56)
@@ -5792,14 +5793,14 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(345) * b(56)
          b(75) = b(75) - lu(346) * b(56)
          b(76) = b(76) - lu(347) * b(56)
-                                                                        
+
          b(64) = b(64) - lu(349) * b(57)
          b(66) = b(66) - lu(350) * b(57)
          b(67) = b(67) - lu(351) * b(57)
          b(69) = b(69) - lu(352) * b(57)
          b(71) = b(71) - lu(353) * b(57)
          b(74) = b(74) - lu(354) * b(57)
-                                                                        
+
          b(61) = b(61) - lu(360) * b(58)
          b(62) = b(62) - lu(361) * b(58)
          b(64) = b(64) - lu(362) * b(58)
@@ -5810,7 +5811,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(367) * b(58)
          b(75) = b(75) - lu(368) * b(58)
          b(76) = b(76) - lu(369) * b(58)
-                                                                        
+
          b(62) = b(62) - lu(376) * b(59)
          b(63) = b(63) - lu(377) * b(59)
          b(64) = b(64) - lu(378) * b(59)
@@ -5820,7 +5821,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(382) * b(59)
          b(75) = b(75) - lu(383) * b(59)
          b(76) = b(76) - lu(384) * b(59)
-                                                                        
+
          b(61) = b(61) - lu(393) * b(60)
          b(62) = b(62) - lu(394) * b(60)
          b(63) = b(63) - lu(395) * b(60)
@@ -5832,7 +5833,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(401) * b(60)
          b(75) = b(75) - lu(402) * b(60)
          b(76) = b(76) - lu(403) * b(60)
-                                                                        
+
          b(62) = b(62) - lu(412) * b(61)
          b(63) = b(63) - lu(413) * b(61)
          b(64) = b(64) - lu(414) * b(61)
@@ -5843,7 +5844,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(419) * b(61)
          b(75) = b(75) - lu(420) * b(61)
          b(76) = b(76) - lu(421) * b(61)
-                                                                        
+
          b(63) = b(63) - lu(434) * b(62)
          b(64) = b(64) - lu(435) * b(62)
          b(65) = b(65) - lu(436) * b(62)
@@ -5853,7 +5854,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(440) * b(62)
          b(75) = b(75) - lu(441) * b(62)
          b(76) = b(76) - lu(442) * b(62)
-                                                                        
+
          b(64) = b(64) - lu(448) * b(63)
          b(65) = b(65) - lu(449) * b(63)
          b(67) = b(67) - lu(450) * b(63)
@@ -5862,7 +5863,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(453) * b(63)
          b(75) = b(75) - lu(454) * b(63)
          b(76) = b(76) - lu(455) * b(63)
-                                                                        
+
          b(65) = b(65) - lu(476) * b(64)
          b(67) = b(67) - lu(477) * b(64)
          b(70) = b(70) - lu(478) * b(64)
@@ -5870,7 +5871,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(480) * b(64)
          b(75) = b(75) - lu(481) * b(64)
          b(76) = b(76) - lu(482) * b(64)
-                                                                        
+
          b(66) = b(66) - lu(508) * b(65)
          b(67) = b(67) - lu(509) * b(65)
          b(68) = b(68) - lu(510) * b(65)
@@ -5880,7 +5881,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(514) * b(65)
          b(75) = b(75) - lu(515) * b(65)
          b(76) = b(76) - lu(516) * b(65)
-                                                                        
+
          b(67) = b(67) - lu(526) * b(66)
          b(68) = b(68) - lu(527) * b(66)
          b(69) = b(69) - lu(528) * b(66)
@@ -5891,7 +5892,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(533) * b(66)
          b(75) = b(75) - lu(534) * b(66)
          b(76) = b(76) - lu(535) * b(66)
-                                                                        
+
          b(68) = b(68) - lu(561) * b(67)
          b(69) = b(69) - lu(562) * b(67)
          b(70) = b(70) - lu(563) * b(67)
@@ -5901,7 +5902,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(567) * b(67)
          b(75) = b(75) - lu(568) * b(67)
          b(76) = b(76) - lu(569) * b(67)
-                                                                        
+
          b(69) = b(69) - lu(580) * b(68)
          b(70) = b(70) - lu(581) * b(68)
          b(71) = b(71) - lu(582) * b(68)
@@ -5910,7 +5911,7 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(585) * b(68)
          b(75) = b(75) - lu(586) * b(68)
          b(76) = b(76) - lu(587) * b(68)
-                                                                        
+
          b(70) = b(70) - lu(603) * b(69)
          b(71) = b(71) - lu(604) * b(69)
          b(72) = b(72) - lu(605) * b(69)
@@ -5918,59 +5919,59 @@ logical                       :: module_is_initialized = .false.
          b(74) = b(74) - lu(607) * b(69)
          b(75) = b(75) - lu(608) * b(69)
          b(76) = b(76) - lu(609) * b(69)
-                                                                        
+
          b(71) = b(71) - lu(640) * b(70)
          b(72) = b(72) - lu(641) * b(70)
          b(73) = b(73) - lu(642) * b(70)
          b(74) = b(74) - lu(643) * b(70)
          b(75) = b(75) - lu(644) * b(70)
          b(76) = b(76) - lu(645) * b(70)
-                                                                        
+
          b(72) = b(72) - lu(685) * b(71)
          b(73) = b(73) - lu(686) * b(71)
          b(74) = b(74) - lu(687) * b(71)
          b(75) = b(75) - lu(688) * b(71)
          b(76) = b(76) - lu(689) * b(71)
-                                                                        
+
          b(73) = b(73) - lu(701) * b(72)
          b(74) = b(74) - lu(702) * b(72)
          b(75) = b(75) - lu(703) * b(72)
          b(76) = b(76) - lu(704) * b(72)
-                                                                        
+
          b(74) = b(74) - lu(721) * b(73)
          b(75) = b(75) - lu(722) * b(73)
          b(76) = b(76) - lu(723) * b(73)
-                                                                        
+
          b(75) = b(75) - lu(739) * b(74)
          b(76) = b(76) - lu(740) * b(74)
-                                                                        
+
          b(76) = b(76) - lu(802) * b(75)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_slv02
-                                                                        
+
       subroutine imp_lu_slv03( lu, b )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(imp_nzcnt)
-      real, intent(inout) ::   b(clscnt4)
-                                                                        
+      real, intent(in) :: lu(imp_nzcnt)
+      real, intent(inout) :: b(clscnt4)
+
 !-----------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !-----------------------------------------------------------------------
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Solve L * y = b
+! ... Solve L * y = b
 !-----------------------------------------------------------------------
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Solve U * x = y
+! ... Solve U * x = y
 !-----------------------------------------------------------------------
          b(76) = b(76) * lu(829)
          b(75) = b(75) - lu(828) * b(76)
@@ -5999,7 +6000,7 @@ logical                       :: module_is_initialized = .false.
          b(19) = b(19) - lu(805) * b(76)
          b(16) = b(16) - lu(804) * b(76)
          b(14) = b(14) - lu(803) * b(76)
-                                                                        
+
          b(75) = b(75) * lu(801)
          b(74) = b(74) - lu(800) * b(75)
          b(73) = b(73) - lu(799) * b(75)
@@ -6061,7 +6062,7 @@ logical                       :: module_is_initialized = .false.
          b(5) = b(5) - lu(743) * b(75)
          b(4) = b(4) - lu(742) * b(75)
          b(1) = b(1) - lu(741) * b(75)
-                                                                        
+
          b(74) = b(74) * lu(738)
          b(73) = b(73) - lu(737) * b(74)
          b(72) = b(72) - lu(736) * b(74)
@@ -6077,7 +6078,7 @@ logical                       :: module_is_initialized = .false.
          b(53) = b(53) - lu(726) * b(74)
          b(39) = b(39) - lu(725) * b(74)
          b(27) = b(27) - lu(724) * b(74)
-                                                                        
+
          b(73) = b(73) * lu(720)
          b(72) = b(72) - lu(719) * b(73)
          b(71) = b(71) - lu(718) * b(73)
@@ -6094,7 +6095,7 @@ logical                       :: module_is_initialized = .false.
          b(39) = b(39) - lu(707) * b(73)
          b(26) = b(26) - lu(706) * b(73)
          b(16) = b(16) - lu(705) * b(73)
-                                                                        
+
          b(72) = b(72) * lu(700)
          b(71) = b(71) - lu(699) * b(72)
          b(70) = b(70) - lu(698) * b(72)
@@ -6106,7 +6107,7 @@ logical                       :: module_is_initialized = .false.
          b(64) = b(64) - lu(692) * b(72)
          b(57) = b(57) - lu(691) * b(72)
          b(53) = b(53) - lu(690) * b(72)
-                                                                        
+
          b(71) = b(71) * lu(684)
          b(70) = b(70) - lu(683) * b(71)
          b(69) = b(69) - lu(682) * b(71)
@@ -6146,7 +6147,7 @@ logical                       :: module_is_initialized = .false.
          b(19) = b(19) - lu(648) * b(71)
          b(12) = b(12) - lu(647) * b(71)
          b(10) = b(10) - lu(646) * b(71)
-                                                                        
+
          b(70) = b(70) * lu(639)
          b(69) = b(69) - lu(638) * b(70)
          b(68) = b(68) - lu(637) * b(70)
@@ -6177,7 +6178,7 @@ logical                       :: module_is_initialized = .false.
          b(28) = b(28) - lu(612) * b(70)
          b(14) = b(14) - lu(611) * b(70)
          b(11) = b(11) - lu(610) * b(70)
-                                                                        
+
          b(69) = b(69) * lu(602)
          b(68) = b(68) - lu(601) * b(69)
          b(67) = b(67) - lu(600) * b(69)
@@ -6193,28 +6194,28 @@ logical                       :: module_is_initialized = .false.
          b(29) = b(29) - lu(590) * b(69)
          b(26) = b(26) - lu(589) * b(69)
          b(9) = b(9) - lu(588) * b(69)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_slv03
-                                                                        
+
       subroutine imp_lu_slv04( lu, b )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(imp_nzcnt)
-      real, intent(inout) ::   b(clscnt4)
-                                                                        
+      real, intent(in) :: lu(imp_nzcnt)
+      real, intent(inout) :: b(clscnt4)
+
 !-----------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !-----------------------------------------------------------------------
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Solve L * y = b
+! ... Solve L * y = b
 !-----------------------------------------------------------------------
          b(68) = b(68) * lu(579)
          b(67) = b(67) - lu(578) * b(68)
@@ -6226,7 +6227,7 @@ logical                       :: module_is_initialized = .false.
          b(49) = b(49) - lu(572) * b(68)
          b(46) = b(46) - lu(571) * b(68)
          b(27) = b(27) - lu(570) * b(68)
-                                                                        
+
          b(67) = b(67) * lu(560)
          b(66) = b(66) - lu(559) * b(67)
          b(65) = b(65) - lu(558) * b(67)
@@ -6252,7 +6253,7 @@ logical                       :: module_is_initialized = .false.
          b(27) = b(27) - lu(538) * b(67)
          b(20) = b(20) - lu(537) * b(67)
          b(15) = b(15) - lu(536) * b(67)
-                                                                        
+
          b(66) = b(66) * lu(525)
          b(65) = b(65) - lu(524) * b(66)
          b(64) = b(64) - lu(523) * b(66)
@@ -6262,7 +6263,7 @@ logical                       :: module_is_initialized = .false.
          b(38) = b(38) - lu(519) * b(66)
          b(26) = b(26) - lu(518) * b(66)
          b(7) = b(7) - lu(517) * b(66)
-                                                                        
+
          b(65) = b(65) * lu(507)
          b(64) = b(64) - lu(506) * b(65)
          b(63) = b(63) - lu(505) * b(65)
@@ -6288,7 +6289,7 @@ logical                       :: module_is_initialized = .false.
          b(17) = b(17) - lu(485) * b(65)
          b(13) = b(13) - lu(484) * b(65)
          b(8) = b(8) - lu(483) * b(65)
-                                                                        
+
          b(64) = b(64) * lu(475)
          b(63) = b(63) - lu(474) * b(64)
          b(62) = b(62) - lu(473) * b(64)
@@ -6309,13 +6310,13 @@ logical                       :: module_is_initialized = .false.
          b(31) = b(31) - lu(458) * b(64)
          b(25) = b(25) - lu(457) * b(64)
          b(18) = b(18) - lu(456) * b(64)
-                                                                        
+
          b(63) = b(63) * lu(447)
          b(62) = b(62) - lu(446) * b(63)
          b(55) = b(55) - lu(445) * b(63)
          b(35) = b(35) - lu(444) * b(63)
          b(30) = b(30) - lu(443) * b(63)
-                                                                        
+
          b(62) = b(62) * lu(433)
          b(61) = b(61) - lu(432) * b(62)
          b(60) = b(60) - lu(431) * b(62)
@@ -6328,7 +6329,7 @@ logical                       :: module_is_initialized = .false.
          b(33) = b(33) - lu(424) * b(62)
          b(31) = b(31) - lu(423) * b(62)
          b(30) = b(30) - lu(422) * b(62)
-                                                                        
+
          b(61) = b(61) * lu(411)
          b(59) = b(59) - lu(410) * b(61)
          b(55) = b(55) - lu(409) * b(61)
@@ -6337,7 +6338,7 @@ logical                       :: module_is_initialized = .false.
          b(42) = b(42) - lu(406) * b(61)
          b(34) = b(34) - lu(405) * b(61)
          b(21) = b(21) - lu(404) * b(61)
-                                                                        
+
          b(60) = b(60) * lu(392)
          b(59) = b(59) - lu(391) * b(60)
          b(58) = b(58) - lu(390) * b(60)
@@ -6346,229 +6347,229 @@ logical                       :: module_is_initialized = .false.
          b(36) = b(36) - lu(387) * b(60)
          b(34) = b(34) - lu(386) * b(60)
          b(31) = b(31) - lu(385) * b(60)
-                                                                        
+
          b(59) = b(59) * lu(375)
          b(55) = b(55) - lu(374) * b(59)
          b(54) = b(54) - lu(373) * b(59)
          b(42) = b(42) - lu(372) * b(59)
          b(34) = b(34) - lu(371) * b(59)
          b(12) = b(12) - lu(370) * b(59)
-                                                                        
+
          b(58) = b(58) * lu(359)
          b(55) = b(55) - lu(358) * b(58)
          b(54) = b(54) - lu(357) * b(58)
          b(51) = b(51) - lu(356) * b(58)
          b(50) = b(50) - lu(355) * b(58)
-                                                                        
+
          b(57) = b(57) * lu(348)
-                                                                        
+
          b(56) = b(56) * lu(338)
          b(54) = b(54) - lu(337) * b(56)
-                                                                        
+
          b(55) = b(55) * lu(330)
          b(54) = b(54) - lu(329) * b(55)
-                                                                        
+
          b(54) = b(54) * lu(323)
          b(39) = b(39) - lu(322) * b(54)
-                                                                        
+
          b(53) = b(53) * lu(315)
          b(49) = b(49) - lu(314) * b(53)
          b(38) = b(38) - lu(313) * b(53)
          b(26) = b(26) - lu(312) * b(53)
-                                                                        
+
          b(52) = b(52) * lu(304)
          b(31) = b(31) - lu(303) * b(52)
-                                                                        
+
          b(51) = b(51) * lu(296)
          b(39) = b(39) - lu(295) * b(51)
-                                                                        
+
          b(50) = b(50) * lu(283)
          b(41) = b(41) - lu(282) * b(50)
          b(17) = b(17) - lu(281) * b(50)
-                                                                        
+
          b(49) = b(49) * lu(273)
          b(26) = b(26) - lu(272) * b(49)
-                                                                        
+
          b(48) = b(48) * lu(257)
          b(44) = b(44) - lu(256) * b(48)
          b(37) = b(37) - lu(255) * b(48)
-                                                                        
+
          b(47) = b(47) * lu(241)
          b(43) = b(43) - lu(240) * b(47)
-                                                                        
+
          b(46) = b(46) * lu(230)
          b(39) = b(39) - lu(229) * b(46)
          b(38) = b(38) - lu(228) * b(46)
          b(9) = b(9) - lu(227) * b(46)
-                                                                        
+
          b(45) = b(45) * lu(218)
          b(44) = b(44) - lu(217) * b(45)
          b(37) = b(37) - lu(216) * b(45)
          b(23) = b(23) - lu(215) * b(45)
-                                                                        
+
          b(44) = b(44) * lu(208)
          b(24) = b(24) - lu(207) * b(44)
-                                                                        
+
          b(43) = b(43) * lu(198)
-                                                                        
+
          b(42) = b(42) * lu(193)
-                                                                        
+
          b(41) = b(41) * lu(185)
          b(32) = b(32) - lu(184) * b(41)
-                                                                        
+
          b(40) = b(40) * lu(176)
          b(34) = b(34) - lu(175) * b(40)
          b(22) = b(22) - lu(174) * b(40)
          b(18) = b(18) - lu(173) * b(40)
-                                                                        
+
          b(39) = b(39) * lu(169)
-                                                                        
+
          b(38) = b(38) * lu(163)
          b(26) = b(26) - lu(162) * b(38)
          b(9) = b(9) - lu(161) * b(38)
-                                                                        
+
          b(37) = b(37) * lu(156)
-                                                                        
+
          b(36) = b(36) * lu(148)
-                                                                        
+
          b(35) = b(35) * lu(140)
-                                                                        
+
          b(34) = b(34) * lu(136)
-                                                                        
+
          b(33) = b(33) * lu(129)
-                                                                        
+
          b(32) = b(32) * lu(122)
-                                                                        
+
          b(31) = b(31) * lu(119)
-                                                                        
+
          b(30) = b(30) * lu(114)
-                                                                        
+
          b(29) = b(29) * lu(108)
-                                                                        
+
          b(28) = b(28) * lu(102)
          b(11) = b(11) - lu(101) * b(28)
-                                                                        
+
          b(27) = b(27) * lu(97)
-                                                                        
+
          b(26) = b(26) * lu(94)
-                                                                        
+
          b(25) = b(25) * lu(89)
-                                                                        
+
          b(24) = b(24) * lu(84)
-                                                                        
+
          b(23) = b(23) * lu(79)
-                                                                        
+
          b(22) = b(22) * lu(74)
-                                                                        
+
          b(21) = b(21) * lu(69)
-                                                                        
+
          b(20) = b(20) * lu(63)
-                                                                        
+
          b(19) = b(19) * lu(59)
-                                                                        
+
          b(18) = b(18) * lu(55)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_slv04
-                                                                        
+
       subroutine imp_lu_slv05( lu, b )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(imp_nzcnt)
-      real, intent(inout) ::   b(clscnt4)
-                                                                        
+      real, intent(in) :: lu(imp_nzcnt)
+      real, intent(inout) :: b(clscnt4)
+
 !-----------------------------------------------------------------------
-!       ... Local variables
+! ... Local variables
 !-----------------------------------------------------------------------
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Solve L * y = b
+! ... Solve L * y = b
 !-----------------------------------------------------------------------
          b(17) = b(17) * lu(51)
-                                                                        
+
          b(16) = b(16) * lu(46)
-                                                                        
+
          b(15) = b(15) * lu(38)
-                                                                        
+
          b(14) = b(14) * lu(34)
-                                                                        
+
          b(13) = b(13) * lu(30)
          b(8) = b(8) - lu(29) * b(13)
-                                                                        
+
          b(12) = b(12) * lu(26)
-                                                                        
+
          b(11) = b(11) * lu(22)
-                                                                        
+
          b(10) = b(10) * lu(19)
-                                                                        
+
          b(9) = b(9) * lu(17)
-                                                                        
+
          b(8) = b(8) * lu(15)
          b(1) = b(1) - lu(14) * b(8)
-                                                                        
+
          b(7) = b(7) * lu(11)
-                                                                        
+
          b(6) = b(6) * lu(8)
-                                                                        
+
          b(5) = b(5) * lu(6)
          b(3) = b(3) - lu(5) * b(5)
-                                                                        
+
          b(4) = b(4) * lu(4)
-                                                                        
+
          b(3) = b(3) * lu(3)
-                                                                        
+
          b(2) = b(2) * lu(2)
-                                                                        
+
          b(1) = b(1) * lu(1)
-                                                                        
-                                                                        
+
+
       end subroutine imp_lu_slv05
-                                                                        
+
       subroutine imp_lu_slv( lu, b )
-                                                                        
+
       use CHEM_MODS_MOD, only : imp_nzcnt, clsze, clscnt4
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(imp_nzcnt)
-      real, intent(inout) ::   b(clscnt4)
-                                                                        
+      real, intent(in) :: lu(imp_nzcnt)
+      real, intent(inout) :: b(clscnt4)
+
       call imp_lu_slv01( lu, b )
       call imp_lu_slv02( lu, b )
       call imp_lu_slv03( lu, b )
       call imp_lu_slv04( lu, b )
       call imp_lu_slv05( lu, b )
-                                                                        
+
       end subroutine imp_lu_slv
-                                                                        
+
       end module MO_IMP_SOLVE_MOD
 
       module MO_ROD_SOLVE_MOD
 
       contains
-                                                                        
+
       subroutine rod_lu_slv( lu, b )
-                                                                        
+
       use CHEM_MODS_MOD, only : rod_nzcnt, clsze, clscnt5
-                                                                        
+
       implicit none
-                                                                        
+
 !-----------------------------------------------------------------------
-!       ... Dummy args
+! ... Dummy args
 !-----------------------------------------------------------------------
-      real, intent(in)    ::   lu(rod_nzcnt)
-      real, intent(inout) ::   b(clscnt5)
-                                                                        
-                                                                        
+      real, intent(in) :: lu(rod_nzcnt)
+      real, intent(inout) :: b(clscnt5)
+
+
       end subroutine rod_lu_slv
-                                                                        
+
       end module MO_ROD_SOLVE_MOD

@@ -1,6 +1,10 @@
       module mo_rodas_sol_mod
 
+#ifndef AM3_CHEM
       use chem_mods_mod, only : clscnt5
+#else
+      use AM3_chem_mods_mod, only : clscnt5
+#endif
 
       implicit none
 
@@ -28,8 +32,13 @@ logical                       :: module_is_initialized = .false.
 !        ... initialize the implict solver
 !-----------------------------------------------------------------------      
 
+#ifndef AM3_CHEM
       use chem_mods_mod,  only : rodas
       use mo_grid_mod,    only : pcnstm1
+#else
+      use AM3_chem_mods_mod,  only : rodas
+      use AM3_mo_grid_mod,    only : pcnstm1
+#endif
       use mo_chem_utls_mod, only : get_spc_ndx, get_rxt_ndx
 
       implicit none
@@ -115,6 +124,7 @@ logical                       :: module_is_initialized = .false.
 !           forward one time step via the implicit runge-kutta rosenbrock scheme
 !-----------------------------------------------------------------------
 
+#ifndef AM3_CHEM
       use chem_mods_mod,           only : rod_nzcnt, clscnt5, clsze, &
                                       rxntot, hetcnt, extcnt, rodas
       use mo_grid_mod,             only : pcnstm1
@@ -124,6 +134,17 @@ logical                       :: module_is_initialized = .false.
       use mo_rod_nln_matrix_mod,   only : rod_nlnmat
       use mo_rod_factor_mod,       only : rod_lu_fac
       use mo_rod_solve_mod,        only : rod_lu_slv
+#else
+      use AM3_chem_mods_mod,           only : rod_nzcnt, clscnt5, clsze, &
+                                      rxntot, hetcnt, extcnt, rodas
+      use AM3_mo_grid_mod,             only : pcnstm1
+      use AM3_mo_indprd_mod,           only : indprd
+      use AM3_mo_rodas_prod_loss_mod,  only : rodas_prod_loss
+      use AM3_mo_rod_lin_matrix_mod,   only : rod_linmat
+      use AM3_mo_rod_nln_matrix_mod,   only : rod_nlnmat
+      use AM3_mo_rod_factor_mod,       only : rod_lu_fac
+      use AM3_mo_rod_solve_mod,        only : rod_lu_slv
+#endif
 
       implicit none
 
