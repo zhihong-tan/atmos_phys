@@ -190,7 +190,7 @@ logical  :: module_is_initialized = .false.
 !
 subroutine bulkphys_rad_init (min_cld_drop_rad_in, max_cld_drop_rad_in,&
                               min_cld_ice_size_in, max_cld_ice_size_in,&
-                              pref, lonb, latb, nswcldb, nlwcldb, Cldrad_control)
+                              pref, lonb, latb, Cldrad_control)
 
 !---------------------------------------------------------------------
 !    subroutine bulkphys_rad_init is the constructor for 
@@ -204,7 +204,6 @@ real,                        intent(in) :: min_cld_drop_rad_in, &
                                            max_cld_ice_size_in
 real, dimension(:,:),        intent(in) :: pref
 real, dimension(:,:),        intent(in) :: lonb, latb
-integer,                     intent(in) :: nswcldb, nlwcldb
 type(cloudrad_control_type), intent(in) :: Cldrad_control
 
 !---------------------------------------------------------------------
@@ -214,8 +213,6 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
 !                 for use in defining transmission functions [ Pa ]
 !       lonb      2d array of model longitudes on cell corners [ radians ]
 !       latb      2d array of model latitudes at cell corners [radians]
-!       nswcldb   number of parameterized shortwave bands
-!       nlwcldb   number of parameterized longwave bands
 !
 !----------------------------------------------------------------------
 
@@ -246,7 +243,7 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
 !    have already been initialized.
 !---------------------------------------------------------------------
       call fms_init
-      if (Cldrad_control%do_strat_clouds) call strat_clouds_W_init(latb, lonb, nswcldb, nlwcldb, Cldrad_control)
+      if (Cldrad_control%do_strat_clouds) call strat_clouds_W_init(latb, lonb, Cldrad_control)
 !BW   if (Cldrad_control%do_rh_clouds)    call rh_based_clouds_init 
 
 !---------------------------------------------------------------------

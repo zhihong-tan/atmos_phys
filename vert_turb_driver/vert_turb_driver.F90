@@ -52,6 +52,8 @@ use  field_manager_mod, only: MODEL_ATMOS
 use tracer_manager_mod, only: get_tracer_index, &
                               get_number_tracers
 
+use moist_proc_utils_mod,  only: rh_calc
+
 implicit none
 private
 
@@ -136,7 +138,7 @@ integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl, id_gust,  &
            id_diff_t, id_diff_m, id_diff_sc, id_z_full, id_z_half,&
            id_uwnd,   id_vwnd,   id_diff_t_stab, id_diff_m_stab,  &
            id_diff_t_entr, id_diff_m_entr,                        &
-           id_z_Ri_025, id_tref, id_qref  ! cjg: PBL depth mods
+           id_z_Ri_025, id_tref, id_qref, id_rh_Ri_025  ! cjg: PBL depth mods, h1g, add RH diagnostics at Ri_025, 2015-04-02
 
 real :: missing_value = -999.
 
@@ -156,7 +158,7 @@ subroutine vert_turb_driver (is, js, Time, Time_next, dt, tdtlw,       &
                              lat, convect,                             &
                              u, v, t, q, r, um, vm, tm, qm, rm, rdiag, &
                              udt, vdt, tdt, qdt, rdt, diff_t, diff_m,  &
-                             gust, z_pbl, mask, kbot                   )
+                             gust, z_pbl, mask, kbot, tke_avg          )  ! h1g: output averaged TKE within PBL  
 
 !-----------------------------------------------------------------------
 integer,         intent(in)         :: is, js
@@ -175,6 +177,11 @@ logical, intent(in), dimension(:,:) :: convect
    real, intent(out),   dimension(:,:)   :: gust, z_pbl 
    real, intent(in),optional, dimension(:,:,:) :: mask
 integer, intent(in),optional, dimension(:,:) :: kbot
+
+!---> h1g, 2015-08-11
+  real, intent(out), optional, dimension(:,:) :: tke_avg  !averaged TKE within PBL
+!<--- h1g, 2015-08-11
+
 !-----------------------------------------------------------------------
 real   , dimension(size(t,1),size(t,2),size(t,3))   :: ape, thv
 logical, dimension(size(t,1),size(t,2),size(t,3)+1) :: lmask
@@ -182,6 +189,11 @@ real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: el, diag3
 real   , dimension(size(t,1),size(t,2),size(t,3)+1) :: tke
 real   , dimension(size(t,1),size(t,2))             :: stbltop
 real   , dimension(size(t,1),size(t,2))             :: z_Ri_025    ! cjg: PBL depth mods
+
+real   , dimension(size(t,1),size(t,2))             :: RH_Ri_025   ! h1g: relative humidity at Ri_025, 2015-04-02
+
+real   , dimension(size(t,1),size(t,2),size(t,3))   :: RH_3D_tmp   ! h1g: 3D relative humidity, 2015-04-02
+
 real   , dimension(size(t,1),size(t,2))             :: el0, vspblcap
 real   , dimension(size(diff_t,1),size(diff_t,2), &
                                   size(diff_t,3))   :: diff_sc,     &
@@ -194,6 +206,7 @@ real   , dimension(size(t,1),size(t,2),size(t,3))   :: tt, qq, uu, vv
 real   , dimension(size(t,1),size(t,2),size(t,3))   :: qlin, qiin, qain
 real    :: dt_tke
 integer :: ie, je, nlev, sec, day, nt
+integer :: i,j,kk
 logical :: used
 !-->h1g, 2012-08-07
 real   , dimension(size(diff_t,1),size(diff_t,2), &
@@ -214,6 +227,7 @@ real   , dimension(size(diff_t,1),size(diff_t,2), &
      ie = is + size(p_full,1) - 1
      je = js + size(p_full,2) - 1
 
+     if ( present(tke_avg) ) tke_avg = 0.0   ! h1g, 2015-08-11
 !-----------------------------------------------------------------------
 !---- set up state variable used by this module ----
 
@@ -269,7 +283,7 @@ real   , dimension(size(diff_t,1),size(diff_t,2), &
    vspblcap = 0.0   
    
 !-----------------------------------------------------------------------
-if (do_mellor_yamada .or. do_tke_turb) then
+if (do_mellor_yamada) then
 
 !    ----- virtual temp ----------
      ape(:,:,:)=(p_full(:,:,:)*p00inv)**(-kappa)
@@ -320,17 +334,17 @@ if (do_mellor_yamada .or. do_tke_turb) then
 !-->cjg debug
 !100 format("BEFORE TURB:",A32," = ",Z20)
 !  outunit = stdout()
-!  write(outunit,100) 't                ', mpp_chksum(t)
-!  write(outunit,100) 'q                ', mpp_chksum(q)
-!  write(outunit,100) 'z_full           ', mpp_chksum(z_full)
-!  write(outunit,100) 'z_half           ', mpp_chksum(z_half)
-!  write(outunit,100) 'qa               ', mpp_chksum(r(:,:,:,nqa))
-!  write(outunit,100) 'tke              ', mpp_chksum(r(:,:,:,ntke))
-!  write(outunit,100) 'el0              ', mpp_chksum(el0)
-!  write(outunit,100) 'el               ', mpp_chksum(el)
-!  write(outunit,100) 'diff_m           ', mpp_chksum(diff_m)
-!  write(outunit,100) 'diff_t           ', mpp_chksum(diff_t)
-!  write(outunit,100) 'z_pbl            ', mpp_chksum(z_pbl)
+! write(outunit,100) 't                ', mpp_chksum(t)
+! write(outunit,100) 'q                ', mpp_chksum(q)
+! write(outunit,100) 'z_full           ', mpp_chksum(z_full)
+! write(outunit,100) 'z_half           ', mpp_chksum(z_half)
+! write(outunit,100) 'qa               ', mpp_chksum(rdiag(:,:,:,nqa))
+! write(outunit,100) 'tke              ', mpp_chksum(rdiag(:,:,:,ntke))
+! write(outunit,100) 'el0              ', mpp_chksum(el0)
+! write(outunit,100) 'el               ', mpp_chksum(el)
+! write(outunit,100) 'diff_m           ', mpp_chksum(diff_m)
+! write(outunit,100) 'diff_t           ', mpp_chksum(diff_t)
+! write(outunit,100) 'z_pbl            ', mpp_chksum(z_pbl)
 !<--cjg debug
 
 !    ----- time step for prognostic tke calculation -----
@@ -341,25 +355,35 @@ if (do_mellor_yamada .or. do_tke_turb) then
 !    ---- compute tke, master length scale (el0),  -------------
 !    ---- length scale (el), and vert mix coeffs (diff_t,diff_m) ----
 
-     call tke_turb (dt_tke, frac_land, p_half, p_full, z_half, z_full, &
-                    uu, vv, thv, rough, u_star, b_star,                &
-                    rdiag(:,:,:,ntke),                                     &
-                    el0, el, diff_m, diff_t, z_pbl)
-
+     if( present(tke_avg) ) then
+      call tke_turb (is, ie, js, je, Time_next, dt_tke, frac_land,      &
+                     p_half, p_full, z_half, z_full,                    &
+                     tt, qq, qain, qlin, qiin, uu, vv,                  &
+                     rough, u_star, b_star,                             &
+                     rdiag(:,:,:,ntke),                                 &
+                     el0, el, diff_m, diff_t, z_pbl, tke_avg=tke_avg)
+     else
+      call tke_turb (is, ie, js, je, Time_next, dt_tke, frac_land,      &
+                     p_half, p_full, z_half, z_full,                    &
+                     tt, qq, qain, qlin, qiin, uu, vv,                  &
+                     rough, u_star, b_star,                             &
+                     rdiag(:,:,:,ntke),                                 &
+                     el0, el, diff_m, diff_t, z_pbl)
+     endif   ! h1g, 2015-08-11
 !-->cjg debug
-!101 format("AFTER TURB:",A32," = ",Z20)
+!101 format("AFTER TURB: ",A32," = ",Z20)
 !  outunit = stdout()
-!  write(outunit,101) 't                ', mpp_chksum(t)
-!  write(outunit,101) 'q                ', mpp_chksum(q)
-!  write(outunit,101) 'z_full           ', mpp_chksum(z_full)
-!  write(outunit,101) 'z_half           ', mpp_chksum(z_half)
-!  write(outunit,101) 'qa               ', mpp_chksum(r(:,:,:,nqa))
-!  write(outunit,101) 'tke              ', mpp_chksum(r(:,:,:,ntke))
-!  write(outunit,101) 'el0              ', mpp_chksum(el0)
-!  write(outunit,101) 'el               ', mpp_chksum(el)
-!  write(outunit,101) 'diff_m           ', mpp_chksum(diff_m)
-!  write(outunit,101) 'diff_t           ', mpp_chksum(diff_t)
-!  write(outunit,101) 'z_pbl            ', mpp_chksum(z_pbl)
+! write(outunit,101) 't                ', mpp_chksum(t)
+! write(outunit,101) 'q                ', mpp_chksum(q)
+! write(outunit,101) 'z_full           ', mpp_chksum(z_full)
+! write(outunit,101) 'z_half           ', mpp_chksum(z_half)
+! write(outunit,101) 'qa               ', mpp_chksum(rdiag(:,:,:,nqa))
+! write(outunit,101) 'tke              ', mpp_chksum(rdiag(:,:,:,ntke))
+! write(outunit,101) 'el0              ', mpp_chksum(el0)
+! write(outunit,101) 'el               ', mpp_chksum(el)
+! write(outunit,101) 'diff_m           ', mpp_chksum(diff_m)
+! write(outunit,101) 'diff_t           ', mpp_chksum(diff_t)
+! write(outunit,101) 'z_pbl            ', mpp_chksum(z_pbl)
 !<--cjg debug
 
 !---------------------------
@@ -448,11 +472,11 @@ else
 CALL STABLE_BL_TURB( is, js, Time_next, tt, qq, qlin, qiin, uu,&
                      vv, z_half, z_full, u_star, b_star, lat,  &
      diff_m_stab, diff_t_stab,kbot=kbot)
-     
+
 ! --->h1g, 2012-07-16
      if(  do_clubb > 0 ) then
         clubb_on = 1.0
-        where ( r(:,:,:, nwp2) <= wp2_min )
+        where ( rdiag(:,:,:, nwp2) <= wp2_min )
             where( diff_m_stab > diff_m .or. diff_t_stab > diff_t )
                stable_on = 1.0
                where( diff_m_stab >= diff_min .or. diff_t_stab >= diff_min )
@@ -462,7 +486,7 @@ CALL STABLE_BL_TURB( is, js, Time_next, tt, qq, qlin, qiin, uu,&
             diff_m = diff_m +  MAX( diff_m_stab - diff_m, 0.0 )
             diff_t = diff_t +  MAX( diff_t_stab - diff_t, 0.0 )
             clubb_on = 0.0
-         endwhere
+        endwhere
      else
         diff_m = diff_m +  MAX( diff_m_stab - diff_m, 0.0 )
         diff_t = diff_t +  MAX( diff_t_stab - diff_t, 0.0 )
@@ -559,6 +583,27 @@ end if
          call bulk_Ri_height_b(tt,qq,uu,vv,t_ref,q_ref,p_full,z_full,p_half,z_half,z_Ri_025)
          used = send_data ( id_z_Ri_025, z_Ri_025, Time_next, is, js )
          if ( alternate_zpbl == 1 ) z_pbl = z_Ri_025
+
+!--->h1g: calculate relative humidity, 2015-04-02
+         if ( id_rh_Ri_025 > 0 ) then
+           call rh_calc ( p_full,  tt, qq, RH_3D_tmp, .false., do_cmip=.true.)
+        
+           rh_Ri_025(:,:) = missing_value
+
+           do i = 1, size(z_full,1) 
+             do j = 1, size(z_full,2)
+!      Vertical upward loop
+               do kk = nlev, 1, -1 
+                 if ( z_full(i,j,kk) >= z_Ri_025(i,j) + z_half(i,j,nlev+1) ) then
+                   rh_Ri_025(i,j) = RH_3D_tmp(i,j,kk) * 100.
+                   exit
+                 endif
+               enddo
+             enddo
+           enddo
+           used = send_data ( id_rh_Ri_025, rh_Ri_025, Time_next, is, js )
+         endif  ! if  id_rh_Ri_025 > 0
+!<---h1g,  2015-04-02
       endif
 !<--cjg
 
@@ -773,6 +818,11 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
          call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
            'both do_entrain and CLUBB', FATAL)
     nwp2 = get_tracer_index ( MODEL_ATMOS, 'wp2' )
+    if ( do_clubb>0 .and. nwp2 <= ntp ) then
+     ! nwp2 is a diagnostic tracer
+      call error_mesg ('vert_turb_driver_mod', &
+                      'wp2 is a diagnostic tracer in CLUBB', FATAL)
+    endif
 !<--h1g, 2012-07-16
 
        if (strat_cloud_on) then
@@ -797,7 +847,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
         ! tke must be a diagnostic tracer
         if (ntke <= ntp) call error_mesg ('vert_turb_driver_mod', &
                     'tke can not be a prognostic tracer', FATAL)
-        call tke_turb_init ( )
+        call tke_turb_init (lonb, latb, axes, Time, id, jd, kd)
       end if
 
       if (do_shallow_conv)  call shallow_conv_init (kd)
@@ -870,6 +920,13 @@ endif
    register_diag_field ( mod_name, 'z_Ri_025', axes(1:2), Time,       &
                         'Critical bulk Richardson height',  'm'  )
 !<--cjg
+
+!-->h1g: add RH (%) at new PBL depth,  2015-04-02 
+   id_rh_Ri_025 = &
+   register_diag_field ( mod_name, 'rh_Ri_025', axes(1:2), Time,       &
+                        'Relative humidity at the critical bulk Richardson height',  '%'  )
+!<--h1g,  2015-04-02
+
 
    id_gust = &
    register_diag_field ( mod_name, 'gust', axes(1:2), Time,        &

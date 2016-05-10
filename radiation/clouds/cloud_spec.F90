@@ -49,11 +49,6 @@ use aerosol_types_mod,        only: aerosol_type
 
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 
-! shared radiation package modules:
-
-use sea_esf_rad_mod,          only: shortwave_number_of_bands, &
-                                    longwave_number_of_bands
-
 ! cloud radiation modules
 
 use cloudrad_types_mod,       only: cld_specification_type, &
@@ -103,13 +98,12 @@ character(len=128)  :: tagname =  '$Name$'
 !-------  interfaces --------
 
 public          &
-         cloud_spec_init, cloud_spec, cloud_spec_end, &  
-         cloud_spec_dealloc, dealloc_microphysics_type
+         cloud_spec_init, cloud_spec, cloud_spec_end
 
 private    &
 
 !  called from cloud_spec:
-         initialize_cldamts, microphys_presc_conc,  &
+         microphys_presc_conc,  &
          combine_cloud_properties
 
 
@@ -211,13 +205,10 @@ integer :: nqr, nqs, nqg ! tracer index for rainwat, snowwat and graupel
 !----------------------------------------------------------------------
 !     miscellaneous variables:
 
-integer :: num_slingo_bands  ! number of radiative bands over which 
-                             ! cloud optical depth is calculated in the
-                             ! gordon diag_cloud parameterization
+!BW integer :: num_slingo_bands  ! number of radiative bands over which 
+!BW                              ! cloud optical depth is calculated in the
+!BW                              ! gordon diag_cloud parameterization
 
-integer :: num_lw_bands      ! number of parameterized longwave bands
-integer :: num_sw_bands      ! number of parameterized shortwave bands
-                             ! for sea_esf radiation
 integer :: id, jd, kmax
 
 type(time_type) :: Radiation_time_step  ! saved for data override
@@ -394,12 +385,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
           call random_number_streams_init ( lonb, latb, Cldrad_control )
       endif
 
-!--------------------------------------------------------------------
-!    save the number of shortwave and longwave bands
-!-------------------------------------------------------------------
-      call shortwave_number_of_bands (num_sw_bands)
-      call longwave_number_of_bands  (num_lw_bands)
-
 !-------------------------------------------------------------------
 !    verify that the nml variable cloud_type_form specifies a valid
 !    cloud parameterization. set the appropriate logical control
@@ -413,7 +398,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
 !    parameterization.
 !-------------------------------------------------------------------
          Cldrad_control%do_strat_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are diagnosed based on model relative 
@@ -429,7 +413,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
 !-------------------------------------------------------------------
       else if (trim(cloud_type_form) == 'deep')  then
          Cldrad_control%do_donner_deep_clouds = .true.
-         call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !------------------------------------------------------------------
 !    cloud fractions, heights are provided by the uw_conv shallow
@@ -437,7 +420,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
 !-------------------------------------------------------------------
       else if (trim(cloud_type_form) == 'uw')  then
          Cldrad_control%do_uw_clouds = .true.
-         call uw_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are a combination of the donner
@@ -447,8 +429,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
       else if (trim(cloud_type_form) == 'stratdeep')  then
          Cldrad_control%do_strat_clouds = .true.
          Cldrad_control%do_donner_deep_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
-         call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are provided by the donner deep convection
@@ -458,8 +438,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
       else if (trim(cloud_type_form) == 'deepuw')  then
          Cldrad_control%do_donner_deep_clouds = .true.
          Cldrad_control%do_uw_clouds = .true.
-         call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
-         call uw_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are provided by the klein large-scale
@@ -468,8 +446,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
       else if (trim(cloud_type_form) == 'stratuw')  then
          Cldrad_control%do_strat_clouds = .true.
          Cldrad_control%do_uw_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
-         call uw_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !-------------------------------------------------------------------
 !    cloud fractions, heights are provided by the klein large-scale
@@ -480,9 +456,6 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
          Cldrad_control%do_strat_clouds = .true.
          Cldrad_control%do_donner_deep_clouds = .true.
          Cldrad_control%do_uw_clouds = .true.
-         call strat_clouds_W_init(latb, lonb, num_sw_bands, num_lw_bands, Cldrad_control)
-         call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
-         call uw_clouds_W_init (pref, lonb, latb, axes, Time)
 
 !---------------------------------------------------------------
 !    model is run without clouds.
@@ -497,6 +470,19 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
          call error_mesg ('cloud_spec_mod',  &
               'invalid cloud_type_form specified', FATAL)
       endif  ! (strat)
+
+!--------------------------------------------------------------------
+!    initialize cloud schemes that are used
+!--------------------------------------------------------------------
+      if (Cldrad_control%do_strat_clouds) then
+         call strat_clouds_W_init(latb, lonb, Cldrad_control)
+      endif
+      if (Cldrad_control%do_donner_deep_clouds) then
+         call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
+      endif
+      if (Cldrad_control%do_uw_clouds) then
+         call uw_clouds_W_init (pref, lonb, latb, axes, Time)
+      endif
 
 !--------------------------------------------------------------------
 !    define the dimensions of the model subdomain assigned to the 
@@ -837,13 +823,17 @@ integer :: istrat, icell, imeso, ishallow
       kx = size(press,3)
 
 !----------------------------------------------------------------------
-!    call initialize_cldamts to allocate and initialize the arrays
-!    contained in the structures used to specify the cloud amounts, 
-!    types and locations and the microphysical parameters.
+!    allocate and initialize the arrays contained in the structures
+!    used to specify the cloud amounts, types and locations and
+!    the microphysical parameters.
 !----------------------------------------------------------------------
       allocate(Cloud_microphys(ncld_used))
-      call initialize_cldamts (ix, jx, kx, scheme_names_used(1:ncld_used), &
-                               Cldrad_control, Cloud_microphys, Cld_spec)
+      do n = 1, ncld_used
+        call Cloud_microphys(n)%alloc ( ix, jx, kx, &
+                                scheme_names_used(n), Cldrad_control)
+      enddo
+
+      call Cld_spec%alloc (ix, jx, kx, Cldrad_control)
 
 !---------------------------------------------------------------------
 !    define the cloud_water, cloud_ice and cloud_area components of 
@@ -1029,6 +1019,7 @@ integer :: istrat, icell, imeso, ishallow
 !----------------------------------------------------------------------
 !    only allocate part of the variables in this derived type
 !    when strat_clouds is not active
+!       (WHERE DOES THIS GET DEALLOCATED?)
 !----------------------------------------------------------------------
           allocate(Lsc_microphys%conc_drop(id,jd,kmax))
           allocate(Lsc_microphys%conc_ice (id,jd,kmax))
@@ -1159,208 +1150,6 @@ end subroutine cloud_spec
 
 
 !######################################################################
-! <SUBROUTINE NAME="cloud_spec_dealloc">
-!  <OVERVIEW>
-!    cloud_spec_dealloc deallocates the component arrays of the 
-!    cld_specification_type structure Cld_spec and the microphysics_type
-!    structure Lsc_microphys.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    cloud_spec_dealloc deallocates the component arrays of the 
-!    cld_specification_type structure Cld_spec and the microphysics_type
-!    structure Lsc_microphys.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call cloud_spec_dealloc (Cld_spec, Lsc_microphys)
-!  </TEMPLATE>
-!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
-!   cloud specification properties on model grid,
-!  </INOUT>
-!  <INOUT NAME="Lsc_microphys" TYPE="microphysics_type">
-!   microphysical specification for large-scale 
-!                        clouds
-!  </INOUT>
-! </SUBROUTINE>
-! 
-subroutine cloud_spec_dealloc (Cldrad_control, Cld_spec)
-
-!---------------------------------------------------------------------
-!    cloud_spec_dealloc deallocates the component arrays of the 
-!    cld_specification_type structure Cld_spec and the microphysics_type
-!    structure Lsc_microphys.
-!----------------------------------------------------------------------
-
-type(cloudrad_control_type),  intent(in)    :: Cldrad_control
-type(cld_specification_type), intent(inout) :: Cld_spec
-
-!----------------------------------------------------------------------
-!    deallocate the array elements of Cld_spec.
-!----------------------------------------------------------------------
-      deallocate (Cld_spec%camtsw         )  
-      deallocate (Cld_spec%cmxolw         )
-      deallocate (Cld_spec%crndlw         )
-      deallocate (Cld_spec%ncldsw         )
-      deallocate (Cld_spec%nmxolw         )
-      deallocate (Cld_spec%nrndlw         )
-      if (Cldrad_control%do_stochastic_clouds) then
-        deallocate (Cld_spec%camtsw_band    )
-        deallocate (Cld_spec%ncldsw_band    )
-        deallocate (Cld_spec%cld_thickness_sw_band  )
-        deallocate (Cld_spec%lwp_sw_band            )
-        deallocate (Cld_spec%iwp_sw_band            )
-        deallocate (Cld_spec%reff_liq_sw_band       )
-        deallocate (Cld_spec%reff_ice_sw_band       )
-        deallocate (Cld_spec%stoch_cloud_type       )
-      endif
-      if (Cldrad_control%do_stochastic_clouds) then
-        deallocate (Cld_spec%crndlw_band    )
-        deallocate (Cld_spec%nrndlw_band    )
-        deallocate (Cld_spec%cld_thickness_lw_band  )
-        deallocate (Cld_spec%lwp_lw_band            )
-        deallocate (Cld_spec%iwp_lw_band            )
-        deallocate (Cld_spec%reff_liq_lw_band       )
-        deallocate (Cld_spec%reff_ice_lw_band       )
-      endif
-      deallocate (Cld_spec%tau            )
-      deallocate (Cld_spec%lwp            )
-      deallocate (Cld_spec%iwp            )
-      deallocate (Cld_spec%reff_liq       )
-      deallocate (Cld_spec%reff_ice       )
-      deallocate (Cld_spec%reff_liq_lim   )
-      deallocate (Cld_spec%reff_ice_lim   )
-      deallocate (Cld_spec%reff_liq_micro )
-      deallocate (Cld_spec%reff_ice_micro )
-      deallocate (Cld_spec%liq_frac       )
-      deallocate (Cld_spec%cld_thickness  )
-      deallocate (Cld_spec%hi_cloud       )
-      deallocate (Cld_spec%mid_cloud      )
-      deallocate (Cld_spec%low_cloud      )
-      deallocate (Cld_spec%ice_cloud      )
-      deallocate (Cld_spec%cloud_water    )
-      deallocate (Cld_spec%cloud_ice      )
-      deallocate (Cld_spec%cloud_area     )
-      deallocate (Cld_spec%cloud_droplet  )
-      deallocate (Cld_spec%cloud_ice_num  )
-      deallocate (Cld_spec%snow           )
-      deallocate (Cld_spec%rain           )
-      deallocate (Cld_spec%snow_size      )
-      deallocate (Cld_spec%rain_size      )
-
-!--------------------------------------------------------------------
-
-end subroutine cloud_spec_dealloc 
-
-!######################################################################
-! <SUBROUTINE NAME="dealloc_microphysics_type">
-!  <OVERVIEW>
-!    dealloc_microphysics_type deallocates the component arrays of the 
-!    microphysics_type structures for Meso_microphys, Cell_microphys
-!    and Shallow_microphys.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    dealloc_microphysics_type deallocates the component arrays of the 
-!    microphysics_type structures for Meso_microphys, Cell_microphys
-!    and Shallow_microphys.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call cloud_spec_dealloc (Meso_microphys, Cell_microphys, &
-!                            Shallow_microphys)
-!  </TEMPLATE>
-!  <INOUT NAME="Meso_microphys" TYPE="microphysics_type">
-!   microphysical specification for meso-scale 
-!                        clouds assciated with donner convection
-!  </INOUT>
-!  <INOUT NAME="Cell_microphys" TYPE="microphysics_type">
-!   microphysical specification for convective cell
-!                        clouds associated with donner convection
-!  </INOUT>
-!  <INOUT NAME="Shallow_microphys" TYPE="microphysics_type">
-!   microphysical specification for 
-!                        clouds associated with uw shallow convection
-!  </INOUT>
-! </SUBROUTINE>
-! 
-
-subroutine dealloc_microphysics_type (Cldrad_control, Cloud_microphys)
-
-!---------------------------------------------------------------------
-!    dealloc_microphysics_type deallocates the component arrays of the 
-!    microphysics_type structures for Meso_microphys, Cell_microphys
-!    and Shallow_microphys.
-!----------------------------------------------------------------------
-
-type(cloudrad_control_type),           intent(in)    :: Cldrad_control
-type(microphysics_type), dimension(:), intent(inout), allocatable :: Cloud_microphys
-
-!----------------------------------------------------------------------
-integer :: n
-!----------------------------------------------------------------------
-
-      do n = 1, size(Cloud_microphys,1)
-
-!----------------------------------------------------------------------
-!    deallocate the elements common to all cloud types
-!---------------------------------------------------------------------
-         deallocate (Cloud_microphys(n)%conc_drop   )
-         deallocate (Cloud_microphys(n)%conc_ice    )
-         deallocate (Cloud_microphys(n)%conc_rain   )
-         deallocate (Cloud_microphys(n)%conc_snow   )
-         deallocate (Cloud_microphys(n)%size_drop   )
-         deallocate (Cloud_microphys(n)%size_ice    )
-         deallocate (Cloud_microphys(n)%size_rain   )
-         deallocate (Cloud_microphys(n)%size_snow   )
-         deallocate (Cloud_microphys(n)%cldamt      )
-         deallocate (Cloud_microphys(n)%droplet_number )
-
-!---------------------------------------------------------------------
-!    deallocate the arrays unique to the large-scale stratiform clouds 
-!---------------------------------------------------------------------
-         if (trim(Cloud_microphys(n)%scheme_name) == 'strat_cloud') then
-
-            deallocate(Cloud_microphys(n)%ice_number)
-
-       !--------------------------------------------------
-       !    deallocate the arrays for stochastic clouds
-       !--------------------------------------------------
-            if (Cldrad_control%do_stochastic_clouds) then
-               deallocate (Cloud_microphys(n)%stoch_conc_drop)
-               deallocate (Cloud_microphys(n)%stoch_conc_ice)
-               deallocate (Cloud_microphys(n)%stoch_size_drop)
-               deallocate (Cloud_microphys(n)%stoch_size_ice)
-               deallocate (Cloud_microphys(n)%stoch_cldamt)
-               deallocate (Cloud_microphys(n)%stoch_droplet_number)
-               deallocate (Cloud_microphys(n)%stoch_ice_number)
-
-               nullify (Cloud_microphys(n)%lw_stoch_conc_drop   )
-               nullify (Cloud_microphys(n)%lw_stoch_conc_ice    )
-               nullify (Cloud_microphys(n)%lw_stoch_size_drop   )
-               nullify (Cloud_microphys(n)%lw_stoch_size_ice    )
-               nullify (Cloud_microphys(n)%lw_stoch_cldamt      )
-               nullify (Cloud_microphys(n)%lw_stoch_droplet_number)
-               nullify (Cloud_microphys(n)%lw_stoch_ice_number  )
-
-               nullify (Cloud_microphys(n)%sw_stoch_conc_drop   )
-               nullify (Cloud_microphys(n)%sw_stoch_conc_ice    )
-               nullify (Cloud_microphys(n)%sw_stoch_size_drop   )
-               nullify (Cloud_microphys(n)%sw_stoch_size_ice    )
-               nullify (Cloud_microphys(n)%sw_stoch_cldamt      )
-               nullify (Cloud_microphys(n)%sw_stoch_droplet_number)
-               nullify (Cloud_microphys(n)%sw_stoch_ice_number  )
-            endif ! do_stochastic_clouds
-
-         endif ! strat_cloud
-
-         Cloud_microphys(n)%scheme_name = ' '
-      enddo ! n
-
-     ! finally deallocate the array of cloud types
-     deallocate(Cloud_microphys)
-
-!---------------------------------------------------------------------
-
-end subroutine dealloc_microphysics_type
-
-!#####################################################################
 
 subroutine cloud_spec_end (Cldrad_control)
 
@@ -1417,411 +1206,6 @@ end subroutine cloud_spec_end
 !                    PRIVATE SUBROUTINES
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-
-
-!#####################################################################
-! <SUBROUTINE NAME="initialize_cldamts">
-!  <OVERVIEW>
-!    initialize_cldamts allocates and initializes the array components 
-!    of the structures used to specify the model cloud and microphysics
-!    fields.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    initialize_cldamts allocates and initializes the array components 
-!    of the structures used to specify the model cloud and microphysics
-!    fields.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call initialize_cldamts (ix, jx, kx, Lsc_microphys,    &
-!                               Meso_microphys, Cell_microphys, Cld_spec)
-!  </TEMPLATE>
-!  <IN NAME="ix, jx, kx" TYPE="integer">
-!       ix             size of i dimension of physics window
-!       jx             size of j dimension of physics window
-!       kx             size of k dimension of physics window
-!  </IN>
-!  <INOUT NAME="Cld_spec" TYPE="cld_specification_type">
-!   cloud specification properties on model grid,
-!  </INOUT>
-!  <INOUT NAME="Lsc_microphys" TYPE="microphysics_type">
-!   microphysical specification for large-scale 
-!                        clouds
-!  </INOUT>
-!  <INOUT NAME="Meso_microphys" TYPE="microphysics_type">
-!   microphysical specification for meso-scale 
-!                        clouds assciated with donner convection
-!  </INOUT>
-!  <INOUT NAME="Cell_microphys" TYPE="microphysics_type">
-!   microphysical specification for convective cell
-!                        clouds associated with donner convection
-!  </INOUT>
-!  <INOUT NAME="Shallow_microphys" TYPE="microphysics_type">
-!   microphysical specification for 
-!                        clouds associated with uw shallow convection
-!  </INOUT>
-! </SUBROUTINE>
-! 
-subroutine initialize_cldamts (ix, jx, kx, scheme_names,  &
-                               Cldrad_control, Cloud_microphys, Cld_spec)
-
-!---------------------------------------------------------------------
-!    initialize_cldamts allocates and initializes the array components 
-!    of the structures used to specify the model cloud and microphysics
-!    fields.
-!---------------------------------------------------------------------
-
-integer,                               intent(in)    :: ix, jx, kx
-character(len=*),        dimension(:), intent(in)    :: scheme_names
-type(cloudrad_control_type),           intent(in)    :: Cldrad_control
-type(microphysics_type), dimension(:), intent(inout) :: Cloud_microphys
-type(cld_specification_type),          intent(inout) :: Cld_spec
-
-!----------------------------------------------------------------------
-!    intent(in) variables:
-! 
-!       ix             size of i dimension of physics window
-!       jx             size of j dimension of physics window
-!       kx             size of k dimension of physics window
-!
-!    intent(inout) variables:
-!
-!       Lsc_microphys  microphysical specification for large-scale 
-!                      clouds
-!                      [ microphysics_type ]
-!       Meso_microphys microphysical specification for meso-scale 
-!                      clouds assciated with donner convection
-!                      [ microphysics_type ]
-!       Cell_microphys microphysical specification for convective cell
-!                      clouds associated with donner convection
-!                      [ microphysics_type ]
-!       Shallow_microphys 
-!                      microphysical specification for 
-!                      clouds associated with uw shallow convection
-!                      [ microphysics_type ]
-!
-!            the following elements are components of these  
-!            microphysics_type variables which are allocated and
-!            initialized here:
-!
-!            %conc_ice   ice particle concentration [ g / m**3 ]
-!            %conc_drop  cloud droplet concentration [ g / m**3 ]
-!            %conc_rain  rain drop concentration [ g / m**3 ]
-!            %conc_snow  snow concentration [ g / m**3 ]
-!            %size_ice   effective ice crystal diameter [ microns ]
-!            %size_drop  effective cloud drop diameter [ microns ]
-!            %size_rain  effective rain drop diameter [ microns ]
-!            %size_snow  effective snow flake diameter [ microns ]
-!            %cldamt     total cloud fraction (crystal + droplet)
-!                        [ dimensionless ]
-!            %lw_stoch_conc_ice
-!                        ice particle concentration as a function of
-!                        lw parameterization band [ g / m**3 ]
-!            %lw_stoch_conc_drop
-!                        cloud droplet concentration as a function of
-!                        lw parameterization band [ g / m**3 ]
-!            %lw_stoch_size_ice
-!                        effective ice crystal diameter as a function
-!                        of lw parameterization band [ microns ]
-!            %lw_stoch_size_drop
-!                        effective cloud drop diameter as a function of
-!                        lw parameterization band [ microns ]
-!            %lw_stoch_cldamt
-!                        total cloud fraction (crystal + droplet) as a
-!                        function of lw parameterization band
-!                        [ dimensionless ]
-!            %sw_stoch_conc_ice
-!                        ice particle concentration as a function of
-!                        sw parameterization band [ g / m**3 ]
-!            %sw_stoch_conc_drop
-!                        cloud droplet concentration as a function of
-!                        sw parameterization band [ g / m**3 ]
-!            %sw_stoch_size_ice
-!                        effective ice crystal diameter as a function
-!                        of sw parameterization band [ microns ]
-!            %sw_stoch_size_drop
-!                        effective cloud drop diameter as a function of
-!                        sw parameterization band [ microns ]
-!            %sw_stoch_cldamt
-!                        total cloud fraction (crystal + droplet) as a
-!                        function of sw parameterization band
-!                        [ dimensionless ]
-!
-!       Cld_spec       variables on the model grid which define all or
-!                      some of the following, dependent on the specific
-!                      cloud parameterization: cloud optical paths, 
-!                      particle sizes, cloud fractions, cloud thickness,
-!                      number of clouds in a column, and /or cloud type 
-!                      (high/mid/low, ice/liq or random/max overlap)
-!                      [ cld_specification_type ]
-!
-!            the following elements are components of this  
-!            cld_specification_type variable which is allocated and
-!            initialized here:
-!
-!            %cmxolw         amount of maximally overlapped longwave 
-!                            clouds [ dimensionless ]
-!            %crndlw         amount of randomly overlapped longwave 
-!                            clouds [ dimensionless ]
-!            %nmxolw         number of maximally overlapped longwave 
-!                            clouds in each grid column.
-!            %nrndlw         number of maximally overlapped longwave 
-!                            clouds in each grid column.
-!            %camtsw         shortwave cloud amount. the sum of the max-
-!                            imally overlapped and randomly overlapped 
-!                            longwave cloud amounts. [ dimensionless ]
-!            %ncldsw         number of shortwave clouds in each grid 
-!                            column.
-!            %camtsw_band    shortwave cloud amount. the sum of the max-
-!                            imally overlapped and randomly overlapped
-!                            longwave cloud amounts, differing with sw
-!                            parameterization band. [ dimensionless ]
-!            %crndlw_band    amount of randomly overlapped longwave
-!                            clouds, differing with lw parameterization
-!                            band [ dimensionless ]
-!            %hi_cloud       logical mask for high clouds 
-!            %mid_cloud      logical mask for middle clouds
-!            %low_cloud      logical mask for low clouds
-!            %ice_cloud      logical mask for ice clouds
-!            %iwp            ice water path  [ kg / m**2 ]
-!            %lwp            liquid water path [ kg / m**2 ]
-!            %reff_liq       effective cloud drop radius  used with
-!                            bulk cloud physics scheme [ microns ]
-!            %reff_ice       effective ice crystal radius used with
-!                            bulk cloud physics scheme [ microns ]
-!            %reff_liq_micro effective cloud drop radius used with 
-!                            microphysically based scheme [ microns ]
-!            %reff_ice_micro effective ice crystal radius used with
-!                            microphysically based scheme [ microns ]
-!            %tau            extinction optical path  [ dimensionless ]
-!            %liq_frac       fraction of cloud in a box which is liquid
-!                            [ dimensionless ]
-!            %cld_thickness  number of model layers contained in cloud  
-!            %cloud_water    liquid cloud content [ kg liq / kg air ]
-!            %cloud_ice      ice cloud content [ kg ice / kg air ]
-!            %cloud_area     saturated volume fraction [ dimensionless ]
-!
-!---------------------------------------------------------------------
-
-      integer  :: n, nb
-
-!---------------------------------------------------------------------
-
-      do n = 1, size(scheme_names(:))
-
-         Cloud_microphys(n)%scheme_name = trim(scheme_names(n))
-
-!---------------------------------------------------------------------
-!    allocate the arrays defining the microphysical parameters
-!    common to all cloud schemes, including any precipitation fields
-!    and the total cloud fraction. concentrations and fractions are
-!    initialized to 0.0, and the effective sizes are set to small
-!    numbers to avoid potential divides by zero.
-!---------------------------------------------------------------------
-         allocate (Cloud_microphys(n)%conc_drop  (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%conc_ice   (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%conc_rain  (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%conc_snow  (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%size_drop  (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%size_ice   (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%size_rain  (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%size_snow  (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%cldamt     (ix, jx, kx) )
-         allocate (Cloud_microphys(n)%droplet_number (ix, jx, kx) )
-         Cloud_microphys(n)%conc_drop(:,:,:) = 0.
-         Cloud_microphys(n)%conc_ice(:,:,:)  = 0.
-         Cloud_microphys(n)%conc_rain(:,:,:) = 0.
-         Cloud_microphys(n)%conc_snow(:,:,:) = 0.
-         Cloud_microphys(n)%size_drop(:,:,:) = 1.0e-20 
-         Cloud_microphys(n)%size_ice(:,:,:)  = 1.0e-20 
-         Cloud_microphys(n)%size_rain(:,:,:) = 1.0e-20        
-         Cloud_microphys(n)%size_snow(:,:,:) = 1.0e-20 
-         Cloud_microphys(n)%cldamt(:,:,:)    = 0.0
-         Cloud_microphys(n)%droplet_number(:,:,:) = 0.0
-
-!---------------------------------------------------------------------
-!    allocate the arrays unique to the large-scale stratiform clouds 
-!---------------------------------------------------------------------
-         if (trim(scheme_names(n)) == 'strat_cloud') then
-
-            allocate (Cloud_microphys(n)%ice_number (ix, jx, kx) )
-            Cloud_microphys(n)%ice_number(:,:,:)= 0.0
-
-       !--------------------------------------------------
-       !    allocate the arrays for stochastic clouds
-       !--------------------------------------------------
-            if (Cldrad_control%do_stochastic_clouds) then
-               allocate (Cloud_microphys(n)%stoch_conc_drop (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_conc_ice  (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_size_drop (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_size_ice  (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_cldamt    (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_droplet_number  &
-                                                (ix, jx, kx, num_lw_bands + num_sw_bands) )
-               allocate (Cloud_microphys(n)%stoch_ice_number  &
-                                                (ix, jx, kx, num_lw_bands + num_sw_bands) )
-  
-               Cloud_microphys(n)%lw_stoch_conc_drop => Cloud_microphys(n)%stoch_conc_drop(:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_conc_drop => Cloud_microphys(n)%stoch_conc_drop(:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_conc_ice  => Cloud_microphys(n)%stoch_conc_ice (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_conc_ice  => Cloud_microphys(n)%stoch_conc_ice (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_size_drop => Cloud_microphys(n)%stoch_size_drop(:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_size_drop => Cloud_microphys(n)%stoch_size_drop(:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_size_ice  => Cloud_microphys(n)%stoch_size_ice (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_size_ice  => Cloud_microphys(n)%stoch_size_ice (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_cldamt    => Cloud_microphys(n)%stoch_cldamt   (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_cldamt    => Cloud_microphys(n)%stoch_cldamt   (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_droplet_number    => Cloud_microphys(n)%stoch_droplet_number   (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_droplet_number    => Cloud_microphys(n)%stoch_droplet_number   (:, :, :, num_lw_bands+1:)
-               Cloud_microphys(n)%lw_stoch_ice_number    => Cloud_microphys(n)%stoch_ice_number   (:, :, :, 1:num_lw_bands)
-               Cloud_microphys(n)%sw_stoch_ice_number    => Cloud_microphys(n)%stoch_ice_number   (:, :, :, num_lw_bands+1:)
-
-               do nb = 1, num_lw_bands + num_sw_bands
-                  Cloud_microphys(n)%stoch_conc_drop(:,:,:,nb) = 0.
-                  Cloud_microphys(n)%stoch_conc_ice(:,:,:,nb)  = 0.
-                  Cloud_microphys(n)%stoch_size_drop(:,:,:,nb) = 1.0e-20
-                  Cloud_microphys(n)%stoch_size_ice(:,:,:,nb)  = 1.0e-20
-                  Cloud_microphys(n)%stoch_cldamt(:,:,:,nb)    = 0.0
-                  Cloud_microphys(n)%stoch_droplet_number(:,:,:,nb) = 0.0
-                  Cloud_microphys(n)%stoch_ice_number(:,:,:,nb)= 0.0
-               enddo
-            endif ! do_stochastic_clouds
-         endif ! strat_cloud
-      enddo ! n
-
-!---------------------------------------------------------------------
-!    allocate arrays to hold the cloud fractions seen by the shortwave
-!    and the random and maximum overlap fractions seen by the longwave
-!    radiation, and then the number of each of these types of cloud in
-!    each column. initialize the cloud fractions and number of clouds
-!    to zero.
-!---------------------------------------------------------------------
-      allocate ( Cld_spec%camtsw (ix, jx, kx ) )
-      allocate ( Cld_spec%cmxolw (ix, jx, kx ) )
-      allocate ( Cld_spec%crndlw (ix, jx, kx ) )
-      allocate ( Cld_spec%ncldsw (ix, jx     ) )
-      allocate ( Cld_spec%nmxolw (ix, jx     ) )
-      allocate ( Cld_spec%nrndlw (ix, jx     ) )
-      Cld_spec%cmxolw(:,:,:) = 0.0E+00
-      Cld_spec%crndlw(:,:,:) = 0.0E+00
-      Cld_spec%camtsw(:,:,:) = 0.0E+00
-      Cld_spec%nmxolw (:,:)  = 0
-      Cld_spec%nrndlw (:,:)  = 0
-      Cld_spec%ncldsw (:,:)  = 0
-      if (Cldrad_control%do_stochastic_clouds) then
-        allocate ( Cld_spec%camtsw_band (ix, jx, kx, num_sw_bands) )
-        allocate ( Cld_spec%ncldsw_band (ix, jx, num_sw_bands) )
-        allocate (Cld_spec%cld_thickness_sw_band & 
-                                 (ix, jx, kx, num_sw_bands) )
-        allocate (Cld_spec%iwp_sw_band    &
-                                 (ix, jx, kx, num_sw_bands) )
-        allocate (Cld_spec%lwp_sw_band   &
-                                 (ix, jx, kx, num_sw_bands) )
-        allocate (Cld_spec%reff_liq_sw_band   &  
-                                 (ix, jx, kx, num_sw_bands) )
-        allocate (Cld_spec%reff_ice_sw_band   &   
-                                 (ix, jx, kx, num_sw_bands) )
-        do n=1,num_sw_bands
-        Cld_spec%camtsw_band(:,:,:,n) = 0.0E+00
-        Cld_spec%ncldsw_band(:,:,n) = 0
-        Cld_spec%cld_thickness_sw_band(:,:,:,n) = 0              
-        Cld_spec%lwp_sw_band(:,:,:,n)   = 0.0
-        Cld_spec%iwp_sw_band(:,:,:,n)   = 0.0
-        Cld_spec%reff_liq_sw_band(:,:,:,n)      = 10.0
-        Cld_spec%reff_ice_sw_band(:,:,:,n)      = 30.0
-        end do
-        allocate ( Cld_spec%crndlw_band    &
-                                 (ix, jx, kx, num_lw_bands) )
-        allocate ( Cld_spec%nrndlw_band    &
-                                 (ix, jx, num_lw_bands) )
-        allocate (Cld_spec%cld_thickness_lw_band & 
-                                 (ix, jx, kx, num_lw_bands) )
-        allocate (Cld_spec%iwp_lw_band    &
-                                 (ix, jx, kx, num_lw_bands) )
-        allocate (Cld_spec%lwp_lw_band   &
-                                 (ix, jx, kx, num_lw_bands) )
-        allocate (Cld_spec%reff_liq_lw_band   &  
-                                 (ix, jx, kx, num_lw_bands) )
-        allocate (Cld_spec%reff_ice_lw_band   &   
-                                 (ix, jx, kx, num_lw_bands) )
-        do n=1, num_lw_bands
-        Cld_spec%crndlw_band(:,:,:,n) = 0.0E+00
-        Cld_spec%nrndlw_band(:,:,n) = 0
-        Cld_spec%cld_thickness_lw_band(:,:,:,n) = 0              
-        Cld_spec%lwp_lw_band(:,:,:,n)   = 0.0
-        Cld_spec%iwp_lw_band(:,:,:,n)   = 0.0
-        Cld_spec%reff_liq_lw_band(:,:,:,n)      = 10.0
-        Cld_spec%reff_ice_lw_band (:,:,:,n)     = 30.0
-        end do
-        allocate (Cld_spec%stoch_cloud_type (ix, jx, kx, num_sw_bands + num_lw_bands) )
-        Cld_spec%stoch_cloud_type = 0
-      endif
-
-!--------------------------------------------------------------------
-!    allocate and initialize various arrays that are used by one or
-!    another cloud scheme to specify the cloud locations and amounts.
-!    initialization provides values consistent with the absence of
-!    cloud, with the exception of the particle size fields which are
-!    set to small, non-zero values.
-!---------------------------------------------------------------------
-      allocate (Cld_spec%hi_cloud       (ix, jx, kx) )
-      allocate (Cld_spec%mid_cloud      (ix, jx, kx) )
-      allocate (Cld_spec%low_cloud      (ix, jx, kx) )
-      allocate (Cld_spec%ice_cloud      (ix, jx, kx) )
-      allocate (Cld_spec%iwp            (ix, jx, kx) )
-      allocate (Cld_spec%lwp            (ix, jx, kx) )
-      allocate (Cld_spec%reff_liq       (ix, jx, kx) )
-      allocate (Cld_spec%reff_ice       (ix, jx, kx) )
-      allocate (Cld_spec%reff_liq_lim   (ix, jx, kx) )
-      allocate (Cld_spec%reff_ice_lim   (ix, jx, kx) )
-      allocate (Cld_spec%reff_liq_micro (ix, jx, kx) )
-      allocate (Cld_spec%reff_ice_micro (ix, jx, kx) )
-      allocate (Cld_spec%tau            (ix, jx, kx, num_slingo_bands) )
-      allocate (Cld_spec%liq_frac       (ix, jx, kx) )
-      allocate (Cld_spec%cld_thickness  (ix, jx, kx) )
-      allocate (Cld_spec%cloud_water    (ix,jx,kx) )
-      allocate (Cld_spec%cloud_ice      (ix,jx,kx)   )
-      allocate (Cld_spec%cloud_area     (ix,jx,kx)  )
-      allocate (Cld_spec%cloud_droplet  (ix,jx,kx)  )
-      allocate (Cld_spec%cloud_ice_num  (ix,jx,kx)  )
-      allocate (Cld_spec%snow           (ix,jx,kx)  )
-      allocate (Cld_spec%rain           (ix,jx,kx)  )
-      allocate (Cld_spec%snow_size      (ix,jx,kx)  )
-      allocate (Cld_spec%rain_size      (ix,jx,kx)  )
-
-      Cld_spec%hi_cloud (:,:,:)     = .false.
-      Cld_spec%mid_cloud(:,:,:)     = .false.
-      Cld_spec%low_cloud(:,:,:)     = .false.
-      Cld_spec%ice_cloud(:,:,:)     = .false.
-      Cld_spec%lwp(:,:,:)    = 0.0
-      Cld_spec%iwp(:,:,:)    = 0.0
-      Cld_spec%reff_liq(:,:,:)      = 10.0
-      Cld_spec%reff_ice(:,:,:)      = 30.0
-      Cld_spec%reff_liq_lim(:,:,:)      = 10.0
-      Cld_spec%reff_ice_lim(:,:,:)      = 30.0
-      Cld_spec%reff_liq_micro(:,:,:) = 10.0
-      Cld_spec%reff_ice_micro(:,:,:) = 30.0
-      Cld_spec%liq_frac(:,:,:)      = 0.0
-      Cld_spec%cld_thickness(:,:,:) = 0              
-      Cld_spec%cloud_water(:,:,:)   = 0.
-      Cld_spec%cloud_ice(:,:,:)     = 0.
-      Cld_spec%cloud_area(:,:,:)    = 0.
-      Cld_spec%cloud_droplet(:,:,:)    = 0.
-      Cld_spec%cloud_ice_num(:,:,:) = 0.
-      Cld_spec%snow(:,:,:)          = 0.
-      Cld_spec%rain(:,:,:)          = 0.
-      Cld_spec%snow_size(:,:,:)     = 0.
-      Cld_spec%rain_size(:,:,:)     = 0.
-      do n=1, num_slingo_bands
-      Cld_spec%tau(:,:,:,n)  = 0.0
-      end do
-
-!---------------------------------------------------------------------
-
-
-end subroutine initialize_cldamts              
-
 
 !###################################################################
 ! <SUBROUTINE NAME="combine_cloud_properties">
@@ -1920,7 +1304,8 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
                     dimension(size(Cld_spec%camtsw,1),   &
                               size(Cld_spec%camtsw,2),   &       
                               size(Cld_spec%camtsw,3),   &       
-                              num_lw_bands+num_sw_bands) :: &
+                              Cldrad_control%num_lw_cloud_bands+ &
+                              Cldrad_control%num_sw_cloud_bands) :: &
                                                      randomNumbers
       integer :: nn, nsubcols
 
@@ -1994,7 +1379,8 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !    seen by the radiation code in each stochastic subcolumn.
 !--------------------------------------------------------------------
       if (Cldrad_control%do_stochastic_clouds) then
-        nsubcols = num_sw_bands + num_lw_bands
+        nsubcols = Cldrad_control%num_sw_cloud_bands + &
+                   Cldrad_control%num_lw_cloud_bands
 
 !--------------------------------------------------------------------
 !   assign either a 1 or a 0 to each subcolumn indicating whether
@@ -2002,10 +1388,10 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !--------------------------------------------------------------------
         if (istrat > 0) then
           do n=1,nsubcols
-            if ( n > num_sw_bands) then
-              nn = n - num_sw_bands    
+            if ( n > Cldrad_control%num_sw_cloud_bands) then
+              nn = n - Cldrad_control%num_sw_cloud_bands    
             else
-              nn = n + num_lw_bands    
+              nn = n + Cldrad_control%num_lw_cloud_bands    
             endif
             do k=1,size(Cld_spec%camtsw,3) ! Levels
                do j=1,size(Cld_spec%camtsw,2) ! Lons
@@ -2128,7 +1514,7 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
 !     define the cloud amount in each stochastic subcolumn to be either
 !     1.0 if cloud is present, or 0.0 if no cloud exists.
 !---------------------------------------------------------------------
-        do n=1,num_sw_bands
+        do n=1,Cldrad_control%num_sw_cloud_bands
           do k=1,size(Cld_spec%camtsw,3) ! Levels
             do j=1,size(Cld_spec%camtsw,2) ! Lons
               do i=1,size(Cld_spec%camtsw,1) ! Lats
@@ -2142,8 +1528,8 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
           end do
         end do
         
-        do n=1,num_lw_bands
-          nn = num_sw_bands + n
+        do n=1,Cldrad_control%num_lw_cloud_bands
+          nn = Cldrad_control%num_sw_cloud_bands + n
           do k=1,size(Cld_spec%camtsw,3) ! Levels
             do j=1,size(Cld_spec%camtsw,2) ! Lons
               do i=1,size(Cld_spec%camtsw,1) ! Lats
@@ -2159,7 +1545,7 @@ type(cld_specification_type),           intent(inout) :: Cld_spec
       endif  ! (do_stochastic)
 
 
-!#####################################################################
+!-------------------------------------------------------------------
 
 
 end subroutine combine_cloud_properties 
@@ -2386,6 +1772,6 @@ end subroutine microphys_presc_conc
 !#################################################################
 
 
+                end module cloud_spec_mod
 
-                       end module cloud_spec_mod
 

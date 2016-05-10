@@ -245,7 +245,7 @@ type strat_nml_type
 !-------------------------------------------------------------------------
 
   real    :: U00, rthresh, var_limit, sea_salt_scale,         &
-             om_to_oc,  N_land, N_ocean, U_evap, eros_scale,  &
+             om_to_oc,  N_land, N_ocean, U_evap, U_evap_snow, eros_scale,  &!miz
              eros_scale_c, eros_scale_t, mc_thresh,           &
              diff_thresh, qmin, Dmin, efact, vfact, cfact,    &
              iwc_crit,  vfall_const2, vfall_exp2,             &
@@ -253,9 +253,10 @@ type strat_nml_type
              num_mass_ratio2, qcvar
 
   logical :: do_netcdf_restart, u00_profile, use_kk_auto,     &
-             use_online_aerosol, use_sub_seasalt,             &
+             use_online_aerosol, use_sub_seasalt, include_neg_mc, & !miz
              eros_choice, super_choice, tracer_advec,         &
-             do_old_snowmelt, retain_cm3_bug, do_pdf_clouds, do_liq_num,      &
+             do_old_snowmelt, retain_cm3_bug, do_pdf_clouds,  &
+             Single_Gaussion_pdf,  do_liq_num,                &
              do_dust_berg, pdf_org, do_ice_nucl_wpdf, debugo, &
              mass_cons, do_hallet_mossop, activate_all_ice_always
 

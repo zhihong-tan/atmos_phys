@@ -277,8 +277,8 @@ module strat_cloud_legacy_mod
 
 
 real :: U00, rthresh, var_limit, sea_salt_scale, om_to_oc,  N_land, &
-          N_ocean, U_evap, eros_scale, eros_scale_c, eros_scale_t, &
-          mc_thresh, diff_thresh, qmin, Dmin, efact, vfact, cfact, &
+          N_ocean, U_evap, U_evap_snow, eros_scale, eros_scale_c, eros_scale_t, &!miz
+          mc_thresh, include_neg_mc, diff_thresh, qmin, Dmin, efact, vfact, cfact, &
           iwc_crit,  vfall_const2, vfall_exp2, qthalfwidth, N_min, &
           num_mass_ratio1, num_mass_ratio2
  
@@ -1004,11 +1004,13 @@ subroutine strat_cloud_legacy( Nml,  &
     use_sub_seasalt = Nml%use_sub_seasalt 
     N_ocean = Nml%N_ocean 
     U_evap = Nml%U_evap 
+    U_evap_snow = Nml%U_evap_snow   !miz
     eros_scale = Nml%eros_scale 
     eros_choice = Nml%eros_choice
     eros_scale_t = Nml%eros_scale_t 
     eros_scale_c = Nml%eros_scale_c 
     mc_thresh = Nml%mc_thresh 
+    include_neg_mc = Nml%include_neg_mc 
     diff_thresh = Nml%diff_thresh 
     super_choice = Nml%super_choice 
     tracer_advec = Nml%tracer_advec 
@@ -3535,7 +3537,7 @@ subroutine strat_cloud_legacy( Nml,  &
         !limit change in qv to the amount that would raise the relative
         !humidity to U_evap in the clear portion of the grid box
         tmp1s = min(tmp1s,((1.-qa_mean(i,k))/max(a_snow_clr(i,k),qmin))*qs(i,k,j)* &
-               max(0.,U_evap-U_clr(i,k))/(1.+(U_evap*(1.-qa_mean(i,k))+qa_mean(i,k))* &
+               max(0.,U_evap_snow-U_clr(i,k))/(1.+(U_evap_snow*(1.-qa_mean(i,k))+qa_mean(i,k))* &!miz
                gamma(i,k,j)) )
         
         !do limiter by amount available

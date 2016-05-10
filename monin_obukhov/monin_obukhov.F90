@@ -72,11 +72,12 @@ real    :: drag_min_mom   = 1.e-05
 logical :: neutral        = .false.
 integer :: stable_option  = 1
 real    :: zeta_trans     = 0.5
+logical :: new_mo_option  = .false.
 
 
 namelist /monin_obukhov_nml/ rich_crit, neutral, drag_min_heat, &
                              drag_min_moist, drag_min_mom,      &
-                             stable_option, zeta_trans
+                             stable_option, zeta_trans, new_mo_option !miz
 
 !=======================================================================
 
@@ -193,9 +194,8 @@ real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
 
 ! #include "monin_obukhov_interfaces.h"
 
-if(.not. module_is_initialized) call error_mesg( &
-        'mo_drag_1d in MONIN_OBUKHOV_MOD', &
-        'monin_obukhov_init is not called', FATAL)
+if(.not.module_is_initialized) call error_mesg('mo_drag_1d in monin_obukhov_mod', &
+     'monin_obukhov_init has not been called', FATAL)
 
 n      = size(pt)
 lavail = .false.
@@ -206,14 +206,14 @@ if(lavail) then
    if (count(avail) .eq. 0) return
    call monin_obukhov_drag_1d(grav, vonkarm,               &
         & error, zeta_min, max_iter, small,                         &
-        & neutral, stable_option, rich_crit, zeta_trans,            &
+        & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
         & drag_q, u_star, b_star, lavail, avail, ier)
 else
    call monin_obukhov_drag_1d(grav, vonkarm,               &
         & error, zeta_min, max_iter, small,                         &
-        & neutral, stable_option, rich_crit, zeta_trans,            &
+        & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
         & drag_q, u_star, b_star, lavail, avail_dummy, ier)
@@ -237,9 +237,8 @@ integer                            :: n, ier
 
 ! #include "monin_obukhov_interfaces.h"
 
-if(.not. module_is_initialized) call error_mesg( &
-        'mo_profile_1d in MONIN_OBUKHOV_MOD', &
-        'monin_obukhov_init is not called', FATAL)
+if(.not.module_is_initialized) call error_mesg('mo_profile_1d in monin_obukhov_mod', &
+     'monin_obukhov_init has not been called', FATAL)
 
 n = size(z)
 if(present(avail)) then
@@ -247,14 +246,14 @@ if(present(avail)) then
    if (count(avail) .eq. 0) return
 
    call monin_obukhov_profile_1d(vonkarm, &
-        & neutral, stable_option, rich_crit, zeta_trans, &
+        & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &
         & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
         & del_m, del_t, del_q, .true., avail, ier)
 
 else
 
    call monin_obukhov_profile_1d(vonkarm, &
-        & neutral, stable_option, rich_crit, zeta_trans, &
+        & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &
         & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
         & del_m, del_t, del_q, .false., dummy_avail, ier)
 
@@ -271,10 +270,8 @@ real, intent(out), dimension(:,:,:)  :: mix
 
 integer :: n, ier
 
-if(.not. module_is_initialized) call error_mesg( &
-        'stable_mix_3d in MONIN_OBUKHOV_MOD', &
-        'monin_obukhov_init is not called', FATAL)
-
+if(.not.module_is_initialized) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
+     'monin_obukhov_init has not been called', FATAL)
 
 n = size(rich,1)*size(rich,2)*size(rich,3)
 call monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
@@ -294,14 +291,13 @@ real, intent(out), dimension(:,:,:) :: k_m, k_h
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
-if(.not. module_is_initialized) call error_mesg( &
-        'mod_diff_2d_n in MONIN_OBUKHOV_MOD', &
-        'monin_obukhov_init is not called', FATAL)
+if(.not.module_is_initialized) call error_mesg('mo_diff_2d_n in monin_obukhov_mod', &
+     'monin_obukhov_init has not been called', FATAL)
 
 ni = size(z, 1); nj = size(z, 2); nk = size(z, 3)
 call monin_obukhov_diff(vonkarm,                           &
           & ustar_min,                                     &
-          & neutral, stable_option, rich_crit, zeta_trans, &
+          & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &
           & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
 end subroutine mo_diff_2d_n
@@ -889,14 +885,13 @@ real, intent(out) :: k_m, k_h
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
-if(.not. module_is_initialized) call error_mesg( &
-        'mo_diff_0d_1 in MONIN_OBUKHOV_MOD', &
-        'monin_obukhov_init is not called', FATAL)
+if(.not.module_is_initialized) call error_mesg('mo_diff_0d_1 in monin_obukhov_mod', &
+     'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = 1
 call monin_obukhov_diff(vonkarm,                           &
           & ustar_min,                                     &
-          & neutral, stable_option, rich_crit, zeta_trans, &
+          & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &!miz
           & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
 end subroutine mo_diff_0d_1
@@ -912,14 +907,13 @@ real, intent(out), dimension(:) :: k_m, k_h
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
-if(.not. module_is_initialized) call error_mesg( &
-        'mo_diff_0d_n in MONIN_OBUKHOV_MOD', &
-        'monin_obukhov_init is not called', FATAL)
+if(.not.module_is_initialized) call error_mesg('mo_diff_0d_n in monin_obukhov_mod', &
+     'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = size(z(:))
 call monin_obukhov_diff(vonkarm,                           &
           & ustar_min,                                     &
-          & neutral, stable_option, rich_crit, zeta_trans, &
+          & neutral, stable_option,new_mo_option,rich_crit, zeta_trans, &!miz
           & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
 end subroutine mo_diff_0d_n

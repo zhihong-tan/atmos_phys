@@ -91,6 +91,7 @@ character(len=16)   :: lwem_form=' '     ! longwave emissivity param-
 logical       ::  do_orig_donner_stoch = .true.
 logical       ::  do_delta_adj = .false.
 logical       ::  do_const_asy = .false.
+logical       ::  do_hu = .false.
 real          ::  val_const_asy = 0.75
 real          ::  alpha = 0.1
                   ! frequency-independent parameter for absorption due 
@@ -100,12 +101,14 @@ logical :: ignore_donner_cells = .false.
                   ! when set to .true., the effects of donner cell clouds 
                   ! in the radiation code are ignored
 
+logical       ::  remain_hu_bug = .true.
+
 namelist /microphys_rad_nml /     &
                                lwem_form, &
                                do_orig_donner_stoch, &
                                do_delta_adj, &
                                do_const_asy, val_const_asy, &
-                               alpha, ignore_donner_cells
+                               alpha, ignore_donner_cells, do_hu, remain_hu_bug
 
 !----------------------------------------------------------------------
 !----  public data -------
@@ -259,7 +262,7 @@ integer, parameter         ::   NSNOWCLDIVLS     = 6
 !---------------------------------------------------------------------
  
 !---------------------------------------------------------------------
-!    wavenumber limits for slingo cloud drop intervals.             
+!    wavenumber limits for slingo and Hu cloud drop intervals.             
 !---------------------------------------------------------------------
 integer, dimension (NLIQCLDIVLS)       :: endliqcldwvn
  
@@ -2532,12 +2535,11 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
 !  NOTE THE FOLLOWING LOGICAL TO THE LOOPS BELOW
 !
 !        do nb=1,nbmax
-!             if (nbmax==1) then
-!                  call slingo(conc_drop(:,:,:,nnn).....)
+!	      	  if (nbmax==1) then
+!                  call slingo or hu(conc_drop(:,:,:,nnn).....)
 !             else
-!                  call slingo(conc_drop(:,:,:,nb),....)
-!             end if
-!
+!                  call slingo or hu(conc_drop(:,:,:,nb),....)
+!             end if 
 !        enddo           
 !             
 !        Note that nbmax = 1 in the following cases:
@@ -2560,10 +2562,15 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
 !----------------------------------------------------------------------
       do nb=1,nbmax
         if (nbmax == 1) then
-          call slingo (conc_drop(:,:,:,nnn), size_drop(:,:,:,nnn),  &
-                       cldextivlliq, cldssalbivlliq, cldasymmivlliq, &
-                       maskl)
-
+          if (do_hu) then  
+		    call hu (conc_drop(:,:,:,nnn), size_drop(:,:,:,nnn),  &
+                       	cldextivlliq, cldssalbivlliq, cldasymmivlliq, &
+                       	maskl)
+          else 
+    	    call slingo (conc_drop(:,:,:,nnn), size_drop(:,:,:,nnn),  &
+                         cldextivlliq, cldssalbivlliq, cldasymmivlliq, &
+                         maskl)
+	      end if 
 !----------------------------------------------------------------------
 !    call thickavg to map the single-scattering properties for cloud
 !    droplets that were calculated for each cloud droplet spectral
@@ -2742,12 +2749,19 @@ real, dimension (:,:,:,:), intent(inout)  ::  cldext, cldsct, cldasymm
  
         else
           if (nonly.eq.0   .or. nonly.eq.nb ) then
-            call slingo (conc_drop(:,:,:,nb), size_drop(:,:,:,nb),  &
+            if (do_hu) then
+              call hu (conc_drop(:,:,:,nb), size_drop(:,:,:,nb),  &
                        cldextivlliq, cldssalbivlliq, cldasymmivlliq,  &
                        maskl,  &
                        starting_band = nivl1liqcld(nb), &
                        ending_band = nivl2liqcld(nb))
-
+	        else
+	          call slingo (conc_drop(:,:,:,nb), size_drop(:,:,:,nb),  &
+                       cldextivlliq, cldssalbivlliq, cldasymmivlliq,  &
+                       maskl,  &
+                       starting_band = nivl1liqcld(nb), &
+                       ending_band = nivl2liqcld(nb))
+            end if 
 !----------------------------------------------------------------------
 !    call savijarvi to define the single scattering parameters for 
 !    rain drops for each of the savijarvi rain drop spectral intervals. 
@@ -3422,7 +3436,250 @@ integer, intent(in), optional             ::   starting_band,  &
 
 end subroutine slingo
 
+subroutine hu (conc_drop, size_drop, cldextivlliq, cldssalbivlliq, &
+               cldasymmivlliq, mask, starting_band, ending_band)
+ 
+!----------------------------------------------------------------------
+!    subroutine hu defines the single scattering parameters for 
+!    cloud droplets using the Hu and Stamnes parameterization (uses the Slingo spectral 
+!    intervals).
+!    references:
+!    hu, y.x. and k stamnes, an accurate parameterization of the radiative properties
+!    of water clouds suitable for use in climate models., 
+!                water clouds., j. climate, 6, 728-742, 1993.   
+!----------------------------------------------------------------------
 
+real, dimension (:,:,:),   intent(in)     ::   conc_drop, size_drop
+real, dimension (:,:,:,:), intent(inout)  ::   cldextivlliq,  &
+                                               cldssalbivlliq,   &
+                                               cldasymmivlliq
+logical, dimension(:,:,:), intent(out)    ::   mask
+integer, intent(in), optional             ::   starting_band,  &
+                                               ending_band
+
+!-------------------------------------------------------------------
+!   intent(in) variables:                                              
+!                                                                       
+!        conc_drop        cloud drop liquid water concentration 
+!                         [ grams / meter**3 ]                       
+!        size_drop        cloud drop effective diameter [ microns ]    
+!
+!    intent(out) variables:                                     
+!                                                                       
+!        cldextivlliq     extinction coefficient in each spectral
+!                         interval of the hu cloud droplet param-
+!                         eterization resulting from the presence of 
+!                         cloud droplets  [ km **(-1) ]
+!        cldssalbivlliq   single scattering albedo in each spectral
+!                         interval of the hu cloud droplet param-
+!                         eterization resulting from the presence of 
+!                         cloud droplets  [ dimensionless ]
+!        cldasymmivlliq   asymmetry factor in each spectral
+!                         interval of the hu cloud droplet param-
+!                         eterization resulting from the presence of 
+!                         cloud droplets  [ dimensionless ]
+!
+!   intent(in), optional variables:
+!
+!        starting_band    the index of the first droplet spectral
+!                         band contained in the sw parameterization
+!                         band(s) being processed
+!        ending_band      the index of the last droplet spectral
+!                         band contained in the sw parameterization
+!                         band(s) being processed
+!
+!----------------------------------------------------------------------
+ 
+!---------------------------------------------------------------------
+! local variables:                                                   
+
+      real, dimension (size(conc_drop,1), size(conc_drop,2),  &
+                       size(conc_drop,3))   ::  size_d
+
+      real, dimension (NLIQCLDIVLS,3) :: a1, a2, a3, b1, b2, b3, c1, c2, c3
+ 
+      data a1(:,1) / 5.29E+3, 2.71E+3, 4.56E+3, 3.26E+3, 2.15E+3, 2.01E+3, 1.98E+3, 1.96E+3, 1.94E+3, 1.91E+3, 1.87E+3, 1.86E+3, 1.84E+3, 1.81E+3, 1.79E+3, 1.76E+3, 1.75E+3, 1.73E+3, 1.72E+3, 1.70E+3, 1.68E+3, 1.67E+3, 1.67E+3, 1.63E+3 /
+      data a1(:,2) / 2.17E+3, 2.02E+3, 2.05E+3, 1.99E+3, 1.91E+3, 1.87E+3, 1.83E+3, 1.80E+3, 1.78E+3, 1.77E+3, 1.74E+3, 1.73E+3, 1.71E+3, 1.70E+3, 1.69E+3, 1.68E+3, 1.67E+3, 1.66E+3, 1.65E+3, 1.64E+3, 1.64E+3, 1.62E+3, 1.61E+3, 1.63E+3 /
+      data a1(:,3) / 1.17E+3, 1.12E+3, 1.12E+3, 1.09E+3, 1.07E+3, 1.05E+3, 1.04E+3, 1.03E+3, 1.01E+3, 1.01E+3, 9.99E+2, 9.91E+2, 9.84E+2, 9.78E+2, 9.76E+2, 9.70E+2, 9.63E+2, 9.62E+2, 9.55E+2, 9.54E+2, 9.48E+2, 9.42E+2, 9.41E+2, 9.40E+2 /
+      data b1(:,1) /-1.73E+0,-1.27E+0,-1.61E+0,-1.46E+0,-1.15E+0,-1.11E+0,-1.11E+0,-1.11E+0,-1.11E+0,-1.10E+0,-1.09E+0,-1.09E+0,-1.09E+0,-1.08E+0,-1.07E+0,-1.06E+0,-1.07E+0,-1.06E+0,-1.06E+0,-1.05E+0,-1.05E+0,-1.04E+0,-1.04E+0,-1.03E+0 /
+      data b1(:,2) /-1.10E+0,-1.08E+0,-1.09E+0,-1.08E+0,-1.07E+0,-1.06E+0,-1.06E+0,-1.05E+0,-1.05E+0,-1.05E+0,-1.04E+0,-1.04E+0,-1.04E+0,-1.04E+0,-1.03E+0,-1.03E+0,-1.03E+0,-1.03E+0,-1.03E+0,-1.02E+0,-1.03E+0,-1.02E+0,-1.02E+0,-1.03E+0 /
+      data b1(:,3) /-8.64E-1,-8.52E-1,-8.52E-1,-8.46E-1,-8.40E-1,-8.36E-1,-8.32E-1,-8.30E-1,-8.26E-1,-8.24E-1,-8.22E-1,-8.20E-1,-8.18E-1,-8.16E-1,-8.16E-1,-8.14E-1,-8.12E-1,-8.12E-1,-8.10E-1,-8.10E-1,-8.08E-1,-8.06E-1,-8.06E-1,-8.06E-1 /
+      data c1(:,1) / 7.34E+1, 2.35E+1, 5.74E+1, 5.42E+1, 1.42E+1, 8.80E+0, 7.61E+0, 9.29E+0, 1.01E+1, 7.51E+0, 8.41E+0, 8.61E+0, 8.81E+0, 6.85E+0, 5.98E+0, 5.01E+0, 5.95E+0, 5.13E+0, 4.99E+0, 4.49E+0, 4.26E+0, 3.49E+0, 3.83E+0, 7.66E-1 /
+      data c1(:,2) / 3.01E+0, 2.24E+0, 2.66E+0, 2.54E+0, 1.96E+0, 1.93E+0, 1.63E+0, 1.50E+0, 1.32E+0, 1.46E+0, 1.19E+0, 1.16E+0, 1.01E+0, 1.04E+0, 9.89E-1, 9.28E-1, 8.73E-1, 8.13E-1, 7.23E-1, 6.44E-1, 8.33E-1, 6.34E-1, 5.44E-1, 9.90E-1 /
+      data c1(:,3) /-8.67E+0,-8.99E+0,-8.94E+0,-9.08E+0,-9.22E+0,-9.31E+0,-9.40E+0,-9.44E+0,-9.61E+0,-9.65E+0,-9.69E+0,-9.74E+0,-9.79E+0,-9.89E+0,-9.84E+0,-9.91E+0,-9.98E+0,-9.95E+0,-1.00E+1,-9.99E+0,-1.01E+1,-1.02E+1,-1.01E+1,-1.01E+1 /
+
+      data a2(:,1) /-5.94E-1,-1.22E+0, 2.00E+0, 1.25E-2, 4.00E-3, 1.38E-3, 1.01E-3, 3.11E-4, 1.59E-4, 2.36E-4, 7.42E-6, 8.03E-7, 5.93E-7, 9.95E-7, 5.47E-7, 2.70E-7, 1.82E-8, 3.72E-9, 2.10E-8, 2.57E-8, 1.43E-7,-2.03E-5,-2.33E-5, 1.42E-6 /
+      data a2(:,2) /-2.76E+0,-9.00E-5, 5.92E-1, 5.81E-3, 2.10E-3, 7.25E-4, 4.62E-4, 2.27E-4, 8.54E-5, 2.82E-5, 1.58E-5, 3.79E-5, 4.52E-6, 1.88E-7, 5.91E-7, 1.19E-7, 3.23E-8, 2.77E-8, 2.75E-7, 1.67E-7, 3.94E-7, 3.68E-7, 5.08E-7, 9.00E-7 /
+      data a2(:,3) /-1.17E+0, 2.17E-1,-1.13E+0, 4.81E-2, 1.32E-2, 3.65E-3, 1.97E-3, 7.03E-4, 3.58E-4, 1.50E-4, 3.08E-5, 6.09E-6, 6.16E-6, 2.03E-5, 8.34E-7, 3.32E-7, 9.12E-8, 2.25E-7, 6.85E-8, 1.35E-7, 3.42E-7, 7.50E-7, 2.18E-6, 3.14E-6 /
+      data b2(:,1) /-5.24E-1,-1.90E+0, 4.60E-2, 6.02E-1, 6.88E-1, 7.90E-1, 7.16E-1, 8.20E-1, 7.86E-1, 4.10E-1, 1.05E+0, 1.44E+0, 1.26E+0, 8.56E-1, 8.14E-1, 7.34E-1, 1.21E+0, 1.60E+0, 1.13E+0, 1.21E+0, 9.52E-1,-1.52E+0,-2.32E-1, 7.66E-1 /
+      data b2(:,2) /-4.00E-2, 1.40E+0, 1.06E-1, 8.08E-1, 8.66E-1, 9.58E-1, 9.44E-1, 9.14E-1, 9.62E-1, 1.00E+0, 8.30E-1, 3.82E-1, 6.72E-1, 1.32E+0, 8.46E-1, 9.76E-1, 1.01E+0, 9.74E-1, 5.16E-1, 7.12E-1, 7.06E-1, 9.22E-1, 9.88E-1, 9.42E-1 /
+      data b2(:,3) /-5.40E-1,-7.48E-1,-1.34E-1, 4.08E-1, 5.06E-1, 6.28E-1, 6.50E-1, 6.90E-1, 6.70E-1, 6.60E-1, 7.12E-1, 7.88E-1, 6.52E-1, 3.32E-1, 7.78E-1, 7.62E-1, 7.94E-1, 5.48E-1, 8.22E-1, 7.78E-1, 7.64E-1, 7.82E-1, 6.90E-1, 6.88E-1 /
+      data c2(:,1) / 4.22E-1, 4.93E-1,-2.06E+0,-1.62E-2,-4.48E-3,-1.29E-3,-9.84E-4,-2.17E-4,-1.33E-4,-2.69E-4, 5.08E-6, 5.04E-6, 1.69E-6,-4.37E-7,-1.41E-7,-2.43E-7, 6.89E-8, 1.07E-7, 5.59E-8, 1.01E-7,-2.31E-8, 4.01E-6, 1.95E-5,-1.02E-6 /
+      data c2(:,2) / 2.76E+0, 4.85E-1,-5.89E-1,-3.69E-3,-4.43E-4, 7.05E-4, 1.57E-4,-3.57E-5, 5.50E-5, 4.65E-5,-1.64E-5,-6.22E-5,-8.03E-6, 3.08E-6,-9.34E-7, 6.76E-8, 4.62E-8,-1.07E-8,-6.04E-7,-3.65E-7,-7.93E-7,-4.01E-8, 5.97E-7,-9.60E-7 /
+      data c2(:,3) / 5.37E-1, 4.57E-1, 9.75E-1,-1.06E-1,-3.44E-2,-1.15E-2,-6.45E-3,-2.34E-3,-1.21E-3,-5.20E-4,-9.82E-5,-1.23E-5,-2.04E-5,-4.32E-5,-2.25E-6,-1.09E-6,-3.12E-7,-7.05E-7,-1.44E-7,-3.94E-7,-1.07E-6,-2.36E-6,-7.64E-6,-1.16E-5 /
+
+      data a3(:,1) / 1.80E-3,-2.85E-1, 4.06E-8, 5.98E-3,-3.58E-1,-5.82E-1,-4.61E-1,-3.74E-1,-3.14E-1,-2.13E-1,-1.86E-1,-1.71E-1,-2.31E-1,-1.41E-1,-1.37E-1,-1.24E-1,-1.24E-1,-1.15E-1,-1.09E-1,-9.98E-2,-6.75E-2,-8.29E-2,-8.06E-2, 1.11E-1 /
+      data a3(:,2) /-6.08E-1,-3.20E+0,-6.56E-1,-3.01E-1,-2.51E-1,-2.38E-1,-2.19E-1,-2.06E-1,-2.08E-1,-2.12E-1,-1.74E-1,-1.67E-1,-1.15E-1,-1.57E-1,-1.55E-1,-1.33E-1,-1.20E-1,-1.09E-1,-1.11E-1,-1.02E-1,-1.63E-1,-9.08E-2,-8.43E-2,-3.15E-1 /
+      data a3(:,3) /-8.86E-1,-1.65E+0,-3.87E-1,-2.94E-1,-2.31E-1,-2.20E-1,-2.31E-1,-2.84E-1,-2.84E-1,-2.74E-1,-2.89E-1,-2.58E-1,-2.55E-1,-2.14E-1,-2.03E-1,-2.05E-1,-2.07E-1,-1.84E-1,-1.77E-1,-1.77E-1,-2.64E-1,-1.50E-1,-1.30E-1,-9.92E-2 /
+      data b3(:,1) / 1.67E+0,-6.56E-1, 5.44E+0, 1.10E+0,-6.40E-1,-1.39E+0,-1.31E+0,-1.25E+0,-1.20E+0,-8.00E-1,-8.24E-1,-8.26E-1,-1.23E+0,-6.94E-1,-6.76E-1,-6.02E-1,-7.82E-1,-7.56E-1,-7.24E-1,-8.00E-1,-6.12E-1,-6.88E-1,-7.62E-1, 9.40E-2 /
+      data b3(:,2) /-6.50E-1,-2.16E+0,-8.78E-1,-4.30E-1,-5.02E-1,-5.96E-1,-6.34E-1,-6.68E-1,-7.10E-1,-7.82E-1,-7.24E-1,-7.44E-1,-6.28E-1,-7.82E-1,-8.16E-1,-7.66E-1,-7.48E-1,-7.48E-1,-7.88E-1,-7.80E-1,-1.02E+0,-8.06E-1,-8.06E-1,-1.47E+0 /
+      data b3(:,3) /-8.10E-1,-1.94E+0,-5.70E-1,-2.68E-1,-4.10E-1,-5.34E-1,-6.54E-1,-8.16E-1,-8.62E-1,-8.86E-1,-9.42E-1,-9.36E-1,-9.74E-1,-9.16E-1,-9.20E-1,-9.52E-1,-9.84E-1,-9.66E-1,-9.80E-1,-1.01E+0,-1.18E+0,-1.01E+0,-9.86E-1,-9.08E-1 /
+      data c3(:,1) / 7.56E-1, 1.01E+0, 8.61E-1, 7.66E-1, 9.25E-1, 8.70E-1, 8.71E-1, 8.71E-1, 8.71E-1, 8.87E-1, 8.84E-1, 8.83E-1, 8.75E-1, 8.89E-1, 8.90E-1, 8.94E-1, 8.85E-1, 8.85E-1, 8.86E-1, 8.82E-1, 8.82E-1, 8.84E-1, 8.83E-1, 7.30E-1 /
+      data c3(:,2) / 9.87E-1, 9.65E-1, 9.63E-1, 9.58E-1, 9.23E-1, 9.06E-1, 8.99E-1, 8.94E-1, 8.91E-1, 8.88E-1, 8.88E-1, 8.88E-1, 8.89E-1, 8.86E-1, 8.85E-1, 8.86E-1, 8.86E-1, 8.85E-1, 8.84E-1, 8.83E-1, 8.81E-1, 8.81E-1, 8.82E-1, 8.78E-1 /
+      data c3(:,3) / 8.76E-1, 9.65E-1, 9.86E-1, 1.01E+0, 9.35E-1, 9.10E-1, 8.98E-1, 8.90E-1, 8.88E-1, 8.87E-1, 8.85E-1, 8.85E-1, 8.84E-1, 8.85E-1, 8.84E-1, 8.84E-1, 8.84E-1, 8.83E-1, 8.83E-1, 8.82E-1, 8.80E-1, 8.80E-1, 8.81E-1, 8.80E-1 /
+
+      integer   :: nistart, niend
+      integer   :: i, j, k, ni
+ 
+!---------------------------------------------------------------------
+! local variables:                                                   
+!
+!      size_d       droplet effective radius [ microns ]
+!
+!cstu need to be redefined
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!      a1,b1,c1     slingo parameterization coefficient for cloud
+!                   extinction coefficient [ m**2 / g ]
+!      b            slingo parameterization coefficient for cloud
+!                   extinction coefficient [ micron*m**2 / g ]
+!      c            slingo parameterization coefficient for cloud
+!                   single scattering albedo [ nondimensional ]
+!      d            slingo parameterization coefficient for cloud
+!                   single scattering albedo [ micron **(-1) ]
+!                   asymmetry factor [ nondimensional ]
+!      f            slingo parameterization coefficient for cloud
+!                   asymmetry factor [ micron **(-1) ]
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!      nistart      first droplet parameterization band to be processed
+!      niend        last droplet parameterization band to be processed
+!      i,j,k,ni     do-loop indices
+!--------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!    define the starting and ending droplet parameterization bands to
+!    be processed during this call.
+!--------------------------------------------------------------------
+      if (present(starting_band)) then
+        nistart = starting_band
+      else
+        nistart = 1
+      endif
+      if (present(ending_band)) then
+        niend = ending_band
+      else
+        niend = NLIQCLDIVLS
+      endif
+ 
+!---------------------------------------------------------------------
+      do k=1,size(conc_drop,3)
+        do j=1,size(conc_drop,2)
+          do i=1,size(conc_drop,1)
+
+!------------------------------------------------------------------
+!    bypass calculations if no drops are present. values are set to
+!    zero in all spectral bands.
+!-----------------------------------------------------------------
+            if (conc_drop(i,j,k) == 0.0) then
+              mask(i,j,k) = .false.
+
+!--------------------------------------------------------------------
+!    convert input variable size from diameter to radius for use in the
+!    hu formulae.
+!--------------------------------------------------------------------
+            else
+              mask(i,j,k) = .true.
+              size_d(i,j,k) = 0.5*size_drop(i,j,k)
+
+!----------------------------------------------------------------------
+!    the cloud drop effective radius must be between 2.5 and 60.0 
+!    microns.                               
+!----------------------------------------------------------------------
+!cstu
+              if ( remain_hu_bug ) then 
+                if (size_d(i,j,k) <  2.5) then
+                  size_d(i,j,k) =  4.2
+                else if (size_d(i,j,k) > 60) then
+                  size_d(i,j,k) = 16.6
+                endif
+              else
+                if (size_d(i,j,k) <  min_cld_drop_rad) then   
+                  size_d(i,j,k) =  min_cld_drop_rad
+                else if (size_d(i,j,k) > max_cld_drop_rad) then 
+                  size_d(i,j,k) = max_cld_drop_rad             
+                endif
+              endif
+
+
+             
+	     ! if (size_d(i,j,k) <  3.0) then
+             !
+	     !   size_d(i,j,k) =  3.0
+             ! else if (size_d(i,j,k) > 55) then
+             !   size_d(i,j,k) = 55
+             !
+	    !  endif
+
+!---------------------------------------------------------------------
+!    define values of extinction coefficient, single-scattering albedo
+!    and asymmetry factor for each of the hu parameterization 
+!    spectral bands. these values are a function of droplet concen-
+!    tration and droplet effective radius. the extinction coefficient 
+!    is converted to kilometer**(-1).     
+!---------------------------------------------------------------------
+                if (size_d(i,j,k).ge.2.5.and.size_d(i,j,k).lt.12.5) then
+                  do ni=nistart, niend
+                    cldextivlliq(i,j,k,ni) = conc_drop(i,j,k)* &
+                                             (a1(ni,1)*size_d(i,j,k)**b1(ni,1) + c1(ni,1))
+                    cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,1)*size_d(i,j,k)**b2(ni,1) + c2(ni,1) )
+                    cldasymmivlliq(i,j,k,ni) = a3(ni,1)*size_d(i,j,k)**b3(ni,1) + c3(ni,1)
+                  end do
+                end if
+
+                if ( remain_hu_bug ) then
+                  if (size_d(i,j,k).ge.12.5.and.size_d(i,j,k).lt.30.0) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) = conc_drop(i,j,k)* &
+                                               (a1(ni,2)*size_d(i,j,k)**b1(ni,2) + c1(ni,1))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,2)*size_d(i,j,k)**b2(ni,2) + c2(ni,1) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,2)*size_d(i,j,k)**b3(ni,2) + c3(ni,2)
+                    end do
+                  end if
+                  if (size_d(i,j,k).ge.30.and.size_d(i,j,k).le.60) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) =   conc_drop(i,j,k)* &
+                                               (a1(ni,3)*size_d(i,j,k)**b1(ni,3) + c1(ni,1))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,3)*size_d(i,j,k)**b2(ni,3) + c2(ni,1) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,3)*size_d(i,j,k)**b3(ni,3) + c3(ni,3)
+                    end do
+                  end if
+
+                else
+                  if (size_d(i,j,k).ge.12.5.and.size_d(i,j,k).lt.30.0) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) = conc_drop(i,j,k)* &
+                                               (a1(ni,2)*size_d(i,j,k)**b1(ni,2) + c1(ni,2))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,2)*size_d(i,j,k)**b2(ni,2) + c2(ni,2) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,2)*size_d(i,j,k)**b3(ni,2) + c3(ni,2)
+                    end do
+                  end if
+                  if (size_d(i,j,k).ge.30.and.size_d(i,j,k).le.60) then
+                    do ni=nistart, niend
+                      cldextivlliq(i,j,k,ni) =   conc_drop(i,j,k)* &
+                                               (a1(ni,3)*size_d(i,j,k)**b1(ni,3) + c1(ni,3))
+                      cldssalbivlliq(i,j,k,ni) = 1.0 - ( a2(ni,3)*size_d(i,j,k)**b2(ni,3) + c2(ni,3) )
+                      cldasymmivlliq(i,j,k,ni) = a3(ni,3)*size_d(i,j,k)**b3(ni,3) + c3(ni,3)
+                    end do
+                  end if
+                endif  ! remain_hu_bug
+            endif     
+          end do
+        end do
+      end do
+
+!-------------------------------------------------------------------
+
+
+end subroutine hu
 
 
 !#####################################################################

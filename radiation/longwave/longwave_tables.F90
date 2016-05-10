@@ -96,8 +96,8 @@ real, dimension(:), allocatable :: bfach4, bfan2o
 real, dimension(:), allocatable :: dch4, dn2o, ech4, en2o
 real                            :: d171n2o, e171n2o
 
-real, dimension(:), allocatable :: acomb, bcomb, apcm, bpcm, atpcm,  &
-                                   btpcm, bdlocm, bdhicm
+!BW real, dimension(:), allocatable :: acomb, bcomb, apcm, bpcm, atpcm, btpcm
+real, dimension(:), allocatable :: bdlocm, bdhicm
 
 integer, parameter              :: NTTABH2O   = 28
 integer, parameter              :: NUTABH2O   = 181
@@ -108,8 +108,8 @@ real, dimension(3)              :: ao3cm, bo3cm
 real, dimension(2)              :: ab15cm
 
 integer                         :: NBTRG, NBTRGE, NBLY, OFFSET
-real                            :: apwd, bpwd, atpwd, btpwd, bdlowd, &
-                                   bdhiwd 
+!bw real                            :: apwd, bpwd, atpwd, btpwd, bdlowd, &
+!bw                                    bdhiwd 
 
 logical :: module_is_initialized = .false.   !  module is initialized ?
 
@@ -205,6 +205,8 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 
 !---------------------------------------------------------------------
 !  local variables:
+
+!---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !    define continuum coefficients over special bands, the choices 
@@ -604,12 +606,12 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
         endif
       endif
 
-      allocate  ( acomb(NBLY))
-      allocate  ( bcomb(NBLY))
-      allocate  ( apcm (NBLY))
-      allocate  ( bpcm (NBLY))
-      allocate  ( atpcm(NBLY))
-      allocate  ( btpcm(NBLY))
+!BW   allocate  ( acomb(NBLY))
+!BW   allocate  ( bcomb(NBLY))
+!BW   allocate  ( apcm (NBLY))
+!BW   allocate  ( bpcm (NBLY))
+!BW   allocate  ( atpcm(NBLY))
+!BW   allocate  ( btpcm(NBLY))
       allocate  (bdlocm(NBLY))
       allocate  (bdhicm(NBLY))
 
@@ -620,35 +622,35 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
           trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
           trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' .or.  &
           trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
-        apwd = apwd_c
-        bpwd = bpwd_c
-        atpwd = atpwd_c
-        btpwd = btpwd_c
-        bdlowd = bdlowd_c
-        bdhiwd = bdhiwd_c
+!bw     apwd = apwd_c
+!bw     bpwd = bpwd_c
+!bw     atpwd = atpwd_c
+!bw     btpwd = btpwd_c
+!bw     bdlowd = bdlowd_c
+!bw     bdhiwd = bdhiwd_c
         iband = iband_c
-        acomb = acomb_c
-        bcomb = bcomb_c
-        apcm = apcm_c
-        bpcm = bpcm_c
-        atpcm = atpcm_c
-        btpcm = btpcm_c
+!BW     acomb = acomb_c
+!BW     bcomb = bcomb_c
+!BW     apcm = apcm_c
+!BW     bpcm = bpcm_c
+!BW     atpcm = atpcm_c
+!BW     btpcm = btpcm_c
         bdlocm = bdlocm_c
         bdhicm = bdhicm_c
       else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-        apwd = apwd_n
-        bpwd = bpwd_n
-        atpwd = atpwd_n
-        btpwd = btpwd_n
-        bdlowd = bdlowd_n
-        bdhiwd = bdhiwd_n
+!bw     apwd = apwd_n
+!bw     bpwd = bpwd_n
+!bw     atpwd = atpwd_n
+!bw     btpwd = btpwd_n
+!bw     bdlowd = bdlowd_n
+!bw     bdhiwd = bdhiwd_n
         iband = iband_n
-        acomb = acomb_n
-        bcomb = bcomb_n
-        apcm = apcm_n
-        bpcm = bpcm_n
-        atpcm = atpcm_n
-        btpcm = btpcm_n
+!BW     acomb = acomb_n
+!BW     bcomb = bcomb_n
+!BW     apcm = apcm_n
+!BW     bpcm = bpcm_n
+!BW     atpcm = atpcm_n
+!BW     btpcm = btpcm_n
         bdlocm = bdlocm_n
         bdhicm = bdhicm_n
       endif
@@ -929,9 +931,9 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !---------------------------------------------------------------------
 !  local variables:
 
-      real, dimension (:,:), allocatable   :: r1a, r2a, s2a, t3a,   &
+      real, dimension(NTTABH2O,NBTRGE)     :: r1a, r2a, s2a, t3a,   &
                                               sum4a, sum6a, sum7a, sum8a
-      real, dimension(:,:,:),allocatable   :: suma, sumdbea, sum3a 
+      real, dimension(NTTABH2O,NUTABH2O,NBTRGE) :: suma, sumdbea, sum3a 
       real, dimension (NBLW)               :: alfanb, anb, arotnb,   &
                                               betanb, bnb, centnb, delnb
       real, dimension (30)                 :: cnusb, dnusb
@@ -966,23 +968,6 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 !    sumdbea
 !    sum3a
 !    ETC. 
-
-!----------------------------------------------------------------------
-!
-!----------------------------------------------------------------------
-      if (NBTRGE > 0) then
-        allocate ( r1a     (NTTABH2O,NBTRGE) )
-        allocate (r2a      (NTTABH2O,NBTRGE) )
-        allocate (s2a      (NTTABH2O,NBTRGE) )
-        allocate ( t3a     (NTTABH2O,NBTRGE) )
-        allocate ( suma    (NTTABH2O,NUTABH2O,NBTRGE) )
-        allocate ( sumdbea (NTTABH2O,NUTABH2O,NBTRGE) )
-        allocate ( sum3a   (NTTABH2O,NUTABH2O,NBTRGE) )
-        allocate ( sum4a   (NTTABH2O,NBTRGE) )
-        allocate ( sum6a   (NTTABH2O,NBTRGE) )
-        allocate ( sum7a   (NTTABH2O,NBTRGE) )
-        allocate (sum8a    (NTTABH2O,NBTRGE) )
-      endif
 
 !----------------------------------------------------------------------
 !
@@ -1571,20 +1556,6 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
                          tab3a%vae(1:NTTABH2O-1,2:NUTABH2O-1,:))/  &
                                         (temp_1%tab_inc*mass_1%tab_inc)
      
-!---------------------------------------------------------------------
-!    deallocate local arrays.
-!---------------------------------------------------------------------
-        deallocate ( r1a    )
-        deallocate (r2a     )
-        deallocate (s2a     )
-        deallocate ( t3a     )
-        deallocate ( suma    )
-        deallocate ( sumdbea )
-        deallocate ( sum3a   )
-        deallocate ( sum4a   )
-        deallocate ( sum6a   )
-        deallocate ( sum7a   )
-        deallocate (sum8a  )
       endif
 
 !-------------------------------------------------------------------

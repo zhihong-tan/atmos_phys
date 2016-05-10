@@ -50,10 +50,21 @@ logical :: use_inconsistent_lh = .true.         ! use the legacy latent
                                                 ! (this is non-entropy-
                                                 ! conserving and physically
                                                 ! unrealistic ??)
+logical :: include_homogeneous_for_wetdep = .true. ! treat homogeneous freezing
+                                                   ! as Bergeron process for
+						   ! wetdep
+logical :: include_adjustment_for_wetdep = .true.  ! account for large-scale
+                                                   ! deposition and saturation
+                                                   ! adjustment when calculating
+						   ! Bergeron fraction for wetdep
+						   ! (to test compatability with
+						   ! treatment in strat_cloud_legacy)
 
 namelist / rotstayn_klein_mp_nml /   rk_alt_adj_opt, &
                                      rk_act_only_if_ql_gt_qmin, &
-                                     use_inconsistent_lh
+                                     use_inconsistent_lh, &
+				     include_homogeneous_for_wetdep, &
+				     include_adjustment_for_wetdep
 
 
 !-------------------------------------------------------------------------
@@ -1417,21 +1428,37 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    calculate C_dt
 !------------------------------------------------------------------------
-          if (total_activation) then  ! cjg: total activation for RK
-             C_dt(:,:,k) = max( 0.,  &
+          if (total_activation) then
+
+            if (rk_act_only_if_ql_gt_qmin) then
+              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
+                C_dt(:,:,k) = max( 0.,  &
+                                   drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
+                                   qa_upd(:,:,k) - qn_upd(:,:,k))
+              elsewhere
+                C_dt(:,:,k) = 0.
+              end where
+            else
+              C_dt(:,:,k) = max( 0.,  &
                                  drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
-                                         qa_upd(:,:,k) - qn_upd(:,:,k))
-          ELSEIF (    rk_act_only_if_ql_gt_qmin) THEN
-            where (ql_upd(:,:,k) .GT. Nml%qmin ) 
-              C_dt(:,:,k) = max (delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
-                                                      1.e6/airdens(:,:,k)
-            elsewhere
-              C_dt(:,:,k)=0.
-            end where
-          ELSE
-            C_dt(:,:,k)=max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
+                                 qa_upd(:,:,k) - qn_upd(:,:,k))
+            end if
+
+          else
+
+            if (rk_act_only_if_ql_gt_qmin) then
+              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
+                C_dt(:,:,k) = max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
                                                        1.e6/airdens(:,:,k)
-          END IF
+              elsewhere
+                C_dt(:,:,k) = 0.
+              end where
+            else
+              C_dt(:,:,k) = max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
+                                                     1.e6/airdens(:,:,k)
+            end if
+
+          end if
 
 !------------------------------------------------------------------------
 !    set total tendency term and update cloud
@@ -1999,8 +2026,8 @@ INTEGER,                             INTENT(IN)   :: otun
 !-------------------------------------------------------------------------
           tmp1 (:,:,k) = min(tmp1(:,:,k), ((1. - qa_mean(:,:,k))/  &
                            max(a_snow_clr(:,:,k), Nml%qmin))*qs(:,:,k)* &
-                           max(0., Nml%U_evap  -U_clr(:,:,k))/  &
-                               (1. + (Nml%U_evap*(1. - qa_mean(:,:,k)) + &
+                           max(0., Nml%U_evap_snow  -U_clr(:,:,k))/  &         !miz
+                               (1. + (Nml%U_evap_snow*(1. - qa_mean(:,:,k)) + &!miz
                                            qa_mean(:,:,k))*gamma(:,:,k)) )
         
 !-------------------------------------------------------------------------
@@ -2568,21 +2595,44 @@ INTEGER,                             INTENT(IN)   :: otun
                   
 !-----------------------------------------------------------------------
 !  Used for BC aerosol in-cloud scavenging:
-      do k=1,kdim
-        do j=1,jdim
-          do i=1,idim
-            qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
-                       sum_ice_adj(i,j,k) + sum_cond(i,j,k) +   &
-                       sum_freeze(i,j,k)
-            if (qldt_sum > 0.)  then
-              f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k) + &
-                          sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum 
-            else
-              f_snow_berg(i,j,k) = 0.
-            endif
-          end do
-        end do
-      end do
+      if (include_adjustment_for_wetdep) then
+         do k=1,kdim
+         do j=1,jdim
+         do i=1,idim
+               qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
+                          sum_ice_adj(i,j,k) + sum_cond(i,j,k) +   &
+                          sum_freeze(i,j,k)
+	       if (qldt_sum > 0.)  then
+                  if (include_homogeneous_for_wetdep) then
+                     f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k) + &
+                                 sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
+                  else
+                     f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
+	          endif
+               else
+                 f_snow_berg(i,j,k) = 0.
+               endif
+         end do
+         end do
+         end do
+      else
+         do k=1,kdim
+         do j=1,jdim
+         do i=1,idim
+               qldt_sum = sum_berg(i,j,k) + sum_freeze(i,j,k) + sum_rime(i,j,k)
+	       if (qldt_sum > 0.)  then
+                 if (include_homogeneous_for_wetdep) then
+                    f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k))/qldt_sum
+                 else
+                    f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
+	         endif
+               else
+                 f_snow_berg(i,j,k) = 0.
+               endif
+         end do
+         end do
+         end do
+      endif
         
 
 

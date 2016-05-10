@@ -197,6 +197,7 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
                          Ndrop_act_CLUBB, Icedrop_act_CLUBB,                   &
                          ndust, rbar_dust,                                     &
                          ST3d, SQ3d, SL3d, SI3d, SA3d, SN3d, SNi3d,            &
+                         f_snow_berg3d,                                        &
                          rain3d, snow3d, surfrain, surfsnow,                   &
                          do_clubb,  qcvar_clubb, MASK3d,                       &
                          lsc_snow, lsc_rain, lsc_snow_size, lsc_rain_size )
@@ -293,6 +294,8 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
   !                      change due to all stratiform 
   !                      processes
   !
+  !       f_snow_berg3d  fraction of Bergeron process in total snow production
+  !                    
   !       rain3d         rain that falls through the     kg condensate/
   !                      edge of the model layer         (kg liquid/m2/sec)
   !
@@ -340,6 +343,7 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
   real, intent (in),    dimension(:,:,:)               :: Ndrop_act_CLUBB,Icedrop_act_CLUBB
   real, intent (in),    dimension(:,:,:)               :: ndust, rbar_dust
   real, intent (out),   dimension(:,:,:)               :: ST3d,SQ3d,SL3d,SI3d,SA3d,SN3d,SNi3d
+  real, intent (out),   dimension(:,:,:)               :: f_snow_berg3d  
   real, intent (out),   dimension(:,:,:)               :: rain3d,snow3d
   real, intent (out),   dimension(:,:)                 :: surfrain,surfsnow
 
@@ -860,6 +864,11 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
       SN3d(:,j,:) = SN(:,:)
       SNi3d(:,j,:) = SNI(:,:)
 
+! ---> h1g, 2014-07-18, pass "f_now_berg" to moist_process 
+!      for in-cloud scavenging in large-scale wet deposition
+      f_snow_berg3d (:,j,:) = f_snow_berg(:,:)
+! <--- h1g, 2014-07-18
+
       rain3d(:,j,:) = rain2d_mg(:,:)
       snow3d(:,j,:) = snow2d_mg(:,:)
 
@@ -891,7 +900,6 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
 
     endif !   current_total_sec >= micro_begin_sec
   end do j_loop
-
 
 ! ---> h1g, 06-14-2013, in order to reproduce bit-wise identical results as AM3-CLUBB
       ST3d = ST3d/dtcloud
@@ -956,6 +964,7 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
                          Ndrop_act_CLUBB, Icedrop_act_CLUBB,                   &
                          ndust, rbar_dust,                                     &
                          ST3d, SQ3d, SL3d, SI3d, SA3d, SN3d, SNi3d,            &
+                         f_snow_berg3d,                                        &
                          rain3d, snow3d, surfrain, surfsnow,                   &
                          do_clubb,  qcvar_clubb, MASK3d,                       &
                          lsc_snow, lsc_rain, lsc_snow_size, lsc_rain_size )
@@ -974,6 +983,7 @@ subroutine MG_microp_3D( Time, is, ie, js, je, lon, lat, dtcloud,              &
   real, intent (in),    dimension(:,:,:)               :: Ndrop_act_CLUBB,Icedrop_act_CLUBB
   real, intent (in),    dimension(:,:,:)               :: ndust, rbar_dust
   real, intent (out),   dimension(:,:,:)               :: ST3d,SQ3d,SL3d,SI3d,SA3d,SN3d,SNi3d
+  real, intent (out),   dimension(:,:,:)               :: f_snow_berg3d  
   real, intent (out),   dimension(:,:,:)               :: rain3d,snow3d
   real, intent (out),   dimension(:,:)                 :: surfrain,surfsnow
 

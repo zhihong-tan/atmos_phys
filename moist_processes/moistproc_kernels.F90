@@ -629,8 +629,27 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
         tracer(:,:,:,nqs) = tracer(:,:,:,nqs) + q_tnd(:,:,:,nqs)*dt
         tracer(:,:,:,nqg) = tracer(:,:,:,nqg) + q_tnd(:,:,:,nqg)*dt
   else
-      if (do_liq_num) then 
-        if ( do_legacy_strat_cloud ) then
+      if (do_liq_num) then
+        if ( do_clubb > 0 ) then
+         call MG_microp_3D( Time, is, ie, js, je, lon, lat, dt,                                 &
+                            pfull, phalf, zhalf, land,                                          &
+                            t, q, tracer(:,:,:,nql), tracer(:,:,:,nqi), tracer(:,:,:,nqa),      &
+                            tracer(:,:,:,nqn), tracer(:,:,:,nqni), convective_humidity_area,    &
+                            dcond_ls_liquid, dcond_ls_ice,                                      &
+                            Ndrop_act_CLUBB, Icedrop_act_CLUBB,                                 &
+                            ndust, rbar_dust,                                                   &
+                            ttnd, qtnd, q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi), q_tnd(:,:,:,nqa),   &
+                            q_tnd(:,:,:,nqn), q_tnd(:,:,:,nqni), f_snow_berg,                   & ! h1g, 2014-07-18
+                            rain3d, snow3d, rain, snow,                                         &
+                            do_clubb=do_clubb, qcvar_clubb = qcvar_clubb,                       &
+                            MASK3d=mask,  &
+                            lsc_snow = lsc_snow,    &
+                            lsc_rain = lsc_rain, &
+                            lsc_snow_size = lsc_snow_size,   &
+                            lsc_rain_size = lsc_rain_size )
+
+ 
+        elseif ( do_legacy_strat_cloud ) then
           call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,    & 
                             radturbten, t, q, tracer(:,:,:,nql),         &
                             tracer(:,:,:,nqi), tracer(:,:,:,nqa),        &
@@ -684,9 +703,10 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                                   lsc_rain = lsc_rain, &
                                   lsc_snow_size = lsc_snow_size,   &
                                   lsc_rain_size = lsc_rain_size )
-          end if
-        end if
-      else
+          end if ! if do_ice_num
+        end if   ! if do_clubb, legacy_strat_cloud
+      else       ! not do_liq_num
+        if (do_legacy_strat_cloud) then
         call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,     &
                           radturbten, t, q, tracer(:,:,:,nql),        &
                           tracer(:,:,:,nqi), tracer(:,:,:,nqa),      &
@@ -697,8 +717,29 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                           rain, snow, convective_humidity_ratio,  &
                           convective_humidity_area, &
                           limit_conv_cloud_frac, mask=mask)
-      endif
-  endif
+        else
+            call strat_cloud_new (Time, is, ie, js, je, dt, pfull, phalf, &
+                                  zhalf, zfull, radturbten, t, q,   &
+                                  tracer(:,:,:,nql), tracer(:,:,:,nqi),  &
+                                  tracer(:,:,:,nqa), omega, mc_full, &
+                                  diff_t, land, ttnd, qtnd,    &
+                                  q_tnd(:,:,:,nql), q_tnd(:,:,:,nqi),   &
+                                  q_tnd(:,:,:,nqa), f_snow_berg,   &
+                                  rain3d, snow3d,   &
+                                  snowclr3d,rain, snow,   &
+                                  convective_humidity_ratio,   &
+                                  convective_humidity_area,&
+                                  limit_conv_cloud_frac, Aerosol,   &
+!                                 mask3d=mask, qn_in=tracer(:,:,:,nqn),  &
+                                  mask3d=mask,                           &
+!                                 SN_out= q_tnd(:,:,:,nqn),   &
+                                  lsc_snow = lsc_snow,      &
+                                  lsc_rain = lsc_rain, &
+                                  lsc_snow_size = lsc_snow_size,   &
+                                  lsc_rain_size = lsc_rain_size )
+        endif ! do_legacy_strat_cloud and not do_liq_num
+      endif     ! if do_liq_num
+  endif         ! if do_lin_cld_microphys
 !----------------------------------------------------------------------
 !    upon return from strat_cloud, update the cloud liquid, ice and area.
 !    update the temperature and specific humidity fields.
@@ -775,8 +816,10 @@ end subroutine moistproc_strat_cloud
 !#######################################################################
 subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,            &
                              pfull, phalf, zfull, zhalf, omega, pblht,        &
-                             ustar, bstar, qstar, land, coldT, Aerosol,       &
-                             cush, cbmf, cmf, conv_calc_completed,            &
+                             ustar, bstar, qstar, shflx, lhflx, land, coldT, Aerosol, &!miz
+                             tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint, lat, lon, &!miz
+                             cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
+			     cmf, conv_calc_completed,                        &
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -795,11 +838,14 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
   logical, intent(in)           :: do_strat, do_limit_uw, do_liq_num
   logical, intent(in), dimension(:)       :: tracers_in_uw
   logical, intent(in), dimension(:,:)     :: coldT, conv_calc_completed
-  real, intent(in),    dimension(:,:)     :: land, ustar, bstar, qstar, pblht
+  real, intent(in),    dimension(:,:)     :: land, ustar, bstar, qstar, shflx, lhflx, pblht, lat, lon
   real, intent(in),    dimension(:,:,:)   :: pfull, phalf, zfull, zhalf, omega, &
                                              t, q, u, v, available_cf_for_uw
   real, intent(in),    dimension(:,:,:,:) :: tracer
-  real, intent(inout), dimension(:,:)     :: lprec, fprec, precip, cush, cbmf
+  real, intent(inout), dimension(:,:)     :: lprec, fprec, precip, cush, cbmf, hmint, cgust
+  real, intent(inout), dimension(:,:)     :: tke, pblhto, rkmo, taudpo
+  integer, intent(inout), dimension(:,:,:) :: exist_shconv, exist_dpconv
+  real, intent(in),    dimension(:,:,:)   :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif !miz
   real, intent(inout), dimension(:,:)     :: rain_uw, snow_uw
   real, intent(inout), dimension(:,:,:)   :: tdt, qdt, udt, vdt,   &
                                              ttnd_conv, qtnd_conv, cmf
@@ -817,7 +863,6 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
   real, intent(out),   dimension(:,:,:)   :: uw_wetdep
 
   integer :: n, nn, nql, nqi, nqa, nqn, nqni
-  real, dimension(size(t,1), size(t,2), size(t,3)) :: thlflx, qtflx, precflx
   real, dimension(size(rdt,1), size(rdt,2), size(rdt,3), num_uw_tracers) :: trcr
 
       nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
@@ -840,15 +885,16 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
       end do
 
       call uw_conv (is, js, Time, t, q, u, v, pfull, phalf, zfull, zhalf, &
-                    tracer, omega, dt, pblht, ustar, bstar, qstar, land,  &
-                    coldT, Aerosol, cush, do_strat,  conv_calc_completed, &
+                    tracer, omega, dt, pblht, ustar, bstar, qstar, shflx, lhflx, land,  &
+                    coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, &!miz
+                    hmint, lat, lon, cush, do_strat,  conv_calc_completed,       &
                     available_cf_for_uw, ttnd_uw, qtnd_uw, qltnd_uw,      &
                     qitnd_uw, qatnd_uw, qntnd_uw, utnd_uw, vtnd_uw,       &
-                    rain_uw, snow_uw, cmf,                                &
-                    thlflx, qtflx, precflx, liq_precflx, ice_precflx,     &
+                    rain_uw, snow_uw, cmf, liq_precflx, ice_precflx,      &
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
-                    shallow_droplet_number, cbmf, trcr,                   &
-                    qtruw, uw_wetdep)
+                    shallow_droplet_number, cbmf, cgust, tke, pblhto,     &
+		    rkmo, taudpo, exist_shconv, exist_dpconv,             &
+                    trcr, qtruw, uw_wetdep)
 
 !-------------------------------------------------------------------------
 !    currently qnitnd_uw is the tendency due to detrainment proportional 
@@ -896,21 +942,22 @@ end subroutine moistproc_uw_conv
 
 
 !#######################################################################
-subroutine moistproc_scale_donner(is,ie,js,je,q, delta_temp, delta_q, precip_returned,      &
+subroutine moistproc_scale_donner(is,ie,js,je, dt, q, delta_temp, delta_q, precip_returned,      &
                                   total_precip, lheat_precip, liquid_precip,    &
-                                  frozen_precip, num_tracers, tracers_in_donner,&
+                                  frozen_precip, pmass, num_tracers, tracers_in_donner,&
                                   delta_ql, delta_qi, delta_qa, qlin, qiin, qtr, scale)
 
-  integer, intent(in) :: is, ie, js, je, num_tracers
-  logical, intent(in), dimension(:)       :: tracers_in_donner
-  real, intent(inout), dimension(:,:)     :: precip_returned, total_precip, &
-                                             lheat_precip
-  real, intent(inout), dimension(:,:,:)   :: q, delta_temp, delta_q,    &
-                                             liquid_precip, frozen_precip, & 
-                                             delta_ql, delta_qi, delta_qa, &
-                                             qlin, qiin
-  real, intent(inout), dimension(:,:,:,:) :: qtr
-  real, intent(out),   dimension(:,:)     :: scale
+  integer, intent(in)                        :: is, ie, js, je, num_tracers
+  real ,   intent(in)                        :: dt  ! Timestep of model.
+  logical, intent(in),    dimension(:)       :: tracers_in_donner
+  real,    intent(inout), dimension(:,:)     :: precip_returned, total_precip, &
+                                                lheat_precip
+  real,    intent(inout), dimension(:,:,:)   :: q, delta_temp, delta_q,    &
+                                                liquid_precip, frozen_precip, pmass, &
+                                                delta_ql, delta_qi, delta_qa, &
+                                                qlin, qiin
+  real,    intent(inout), dimension(:,:,:,:) :: qtr
+  real,    intent(out),   dimension(:,:)     :: scale
 
   integer :: n, nn, i, j, k, ix, jx, kx
   real    :: qvin, dqv
@@ -982,13 +1029,33 @@ subroutine moistproc_scale_donner(is,ie,js,je,q, delta_temp, delta_q, precip_ret
         endif
       end do
 
-      precip_returned = scale*precip_returned
+! Precip returned from Donner scheme is recalculated below.
+!      precip_returned = scale*precip_returned
 
       total_precip = scale*total_precip
       lheat_precip = scale*lheat_precip
       do k=1, kx
         liquid_precip(:,:,k) = scale(:,:)*liquid_precip(:,:,k)
         frozen_precip(:,:,k) = scale(:,:)*frozen_precip(:,:,k)
+      end do
+
+! Limit liquid and frozen precip to not have negative values.
+      where ( liquid_precip(:,:,:) .lt. 0.)
+         liquid_precip(:,:,:) = 0.0
+      end where
+
+      where ( frozen_precip(:,:,:) .lt. 0.)
+         frozen_precip(:,:,:) = 0.0
+      end where
+
+! dimensions of liquid_precip is [kg(H20)/(kg s)]*(SECONDS_PER_DAY)
+! dimensions of frozen_precip is [kg(H20)/(kg s)]*(SECONDS_PER_DAY)
+
+!Note that (dt/seconds_per_day) * sum of (liquid_precip(k) + frozen_precip(k) *pmass(k)) gives precip_returned.
+      precip_returned(:,:) = 0.0
+      do k=1, kx
+        precip_returned(:,:) = precip_returned(:,:) + (liquid_precip(:,:,k) + frozen_precip(:,:,k))*pmass(:,:,k) *&
+                             dt/SECONDS_PER_DAY
       end do
 
 end subroutine moistproc_scale_donner

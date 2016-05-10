@@ -137,6 +137,7 @@ integer,               intent(in)       :: kpar
 !  THESE SETTINGS MAY BE USED FOR DONNER_LITE:
 !    SETTINGS USED IN DATABASE EXPT C48L24_AM3p5-gamma-B6:
        parcel_launch_level = 2
+       do_most_unstable_layer = .false.
        model_levels_in_sfcbl = 0
        donner_deep_freq = 1800
        allow_mesoscale_circulation = .true.

@@ -138,8 +138,8 @@ logical :: module_is_initialized = .false.  ! module is initialized ?
 subroutine esfsw_parameters_init (nbands, nfrqpts, nh2obands, &
                                   nstreams, tot_wvnums)
 
-integer, intent(out) :: nbands, nfrqpts, nh2obands, &
-                        nstreams, tot_wvnums
+integer, intent(out),target :: nbands, nfrqpts, nh2obands, &
+                               nstreams, tot_wvnums
 
 !------------------------------------------------------------------
 !    esfsw_parameters_init is the constructor for esfsw_parameters_mod.

@@ -76,7 +76,7 @@ type(uw_params),                           intent(inout) :: Uw_p
         do i=1,isize
            if (Initialized%using_unified_closure .and.   &
                                           cbmf(i,j) == 0.0) cycle
-          if ((current_displ(i,j) .lt. 0) .or.   &
+          if ((current_displ(i,j) .lt. 0.0) .or.   &
               (.not.Nml%use_llift_criteria)) then
             call pack_sd_lsm_k (Nml%do_lands, land(i,j), coldT(i,j), &
                                 dt, pfull(i,j,:), phalf(i,j,:), &
@@ -906,7 +906,7 @@ integer,                           intent(out)   :: error
       etfhr_miz = 0.
       dpftr_miz = 0.
       ptma_miz  = 200000.
-      ncca      = 0.
+      ncca      = 0
 
       ensmbl_cloud_area = 0.
       cuq               = 0.
@@ -1037,14 +1037,14 @@ integer,                           intent(out)   :: error
 !begin: testing unified plume
 !!! SHOULD ADD SOME COLUMN DIAGNOSTICS WITHIN THIS CODE SEGMENT
         cpn % rle       = 0.1
-        cpn % rpen      = 5
+        cpn % rpen      = 5.0
         cpn % rmaxfrac  = 5000000000000000.
         cpn % wmin      = 0.0 
         cpn % rbuoy     = 2./3.
         cpn % rdrag     = 3.0
         cpn % frac_drs  = 1.0
         cpn % bigc      = 0.7
-        cpn % tcrit     = -45
+        cpn % tcrit     = -45.0
         cpn % cldhgt_max= 40.e3
         cpn % auto_th0  = Nml%auto_th
         cpn % auto_rate = Nml%auto_rate
@@ -1059,22 +1059,20 @@ integer,                           intent(out)   :: error
         cpn % mp_choice = 0
         cpn % do_forcedlifting  = .true.
         cpn % wtwmin_ratio = Nml%wmin_ratio*Nml%wmin_ratio
+        cpn % plev_for        = 50000.
 ! Values for cpn for the following variables are not actually used in the donner_lite routine but 
 ! they should be initialized in order to pass debug tests where NaNs are trapped.
-        cpn % rad_crit        = 14
+        cpn % rad_crit        = 14.0
         cpn % deltaqc0        = 0.0005
-        cpn % emfrac_max      = 1
-        cpn % wrel_min        = 1
-        cpn % Nl_land         = 300000000
-        cpn % Nl_ocean        = 100000000
+        cpn % emfrac_max      = 1.0
+        cpn % wrel_min        = 1.0
+        cpn % Nl_land         = 300000000.0
+        cpn % Nl_ocean        = 100000000.0
         cpn % r_thresh        = 1.2e-05
         cpn % qi_thresh       = 0.0001
-        cpn % peff            = 1
-        cpn % rh0             = 0.8
         cpn % cfrac           = 0.05
         cpn % hcevap          = 0.8
         cpn % weffect         = 0.5
-        cpn % t00             = 295
 
         cp%maxcldfrac =  cpn%rmaxfrac
 
@@ -1253,14 +1251,14 @@ integer,                           intent(out)   :: error
         ci_ice_cond = 0.
         do kk=1,nlev_lsm
           dp = phalf_c(kk) - phalf_c(kk+1)
-          ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp
+!          ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp
 !RSHfix for "s" release:  
 !     replace the above line with the following; also comment out line
 !     noted below. This fix will eliminate the occurrence of roundoff
 !     "snow" falling from donner (~10e-22, + and -) that results from 
 !     difference in this calc and that of "summel" above 
 !NOTE THAT THE SAME CHANGE NEEDS TO BE MADE IN THE DONNER-FULL CODE.>>>
-!         ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp/Param%grav
+         ci_ice_cond = ci_ice_cond + h1_ice(kk)*dp/Param%grav
         end do
        if (pmelt_lsm < pb) then
          melting_in_cloud = .true.
@@ -1268,7 +1266,7 @@ integer,                           intent(out)   :: error
         melting_in_cloud = .false.
      endif
 !RSHfix  for "s" release -- comment out this line:
-        ci_ice_cond = ci_ice_cond/(Param%grav)
+!        ci_ice_cond = ci_ice_cond/(Param%grav)
         if (ci_ice_cond /= 0.0) then
           if (melting_in_cloud) then
          precip_melt_frac = summel/ci_ice_cond
@@ -2650,7 +2648,7 @@ integer,                        intent(out) :: error
 
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
-      if (ri1 >= 0) then
+      if (ri1 >= 0.0) then
         a1  = 0.
       else
         ri1 = Param%rdgas*ri1
@@ -3384,7 +3382,7 @@ integer,                           intent(out) :: error
 !    in AM2p9 with this pztm, so the constraint was changed to pztm >= 
 !    plzb_c + dp
 !--------------------------------------------------------------------
-      if ((pt_ens + dp) >= 10.e03)  then
+      if ((pt_ens + dp) >= plzb_c)  then
         pztm = plzb_c
       else
         pztm = plzb_c + dp
@@ -5489,7 +5487,7 @@ integer,                          intent(out)   :: error
             endif 
                      
 !miz
-             ttend_max=0;
+             ttend_max=0.0;
              do k=1,nlev_lsm 
                 ttend_max=max(ttend_max, abs(temperature_forcing(i,j,k))*Don_conv%a1(i,j))
              end do
@@ -5702,7 +5700,7 @@ real    :: sigmaw, wcrit, cbmf1, rbuoy, rkfre, wcrit_min, rmaxfrac
    if (cush > Nml%deephgt0) then  
       a1=cbmf/0.5
    else
-      a1=0
+      a1=0.0
    end if
 
 !   erfarg=wcrit / (1.4142 * sigmaw)
@@ -6035,7 +6033,7 @@ real                         :: lofactor
            f2 = xcape(3)
         else
            x1 = xa1(3)
-           x2 = 2*amax - x1
+           x2 = 2.0*amax - x1
            f1 = xcape(3)
            f2 = 0.0
         end if

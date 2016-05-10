@@ -32,6 +32,8 @@ use fms_mod,                  only: open_namelist_file, open_file,  &
                                     close_file, error_mesg, FATAL, &
                                     file_exist, mpp_pe, mpp_root_pe,   &
                                     check_nml_error, write_version_number, &
+                                    mpp_clock_id, CLOCK_MODULE, &
+                                    mpp_clock_begin, mpp_clock_end, &
                                     stdlog
 use sat_vapor_pres_mod,       only: compute_qs
 use time_manager_mod,         only: set_date, time_type, operator (+), &
@@ -43,9 +45,7 @@ use time_manager_mod,         only: set_date, time_type, operator (+), &
 USE MOD_COSP_TYPES,           only: cosp_config, cosp_gridbox,    &
                                     cosp_subgrid, cosp_sgradar,   &
                                     cosp_sglidar, cosp_isccp, &
-#ifdef RTTOV
                                     cosp_rttov, &
-#endif
                                     cosp_vgrid, cosp_radarstats,  &
                                     cosp_lidarstats, &
                                     cosp_sghydro,  cosp_misr, &
@@ -59,10 +59,8 @@ USE MOD_COSP_TYPES,           only: cosp_config, cosp_gridbox,    &
                                     construct_cosp_sglidar, &
                                     construct_cosp_lidarstats, &
                                     construct_cosp_isccp, &           
-#ifdef RTTOV
                                     construct_cosp_rttov, &           
                                     free_cosp_rttov, &           
-#endif
                                     free_cosp_gridbox,  &
                                     free_cosp_misr,  &
                                     free_cosp_vgrid,  &
@@ -80,7 +78,10 @@ USE MOD_COSP_IO,              only: read_cosp_output_nl,  &
 use MOD_COSP_CONSTANTS,       only: PARASOL_NREFL, I_LSCLIQ, I_LSCICE, &
                                     I_CVCLIQ, I_CVCICE, I_LSGRPL, &
                                     I_LSRAIN, I_LSSNOW, I_CVRAIN, I_CVSNOW,&
-                                    N_HYDRO, RTTOV_MAX_CHANNELS
+                                    N_HYDRO, RTTOV_MAX_CHANNELS, &
+                                    radar_clock, lidar_clock, isccp_clock, &
+                                    misr_clock, modis_clock, rttov_clock, &
+                                    stats_clock, diags_clock
 use MOD_COSP_Modis_Simulator, only: COSP_MODIS, FREE_COSP_MODIS,  &
                                     CONSTRUCT_COSP_MODIS
 use cosp_diagnostics_mod,     only: cosp_diagnostics_init,   &
@@ -98,6 +99,7 @@ public cosp_driver, cosp_driver_init, cosp_driver_end, cosp_driver_endts, &
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
+! cosp_version = 1.4.0
 character(len=128)  :: version =  '$Id$'
 character(len=128)  :: tagname =  '$Name$'
 
@@ -269,7 +271,7 @@ integer,               intent(in) :: kd_in, ncol_in
 
     call cosp_diagnostics_init      &
             (imax, jmax, Time_diag, axes, nlevels, ncolumns, cfg, &
-             use_vgrid, csat_vgrid, nlr)     
+             use_vgrid, csat_vgrid, nlr, nchannels, channels(1:nchannels) )     
 
 !---------------------------------------------------------------------
 !   COSP takes a single, spacially independent value for surface
@@ -282,6 +284,17 @@ integer,               intent(in) :: kd_in, ncol_in
 !--------------------------------------------------------------------
     geomode = 2
  
+!---------------------------------------------------------------------
+!   initialize clocks to time different simulators / processes.
+!---------------------------------------------------------------------
+    radar_clock = mpp_clock_id ('COSP:radar', grain = CLOCK_MODULE)
+    lidar_clock = mpp_clock_id ('COSP:lidar', grain = CLOCK_MODULE)
+    isccp_clock = mpp_clock_id ('COSP:isccp', grain = CLOCK_MODULE)
+    misr_clock  = mpp_clock_id ('COSP:misr' , grain = CLOCK_MODULE)
+    modis_clock = mpp_clock_id ('COSP:modis', grain = CLOCK_MODULE)
+    rttov_clock = mpp_clock_id ('COSP:rttov', grain = CLOCK_MODULE)
+    stats_clock = mpp_clock_id ('COSP:stats', grain = CLOCK_MODULE)
+    diags_clock = mpp_clock_id ('COSP:diags', grain = CLOCK_MODULE)
 
 end subroutine cosp_driver_init
 
@@ -357,9 +370,7 @@ type(time_type), intent(in) :: Time_diag
   type(cosp_isccp)   :: isccp   ! Output from ISCCP simulator
   type(cosp_modis)   :: modis   ! Output from MODIS simulator
   type(cosp_misr)    :: misr    ! Output from MISR simulator
-#ifdef RTTOV 
   type(cosp_rttov)   :: rttov   ! Output from RTTOV 
-#endif 
   type(cosp_vgrid)   :: vgrid   ! Information on vertical grid of stats
   type(cosp_radarstats) :: stradar ! Summary statistics from radar simulator
   type(cosp_lidarstats) :: stlidar ! Summary statistics from lidar simulator
@@ -497,6 +508,22 @@ type(time_type), intent(in) :: Time_diag
             end do
           end do
         end do
+
+!------------------------------------------------------------------------
+!    define values of particle numbers (units of # / kg) from input fields. 
+!    At this time, these fields are declared in COSP, but code is not 
+!    present to use them (default values will be used), so  they can be
+!    left with the default initialization they were provided.
+!------------------------------------------------------------------------
+!       sghydro%Np(:,:,:,I_LSCLIQ) = 0.
+!       sghydro%Np(:,:,:,I_LSCICE) = 0.
+!       sghydro%Np(:,:,:,I_CVCLIQ) = 0.
+!       sghydro%Np(:,:,:,I_CVCICE) = 0.
+!       sghydro%Np(:,:,:,I_LSRAIN) = 0.
+!       sghydro%Np(:,:,:,I_LSSNOW) = 0.
+!       sghydro%Np(:,:,:,I_LSGRPL) = 0.
+!       sghydro%Np(:,:,:,I_CVRAIN) = 0.
+!       sghydro%Np(:,:,:,I_CVSNOW) = 0.
       endif
       call construct_cosp_sgradar  &
                               (cfg,Npoints,Ncolumns,Nlevels,N_HYDRO,sgradar)
@@ -512,10 +539,8 @@ type(time_type), intent(in) :: Time_diag
                                           (cfg,Npoints,Ncolumns,modis)
       call construct_cosp_misr   &
                                (cfg,Npoints,misr)
-#ifdef RTTOV 
       call construct_cosp_rttov   &
-                                 (Npoints,Nchannels,rttov) 
-#endif
+                                 ( cfg, Npoints,Nchannels,rttov) 
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ! Call simulator
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -585,10 +610,12 @@ type(time_type), intent(in) :: Time_diag
 !-------------------------------------------------------------------------
 !  call output_cosp_fields to produce netcdf output of desired COSP fields.
 !-------------------------------------------------------------------------
+      call mpp_clock_begin (diags_clock)
       call output_cosp_fields (nlon, nlat, npoints, geomode, stlidar, &
                                stradar, isccp, modis, misr, sgradar, &
-                               sglidar, sgx, Time_diag, is, js, &
+                               rttov, sglidar, sgx, Time_diag, is, js, &
                                cloud_type, gbx, cfg, phalf_plus, zhalf_plus)
+      call mpp_clock_end   (diags_clock)
 
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ! Deallocate memory in derived types
@@ -603,9 +630,7 @@ type(time_type), intent(in) :: Time_diag
       call free_cosp_isccp(isccp)
       call free_cosp_misr(misr)
       call free_cosp_modis(modis)
-#ifdef RTTOV 
       call free_cosp_rttov(rttov) 
-#endif
       call free_cosp_vgrid(vgrid)  
 
  
@@ -717,11 +742,6 @@ type(cosp_gridbox), intent(out) :: gbx ! Gridbox information. Input for COSP
 
    call map_ll_to_point(nxdir,nydir,npts,x3=sh_in, y2=y2)
    call flip_vert_index    (y2, nl,gbx%sh )
-
-!---------------------------------------------------------------------
-!   define surface height
-!---------------------------------------------------------------------
-   gbx%sfc_height(:) = gbx%zlev_half(:,1)
 
 !--------------------------------------------------------------------
 !   compute qs and then the relative humidity.

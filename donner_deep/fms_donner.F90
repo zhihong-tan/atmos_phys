@@ -167,6 +167,7 @@ integer    :: id_cemetf_deep, id_ceefc_deep, id_cecon_deep, &
               id_xice_deep,  id_dgeice_deep, id_dgeliq_deep,  &
               id_xliq_deep,    &
               id_cuqi_deep, id_cuql_deep, &
+              id_thetae_deep, id_tthetae_deep, id_pthetae_deep, &
               id_plcl_deep, id_plfc_deep, id_plzb_deep, &
               id_xcape_deep, id_coin_deep,  &
               id_dcape_deep, id_qint_deep, id_a1_deep, &
@@ -322,6 +323,7 @@ integer,               intent(in)       :: kpar
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
       Nml%parcel_launch_level         = parcel_launch_level
+      Nml%do_most_unstable_layer      = do_most_unstable_layer
       Nml%allow_mesoscale_circulation = allow_mesoscale_circulation
       Nml%do_hires_cape_for_closure =   do_hires_cape_for_closure
       Nml%do_donner_cape              = do_donner_cape    !miz
@@ -1988,6 +1990,18 @@ type(donner_nml_type), intent(inout) :: Nml
              Time, 'cell liq gen eff size ', 'micrometers',   &
              missing_value=missing_value)
 
+!   Temperature at level of maximum Equivalent Potential Temperature:
+      id_tthetae_deep = register_diag_field       &
+            (mod_name, 'tthetae_deep', axes(1:2),   &
+             Time, 'Temperature at level of Max Thetae', 'K ',   &
+             missing_value=missing_value)
+
+!   Pressure at level of maximum Equivalent Potential Temperature:
+      id_pthetae_deep = register_diag_field       &
+            (mod_name, 'pthetae_deep', axes(1:2),   &
+             Time, 'Pressure at level of Max Thetae', 'Pa ',   &
+             missing_value=missing_value)
+
 !    pressure at lifting condensation level:
       id_plcl_deep = register_diag_field       &
             (mod_name, 'plcl_deep', axes(1:2),   &
@@ -2549,7 +2563,7 @@ type(donner_nml_type), intent(inout) :: Nml
         if (field_found4) then
           call read_data (fname, 'humidity_factor',  &
                                               Don_save%humidity_factor)
-        else if (Initialized%conv_alarm > 0.0) then
+        else if (Initialized%conv_alarm > 0) then
           call error_mesg ('donner_deep_mod', &
              'cannot restart with this restart file unless donner_deep &
                 &calculated on first step', FATAL)
@@ -3599,9 +3613,24 @@ real, dimension(:,:),   intent(in) :: parcel_rise, total_precip
         endif
       end do
 
+!   Temperature at level of maximum Equivalent Potential Energy:
+       if (id_thetae_deep > 0) then
+      used = send_data (id_thetae_deep, Don_cape%thetae, Time, is, js, 1)
+       endif
+
 !---------------------------------------------------------------------
 !    send the 2D convection-related diagnostics to diag_manager_mod.
 !---------------------------------------------------------------------
+
+!   Temperature at level of maximum Equivalent Potential Energy:
+       if (id_tthetae_deep > 0) then
+      used = send_data (id_tthetae_deep, Don_cape%Tthetae, Time, is, js)
+       endif
+
+!   Pressure at level of maximum Equivalent Potential Energy:
+       if (id_pthetae_deep > 0) then
+      used = send_data (id_pthetae_deep, Don_cape%Pthetae, Time, is, js)
+       endif
 
 !   pressure at lifting condensation level:
        if (id_plcl_deep > 0) then

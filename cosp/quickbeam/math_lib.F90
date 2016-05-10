@@ -1,15 +1,6 @@
 #include "cosp_defs.H"
-#ifdef COSP_GFDL
-
-!---------------------------------------------------------------------
-!------------ FMS version number and tagname for this file -----------
-
-! $Id$
-! $Name$
-! cosp_version = 1.3.2
-
-#endif
-
+! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/quickbeam/math_lib.f90 $
 ! MATH_LIB: Mathematics procedures for F90
 ! Compiled/Modified:
 !   07/01/06  John Haynes (haynes@atmos.colostate.edu)
@@ -19,6 +10,9 @@
 ! avint (subroutine)
   
   module math_lib
+#ifdef COSP_GFDL
+use fms_mod, only : error_mesg, FATAL
+#endif
   implicit none
 
   contains
@@ -271,10 +265,16 @@
   b = b_in  
   
   if ( ntab < 3 ) then
+#ifdef COSP_GFDL
+    print *, 'NTAB = ', ntab
+    call error_mesg ('math_lib.F90/avint', &
+                 '  NTAB is less than 3.', FATAL)
+#else
     write ( *, '(a)' ) ' '
     write ( *, '(a)' ) 'AVINT - Fatal error!'
     write ( *, '(a,i6)' ) '  NTAB is less than 3.  NTAB = ', ntab
     stop
+#endif
   end if
  
   do i = 2, ntab
@@ -285,6 +285,11 @@
   end do
   
   if (lerror) then
+#ifdef COSP_GFDL
+      print *, 'XTAB(I-1), XTAB(I): ', xtab(i-1), xtab(i)
+      call error_mesg ('math_lib.F90/avint', &
+      '  XTAB(I) is not greater than XTAB(I-1).', FATAL)
+#else
       write ( *, '(a)' ) ' '
       write ( *, '(a)' ) 'AVINT - Fatal error!'
       write ( *, '(a)' ) '  XTAB(I) is not greater than XTAB(I-1).'
@@ -292,15 +297,21 @@
       write ( *, '(a,g14.6)' ) '  XTAB(I-1) = ', xtab(i-1)
       write ( *, '(a,g14.6)' ) '  XTAB(I) =   ', xtab(i)
       stop  
+#endif
   end if
  
   result = 0.0D+00
  
   if ( a == b ) then
+#ifdef COSP_GFDL
+    print *, 'AVINT - Warning!', '  A = B, integral=0.'
+    return
+#else
     write ( *, '(a)' ) ' '
     write ( *, '(a)' ) 'AVINT - Warning!'
     write ( *, '(a)' ) '  A = B, integral=0.'
     return
+#endif
   end if
 !
 !  If B < A, temporarily switch A and B, and store sign.

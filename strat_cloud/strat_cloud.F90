@@ -2365,11 +2365,13 @@ subroutine fill_nml_variable
       Nml%use_sub_seasalt = use_sub_seasalt
       Nml%N_ocean = N_ocean
       Nml%U_evap = U_evap
+      Nml%U_evap_snow = U_evap_snow
       Nml%eros_scale = eros_scale
       Nml%eros_choice = eros_choice
       Nml%eros_scale_t = eros_scale_t
       Nml%eros_scale_c = eros_scale_c
       Nml%mc_thresh = mc_thresh
+      Nml%include_neg_mc = include_neg_mc
       Nml%diff_thresh = diff_thresh
       Nml%super_choice = super_choice
       Nml%tracer_advec = tracer_advec
@@ -2389,6 +2391,7 @@ subroutine fill_nml_variable
       Nml%retain_cm3_bug  = retain_cm3_bug 
       Nml%do_pdf_clouds = do_pdf_clouds
       Nml%betaP = betaP
+      Nml%Single_Gaussion_pdf = Single_Gaussion_pdf ! h1g, 2015-07-22
       Nml%iwc_crit = iwc_crit
       Nml%vfall_const2 = vfall_const2
       Nml%vfall_exp2 = vfall_exp2

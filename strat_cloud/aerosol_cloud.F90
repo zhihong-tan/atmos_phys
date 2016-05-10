@@ -672,8 +672,13 @@ INTEGER,                                   INTENT (in)   :: otun
                 end do
               end do
 
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt1' ) then 
-              do k=1,kdim
+
+! h1g, 2015-09-18
+!  for fast aerosol, seasalt and dust names are changed from seasalt1, seasalt2, ... dust1, dust2, ... 
+!  to seasalt_aitken, ..., dust_mode1_of_2
+            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt1' &
+                .or.trim(Aerosol%aerosol_names(na)) == 'seasalt_aitken' ) then ! h1g, 2015-09-18 
+              do k=1,kdim                                                     
                 do j=1,jdim
                   do i=1,idim
                     concen_ss_sub(i,j,k) = concen_ss_sub(i,j,k) +  &
@@ -684,7 +689,8 @@ INTEGER,                                   INTENT (in)   :: otun
                 end do
               end do
 
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt2') then
+            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt2' &
+                .or.trim(Aerosol%aerosol_names(na)) == 'seasalt_fine' ) then ! h1g, 2015-09-18 
               do k=1,kdim
                 do j=1,jdim
                   do i=1,idim
@@ -696,7 +702,8 @@ INTEGER,                                   INTENT (in)   :: otun
                 end do
               end do
 
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt3') then 
+            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt3' &
+                .or.trim(Aerosol%aerosol_names(na)) == 'seasalt_coarse') then ! h1g, 2015-09-18
               do k=1,kdim
                 do j=1,jdim
                   do i=1,idim
@@ -754,7 +761,8 @@ INTEGER,                                   INTENT (in)   :: otun
                 end do
               end do
 
-            else if(trim(Aerosol%aerosol_names(na)) == 'dust1') then      
+            else if(trim(Aerosol%aerosol_names(na)) == 'dust1' & 
+               .or. trim(Aerosol%aerosol_names(na)) == 'dust_mode1_of_2' ) then      !h1g, 2015-09-18
               do k=1,kdim
                 do j=1,jdim
                   do i=1,idim
@@ -808,7 +816,8 @@ INTEGER,                                   INTENT (in)   :: otun
                 end do
               end do
 
-            else if (trim(Aerosol%aerosol_names(na)) == 'dust4') then
+            else if (trim(Aerosol%aerosol_names(na)) == 'dust4' &
+                .or. trim(Aerosol%aerosol_names(na)) == 'dust_mode2_of_2') then       !h1g, 2015-09-18
               do k=1,kdim
                 do j=1,jdim
                   do i=1,idim

@@ -109,7 +109,7 @@ real, public, allocatable, dimension(:,:,:) :: pmass
 !cape calculation.
                                                                                 
 subroutine capecalcnew(kx,p,phalf,cp,rdgas,rvgas,hlv,kappa,tin,rin,&
-                                avgbl,cape,cin)
+                                avgbl, cape, cin, tp, rp, klcl, klfc, klzb)
                                                                                 
 !
 !    Input:
@@ -146,10 +146,12 @@ subroutine capecalcnew(kx,p,phalf,cp,rdgas,rvgas,hlv,kappa,tin,rin,&
       real, intent(in), dimension(:)         :: p, phalf, tin, rin
       real, intent(in)                       :: rdgas, rvgas, hlv, kappa, cp
       real, intent(out)                      :: cape, cin
+      real,    intent(out), dimension(:) :: tp, rp
+      integer, intent(out)               :: klcl, klfc, klzb
                                                                                 
-      integer            :: k, klcl, klfc, klzb
+      integer            :: k!, klcl, klfc, klzb
       logical            :: nocape
-      real, dimension(kx)   :: tp, rp
+!      real, dimension(kx)   :: tp, rp
       real                  :: t0, r0, es, rs, theta0, pstar, value, tlcl, &
                                a, b, dtdlnp, &
                                plcl, plzb
@@ -193,9 +195,9 @@ subroutine capecalcnew(kx,p,phalf,cp,rdgas,rvgas,hlv,kappa,tin,rin,&
 ! The right hand side of this is only a function of temperature, therefore
 ! this is put into a lookup table to solve for temperature.
          if (r0.gt.0.) then
-            value = log(theta0**(-1/kappa)*r0*pstar*rvgas/rdgas) 
+            value = log(theta0**(-1./kappa)*r0*pstar*rvgas/rdgas) 
             call lcltabl(value,tlcl)
-            plcl = pstar*(tlcl/theta0)**(1/kappa)
+            plcl = pstar*(tlcl/theta0)**(1./kappa)
 ! just in case plcl is very high up
             if (plcl.lt.p(1)) then
                plcl = p(1)
@@ -533,7 +535,7 @@ subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK, do_cmip)
         REAL, DIMENSION(SIZE(T,1),SIZE(T,2),SIZE(T,3)) :: esat
       
         real, parameter :: d622 = RDGAS/RVGAS
-        real, parameter :: d378 = 1.-d622
+!        real, parameter :: d378 = 1.-d622
 
 ! because Betts-Miller uses a simplified scheme for calculating the relative humidity
         if (do_simple) then
@@ -556,7 +558,6 @@ subroutine rh_calc(pfull,T,qv,RH,do_simple,MASK, do_cmip)
         IF (present(MASK)) RH(:,:,:)=MASK(:,:,:)*RH(:,:,:)
 
 END SUBROUTINE rh_calc
-
 
 !#######################################################################
 

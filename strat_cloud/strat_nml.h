@@ -229,11 +229,13 @@ INTEGER, PARAMETER  :: max_strat_pts = 5
   real              :: rthresh        =  10.
   logical           :: use_kk_auto    =  .false.
   real              :: U_evap         =  1.0
+  real              :: U_evap_snow    =  1.0 !miz
   real              :: eros_scale     =  1.E-06
   logical           :: eros_choice    =  .false.
   real              :: eros_scale_c   =  8.E-06
   real              :: eros_scale_t   =  5.E-05
   real              :: mc_thresh      =  0.001
+  logical           :: include_neg_mc =  .false.
   real              :: diff_thresh    =  1.0
   logical           :: super_choice   =  .false.
   logical           :: tracer_advec   =  .false.
@@ -291,12 +293,12 @@ INTEGER, PARAMETER  :: max_strat_pts = 5
 ! 1 / relative variance of sub-grid cloud water distribution
 ! see morrison and gettelman, 2007, J. Climate for details
   real                                :: qcvar = 2.
-
+  logical                             :: Single_Gaussion_pdf  = .false. ! h1g, 2015-07-22
 
 namelist / strat_cloud_nml /   &
        do_netcdf_restart, U00, u00_profile, rthresh, use_kk_auto, &
-       U_evap, eros_scale, eros_choice, eros_scale_c, eros_scale_t, &
-       mc_thresh, diff_thresh, super_choice, tracer_advec, qmin, Dmin, &
+       U_evap, U_evap_snow, eros_scale, eros_choice, eros_scale_c, eros_scale_t, &!miz
+       mc_thresh, include_neg_mc, diff_thresh, super_choice, tracer_advec, qmin, Dmin, &
        efact, vfact, cfact, do_old_snowmelt, iwc_crit, vfall_const2,  &
        vfall_exp2, num_mass_ratio1, num_mass_ratio2,   &
        microphys_scheme, macrophys_scheme, aerosol_activation_scheme, &
@@ -312,6 +314,7 @@ namelist / strat_cloud_nml /   &
 
        num_strat_pts, strat_pts, debugo, isamp, jsamp, ksamp,  &
        
-       qcvar
-
-
+       qcvar, &
+!-->h1g, 2015-07-22
+       Single_Gaussion_pdf
+!<--h1g, 2015-07-22

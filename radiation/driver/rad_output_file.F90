@@ -27,22 +27,23 @@ use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
                              DIAG_FIELD_NOT_FOUND
 use diag_data_mod,     only: CMOR_MISSING_VALUE
-use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE
+use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE, pi
 
 use aerosol_types_mod, only:  aerosol_type
 
 !  radiation package shared modules:
 
-use rad_utilities_mod, only:  radiation_control_type, &
-                              rad_output_type
+use radiation_driver_types_mod, only:  radiation_control_type, &
+                                       rad_output_type
 
 use aerosolrad_types_mod, only:  aerosolrad_control_type, &
                                  aerosolrad_diag_type
 
 use cloudrad_types_mod,   only:  cld_specification_type
 
-use esfsw_driver_mod,     only:  esfsw_bands, sw_output_type
-use sealw99_mod,          only:  lw_output_type
+use esfsw_driver_mod,     only:  esfsw_bands
+use shortwave_types_mod,  only:  sw_output_type
+use longwave_types_mod,   only:  lw_output_type
 
 !--------------------------------------------------------------------
 
@@ -130,7 +131,10 @@ integer, dimension(2)              :: id_absopdep_vlcno_column, &
                                       id_extopdep_vlcno_column, &
                                       id_swext_vlcno, id_swssa_vlcno, &
                                       id_swasy_vlcno, id_sw_xcoeff_vlcno
-integer, dimension(7)              :: id_lw_bdyflx_clr, id_lw_bdyflx  ! change by Xianglei Huang
+! change by Xianglei Huang
+integer, dimension(7)              :: id_lw_bdyflx_clr, id_lw_bdyflx
+integer                            :: id_bT_Aqua31
+! end of change
 integer, dimension(4)              :: id_sw_bdyflx_clr, id_sw_bdyflx
 integer                            :: id_swheat_vlcno
 integer                            :: id_sulfate_col_cmip,  &
@@ -517,6 +521,9 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
                        size(press,2), 4)  :: &
                                 bdy_flx_mean, bdy_flx_clr_mean
 
+      real, dimension(size(press,1),    &
+                       size(press,2)) :: bT
+
       real, dimension(:,:,:),   allocatable :: aerosol_col
       real, dimension(:,:,:,:),   allocatable :: extopdep_col
       real, dimension(:,:,:,:),   allocatable :: absopdep_col
@@ -541,7 +548,6 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
       integer   :: n, k, na, nfamilies, nl
       integer   :: nv
       integer   :: co_indx, bnd_indx
-      integer   :: nzens, nz
 
 !----------------------------------------------------------------------
 !  local variables:
@@ -600,12 +606,6 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
             any(id_asymdep_fam_column(:,:)  > 0 )) Lasymdep = .true.
             
 !--------------------------------------------------------------------
-!    define the number of zenith angles that the sw was calculated 
-!    for on this step.
-!--------------------------------------------------------------------
-        nzens = Rad_control%nzens
-
-!--------------------------------------------------------------------
 !    if the file is to be written, define the number of model layers.
 !--------------------------------------------------------------------
         kerad = ubound(temp,3)
@@ -615,26 +615,13 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
 !--------------------------------------------------------------------
         psj   (:,:)     = phalf(:,:,kerad+1)
 
-        radp = 0.
-        radswp = 0.
-        fsw = 0.
-        ufsw = 0.
-        bdy_flx_mean = 0.
-        do nz = 1, nzens
-          radp(:,:,:)     = radp(:,:,:) +    &
-                                 Rad_output%tdt_rad(is:ie,js:je,:,nz)
-          radswp(:,:,:)   = radswp(:,:,:) +    &
-                                 Rad_output%tdtsw  (is:ie,js:je,:,nz)
-          fsw(:,:,:)    = fsw(:,:,:) + Sw_output% fsw(:,:,:,nz)
-          ufsw(:,:,:)   = ufsw(:,:,:) + Sw_output%ufsw(:,:,:,nz)
-          bdy_flx_mean(:,:,:) = bdy_flx_mean(:,:,:) +  &
-                                  Sw_output%bdy_flx(:,:,:,nz) 
-        end do
-        radp = radp/float(nzens)
-        radswp = radswp/float(nzens)
-        fsw = fsw/float(nzens)
-        ufsw = ufsw/float(nzens)
-        bdy_flx_mean = bdy_flx_mean/float(nzens)
+        ! for reproducibility
+        radp   = Rad_output%tdt_rad(is:ie,js:je,:)/float(1)
+        radswp = Rad_output%tdtsw  (is:ie,js:je,:)/float(1)
+        fsw  = Sw_output%fsw (:,:,:)/float(1)
+        ufsw = Sw_output%ufsw(:,:,:)/float(1)
+        bdy_flx_mean = Sw_output%bdy_flx(:,:,:)/float(1)
+
 !BW     cirrfgd_dir(:,:)    = Surface%asfc_nir_dir(:,:)
 !BW     cvisrfgd_dir(:,:)   = Surface%asfc_vis_dir(:,:)
 !BW     cirrfgd_dif(:,:)    = Surface%asfc_nir_dif(:,:)
@@ -651,26 +638,12 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
           ptop(:,:) = 0.01*phalf(:,:,1)
 
         if (Rad_control%do_totcld_forcing) then 
-          fswcf = 0.
-          ufswcf = 0.
-          radpcf = 0.
-          radswpcf = 0.
-          bdy_flx_clr_mean = 0.
-          do nz=1,nzens
-            fswcf(:,:,:)    = fswcf(:,:,:) + Sw_output%fswcf(:,:,:,nz)
-            ufswcf(:,:,:)   = ufswcf(:,:,:) + Sw_output%ufswcf(:,:,:,nz)
-            radpcf(:,:,:)   = radpcf(:,:,:) +    &
-                                Rad_output%tdt_rad_clr(is:ie,js:je,:,nz)
-            radswpcf(:,:,:) = radswpcf(:,:,:) +    &
-                                Rad_output%tdtsw_clr  (is:ie,js:je,:,nz)
-            bdy_flx_clr_mean(:,:,:) = bdy_flx_clr_mean(:,:,:) +  &
-                                  Sw_output%bdy_flx_clr(:,:,:,nz) 
-          end do
-          fswcf = fswcf/float(nzens)
-          ufswcf = ufswcf/float(nzens)
-          radpcf = radpcf/float(nzens)
-          radswpcf = radswpcf/float(nzens)
-          bdy_flx_clr_mean = bdy_flx_clr_mean/float(nzens)
+          ! for reproducibility
+          fswcf  = Sw_output%fswcf(:,:,:)/float(1)
+          ufswcf = Sw_output%ufswcf(:,:,:)/float(1)
+          radpcf = Rad_output%tdt_rad_clr(is:ie,js:je,:)/float(1)
+          radswpcf = Rad_output%tdtsw_clr  (is:ie,js:je,:)/float(1)
+          bdy_flx_clr_mean = Sw_output%bdy_flx_clr(:,:,:)/float(1)
           flxnetcf(:,:,:) = Lw_output%flxnetcf(:,:,:)
         endif
 
@@ -1145,14 +1118,7 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
                                 Time_diag, is, js,1)
             endif
             if (id_swheat_vlcno  > 0 ) then
-
-              v_heat = 0.0
-              do nz = 1,nzens
-                v_heat(:,:,:) = v_heat(:,:,:)  +  &
-                              Aerosolrad_diags%sw_heating_vlcno(:,:,:,nz)
-              end do
-              v_heat = v_heat/float(nzens)
-
+              v_heat = Aerosolrad_diags%sw_heating_vlcno(:,:,:)/float(1) ! for repro
               used = send_data (id_swheat_vlcno ,    &
 !                               Aerosolrad_diags%sw_heating_vlcno(:,:,:), &
                                 v_heat(:,:,:), &
@@ -1261,6 +1227,17 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
                             Time_diag, is,js)
         endif
      end do
+     if (id_bT_Aqua31 > 0) then
+        !Assumes band 3 is 800--900
+        !Aqua31 recieves between 885 and 925 cm**-1, using band 3
+        !Computation from http://pds-atmospheres.nmsu.edu/education_and_outreach/encyclopedia/planck_function.htm
+        !Note their planck function is in mW and bdy_flx is is W
+        !850 cm**-1 gives a characteristic wavenumber for this band, which is 100 cm**-1 wide
+        !Also, we divide by pi to convert the omni-directional flux into intensity
+        bT = 0.0000119*(850.**3)/((Lw_output%bdy_flx(:,:,3)/100.)*1000./pi + 1.)
+        bT = 1.438833*850./log(bT)
+        used = send_data ( id_bT_Aqua31, bT, Time_diag, is, js ) 
+     endif
 
         if (Rad_control%do_totcld_forcing) then
      do n=1, 4
@@ -1659,7 +1636,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         nfamilies = size(family_names(:))
         allocate (id_aerosol_fam(nfamilies))
         allocate (id_aerosol_fam_column(nfamilies)) 
-        allocate (aerosol_fam_column_names(naerosol))
+        allocate (aerosol_fam_column_names(nfamilies))
         do n=1,nfamilies      
           aerosol_fam_column_names(n) = TRIM(family_names(n) ) // "_col"
         end do
@@ -1681,14 +1658,14 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         allocate (id_extopdep_fam_column(nfamilies, N_DIAG_BANDS))
         allocate (id_absopdep_fam(nfamilies, N_DIAG_BANDS))
         allocate (id_absopdep_fam_column(nfamilies, N_DIAG_BANDS))
-        allocate (extopdep_fam_names(naerosol))
-        allocate (extopdep_fam_column_names(naerosol))
-        allocate (absopdep_fam_names(naerosol))
-        allocate (absopdep_fam_column_names(naerosol))
+        allocate (extopdep_fam_names(nfamilies))
+        allocate (extopdep_fam_column_names(nfamilies))
+        allocate (absopdep_fam_names(nfamilies))
+        allocate (absopdep_fam_column_names(nfamilies))
         allocate (id_asymdep_fam(nfamilies, N_DIAG_BANDS))
         allocate (id_asymdep_fam_column(nfamilies, N_DIAG_BANDS))
-        allocate (asymdep_fam_names(naerosol))
-        allocate (asymdep_fam_column_names(naerosol))
+        allocate (asymdep_fam_names(nfamilies))
+        allocate (asymdep_fam_column_names(nfamilies))
    do nl=1,N_DIAG_BANDS
         do n=1,nfamilies      
           extopdep_fam_names(n) =   &
@@ -1971,6 +1948,9 @@ logical,                        intent(in) :: volcanic_sw_aerosols
          register_diag_field  (mod_name, 'olr_1200_1400', axes(1:2), &
                                Time, 'olr in 1200_1400 band', &
                       'W/m**2', missing_value=missing_value)
+      id_bT_Aqua31 = register_diag_field ( mod_name, 'bT_Aqua31', axes(1:2), &
+           Time, 'brightness temperature in Aqua 31 885_925 band', 'K', &
+           missing_value=missing_value)
 
 !-----------------------------------------------------------------------
 ! End of Change 

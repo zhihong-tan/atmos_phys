@@ -72,7 +72,7 @@ character(len=128)  :: tagname =  '$Name$'
 public          &
          cloudrad_diagnostics_init, cloudrad_netcdf, &
          obtain_cloud_tau_and_em, modis_yim, modis_cmip, &
-         model_micro_dealloc, cloudrad_diagnostics_end
+         cloudrad_diagnostics_end
 
 private          &
 !   called from cloudrad_diagnostics_init:
@@ -364,7 +364,7 @@ subroutine cloudrad_diagnostics_init (min_cld_drop_rad_in,  &
                                       min_cld_ice_size_in, &
                                       max_cld_ice_size_in, axes, Time, &
                                       donner_meso_is_largescale_in, &
-                                      nswcldb, nlwcldb, Cldrad_control)
+                                      Cldrad_control)
 
 !---------------------------------------------------------------------
 !    cloudrad_diagnostics_init is the constructor for 
@@ -378,7 +378,6 @@ real,                        intent(in)  ::  min_cld_drop_rad_in, &
 integer, dimension(4),       intent(in)  ::  axes
 type(time_type),             intent(in)  ::  Time
 logical,                     intent(in)  ::  donner_meso_is_largescale_in
-integer,                     intent(in)  ::  nswcldb, nlwcldb
 type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 
 !---------------------------------------------------------------------
@@ -398,8 +397,6 @@ type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 !                             [ microns ]
 !       axes                  diagnostic variable axes
 !       Time                  current time [time_type(days, seconds)]
-!       nswcldb               number of parameterized shortwave bands
-!       nlwcldb               number of parameterized longwave bands
 !
 !----------------------------------------------------------------------
 
@@ -473,8 +470,8 @@ type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 !    allocate the arrays needed to hold the diagnostics to be gener-
 !    ated for each of the ncol stochastic sub-columns.
 !---------------------------------------------------------------------
-      nswbands = nswcldb
-      nlwbands = nlwcldb
+      nswbands = Cldrad_control%num_sw_cloud_bands
+      nlwbands = Cldrad_control%num_lw_cloud_bands
       ncol = nlwbands + nswbands
       if (Cldrad_control%do_stochastic_clouds) then
           allocate (id_stoch_cloud_type        (ncol))
@@ -1222,77 +1219,10 @@ if (Time_diag > Time) then
 !    combined cloud properties of all active cloud schemes when 
 !    stochastic clouds are not active.
 !---------------------------------------------------------------------
-      allocate (Model_microphys%conc_drop  (ix, jx, kx) )
-      allocate (Model_microphys%conc_ice   (ix, jx, kx) )
-      allocate (Model_microphys%conc_rain  (ix, jx, kx) )
-      allocate (Model_microphys%conc_snow  (ix, jx, kx) )
-      allocate (Model_microphys%size_drop  (ix, jx, kx) )
-      allocate (Model_microphys%size_ice   (ix, jx, kx) )
-      allocate (Model_microphys%size_rain  (ix, jx, kx) )
-      allocate (Model_microphys%size_snow  (ix, jx, kx) )
-      allocate (Model_microphys%cldamt     (ix, jx, kx) )
-      allocate (Model_microphys%droplet_number  (ix, jx, kx) )
-      allocate (Model_microphys%ice_number (ix, jx, kx) )
-      Model_microphys%conc_drop = 0.
-      Model_microphys%conc_ice  = 0.
-      Model_microphys%conc_rain = 0.
-      Model_microphys%conc_snow = 0.
-      Model_microphys%size_drop = 1.0e-20
-      Model_microphys%size_ice  = 1.0e-20
-      Model_microphys%size_rain = 1.0e-20
-      Model_microphys%size_snow = 1.0e-20
-      Model_microphys%cldamt     = 0.
-      Model_microphys%droplet_number = 0.              
-      Model_microphys%ice_number = 0.
+      call Model_microphys%alloc( ix, jx, kx, Cloud_microphys(:)%scheme_name, &
+                                  Cldrad_control)
 
       if (Cldrad_control%do_stochastic_clouds) then
-        allocate (Model_microphys%stoch_conc_ice (ix, jx, kx, nCol) )
-        allocate (Model_microphys%stoch_conc_drop(ix, jx, kx, nCol) )
-        allocate (Model_microphys%stoch_size_ice (ix, jx, kx, nCol) )
-        allocate (Model_microphys%stoch_size_drop(ix, jx, kx, nCol) )
-        allocate (Model_microphys%stoch_cldamt   (ix, jx, kx, nCol) )
-        allocate (Model_microphys%stoch_cloud_type (ix, jx, kx, nCol) )
-        allocate (Model_microphys%stoch_droplet_number   &
-                                                 (ix, jx, kx, nCol) )
-        allocate (Model_microphys%stoch_ice_number   &
-                                                 (ix, jx, kx, nCol) )
-
-        Model_microphys%lw_stoch_conc_drop =>    &
-         Model_microphys%stoch_conc_drop(:,:,:,1:nlwbands)
-        Model_microphys%lw_stoch_conc_ice  =>    &
-         Model_microphys%stoch_conc_ice (:,:,:,1:nlwbands)
-        Model_microphys%lw_stoch_size_drop =>    &
-         Model_microphys%stoch_size_drop(:,:,:,1:nlwbands)
-        Model_microphys%lw_stoch_size_ice  =>    &
-         Model_microphys%stoch_size_ice (:,:,:,1:nlwbands)
-        Model_microphys%sw_stoch_conc_drop =>    &
-         Model_microphys%stoch_conc_drop   &
-                                       (:,:,:,nlwbands+1:)
-        Model_microphys%sw_stoch_conc_ice  =>    &
-         Model_microphys%stoch_conc_ice(:,:,:,nlwbands+1:)
-        Model_microphys%sw_stoch_size_drop =>    &
-         Model_microphys%stoch_size_drop   &
-                                       (:,:,:,nlwbands+1:)
-        Model_microphys%sw_stoch_size_ice  =>    &
-         Model_microphys%stoch_size_ice(:,:,:,nlwbands+1:)
-        Model_microphys%lw_stoch_cldamt =>     &
-         Model_microphys%stoch_cldamt(:,:,:,1:nlwbands)
-        Model_microphys%sw_stoch_cldamt =>     &
-         Model_microphys%stoch_cldamt(:,:,:,nlwbands+1:)
-        Model_microphys%lw_stoch_droplet_number =>     &
-         Model_microphys%stoch_droplet_number   &
-                                        (:,:,:,1:nlwbands)
-        Model_microphys%sw_stoch_droplet_number =>     &
-         Model_microphys%stoch_droplet_number  &
-                                       (:,:,:,nlwbands+1:)
-        Model_microphys%stoch_conc_drop = 0.
-        Model_microphys%stoch_conc_ice  = 0.
-        Model_microphys%stoch_size_drop = 1.0e-20
-        Model_microphys%stoch_size_ice  = 1.0e-20
-        Model_microphys%stoch_cldamt = 0.0
-        Model_microphys%stoch_droplet_number = 0.0
-        Model_microphys%stoch_ice_number = 0.0
-
 !---------------------------------------------------------------------
 !    since the sw bands come first in Cld_spec and the lw bands come 
 !    first in  Model_microphys, the band index order must be reversed 
@@ -1382,35 +1312,15 @@ if (Time_diag > Time) then
       endif ! (do_stochastic_clouds)
 
 !----------------------------------------------------------------------
-!    allocate arrays to store large-scale cloud diagnostics
+!    define/store large-scale cloud diagnostics
 !----------------------------------------------------------------------
-      allocate(Model_microphys%lsc_cldamt        (ix, jx, kx))
-      allocate(Model_microphys%lsc_conc_drop     (ix, jx, kx))
-      allocate(Model_microphys%lsc_size_drop     (ix, jx, kx))
-      allocate(Model_microphys%lsc_droplet_number(ix, jx, kx))
 
       if (strat_index > 0) then
          Model_microphys%lsc_cldamt         = Cloud_microphys(strat_index)%cldamt
          Model_microphys%lsc_conc_drop      = Cloud_microphys(strat_index)%conc_drop
          Model_microphys%lsc_size_drop      = Cloud_microphys(strat_index)%size_drop
          Model_microphys%lsc_droplet_number = Cloud_microphys(strat_index)%droplet_number
-      else
-         Model_microphys%lsc_cldamt         = 0.0
-         Model_microphys%lsc_conc_drop      = 0.0
-         Model_microphys%lsc_size_drop      = 0.0
-         Model_microphys%lsc_droplet_number = 0.0
       endif
-
-!----------------------------------------------------------------------
-!    cloud scheme name contains the names of all cloud schemes
-!----------------------------------------------------------------------
-     Model_microphys%scheme_name = ''
-     if (size(Cloud_microphys,1) > 0) then
-       Model_microphys%scheme_name = Cloud_microphys(1)%scheme_name
-       do nc = 2, size(Cloud_microphys,1)
-         Model_microphys%scheme_name = trim(Model_microphys%scheme_name)//','//trim(Cloud_microphys(nc)%scheme_name)
-       enddo
-     endif
 
 !---------------------------------------------------------------------
 !
@@ -3741,64 +3651,6 @@ end subroutine cloudrad_netcdf
 
 
 !#####################################################################
-
-subroutine model_micro_dealloc (Cldrad_control, Model_microphys)
- 
-type(cloudrad_control_type), intent(in)    :: Cldrad_control
-type(microphysics_type),     intent(inout) :: Model_microphys
-
-
-!--------------------------------------------------------------------
-!    deallocate the components of the microphysics_type derived type
-!    variable.
-!--------------------------------------------------------------------
-     if (Cldrad_control%do_stochastic_clouds) then
-        nullify (Model_microphys%lw_stoch_conc_ice)
-        nullify (Model_microphys%lw_stoch_conc_drop)
-        nullify (Model_microphys%lw_stoch_size_ice)
-        nullify (Model_microphys%lw_stoch_size_drop)
-        nullify (Model_microphys%lw_stoch_cldamt) 
-        nullify (Model_microphys%lw_stoch_droplet_number)
-        nullify (Model_microphys%sw_stoch_conc_ice)
-        nullify (Model_microphys%sw_stoch_conc_drop)
-        nullify (Model_microphys%sw_stoch_size_ice)
-        nullify (Model_microphys%sw_stoch_size_drop)
-        nullify (Model_microphys%sw_stoch_cldamt)
-        nullify (Model_microphys%sw_stoch_droplet_number)
-        deallocate (Model_microphys%stoch_conc_ice)
-        deallocate (Model_microphys%stoch_conc_drop)
-        deallocate (Model_microphys%stoch_size_ice)
-        deallocate (Model_microphys%stoch_size_drop)
-        deallocate (Model_microphys%stoch_cldamt)  
-        deallocate (Model_microphys%stoch_cloud_type)
-        deallocate (Model_microphys%stoch_droplet_number)
-        deallocate (Model_microphys%stoch_ice_number)
-      endif ! (do_stochastic_clouds)
-
-      if ( associated(Model_microphys%conc_drop) )      deallocate (Model_microphys%conc_drop   )
-      if ( associated(Model_microphys%conc_ice) )       deallocate (Model_microphys%conc_ice    )
-      if ( associated(Model_microphys%conc_rain) )      deallocate (Model_microphys%conc_rain   )
-      if ( associated(Model_microphys%conc_snow) )      deallocate (Model_microphys%conc_snow   )
-      if ( associated(Model_microphys%size_drop) )      deallocate (Model_microphys%size_drop   )
-      if ( associated(Model_microphys%size_ice) )       deallocate (Model_microphys%size_ice    )
-      if ( associated(Model_microphys%size_rain) )      deallocate (Model_microphys%size_rain   )
-      if ( associated(Model_microphys%size_snow) )      deallocate (Model_microphys%size_snow  )
-      if ( associated(Model_microphys%cldamt) )         deallocate (Model_microphys%cldamt      )
-      if ( associated(Model_microphys%droplet_number) ) deallocate (Model_microphys%droplet_number  )
-      if ( associated(Model_microphys%ice_number) )     deallocate (Model_microphys%ice_number  )
-
-      if ( associated(Model_microphys%lsc_cldamt) )         deallocate (Model_microphys%lsc_cldamt)
-      if ( associated(Model_microphys%lsc_conc_drop) )      deallocate (Model_microphys%lsc_conc_drop)
-      if ( associated(Model_microphys%lsc_size_drop) )      deallocate (Model_microphys%lsc_size_drop)
-      if ( associated(Model_microphys%lsc_droplet_number) ) deallocate (Model_microphys%lsc_droplet_number)
-       
-!------------------------------------------------------------------
-
-
-end subroutine model_micro_dealloc
-
-
-!####################################################################
 ! <SUBROUTINE NAME="cloudrad_diagnostics_end">
 !  <OVERVIEW>
 !    cloudrad_diagnostics_end is the destructor for 
