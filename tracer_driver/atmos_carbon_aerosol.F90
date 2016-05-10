@@ -253,6 +253,7 @@ integer, dimension(6) :: soa_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!
 real, save :: coef_omss_emis
 real :: omss_coef=-999.
+logical               :: no_biobur_if_no_pbl = .true.  ! true by default in order to reproduce AM3
 logical               :: do_dynamic_bc = .false.
 real                  :: bcage = 1.0
 real                  :: bcageslow = 25.
@@ -294,7 +295,8 @@ namelist /carbon_aerosol_nml/ &
  frac_bc_phobic, frac_bc_philic, frac_om_phobic, frac_om_philic, &
  frac_bcbb_philic, frac_bcbb_phobic,&
  soa_source, gas_conc_name,soa_filename, &
- soa_time_dependency_type, soa_dataset_entry
+ soa_time_dependency_type, soa_dataset_entry, &
+ no_biobur_if_no_pbl
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -638,6 +640,7 @@ real, parameter                            :: yield_soa = 0.1
 ! Calculate fraction of emission at every levels for open fires
 !
         fbb(:,:)=0.
+        if (.not.no_biobur_if_no_pbl) fbb(kd,:)=1.
 !
 ! In case of multiple levels, which are fixed
 !

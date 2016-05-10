@@ -294,7 +294,7 @@ namelist /tropchem_driver_nml/    &
                                het_chem_fine_aerosol_only, &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
-                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &                              
+                               max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &
 			       sim_data_filename
 
 integer                     :: nco2 = 0
@@ -840,7 +840,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    call interpolator(sulfate, Time, phalf, sulfate_data, 'sulfate', is,js)
    used = send_data(id_sul, sulfate_data, Time_next, is_in=is, js_in=js)
 
-!  call mpp_clock_begin(clock_id)
+   call mpp_clock_begin(clock_id)
 
    chem_dt(:,:,:,:) =0.
     
@@ -1487,7 +1487,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 !     chem_dt(:,:,:,n) = 0.
    end if
 
-!  call mpp_clock_end(clock_id)
+   call mpp_clock_end(clock_id)
    
 !-----------------------------------------------------------------------
     
@@ -2304,7 +2304,7 @@ end if
 !-----------------------------------------------------------------------
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
-!  clock_id = mpp_clock_id('Chemistry')
+   clock_id = mpp_clock_id('Chemistry')
    call setsox_init(trop_option)
    call chemdr_init(trop_option)
 

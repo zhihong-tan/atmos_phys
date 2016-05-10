@@ -166,6 +166,8 @@ integer, dimension(6)  :: time_col = (/0,0,0,0,0,0/)
                       ! time to use for column data calculation
 
 
+logical :: partition_nh4 = .false.!partition nh4 between no3 and so4
+
 namelist /aerosol_nml/                            &
                            aerosol_data_source,   &
                            lonb_col, latb_col, time_col, &
@@ -178,7 +180,8 @@ namelist /aerosol_nml/                            &
                            in_family4, in_family5, in_family6, &
                            in_family7, in_family8, in_family9, &
                            in_family10, in_family11, in_family12, &
-                           volc_in_fam_col_opt_depth
+                           volc_in_fam_col_opt_depth, &
+                           partition_nh4
                            
 
 !---------------------------------------------------------------------
@@ -248,6 +251,8 @@ real, dimension (MAX_DATA_FIELDS)    :: aerosol_tracer_scale_factor
                                     ! aerosols by the radiation package
 character(len=32), dimension (:),  &
                      allocatable     ::  tracer_names
+
+integer :: ino3, inh4, iso4
 
 #include <netcdf.inc>
  
@@ -387,6 +392,10 @@ character(len=64), dimension(:), optional, pointer :: aerosol_family_names
       id    = size(lonb,1) - 1
       jd    = size(latb,2) - 1
 
+      ino3 = 0
+      inh4 = 0
+      iso4 = 0
+
 !---------------------------------------------------------------------
 !    case of single input aerosol field. when running standalone code
 !    on other than FMS level structure, aerosol_data_source must be 
@@ -437,7 +446,19 @@ character(len=64), dimension(:), optional, pointer :: aerosol_family_names
               aerosol_tracer_scale_factor(Aerosol_tv%nfields) = tr_rad_scale_factor
             endif
           endif
-        end do
+
+          if ( trim(tracer_names(n)) .eq. "nh4" )                                            inh4 = n
+          if ( trim(tracer_names(n)) .eq. "nh4no3" .or. trim(tracer_names(n)) .eq. "nit" )   ino3 = n
+          if ( trim(tracer_names(n)) .eq. "so4" )                                            iso4 = n
+
+       end do
+
+        if ( partition_nh4 ) then
+           if ( iso4 .eq. 0 .or. inh4 .eq. 0 ) then
+           call error_mesg ('aerosol_mod', &
+             'so4 or nh4 are not defined. Needed by partition nh4',FATAL)
+           end if
+        end if
 
 !----------------------------------------------------------------------
 !    allocate and fill pointer arrays to return the names of the activ-
@@ -1147,6 +1168,7 @@ logical, optional,            intent(in)    :: override_aerosols
       integer         :: nn
       logical         :: do_override, used
       integer         :: ie, je
+      real, dimension(id,jd,size(p_half,3)-1) :: frac_nh4_so4
 
 !---------------------------------------------------------------------
 !    be sure module has been initialized.
@@ -1293,10 +1315,36 @@ logical, optional,            intent(in)    :: override_aerosols
             do_override = .false.
           end if
 
+
+          if ( partition_nh4 ) then
+             if ( ino3 .gt. 0 ) then
+                where ( tracer(:,:,:,ino3) .gt. 0. .and. tracer(:,:,:,iso4) .gt.  0. ) 
+                   frac_nh4_so4 = 2.*tracer(:,:,:,iso4)/(tracer(:,:,:,ino3)+2.*tracer(:,:,:,iso4))
+                elsewhere ( tracer(:,:,:,ino3) .gt. 0 ) 
+                   frac_nh4_so4 = 0.
+!               elsewhere ( tracer(:,:,:,iso4) .gt. 0 )
+                elsewhere
+                   frac_nh4_so4 = 1.
+                end where
+                frac_nh4_so4 = min(max(frac_nh4_so4,0.),1.)
+             else
+                frac_nh4_so4 = 0.
+             end if
+          end if
+       
           do nn=1,Aerosol_tv%nfields
             n = aerosol_tracer_index(nn)
 
             Aerosol%aerosol(:,:,:,nn) = tracer(:,:,:,n)
+
+            if ( partition_nh4 ) then
+               if ( n .eq. iso4 )  then
+                  Aerosol%aerosol(:,:,:,nn) =  Aerosol%aerosol(:,:,:,nn) + frac_nh4_so4 * tracer(:,:,:,inh4) * 18./96.
+               end if
+               if ( n .eq. ino3 ) then
+                  Aerosol%aerosol(:,:,:,nn) =  Aerosol%aerosol(:,:,:,nn) + (1.-frac_nh4_so4) * tracer(:,:,:,inh4) * 18./62.
+               end if
+            end if
             if (do_override) then
               call data_override('ATM', TRIM(tracer_names(n))//'_aerosol',&
                                  aerosol_proc, model_time, override=used)

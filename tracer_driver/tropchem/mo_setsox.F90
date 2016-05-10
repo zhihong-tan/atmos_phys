@@ -11,6 +11,9 @@ module MO_SETSOX_MOD
 
   use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG
   use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA, NO_AERO
+  use mpp_mod,            only : mpp_clock_id,         &
+                                 mpp_clock_begin,      &
+                                 mpp_clock_end
 
   implicit none
 
@@ -25,6 +28,7 @@ module MO_SETSOX_MOD
   real       ::      frac_ic_so4_snow, frac_ic_no3_snow, frac_ic_nh4_snow
 
   logical    ::      nh4no3_is_no3
+  integer    ::      isoropia_clock_id
 
   public     ::      setsox, setsox_init
   private
@@ -698,7 +702,9 @@ CONTAINS
              !>         
           end if
 
+          call mpp_clock_begin(isoropia_clock_id)
           call aerosol_thermo( trop_option%aerosol_thermo, min(rh,trop_option%max_rh_aerosol), tz, press(i,k), xso4(i,k), xnh3(i,k), xnh4(i,k), xhno3(i,k), xant(i,k))
+          call mpp_clock_end(isoropia_clock_id)
 
           if ( trop_option%limit_no3 .and. trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
              if (  (xnh4(i,k)+xant(i,k) .gt. small_value) .and. xant(i,k) / ( xnh4(i,k) + xant(i,k)) .gt. 0.75 ) then
@@ -857,6 +863,7 @@ CONTAINS
 !           call error_mesg ('setsox','ano3 needs to be defined', FATAL)
 !        end if
 !     END IF
+    isoropia_clock_id = mpp_clock_id('Chemistry: Cloud: Isoropia')
 
     module_is_initialized = .true.
 
