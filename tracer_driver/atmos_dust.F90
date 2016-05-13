@@ -291,7 +291,7 @@ subroutine atmos_dust_sourcesink1 ( &
          qn1(k)=(qn(k)*dz(k)+dt*qn1(k-1)*vdep(k-1)*air_dens(k-1)/air_dens(k))/(dz(k)+dt*vdep(k))
        enddo
        dust_dt(i,j,:)=dust_dt(i,j,:)+(qn1(:)-qn(:))/dt
-       setl(kb) = qn1(kb)*air_dens(kb)/mtv*vdep(k)
+       setl(kb) = qn1(kb)*air_dens(kb)/mtv*vdep(kb) !! ter, 2016-05-13 vdep(k) is outside of loop, so k > kb.  Switched k to kb 
 
 !---> h1g, 2016-04-05
        if( dust_debug ) then
