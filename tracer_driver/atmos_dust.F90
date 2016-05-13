@@ -90,9 +90,11 @@ real               :: uthresh=-999.
 real               :: coef_emis =-999.
 logical            :: use_sj_sedimentation_solver = .FALSE.
 logical            :: dust_debug = .false.
+logical            :: do_esm_dust_flux = .false. !If set to .true. a dust flux will be prepared for exchange with Ocean
 integer            :: logunit
 
-namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis, use_sj_sedimentation_solver, dust_debug
+namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis, use_sj_sedimentation_solver, &
+                     dust_debug, do_esm_dust_flux
 
 !---- version number -----
 character(len=128) :: version = '$Id$'
@@ -629,7 +631,8 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
 
    integer :: outunit
    outunit = stdout()
-
+   
+   if(do_esm_dust_flux) then
    ! find out if there is a dust tracer (to be used to pass dust fluxes to Ocean BGC)
    call tracer_manager_init      
    ind = get_tracer_index(MODEL_ATMOS,'dust1')
@@ -661,7 +664,7 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
            param = (/ 1.0,1.0 /),                          &
            caller = trim(mod_name) // '(' // trim(sub_name) // ')')
    endif
-
+   endif !if(do_esm_dust_flux)
 
  end subroutine atmos_dust_flux_init
 !</SUBROUTINE>
