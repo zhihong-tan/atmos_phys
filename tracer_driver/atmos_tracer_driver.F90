@@ -203,6 +203,7 @@ public  atmos_tracer_driver,            &
         atmos_tracer_driver_end,        &
         atmos_tracer_flux_init,         &
         atmos_tracer_driver_gather_data, &
+        atmos_tracer_driver_gather_data_down, &
         atmos_tracer_has_surf_setl_flux, &
         get_atmos_tracer_surf_setl_flux
 
@@ -1613,11 +1614,25 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 !-----------------------------------------------------------------------
 
   call atmos_co2_gather_data(gas_fields, tr_bot)
-  call atmos_dust_gather_data(gas_fields, tr_bot)
 
 !-----------------------------------------------------------------------
 
  end subroutine atmos_tracer_driver_gather_data
+
+ subroutine atmos_tracer_driver_gather_data_down(gas_fields, tr_bot)
+
+use coupler_types_mod, only: coupler_2d_bc_type
+
+type(coupler_2d_bc_type), intent(inout) :: gas_fields
+real, dimension(:,:,:), intent(in)      :: tr_bot
+
+!-----------------------------------------------------------------------
+
+  call atmos_dust_gather_data(gas_fields, tr_bot)
+
+!-----------------------------------------------------------------------
+
+ end subroutine atmos_tracer_driver_gather_data_down
 ! </SUBROUTINE>
 !######################################################################
 ! given a tracer index, returns true if this tracer has non-zero 
