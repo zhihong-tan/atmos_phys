@@ -37,8 +37,8 @@ MODULE CONV_PLUMES_k_MOD
 
   public cpnlist
   type cpnlist
-     integer :: mixing_assumption, mp_choice
-     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, bigc
+     integer :: mixing_assumption, mp_choice, de_choice
+     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, scaleh0
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
@@ -389,6 +389,7 @@ contains
        fdrsat  = 0.
     end if
     fdrsat  = max(fdrsat, cpn%frac_drs)
+    fdrsat  = fdrsat*cpn%frac_dr0
 
   end subroutine mixing_k
 
@@ -544,19 +545,19 @@ contains
           cp%fdr(k)    = 0.
           cp%fdrsat(k) = 0.
        else if (cpn%mixing_assumption.eq.2) then
-          scaleh1 = max(1000., cp%z(k)-sd%zs(0))
+          scaleh1 = max(cpn%scaleh0, cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.3) then
-          scaleh1 = 2000.*(cp%p(k)/cp%p(1))
+          scaleh1 = max(cpn%scaleh0, 10000.*(sd%ps(0)-cp%p(k))/sd%ps(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
-                         qct_env_k, cp%hlu(km1), cp%thcu(km1),      &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
+                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.4) then
           scaleh1 = 2000.
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
@@ -565,7 +566,7 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else
-          scaleh1 = max(1000., cp%z(k)-sd%zs(0))
+          scaleh1 = max(cpn%scaleh0, cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
@@ -835,7 +836,7 @@ contains
     cp % cush=sd%z(ltop) - sd%zs(0)
 
     if (cpn%do_ppen) then !Calculate penetrative entrainment
-       call penetrative_mixing_k(cpn, sd, Uw_p, cp) 
+       call penetrative_mixing_k(cpn, sd, ac, Uw_p, cp) 
     else if (cpn%stop_at_let .and. cpn%do_forcedlifting) then
        do k=let,ltop
        	  cp%umf(k)=0.
@@ -1631,9 +1632,10 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine penetrative_mixing_k(cpn, sd, Uw_p, cp)
+  subroutine penetrative_mixing_k(cpn, sd, ac, Uw_p, cp)
     type(cpnlist),  intent(in)    :: cpn
     type(sounding), intent(in)    :: sd
+    type(adicloud), intent(in)    :: ac
     type(uw_params),   intent(inout) :: Uw_p
     type(cplume),   intent(inout) :: cp
 
@@ -1647,25 +1649,25 @@ contains
     let =cp%let
     rpen0=cpn%rpen
     cp%pdep=sd%z(ltop)-sd%z(let);
+    cp%nbuo=0.
+    if (ltop .gt. let) then
+       dpsum=0.;
+       do k=let+1,ltop
+       	  cp%nbuo=cp%nbuo + cp%buo(k)*cp%dp(k)
+	  dpsum  =dpsum   + cp%dp(k)
+       end do
+       cp%nbuo = cp%nbuo/dpsum
+    else
+       cp%nbuo = 0.
+    end if
+
     if (cpn%do_varying_rpen) then
-       cp%nbuo=0.
-       if (ltop .gt. let) then
-       	  dpsum=0.;
-       	  do k=let+1,ltop
-       	     cp%nbuo=cp%nbuo + cp%buo(k)*cp%dp(k)
-	     dpsum    =dpsum     + cp%dp(k)
-       	  end do
-       	  cp%nbuo = cp%nbuo/dpsum
-
-       	  !cp%nbuo = -(sd%thv(ltop)-sd%thv(let))/(sd%z(ltop)-sd%z(let))*1000.
-       	  !cp%nbuo = (sd%p(ltop)-sd%p(let))
-
-       	  tmp = cp%nbuo/cpn%nbuo_max
-       	  tmp = min(max(tmp,0.0),1.0)
-       	  rpen0 = cpn%rpen * (1.-tmp)
-       else
-          rpen0=cpn%rpen
-       end if
+       !tmp = cp%pdep / cpn%nbuo_max; tmp = max(tmp,0.2)
+       cp%nbuo = -(sd%thv(ltop)-sd%thv(let))/(sd%z(ltop)-sd%z(let))*1000.
+       tmp = cp%nbuo/cpn%nbuo_max
+       tmp = min(max(tmp,0.0),1.0)
+       rpen0 = cpn%rpen * (1.-tmp)
+       cp%nbuo=rpen0
     end if
 
     cp % emf (ltop)  = 0.0
@@ -1784,7 +1786,7 @@ contains
     real    :: dpsum, qtdef, qtdefu, hldef, umftmp, qlutmp, qiutmp, qnutmp, fdrtmp
     real, dimension(size(cp%tr,2)) :: trdef
     real    :: dpevap, x1, x2, x3, xx1, xx2, xx3, q1, q2, emftmp
-    real    :: dqt, uutmp, vutmp
+    real    :: dqt, uutmp, vutmp, qctmp
 
     call ct_clear_k (ct);
 
@@ -2032,6 +2034,7 @@ contains
     ct%uten  = (1.-cpn%bigc) * ct%uten
     ct%vten  = (1.-cpn%bigc) * ct%vten
 
+  if (cpn%de_choice == 0) then
     do k = cp%let,ltop
        if (ct%qctten(k).gt.0 .and. ct%qvten(k).lt.0) then
           qlutmp     =(1.-sd%nu(k))*ct%qvten(k)
@@ -2042,6 +2045,22 @@ contains
           ct%tten (k)=ct%tten(k)+(Uw_p%HLv*qlutmp+Uw_p%HLs*qiutmp)/Uw_p%cp_air
        end if
     end do
+  else if (cpn%de_choice == 1) then
+    do k = cp%let,ltop
+       qlutmp=ct%qlten(k)
+       if (qlutmp.gt.0) then
+          ct%qvten(k)=ct%qvten(k)+qlutmp
+          ct%tten (k)=ct%tten(k)-Uw_p%HLv*qlutmp/Uw_p%cp_air
+          ct%qlten(k)=0.
+       end if
+       qiutmp=ct%qiten(k)
+       if (qiutmp.gt.0) then
+          ct%qvten(k)=ct%qvten(k)+qiutmp
+          ct%tten (k)=ct%tten(k)-Uw_p%HLs*qiutmp/Uw_p%cp_air
+          ct%qiten(k)=0.
+       end if
+    end do
+  end if
 
     ct%dtint=0.; ct%dqint=0.; ct%conint=0.; ct%freint=0.; !dpsum=0.;
 
@@ -2363,7 +2382,7 @@ contains
     dpevap      = min(dpevap, dpcu) / sd%delt
     ct%tevap(:) = (temp_new(:) - sd%t (:))/sd%delt
     ct%qevap(:) = (qvap_new(:) - sd%qv(:))/sd%delt
-    ct%pflx_e(:)= pflx_evap(:) / sd%delt
+    ct%pflx_e(1:sd%kmax)= pflx_evap(:) / sd%delt
     do n=1,size(cp%tru,2)
       trevap(n)     = min(trevap(n), dptr(n))  / sd%delt
       ct%trevp(:,n) = (trnew(:,n) - sd%tr(:,n))/ sd%delt

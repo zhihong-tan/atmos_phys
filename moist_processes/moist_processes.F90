@@ -90,7 +90,7 @@ use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
                                  moistproc_scale_uw, moistproc_scale_donner
 ! atmos_shared modules
 use atmos_tracer_utilities_mod, only : wet_deposition
-use atmos_dust_mod, only : atmos_dust_init, dust_tracers, n_dust_tracers, do_dust
+use atmos_dust_mod, only : atmos_dust_init, dust_tracers, n_dust_tracers, do_dust, atmos_dust_wetdep_flux_set
 use atmos_sea_salt_mod, only : atmos_sea_salt_init,seasalt_tracers,n_seasalt_tracers,do_seasalt
 
 implicit none
@@ -264,7 +264,7 @@ private
    real :: gustconst = 10./SECONDS_PER_DAY ! constant in kg/m2/sec, default =
                                            ! 1 cm/day = 10 mm/day
 
-   logical :: use_cf_metadata = .true.
+   logical :: use_cf_metadata = .false.
 
 namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,     &
                                do_donner_before_uw, use_updated_profiles_for_uw, &
@@ -2909,11 +2909,14 @@ logical, intent(out), dimension(:,:)     :: convect
        enddo
        used = send_data (id_wetdep_seasalt  , total_wetdep_seasalt,  Time, is,js) 
      endif
+
+     do n=1, n_dust_tracers
+        nbin_dust=dust_tracers(n)%tr
+        total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
+     enddo
+     call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
+
      if (id_wetdep_dust   > 0) then
-       do n=1, n_dust_tracers
-         nbin_dust=dust_tracers(n)%tr
-         total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
-       enddo
        used = send_data (id_wetdep_dust  , total_wetdep_dust,  Time, is,js) 
      endif
 
