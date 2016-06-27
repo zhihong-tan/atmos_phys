@@ -113,6 +113,7 @@ private
    character(len=128) :: tagname = '$Name$'
 
    character(len=5), private :: mod_name = 'moist'
+   character(len=7), private :: mod_name_tr = 'tracers'
    logical            :: moist_allocated = .false.
    logical            :: module_is_initialized = .false.
 
@@ -5430,7 +5431,7 @@ endif
  
          diaglname = trim(tracer_name)
          id_conv_tracer(n) =    &
-                        register_diag_field ( mod_name, &
+                        register_diag_field ( mod_name_tr, &
                         TRIM(tracer_name),  &
                         axes(1:3), Time, trim(diaglname), &
                         TRIM(tracer_units)      ,  &
