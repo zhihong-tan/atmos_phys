@@ -74,6 +74,11 @@ use time_manager_mod,      only: time_manager_init, time_type, operator(>)
 use constants_mod,         only: constants_init, STEFAN, SECONDS_PER_DAY, &
                                  CP_AIR, RADIAN, WTMCO2, WTMAIR, GRAV
 
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+                                 send_cmip_data_3d, &
+                                 cmip_diag_id_type, &
+                                 query_cmip_diag_id
+
 ! atmos physics modules
 
 use diag_integral_mod,     only: diag_integral_init, &
@@ -272,8 +277,8 @@ integer, dimension(2)        :: id_tdt_sw,   id_tdt_lw,  &
 integer                      :: id_rlds, id_rldscs, id_rlus, id_rsds,   &
                                 id_rsdscs, id_rsus, id_rsuscs, id_rsdt, &
                                 id_rsut, id_rsutcs, id_rlut, id_rlutcs, &
-                                id_rtmt, id_rsdsdiff, &
-                                id_tntrs, id_tntrscs, id_tntrl, id_tntrlcs
+                                id_rtmt, id_rsdsdiff
+type(cmip_diag_id_type)      :: ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
                                         id_netlw_special
@@ -848,7 +853,7 @@ logical,         intent(in) :: do_lwaerosol
       integer           ::   i, k, n
       character(len=16) ::   spec_names(MX_SPEC_LEVS)
       character(len=24) ::   spec_long_names(MX_SPEC_LEVS)
-      integer           ::   id_lev, cmip_axes(4)
+!BW   integer           ::   id_lev, cmip_axes(4)
 
 !--------------------------------------------------------------------
 !  local variables:
@@ -897,11 +902,11 @@ logical,         intent(in) :: do_lwaerosol
 !---------------------------------------------------------------------
 !    replace the vertical axes for CMIP fields
 !---------------------------------------------------------------------
-      cmip_axes = axes
-      id_lev = get_axis_num('lev', 'cmip')
-      if (id_lev > 0) cmip_axes(3) = id_lev
-      id_lev = get_axis_num('levhalf', 'cmip')  ! does not exist yet
-      if (id_lev > 0) cmip_axes(4) = id_lev
+!BW   cmip_axes = axes
+!BW   id_lev = get_axis_num('lev', 'cmip')
+!BW   if (id_lev > 0) cmip_axes(3) = id_lev
+!BW   id_lev = get_axis_num('levhalf', 'cmip')  ! does not exist yet
+!BW   if (id_lev > 0) cmip_axes(4) = id_lev
 
 
 !---------------------------------------------------------------------
@@ -1066,148 +1071,109 @@ logical,         intent(in) :: do_lwaerosol
  
        end do
 
-        id_tntrs = register_diag_field (mod_name,   &
-                'tntrs', cmip_axes(1:3), Time, & 
-                'Tendency of Air Temperature due to Shortwave Radiative Heating', &
-                'K s-1', &
-            standard_name = 'tendency_of_air_temperature_due_to_shortwave_heating', &
-                area = area_id, missing_value = CMOR_MISSING_VALUE)
+        ID_tntrs = register_cmip_diag_field_3d ( mod_name, 'tntrs', Time, &
+           'Tendency of Air Temperature due to Shortwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_shortwave_heating' )
 
-        id_tntrscs = register_diag_field (mod_name,   &
-                'tntrscs', cmip_axes(1:3), Time, & 
-                'Tendency of Air Temperature due to Clear Sky Shortwave Radiative Heating', &
-                'K s-1', &
-            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_shortwave_heating', &
-                area = area_id, missing_value = CMOR_MISSING_VALUE)
+        ID_tntrscs = register_cmip_diag_field_3d (mod_name, 'tntrscs', Time, & 
+           'Tendency of Air Temperature due to Clear Sky Shortwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_shortwave_heating' )
 
-        id_tntrl = register_diag_field (mod_name,   &
-                'tntrl', cmip_axes(1:3), Time, & 
-                'Tendency of Air Temperature due to Longwave Radiative Heating', &
-                'K s-1', &
-            standard_name = 'tendency_of_air_temperature_due_to_longwave_heating', &
-                area = area_id, missing_value = CMOR_MISSING_VALUE)
+        ID_tntrl = register_cmip_diag_field_3d (mod_name, 'tntrl', Time, & 
+           'Tendency of Air Temperature due to Longwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_longwave_heating' )
 
-        id_tntrlcs = register_diag_field (mod_name,   &
-                'tntrlcs', cmip_axes(1:3), Time, & 
-                'Tendency of Air Temperature due to Clear Sky Longwave Radiative Heating', &
-                'K s-1', &
-            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_longwave_heating', &
-                area = area_id, missing_value = CMOR_MISSING_VALUE)
+        ID_tntrlcs = register_cmip_diag_field_3d (mod_name, 'tntrlcs', Time, & 
+           'Tendency of Air Temperature due to Clear Sky Longwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_longwave_heating' )
 
-        id_rlds = register_diag_field (mod_name,    &
-                'rlds', axes(1:2), Time, &
+        id_rlds = register_diag_field (mod_name, 'rlds', axes(1:2), Time, &
                 'Surface Downwelling Longwave Radiation', 'W m-2', &
             standard_name = 'surface_downwelling_longwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rldscs = register_diag_field (mod_name,    &
-                'rldscs', axes(1:2), Time, &
+        id_rldscs = register_diag_field (mod_name, 'rldscs', axes(1:2), Time, &
                 'Surface Downwelling Clear-Sky Longwave Radiation',  &
                 'W m-2', &
            standard_name = &
             'surface_downwelling_longwave_flux_in_air_assuming_clear_sky',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rlus = register_diag_field (mod_name,    &
-                'rlus', axes(1:2), Time, &
+        id_rlus = register_diag_field (mod_name, 'rlus', axes(1:2), Time, &
                 'Surface Upwelling Longwave Radiation', 'W m-2', &
             standard_name = 'surface_upwelling_longwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rsds = register_diag_field (mod_name,     &
-                'rsds', axes(1:2), Time, &
+        id_rsds = register_diag_field (mod_name, 'rsds', axes(1:2), Time, &
                 'Surface Downwelling Shortwave Radiation', 'W m-2', &
             standard_name = 'surface_downwelling_shortwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rsdscs = register_diag_field (mod_name,    &
-                'rsdscs', axes(1:2), Time, &
+        id_rsdscs = register_diag_field (mod_name, 'rsdscs', axes(1:2), Time, &
                 'Surface Downwelling Clear-Sky Shortwave Radiation',  &
                 'W m-2', &
            standard_name = &
            'surface_downwelling_shortwave_flux_in_air_assuming_clear_sky',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rsus = register_diag_field (mod_name,     &
-                'rsus', axes(1:2), Time, &
+        id_rsus = register_diag_field (mod_name, 'rsus', axes(1:2), Time, &
                 'Surface Upwelling Shortwave Radiation', 'W m-2', &
             standard_name = 'surface_upwelling_shortwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rsuscs = register_diag_field (mod_name,    &
-                'rsuscs', axes(1:2), Time, &
+        id_rsuscs = register_diag_field (mod_name, 'rsuscs', axes(1:2), Time, &
                 'Surface Upwelling Clear-Sky Shortwave Radiation',  &
                 'W m-2', &
            standard_name = &
            'surface_upwelling_shortwave_flux_in_air_assuming_clear_sky',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rsdt = register_diag_field (mod_name,   &
-                'rsdt', axes(1:2), Time, &
+        id_rsdt = register_diag_field (mod_name, 'rsdt', axes(1:2), Time, &
                 'TOA Incident Shortwave Radiation', &
                 'W m-2',   &
                  standard_name = 'toa_incoming_shortwave_flux', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rsut = register_diag_field (mod_name,    &
-                'rsut', axes(1:2), Time, &
+        id_rsut = register_diag_field (mod_name, 'rsut', axes(1:2), Time, &
                 'TOA Outgoing Shortwave Radiation', &
                 'W m-2',    &
                  standard_name = 'toa_outgoing_shortwave_flux', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rsutcs = register_diag_field (mod_name,    &
-                'rsutcs', axes(1:2), Time, &
+        id_rsutcs = register_diag_field (mod_name, 'rsutcs', axes(1:2), Time, &
                 'TOA Outgoing Clear-Sky Shortwave Radiation', &
                 'W m-2',    &
                  standard_name =    &
                       'toa_outgoing_shortwave_flux_assuming_clear_sky', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rlut = register_diag_field (mod_name,   &
-                'rlut', axes(1:2), Time, &
+        id_rlut = register_diag_field (mod_name, 'rlut', axes(1:2), Time, &
                 'TOA Outgoing Longwave Radiation', &
                 'W m-2',    &
                  standard_name = 'toa_outgoing_longwave_flux', &
             area = area_id, &
                  missing_value = CMOR_MISSING_VALUE)
 
-        id_rlutcs = register_diag_field (mod_name,   &
-                'rlutcs', axes(1:2), Time, &
+        id_rlutcs = register_diag_field (mod_name, 'rlutcs', axes(1:2), Time, &
                 'TOA Outgoing Clear-Sky Longwave Radiation', &
                 'W m-2',   &
                  standard_name =    &
                         'toa_outgoing_longwave_flux_assumimg_clear_sky', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+            area = area_id, missing_value = CMOR_MISSING_VALUE)
 
-        id_rtmt = register_diag_field (mod_name,   &
-                'rtmt', axes(1:2), Time, &
+        id_rtmt = register_diag_field (mod_name, 'rtmt', axes(1:2), Time, &
                 'Net Downward Flux at Top of Model', &
                 'W m-2',  &
                 standard_name =  &
                  'net_downward_radiative_flux_at_top_of_atmosphere_model',&
-            area = area_id, &
-                missing_value=CMOR_MISSING_VALUE)
+            area = area_id, missing_value=CMOR_MISSING_VALUE)
   
-        id_rsdsdiff = register_diag_field (mod_name,  &
-               'rsdsdiff', axes(1:2), Time, &
+        id_rsdsdiff = register_diag_field (mod_name, 'rsdsdiff', axes(1:2), Time, &
                'Surface Diffuse Downwelling Shortwave Radiation', &
                'W m-2',  &
                standard_name =  &
                 'surface_diffuse_downwelling_shortwave_flux_in_air', &
-               area = area_id, &
-               missing_value=CMOR_MISSING_VALUE)
+               area = area_id, missing_value=CMOR_MISSING_VALUE)
 
 
          id_allradp   = register_diag_field (mod_name,   &
@@ -1952,8 +1918,8 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
      endif
 
 !------- sw tendency -----------
-        if (id_tntrs > 0 ) then
-          used = send_data (id_tntrs, Rad_output%tdtsw(is:ie,js:je,:),  &
+        if (query_cmip_diag_id(ID_tntrs)) then
+          used = send_cmip_data_3d (ID_tntrs, Rad_output%tdtsw(is:ie,js:je,:),  &
                             Time_diag, is, js, 1)
         endif
 
@@ -2092,8 +2058,8 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
      endif
 
 !------- sw tendency -----------
-          if (id_tntrscs > 0 ) then
-            used = send_data (id_tntrscs, Rad_output%tdtsw_clr(is:ie,js:je,:),  &
+          if (query_cmip_diag_id(ID_tntrscs)) then
+            used = send_cmip_data_3d (ID_tntrscs, Rad_output%tdtsw_clr(is:ie,js:je,:),  &
                               Time_diag, is, js, 1)
           endif
 
@@ -2629,8 +2595,8 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !----------------------------------------
 
 !------- lw tendency -----------
-        if (id_tntrl > 0 ) then
-          used = send_data (id_tntrl, tdtlw,    &
+        if (query_cmip_diag_id(ID_tntrl)) then
+          used = send_cmip_data_3d (ID_tntrl, tdtlw,    &
                             Time_diag, is, js, 1)
         endif
 
@@ -2737,8 +2703,8 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------------------------------------------
 
 !------- lw tendency -----------
-        if (id_tntrlcs > 0 ) then
-          used = send_data (id_tntrlcs, tdtlw_clr,    &
+        if (query_cmip_diag_id(ID_tntrlcs)) then
+          used = send_cmip_data_3d (ID_tntrlcs, tdtlw_clr,    &
                             Time_diag, is, js, 1)
         endif
 
