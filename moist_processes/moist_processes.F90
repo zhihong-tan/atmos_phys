@@ -2778,7 +2778,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    output diagnostics obtained from the combination of convective and
 !    large-scale parameterizations.  
 !--------------------------------------------------------------------
-
+    if (do_dust) then 
      total_wetdep(:,:,:) = 0.
      total_wetdep_dust(:,:) = 0.
      total_wetdep_seasalt(:,:) = 0.
@@ -2905,6 +2905,8 @@ logical, intent(out), dimension(:,:)     :: convect
        used = send_data (id_wetdep_dust  , total_wetdep_dust,  Time, is,js) 
      endif
 
+
+  endif
 !---------------------------------------------------------------------
 !    total precipitation (all sources):
 !---------------------------------------------------------------------
