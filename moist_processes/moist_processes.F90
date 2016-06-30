@@ -3064,7 +3064,7 @@ logical, intent(out), dimension(:,:)     :: convect
       do k=1,kx
         tca2(:,:) = tca2(:,:)*(1.0 - total_cloud_area(:,:,k))
       end do
-      tca2 = 100.*(1. - tca2)
+      tca2 = (1. - tca2) ! cmip6 = Cloud Area Fraction
       used = send_data (id_clt, tca2, Time, is, js)
     endif
 
@@ -4362,7 +4362,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
                         missing_value=missing_value               )
 
    ID_tnhusc = register_cmip_diag_field_3d ( mod_name, 'tnhusc', Time, &
-          'Tendency of Specific Humidity Due to Convection ', 'K s-1', &
+          'Tendency of Specific Humidity Due to Convection ', 's-1', &
        standard_name='tendency_of_specific_humidity_due_to_convection' )
 
    id_q_conv_col = register_diag_field ( mod_name, &
@@ -4486,7 +4486,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
 
    id_ci = register_diag_field ( mod_name, &
      'ci', axes(1:2), Time, &
-     'Fraction of Time Convection Occurs',  '1', &
+     'Fraction of Time Convection Occurs',  '1.0', &
      standard_name='convection_time_fraction', &
      area=area_id, &
      missing_value = CMOR_MISSING_VALUE  )
@@ -4803,7 +4803,7 @@ endif
 
    id_pr = register_diag_field ( mod_name, &
      'pr', axes(1:2), Time, &
-     'Precipitation (liquid and solid)',  'kg m-2 s-1', &
+     'Precipitation',  'kg m-2 s-1', &
       standard_name='precipitation_flux', &
      area=area_id, &
       missing_value = CMOR_MISSING_VALUE, &
@@ -4852,8 +4852,8 @@ if ( do_strat ) then
 
     id_clt = register_diag_field    &
               (mod_name, 'clt', axes(1:2), Time, &
-                'Total Cloud Fraction', '%',  &
-               standard_name= 'cloud_area_fraction', &
+                'Cloud Area Fraction', '%',  &
+               standard_name= 'cloud_area_fraction_in_atmosphere_layer', &
                area=area_id, &
               missing_value = CMOR_MISSING_VALUE)
 
@@ -4878,7 +4878,7 @@ if ( do_strat ) then
       'Liquid amount -- all clouds', 'kg/kg', missing_value=missing_value)
 
     ID_clw = register_cmip_diag_field_3d ( mod_name, 'clw', Time, &
-      'Mass Fraction of Cloud Liquid Water', '1',   &
+      'Mass Fraction of Cloud Liquid Water', 'kg kg-1',   &
        standard_name='mass_fraction_of_cloud_liquid_water_in_air' )
 
     id_tot_ice_amt = register_diag_field ( mod_name, &
@@ -4886,7 +4886,7 @@ if ( do_strat ) then
       'Ice amount -- all clouds', 'kg/kg', missing_value=missing_value )
 
     ID_cli = register_cmip_diag_field_3d ( mod_name, 'cli', Time, &
-      'Mass Fraction of Cloud Ice', '1',   &
+      'Mass Fraction of Cloud Ice', 'kg kg-1',   &
        standard_name='mass_fraction_of_cloud_ice_in_air' )
 
     id_lsc_cloud_area = register_diag_field ( mod_name, &

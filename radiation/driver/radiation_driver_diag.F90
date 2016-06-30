@@ -1375,14 +1375,14 @@ logical,         intent(in) :: do_lwaerosol
 
        id_ch4global = register_diag_field (mod_name,    &
                    'ch4global', Time, &
-                  'Global Mean Mole Fraction of CH4', '1e-9', &
+                  'Global Mean Mole Fraction of CH4', '1e-09', &
                   standard_name = 'mole_fraction_of_methane_in_air', &
                   area = area_id, &
                   missing_value=CMOR_MISSING_VALUE) 
 
        id_n2oglobal = register_diag_field (mod_name,    &
                    'n2oglobal', Time, &
-                  'Global Mean Mole Fraction of N2O', '1e-9', &
+                  'Global Mean Mole Fraction of N2O', '1e-09', &
                 standard_name = 'mole_fraction_of_nitrous_oxide_in_air', &
                   area = area_id, &
                   missing_value=CMOR_MISSING_VALUE)

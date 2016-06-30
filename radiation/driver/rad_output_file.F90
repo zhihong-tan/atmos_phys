@@ -32,6 +32,11 @@ use constants_mod,     only: constants_init, GRAV, WTMAIR, WTMOZONE, pi
 
 use aerosol_types_mod, only:  aerosol_type
 
+use atmos_cmip_diag_mod, only: register_cmip_diag_field_3d, &
+                               send_cmip_data_3d, &
+                               cmip_diag_id_type, &
+                               query_cmip_diag_id
+
 !  radiation package shared modules:
 
 use radiation_driver_types_mod, only:  radiation_control_type, &
@@ -151,7 +156,6 @@ integer, dimension(:,:), allocatable :: id_asymdep_fam,  &
 integer                            :: id_radswp, id_radp, id_temp, &
                                       id_rh2o, id_qo3, id_qo3_col,  &
                                       id_qo3v, &
-                                      id_tro3, &
                                       id_cmxolw, id_crndlw, id_flxnet, &
                                       id_fsw, id_ufsw, id_psj, &
                                       id_dfsw, &
@@ -168,6 +172,8 @@ integer                            :: id_radswp, id_radp, id_temp, &
                                       id_dphalf, id_dpflux, &
                                       id_ptop
 integer                            :: area_id
+
+type(cmip_diag_id_type)            :: ID_tro3
 
 
 
@@ -966,8 +972,11 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
           used = send_data (id_qo3v, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1)
         endif
 
-        if (id_tro3  > 0 ) then
-          used = send_data (id_tro3, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1)
+        ! register 3D cmip field
+        ! need log(phalf) for pressure interpolation (what if ptop=0)
+        ! if more fields are added then compute log(phalf) once in the code
+        if (query_cmip_diag_id(ID_tro3)) then
+          used = send_cmip_data_3d (ID_tro3, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1, phalf=log(phalf))
         endif
 
         if (id_qo3_col  > 0 ) then
@@ -1530,14 +1539,10 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                           'ozone mole fraction', &
                           '1.e-9', missing_value=missing_value)
 
-      id_tro3    = &
-         register_diag_field (mod_name, 'tro3', cmip_axes(1:3), Time, &
-                          'Mole Fraction of O3', &
-                          '1e-9',    &
-                       standard_name = 'mole_fraction_of_ozone_in_air', &
-                       area = area_id, &
-                       missing_value=CMOR_MISSING_VALUE)
-
+      ID_tro3    = register_cmip_diag_field_3d (mod_name, 'tro3', Time,
+                          'Mole Fraction of O3', '1e-09', &
+                        standard_name = 'mole_fraction_of_ozone_in_air')
+              
       id_qo3_col = &
          register_diag_field (mod_name, 'qo3_col', axes(1:2), Time, &
                           'ozone column', &
