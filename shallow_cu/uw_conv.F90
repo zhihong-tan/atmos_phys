@@ -1106,7 +1106,7 @@ contains
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx, qtflx, pflx, qtflx_up, qtflx_dn, hm_vadv
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: omgmc_up, ddp_dyn_hm, nqtflx, omega_up, omega_dn
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: fero_s,fdro_s,fdrso_s, tten_pevap, qvten_pevap
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: fero_s,fdro_s,fdrso_s, tten_pevap, qvten_pevap, temp
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet_s, qidet_s, qadet_s, qndet_s, peo, hmo, hms, abu, buo_s
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet_d, qidet_d, qadet_d, qndet_d
 
@@ -1340,7 +1340,7 @@ contains
     cqa  =0.; cql  =0.; cqi  =0.; cqn  =0.;
     cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
     hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.;
-    tten_pevap=0.; qvten_pevap=0.;
+    tten_pevap=0.; qvten_pevap=0.; temp=0.;
     ice_pflx = 0. ; liq_pflx = 0.; qtflx_up=0.; qtflx_dn=0.; 
     omega_up=0.; omega_dn=0.; omgmc_up=0.;  ddp_dyn_hm=0.;
     hm_vadv0=0.; hm_hadv0=0.; hm_tot0=0.; hm_total=0.; tdt_dif_l=0.; 
@@ -2107,78 +2107,82 @@ contains
     end if
 
     if ( prevent_unreasonable ) then
-      temp_min=300.
-      temp_max=200.
-      scale_uw=HUGE(1.0)
-      do k=1,kmax
-        do j=1,jmax
-          do i=1,imax
-            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .lt. 0. .and. (qaten(i,j,k).ne.0.)) then
-              qaten(i,j,k) = -1.*q(i,j,k,nqa)/delt
-            end if
-            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .gt. 1. .and. (qaten(i,j,k).ne.0.)) then
-              qaten(i,j,k)= (1. - q(i,j,k,nqa))/delt
-            end if
- 
-            if ((q(i,j,k,nql) + qlten(i,j,k)*delt) .lt. 0. .and. (qlten(i,j,k).ne.0.)) then
-              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nql)/delt+qlten(i,j,k))*HLv/Cp_Air
-              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nql)/delt+qlten(i,j,k))
-              qlten(i,j,k) = qlten(i,j,k)-(q(i,j,k,nql)/delt+qlten(i,j,k))
-            end if
- 
-            if ((q(i,j,k,nqi) + qiten(i,j,k)*delt) .lt. 0. .and. (qiten(i,j,k).ne.0.)) then
-              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nqi)/delt+qiten(i,j,k))*HLs/Cp_Air
-              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nqi)/delt+qiten(i,j,k))
-    
-              qiten(i,j,k) = qiten(i,j,k)-(q(i,j,k,nqi)/delt+qiten(i,j,k))
-            end if
+       temp = q(:,:,:,nql)/delt + qlten(:,:,:)
+       where (temp(:,:,:) .lt. 0. .and. qlten(:,:,:) .ne. 0.)
+         tten (:,:,:) = tten (:,:,:) - temp(:,:,:)*HLV/CP_AIR
+         qvten(:,:,:) = qvten(:,:,:) + temp(:,:,:)
+         qlten(:,:,:) = qlten(:,:,:) - temp(:,:,:)
+       end where
 
-            if (do_qn) then
-              if ((q(i,j,k,nqn) + qnten(i,j,k)*delt) .lt. 0. .and. (qnten(i,j,k).ne.0.)) then
-                qnten(i,j,k) = qnten(i,j,k)-(q(i,j,k,nqn)/delt+qnten(i,j,k))
-              end if
-            endif
-    !rescaling to prevent negative specific humidity for each grid point
-            if (do_rescale) then
-              qtin =  qv(i,j,k)
-              dqt  =  qvten(i,j,k) * delt
-              if ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 ) then
-                temp_1 = max( 0.0, -(qtin-1.e-10)/dqt )
-              else
-                temp_1 = 1.0
-              endif
-    !scaling factor for each column is the minimum value within that column
-              scale_uw(i,j) = min( temp_1, scale_uw(i,j))
-            endif
-    !rescaling to prevent excessive temperature tendencies
-            if (do_rescale_t) then
-              temp_max = max(temp_max,tb(i,j,k))
-              temp_min = min(temp_min,tb(i,j,k))
-              tnew  =  tb(i,j,k) + tten(i,j,k) * delt
-              if ( tnew > 363.15 ) then
-                temp_1 = 0.0
-                print *, 'WARNING: setting scale_uw to zero to prevent large T tendencies in UW'
-                print *, i,j,'lev=',k,'pressure=',pmid(i,j,k),'tb=',tb(i,j,k),'tten=',tten(i,j,k)*delt
-                print *, 'lat=', sd%lat, 'lon=', sd%lon, 'land=',sd%land
-              else
-                temp_1 = 1.0
-              endif
-    !scaling factor for each column is the minimum value within that column
-              scale_uw(i,j) = min( temp_1, scale_uw(i,j))
-            endif
-          enddo
-        enddo
-      enddo
-!      if (temp_max > 350. .or. temp_min < 170.) then
-!      	 print *, 'temp_min=',temp_min, 'temp_max=',temp_max
-!      endif
+       temp = q(:,:,:,nqi)/delt + qiten(:,:,:)
+       where (temp(:,:,:) .lt. 0. .and. qiten(:,:,:) .ne. 0.)
+         tten (:,:,:) = tten (:,:,:) - temp(:,:,:)*HLS/CP_AIR
+         qvten(:,:,:) = qvten(:,:,:) + temp(:,:,:)
+         qiten(:,:,:) = qiten(:,:,:) - temp(:,:,:)
+       end where
 
-!     where ((tracers(:,:,:,:) + trtend(:,:,:,:)*delt) .lt. 0.)
-!        trtend(:,:,:,:) = -tracers(:,:,:,:)/delt
-!     end where
+!       where (abs(qlten(:,:,:)+qiten(:,:,:))*delt .lt. 1.e-10 )
+!         qaten(:,:,:) = 0.0
+!       end where
+
+       temp = q(:,:,:,nqa)/delt + qaten(:,:,:)
+       where (temp(:,:,:) .lt. 0. .and. qaten(:,:,:) .ne. 0.)
+         qaten(:,:,:) = qaten(:,:,:) - temp(:,:,:)
+       end where
+       where (temp(:,:,:)*delt .gt. 1. .and. qaten(:,:,:) .ne. 0.)
+         qaten(:,:,:) = (1. - q(:,:,:,nqa))/delt
+       end where
+
+       if (do_qn) then
+      	  temp = q(:,:,:,nqn)/delt + qnten(:,:,:)
+      	  where (temp(:,:,:) .lt. 0. .and. qnten(:,:,:) .ne. 0.)
+           qnten(:,:,:) = qnten(:,:,:) - temp(:,:,:)
+      	  end where
+       end if
+
+      !rescaling to prevent negative specific humidity for each grid point
+      scale_uw=1.0
+      if (do_rescale) then
+      	 temp=1.0
+      	 do k=1,kmax
+            do j=1,jmax
+               do i=1,imax
+               	  qtin =  qv(i,j,k)
+              	  dqt  =  qvten(i,j,k) * delt
+              	  if ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 ) then
+                     temp(i,j,k) = max( 0.0, -(qtin-1.e-10)/dqt )
+                  endif
+	       enddo
+	    enddo
+         enddo
+!scaling factor for each column is the minimum value within that column
+	 scale_uw = minval(temp,dim=3)
+      endif
+      !rescaling to prevent excessive temperature tendencies
+      if (do_rescale_t) then
+       	 !temp_min=300.; temp_max=200.
+     	 do k=1,kmax
+            do j=1,jmax
+               do i=1,imax
+      	       	  !temp_max = max(temp_max,tb(i,j,k))
+         	  !temp_min = min(temp_min,tb(i,j,k))
+         	  tnew  =  tb(i,j,k) + tten(i,j,k) * delt
+         	  if ( tnew > 363.15 ) then
+            	     temp_1 = 0.0
+            	     print *, 'WARNING: scale_uw = 0 to prevent large T tendencies in UW'
+            	     print *, i,j,'lev=',k,'pressure=',pmid(i,j,k),'tb=',tb(i,j,k),'tten=',tten(i,j,k)*delt
+            	     print *, 'lat=', sd%lat, 'lon=', sd%lon, 'land=',sd%land
+         	  else
+		     temp_1 = 1.0
+         	  endif
+    	 	  !scaling factor for each column is the minimum value within that column
+         	  scale_uw(i,j) = min( temp_1, scale_uw(i,j))
+               enddo
+            enddo
+         enddo
+      endif
 
       if (do_rescale .or. do_rescale_t) then
-      !scale tendencies
         do k=1,kmax
           do j=1,jmax
             do i=1,imax
@@ -2201,7 +2205,7 @@ contains
           end do
         end do
       end if
-    endif
+    endif  !end of prevent_unreasonable
 
     do i=1,imax
        do j=1,jmax
