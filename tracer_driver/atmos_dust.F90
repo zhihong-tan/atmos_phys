@@ -22,6 +22,7 @@ use              fms_mod, only : write_version_number, mpp_pe,  mpp_root_pe, &
                                  NOTE, FATAL
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data, register_diag_field
+use  atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use   tracer_manager_mod, only : get_number_tracers, get_tracer_index, &
                                  get_tracer_names, set_tracer_atts, & 
                                  query_method, NO_TRACER
@@ -81,6 +82,7 @@ type(dust_data_type), allocatable :: dust_tracers(:) ! parameters for specific d
 type(interpolate_type),save       :: dust_source_interp
 ! ---- identification numbers for diagnostic fields ----
 integer :: id_dust_source, id_dust_emis, id_dust_ddep
+integer :: id_emidust, id_drydust ! cmip
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -202,6 +204,15 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
   if (id_dust_emis > 0) then
      used = send_data (id_dust_emis, all_dust_emis(:,:), Time, is_in=is, js_in=js)
   endif
+
+  ! cmip variables
+  if (id_drydust) then
+     used = send_data (id_drydust, all_dust_setl(:,:), Time, is_in=is, js_in=js)
+  endif
+  if (id_emidust > 0) then
+     used = send_data (id_emidust, all_dust_emis(:,:), Time, is_in=is, js_in=js)
+  endif
+
 end subroutine atmos_dust_sourcesink
 
 
@@ -567,6 +578,15 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   id_dust_emis = register_diag_field ( module_name, &
       'dust_emis', axes(1:2), Time, &
       'total emission of dust', 'kg/m2/s')
+
+  ! register cmip variables
+  id_drydust = register_cmip_diag_field_2d ( module_name, 'drydust', Time, &
+                              'Dry Deposition Rate of Dust', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_due_to_dry_deposition')
+
+  id_emidust = register_cmip_diag_field_2d ( module_name, 'emidust', Time, &
+                              'Total Emission Rate of Dust', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_due_to_emission')
 
  
   if (do_emission) then
