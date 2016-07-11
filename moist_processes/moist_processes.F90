@@ -21,8 +21,7 @@
 use sat_vapor_pres_mod,    only: compute_qs, lookup_es
 use time_manager_mod,      only: time_type, get_time
 use diag_manager_mod,      only: register_diag_field, send_data, &
-                                 get_diag_field_id, DIAG_FIELD_NOT_FOUND, &
-                                 diag_field_add_attribute
+                                 get_diag_field_id, DIAG_FIELD_NOT_FOUND
 use diag_axis_mod,         only: get_axis_num
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 use mpp_mod,               only: input_nml_file
@@ -390,6 +389,22 @@ type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
 real, dimension(:), allocatable    :: conv_wetdep !f1p
 real :: missing_value = -999.
 integer :: area_id
+
+! cmip names, long_names, standard names for wetdep diag fields
+integer :: id_wetpoa_cmip, id_wetsoa_cmip, id_wetbc_cmip, id_wetdust_cmip, &
+           id_wetss_cmip, id_wetso4_cmip, id_wetso2_cmip, id_wetdms_cmip, id_wetnh4_cmip
+character(len=8), dimension(9) :: cmip_names = (/"poa","soa","bc","dust","ss","so4","so2","dms","nh4xx"/)
+character(len=64), dimension(9) :: cmip_longnames = &
+                                  (/"Dry Aerosol Primary Organic Matter", &
+                                    "Dry Aerosol Secondary Organic Matter", &
+                                    "Black Carbon Aerosol Mass", &
+                                    "Dust", "Seasalt", "SO4", "SO2", "DMS", "NH4+NH3"/)
+character(len=64), dimension(9) :: cmip_stdnames = &
+                                  (/"primary_particulate_organic_matter_dry_aerosol", &
+                                    "secondary_particulate_organic_matter_dry_aerosol", &
+                                    "black_carbon_dry_aerosol", "dust_dry_aerosol", &
+                                    "seasalt_dry_aerosol", "sulfate_dry_aerosol", &
+                                    "sulfur_dioxide", "dimethyl_sulfide", "ammonium_dry_aerosol"/)
 
 !-------------------- individual scheme tracers ------------------------
    logical, dimension(:), allocatable :: tracers_in_donner, tracers_in_uw, &
@@ -2868,62 +2883,84 @@ logical, intent(out), dimension(:,:)     :: convect
                total_wetdep       (:,:,nomphobic) , &
                                                 Time, is,js)
      endif
-     if (id_wetdep_SOA > 0) then
-       used = send_data (id_wetdep_SOA,  &
-               total_wetdep(:,:,nSOA) , Time, is,js)
+     if (id_wetpoa_cmip > 0) then
+       used = send_data (id_wetpoa_cmip,  &
+               total_wetdep(:,:,nomphilic) + total_wetdep(:,:,nomphobic), Time, is,js)
      endif
+
+     if (id_wetdep_SOA > 0) then
+       used = send_data (id_wetdep_SOA, total_wetdep(:,:,nSOA) , Time, is,js)
+     endif
+     if (id_wetsoa_cmip > 0) then
+       used = send_data (id_wetsoa_cmip, total_wetdep(:,:,nSOA) , Time, is,js)
+     endif
+
      if (id_wetdep_bc > 0) then
        used = send_data (id_wetdep_bc,  &
                total_wetdep       (:,:,nbcphilic) + &
                total_wetdep       (:,:,nbcphobic) , &
                                                 Time, is,js)
      endif
-     if (id_wetdep_so4 > 0) then
+     if (id_wetbc_cmip > 0) then
+       used = send_data (id_wetbc_cmip,  &
+               total_wetdep(:,:,nbcphilic) + total_wetdep(:,:,nbcphobic), Time, is,js)
+     endif
+
+     if (id_wetdep_so4 > 0 .or. id_wetso4_cmip > 0) then
        temp_2d = 0.0
        if( do_donner_deep ) temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_donner(:,:,nso4) 
        if( do_uw_conv  )    temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_uw    (:,:,nso4)
        if( do_strat )       temp_2d = temp_2d + 0.096*ls_wetdep(:,:,nso4)
-       used = send_data (id_wetdep_so4, temp_2d, Time, is,js)
+       if (id_wetdep_so4  > 0) used = send_data (id_wetdep_so4,  temp_2d, Time, is,js)
+       if (id_wetso4_cmip > 0) used = send_data (id_wetso4_cmip, temp_2d, Time, is,js)
      endif
-     if (id_wetdep_so2 > 0) then
+
+     if (id_wetdep_so2 > 0 .or. id_wetso2_cmip > 0) then
        temp_2d = 0.0
        if( do_donner_deep ) temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_donner(:,:,nso2) 
        if( do_uw_conv  )    temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_uw    (:,:,nso2)
        if( do_strat )       temp_2d = temp_2d + 0.064*ls_wetdep(:,:,nso2)
-       used = send_data (id_wetdep_so2, temp_2d, Time, is,js)
+       if (id_wetdep_so2  > 0) used = send_data (id_wetdep_so2,  temp_2d, Time, is,js)
+       if (id_wetso2_cmip > 0) used = send_data (id_wetso2_cmip, temp_2d, Time, is,js)
      endif
-     if (id_wetdep_DMS > 0) then
+
+     if (id_wetdep_DMS > 0 .or. id_wetdms_cmip > 0) then
        temp_2d = 0.0
        if( do_donner_deep ) temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_donner(:,:,nDMS) 
        if( do_uw_conv  )    temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_uw    (:,:,nDMS)
        if( do_strat )       temp_2d = temp_2d + 0.062*ls_wetdep(:,:,nDMS)
-       used = send_data (id_wetdep_DMS, temp_2d, Time, is,js)
+       if (id_wetdep_DMS  > 0) used = send_data (id_wetdep_DMS,  temp_2d, Time, is,js)
+       if (id_wetdms_cmip > 0) used = send_data (id_wetdms_cmip, temp_2d, Time, is,js)
      endif
-     if (id_wetdep_NH4NO3 > 0) then
+
+     if (id_wetdep_NH4NO3 > 0 .or. id_wetnh4_cmip > 0) then
        temp_2d = 0.0
        if( do_donner_deep ) temp_2d = temp_2d + (18.0/WTMAIR)*(total_wetdep_donner(:,:,nnH4NO3) + &
                                                                total_wetdep_donner(:,:,nNH4) )
        if( do_uw_conv  )    temp_2d = temp_2d + (18.0/WTMAIR)*(total_wetdep_uw(:,:,nNH4NO3) + &
                                                                total_wetdep_uw(:,:,nNH4) )
        if( do_strat )       temp_2d = temp_2d + 0.018*(ls_wetdep(:,:,nNH4NO3) + ls_wetdep(:,:,nNH4))
-       used = send_data (id_wetdep_NH4NO3, temp_2d, Time, is,js)
+       if (id_wetdep_NH4NO3 > 0) used = send_data (id_wetdep_NH4NO3, temp_2d, Time, is,js)
+       if (id_wetnh4_cmip   > 0) used = send_data (id_wetnh4_cmip,   temp_2d, Time, is,js)
      endif
-     if (id_wetdep_seasalt   > 0) then
+
+     if (id_wetdep_seasalt > 0 .or. id_wetss_cmip > 0) then
        do n=1, n_seasalt_tracers
          nbin_seasalt=seasalt_tracers(n)%tr
          total_wetdep_seasalt(:,:)=total_wetdep_seasalt(:,:)+total_wetdep(:,:,nbin_seasalt)
        enddo
-       used = send_data (id_wetdep_seasalt  , total_wetdep_seasalt,  Time, is,js) 
+       if (id_wetdep_seasalt > 0) used = send_data (id_wetdep_seasalt, total_wetdep_seasalt, Time, is,js) 
+       if (id_wetss_cmip     > 0) used = send_data (id_wetss_cmip,     total_wetdep_seasalt, Time, is,js) 
      endif
 
-     do n=1, n_dust_tracers
-        nbin_dust=dust_tracers(n)%tr
-        total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
-     enddo
-     call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
-
-     if (id_wetdep_dust   > 0) then
-       used = send_data (id_wetdep_dust  , total_wetdep_dust,  Time, is,js) 
+     if (id_wetdep_dust > 0 .or. id_wetdust_cmip > 0) then
+       do n=1, n_dust_tracers
+         nbin_dust=dust_tracers(n)%tr
+         total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
+       enddo
+       call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
+       if (id_wetdep_dust  > 0) used = send_data (id_wetdep_dust,  total_wetdep_dust, Time, is,js) 
+       if (id_wetdust_cmip > 0) used = send_data (id_wetdust_cmip, total_wetdep_dust, Time, is,js) 
      endif
 
 !---------------------------------------------------------------------
@@ -4236,7 +4273,8 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
   character(len=32) :: tracer_units, tracer_name
   character(len=128) :: diaglname, diaglname_uw,diaglname_donner
   integer, dimension(3) :: half = (/1,2,4/)
-  integer   :: n, nn, id
+  integer   :: n, nn, id, ic
+  integer   :: id_wetdep_cmip
 
 !------------ initializes diagnostic fields in this module -------------
 
@@ -4638,18 +4676,10 @@ if ( do_lsc ) then
        'Temperature tendency from large-scale cond',   'deg_K/s',  &
                         missing_value=missing_value               )
 
-   ID_tntscp = register_cmip_diag_field_3d ( mod_name, 'tntscp', Time, &
-       'Tendency of Air Temperature Due to Stratiform Clouds and Precipitation', 'K s-1', &
-       standard_name='tendency_of_air_temperature_due_to_stratiform_clouds_and_precipitation' )
-
    id_qdt_ls = register_diag_field ( mod_name, &
      'qdt_ls', axes(1:3), Time, &
      'Spec humidity tendency from large-scale cond', 'kg/kg/s',  &
                         missing_value=missing_value               )
-
-   ID_tnhusscp = register_cmip_diag_field_3d ( mod_name, 'tnhusscp', Time, &
-       'Tendency of Specific Humidity Due to Stratiform Clouds and Precipitation', 's-1', &
-       standard_name='tendency_of_specific_humidity_due_to_stratiform_clouds_and_precipitation' )
 
    id_prec_ls = register_diag_field ( mod_name, &
      'prec_ls', axes(1:2), Time, &
@@ -4698,6 +4728,18 @@ if ( do_lsc ) then
      area=area_id, &
                        mask_variant = .true., &
                        missing_value=CMOR_MISSING_VALUE  )
+
+! register cmip diagnostics for large-scale clouds/precip
+if ( do_lsc .or. do_strat ) then
+   ID_tntscp = register_cmip_diag_field_3d ( mod_name, 'tntscp', Time, &
+       'Tendency of Air Temperature Due to Stratiform Clouds and Precipitation', 'K s-1', &
+       standard_name='tendency_of_air_temperature_due_to_stratiform_clouds_and_precipitation' )
+
+   ID_tnhusscp = register_cmip_diag_field_3d ( mod_name, 'tnhusscp', Time, &
+       'Tendency of Specific Humidity Due to Stratiform Clouds and Precipitation', 's-1', &
+       standard_name='tendency_of_specific_humidity_due_to_stratiform_clouds_and_precipitation' )
+endif
+
 
 if ( do_strat ) then
 
@@ -5297,6 +5339,25 @@ endif
                          &ls precip falling out of gridbox', &
                          'kg(h2o)/m2/s', mask_variant = .true.,   &
                          missing_value=missing_value)
+
+     !-------- cmip wet deposition fields  ---------
+      do ic = 1, size(cmip_names,1)
+        id_wetdep_cmip = register_diag_field ( mod_name, 'wet'//TRIM(cmip_names(ic)), axes(1:2), Time,  &
+                     'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition', &
+                     area=area_id, missing_value=CMOR_MISSING_VALUE)
+        if (TRIM(cmip_names(ic)) .eq. 'poa'  ) id_wetpoa_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'soa'  ) id_wetsoa_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'bc'   ) id_wetbc_cmip   = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'dust' ) id_wetdust_cmip = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'ss'   ) id_wetss_cmip   = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'so4'  ) id_wetso4_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'so2'  ) id_wetso2_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'dms'  ) id_wetdms_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'nh4xx') id_wetnh4_cmip  = id_wetdep_cmip
+      enddo
+     !-----------------------------------------------
+
 
       do n = 1,num_tracers
         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
