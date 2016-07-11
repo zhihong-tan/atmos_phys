@@ -32,7 +32,9 @@ private
 !----------------------------------------------------------------------
 
 public :: atmos_cmip_diag_init, atmos_cmip_diag_end, &
-          register_cmip_diag_field_3d, send_cmip_data_3d, &
+          register_cmip_diag_field_2d, &
+          register_cmip_diag_field_3d, &
+          send_cmip_data_3d, &
           query_cmip_diag_id
 
 !----------------------------------------------------------------------
@@ -348,14 +350,41 @@ end function query_cmip_diag_id
     
 !#######################################################################
 
-function register_cmip_diag_field_3d (module_name, field_name, &
-                        Time_init, long_name, units, standard_name, &
-                        axis, missing_value, interp_method)
+integer function register_cmip_diag_field_2d (module_name, field_name, &
+                           Time_init, long_name, units, standard_name, &
+                           missing_value, interp_method)
+
   character(len=*), intent(in) :: module_name, field_name
   type(time_type),  intent(in) :: Time_init
   character(len=*), intent(in), optional :: long_name, units, standard_name
   real,             intent(in), optional :: missing_value
-  character(len=*), intent(in), optional :: axis, interp_method
+  character(len=*), intent(in), optional :: interp_method
+
+  real    :: mvalue
+!-----------------------------------------------------------------------
+  mvalue = CMOR_MISSING_VALUE; if (present(missing_value)) mvalue = missing_value
+
+  register_cmip_diag_field_2d = register_diag_field (module_name, field_name, &
+                           cmip_axis_data(1:2,0), Time_init, long_name=long_name, &
+                           units=units, standard_name=standard_name, area=area_id, &
+                           missing_value=mvalue, interp_method=interp_method )
+
+!-----------------------------------------------------------------------
+
+end function register_cmip_diag_field_2d
+
+!#######################################################################
+
+function register_cmip_diag_field_3d (module_name, field_name, &
+                        Time_init, long_name, units, standard_name, &
+                        axis, missing_value, interp_method)
+
+  character(len=*), intent(in) :: module_name, field_name
+  type(time_type),  intent(in) :: Time_init
+  character(len=*), intent(in), optional :: long_name, units, standard_name
+  real,             intent(in), optional :: missing_value
+  character(len=*), intent(in), optional :: axis  ! 'full' or 'half' levels
+  character(len=*), intent(in), optional :: interp_method ! for fregrid
 
   type(cmip_diag_id_type) :: register_cmip_diag_field_3d
   integer :: ind, indx, kount
