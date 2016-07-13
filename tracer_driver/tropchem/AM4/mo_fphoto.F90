@@ -23,8 +23,8 @@
       private
       public :: fprate_init, fphoto
 
-      character(len=128)            :: version     = '$Id$'
-      character(len=128)            :: tagname     = '$Name$'
+      character(len=128)            :: version     = '$Id: mo_fphoto.F90,v 19.0 2012/01/06 20:33:54 fms Exp $'
+      character(len=128)            :: tagname     = '$Name: siena_201204 $'
 
       integer ::  fastjx_clock
       integer, parameter :: jdim     = JVN_     ! number of fastjx species 62
@@ -32,25 +32,33 @@
       
       integer ::  jno_ndx, jpooh_ndx, jc2h5ooh_ndx, jc3h7ooh_ndx, jrooh_ndx, &
                   jch3co3h_ndx, jmpan_ndx, jmacr_a_ndx, jmacr_b_ndx, jonitr_ndx, &
-                  jxooh_ndx, jisopooh_ndx, jglyald_ndx, jhyac_ndx, jch3ooh_ndx, &
-                  jh2o2_ndx, jpan_ndx, jch3cho_ndx, &
+                  jpropnn_ndx, jxooh_ndx, jisopooh_ndx, jglyald_ndx, jhyac_ndx, &
+                  jch3ooh_ndx, jh2o2_ndx, jpan_ndx, jch3cho_ndx, &
                   jn2o5_ndx, jo3p_ndx, jno2_ndx, jno3_ndx, &
                   jclono2_ndx, jhocl_ndx, jcl2o2_ndx, jbrono2_ndx, jhobr_ndx, &
                   jbrcl_ndx, jbro_ndx, jcl2_ndx, jh2o_ndx, jn2o_ndx, jhno3_ndx, &
+                  !photolysis rates for alkyl nitrates (jmao, 10/28/2013)
+                  jisopnb_ndx, jisopnd_ndx, jmacrn_ndx, jmvkn_ndx, jr4n2_ndx, &
+                  !photolysis rates for inpn, set jr4n2 for NOA
+                  jinpn_ndx, jc510ooh_ndx,jnc4co3h_ndx,jnoa_ndx, &
+                  !add photolysis reaction of c510ooh and nc4co3h
 !jul++
+                  jethln_ndx, jisn1_ndx, &
+                  !add photolysis reaction of ethln and jisn1
                   jmek_ndx, jbigald_ndx, jglyoxal_ndx, jalkooh_ndx, jmekooh_ndx, &
-                  jtolooh_ndx, jterpooh_ndx, jacet_ndx, jmgly_ndx
+                  jtolooh_ndx, jterpooh_ndx, jacet_ndx, jmgly_ndx,jmvk_ndx
       integer ::  jh2o2a_ndx, jhno2_ndx, jo3a_ndx , jo1d_ndx 
       integer ::  so4_ndx, bc1_ndx, bc2_ndx, oc1_ndx, oc2_ndx, soa_ndx, &
                   ssa_ndx(5), dust_ndx(5)   
 !jul--
       integer ::  ox_ndx, o3_ndx, nqa, nqi, nql, nqq
- 
+
+!j2l++  
       integer, parameter :: & 
-         TAB_NDX_JO2            = 1, &
-         TAB_NDX_JO3            = 2, & 
-         TAB_NDX_JO1D           = 3, & 
-         TAB_NDX_JNO            = 4, & 
+         TAB_NDX_JNO            = 1, & 
+         TAB_NDX_JO2            = 2, &
+         TAB_NDX_JO3            = 3, & 
+         TAB_NDX_JO1D           = 4, & 
          TAB_NDX_JH2COa         = 5, & 
          TAB_NDX_JH2COb         = 6, & 
          TAB_NDX_JH2O2          = 7, & 
@@ -72,43 +80,53 @@
          TAB_NDX_JBrNO3         = 23, & 
          TAB_NDX_JHOBr          = 24, & 
          TAB_NDX_JBrCl          = 25, & 
-         TAB_NDX_JN2O           = 26, & 
-         TAB_NDX_JCFCl3         = 27, & 
-         TAB_NDX_JCF2Cl2        = 28, & 
-         TAB_NDX_JF113          = 29, & 
-         TAB_NDX_JF114          = 30, & 
-         TAB_NDX_JF115          = 31, & 
-         TAB_NDX_JCCl4          = 32, & 
-         TAB_NDX_JCH3Cl         = 33, & 
-         TAB_NDX_JMeCCl3        = 34, & 
-         TAB_NDX_JCH2Cl2        = 35, & 
-         TAB_NDX_JCHF2Cl        = 36, & 
-         TAB_NDX_JF123          = 37, & 
-         TAB_NDX_JF141b         = 38, & 
-         TAB_NDX_JF142b         = 39, & 
-         TAB_NDX_JCH3Br         = 40, & 
-         TAB_NDX_JH1211         = 41, & 
-         TAB_NDX_JH1301         = 42, & 
-         TAB_NDX_JH2402         = 43, & 
-         TAB_NDX_JCH2Br2        = 44, & 
-         TAB_NDX_JCHBr3         = 45, & 
-         TAB_NDX_JCH3I          = 46, & 
-         TAB_NDX_JCF3I          = 47, & 
-         TAB_NDX_JOCS           = 48, & 
-         TAB_NDX_JPAN           = 49, & 
-         TAB_NDX_JCH3NO3        = 50, &  
-         TAB_NDX_JActAld        = 51, &  
-         TAB_NDX_JMeVK          = 52, &  
-         TAB_NDX_JMeAcr         = 53, &  
-         TAB_NDX_JGlyAld        = 54, &  
-         TAB_NDX_JMEKeto        = 55, &  
-         TAB_NDX_JEAld          = 56, &  
-         TAB_NDX_JMGlyxl        = 57, &  
-         TAB_NDX_JGlyxla        = 58, &  
-         TAB_NDX_JGlyxlb        = 59, &  
-         TAB_NDX_JAcet_a        = 60, &  
-         TAB_NDX_JAcet_b        = 61, &  
-         TAB_NDX_JHYAC          = 62  
+         TAB_NDX_JOCS           = 26, & 
+         TAB_NDX_JSO2           = 27, & 
+         TAB_NDX_JN2O           = 28, & 
+         TAB_NDX_JCFCl3         = 29, & 
+         TAB_NDX_JCF2Cl2        = 30, & 
+         TAB_NDX_JF113          = 31, & 
+         TAB_NDX_JF114          = 32, & 
+         TAB_NDX_JF115          = 33, & 
+         TAB_NDX_JCCl4          = 34, & 
+         TAB_NDX_JCH3Cl         = 35, & 
+         TAB_NDX_JMeCCl3        = 36, & 
+         TAB_NDX_JCH2Cl2        = 37, & 
+         TAB_NDX_JCHF2Cl        = 38, & 
+         TAB_NDX_JF123          = 39, & 
+         TAB_NDX_JF141b         = 40, & 
+         TAB_NDX_JF142b         = 41, & 
+         TAB_NDX_JCH3Br         = 42, & 
+         TAB_NDX_JH1211         = 43, & 
+         TAB_NDX_JH1301         = 44, & 
+         TAB_NDX_JH2402         = 45, & 
+         TAB_NDX_JCH2Br2        = 46, & 
+         TAB_NDX_JCHBr3         = 47, & 
+         TAB_NDX_JCH3I          = 48, & 
+         TAB_NDX_JCF3I          = 49, & 
+         TAB_NDX_JPAN           = 50, & 
+         TAB_NDX_JCH3NO3        = 51, &  
+         TAB_NDX_JActAld        = 52, &  
+         TAB_NDX_JMeVKa         = 53, &  
+         TAB_NDX_JMeVKb         = 54, &  
+         TAB_NDX_JMeAcr         = 55, &  
+         TAB_NDX_JGlyAlda       = 56, &  
+         TAB_NDX_JGlyAldb       = 57, &  
+         TAB_NDX_JGlyAldc       = 58, &  
+         TAB_NDX_JMEKetoa       = 59, &  
+         TAB_NDX_JMEKetob       = 60, &  
+         TAB_NDX_JPrAld         = 61, &  
+         TAB_NDX_JMGlyxl        = 62, &  
+         TAB_NDX_JGlyxla        = 63, &  
+         TAB_NDX_JGlyxlb        = 64, &  
+         TAB_NDX_JGlyxlc        = 65, &  
+         TAB_NDX_JAcet_a        = 66, &  
+         TAB_NDX_JAcet_b        = 67, &  
+         TAB_NDX_JC2H5OOH       = 68, &
+         TAB_NDX_JHYAC          = 69
+
+
+
 !      logical :: use_tdep_jvals, use_solar_cycle
          real                   :: o3_column_top  !
          logical                :: module_is_initialized = .false.
@@ -158,10 +176,10 @@
 !-------------------------------------------------------------------------
       call write_version_number (version, tagname)
 
+      indexer(TAB_NDX_JNO)      = get_rxt_ndx( 'jno' )       !!
       indexer(TAB_NDX_JO2)      = get_rxt_ndx( 'jo2' )
       indexer(TAB_NDX_JO3)      = get_rxt_ndx( 'jo3p' ) 
       indexer(TAB_NDX_JO1D)     = get_rxt_ndx( 'jo1d' ) 
-      indexer(TAB_NDX_JNO)      = get_rxt_ndx( 'jno' )       !!
       indexer(TAB_NDX_JH2COa)   = get_rxt_ndx( 'jch2o_a' ) 
       indexer(TAB_NDX_JH2COb)   = get_rxt_ndx( 'jch2o_b' ) 
       indexer(TAB_NDX_JH2O2)    = get_rxt_ndx( 'jh2o2' ) 
@@ -169,10 +187,9 @@
       indexer(TAB_NDX_JNO2)     = get_rxt_ndx( 'jno2' ) 
       indexer(TAB_NDX_JNO3)     = get_rxt_ndx( 'jno3' ) 
       indexer(TAB_NDX_JN2O5)    = get_rxt_ndx( 'jn2o5' )       
-      indexer(TAB_NDX_JHNO2)    = get_rxt_ndx( 'jhno2' )    
+      indexer(TAB_NDX_JHNO2)    = 0
       indexer(TAB_NDX_JHNO3)    = get_rxt_ndx( 'jhno3' ) 
       indexer(TAB_NDX_JHNO4)    = get_rxt_ndx( 'jho2no2' ) 
-      
       indexer(TAB_NDX_JClNO3a)  = get_rxt_ndx( 'jclono2' )   !!
       indexer(TAB_NDX_JClNO3b)  = 0       !get_rxt_ndx( 'j' )  
       indexer(TAB_NDX_JCl2)     = get_rxt_ndx( 'jcl2' ) 
@@ -184,9 +201,9 @@
       indexer(TAB_NDX_JBrNO3)   = get_rxt_ndx( 'jbrono2' ) 
       indexer(TAB_NDX_JHOBr)    = get_rxt_ndx( 'jhobr' ) 
       indexer(TAB_NDX_JBrCl)    = get_rxt_ndx( 'jbrcl' ) 
-      
+      indexer(TAB_NDX_JOCS)     = 0       !get_rxt_ndx( 'j' )
+      indexer(TAB_NDX_JSO2)     = 0       !get_rxt_ndx( 'j' )
       indexer(TAB_NDX_JN2O)     = get_rxt_ndx( 'jn2o' ) 
-      
       indexer(TAB_NDX_JCFCl3)   = 0       !get_rxt_ndx( 'j' ) 
       indexer(TAB_NDX_JCF2Cl2)  = 0       !get_rxt_ndx( 'j' ) 
       indexer(TAB_NDX_JF113)    = 0       !get_rxt_ndx( 'j' ) 
@@ -208,21 +225,25 @@
       indexer(TAB_NDX_JCHBr3)   = 0       !get_rxt_ndx( 'j' ) 
       indexer(TAB_NDX_JCH3I)    = 0       !get_rxt_ndx( 'j' )
       indexer(TAB_NDX_JCF3I)    = 0       !get_rxt_ndx( 'j' ) 
-      indexer(TAB_NDX_JOCS)     = 0       !get_rxt_ndx( 'j' )
-     
       indexer(TAB_NDX_JPAN)     = get_rxt_ndx( 'jpan' )
       indexer(TAB_NDX_JCH3NO3)  = 0       !get_rxt_ndx( 'j' )  
       indexer(TAB_NDX_JActAld)  = get_rxt_ndx( 'jch3cho' ) 
-      indexer(TAB_NDX_JMeVK)    = get_rxt_ndx( 'jmvk' )  
+      indexer(TAB_NDX_JMeVKa)   = get_rxt_ndx( 'jmvk' )     !   MVK
+      indexer(TAB_NDX_JMeVKb)   = 0       !get_rxt_ndx( 'jmvk' )  
       indexer(TAB_NDX_JMeAcr)   = get_rxt_ndx( 'jmacr_a' ) 
-      indexer(TAB_NDX_JGlyAld)  = get_rxt_ndx( 'jglyald' )  
-      indexer(TAB_NDX_JMEKeto)  = get_rxt_ndx( 'jmek' )     !!
-      indexer(TAB_NDX_JEAld)    = 0       !get_rxt_ndx( 'j' ) 
+      indexer(TAB_NDX_JGlyAlda) = get_rxt_ndx( 'jglyald' )  
+      indexer(TAB_NDX_JGlyAldb) = 0       !get_rxt_ndx( 'jglyald' )  
+      indexer(TAB_NDX_JGlyAldc) = 0       !get_rxt_ndx( 'jglyald' )  
+      indexer(TAB_NDX_JMEKetoa) = 0     !   MEK
+      indexer(TAB_NDX_JMEKetob) = 0       !get_rxt_ndx( 'jmek' )     !!
+      indexer(TAB_NDX_JPrAld)   = 0       !get_rxt_ndx( 'j' ) 
       indexer(TAB_NDX_JMGlyxl)  = get_rxt_ndx( 'jmgly' )  
       indexer(TAB_NDX_JGlyxla)  = get_rxt_ndx( 'jglyoxal' )  !!??
-      indexer(TAB_NDX_JGlyxlb)  = 0       !get_rxt_ndx( 'j' )  
+      indexer(TAB_NDX_JGlyxlb)  = 0       !get_rxt_ndx( 'jglyoxal' )       !get_rxt_ndx( 'j' )  
+      indexer(TAB_NDX_JGlyxlc)  = 0       !get_rxt_ndx( 'jglyoxal' )      !get_rxt_ndx( 'j' )  
       indexer(TAB_NDX_JAcet_a)  = get_rxt_ndx( 'jacet' )  
       indexer(TAB_NDX_JAcet_b)  = 0       !get_rxt_ndx( 'j' ) 
+      indexer(TAB_NDX_JC2H5OOH) = get_rxt_ndx( 'jc2h5ooh' )             
       indexer(TAB_NDX_JHYAC)    = get_rxt_ndx( 'jhyac' )             
       
     if (mpp_pe() == mpp_root_pe()) &
@@ -241,6 +262,7 @@
       jrooh_ndx    = get_rxt_ndx( 'jrooh' )      
       jxooh_ndx    = get_rxt_ndx( 'jxooh' )
       jonitr_ndx   = get_rxt_ndx( 'jonitr' )
+      jpropnn_ndx   = get_rxt_ndx( 'jpropnn' )
       jisopooh_ndx = get_rxt_ndx( 'jisopooh' )
       jbigald_ndx  = get_rxt_ndx( 'jbigald' )      
       jalkooh_ndx  = get_rxt_ndx( 'jalkooh' )      
@@ -275,11 +297,29 @@
       jacet_ndx         = get_rxt_ndx( 'jacet' ) 
       jmgly_ndx         = get_rxt_ndx( 'jmgly' )
       jmek_ndx          = get_rxt_ndx( 'jmek' )
+      jmvk_ndx          = get_rxt_ndx( 'jmvk' )
       jglyoxal_ndx      = get_rxt_ndx( 'jglyoxal' )
       jhno2_ndx    = get_rxt_ndx( 'jhno2' )
       jo1d_ndx     = get_rxt_ndx( 'jo1d' )
         
 !jul--  
+      !jmao (10/28/2013)
+      jisopnb_ndx = get_rxt_ndx('jisopnb')
+      jisopnd_ndx = get_rxt_ndx('jisopnd')
+      jmacrn_ndx = get_rxt_ndx('jmacrn')
+      jmvkn_ndx = get_rxt_ndx('jmvkn')
+      jr4n2_ndx = get_rxt_ndx('jr4n2')
+     
+      !jli (10/24/2014)
+      jinpn_ndx = get_rxt_ndx('jinpn') 
+      !jli (11/06/2014)
+      jc510ooh_ndx = get_rxt_ndx('jc510ooh') 
+      jnc4co3h_ndx = get_rxt_ndx('jnc4co3h') 
+      !jli (11/12/2014)
+      jnoa_ndx = get_rxt_ndx('jnoa')
+      !jli (11/17/2014)
+      jethln_ndx = get_rxt_ndx('jethln')
+      jisn1_ndx = get_rxt_ndx('jisn1')
 
       o3_ndx = get_tracer_index(MODEL_ATMOS,'o3')
       if(  o3_ndx <1 )then
@@ -419,11 +459,7 @@
                          qfld, &
                          r  )
 
-#ifndef AM3_CHEM
       use CHEM_MODS_MOD, only : ncol_abs, phtcnt
-#else
-      use AM3_CHEM_MODS_MOD, only : ncol_abs, phtcnt
-#endif
       use time_manager_mod, only : time_type      
 
       implicit none
@@ -503,7 +539,10 @@
                    tmp_jclono2_300, &            ! wrk array
                    wgt200, wgt225, wgt250, wgt300, &     ! wrk array
                    tmp_jno, &
-                   tmp_jglyxlb, &
+                   tmp_jmvk_b, &
+                   tmp_jmek_a, tmp_jmek_b,tmp_jacet_b, &
+                   tmp_jglyxlb, tmp_jglyxlc, &
+                   tmp_jglyaldb, tmp_jglyaldc, &
                    tmp_jo1d   !jul++
    
       real*8    :: prates(size(zmid,2),jdim)        ! photorates matrix
@@ -558,6 +597,13 @@
          tmp_jclono2_250(:,k) = 0.
          tmp_jclono2_300(:,k) = 0.
          tmp_jglyxlb(:,k)     = 0.
+         tmp_jglyxlc(:,k)     = 0.
+         tmp_jglyaldb(:,k)    = 0.
+         tmp_jglyaldc(:,k)    = 0.
+         tmp_jmvk_b(:,k)      = 0.
+         tmp_jmek_a(:,k)      = 0.
+         tmp_jmek_b(:,k)      = 0.
+         tmp_jacet_b(:,k)     = 0.
          tmp_jo1d(:,k)     = 0. !jul++
       end do
 
@@ -583,42 +629,44 @@
    
       clouds_fraction(:,:,1) = max( 0.,min( 1.,clouds_fraction(:,:,1) ) )
       clouds_fraction(:,:,2) = clouds_fraction(:,:,1)
-!  assign cloud index
-      clouds_ndx(:,:,1) = 9          !C1, r_eff=12um
-      where (temper(:,:) > 233.15)   !>-40C
-         clouds_ndx(:,:,2) = 12      !Ice-Hexagonal
-      elsewhere
-         clouds_ndx(:,:,2) = 13      !Ice-Irregular
-      endwhere 
+!  assign cloud index     ! moved to mo_fastjx.F90
+!      clouds_ndx(:,:,1) = 9          !C1, r_eff=12um
+!      where (temper(:,:) > 233.15)   !>-40C
+!         clouds_ndx(:,:,2) = 12      !Ice-Hexagonal
+!      elsewhere
+!         clouds_ndx(:,:,2) = 13      !Ice-Irregular
+!      endwhere 
+
 !-----------------------------------------------------------------
 !        ... Assign aerosols info
 !-----------------------------------------------------------------
       call set_aerosol_mc(r(:,:,:),pwt(:,:),relhum(:,:), aerop(:,:,:),aeron(:,:,:))  ! aerop: g/m2
+!      write(*,*) 'Assigned aerosol info'
       do i = 1,plonl
-!           if (mpp_pe() == mpp_root_pe()  ) then 
-!       write(*,*)'Fphoto: ilon,jlat: ', i,j_ndx
-!   endif
-   call fastjx_photo(    coszen(i), &
-                         esfact, &
-                         phalf(i,:),&
-                         zhalf(i,:),& 
-                         pmid(i,:),&
-                         temper(i,:),&
-                         XO3(i,:),  &
-                         pwt(i,:) , &
-                         clouds_lwc(i,:,:),  &
-                         clouds_fraction(i,:,:), &
-                         clouds_ndx(i,:,:) ,&
-                         qfld(i,:), &
-                         srf_alb(i), &
-                         aerop(i,:,:), &
-                         aeron(i,:,:), &
-                         o3_column_top, &
-                         prates &
-                         )
-
-            prates(:,:) = max(0., prates(:,:)) 
-            do m = 1,jdim         
+!         print*,'STEP ONE',i
+         call fastjx_photo(   coszen(i), &
+                              esfact, &
+                              phalf(i,:),&
+                              zhalf(i,:),& 
+                              pmid(i,:),&
+                              temper(i,:),&
+                              XO3(i,:),  &
+                              pwt(i,:) , &
+                              clouds_lwc(i,:,:),  &
+                              clouds_fraction(i,:,:), &
+                              srf_alb(i), &
+                              aerop(i,:,:), &
+                              aeron(i,:,:), &
+                              o3_column_top, &
+                              prates )
+!             print*,'STEP TWO', i
+!             do m=1, jdim
+!                if(coszen(i) .gt. 0d0 ) then
+!                  print*, 'Test jvals LI=> ', m, prates(48,m)
+!                endif
+!             enddo
+             prates(:,:) = max(0., prates(:,:)) 
+             do m = 1,jdim         
                   if( indexer(m) > 0 ) then
                     photos(i,:,indexer(m)) = prates(:,m)
                   else
@@ -637,57 +685,28 @@
                            tmp_jmacr_a(i,:) = prates(:,m)
                         case( TAB_NDX_JGlyxlb)
                            tmp_jglyxlb(i,:) = prates(:,m)
+                        case( TAB_NDX_JGlyxlc)
+                           tmp_jglyxlc(i,:) = prates(:,m)
+                        case( TAB_NDX_JGlyAldb)
+                           tmp_jglyaldb(i,:) = prates(:,m)
+                        case( TAB_NDX_JGlyAldc)
+                           tmp_jglyaldc(i,:) = prates(:,m)
                         case( TAB_NDX_JO1D)  !jul++
                            tmp_jo1d(i,:) = prates(:,m)
-   
-!                        case( TAB_NDX_JN2O_200 )
-!                           tmp_jn2o_200(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JN2O_250 )
-!                           tmp_jn2o_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JN2O_300 )
-!                           tmp_jn2o_300(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JN2O5_225 )
-!                           tmp_jn2o5_225(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JN2O5_250 )
-!                           tmp_jn2o5_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JN2O5_300 )
-!                           tmp_jn2o5_300(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JHNO3_200 )
-!                           tmp_jhno3_200(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JHNO3_250 )
-!                           tmp_jhno3_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JHNO3_300 )
-!                           tmp_jhno3_300(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JCLONO2_200 )
-!                           tmp_jclono2_200(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JCLONO2_250 )
-!                           tmp_jclono2_250(i,:) = esfact *prates(m,:) * cld_mult(:)
-!                        case( TAB_NDX_JCLONO2_300 )
-!                           tmp_jclono2_300(i,:) = esfact *prates(m,:) * cld_mult(:)
+                        case( TAB_NDX_JMeVKb)
+                           tmp_jmvk_b(i,:) = prates(:,m)
+                        case( TAB_NDX_JMEKetoa)
+                           tmp_jmek_a(i,:) = prates(:,m)
+                        case( TAB_NDX_JMEKetob)
+                           tmp_jmek_b(i,:) = prates(:,m)
+                        case( TAB_NDX_JAcet_b)
+                           tmp_jacet_b(i,:) = prates(:,m)
                      end select
                   end if
-           end do
+             end do !m
       end do !i
         
 
-!      jh2o_ndx     = get_rxt_ndx( 'jh2o' )      
-!      jpooh_ndx    = get_rxt_ndx( 'jpooh' )
-!      jch3co3h_ndx = get_rxt_ndx( 'jch3co3h' )
-!      jmpan_ndx    = get_rxt_ndx( 'jmpan' )
-!      jmacr_b_ndx  = get_rxt_ndx( 'jmacr_b' )      
-!      jc2h5ooh_ndx = get_rxt_ndx( 'jc2h5ooh' )
-!      jc3h7ooh_ndx = get_rxt_ndx( 'jc3h7ooh' )      
-!      jrooh_ndx    = get_rxt_ndx( 'jrooh' )      
-!      jxooh_ndx    = get_rxt_ndx( 'jxooh' )
-!      jonitr_ndx   = get_rxt_ndx( 'jonitr' )
-!      jisopooh_ndx = get_rxt_ndx( 'jisopooh' )
-!      jbigald_ndx  = get_rxt_ndx( 'jbigald' )      
-!      jalkooh_ndx  = get_rxt_ndx( 'jalkooh' )      
-!      jmekooh_ndx  = get_rxt_ndx( 'jmekooh' )
-!      jtolooh_ndx  = get_rxt_ndx( 'jtolooh' )
-!      jterpooh_ndx = get_rxt_ndx( 'jterpooh' )      
-        
-      
       
       if( jch3ooh_ndx > 0 ) then
          tmp(:,:) = photos(:,:,jch3ooh_ndx)
@@ -697,10 +716,6 @@
       
       if( jpooh_ndx > 0 ) then
          photos(:,:,jpooh_ndx)    = tmp(:,:)
-      end if
-      
-      if( jc2h5ooh_ndx > 0 ) then
-         photos(:,:,jc2h5ooh_ndx) = tmp(:,:)
       end if
       
       if( jc3h7ooh_ndx > 0 ) then
@@ -737,23 +752,43 @@
       end if
       
        
-!      if( jmek_ndx > 0 ) then
-!         if( jacet_ndx > 0 ) then
-!            photos(:,:,jmek_ndx) = photos(:,:,jacet_ndx)
-!!         end if
-!      end if
       if( jbigald_ndx > 0 ) then
          if( jno2_ndx > 0 ) then
             photos(:,:,jbigald_ndx) = 0.2 * photos(:,:,jno2_ndx)
          end if
       end if      
-!      if( jglyoxal_ndx > 0 ) then
-!         if( jmgly_ndx > 0 ) then
-!            photos(:,:,jglyoxal_ndx) = photos(:,:,jmgly_ndx)
-!         end if
- !     end if       
+!j2l
+      if( jglyoxal_ndx > 0 ) then
+         photos(:,:,jglyoxal_ndx) = photos(:,:,jglyoxal_ndx) + & 
+                                    tmp_jglyxlb(:,:)         + &
+                                    tmp_jglyxlc(:,:) 
+      end if       
+
+      if( jglyald_ndx > 0 ) then
+         photos(:,:,jglyald_ndx) = photos(:,:,jglyald_ndx) + & 
+                                   tmp_jglyaldb(:,:)       + &
+                                   tmp_jglyaldc(:,:)
+      end if
+
+      if( jmek_ndx > 0 ) then
+        photos(:,:,jmek_ndx) = photos(:,:,jmek_ndx) +  &
+                                tmp_jmek_b(:,:)
+      endif
+
+      if( jmvk_ndx > 0 ) then
+         photos(:,:,jmvk_ndx) = photos(:,:,jmvk_ndx) +  &
+                                tmp_jmvk_b(:,:)
+      endif
+
+!      if( jacet_ndx > 0 ) then
+!         photos(:,:,jacet_ndx) = photos(:,:,jacet_ndx) + &
+!                                 tmp_jacet_b(:,:)
+!         print*, 'acet', photos(1,48,jacet_ndx), photos(1,1,jacet_ndx)
+!      end if
+ 
 !jul--         
       
+!      print*,'STEP EIGHT'
       if( jch3co3h_ndx > 0 ) then
          if( jh2o2_ndx > 0 ) then
             photos(:,:,jch3co3h_ndx) = .28 * photos(:,:,jh2o2_ndx)
@@ -770,9 +805,6 @@
          end if
       end if
       
-!      if( jmacr_a_ndx > 0 ) then
-!         photos(:,:,jmacr_a_ndx)  = .5 * photos(:,:,jmacr_a_ndx)
-!      end if
       if( jmacr_b_ndx > 0 ) then
          if( jmacr_a_ndx > 0 ) then
             photos(:,:,jmacr_b_ndx)  = photos(:,:,jmacr_a_ndx)
@@ -780,6 +812,7 @@
             photos(:,:,jmacr_b_ndx)  = .5 * tmp_jmacr_a(:,:)
          end if
       end if
+
       if( jonitr_ndx > 0 ) then
          if( jch3cho_ndx > 0 ) then
             photos(:,:,jonitr_ndx)   = photos(:,:,jch3cho_ndx)
@@ -787,14 +820,44 @@
             photos(:,:,jonitr_ndx)   = tmp_jch3cho(:,:)
          end if
       end if
-      
-!      if( jglyald_ndx > 0 ) then
-!         if( jch3cho_ndx > 0 ) then
-!            photos(:,:,jglyald_ndx)  = 3. * photos(:,:,jch3cho_ndx)
-!         else
-!            photos(:,:,jglyald_ndx)   = 3. *tmp_jch3cho(:,:)
- !        end if
-!      end if
+
+      if( jr4n2_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jr4n2_ndx)   = photos(:,:,jch3cho_ndx)
+         else
+            photos(:,:,jr4n2_ndx)   = tmp_jch3cho(:,:)
+         end if
+      end if
+
+      if( jisopnb_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jisopnb_ndx)   = photos(:,:,jch3cho_ndx)
+         else
+            photos(:,:,jisopnb_ndx)   = tmp_jch3cho(:,:)
+         end if
+      end if
+      if( jisopnd_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jisopnd_ndx)   = photos(:,:,jch3cho_ndx)
+         else
+            photos(:,:,jisopnd_ndx)   = tmp_jch3cho(:,:)
+         end if
+      end if
+
+      if( jmacrn_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jmacrn_ndx)   = photos(:,:,jch3cho_ndx)
+         else
+            photos(:,:,jmacrn_ndx)   = tmp_jch3cho(:,:)
+         end if
+      end if
+      if( jmvkn_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jmvkn_ndx)   = photos(:,:,jch3cho_ndx)
+         else
+            photos(:,:,jmvkn_ndx)   = tmp_jch3cho(:,:)
+         end if
+      end if
       if( jh2o_ndx > 0 ) then
          if( jno_ndx > 0 ) then
             photos(:,:,jh2o_ndx) = 0.1*photos(:,:,jno_ndx)
@@ -802,51 +865,101 @@
             photos(:,:,jh2o_ndx) = 0.1*tmp_jno(:,:)
          end if
       end if
-      
+
+!
+!j2l
+!-------------------------------------
+!Fast photolysis for carbonyl nitrates
+!-----------------------------------
+!      if( jpropnn_ndx > 0 ) then
+!         if( jch3cho_ndx > 0 ) then
+!            photos(:,:,jpropnn_ndx)   = photos(:,:,jch3cho_ndx)*7.0
+!         else
+!            photos(:,:,jpropnn_ndx)   = tmp_jch3cho(:,:)*7.0
+!         end if
+!      end if
+!      if( jr4n2_ndx > 0 ) then
+!         if( jch3cho_ndx > 0 ) then
+!            photos(:,:,jr4n2_ndx)   = photos(:,:,jch3cho_ndx)*7.0
+!         else
+!            photos(:,:,jr4n2_ndx)   = tmp_jch3cho(:,:)*7.0
+!         end if
+!      end if
+!      if( jmacrn_ndx > 0 ) then
+!         if( jch3cho_ndx > 0 ) then
+!            photos(:,:,jmacrn_ndx)   = photos(:,:,jch3cho_ndx)*70.
+!         else
+!            photos(:,:,jmacrn_ndx)   = tmp_jch3cho(:,:)*70.
+!         end if
+!      end if
+!      if( jmvkn_ndx > 0 ) then
+!         if( jch3cho_ndx > 0 ) then
+!            photos(:,:,jmvkn_ndx)   = photos(:,:,jch3cho_ndx)*11.2
+!         else
+!            photos(:,:,jmvkn_ndx)   = tmp_jch3cho(:,:)*11.2
+!         end if
+!      end if
+!
+!-------------------------------------------------------------------------------------------
+!Photolysis reactions for organic nitrates adopted from MCMv3.2 isoprene nighttime chemistry
+!-------------------------------------------------------------------------------------------
+      if( jinpn_ndx > 0 ) then
+         if( jch3ooh_ndx > 0 ) then
+            photos(:,:,jinpn_ndx)   = photos(:,:,jch3ooh_ndx)
+         else
+            photos(:,:,jinpn_ndx)   = tmp_jch3ooh(:,:)
+         end if
+      end if
+
+      if( jc510ooh_ndx > 0 ) then
+         if( jch3ooh_ndx > 0 ) then
+            photos(:,:,jc510ooh_ndx)   = photos(:,:,jch3ooh_ndx)
+         else
+            photos(:,:,jc510ooh_ndx)   = tmp_jch3ooh(:,:)
+         end if
+      end if
+
+      if( jnc4co3h_ndx > 0 ) then
+         if( jch3ooh_ndx > 0 ) then
+            photos(:,:,jnc4co3h_ndx)   = photos(:,:,jch3ooh_ndx)
+         else
+            photos(:,:,jnc4co3h_ndx)   = tmp_jch3ooh(:,:)
+         end if
+      end if
+
+      if( jnoa_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jnoa_ndx)   = photos(:,:,jch3cho_ndx)*7.0
+         else
+            photos(:,:,jnoa_ndx)   = tmp_jch3cho(:,:)*7.0
+         end if
+      end if
+
+      if( jethln_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jethln_ndx)   = photos(:,:,jch3cho_ndx)*30.
+         else
+            photos(:,:,jethln_ndx)   = tmp_jch3cho(:,:)*30.
+         end if
+      end if
+
+      if( jisn1_ndx > 0 ) then
+         if( jch3cho_ndx > 0 ) then
+            photos(:,:,jisn1_ndx)   = photos(:,:,jch3cho_ndx)*112.
+         else
+            photos(:,:,jisn1_ndx)   = tmp_jch3cho(:,:)*112.
+         end if
+      end if
+ 
 ! be careful here about glyoxala and b in fastjx, here add both      
 !      if( jglyoxal_ndx > 0 ) then
 !            photos(:,:,jglyoxal_ndx) = photos(:,:,jglyoxal_ndx)+tmp_jglyxlb(:,:)
 !      end if
       
+!     do m=1,phtcnt
+!        print*, 'LI=> ', m, photos(12,1,m), photos(12,48,m)
+!     enddo 
       
-      
-!      if (mpp_pe() == mpp_root_pe()) &
-!      write(*,*)'fphoto: photoes',photos(1,1,:)
-     
-!      if( jn2o_ndx > 0 .and. use_tdep_jvals ) then
-!         wgt200(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/50. ) )
-!         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
-!         wgt250(:,:)  = 1. - wgt200(:,:) - wgt300(:,:)
-!         photos(:,:,jn2o_ndx)    = wgt200(:,:)*tmp_jn2o_200(:,:) + &
-!                                   wgt250(:,:)*tmp_jn2o_250(:,:) + &
-!                                   wgt300(:,:)*tmp_jn2o_300(:,:)
-!      end if
-!      if( jn2o5_ndx > 0 .and. use_tdep_jvals ) then
-!         wgt225(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/25. ) )
-!         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
-!         wgt250(:,:)  = 1. - wgt225(:,:) - wgt300(:,:)
-!         photos(:,:,jn2o5_ndx)   = wgt225(:,:)*tmp_jn2o5_225(:,:) + &
-!                                   wgt250(:,:)*tmp_jn2o5_250(:,:) + &
-!                                   wgt300(:,:)*tmp_jn2o5_300(:,:)
-!      end if
-!      if( jhno3_ndx > 0 .and. use_tdep_jvals ) then
-!         wgt200(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/50. ) )
-!         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
-!         wgt250(:,:)  = 1. - wgt200(:,:) - wgt300(:,:)
-!         photos(:,:,jhno3_ndx)   = wgt200(:,:)*tmp_jhno3_200(:,:) + &
-!                                   wgt250(:,:)*tmp_jhno3_250(:,:) + &
-!                                   wgt300(:,:)*tmp_jhno3_300(:,:)
-!      end if
-!      if( jclono2_ndx > 0 .and. use_tdep_jvals ) then
-!         wgt200(:,:)  = MIN( 1.,MAX( 0.,(250.-temper(:,:))/50. ) )
-!         wgt300(:,:)  = MIN( 1.,MAX( 0.,(temper(:,:)-250.)/50. ) )
-!         wgt250(:,:)  = 1. - wgt200(:,:) - wgt300(:,:)
-!         photos(:,:,jclono2_ndx) = wgt200(:,:)*tmp_jclono2_200(:,:) + &
-!                                   wgt250(:,:)*tmp_jclono2_250(:,:) + &
-!                                   wgt300(:,:)*tmp_jclono2_300(:,:)
-!      end if
-
-
       call mpp_clock_end (fastjx_clock)
 
       end subroutine FPHOTO
@@ -931,13 +1044,7 @@ subroutine set_aerosol_mc(r,pwt,rh,aerop,aeron)
       
       v1(:,:) = so4(:,:)/denso4
       v2(:,:) = (bc1(:,:)+bc2(:,:))/denbc
-!<f1p
-      where ( v1(:,:)+v2(:,:) .gt. 0. ) 
-         v1(:,:) = v1(:,:)/(v1(:,:)+v2(:,:))*100.
-      elsewhere
-         v1(:,:) = 0.
-      end where
-!>
+      v1(:,:) = v1(:,:)/(v1(:,:)+v2(:,:))*100.
 !      if (mpp_pe() == mpp_root_pe() ) then 
 !             write(*,*) 'fphoto: v1=',v1(2,:)      
 !      end if     

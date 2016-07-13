@@ -185,6 +185,7 @@ logical            :: do_fastjx_photo = .false.         ! use fastjx routine ?
 character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen in fastjx calculation; may currently be 'none' or 'lsc_only' (default)
 logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
 real               :: e90_tropopause_vmr = 9.e-8        ! e90 tropopause concentration
+logical            :: time_varying_solarflux = .false.  ! allow sloar cycle on fastjx v7.1
 
 ! namelist to fix solar flux bug
 ! if set to true then solar flux will vary with time
@@ -295,7 +296,7 @@ namelist /tropchem_driver_nml/    &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
                                max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &
-			       sim_data_filename
+			       sim_data_filename,time_varying_solarflux
 
 integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
@@ -1712,7 +1713,7 @@ trop_option%cloud_ho2_h2o2 = cloud_ho2_h2o2
 trop_option%max_rh_aerosol = max_rh_aerosol
 trop_option%limit_no3      = limit_no3
 trop_option%frac_aerosol_incloud = frac_aerosol_incloud
-
+trop_option%time_varying_solarflux = time_varying_solarflux
 
 
 !aerosol thermo

@@ -185,7 +185,11 @@ logical                       :: module_is_initialized = .false.
       use AM3_mo_phtadj_mod,    only : phtadj
 #endif
       use mo_setsox_mod,    only : setsox
+#ifndef AM3_CHEM
       use mo_fphoto_mod,    only : fphoto
+#else
+      use AM3_fphoto_mod,    only : fphoto
+#endif
       use mo_chem_utls_mod, only : inti_mr_xform, adjh2o, negtrc, mmr2vmr, vmr2mmr !<f1p get_spc_ndx, get_grp_mem_ndx >
       use time_manager_mod, only : time_type
       use strat_chem_utilities_mod, only : psc_type
