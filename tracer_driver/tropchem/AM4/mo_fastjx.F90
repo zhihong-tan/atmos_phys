@@ -421,6 +421,7 @@ module MO_FASTJX_MOD
                                        MPP_ASCII, MPP_SEQUENTIAL,   &
                                        MPP_MULTI, MPP_SINGLE 
       use           time_manager_mod, only : time_type, get_date
+      use tropchem_types_mod, only : tropchem_opt
       implicit none
       
       private
