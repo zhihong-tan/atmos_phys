@@ -51,6 +51,7 @@ use           diag_manager_mod, only : send_data,            &
                                        register_diag_field,  &
                                        register_static_field, &
                                        get_base_time
+use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,     &
                                        get_tracer_names,     &
                                        query_method,         &
@@ -363,6 +364,7 @@ integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
 integer :: id_co_emis_cmip2, id_no_emis_cmip2
 integer :: id_so2_emis_cmip2, id_nh3_emis_cmip2
+integer :: id_emico, id_emino, id_emiso2, id_eminh3
 integer :: id_glaiage, id_gtemp, id_glight, id_tsfc, id_fsds, id_ctas, id_cfsds
 integer :: isop_oldmonth = 0
 logical :: newmonth            
@@ -802,11 +804,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
              used = send_data(id_no_emis_cmip2,emisz(:,:,n)*1.0e04*0.030/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
            endif
+          !if (id_emino > 0) then ! not an official cmip variable
+          !  used = send_data(id_emino, emisz(:,:,n)*1.0e04*0.030/AVOGNO, Time_next, is_in=is,js_in=js)
+          !endif
          endif
          if (tracnam(n) == 'CO') then
            if (id_co_emis_cmip2 > 0) then
              used = send_data(id_co_emis_cmip2,emisz(:,:,n)*1.0e04*0.028/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
+           endif
+           if (id_emico > 0) then
+             used = send_data(id_emico, emisz(:,:,n)*1.0e04*0.028/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
          if (tracnam(n) == 'SO2') then
@@ -814,11 +822,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
              used = send_data(id_so2_emis_cmip2,emisz(:,:,n)*1.0e04*0.064/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
            endif
+           if (id_emiso2 > 0) then
+             used = send_data(id_emiso2, emisz(:,:,n)*1.0e04*0.064/AVOGNO, Time_next, is_in=is,js_in=js)
+           endif
          endif
          if (tracnam(n) == 'NH3') then
            if (id_nh3_emis_cmip2 > 0) then
              used = send_data(id_nh3_emis_cmip2,emisz(:,:,n)*1.0e04*0.017/AVOGNO,Time_next, &
                                                   is_in=is,js_in=js)
+           endif
+           if (id_eminh3 > 0) then
+             used = send_data(id_eminh3, emisz(:,:,n)*1.0e04*0.017/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
    end do
@@ -2203,6 +2217,22 @@ end if
    id_nh3_emis_cmip2 =     &
         register_diag_field( module_name, 'nh3_emis_cmip2', axes(1:2), &
                             Time, 'nh3_emis_cmip2', 'kg/m2/s')  
+   !---- register cmip-named variables ----
+   id_emico = register_cmip_diag_field_2d ( module_name, 'emico', Time, &
+                             'Total Emission Rate of CO', 'kg m-2 s-1', &
+               standard_name='tendency_of_atmosphere_mass_content_of_carbon_monoxide_due_to_emission')
+   id_emiso2 = register_cmip_diag_field_2d ( module_name, 'emiso2', Time, &
+                              'Total Emission Rate of SO2', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_emission')
+   id_eminh3 = register_cmip_diag_field_2d ( module_name, 'eminh3', Time, &
+                              'Total Emission Rate of NH3', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_emission')
+  !emino = eminox ???
+  !id_emino = register_cmip_diag_field_2d ( module_name, 'emino', Time, &
+  !                          'Total Emission Rate of NO', 'kg m-2 s-1', &
+  !            standard_name='tendency_of_atmosphere_mass_content_of_no_expressed_as_nitrogen_due_to_emission')
+   !----
+
 !--for Ox(jmao,1/1/2011)
    id_prodox = register_diag_field( module_name, 'Ox_prod', axes(1:3), &
         Time, 'Ox_prod','VMR/s')

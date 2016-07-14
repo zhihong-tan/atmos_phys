@@ -78,7 +78,7 @@ logical :: use_extra_levels = .true.  ! use more than the standard
 logical :: flip_cmip_levels = .true.  ! flip vertical model level output
                                       ! from bottom(surface) to top.
 
-integer :: verbose = 2                ! verbose level = 0,1,2
+integer :: verbose = 1                ! verbose level = 0,1,2
 
 namelist /atmos_cmip_diag_nml/ use_extra_levels, flip_cmip_levels, &
                                verbose

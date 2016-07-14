@@ -41,6 +41,7 @@ use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
                                        register_static_field,   &
                                        diag_manager_init, get_base_time
+use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
@@ -113,6 +114,11 @@ integer ::   id_so2_industry        = 0
 integer ::   id_so2_power           = 0
 integer ::   id_so2_off_road        = 0
 integer ::   id_so2_ff              = 0
+
+! cmip diagnostics
+integer ::   id_emidms              = 0
+integer ::   id_emiso2              = 0
+integer ::   id_emiso4              = 0
 
 logical :: do_MSA=.false.
 
@@ -954,6 +960,20 @@ integer :: n, m, nsulfate
                    'simpleH2O2 chemical production',                         &
                    'kgH2O2/m2/s')
 
+   !---- register cmip fields  ----
+   id_emidms = register_cmip_diag_field_2d ( mod_name, 'emidms', Time, &
+                           'Total Emission Rate of DMS', 'kg m-2 s-1', &
+             standard_name='tendency_of_atmosphere_mass_content_of_dimethyl_sulfide_due_to_emission')
+
+!  id_emiso2 = register_cmip_diag_field_2d ( mod_name, 'emiso2', Time, &
+!                          'Total Emission Rate of SO2', 'kg m-2 s-1', &
+!            standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_emission')
+
+   id_emiso4 = register_cmip_diag_field_2d ( mod_name, 'emiso4', Time, &
+                           'Total Emission Rate of SO4', 'kg m-2 s-1', &
+             standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_emission')
+   !----
+
    call write_version_number (version, tagname)
 
    module_is_initialized = .TRUE.
@@ -1363,6 +1383,9 @@ subroutine atmos_DMS_emission (lon, lat, area, ocn_flx_fraction, t_surf_rad, w10
         used = send_data ( id_DMS_emis_cmip, dms_emis, Time_next, &
               is_in=is,js_in=js )
       endif
+      if (id_emidms > 0) then
+        used = send_data ( id_emidms, dms_emis, Time_next, is_in=is,js_in=js )
+      endif
 
 end subroutine atmos_DMS_emission
 !#######################################################################
@@ -1424,13 +1447,14 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
         so2_emis_power, so2_emis_off_road, so2_emis_ff
 ! Input emission fields
       real, dimension(size(SO2_dt,1),size(SO2_dt,2)) :: &
-             SO2_ff1, SO2_ff2, SO4_ff1, SO4_ff2,&
+             SO2_ff1, SO2_ff2, SO4_ff1, SO4_ff2,        &
              SO2_RoadTransport,                         &
              SO2_Off_road,                              &
              SO2_Domestic,                              &
              SO2_Industry,                              &
              SO2_Ship, SO4_ship,                        &
-             SO2_Powerplants
+             SO2_Powerplants,                           &
+             emis2d
       real, dimension(size(SO2_dt,1),size(SO2_dt,2),num_volc_levels) :: &
              SO2_cont_volc,                             &
              SO2_expl_volc
@@ -1455,7 +1479,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       real, parameter :: fe = 0.025
 
       real :: z1, z2, bltop, fbt, del
-      integer  :: i, j, l, id, jd, kd, il, lf
+      integer  :: i, j, l, id, jd, kd, il, lf, k
       integer :: ivolc_lev
 
       id=size(SO2_dt,1); jd=size(SO2_dt,2); kd=size(SO2_dt,3)
@@ -1844,6 +1868,23 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       if (id_so4_emis > 0) then
         used = send_data ( id_so4_emis, so4_emis*WTM_S/WTM_so4, diag_time, &
               is_in=is,js_in=js,ks_in=1)
+      endif
+
+      !---- cmip fields ----
+      ! should vertical integral be pressure-weighted?
+      if (id_emiso2 > 0) then
+        emis2d = 0.0
+        do k = 1, size(so2_emis,3)
+          emis2d(:,:) = emis2d(:,:) + so2_emis(:,:,k)
+        enddo
+        used = send_data ( id_emiso2, emis2d, diag_time, is_in=is,js_in=js)
+      endif
+      if (id_emiso4 > 0) then
+        emis2d = 0.0
+        do k = 1, size(so4_emis,3)
+          emis2d(:,:) = emis2d(:,:) + so4_emis(:,:,k)
+        enddo
+        used = send_data ( id_emiso4, emis2d, diag_time, is_in=is,js_in=js)
       endif
 
 end subroutine atmos_SOx_emission

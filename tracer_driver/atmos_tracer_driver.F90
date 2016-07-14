@@ -324,7 +324,7 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
-            id_drynh4, id_drybc, id_drypoa
+            id_drynh4, id_drybc, id_drypoa, id_drysoa
 !-----------------------------------------------------------------------
 type(time_type) :: Time
 
@@ -728,6 +728,9 @@ character(len=32) :: tracer_units, tracer_name
         used = send_data (id_drynh3, 0.017*1.e3*pwt(:,:,kd)*dsinku(:,:,nNH3_cmip)/WTMAIR, &
                           Time_next, is_in=is, js_in=js)
       endif
+      if (id_drysoa > 0 .and. nSOA > 0) then
+        used = send_data (id_drysoa, pwt(:,:,kd)*dsinku(:,:,nSOA), Time_next, is_in=is, js_in=js)
+      endif
 
       if (id_drynh4 > 0 .and. nNH4NO3 > 0 .and. nNH4 > 0) then  ! same as nh4_ddep_cmip
         used  = send_data (id_drynh4,  &
@@ -739,7 +742,7 @@ character(len=32) :: tracer_units, tracer_name
            pwt(:,:,kd)*(dsinku(:,:,nbcphilic) + dsinku(:,:,nbcphobic)),  &
                                                Time_next, is_in=is, js_in=js)
       endif
-      if (id_drypoa > 0 .and. nomphilic > 0 .and. nomphobic > 0) then  ! same as om_ddep
+      if (id_drypoa > 0 .and. nomphilic > 0 .and. nomphobic > 0) then
         used  = send_data (id_drypoa,  &
             pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic)),  &
                                      Time_next, is_in=is, js_in=js)
@@ -1589,32 +1592,36 @@ type(time_type), intent(in)                                :: Time
                    standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
 
       id_dryso2 = register_cmip_diag_field_2d ( mod_name, &
-                     'dryso2', Time, 'Dry Deposition Rate of SO2', &
+                     'dryso2', Time, 'Dry Deposition Rate of SO2', 'kg m-2 s-1', &
                      standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_dry_deposition')
 
       id_dryso4 = register_cmip_diag_field_2d ( mod_name, &
-                    'dryso4', Time, 'Dry Deposition Rate of SO4', &
+                    'dryso4', Time, 'Dry Deposition Rate of SO4', 'kg m-2 s-1', &
                     standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_dry_deposition')
 
       id_drydms = register_cmip_diag_field_2d ( mod_name, &
-                    'drydms', Time, 'Dry Deposition Rate of DMS', &
+                    'drydms', Time, 'Dry Deposition Rate of DMS', 'kg m-2 s-1', &
                     standard_name='tendency_of_atmosphere_mass_content_of_dimethyl_sulfide_due_to_dry_deposition')
 
       id_drynh3 = register_cmip_diag_field_2d ( mod_name, &
-                    'drynh3', Time, 'Dry Deposition Rate of NH3', &
+                    'drynh3', Time, 'Dry Deposition Rate of NH3', 'kg m-2 s-1', &
                     standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_dry_deposition')
 
       id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
-                  'drynh4', Time, 'Dry Deposition Rate of NH4', &
+                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_due_to_dry_deposition')
 
       id_drybc = register_cmip_diag_field_2d ( mod_name, &
-                  'drybc', Time, 'Dry Deposition Rate of Black Carbon Aerosol Mass', &
+                  'drybc', Time, 'Dry Deposition Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_due_to_dry_deposition')
 
       id_drypoa = register_cmip_diag_field_2d ( mod_name, &
-                  'drypoa', Time, 'Dry Deposition Rate of Dry Aerosol Primary Organic Matter', &
+                  'drypoa', Time, 'Dry Deposition Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_dry_deposition')
+
+      id_drysoa = register_cmip_diag_field_2d ( mod_name, &
+                  'drysoa', Time, 'Dry Deposition Rate of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_due_to_dry_deposition')
       !----
 
 !<f1p: tracer diagnostics
