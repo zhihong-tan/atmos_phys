@@ -693,7 +693,7 @@ module MO_FASTJX_MOD
     subroutine fastjx_photo                                             &
           (U0, SOLF, phalf1, zhalf1, pfull1, tfull, XO3, pwt,           &
            lwc, cloudsf, REFLB, aerop, aeron,o3_column_top, ZPJ, Time,  & 
-           trop_option)
+           time_varying_solarflux)
 !-----------------------------------------------------------------------
 !  fastJX version 7.2 (f90) - Prather notes (Jan 2013)
 
@@ -776,6 +776,7 @@ module MO_FASTJX_MOD
                                                                       !for aerosol type info 
       real*8,  intent(in)                   ::  cloudsf(:,:)          !Clouds fraction
       real*8,  intent(in)                   ::  lwc(:,:)              !(L_,ncloud=2)grid averaged liquid water content (Kg/Kg) 
+      logical, intent(in)                   ::  time_varying_solarflux    ! solar cycle on fastjx?
 !---reports out the JX J-values, upper level program converts to CTM chemistry J's
 !      real*8, intent(out), dimension(L1_-1,NJXU)::  VALJXX
       real*8, intent(out), dimension(L1_-1,NJX_)::  ZPJ
@@ -797,7 +798,6 @@ module MO_FASTJX_MOD
       real*8, dimension(W_,L1_)             ::  FFX
       real*8, dimension(W_,8)               ::  FFXNET
       logical  :: LPRTJ                   ! set to false
-      type(tropchem_opt),  intent(in) :: trop_option
 
 !---flux/heating arrays (along with FJFLX,FLXD,FLXD0)
       real*8             :: FLXJ(L1_),FFX0,FXBOT,FABOT
@@ -825,7 +825,7 @@ module MO_FASTJX_MOD
       integer :: yr, mo, day, hr, minute, sec
       real*8                 :: solar_constant
       real*8, dimension(18)  :: solflxband_now
-      if(trop_option%time_varying_solarflux) then
+      if(time_varying_solarflux) then
          call get_date(Time,yr,mo,day,hr,minute,sec)  !model GMT
          call get_solar_data(yr, mo, solar_constant, solflxband_now)
          FL = solflxband_now

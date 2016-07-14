@@ -432,8 +432,9 @@ logical                       :: module_is_initialized = .false.
                          zi,&
                          pwt , &
                          sh, &
-                         r &            
-                          )
+                         r, &            
+                         Time, & 
+                         trop_option%time_varying_solarflux)
          end if
    call mpp_clock_end(photo_clock_id)
 

@@ -18,6 +18,7 @@
       use field_manager_mod,    only : MODEL_ATMOS       
       use MO_FASTJX_MOD,        only : JVN_, fastjx_init, fastjx_end, fastjx_photo
       use sat_vapor_pres_mod, only : compute_qs      
+      use tropchem_types_mod, only : tropchem_opt
          
       implicit none
       private
@@ -457,7 +458,9 @@
                          zhalf,&
                          pwt , &
                          qfld, &
-                         r  )
+                         r,    &
+                         Time, &
+                         time_varying_solarflux  )
 
       use CHEM_MODS_MOD, only : ncol_abs, phtcnt
       use time_manager_mod, only : time_type      
@@ -490,6 +493,7 @@
                              qfld(:,:), &              ! specific humnidity (Kg/Kg)
                              r(:,:,:)                  ! tracers' concentrtaions             
       real,   intent(out) :: photos(:,:,:)             ! photodissociation rates (s-1)
+      logical, intent(in) :: time_varying_solarflux    ! solar cycle on fastjx?
 !-----------------------------------------------------------------
 !            ... Local variables
 !-----------------------------------------------------------------
@@ -658,7 +662,9 @@
                               aerop(i,:,:), &
                               aeron(i,:,:), &
                               o3_column_top, &
-                              prates )
+                              prates, &
+                              Time,   &
+                              time_varying_solarflux)
 !             print*,'STEP TWO', i
 !             do m=1, jdim
 !                if(coszen(i) .gt. 0d0 ) then
