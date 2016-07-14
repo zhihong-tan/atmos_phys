@@ -18,7 +18,6 @@
       use field_manager_mod,    only : MODEL_ATMOS       
       use MO_FASTJX_MOD,        only : JVN_, fastjx_init, fastjx_end, fastjx_photo
       use sat_vapor_pres_mod, only : compute_qs      
-      use tropchem_types_mod, only : tropchem_opt
          
       implicit none
       private
@@ -470,7 +469,7 @@
 !-----------------------------------------------------------------
 !           ... Dummy arguments
 !-----------------------------------------------------------------
-!      type(time_type), intent(in) :: Time             ! time
+      type(time_type), intent(in) :: Time             ! time
       integer, intent(in) :: plonl, j_ndx              ! lat index
       logical, intent(in) :: use_lsc_in_fastjx         ! are lsc clouds
                                                        ! seen in fastjx ?
