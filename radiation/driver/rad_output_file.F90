@@ -21,7 +21,7 @@ use fms_mod,           only: open_namelist_file, fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
                              file_exist, write_version_number, &
                              check_nml_error, error_mesg, &
-                             FATAL, NOTE, close_file, string
+                             FATAL, NOTE, close_file, string, lowercase
 use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
@@ -173,9 +173,10 @@ integer                            :: id_radswp, id_radp, id_temp, &
                                       id_dphalf, id_dpflux, &
                                       id_ptop
 
-type(cmip_diag_id_type)  :: ID_tro3, ID_ec550aer, ID_concso4
-integer                  :: id_loadso4, id_sconcso4, &
+type(cmip_diag_id_type)  :: ID_tro3, ID_ec550aer, ID_concso4, ID_concsoa
+integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, &
                             id_od550aer, id_od550lt1aer, id_abs550aer, id_od870aer
+type(cmip_diag_id_type)  :: ID_pfull, ID_phalf
 
 ! cmip names for select tracer families
 ! also partial long_names and standard_names
@@ -197,7 +198,7 @@ character(len=64), dimension(6) :: cmip_stdnames = &
 !---------------------------------------------------------------------
 !    miscellaneous variables
 !---------------------------------------------------------------------
-integer :: nso4, naero, npm25, nvis, n870
+integer :: nso4, nsoa, naero, npm25, nvis, n870
 integer :: naerosol=0                      ! number of active aerosols
 logical :: module_is_initialized= .false.  ! module initialized ?
 integer, parameter              :: N_DIAG_BANDS = 10
@@ -987,6 +988,16 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
         if (id_phalfm > 0 ) then
           used = send_data (id_phalfm, phalf, Time_diag, is, js, 1)
         endif
+
+       !---- cmip named diagnostics ----
+        if (query_cmip_diag_id(ID_pfull)) then
+          used = send_cmip_data_3d (ID_pfull, press, Time_diag, is, js, 1)
+        endif
+
+        if (query_cmip_diag_id(ID_phalf)) then
+          used = send_cmip_data_3d (ID_phalf, phalf, Time_diag, is, js, 1)
+        endif
+       !----
  
         if (id_pfluxm > 0 ) then
           used = send_data (id_pfluxm, pflux, Time_diag, is, js, 1)
@@ -1052,8 +1063,9 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
                        (96./132.)*Aerosol%aerosol(:,:,:,nso4)/  &
                                    deltaz(:,:,:), Time_diag, is, js,1)
             endif
-            ! send cmip named fields
-            if (id_loadso4 > 0) then
+
+            !---- send cmip named fields ----
+            if (id_loadso4 > 0) then ! units = vmr
               used = send_data (id_loadso4, (96./132.)*aerosol_col(:,:,nso4), Time_diag, is, js)
             endif
             if (query_cmip_diag_id(ID_concso4)) then
@@ -1063,6 +1075,19 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
             if (id_sconcso4 > 0) then
               used = send_data (id_sconcso4, (96./132.)*Aerosol%aerosol(:,:,kerad,nso4)/deltaz(:,:,kerad), Time_diag, is, js)
             endif
+
+            if (nsoa > 0) then ! units = mmr
+              if (id_loadsoa > 0) then
+                used = send_data (id_loadsoa, aerosol_col(:,:,nsoa), Time_diag, is, js)
+              endif
+              if (query_cmip_diag_id(ID_concsoa)) then
+                used = send_cmip_data_3d (ID_concsoa, Aerosol%aerosol(:,:,:,nsoa)/deltaz(:,:,:), Time_diag, is, js, 1)
+              endif
+              if (id_sconcsoa > 0) then
+                used = send_data (id_sconcsoa, Aerosol%aerosol(:,:,kerad,nsoa)/deltaz(:,:,kerad), Time_diag, is, js)
+              endif
+            endif
+            !----
 
 !           if (Aerosolrad_control%do_swaerosol) then
           do n = 1,naerosol
@@ -1539,6 +1564,16 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                            'model interface level pressure', &
                            'Pa', missing_value=missing_value)
 
+     !---- cmip named diagnostics ----
+      ID_pfull = register_cmip_diag_field_3d (mod_name, 'pfull', Time, &
+                                     'Pressure on Model Levels', 'Pa', &
+                                      standard_name = 'air_pressure')
+
+      ID_phalf = register_cmip_diag_field_3d (mod_name, 'phalf', Time, &
+                                'Pressure on Model Half-Levels', 'Pa', &
+                              standard_name='air_pressure', axis="half")
+     !----
+
       id_pfluxm  = &
           register_diag_field (mod_name, 'pfluxm', bxes(1:3), Time, &
                            'radiation flux level pressures', &
@@ -1615,23 +1650,49 @@ logical,                        intent(in) :: volcanic_sw_aerosols
              register_diag_field (mod_name, 'sulfate_cmip',  &
                             axes(1:3), Time, 'sulfate_cmip',&
                                   'kg/m3', missing_value=missing_value)
-        ! using cmip named fields
-        id_loadso4 = register_cmip_diag_field_2d (mod_name, 'loadso4',  &
+
+        nso4 = 0
+        nsoa = 0
+        do n = 1, naerosol                           
+          aerosol_column_names(n) = TRIM(names(n) ) // "_col"
+          if (lowercase(TRIM(names(n))) == 'so4')      nso4 = n
+          if (lowercase(TRIM(names(n))) == 'omphilic') nsoa = n
+          ! DEBUG
+         !call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(n)))//', nsoa='//TRIM(string(nsoa)),NOTE)
+        end do
+
+        ! register cmip named fields
+        if (nso4 > 0) then
+          id_loadso4 = register_cmip_diag_field_2d (mod_name, 'loadso4',  &
                                          Time, 'Load of SO4', 'kg m-2', &
                         standard_name='atmosphere_mass_content_of_sulfate_dry_aerosol')
-        ID_concso4 = register_cmip_diag_field_3d (mod_name, 'concso4', Time, &
+          ID_concso4 = register_cmip_diag_field_3d (mod_name, 'concso4', Time, &
                             'Concentration of SO4', 'kg m-3', &
                         standard_name='mass_concentration_of_sulfate_dry_aerosol_in_air')
-        id_sconcso4 = register_cmip_diag_field_2d (mod_name, 'sconcso4', Time, &
+          id_sconcso4 = register_cmip_diag_field_2d (mod_name, 'sconcso4', Time, &
                                      'Surface Concentration of SO4', 'kg m-3', &
                         standard_name='mass_concentration_of_sulfate_dry_aerosol_in_air')
+        else
+          id_loadso4 = 0
+          id_sconcso4 = 0
+        endif
 
-        do n = 1,naerosol                           
-          aerosol_column_names(n) = TRIM(names(n) ) // "_col"
-          if (TRIM(names(n)) == 'so4') then
-            nso4 = n
-          endif
-        end do
+        if (nsoa > 0) then
+          id_loadsoa = register_cmip_diag_field_2d (mod_name, 'loadsoa', Time,  &
+                                    'Load of Dry Aerosol Secondary Organic Matter', 'kg m-2', &
+                    standard_name='atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol')
+          id_sconcsoa = register_cmip_diag_field_2d (mod_name, 'sconcsoa', Time,  &
+                               'Surface Concentration of Dry Aerosol Secondary Organic Matter', 'kg m-3', &
+                          standard_name='mass_concentration_of_secondary_particulate_organic_matter_dry_aerosol_in_air')
+          ID_concsoa  = register_cmip_diag_field_3d (mod_name, 'concsoa', Time,  &
+                               'Concentration of Dry Aerosol Secondary Organic Matter', 'kg m-3', &
+                          standard_name='mass_concentration_of_secondary_particulate_organic_matter_dry_aerosol_in_air')
+        else
+          id_loadsoa = 0
+          id_sconcsoa = 0
+        endif
+
+        !---- register tracer/aerosol diagnostics ----
         do n = 1,naerosol
           id_aerosol(n)    = &
              register_diag_field (mod_name, TRIM(names(n)), axes(1:3), &
@@ -1730,15 +1791,16 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                       TRIM(aerosol_fam_column_names(n)), &
                       'kg/m2', missing_value=missing_value)
 
-          ! cmip diagnostic fields (load, sconc, conc)
+          !---- cmip diagnostic fields (load, sconc, conc) ----
           ncmip = 0
           if (TRIM(family_names(n)) .eq. 'organic_carbon') ncmip = 1
           if (TRIM(family_names(n)) .eq. 'POA')            ncmip = 2
-          if (TRIM(family_names(n)) .eq. 'SOA')            ncmip = 3
+          if (TRIM(family_names(n)) .eq. 'SOA' .and. &
+                               nsoa .eq. 0 )               ncmip = 3
           if (TRIM(family_names(n)) .eq. 'black_carbon')   ncmip = 4
           if (TRIM(family_names(n)) .eq. 'dust')           ncmip = 5
           if (TRIM(family_names(n)) .eq. 'sea_salt')       ncmip = 6
-          call error_mesg('rad_output_file_mod','family_names='//TRIM(family_names(n))//', ncmip='//TRIM(string(ncmip)),NOTE)
+          call error_mesg('rad_output_file_mod','family_name='//TRIM(family_names(n))//', ncmip='//TRIM(string(ncmip)),NOTE)
           if (ncmip > 0) then
             cmip_family_mapping(ncmip) = n
             id_cmipload(ncmip) = register_cmip_diag_field_2d (mod_name, 'load'//TRIM(cmip_names(ncmip)), &
@@ -1751,6 +1813,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                                  Time, 'Concentration of '//TRIM(cmip_longnames(ncmip)), 'kg m-3', &
                           standard_name='mass_concentration_of_'//TRIM(cmip_stdnames(ncmip))//'_dry_aerosol_in_air')
           endif
+          !----
 
         end do
         deallocate (aerosol_fam_column_names)

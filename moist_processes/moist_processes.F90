@@ -305,7 +305,7 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_ci, &
            id_tdt_ls  , id_qdt_ls  , id_prec_ls  , id_snow_ls  , &
            id_precip  , id_WVP, id_LWP, id_IWP, id_AWP, id_gust_conv, &
-           id_pr, id_prw, id_prc, id_prrc, id_prsn, &
+           id_pr, id_prw, id_prc, id_prrc, id_prsn, id_prsnc, &
            id_clt,   &
            id_tot_cloud_area,  id_tot_liq_amt,  id_tot_ice_amt,  &
            id_tot_h2o, id_tot_vapor, &
@@ -2203,6 +2203,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    frozen precipitation (snow) due to convection:
 !---------------------------------------------------------------------
    used = send_data (id_snow_conv, fprec, Time, is, js)
+   used = send_data (id_prsnc, fprec, Time, is, js)
 
 !---------------------------------------------------------------------
 !    liquid precipitation (rain) due to convection:
@@ -4516,6 +4517,12 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      area=area_id, &
      missing_value = CMOR_MISSING_VALUE, &
      interp_method = "conserve_order1" )
+
+   id_prsnc = register_diag_field ( mod_name, 'prsnc', axes(1:2), Time, &
+                            'Convective Snowfall Flux', 'kg m-2 s-1', &
+                            standard_name='convective_snowfall_flux', &
+                            area=area_id, missing_value=CMOR_MISSING_VALUE, &
+                            interp_method="conserve_order1" )
 
    id_conv_freq = register_diag_field ( mod_name, &
      'conv_freq', axes(1:2), Time, &
