@@ -39,7 +39,7 @@ public do_seasalt, n_seasalt_tracers, seasalt_tracers
 !---- version number -----
 character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
-character(len=6), parameter :: module_name = 'tracer'
+character(len=7), parameter :: module_name = 'tracers'
 
 ! data type to hold the individual seasalt tracer parameters
 type :: seasalt_data_type
@@ -187,12 +187,12 @@ subroutine atmos_sea_salt_sourcesink ( lon, lat, ocn_flx_fraction, pwt, &
      endif
 
      ! Accumulate total emission and deposition fluxes for output
-     if (id_seasalt_ddep > 0) then
+     if (id_seasalt_ddep > 0 .or. id_dryss > 0) then
         ! accumulate total seasalt deposition flux
         all_seasalt_setl(:,:) = all_seasalt_setl(:,:) &
                + seasalt_setl(:,:) + pwt(:,:,kd)*dsinku(:,:,nseasalt) ! shouldn't kd be kbot?
      endif
-     if (id_seasalt_emis > 0) then
+     if (id_seasalt_emis > 0 .or. id_emiss > 0) then
         ! accumulate total seasalt emission flux
         all_seasalt_emis(:,:) = all_seasalt_emis(:,:) + seasalt_emis(:,:) 
      endif

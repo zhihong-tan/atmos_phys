@@ -47,7 +47,7 @@ public  atmos_dust_sourcesink, atmos_dust_init, atmos_dust_end, &
 
 public do_dust, n_dust_tracers, dust_tracers
 
-character(len=6), parameter :: module_name = 'tracer'
+character(len=7), parameter :: module_name = 'tracers'
 
 ! data type to hold the individual dust tracer parameters
 type :: dust_data_type

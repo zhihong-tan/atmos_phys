@@ -58,7 +58,7 @@ integer :: id_emisbb, id_omemisbb_col
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
 integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisoc
 integer :: id_bc_tau
-integer :: id_emibc, id_emipoa ! cmip
+integer :: id_emibc, id_emipoa, id_emibb ! cmip
 
 integer :: id_SOA_prod           = 0
 !----------------------------------------------------------------------
@@ -862,7 +862,7 @@ real, parameter                            :: yield_soa = 0.1
         if (id_bc_emis_colv2 > 0) then
             used = send_data ( id_bc_emis_colv2, bc_emis, diag_time, is_in=is,js_in=js )
         endif
-        if (id_emibc > 0) then
+        if (id_emibc > 0) then ! cmip field
             used = send_data ( id_emibc, bc_emis, diag_time, is_in=is,js_in=js )
         endif
       endif
@@ -878,11 +878,15 @@ real, parameter                            :: yield_soa = 0.1
         if (id_om_emis_colv2 > 0) then
           used = send_data ( id_om_emis_colv2, om_emis, diag_time, is_in=is,js_in=js)
         endif
-        if (id_emipoa > 0) then
+        if (id_emipoa > 0) then ! cmip field
           used = send_data ( id_emipoa, om_emis, diag_time, is_in=is,js_in=js)
         endif
       endif
 
+      ! cmip field: same as emisbb
+      if (id_emibb > 0) then
+        used = send_data ( id_emibb, emisob, diag_time, is_in=is,js_in=js)
+      endif
 !-----------------------------------------------------------------
 
       if (id_bcphob_emis > 0) then
@@ -1291,12 +1295,17 @@ integer ::  unit, ierr, io, logunit
                     'bc_tau', axes(1:3),Time,                 &
                     'bcphob aging lifetime', 'days' )
 
+    ! cmip fields
      id_emibc = register_cmip_diag_field_2d ( mod_name, 'emibc', Time, &
                      'Emission Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
                      standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_due_to_emission')
 
      id_emipoa = register_cmip_diag_field_2d ( mod_name, 'emipoa', Time, &
                      'Emission Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
+
+     id_emibb = register_cmip_diag_field_2d ( mod_name, 'emibb', Time, &
+                     'Total Emission of Primary Aerosol from Biomass Burning', 'kg m-2 s-1', &
                      standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
 
 !----------------------------------------------------------------------
