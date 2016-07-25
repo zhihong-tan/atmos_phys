@@ -286,6 +286,7 @@ namelist /tropchem_driver_nml/    &
 	                       solar_flux_bugfix, &
                                e90_tropopause_vmr, &                               
                                aerosol_thermo_method, &
+                               het_chem_type, &
                                gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
                                do_h2so4_nucleation, &
                                check_convergence, &
