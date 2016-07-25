@@ -2033,7 +2033,7 @@ end if
          
    end do
   
-
+!move CO2 input out of the loop of "do i = 1,pcnstm1", 2016-07-25
 !fp
 !CO2           
       if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
