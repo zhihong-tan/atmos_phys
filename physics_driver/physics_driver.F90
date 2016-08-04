@@ -360,6 +360,7 @@ real,    dimension(:,:,:), allocatable :: radturbten
 real,    dimension(:,:)  , allocatable :: pbltop, cush, cbmf, hmint, cgust !miz 
 real,    dimension(:,:)  , allocatable :: tke, pblhto, rkmo, taudpo        !miz
 integer, dimension(:,:,:), allocatable :: exist_shconv, exist_dpconv       !miz
+real,    dimension(:,:,:), allocatable :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev !miz
 
 logical, dimension(:,:)  , allocatable :: convect
 
@@ -756,6 +757,12 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       allocate ( taudpo     (id, jd) )     ; taudpo=28800.    !miz
       allocate ( exist_shconv(id, jd,48) ) ; exist_shconv = 0 !miz
       allocate ( exist_dpconv(id, jd,48) ) ; exist_dpconv = 0 !miz
+      allocate ( pblht_prev  (id, jd,48) ) ; pblht_prev   = 0.!miz
+      allocate ( hlsrc_prev  (id, jd,48) ) ; hlsrc_prev   = 0.!miz
+      allocate ( qtsrc_prev  (id, jd,48) ) ; qtsrc_prev   = 0.!miz
+      allocate ( cape_prev   (id, jd,48) ) ; cape_prev    = 0.!miz
+      allocate ( cin_prev    (id, jd,48) ) ; cin_prev     = 0.!miz
+      allocate ( tke_prev    (id, jd,48) ) ; tke_prev     = 0.!miz
       allocate ( convect    (id, jd) )     ; convect = .false.
       allocate ( radturbten (id, jd, kd))  ; radturbten = 0.0
       allocate ( r_convect  (id, jd) )     ; r_convect   = 0.0
@@ -857,6 +864,12 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       write(outunit,100) 'taudpo                 ', mpp_chksum(taudpo                )
       write(outunit,100) 'exist_shconv           ', mpp_chksum(exist_shconv          )
       write(outunit,100) 'exist_dpconv           ', mpp_chksum(exist_dpconv          )
+      write(outunit,100) 'pblht_prev             ', mpp_chksum(pblht_prev            )
+      write(outunit,100) 'hlsrc_prev             ', mpp_chksum(hlsrc_prev            )
+      write(outunit,100) 'qtsrc_prev             ', mpp_chksum(qtsrc_prev            )
+      write(outunit,100) 'cape_prev              ', mpp_chksum(cape_prev             )
+      write(outunit,100) 'cin_prev               ', mpp_chksum(cin_prev              )
+      write(outunit,100) 'tke_prev               ', mpp_chksum(tke_prev              )
       write(outunit,100) 'diff_t                 ', mpp_chksum(diff_t                )
       write(outunit,100) 'diff_m                 ', mpp_chksum(diff_m                )
       write(outunit,100) 'r_convect              ', mpp_chksum(r_convect             )
@@ -1997,7 +2010,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       integer :: flag_ls, flag_cc
       integer :: kmax
       logical :: used
-      logical :: hydrostatic, phys_hydrostatic
+      logical :: hydrostatic, phys_hydrostatic, do_uni_zfull  !miz
       integer :: istrat, icell, imeso, ishallow
 
 ! save the temperature and moisture tendencies from sensible and latent heat fluxes
@@ -2050,6 +2063,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       rdiag => Physics_tendency_block%qdiag
       hydrostatic = Physics_control%hydrostatic
       phys_hydrostatic = Physics_control%phys_hydrostatic
+      do_uni_zfull = Physics_control%do_uni_zfull
 
 !---------------------------------------------------------------------
 !    verify that the module is initialized.
@@ -2194,6 +2208,8 @@ real,dimension(:,:),    intent(inout)             :: gust
 	   tke(is:ie,js:je),  pblhto(is:ie,js:je), rkmo(is:ie,js:je), &!miz
 	   taudpo(is:ie,js:je),                                       &!miz
            exist_shconv(is:ie,js:je,:), exist_dpconv(is:ie,js:je,:),  &!miz
+           pblht_prev(is:ie,js:je,:), hlsrc_prev(is:ie,js:je,:),qtsrc_prev(is:ie,js:je,:), &!miz
+           cape_prev (is:ie,js:je,:), cin_prev  (is:ie,js:je,:),tke_prev  (is:ie,js:je,:), &!miz
            pbltop(is:ie,js:je), u_star, b_star, q_star, shflx, lhflx, &!miz
            t,   r(:,:,:,1),   r,    u,  v,  w,             &
            tm,  rm(:,:,:,1),  rm,   um, vm,                &
@@ -2256,8 +2272,14 @@ real,dimension(:,:),    intent(inout)             :: gust
                            taudpo         (is:ie,js:je),             &!miz
                            exist_shconv   (is:ie,js:je,:),           &
                            exist_dpconv   (is:ie,js:je,:),           &
-                            pbltop(is:ie,js:je),         &!miz
-                            u_star, b_star, q_star, shflx, lhflx,    &!miz
+                           pblht_prev     (is:ie,js:je,:),           &!miz
+                           hlsrc_prev     (is:ie,js:je,:),           &!miz
+                           qtsrc_prev     (is:ie,js:je,:),           &!miz
+                           cape_prev      (is:ie,js:je,:),           &!miz
+                           cin_prev       (is:ie,js:je,:),           &!miz
+                           tke_prev       (is:ie,js:je,:),           &!miz
+                           pbltop(is:ie,js:je),                      &!miz
+                           u_star, b_star, q_star, shflx, lhflx,     &!miz
                            t,   r(:,:,:,1),   r,    u,  v,  w,         &
                            tm,  rm(:,:,:,1),  rm,   um, vm,            &
                            tdt, rdt(:,:,:,1), rdt, rdiag, udt, vdt,    &
@@ -2315,7 +2337,13 @@ real,dimension(:,:),    intent(inout)             :: gust
                             taudpo         (is:ie,js:je),             &!miz
                             exist_shconv   (is:ie,js:je,:),           &!
                             exist_dpconv   (is:ie,js:je,:),           &!
-                            pbltop(is:ie,js:je),         &!miz
+                            pblht_prev     (is:ie,js:je,:),           &!miz
+                            hlsrc_prev     (is:ie,js:je,:),           &!miz
+                            qtsrc_prev     (is:ie,js:je,:),           &!miz
+                            cape_prev      (is:ie,js:je,:),           &!miz
+                            cin_prev       (is:ie,js:je,:),           &!miz
+                            tke_prev       (is:ie,js:je,:),           &!miz
+                            pbltop(is:ie,js:je),                      &!miz
                             u_star, b_star, q_star, shflx, lhflx,     &!miz
                             t,   r(:,:,:,1),   r,    u,  v,  w,         &
                             tm,  rm(:,:,:,1),  rm,   um, vm,            &
@@ -2365,7 +2393,13 @@ real,dimension(:,:),    intent(inout)             :: gust
                            taudpo         (is:ie,js:je),             &!miz
                            exist_shconv   (is:ie,js:je,:),           &!
                            exist_dpconv   (is:ie,js:je,:),           &!
-                            pbltop(is:ie,js:je),         &!miz
+                           pblht_prev     (is:ie,js:je,:),           &!miz
+                           hlsrc_prev     (is:ie,js:je,:),           &!miz
+                           qtsrc_prev     (is:ie,js:je,:),           &!miz
+                           cape_prev      (is:ie,js:je,:),           &!miz
+                           cin_prev       (is:ie,js:je,:),           &!miz
+                           tke_prev       (is:ie,js:je,:),           &!miz
+                            pbltop(is:ie,js:je),                     &!miz
                             u_star, b_star, q_star, shflx, lhflx,    &!miz
                             t,   r(:,:,:,1),   r,    u,  v,  w,         &
                             tm,  rm(:,:,:,1),  rm,   um, vm,            &
@@ -2862,7 +2896,9 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !    deallocate the module variables.
 !---------------------------------------------------------------------
       deallocate (diff_cu_mo, diff_t, diff_m, pbltop,  hmint, cush, cbmf, cgust, tke, pblhto,&
-                  rkmo, taudpo, exist_shconv, exist_dpconv, convect, radturbten, r_convect)
+                  rkmo, taudpo, exist_shconv, exist_dpconv,         &
+		  pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+		  convect, radturbten, r_convect)
       deallocate (fl_lsrain, fl_lssnow, fl_lsgrpl, fl_ccrain, fl_ccsnow, &
                   fl_donmca_snow, fl_donmca_rain, &
                   temp_last, q_last)
@@ -3123,6 +3159,12 @@ subroutine physics_driver_register_restart (Restart)
   id_restart = register_restart_field(Til_restart, fname, 'taudpo',     taudpo, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'exist_shconv', exist_shconv, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'exist_dpconv', exist_dpconv, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'pblht_prev',   pblht_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'hlsrc_prev',   hlsrc_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'qtsrc_prev',   qtsrc_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'cape_prev',    cape_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'cin_prev',     cin_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'tke_prev',     tke_prev, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'diff_t',     diff_t)
   id_restart = register_restart_field(Til_restart, fname, 'diff_m',     diff_m)
   id_restart = register_restart_field(Til_restart, fname, 'convect',    r_convect) 

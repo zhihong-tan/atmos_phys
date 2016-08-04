@@ -88,6 +88,7 @@ contains
     dpn % do_hlflx_zero      = cpn % do_hlflx_zero
     dpn % do_varying_rpen    = cpn % do_varying_rpen
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
+    dpn % do_new_subflx      = cpn % do_new_subflx
     dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_new_pevap       = cpn % do_new_pevap
     dpn % stop_at_let        = cpn % stop_at_let
@@ -147,6 +148,7 @@ contains
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
     dpn % scaleh0            = cpn % scaleh0
+    dpn % beta               = cpn % beta
 
   end subroutine cpn_copy
 
@@ -500,11 +502,157 @@ contains
   end subroutine dpconv2
 !#####################################################################
 !#####################################################################
-
-
 !#####################################################################
 !#####################################################################
   subroutine dpconv3(dpc, dpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, &
+                     rkm_dp, cbmf_deep, sd1, ac1, cp1, ct1, ocode, &
+                     taudp, dcwfndm, dcapedm, cwfn, lat, lon, ier, ermesg)
+    implicit none
+
+    type(deepc),     intent(inout)  :: dpc
+    type(cpnlist),   intent(inout)  :: dpn
+    type(uw_params), intent(inout)  :: Uw_p
+    type(sounding),  intent(inout)  :: sd
+    type(adicloud),  intent(inout)  :: ac
+    type(cclosure),  intent(in)     :: cc
+    logical,         intent(in)     :: do_coldT
+    logical,         intent(in)     :: do_ice
+    type(cplume),    intent(inout)  :: cp
+    type(ctend),     intent(inout)  :: ct
+    real,            intent(inout)  :: rkm_dp, cbmf_deep
+    type(sounding),  intent(inout)  :: sd1
+    type(adicloud),  intent(inout)  :: ac1
+    type(cplume),    intent(inout)  :: cp1
+    type(ctend),     intent(inout)  :: ct1
+    real,            intent(inout)  :: ocode, taudp, dcwfndm, dcapedm
+    real,            intent(out)    :: cwfn
+    real,            intent(in)     :: lat, lon
+    integer,            intent(out) :: ier
+    character(len=256), intent(out) :: ermesg
+
+    real          :: zcldtop, wrel, wrel0, cbmf0, cwfn_new, cwfn_th, cbmf_max, tmp, ufrc
+    integer       :: ksrc, k, let, krel
+    real          :: latx, lonx, lat1b, lat1e, lon1b, lon1e, lat2b, lat2e, lon2b, lon2e
+    real          :: zsrc, psrc, thcsrc, qctsrc, hlsrc, lofactor, cape_av
+
+    ier = 0
+    ermesg = ' '
+    cwfn = 0.; dcwfndm=0.; dcapedm=0.; wrel0=0.1; lofactor=1.0;
+    taudp = dpc%tau_dp;
+
+    if ( cbmf_deep.eq.0 ) then
+       ocode=6; return
+    end if
+
+    cwfn_th = dpc%cwfn_th;
+    if (dpc%do_cgust_dp) then
+       if (dpc%cgust_choice==1 .and. sd%land.gt.0.5) then
+       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+       	      dpn%do_forcedlifting = .true.
+              dpn%do_ppen  = .false.;
+              lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
+              rkm_dp       = rkm_dp        * lofactor
+              !dpn % peff_l = dpn % peff_l  / lofactor
+              !dpn % peff_i = dpn % peff_i  / lofactor
+ 	  endif
+       else if (dpc%cgust_choice==5) then !saved only for testing purpose
+	  lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
+	  lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
+      	  latx=lat*180/3.1415926; lonx=lon*180/3.1415926
+      	  if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
+             tmp=1
+      	  elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
+             tmp=2
+      	  endif
+          sd%do_gust_qt = .true.
+          sd%gqt_choice = 0
+    	  call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
+   	  ksrc  =sd%ksrc
+	  zsrc  =sd%zsrc
+	  psrc  =sd%psrc
+	  thcsrc=sd%thcsrc
+	  qctsrc=sd%qctsrc
+	  hlsrc =sd%hlsrc
+    	  call ac_clear_k(ac);
+    	  call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
+       endif
+    end if
+
+    zcldtop = dpn%scaleh0
+    wrel  = max(cc%wrel, wrel0)
+    cbmf0 = dpc%cbmf0
+    call cp_clear_k(cp);  cp %maxcldfrac=1.;
+    call cp_clear_k(cp1); cp1%maxcldfrac=1.;
+    call ct_clear_k(ct1);
+    call cumulus_plume_k(dpn, sd, ac, cp, rkm_dp, cbmf0, wrel, zcldtop, Uw_p, ier, ermesg)
+    if(cp%ltop.lt.cp%krel+2 .or. cp%let.le.cp%krel+1) then
+       cbmf_deep = 0.; ocode=8; return
+    else
+       call cumulus_tend_k(dpn, sd, Uw_p, cp, ct1, do_coldT)
+    end if
+
+    call sd_copy_k(sd, sd1)
+    tmp      = 1.
+    sd1 % t  = sd1 % t  + ct1%tten  * sd%delt * tmp
+    sd1 % qv = sd1 % qv + ct1%qvten * sd%delt * tmp
+    sd1 % ql = sd1 % ql + ct1%qlten * sd%delt * tmp
+    sd1 % qi = sd1 % qi + ct1%qiten * sd%delt * tmp
+    sd1 % qa = sd1 % qa + ct1%qaten * sd%delt * tmp
+    sd1 % qn = sd1 % qn + ct1%qnten * sd%delt * tmp
+    sd1 % u  = sd1 % u  + ct1%uten  * sd%delt * tmp
+    sd1 % v  = sd1 % v  + ct1%vten  * sd%delt * tmp
+
+    call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
+
+    ksrc  =sd1%ksrc
+    zsrc  =sd1%zsrc
+    psrc  =sd1%psrc
+    thcsrc=sd1%thcsrc
+    qctsrc=sd1%qctsrc
+    hlsrc =sd1%hlsrc
+
+    call ac_clear_k(ac1);
+    call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd1, Uw_p, .false., do_ice, ac1)
+
+    dcapedm=(ac%cape-ac1%cape)/cbmf0
+
+    if (sd%use_capecin_avg) then
+       cape_av = sd%cape_avg
+    else
+       cape_av = ac%cape
+    endif
+
+    if (dcapedm .lt. dpc%dcapedm_th .or. cape_av.lt.0.) then
+       cbmf_deep=0.; ocode=9; return
+    else
+       cbmf_deep= (cape_av - dpc%cape_th) / dcapedm / (taudp/sd%delt)
+    end if
+
+    krel=cp%krel
+    tmp = sd%ps(0)-sd%ps(krel)
+    cbmf_max = tmp*dpc%frac_limit_d/sd%delt/Grav
+    cbmf_deep = max(min(cbmf_deep, cbmf_max), 0.)
+ 
+    if(cbmf_deep.lt.1.e-10) then 
+       cbmf_deep=0.; ocode=10; 
+       return
+    end if
+
+    call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, wrel, zcldtop, Uw_p, ier, ermesg)
+    if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
+       cbmf_deep = 0.; ocode=11;
+       return
+    else
+       call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
+    end if
+    
+  end subroutine dpconv3
+!#####################################################################
+!#####################################################################
+!#####################################################################
+!#####################################################################
+  subroutine dpconv8(dpc, dpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, &
                      rkm_dp, cbmf_deep, sd1, ac1, cp1, ct1, ocode, taudp,  &
                      dcwfndt_fre, dcwfndt_pbl, dcwfndt_dpc, cwfn, cwfn3d, cape3d, &
                      lat, lon, ier, ermesg)
@@ -779,7 +927,7 @@ contains
    end if
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  end subroutine dpconv3
+  end subroutine dpconv8
 !#####################################################################
 !#####################################################################
 

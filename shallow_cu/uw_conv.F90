@@ -39,7 +39,7 @@ MODULE UW_CONV_MOD
                                    cclosure_relaxwfn,  &
                                    cclosure_implicit, cclosure
 
-  use  deep_conv_mod,only        : deepc, cpn_copy, dpconv0, dpconv1, dpconv2, conv_forced
+  use  deep_conv_mod,only        : deepc, cpn_copy, dpconv0, dpconv1, dpconv2, dpconv3, conv_forced
   use random_numbers_mod,    only: randomNumberStream, getRandomNumbers, &
                                    initializeRandomNumberStream, constructSeed
  
@@ -110,6 +110,7 @@ MODULE UW_CONV_MOD
   logical :: do_varying_rpen  = .false.
   logical :: do_new_convcld   = .false.
   logical :: do_subcloud_flx = .false.
+  logical :: do_new_subflx   = .false.
   logical :: do_detran_zero = .false.
   logical :: do_prog_gust = .false.
   logical :: do_gust_qt = .false.
@@ -117,6 +118,9 @@ MODULE UW_CONV_MOD
   logical :: use_lcl_only =.false.
   logical :: do_new_pevap =.false.
   logical :: stop_at_let  =.false.
+  logical :: use_pblhttke_avg =.false.
+  logical :: use_hlqtsrc_avg =.false.
+  logical :: use_capecin_avg =.false.
   logical :: zero_out_conv_area = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
@@ -146,8 +150,9 @@ MODULE UW_CONV_MOD
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, do_debug, &
        cush_ref, do_prog_gust, tau_gust, geff, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
-       duration, do_stime, do_dtime, stime0, dtime0, do_subcloud_flx, src_choice, gqt_choice,        &
-       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let
+       duration, do_stime, do_dtime, stime0, dtime0, do_subcloud_flx, do_new_subflx, src_choice, gqt_choice,   &
+       zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let, &
+       use_pblhttke_avg, use_hlqtsrc_avg, use_capecin_avg
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -191,12 +196,13 @@ MODULE UW_CONV_MOD
   real    :: peff_l     = 1.0
   real    :: peff_i     = 1.0
   real    :: scaleh0    = 1000.
+  real    :: beta       = 1000.
   real    :: tten_max   = 1000.
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, do_limit_wmax, &
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
        mixing_assumption, mp_choice, de_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, &
-       hcevappbl, pblfac, include_emf_s, do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max, scaleh0
+       hcevappbl, pblfac, include_emf_s, do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max, scaleh0, beta
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -306,12 +312,11 @@ MODULE UW_CONV_MOD
        id_qldet_uws, id_qidet_uws, id_qadet_uws, id_qndet_uws, id_dting_uwc, &
        id_cfq_uws, id_feq_uws, id_feq_uwc, id_hmo_uwc, id_hms_uwc, id_abu_uwc, id_peo_uwc, &
        id_tten_rad_uwc, id_tdt_forc_uwc, id_qdt_forc_uwc, id_tdt_diss_uwc, &
-       id_hm_vadv_uwc, id_pflx_uwc, id_lhflx_uwc, id_shflx_uwc, &
+       id_hm_vadv_uwc, id_pflx_uwc, id_lhflx_uwc, id_shflx_uwc, id_dbuodp_uws, id_dbuodp_uwd, &
        id_tdt_rad_uwc, id_tdt_dyn_uwc, id_tdt_dif_uwc, id_qdt_dyn_uwc, id_qdt_dif_uwc, &
        id_tdt_rad_int, id_tdt_dyn_int, id_tdt_dif_int, id_qdt_dyn_int, id_qdt_dif_int, &
-       id_tdt_rad_pbl, id_tdt_dyn_pbl, id_tdt_dif_pbl, id_qdt_dyn_pbl, id_qdt_dif_pbl, &
-       id_tdt_rad_fre, id_tdt_dyn_fre, id_tdt_dif_fre, id_qdt_dyn_fre, id_qdt_dif_fre, &
-       id_tdt_tot_pbl, id_tdt_tot_fre, id_cpool_uwc, id_bflux_uwc, &
+       id_pblht_avg, id_hlsrc_avg, id_qtsrc_avg, id_cape_avg, id_cin_avg, id_tke_avg,  &
+       id_cpool_uwc, id_bflux_uwc, &
        id_dgz_dyn_uwc, id_ddp_dyn_uwc, id_dgz_dyn_int, id_ddp_dyn_int, id_lts_uwc, &
        id_nbuo_uws, id_buo_uws, id_pdep_uws,                                       &
        id_hmint_uwc, id_hm_vadv0_uwc, id_hm_hadv0_uwc, id_hm_tot0_uwc, id_hm_total_uwc,&
@@ -519,7 +524,11 @@ contains
          'moist static energy', 'J/kg', missing_value=mv)
     id_abu_uwc = register_diag_field ( mod_name, 'abu_uwc', axes(1:3), Time,   &
          'adiabatic buoyancy', 'K', missing_value=mv)
-    id_buo_uws= register_diag_field ( mod_name, 'buo_uws', axes(1:3), Time,    &
+    id_dbuodp_uws = register_diag_field ( mod_name, 'dbuodp_uws', axes(1:3), Time,   &
+         'dbuodp_uws', 'm/s2', missing_value=mv)
+    id_dbuodp_uwd = register_diag_field ( mod_name, 'dbuodp_uwd', axes(1:3), Time,   &
+         'dbuodp_uwd', 'm/s2', missing_value=mv)
+     id_buo_uws= register_diag_field ( mod_name, 'buo_uws', axes(1:3), Time,    &
             'shallow plume buoyancy', 'K', missing_value=mv)
     id_wuo_uws = register_diag_field ( mod_name, 'wuo_uws', axes(half), Time,   &
          'Shallow plume updraft velocity from uw_conv', 'm/s', missing_value=mv)
@@ -634,50 +643,25 @@ contains
          'hm change due to mass change from the dynamics', 'W/m2',   &
          interp_method = "conserve_order1" )
 
-    id_tdt_rad_pbl = register_diag_field (mod_name,'tdt_rad_pbl', axes(1:2), Time, &
-         'vertically integrated radiative T tedency with PBL', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_tdt_dyn_pbl = register_diag_field (mod_name,'tdt_dyn_pbl', axes(1:2), Time, &
-         'vertically integrated dynamic T tendency with PBL', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_tdt_dif_pbl = register_diag_field (mod_name,'tdt_dif_pbl', axes(1:2), Time, &
-         'vertically integrated diffusion T tendency with PBL', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_qdt_dyn_pbl = register_diag_field (mod_name,'qdt_dyn_pbl', axes(1:2), Time, &
-         'vertically integrated dynamic q tendency with PBL', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_qdt_dif_pbl = register_diag_field (mod_name,'qdt_dif_pbl', axes(1:2), Time, &
-         'vertically integrated diffusion q tendency with PBL', 'W/m2',   &
-         interp_method = "conserve_order1" )
+    id_hlsrc_avg = register_diag_field (mod_name,'hlsrc_avg', axes(1:2), Time, &
+         'hlsrc_avg', 'J/m2', interp_method = "conserve_order1" )
+    id_qtsrc_avg = register_diag_field (mod_name,'qtsrc_avg', axes(1:2), Time, &
+         'qtsrc_avg', 'kg/kg', interp_method = "conserve_order1" )
+    id_cape_avg = register_diag_field (mod_name,'cape_avg', axes(1:2), Time, &
+         'cape_avg', 'm2/s2', interp_method = "conserve_order1" )
+    id_cin_avg = register_diag_field (mod_name,'cin_avg', axes(1:2), Time, &
+         'cin_avg', 'm2/s2', interp_method = "conserve_order1" )
+    id_pblht_avg = register_diag_field (mod_name,'pblht_avg', axes(1:2), Time, &
+         'pblht_avg', 'm', interp_method = "conserve_order1" )
+    id_tke_avg = register_diag_field (mod_name,'tke_avg', axes(1:2), Time, &
+         'tke_avg', 'm2/s2', interp_method = "conserve_order1" )
 
-    id_tdt_rad_fre = register_diag_field (mod_name,'tdt_rad_fre', axes(1:2), Time, &
-         'vertically integrated radiative T tedency within FRE', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_tdt_dyn_fre = register_diag_field (mod_name,'tdt_dyn_fre', axes(1:2), Time, &
-         'vertically integrated dynamic T tendency within FRE', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_tdt_dif_fre = register_diag_field (mod_name,'tdt_dif_fre', axes(1:2), Time, &
-         'vertically integrated diffusion T tendency within FRE', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_qdt_dyn_fre = register_diag_field (mod_name,'qdt_dyn_fre', axes(1:2), Time, &
-         'vertically integrated dynamic q tendency within FRE', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_qdt_dif_fre = register_diag_field (mod_name,'qdt_dif_fre', axes(1:2), Time, &
-         'vertically integrated diffusion q tendency within FRE', 'W/m2',   &
-         interp_method = "conserve_order1" )
-
-    id_tdt_tot_fre = register_diag_field (mod_name,'tdt_tot_fre', axes(1:2), Time, &
-         'vertically integrated total T tedency within FRE', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_tdt_tot_pbl = register_diag_field (mod_name,'tdt_tot_pbl', axes(1:2), Time, &
-         'vertically integrated total T tendency within FRE', 'W/m2',   &
-         interp_method = "conserve_order1" )
     id_cpool_uwc = register_diag_field (mod_name,'cpool_uwc', axes(1:2), Time, &
          'cold pool', 'm2/s3', &
          interp_method = "conserve_order1" )
-    id_bflux_uwc = register_diag_field (mod_name,'bflux_uwc', axes(1:2), Time, &
-         'surface buoyancy flux', 'm2/s3', &
-         interp_method = "conserve_order1" )
+!    id_bflux_uwc = register_diag_field (mod_name,'bflux_uwc', axes(1:2), Time, &
+!         'surface buoyancy flux', 'm2/s3', &
+!         interp_method = "conserve_order1" )
 
     id_prec_uwc = register_diag_field (mod_name,'prec_uwc', axes(1:2), Time, &
          'Precipitation rate from uw_conv', 'kg/m2/sec',                     &
@@ -991,7 +975,9 @@ contains
        tten, qvten, qlten, qiten, qaten, qnten,                      & !output
        uten, vten, rain, snow,                                       & !output
        cmf, liq_pflx, ice_pflx, cldql, cldqi, cldqa,cldqn,           &
-       cbmfo, gusto, tkep, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, tracers, trtend, uw_wetdep)
+       cbmfo, gusto, tkep, pblhto, rkmo, taudpo, exist_shconv,       &
+       exist_dpconv, pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &
+       tracers, trtend, uw_wetdep)
 
 !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 !
@@ -1034,6 +1020,7 @@ contains
     real, intent(in),  dimension(:,:,:)  :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif!miz
 
     integer, intent(inout), dimension(:,:,:)  :: exist_shconv, exist_dpconv
+    real, intent(inout), dimension(:,:,:)  :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev
 
     type(aerosol_type),  intent (in)     :: asol
    
@@ -1093,22 +1080,20 @@ contains
 	 rhos,       &
 	 lhflx,      &
 	 shflx,      &
-         hmint_old,  &
+         hmint_old,  pblht_avg, tke_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, &
          hm_vadv0,   &
          hm_hadv0,   &
          hm_tot0,    &
          hm_total,   &
 	 tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int, &  
-	 tdt_rad_pbl, tdt_dyn_pbl, tdt_dif_pbl, qdt_dyn_pbl, qdt_dif_pbl, &
-	 tdt_rad_fre, tdt_dyn_fre, tdt_dif_fre, qdt_dyn_fre, qdt_dif_fre, &
-         tdt_tot_pbl, tdt_tot_fre, cpool, bflux,dgz_dyn_int, ddp_dyn_int, lts, & 
+         cpool, bflux,dgz_dyn_int, ddp_dyn_int, lts, & 
 	 nbuo_s, nbuo_d, pdep_s, pdep_d, pcb_s, pcb_d, pcb_c, pct_s, pct_d, pct_c
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx, qtflx, pflx, qtflx_up, qtflx_dn, hm_vadv
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: omgmc_up, ddp_dyn_hm, nqtflx, omega_up, omega_dn
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: fero_s,fdro_s,fdrso_s, tten_pevap, qvten_pevap, temp
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet_s, qidet_s, qadet_s, qndet_s, peo, hmo, hms, abu, buo_s
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet_d, qidet_d, qadet_d, qndet_d
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet_d, qidet_d, qadet_d, qndet_d, dbuodp_s, dbuodp_d
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_s, cqa_s, cql_s, cqi_s, cqn_s, wuo_s, cmf_s
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_d, cqa_d, cql_d, cqi_d, cqn_d, wuo_d, cmf_d
@@ -1186,6 +1171,7 @@ contains
     cpn % do_hlflx_zero  = do_hlflx_zero
     cpn % do_varying_rpen = do_varying_rpen
     cpn % do_subcloud_flx= do_subcloud_flx
+    cpn % do_new_subflx  = do_new_subflx
     cpn % do_detran_zero = do_detran_zero
     cpn % rle       = rle
     cpn % rpen      = rpen
@@ -1207,6 +1193,7 @@ contains
     cpn % do_tten_max   = do_tten_max
     cpn % tten_max  = tten_max
     cpn % scaleh0   = scaleh0
+    cpn % beta      = beta
     cpn % emfrac_max= emfrac_max
     cpn % auto_rate = auto_rate
     cpn % tcrit     = tcrit  
@@ -1346,15 +1333,14 @@ contains
     hm_vadv0=0.; hm_hadv0=0.; hm_tot0=0.; hm_total=0.; tdt_dif_l=0.; 
 
     tdt_rad_int=0.; tdt_dyn_int=0.; tdt_dif_int=0.; qdt_dyn_int=0.; qdt_dif_int=0.; 
-    tdt_rad_pbl=0.; tdt_dyn_pbl=0.; tdt_dif_pbl=0.; qdt_dyn_pbl=0.; qdt_dif_pbl=0.; 
-    tdt_rad_fre=0.; tdt_dyn_fre=0.; tdt_dif_fre=0.; qdt_dyn_fre=0.; qdt_dif_fre=0.; 
-    tdt_tot_pbl=0.; tdt_tot_fre=0.; cpool=0.; bflux=0.; scale_uw=1.; scale_tr=1.;
+    cpool=0.; bflux=0.; scale_uw=1.; scale_tr=1.;
     dgz_dyn_int=0.; ddp_dyn_int=0.;
 
     cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; einso=0.; wuo_s=0.; peo=0.; 
     fero_s=0.; fdro_s=0.; fdrso_s=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0; cmf_s=0.; cfq_s=0.;
     dcapeo=0.; dcino=0.; xpsrc=0.; xhlsrc=0.; xqtsrc=0.; feq_s=0.; feq_d=0.; feq_c=0; rkm_s=0.;
-    trtend=0.; trwet=0.; crho=0.; hmo=0.; hms=0.; abu=0.;
+    trtend=0.; trwet=0.; crho=0.; hmo=0.; hms=0.; abu=0.; dbuodp_s=0.; dbuodp_d=0.; 
+    pblht_avg=0.; tke_avg=0.; hlsrc_avg=0.; qtsrc_avg=0.; cape_avg=0.; cin_avg=0.;
     qldet_s=0.; qidet_s=0.; qadet_s=0.; qndet_s=0.;
     qldet_d=0.; qidet_d=0.; qadet_d=0.; qndet_d=0.;
     dting = 0.; cush_s=-1.; 
@@ -1403,19 +1389,49 @@ contains
 
 	 stime(i,j)=0;
 	 dtime(i,j)=0;
-	 do k=1,numx
+	 pblht_avg(i,j)=0.;
+	 hlsrc_avg(i,j)=0.;
+	 qtsrc_avg(i,j)=0.;
+	 cape_avg (i,j)=0.;
+	 cin_avg  (i,j)=0.;
+	 tke_avg  (i,j)=0.;
+	 do k=1,numx-1
 	    stime(i,j)=stime(i,j)+exist_shconv(i,j,k)
 	    dtime(i,j)=dtime(i,j)+exist_dpconv(i,j,k)
+	    pblht_avg(i,j)=pblht_avg(i,j)+pblht_prev(i,j,k)
+	    hlsrc_avg(i,j)=hlsrc_avg(i,j)+hlsrc_prev(i,j,k)
+	    qtsrc_avg(i,j)=qtsrc_avg(i,j)+qtsrc_prev(i,j,k)
+	    cape_avg (i,j)=cape_avg (i,j)+cape_prev (i,j,k)
+	    cin_avg  (i,j)=cin_avg  (i,j)+cin_prev  (i,j,k)
+	    tke_avg  (i,j)=tke_avg  (i,j)+tke_prev  (i,j,k)
 	 end do
-	 stime(i,j)=stime(i,j)/numx
-	 dtime(i,j)=dtime(i,j)/numx
+	 stime(i,j)=stime(i,j)/(numx-1)
+	 dtime(i,j)=dtime(i,j)/(numx-1)
+	 pblht_avg(i,j)=pblht_avg(i,j)/(numx-1)
+	 hlsrc_avg(i,j)=hlsrc_avg(i,j)/(numx-1)
+	 qtsrc_avg(i,j)=qtsrc_avg(i,j)/(numx-1)
+	 cape_avg (i,j)=cape_avg (i,j)/(numx-1)
+	 cin_avg  (i,j)=cin_avg  (i,j)/(numx-1)
+	 tke_avg  (i,j)=tke_avg  (i,j)/(numx-1)
 
       	 do k=numx,2,-1
 	    exist_shconv(i,j,k) = exist_shconv(i,j,k-1)
 	    exist_dpconv(i,j,k) = exist_dpconv(i,j,k-1)
+	    pblht_prev  (i,j,k) = pblht_prev  (i,j,k-1)
+	    hlsrc_prev  (i,j,k) = hlsrc_prev  (i,j,k-1)
+	    qtsrc_prev  (i,j,k) = qtsrc_prev  (i,j,k-1)
+	    cape_prev   (i,j,k) = cape_prev   (i,j,k-1)
+	    cin_prev    (i,j,k) = cin_prev    (i,j,k-1)
+	    tke_prev    (i,j,k) = tke_prev    (i,j,k-1)
 	 end do
          exist_shconv(i,j,1) = 0
          exist_dpconv(i,j,1) = 0
+	 pblht_prev  (i,j,1) = 0.
+	 hlsrc_prev  (i,j,1) = 0.
+	 qtsrc_prev  (i,j,1) = 0.
+	 cape_prev   (i,j,1) = 0.
+	 cin_prev    (i,j,1) = 0.
+	 tke_prev    (i,j,1) = 0.
 
        	 trtend_t=0.; trwet_t=0.;
          do k=1,kmax
@@ -1434,10 +1450,13 @@ contains
          else
             temp_1=pblht(i,j)
          endif
-         bflux(i,j) = 0.5*(0.6*ustar(i,j)*bstar(i,j)*temp_1)**(2./3.)
+	 pblht_prev(i,j,1)=temp_1
+
+!         bflux(i,j) = 0.5*(0.6*ustar(i,j)*bstar(i,j)*temp_1)**(2./3.)
          temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
          if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
          tkeo(i,j) = MAX (tkemin, temp_1)
+	 tke_prev(i,j,1)=tkeo(i,j)
 
          cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
@@ -1526,13 +1545,36 @@ contains
           sd%lat       = lat(i,j)*180/3.1415926
           sd%lon       = lon(i,j)*180/3.1415926
 
+     	  sd%use_capecin_avg = use_capecin_avg
+     	  sd%use_hlqtsrc_avg = use_hlqtsrc_avg
+	  tke_avg  (i,j)=(tke_prev  (i,j,1)+tke_avg  (i,j)*(numx-1))/numx
+	  pblht_avg(i,j)=(pblht_prev(i,j,1)+pblht_avg(i,j)*(numx-1))/numx
+          sd%pblht_avg = pblht_avg(i,j)
+	  sd%hlsrc_avg = hlsrc_avg(i,j)
+	  sd%qtsrc_avg = qtsrc_avg(i,j)
+     	  sd%cape_avg  = cape_avg (i,j)
+     	  sd%cin_avg   = cin_avg  (i,j)
+          sd%numx      = numx
+
 	  if (use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
 
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
 
+          xpsrc (i,j)= sd%psrc
+          xhlsrc(i,j)= sd%hlsrc
+          xqtsrc(i,j)= sd%qctsrc
+          crho  (i,j)= sd%crh
+	  lts   (i,j)= sd%lts
+          !sd%eis    = sd%lts - sd%gam * max(sd%z700-ac%zlcl,0.)
+	  !eis  (i,j)= sd%eis
           zinvo(i,j) = sd%zinv
           kinv       = sd%kinv
 	  einso(i,j) = (sd%hl(kinv+1)-sd%hl(kinv))/(sd%z(kinv+1)-sd%z(kinv))/cp_air
+
+	  hlsrc_prev(i,j,1)=sd%hl (sd%ksrc)
+	  qtsrc_prev(i,j,1)=sd%qct(sd%ksrc)
+	  hlsrc_avg(i,j)=(hlsrc_prev(i,j,1)+hlsrc_avg(i,j)*(numx-1))/numx
+	  qtsrc_avg(i,j)=(qtsrc_prev(i,j,1)+qtsrc_avg(i,j)*(numx-1))/numx
 
 	  tmp=sd%thvbot(1)*sd%exners(1)
           rhos(i,j)= sd%ps(0)/(rdgas*tmp)
@@ -1554,18 +1596,6 @@ contains
 	  qdt_dif_int(i,j) = sd%qdt_dif_int;
 	  dgz_dyn_int(i,j) = sd%dgz_dyn_int;
 	  ddp_dyn_int(i,j) = sd%ddp_dyn_int;
-	  tdt_rad_pbl(i,j) = sd%tdt_rad_pbl;
-	  tdt_dyn_pbl(i,j) = sd%tdt_dyn_pbl;
-	  tdt_dif_pbl(i,j) = sd%tdt_dif_pbl;
-	  qdt_dyn_pbl(i,j) = sd%qdt_dyn_pbl;
-	  qdt_dif_pbl(i,j) = sd%qdt_dif_pbl;
- 	  tdt_rad_fre(i,j) = sd%tdt_rad_fre;
-	  tdt_dyn_fre(i,j) = sd%tdt_dyn_fre;
-	  tdt_dif_fre(i,j) = sd%tdt_dif_fre;
-	  qdt_dyn_fre(i,j) = sd%qdt_dyn_fre;
-	  qdt_dif_fre(i,j) = sd%qdt_dif_fre;
-	  tdt_tot_pbl(i,j) = sd%tdt_tot_pbl;
-	  tdt_tot_fre(i,j) = sd%tdt_tot_fre;
           hm_vadv0(i,j) = sd%hm_vadv0
 	  hm_hadv0(i,j) = sd%tdt_dyn_int + sd%qdt_dyn_int + sd%dgz_dyn_int + ddp_dyn_int(i,j) - sd%hm_vadv0
 !note: qdt_dif_int = lhflx; tdt_dif_int approximately equal to shflx
@@ -1621,23 +1651,21 @@ contains
           end if
 
           call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, do_fast, do_ice, ac)
-          ac % usrc = sd%u(sd%ktoppbl)
-          ac % vsrc = sd%v(sd%ktoppbl)
+          !ac % usrc = sd%u(sd%ktoppbl)
+          !ac % vsrc = sd%v(sd%ktoppbl)
           !if (ac%plfc.eq.0) ac%plfc=psrc
           !if (ac%plnb.eq.0) ac%plnb=psrc
+	  cino (i,j) = ac%cin
+	  capeo(i,j) = ac%cape
           plcl (i,j) = ac%plcl
           zlcl (i,j) = ac%zlcl-sd%zs(0)
           plfc (i,j) = ac%plfc
           plnb (i,j) = ac%plnb
-          cino (i,j) = ac%cin
-          capeo(i,j) = ac%cape
-          xpsrc(i,j) = sd%p(ksrc);
-          xhlsrc(i,j)= ac%hlsrc; !xhlsrc(i,j)= sd%qct(ksrc); 
-          xqtsrc(i,j)= ac%qctsrc; 
-          crho(i,j)  = sd%crh;
-	  lts  (i,j) = sd%lts;
-          !sd%eis     = sd%lts - sd%gam * max(sd%z700-ac%zlcl,0.)
-	  !eis  (i,j) = sd%eis;
+
+	  cape_prev(i,j,1)=ac%cape
+	  cin_prev (i,j,1)=ac%cin
+	  cape_avg(i,j)=(cape_prev(i,j,1)+cape_avg(i,j)*(numx-1))/numx
+	  cin_avg (i,j)=(cin_prev (i,j,1)+cin_avg (i,j)*(numx-1))/numx
 
           do k = 1,kmax
              nk = kmax+1-k
@@ -1666,6 +1694,14 @@ contains
           end if
 
 !========Cumulus closure to determine cloud base mass flux===================
+	  if (sd%use_capecin_avg) then
+	     sd%cape_avg = cape_avg(i,j)
+	     sd%cin_avg  = cin_avg(i,j)
+	     ac%cin      = cin_avg(i,j)
+	  endif
+	  if (use_pblhttke_avg) then
+	     sd%tke = tke_avg(i,j)
+	  endif
 
           cbmf_old=cbmfo(i,j); cc%cbmf=cbmf_old;
 
@@ -1761,6 +1797,7 @@ contains
 		cmf_s (i,j,nk) = cp%umf(k)
              	cmf   (i,j,nk) = cp%umf(k)
              end if
+	     dbuodp_s(i,j,nk)=cp%dbuodp(k);
              buo_s (i,j,nk) = cp%buo(k)
              wuo_s (i,j,nk) = cp%wu (k)
              peo   (i,j,nk) = cp%peff(k)
@@ -1883,6 +1920,10 @@ contains
                 call  dpconv2(dpc, dpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, &
                       rkm_dp, cbmf_deep, sd1, ac1, cp1, ct1, ocode(i,j), taudpo(i,j), &
 		      dcwfndm_d(i,j), dcapedm_d(i,j), cwfn_d(i,j), lat(i,j), lon(i,j), ier, ermesg)
+             else if (idpchoice.eq.3) then
+                call  dpconv3(dpc, dpn, Uw_p, sd, ac, cc, cp, ct, do_coldT, do_ice, &
+                      rkm_dp, cbmf_deep, sd1, ac1, cp1, ct1, ocode(i,j), taudpo(i,j), &
+		      dcwfndm_d(i,j), dcapedm_d(i,j), cwfn_d(i,j), lat(i,j), lon(i,j), ier, ermesg)
              end if
              if (ier /= 0) then
                 call error_mesg ('uw_conv calling dpconv', ermesg, FATAL)
@@ -1933,6 +1974,7 @@ contains
              	else
 		   cmf_d (i,j,nk) = cp1%umf(k)
              	end if
+	        dbuodp_d(i,j,nk) = cp1%dbuodp(k);
                 buo_d   (i,j,nk) = cp1%buo(k)
                 wuo_d   (i,j,nk) = cp1%wu (k)
                 fero_d  (i,j,nk) = cp1%fer(k)
@@ -2121,6 +2163,7 @@ contains
          qiten(:,:,:) = qiten(:,:,:) - temp(:,:,:)
        end where
 
+!The following 3 lines are in do_limit_uw; commented out here for reproducing earlier am4
 !       where (abs(qlten(:,:,:)+qiten(:,:,:))*delt .lt. 1.e-10 )
 !         qaten(:,:,:) = 0.0
 !       end where
@@ -2276,6 +2319,13 @@ contains
     used = send_data( id_xpsrc_uwc,        xpsrc,              Time, is, js)
     used = send_data( id_xhlsrc_uwc,       xhlsrc,             Time, is, js)
     used = send_data( id_xqtsrc_uwc,       xqtsrc,             Time, is, js)
+    used = send_data( id_hlsrc_avg,        hlsrc_avg,          Time, is, js)
+    used = send_data( id_qtsrc_avg,        qtsrc_avg,          Time, is, js)
+    used = send_data( id_cape_avg,         cape_avg,           Time, is, js)
+    used = send_data( id_cin_avg,          cin_avg,            Time, is, js)
+    used = send_data( id_tke_avg,          tke_avg,            Time, is, js)
+    used = send_data( id_pblht_avg,        pblht_avg,          Time, is, js)
+
     used = send_data( id_tdt_pevap_uwc,    tten_pevap,         Time, is, js, 1)
     used = send_data( id_qdt_pevap_uwc,    qvten_pevap,        Time, is, js, 1)
 
@@ -2323,6 +2373,8 @@ contains
     used = send_data( id_hms_uwc,    hms,          Time, is, js, 1)
     used = send_data( id_abu_uwc,    abu,          Time, is, js, 1)
     used = send_data( id_buo_uws,    buo_s,        Time, is, js, 1)
+    used = send_data( id_dbuodp_uws, dbuodp_s,     Time, is, js, 1)
+    used = send_data( id_dbuodp_uwd, dbuodp_d,     Time, is, js, 1)
 
     used = send_data( id_tdt_rad_uwc,  tdt_rad,  Time, is, js, 1)
     used = send_data( id_tdt_dyn_uwc,  tdt_dyn,  Time, is, js, 1)
@@ -2361,7 +2413,7 @@ contains
     used = send_data( id_cape_uwc, (capeo),            Time, is, js )
     used = send_data( id_gust_uwc, (gusto),            Time, is, js )
     used = send_data( id_cpool_uwc,(cpool),            Time, is, js )
-    used = send_data( id_bflux_uwc,(bflux),            Time, is, js )
+!    used = send_data( id_bflux_uwc,(bflux),            Time, is, js )
     used = send_data( id_crh_uwc,  (crho),             Time, is, js )
     used = send_data( id_pblht_uwc,(pblht),            Time, is, js )
     used = send_data( id_tke_uwc,  (tkeo),             Time, is, js )

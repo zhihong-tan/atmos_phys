@@ -39,13 +39,13 @@ MODULE CONV_PLUMES_k_MOD
   type cpnlist
      integer :: mixing_assumption, mp_choice, de_choice
      real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, scaleh0
-     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, &
+     real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, beta, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, use_online_aerosol, do_umf_pbl, do_minmse
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
-     logical :: do_varying_rpen, do_new_pblfac
+     logical :: do_varying_rpen, do_new_pblfac, do_new_subflx
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -70,7 +70,8 @@ MODULE CONV_PLUMES_k_MOD
      real, _ALLOCATABLE :: hlu   (:) _NULL, hl    (:) _NULL, clu   (:) _NULL
      real, _ALLOCATABLE :: ciu   (:) _NULL, buo   (:) _NULL, t     (:) _NULL
      real, _ALLOCATABLE :: crate (:) _NULL, prate (:) _NULL, peff  (:) _NULL
-!++++yim
+     real, _ALLOCATABLE :: dbuodp(:) _NULL
+!!++++yim
      real, _ALLOCATABLE :: tr  (:,:) _NULL, tru (:,:) _NULL, tru_dwet(:,:) _NULL
      real, _ALLOCATABLE :: pptn  (:) _NULL, rhu   (:) _NULL
   end type cplume
@@ -79,7 +80,7 @@ MODULE CONV_PLUMES_k_MOD
   type ctend
      integer :: botlev, toplev
      real    :: rain, snow, denth, uav, vav, conint, freint,  &
-                dtint, dqint, dqtmp, dting, cpool, mslcl
+                dtint, dqint, dqtmp, dting, cpool, dhfin, mslcl
      real, _ALLOCATABLE :: uten  (:) _NULL, vten  (:) _NULL, tten  (:) _NULL
      real, _ALLOCATABLE :: qvten (:) _NULL, qlten (:) _NULL, qiten (:) _NULL
      real, _ALLOCATABLE :: qaten (:) _NULL, thcten(:) _NULL, qctten(:) _NULL
@@ -118,6 +119,7 @@ contains
     allocate ( cp%clu   (0:kd)); cp%clu   =0.;
     allocate ( cp%ciu   (0:kd)); cp%ciu   =0.;
     allocate ( cp%buo   (0:kd)); cp%buo   =0.;
+    allocate ( cp%dbuodp(1:kd)); cp%dbuodp=0.;
     allocate ( cp%t     (0:kd)); cp%t     =0.;
     allocate ( cp%rhu   (0:kd)); cp%rhu   =0.;
     allocate ( cp%crate (0:kd)); cp%crate =0.;
@@ -129,7 +131,7 @@ contains
     allocate ( cp%wu    (0:kd)); cp%wu    =0.;
     allocate ( cp%umf   (0:kd)); cp%umf   =0.;
     allocate ( cp%emf   (0:kd)); cp%emf   =0.;
-    allocate ( cp%thvu  (1:kd)); cp%thvu  =0.;
+    allocate ( cp%thvu  (0:kd)); cp%thvu  =0.;
     allocate ( cp%rei   (1:kd)); cp%rei   =0.;
     allocate ( cp%fer   (1:kd)); cp%fer   =0.;
     allocate ( cp%fdr   (1:kd)); cp%fdr   =0.;
@@ -169,7 +171,7 @@ contains
                 cp%v, cp%p, cp%ps, cp%ufrc, cp%thvbot, cp%thvtop, &
                 cp%fdrsat, cp%peff, cp%qnu, cp%ql, cp%qi, cp%qa, cp%qn, &
                 cp%pptn, cp%z, cp%zs, cp%hl, cp%hlu, cp%clu, cp%ciu, &
-                cp%buo, cp%t, cp%rhu, cp%crate, cp%prate, cp%tr, cp%tru, &
+                cp%buo, cp%dbuodp, cp%t, cp%rhu, cp%crate, cp%prate, cp%tr, cp%tru, &
                 cp%tru_dwet)
   end subroutine cp_end_k
 
@@ -190,7 +192,7 @@ contains
     cp%clu   =0.;    cp%ciu   =0.;    cp%buo   =0.;    cp%t     =0.;cp%rhu=0.;
     cp%crate =0.;    cp%prate =0.;    cp%peff  =0.;    !cp%maxcldfrac = 1.;
     cp%ltop  =0;     cp%let   =0;     cp%krel  =0;     cp%cush  =-1;
-    cp%cldhgt=0.;    cp%prel  =0.;    cp%zrel  =0.;    
+    cp%cldhgt=0.;    cp%prel  =0.;    cp%zrel  =0.;    cp%dbuodp=0.
     cp%nbuo  =0.;    cp%pdep  =0.;    cp%ptop  =0.;
 
     cp%pptn  =0.;    cp%tr    =0.;    cp%tru   =0.;    cp%tru_dwet = 0.
@@ -279,7 +281,7 @@ contains
     ct%qlflx =0.;    ct%qiflx =0.;    ct%qaflx =0.;    ct%qnflx =0.;
     ct%umflx =0.;    ct%vmflx =0.;    ct%pflx  =0.;    ct%pflx_e=0.;
     ct%hlflx =0.;    ct%hlten =0.;    ct%nqtflx=0.;
-    ct%denth =0.;    ct%rain  =0.;    ct%snow  =0.;    
+    ct%denth =0.;    ct%rain  =0.;    ct%snow  =0.;    ct%dhfin =0.;
     ct%tevap =0.;    ct%qevap =0.;
     ct%dting =0.;    ct%cpool =0.;    ct%mslcl =0.;
     ct%uav   =0.;    ct%vav   =0.;
@@ -423,7 +425,7 @@ contains
     real    :: qct_env_k, hl_env_k
     real    :: t_mid, tv_mid, air_density, total_condensate,   &
                total_rain, total_snow, delta_tracer, delta_qn, wrel2, gamma
-    real    :: cflim, plnb_tmp, plfc_tmp, ptmp
+    real    :: cflim, plnb_tmp, plfc_tmp, ptmp, rkm1
     integer :: n, nnn
     logical :: kbelowlet
 
@@ -463,6 +465,8 @@ contains
        zrel    = ac % zlcl
        thv0rel = ac % thv0lcl
     endif
+
+    cp%buo(1:krel-1)=ac%buo(1:krel-1)
 
     cp%krel=krel
     cp%prel=prel
@@ -552,7 +556,7 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.3) then
-          scaleh1 = max(cpn%scaleh0, 10000.*(sd%ps(0)-cp%p(k))/sd%ps(0))
+          scaleh1 = 1000. * (sd%ps(0)/cp%p(k))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
@@ -565,6 +569,37 @@ contains
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.5) then
+       	  scaleh1 = min(max(sd%pblht_avg, cpn%scaleh0), 10.*cpn%scaleh0)
+          scaleh1 = 1000. * (scaleh1 / (2.*cpn%scaleh0))
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.6) then
+          scaleh1 = 1000. * (sd%pblht_avg / 300.)
+	  scaleh1 = max(scaleh1, 300.)
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.7) then
+          scaleh1 = max(cpn%scaleh0, sd%pblht)
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.8) then
+       	  rkm1 = rkm * (1.+abs(cp%dbuodp(k-1))*cpn%beta)
+          scaleh1 = cpn%scaleh0
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else
           scaleh1 = max(cpn%scaleh0, cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
@@ -677,6 +712,9 @@ contains
 
        cp%thvu(k)=temp/exn_k(cp%ps(k),Uw_p)*(1.+Uw_p%zvir*(cp%qctu(k)-cp%qlu(k)-cp%qiu(k))-cp%qlu(k)-cp%qiu(k))
        cp%buo (k)=(cp%thvu(k)-cp%thvtop(k))!/cp%thvtop(k)
+!       cp%buo (k)=(cp%thvu(k)-cp%thvtop(k))/cp%thvtop(k)*Uw_p%grav
+       cp%dbuodp(k)=(cp%buo(k)/cp%thvtop(k)-cp%buo(k-1)/cp%thvtop(k-1))*Uw_p%grav/cp%dp(k)
+       cp%dbuodp(k)=abs(cp%dbuodp(k))
        cp%t   (k)=temp
        cp%rhu  (k)=(cp%qctu(k)-cp%qlu(k)-cp%qiu(k))/qsat_k(temp,cp%ps(k),Uw_p)
        nu = max(min((268. - temp)/20.,1.0),0.0)
@@ -1661,6 +1699,12 @@ contains
        cp%nbuo = 0.
     end if
 
+    if (ltop .gt. let) then
+       cp%nbuo = (sd%thv(ltop)-sd%thv(let))/(sd%z(ltop)-sd%z(let))*1000.
+    else
+       cp%nbuo = (sd%thv(ltop)-sd%thv(ltop-1))/(sd%z(ltop)-sd%z(ltop-1))*1000.
+    end if
+
     if (cpn%do_varying_rpen) then
        !tmp = cp%pdep / cpn%nbuo_max; tmp = max(tmp,0.2)
        cp%nbuo = -(sd%thv(ltop)-sd%thv(let))/(sd%z(ltop)-sd%z(let))*1000.
@@ -1786,12 +1830,51 @@ contains
     real    :: dpsum, qtdef, qtdefu, hldef, umftmp, qlutmp, qiutmp, qnutmp, fdrtmp
     real, dimension(size(cp%tr,2)) :: trdef
     real    :: dpevap, x1, x2, x3, xx1, xx2, xx3, q1, q2, emftmp
-    real    :: dqt, uutmp, vutmp, qctmp
+    real    :: dqt, uutmp, vutmp, qctmp, dhf0, udef, vdef
 
     call ct_clear_k (ct);
 
     krel=cp%krel
     ltop=cp%ltop
+
+    do k = krel,ltop-1
+       kp1 = k+1
+
+       ct%hlflx (k)= cp%umf(k)*(cp%hlu (k)-(cp%hl (kp1)+  &
+                       sd%sshl (kp1)*(sd%ps(k)-sd%p(kp1)))) + &
+                       cp%emf(k) * (cp%hlu (k)-  &
+                           (cp%hl (k)+sd%sshl (k)*(sd%ps(k)-sd%p(k))))
+       ct%thcflx(k)= cp%umf(k)*(cp%thcu(k)-(cp%thc(kp1)+  &
+                        sd%ssthc(kp1)*(sd%ps(k)-sd%p(kp1)))) + &
+                       cp%emf(k) * (cp%thcu(k)-  &
+                            (cp%thc(k)+sd%ssthc(k)*(sd%ps(k)-sd%p(k))))
+       ct%qctflx(k)= cp%umf(k)*(cp%qctu(k)-(cp%qct(kp1)+  &
+                        sd%ssqct(kp1)*(sd%ps(k)-sd%p(kp1)))) + &
+                       cp%emf(k) * (cp%qctu(k)-  &
+                            (cp%qct(k)+sd%ssqct(k)*(sd%ps(k)-sd%p(k))))
+       ct%qtflxu(k)= cp%umf(k)*cp%qctu(k) + cp%emf(k)*cp%qctu(k)
+       
+       ct%umflx(k) =cp%umf(k) * (cp%uu(k) - cp%u(kp1))  +   &
+                                      cp%emf(k) * (cp%u(kp1) -cp%u(k))
+       ct%vmflx(k) =cp%umf(k) * (cp%vu(k) - cp%v(kp1))  +  &
+                                      cp%emf(k) * (cp%v(kp1) -cp%v(k))
+
+       ct%qlflx(k) =cp%umf(k) * (cp%qlu(k)- cp%ql(kp1)) +   &
+                                      cp%emf(k) * (cp%ql(kp1)-cp%ql(k))
+       ct%qiflx(k) =cp%umf(k) * (cp%qiu(k)- cp%qi(kp1)) +   &
+                                      cp%emf(k) * (cp%qi(kp1)-cp%qi(k))
+       ct%qaflx(k) =cp%umf(k) * (1.       - cp%qa(kp1)) +   &
+                                       cp%emf(k) * (cp%qa(kp1)-cp%qa(k))
+       ct%qnflx(k) =cp%umf(k) * (cp%qnu(k)- cp%qn(kp1)) +  &
+                                      cp%emf(k) * (cp%qn(kp1)-cp%qn(k))
+
+!++++yim
+       ct%trflx(k,:) =cp%umf(k) * (cp%tru(k,:)- (cp%tr(kp1,:)+  &
+                             sd%sstr(kp1,:)*(sd%ps(k)-sd%p(kp1))) ) + &
+                       cp%emf(k) * (cp%tru(kp1,:)-   &
+                         (cp%tr(k,:)+sd%sstr(k,:)*(sd%ps(k)-sd%p(k))) )
+       ct%qvflx(k) =ct%qctflx(k)-ct%qlflx(k)-ct%qiflx(k)
+    enddo
 
     ! Calculate Fluxes of heat, moisture, momentum
     dpsum = 0.0
@@ -1838,6 +1921,46 @@ contains
          ct%qnflx(k)  =0.
          ct%qtflxu(k) =0.
       enddo
+
+   else if (cpn%do_new_subflx) then
+    dpsum = 0.0
+    do k = 1, krel
+       dpsum = dpsum + sd%dp(k)
+    enddo
+    qtdefu= max(0.,cp%umf(krel)*(cp%qctu(krel)))
+    do k=1,krel-1
+       ct%hlflx (k) =ct%hlflx (k-1)  + ct%hlflx (krel)  *sd%dp(k)/dpsum;
+       ct%qctflx(k) =ct%qctflx(k-1)  + ct%qctflx(krel)  *sd%dp(k)/dpsum;
+       ct%qtflxu(k) =ct%qtflxu(k-1)  + qtdefu           *sd%dp(k)/dpsum;
+       ct%trflx(k,:)=ct%trflx (k-1,:)+ ct%trflx (krel,:)*sd%dp(k)/dpsum;
+       ct%umflx (k) =0.0;!ct%umflx (k-1)  + ct%umflx (krel)  *sd%dp(k)/dpsum;
+       ct%vmflx (k) =0.0;!ct%vmflx (k-1)  + ct%vmflx (krel)  *sd%dp(k)/dpsum;
+       ct%thcflx(k) =0.0;
+       ct%qlflx(k)  =0.0;
+       ct%qiflx(k)  =0.0;
+       ct%qnflx(k)  =0.0;
+       ct%qaflx(k)  =0.0;
+       cp%pptr (k)  =0.0; 
+       cp%ppti (k)  =0.0;
+       cp%pptn (k)  =0.0;
+    enddo
+    if (cpn%do_hlflx_zero) then
+       do k=1,krel-1
+          ct%hlflx(k) =0.;
+       end do
+    end if
+    if (cpn%do_qctflx_zero) then
+       do k=1,krel-1
+          ct%qctflx(k) =0.;
+          ct%qtflxu(k) =0.;
+          ct%trflx (k,:)=0.;
+       end do
+    end if
+    if (cpn%do_umf_pbl) then
+       do k=1,krel-1
+       	  cp%umf(k)=cp%umf(k-1) + cp%umf(krel)*sd%dp(k)/dpsum
+       end do
+    end if
 
    else
 
@@ -1886,45 +2009,6 @@ contains
        end do
      end if
     end if
-
-    do k = krel,ltop-1 !pzhu do k = krel,ltop
-       kp1 = k+1
-
-       ct%hlflx (k)= cp%umf(k)*(cp%hlu (k)-(cp%hl (kp1)+  &
-                       sd%sshl (kp1)*(sd%ps(k)-sd%p(kp1)))) + &
-                       cp%emf(k) * (cp%hlu (k)-  &
-                           (cp%hl (k)+sd%sshl (k)*(sd%ps(k)-sd%p(k))))
-       ct%thcflx(k)= cp%umf(k)*(cp%thcu(k)-(cp%thc(kp1)+  &
-                        sd%ssthc(kp1)*(sd%ps(k)-sd%p(kp1)))) + &
-                       cp%emf(k) * (cp%thcu(k)-  &
-                            (cp%thc(k)+sd%ssthc(k)*(sd%ps(k)-sd%p(k))))
-       ct%qctflx(k)= cp%umf(k)*(cp%qctu(k)-(cp%qct(kp1)+  &
-                        sd%ssqct(kp1)*(sd%ps(k)-sd%p(kp1)))) + &
-                       cp%emf(k) * (cp%qctu(k)-  &
-                            (cp%qct(k)+sd%ssqct(k)*(sd%ps(k)-sd%p(k))))
-       ct%qtflxu(k)= cp%umf(k)*cp%qctu(k) + cp%emf(k)*cp%qctu(k)
-       
-       ct%umflx(k) =cp%umf(k) * (cp%uu(k) - cp%u(kp1))  +   &
-                                      cp%emf(k) * (cp%u(kp1) -cp%u(k))
-       ct%vmflx(k) =cp%umf(k) * (cp%vu(k) - cp%v(kp1))  +  &
-                                      cp%emf(k) * (cp%v(kp1) -cp%v(k))
-
-       ct%qlflx(k) =cp%umf(k) * (cp%qlu(k)- cp%ql(kp1)) +   &
-                                      cp%emf(k) * (cp%ql(kp1)-cp%ql(k))
-       ct%qiflx(k) =cp%umf(k) * (cp%qiu(k)- cp%qi(kp1)) +   &
-                                      cp%emf(k) * (cp%qi(kp1)-cp%qi(k))
-       ct%qaflx(k) =cp%umf(k) * (1.       - cp%qa(kp1)) +   &
-                                       cp%emf(k) * (cp%qa(kp1)-cp%qa(k))
-       ct%qnflx(k) =cp%umf(k) * (cp%qnu(k)- cp%qn(kp1)) +  &
-                                      cp%emf(k) * (cp%qn(kp1)-cp%qn(k))
-
-!++++yim
-       ct%trflx(k,:) =cp%umf(k) * (cp%tru(k,:)- (cp%tr(kp1,:)+  &
-                             sd%sstr(kp1,:)*(sd%ps(k)-sd%p(kp1))) ) + &
-                       cp%emf(k) * (cp%tru(kp1,:)-   &
-                         (cp%tr(k,:)+sd%sstr(k,:)*(sd%ps(k)-sd%p(k))) )
-       ct%qvflx(k) =ct%qctflx(k)-ct%qlflx(k)-ct%qiflx(k)
-    enddo
 
     do k = 2,ltop
        km1 = k-1
@@ -2158,13 +2242,15 @@ contains
 !       ct%nqtflx(k-1)=ct%qctflx(k-1)-ct%pflx(k)
     end do
 
-    ct%dting=0.;
+    ct%dting=0.; ct%dhfin=0.;
     ct%denth=0.; ct%dqtmp=0.; ct%uav=0.;ct%vav=0.; dpsum=0.;
     do k = 1,sd%kmax! ltop
        if (ct%tten(k).gt.500./86400.) then
        	  ct%tten(k)= ct%tten(k)
        endif
        ct%denth = ct%denth + (Uw_p%cp_air*ct%tten(k)-Uw_p%HLv*ct%qlten(k)-Uw_p%HLs*ct%qiten(k))*sd%dp(k)/Uw_p%grav
+       ct%dhfin = ct%dhfin + (Uw_p%cp_air*ct%tten(k)+Uw_p%HLv*ct%qvten(k)-Uw_p%HLf*ct%qiten(k))*sd%dp(k)/Uw_p%grav
+
        ct%dqtmp = ct%dqtmp + (ct%qvten(k) + ct%qlten(k) + ct%qiten(k))*sd%dp(k)/Uw_p%grav
        ct%uav   = ct%uav   + ct%uten(k)*sd%dp(k)/Uw_p%grav
        ct%vav   = ct%vav   + ct%vten(k)*sd%dp(k)/Uw_p%grav
