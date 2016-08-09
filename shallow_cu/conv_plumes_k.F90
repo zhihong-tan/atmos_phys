@@ -556,12 +556,13 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.3) then
-          scaleh1 = 1000. * (sd%ps(0)/cp%p(k))
+       	  rkm1 = rkm * (1.+abs(cp%dbuodp(k-1))*cpn%beta)
+          scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.4) then
           scaleh1 = 2000.
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
@@ -600,6 +601,13 @@ contains
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.9) then
+          scaleh1 = 1000. * (sd%ps(0)/cp%p(k))
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else
           scaleh1 = max(cpn%scaleh0, cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
