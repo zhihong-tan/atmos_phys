@@ -557,6 +557,7 @@ contains
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.3) then
        	  rkm1 = rkm * (1.+abs(cp%dbuodp(k-1))*cpn%beta)
+	  rkm1 = min(rkm1,20.)
           scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
