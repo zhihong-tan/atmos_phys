@@ -147,6 +147,7 @@ contains
     dpn % use_new_let        = cpn % use_new_let
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
+    dpn % rkm_max            = cpn % rkm_max
     dpn % scaleh0            = cpn % scaleh0
     dpn % beta               = cpn % beta
 
