@@ -198,10 +198,11 @@ MODULE UW_CONV_MOD
   real    :: scaleh0    = 1000.
   real    :: beta       = 1000.
   real    :: tten_max   = 1000.
+  real    :: rkm_max    = 20.
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, do_limit_wmax, &
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
-       mixing_assumption, mp_choice, de_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, &
+       mixing_assumption, mp_choice, de_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, rkm_max, &
        hcevappbl, pblfac, include_emf_s, do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max, scaleh0, beta
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
@@ -1192,6 +1193,7 @@ contains
     cpn % do_pnqv   = do_pnqv
     cpn % do_tten_max   = do_tten_max
     cpn % tten_max  = tten_max
+    cpn % rkm_max   = rkm_max
     cpn % scaleh0   = scaleh0
     cpn % beta      = beta
     cpn % emfrac_max= emfrac_max

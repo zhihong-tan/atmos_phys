@@ -40,7 +40,7 @@ MODULE CONV_PLUMES_k_MOD
      integer :: mixing_assumption, mp_choice, de_choice
      real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, scaleh0
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, beta, &
-             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, &
+             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, rkm_max, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, use_online_aerosol, do_umf_pbl, do_minmse
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
@@ -557,7 +557,7 @@ contains
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.3) then
        	  rkm1 = rkm * (1.+abs(cp%dbuodp(k-1))*cpn%beta)
-	  rkm1 = min(rkm1,20.)
+	  rkm1 = min(rkm1,cpn%rkm_max)
           scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
