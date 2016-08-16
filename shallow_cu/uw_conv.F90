@@ -85,6 +85,7 @@ MODULE UW_CONV_MOD
   real    :: atopevap = 0.
   logical :: apply_tendency = .true.
   logical :: prevent_unreasonable = .true.
+  logical :: reproduce_old_version = .true.
   real    :: aerol = 1.e-12
   real    :: tkemin   = 1.e-6
   real    :: wmin_ratio = 0.05
@@ -152,7 +153,7 @@ MODULE UW_CONV_MOD
        cush_ref, do_prog_gust, tau_gust, geff, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
        duration, do_stime, do_dtime, stime0, dtime0, do_subcloud_flx, do_new_subflx, src_choice, gqt_choice,   &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let, &
-       use_pblhttke_avg, use_hlqtsrc_avg, use_capecin_avg
+       use_pblhttke_avg, use_hlqtsrc_avg, use_capecin_avg, reproduce_old_version
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -2151,6 +2152,71 @@ contains
     end if
 
     if ( prevent_unreasonable ) then
+
+   if (reproduce_old_version) then
+      scale_uw=HUGE(1.0)
+      do k=1,kmax
+        do j=1,jmax
+          do i=1,imax
+            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .lt. 0. .and. (qaten(i,j,k).ne.0.)) then
+              qaten(i,j,k) = -1.*q(i,j,k,nqa)/delt
+            end if
+            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .gt. 1. .and. (qaten(i,j,k).ne.0.)) then
+              qaten(i,j,k)= (1. - q(i,j,k,nqa))/delt
+            end if
+ 
+            if ((q(i,j,k,nql) + qlten(i,j,k)*delt) .lt. 0. .and. (qlten(i,j,k).ne.0.)) then
+              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nql)/delt+qlten(i,j,k))*HLv/Cp_Air
+              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nql)/delt+qlten(i,j,k))
+              qlten(i,j,k) = qlten(i,j,k)-(q(i,j,k,nql)/delt+qlten(i,j,k))
+            end if
+ 
+            if ((q(i,j,k,nqi) + qiten(i,j,k)*delt) .lt. 0. .and. (qiten(i,j,k).ne.0.)) then
+              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nqi)/delt+qiten(i,j,k))*HLs/Cp_Air
+              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nqi)/delt+qiten(i,j,k))
+    
+              qiten(i,j,k) = qiten(i,j,k)-(q(i,j,k,nqi)/delt+qiten(i,j,k))
+            end if
+
+            if (do_qn) then
+              if ((q(i,j,k,nqn) + qnten(i,j,k)*delt) .lt. 0. .and. (qnten(i,j,k).ne.0.)) then
+                qnten(i,j,k) = qnten(i,j,k)-(q(i,j,k,nqn)/delt+qnten(i,j,k))
+              end if
+            endif
+    !rescaling to prevent negative specific humidity for each grid point
+            if (do_rescale) then
+              qtin =  qv(i,j,k)
+              dqt  =  qvten(i,j,k) * delt
+              if ( dqt.lt.0 .and. qtin+dqt.lt.1.e-10 ) then
+                temp_1 = max( 0.0, -(qtin-1.e-10)/dqt )
+              else
+                temp_1 = 1.0
+              endif
+    !scaling factor for each column is the minimum value within that column
+              scale_uw(i,j) = min( temp_1, scale_uw(i,j))
+            endif
+    !rescaling to prevent excessive temperature tendencies
+            if (do_rescale_t) then
+              temp_max = max(temp_max,tb(i,j,k))
+              temp_min = min(temp_min,tb(i,j,k))
+              tnew  =  tb(i,j,k) + tten(i,j,k) * delt
+              if ( tnew > 363.15 ) then
+                temp_1 = 0.0
+                print *, 'WARNING: setting scale_uw to zero to prevent large T tendencies in UW'
+                print *, i,j,'lev=',k,'pressure=',pmid(i,j,k),'tb=',tb(i,j,k),'tten=',tten(i,j,k)*delt
+                print *, 'lat=', sd%lat, 'lon=', sd%lon, 'land=',sd%land
+              else
+                temp_1 = 1.0
+              endif
+    !scaling factor for each column is the minimum value within that column
+              scale_uw(i,j) = min( temp_1, scale_uw(i,j))
+            endif
+          enddo
+        enddo
+      enddo
+
+   else !reproduce_old_version
+
        temp = q(:,:,:,nql)/delt + qlten(:,:,:)
        where (temp(:,:,:) .lt. 0. .and. qlten(:,:,:) .ne. 0.)
          tten (:,:,:) = tten (:,:,:) - temp(:,:,:)*HLV/CP_AIR
@@ -2166,9 +2232,9 @@ contains
        end where
 
 !The following 3 lines are in do_limit_uw; commented out here for reproducing earlier am4
-!       where (abs(qlten(:,:,:)+qiten(:,:,:))*delt .lt. 1.e-10 )
-!         qaten(:,:,:) = 0.0
-!       end where
+       where (abs(qlten(:,:,:)+qiten(:,:,:))*delt .lt. 1.e-10 )
+         qaten(:,:,:) = 0.0
+       end where
 
        temp = q(:,:,:,nqa)/delt + qaten(:,:,:)
        where (temp(:,:,:) .lt. 0. .and. qaten(:,:,:) .ne. 0.)
@@ -2226,6 +2292,8 @@ contains
             enddo
          enddo
       endif
+
+   endif !reproduce_old_version
 
       if (do_rescale .or. do_rescale_t) then
         do k=1,kmax
