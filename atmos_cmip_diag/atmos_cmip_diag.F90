@@ -50,7 +50,7 @@ real, dimension(23) :: plev = &
               (/ 100000., 92500., 85000., 70000., 60000., 50000., &
                   40000., 30000., 25000., 20000., 15000., 10000., &
                    7000.,  5000.,  3000.,  2000.,  1000.,   700., &
-                    500.,   300.,   200.,   100.,    50. /)
+                    500.,   300.,   200.,   100.,    40. /)
 real, dimension(8) :: plev8 = &
               (/ 100000., 85000., 70000., 50000., &
                   25000., 10000.,  5000.,  1000. /)
@@ -446,15 +446,16 @@ end function register_cmip_diag_field_3d
  
 !#######################################################################
 
-logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, phalf, rmask, opt, ext)
+logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, phalf, mask, rmask, opt, ext)
 
-  type(cmip_diag_id_type), intent(in) :: cmip_id
-  real, dimension(:,:,:),  intent(in) :: field
-  type(time_type),         intent(in), optional :: Time
-  integer,                 intent(in), optional :: is_in, js_in, ks_in
-  real, dimension(:,:,:),  intent(in), optional :: phalf, rmask
-  integer,                 intent(in), optional :: opt  ! if opt /= 0 then phalf(i,k,j)
-  logical,                 intent(in), optional :: ext
+  type(cmip_diag_id_type),   intent(in) :: cmip_id
+  real, dimension(:,:,:),    intent(in) :: field
+  type(time_type),           intent(in), optional :: Time
+  integer,                   intent(in), optional :: is_in, js_in, ks_in
+  real,    dimension(:,:,:), intent(in), optional :: phalf, rmask
+  logical, dimension(:,:,:), intent(in), optional :: mask
+  integer,                   intent(in), optional :: opt  ! if opt /= 0 then phalf(i,k,j)
+  logical,                   intent(in), optional :: ext
 
   integer :: ind, id, np, ke
   real, allocatable :: pdat(:,:,:)
@@ -482,8 +483,8 @@ logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, p
         if (.not.present(phalf)) then
           cycle ! silently skip?
         endif
-        if (present(rmask)) call error_mesg('atmos_cmip_diag_mod', &
-                               'rmask not allowed with pressure interpolation',FATAL)
+        if (present(rmask) .or. present(mask)) call error_mesg('atmos_cmip_diag_mod', &
+                               'rmask or mask not allowed with pressure interpolation',FATAL)
         np = num_pres_levs(ind)
         allocate(pdat(size(field,1),size(field,2),np))
         call interpolate_vertical_3d (pressure_levels(ind,1:np), phalf, field, pdat, opt=opt, ext=ext)
@@ -495,10 +496,10 @@ logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, p
         if (flip_cmip_levels) then
            ke = size(field,3)
            send_cmip_data_3d = send_data(id, field(:,:,ke:1:-1), Time, &
-                                      is_in=is_in, js_in=js_in, ks_in=ks_in, rmask=rmask)
+                                      is_in=is_in, js_in=js_in, ks_in=ks_in, mask=mask, rmask=rmask)
          else
            send_cmip_data_3d = send_data(id, field(:,:,:), Time, &
-                                      is_in=is_in, js_in=js_in, ks_in=ks_in, rmask=rmask)
+                                      is_in=is_in, js_in=js_in, ks_in=ks_in, mask=mask, rmask=rmask)
          endif
       endif
     endif
