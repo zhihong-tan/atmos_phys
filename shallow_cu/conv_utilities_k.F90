@@ -29,12 +29,13 @@ MODULE CONV_UTILITIES_k_MOD
 
  public sounding
  type sounding
-    logical  :: coldT, do_gust_qt
+    logical  :: coldT, do_gust_qt, use_hlqtsrc_avg, use_capecin_avg
     integer  :: kmax, kinv, ktoppbl, ktopconv, ksrc, src_choice, gqt_choice
-    real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, plev_cin, lts, eis, gam, z700
+    real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, usrc, vsrc, plev_cin, lts, eis, gam, z700
     real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre
     real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon, p_minmse
     real     :: dpsum, hmint, hm_vadv0
+    real     :: pblht_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, numx
     real     :: tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int
     real     :: tdt_rad_pbl, tdt_dyn_pbl, tdt_dif_pbl, qdt_dyn_pbl, qdt_dif_pbl
     real     :: tdt_rad_fre, tdt_dyn_fre, tdt_dif_fre, qdt_dyn_fre, qdt_dif_fre
@@ -65,14 +66,14 @@ MODULE CONV_UTILITIES_k_MOD
 
  public adicloud
  type adicloud
-   real     :: usrc, vsrc, hlsrc, thcsrc, qctsrc
+    real     :: usrc, vsrc, hlsrc, thcsrc, qctsrc
     integer  :: klcl, klfc, klnb
     real     :: plcl, zlcl, thvlcl, thv0lcl, rho0lcl
     real     :: plfc, plnb, cape, cin
     real, _ALLOCATABLE :: t  (:)_NULL, qv  (:)_NULL, ql  (:)_NULL
     real, _ALLOCATABLE :: qi (:)_NULL, thc (:)_NULL, qct (:)_NULL
     real, _ALLOCATABLE :: thv(:)_NULL, nu  (:)_NULL, leff(:)_NULL
-    real, _ALLOCATABLE :: hl (:)_NULL, buo (:)_NULL
+    real, _ALLOCATABLE :: hl (:)_NULL, buo (:)_NULL, dbuodp(:)_NULL
  end type adicloud
 
  public uw_params
@@ -150,6 +151,15 @@ contains
     integer, intent(in) :: kd, num_tracers
     type(sounding), intent(inout) :: sd
     
+    sd%use_capecin_avg = .false.
+    sd%use_hlqtsrc_avg = .false.
+    sd%hlsrc_avg = 0.
+    sd%qtsrc_avg = 0.
+    sd%numx = 0.
+    sd%pblht_avg= 0.0
+    sd%cape_avg= 0.0
+    sd%cin_avg = 0.0
+
     sd%do_gust_qt = .false.
     sd%coldT    = .false.
     sd%kmax     = kd
@@ -274,11 +284,23 @@ contains
     sd1% thcsrc = sd % thcsrc
     sd1% qctsrc = sd % qctsrc
     sd1% hlsrc  = sd % hlsrc
+    sd1% usrc   = sd % usrc
+    sd1% vsrc   = sd % vsrc
     sd1% land = sd % land
     sd1% coldT= sd % coldT
     sd1% tke  = sd % tke
     sd1% lat  = sd % lat
     sd1% lon  = sd % lon
+
+    sd1% use_capecin_avg = sd % use_capecin_avg
+    sd1% use_hlqtsrc_avg = sd % use_hlqtsrc_avg
+    sd1% hlsrc_avg = sd % hlsrc_avg
+    sd1% qtsrc_avg = sd % qtsrc_avg
+    sd1% numx      = sd % numx
+    sd1% pblht_avg = sd % pblht_avg
+    sd1% cape_avg  = sd % cape_avg
+    sd1% cin_avg   = sd % cin_avg
+
     sd1% do_gust_qt= sd % do_gust_qt
     sd1% cgust= sd % cgust
     sd1% cgust0= sd % cgust0
@@ -349,6 +371,7 @@ contains
     allocate ( ac%leff  (1:kd)); ac%leff =0.;
     allocate ( ac%hl    (1:kd)); ac%hl   =0.;
     allocate ( ac%buo   (1:kd)); ac%buo  =0.;
+    allocate ( ac%dbuodp(1:kd)); ac%dbuodp=0.;
   end subroutine ac_init_k
 
 !#####################################################################
@@ -359,7 +382,7 @@ contains
     ac%t    =0.;    ac%qv   =0.;    ac%ql   =0.;
     ac%qi   =0.;    ac%thc  =0.;    ac%qct  =0.;
     ac%thv  =0.;    ac%nu   =0.;    ac%leff =0.; ac%hl   =0.;
-    ac%buo  =0.;
+    ac%buo  =0.;    ac%dbuodp=0.;
   end subroutine ac_clear_k
 
 !#####################################################################
@@ -368,7 +391,7 @@ contains
   subroutine ac_end_k(ac)
     type(adicloud), intent(inout) :: ac
     deallocate (ac%t, ac%qv, ac%ql, ac%qi, ac%thc, ac%qct,  &
-                ac%thv, ac%nu, ac%leff, ac%hl, ac%buo )
+                ac%thv, ac%nu, ac%leff, ac%hl, ac%buo, ac%dbuodp )
   end subroutine ac_end_k
 
 !#####################################################################
@@ -608,6 +631,13 @@ contains
     sd%hlsrc =sd%hl (ksrc)
     sd%thcsrc=sd%thc(ksrc)
     sd%qctsrc=sd%qct(ksrc)
+    sd%usrc  =sd%u  (ksrc)
+    sd%vsrc  =sd%v  (ksrc)
+
+    if (sd%use_hlqtsrc_avg) then
+       sd%hlsrc  = (sd%hlsrc +sd%hlsrc_avg*(sd%numx-1))/sd%numx
+       sd%qctsrc = (sd%qctsrc+sd%qtsrc_avg*(sd%numx-1))/sd%numx
+    endif
 
     if (sd%do_gust_qt) then
        call qt_parcel_cgust(sd%qctsrc, sd%qs(ksrc), sd%cgust, sd%cgust0, sd%cgust_max, &
@@ -790,8 +820,8 @@ contains
     ac % hlsrc  = hlsrc
     ac % thcsrc = thcsrc
     ac % qctsrc = qctsrc
-    ac % usrc   = sd%u(sd%ktoppbl)
-    ac % vsrc   = sd%v(sd%ktoppbl)
+    ac % usrc   = sd%usrc
+    ac % vsrc   = sd%vsrc
  
     hl0lcl  = sd%hl (klcl)+sd%sshl (klcl)*(ac%plcl-sd%p(klcl))
     thc0lcl = sd%thc(klcl)+sd%ssthc(klcl)*(ac%plcl-sd%p(klcl))
@@ -827,10 +857,13 @@ contains
        call findt_k(sd%zs(k),sd%ps(k), hlsrc, qctsrc, thj, ac%qv(k), &
                     ac%ql(k), ac%qi(k), qs, ac%thv(k), doice, Uw_p)
        ac%t(k) = thj*exn_k(sd%ps(k),Uw_p)
-       ac%buo(k) = ac%thv(k) - sd%thvtop(k)
+       ac%buo(k) = (ac%thv(k) - sd%thvtop(k))/sd%thvtop(k)*Uw_p%grav
     end do
   endif
 
+  do k=1,kl-1
+     ac%dbuodp(k)=(ac%buo(k+1)-ac%buo(k))/sd%dp(k)
+  end do
 
     !Determine the convective inhibition (CIN)
     CIN = 0.
