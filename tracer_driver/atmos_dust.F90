@@ -40,7 +40,9 @@ private
 
 public  atmos_dust_sourcesink, atmos_dust_init, atmos_dust_end, &
         atmos_dust_time_vary, atmos_dust_endts, is_dust_tracer, &
-        dust_has_surf_setl_flux, get_dust_surf_setl_flux
+        atmos_dust_flux_init, atmos_dust_gather_data,           &
+        dust_has_surf_setl_flux, get_dust_surf_setl_flux,       &
+        atmos_dust_wetdep_flux_set,atmos_dust_drydep_flux_set 
 
 public do_dust, n_dust_tracers, dust_tracers
 
@@ -64,6 +66,11 @@ type :: dust_data_type
 end type dust_data_type
 
 logical :: do_dust = .FALSE.
+integer, save   :: ind_dry_dep_lith_dust_flux = 0
+integer, save   :: ind_wet_dep_lith_dust_flux = 0
+real, allocatable :: dry_dep_lith_dust_flux(:,:)
+real, allocatable :: wet_dep_lith_dust_flux(:,:)
+
 ! ---- module data ----
 logical :: module_is_initialized = .FALSE.
 logical :: do_emission = .TRUE. ! indicates that dust emission is done on atmos. side 
@@ -83,9 +90,11 @@ real               :: uthresh=-999.
 real               :: coef_emis =-999.
 logical            :: use_sj_sedimentation_solver = .FALSE.
 logical            :: dust_debug = .false.
+logical            :: do_esm_dust_flux = .false. !If set to .true. a dust flux will be prepared for exchange with Ocean
 integer            :: logunit
 
-namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis, use_sj_sedimentation_solver, dust_debug
+namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis, use_sj_sedimentation_solver, &
+                     dust_debug, do_esm_dust_flux
 
 !---- version number -----
 character(len=128) :: version = '$Id$'
@@ -174,11 +183,13 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
      endif
 
      ! Accumulate total emission and deposition fluxes for output
-     if (id_dust_ddep > 0) then
-        ! accumulate total dust deposition flux
-        all_dust_setl(:,:) = all_dust_setl(:,:) &
-               + dust_tracers(i)%dust_setl(is:ie,js:je) + pwt(:,:,kd)*dsinku(:,:,ndust) ! shouldn't kd be kbot?
-     endif
+     ! accumulate total dust deposition flux
+     all_dust_setl(:,:) = all_dust_setl(:,:) &
+          + dust_tracers(i)%dust_setl(is:ie,js:je) + pwt(:,:,kd)*dsinku(:,:,ndust) ! shouldn't kd be kbot?
+
+!     all_dust_setl(:,:) = 1.0-frac_land(:,:)  !The exchanged flux of this becomes >1 at some points within ocean near shore!!
+     call atmos_dust_drydep_flux_set(all_dust_setl, is,ie,js,je)
+     
      if (id_dust_emis > 0) then
         ! accumulate total dust emission flux
         all_dust_emis(:,:) = all_dust_emis(:,:) + dust_emis(:,:) 
@@ -280,7 +291,7 @@ subroutine atmos_dust_sourcesink1 ( &
          qn1(k)=(qn(k)*dz(k)+dt*qn1(k-1)*vdep(k-1)*air_dens(k-1)/air_dens(k))/(dz(k)+dt*vdep(k))
        enddo
        dust_dt(i,j,:)=dust_dt(i,j,:)+(qn1(:)-qn(:))/dt
-       setl(kb) = qn1(kb)*air_dens(kb)/mtv*vdep(k)
+       setl(kb) = qn1(kb)*air_dens(kb)/mtv*vdep(kb) !! ter, 2016-05-13 vdep(k) is outside of loop, so k > kb.  Switched k to kb 
 
 !---> h1g, 2016-04-05
        if( dust_debug ) then
@@ -566,11 +577,125 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
                           vert_interp=(/INTERP_WEIGHTED_P/) )
   endif
 
+  !Allocate the array to contain the total dust flux for ESM
+  allocate(dry_dep_lith_dust_flux(size(lonb)-1,size(latb)-1)); dry_dep_lith_dust_flux=0.0
+  allocate(wet_dep_lith_dust_flux(size(lonb)-1,size(latb)-1)); wet_dep_lith_dust_flux=0.0
+
+
   do_dust = .TRUE.
   module_is_initialized = .TRUE.
 
  end subroutine atmos_dust_init
 !</SUBROUTINE>
+!#######################################################################
+
+!<SUBROUTINE NAME ="atmos_dust_flux_init">
+
+!<OVERVIEW>
+! Subroutine to initialize the dust flux
+!</OVERVIEW>
+
+ subroutine atmos_dust_flux_init
+
+   use tracer_manager_mod,    only : get_tracer_index, tracer_manager_init
+   use atmos_ocean_fluxes_mod, only: aof_set_coupler_flux
+
+   !
+   !-----------------------------------------------------------------------
+   !     arguments
+   !-----------------------------------------------------------------------
+   !
+
+   !
+   !-----------------------------------------------------------------------
+   !     local variables
+   !-----------------------------------------------------------------------
+   !
+
+   integer :: ind
+
+   !
+   !-----------------------------------------------------------------------
+   !     local parameters
+   !-----------------------------------------------------------------------
+   !
+
+   character(len=64), parameter    :: mod_name = 'atmos_dust'
+   character(len=64), parameter    :: sub_name = 'atmos_dust_flux_init'
+   character(len=256), parameter   :: error_header =                               &
+        '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: warn_header =                                &
+        '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: note_header =                                &
+        '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+   integer :: outunit
+   outunit = stdout()
+   
+   if(do_esm_dust_flux) then
+   ! find out if there is a dust tracer (to be used to pass dust fluxes to Ocean BGC)
+   call tracer_manager_init      
+   ind = get_tracer_index(MODEL_ATMOS,'dust1')
+   if (ind > 0) then
+      write (outunit,*) trim(note_header), ' dust1 was initialized as tracer number ', ind
+   else
+      write (outunit,*) trim(note_header), ' dust1 was not found ', ind
+      return
+   endif
+
+   !
+   !       Initialize coupler flux for the total dust flux to ocean.
+   !       Use "dust1" tracer if it exists to avoid creating a dummy tracer for this purpose.
+   !       This does not affect the existing "dust1" tracer unless "dust1" should need to have
+   !       its own coupler fluxes to be exchanged with OCN in the future. In that case we need
+   !       to define an additional prog.tracer in ATM to associate the ESM-wanted "lith" fluxes with.
+   !
+
+   if (ind > 0) then
+      ind_dry_dep_lith_dust_flux = aof_set_coupler_flux('dry_dep_lith',     &
+           flux_type = 'air_sea_deposition', implementation = 'dry',    &
+           atm_tr_index = ind,                                          &
+           param = (/ 1.0,1.0 /),                          &
+           caller = trim(mod_name) // '(' // trim(sub_name) // ')')
+
+      ind_wet_dep_lith_dust_flux = aof_set_coupler_flux('wet_dep_lith',     &
+           flux_type = 'air_sea_deposition', implementation = 'wet',    &
+           atm_tr_index = ind,                                          &
+           param = (/ 1.0,1.0 /),                          &
+           caller = trim(mod_name) // '(' // trim(sub_name) // ')')
+   endif
+   endif !if(do_esm_dust_flux)
+
+ end subroutine atmos_dust_flux_init
+!</SUBROUTINE>
+!#######################################################################
+
+!<SUBROUTINE NAME ="atmos_dust_gather_data">
+!<OVERVIEW>
+!  A subroutine to gather fields needed for calculating the dust flux for ESM
+!</OVERVIEW>
+!
+
+subroutine atmos_dust_gather_data (gas_fields, tr_bot)
+
+use coupler_types_mod, only: coupler_2d_bc_type, ind_pcair
+
+type(coupler_2d_bc_type), intent(inout) :: gas_fields
+real, dimension(:,:,:), intent(in)      :: tr_bot
+
+
+if (ind_dry_dep_lith_dust_flux .gt. 0) then
+  gas_fields%bc(ind_dry_dep_lith_dust_flux)%field(ind_pcair)%values(:,:) = -dry_dep_lith_dust_flux(:,:)!sign flip
+endif
+
+if (ind_wet_dep_lith_dust_flux .gt. 0) then
+  gas_fields%bc(ind_wet_dep_lith_dust_flux)%field(ind_pcair)%values(:,:) = wet_dep_lith_dust_flux(:,:)
+endif
+
+end subroutine atmos_dust_gather_data
+!</SUBROUTINE >
+
+!#######################################################################
 
 !#######################################################################
 ! read the specified parameter from the input string, and report a
@@ -633,6 +758,20 @@ subroutine atmos_dust_endts
       call unset_interpolator_time_flag (dust_source_interp)
 end subroutine atmos_dust_endts 
 
+!######################################################################
+
+subroutine atmos_dust_wetdep_flux_set(array, is,ie,js,je)
+  real, dimension(is:ie,js:je), intent(in) :: array
+  integer,              intent(in) :: is,ie,js,je
+  wet_dep_lith_dust_flux(is:ie,js:je) = array(is:ie,js:je)
+end subroutine atmos_dust_wetdep_flux_set
+
+subroutine atmos_dust_drydep_flux_set(array, is,ie,js,je)
+  real, dimension(is:ie,js:je), intent(in) :: array
+  integer,              intent(in) :: is,ie,js,je
+  dry_dep_lith_dust_flux(is:ie,js:je) = array(is:ie,js:je)
+end subroutine atmos_dust_drydep_flux_set
+
 
 !#######################################################################
 !<SUBROUTINE NAME="atmos_dust_end">
@@ -652,6 +791,8 @@ end subroutine atmos_dust_endts
        deallocate(dust_tracers(i)%dsetl_dtr)
     enddo
     deallocate(dust_tracers)
+    deallocate(dry_dep_lith_dust_flux)
+    deallocate(wet_dep_lith_dust_flux)
  end subroutine atmos_dust_end
 !</SUBROUTINE>
 

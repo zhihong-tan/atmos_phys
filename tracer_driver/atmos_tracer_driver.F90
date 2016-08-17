@@ -152,6 +152,8 @@ use atmos_sea_salt_mod,    only : atmos_sea_salt_sourcesink,     &
                                   do_seasalt
 use atmos_dust_mod,        only : atmos_dust_sourcesink,   &
                                   atmos_dust_init,         &
+                                  atmos_dust_flux_init,    &
+                                  atmos_dust_gather_data,  &
                                   atmos_dust_time_vary,    &
                                   atmos_dust_endts,        &
                                   is_dust_tracer,          &
@@ -1582,6 +1584,7 @@ integer :: logunit
 subroutine atmos_tracer_flux_init
 
 call atmos_co2_flux_init
+call atmos_dust_flux_init
 
 return
 
@@ -1610,6 +1613,7 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 !-----------------------------------------------------------------------
 
   call atmos_co2_gather_data(gas_fields, tr_bot)
+  call atmos_dust_gather_data(gas_fields, tr_bot)
 
 !-----------------------------------------------------------------------
 

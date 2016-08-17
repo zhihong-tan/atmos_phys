@@ -386,7 +386,7 @@ subroutine atmos_seasalt_sourcesink1 ( &
           qn1(k)=(qn(k)*dz(k)+dt*qn1(k-1)*vdep(k-1)*air_dens(k-1)/air_dens(k))/(dz(k)+dt*vdep(k))
         enddo
         seasalt_dt(i,j,:)=seasalt_dt(i,j,:)+(qn1(:)-qn(:))/dt
-        seasalt_setl(i,j) = qn1(kb)*air_dens(kb)/mtv*vdep(k)
+        seasalt_setl(i,j) = qn1(kb)*air_dens(kb)/mtv*vdep(kb)
 
 !---> h1g, 2016-04-05
        if( ssalt_debug ) then
