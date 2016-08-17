@@ -2056,10 +2056,10 @@ end if
          end if
          if (co2_fixed_year .gt. 0) then
             co2_t%use_fix_time = .true.
-            year = INT(fixed_year)
+            year = INT(co2_fixed_year)
             Year_t = set_date(year,1,1,0,0,0)
             diy = days_in_year (Year_t)
-            extra_seconds = (fixed_year - year)*diy*SECONDS_PER_DAY 
+            extra_seconds = (co2_fixed_year - year)*diy*SECONDS_PER_DAY 
             co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
          end if
       else
