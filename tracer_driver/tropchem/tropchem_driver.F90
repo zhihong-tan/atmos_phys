@@ -1955,38 +1955,6 @@ end if
          end if
       end if
 
-!fp
-!CO2           
-      if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
-         co2_t%use_fix_value  = .false.
-         !read from file
-         flb = open_namelist_file( 'INPUT/' // trim(co2_filename) )
-         read(flb,FMT='(i12)') series_length
-         allocate( co2_t%gas_value(series_length), co2_t%gas_time(series_length) )
-         do n = 1,series_length
-            read (flb, FMT = '(2f12.4)') input_time, co2_t%gas_value(n)
-            year = INT(input_time)
-            Year_t = set_date(year,1,1,0,0,0)
-            diy = days_in_year (Year_t)
-            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
-            co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
-         end do
-         call close_file(flb)
-         if (co2_scale_factor .gt. 0) then
-            co2_t%gas_value = co2_t%gas_value * co2_scale_factor
-         end if
-         if (co2_fixed_year .gt. 0) then
-            co2_t%use_fix_time = .true.
-            year = INT(co2_fixed_year)
-            Year_t = set_date(year,1,1,0,0,0)
-            diy = days_in_year (Year_t)
-            extra_seconds = (co2_fixed_year - year)*diy*SECONDS_PER_DAY 
-            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
-         end if
-      else
-         co2_t%use_fix_value  = .true.
-         co2_t%fixed_value    = co2_fixed_value
-      end if
 !-----------------------------------------------------------------------
 !     ... Initial conditions
 !-----------------------------------------------------------------------
@@ -2064,7 +2032,41 @@ end if
       end if
          
    end do
-   
+  
+!move CO2 input out of the loop of "do i = 1,pcnstm1", 2016-07-25
+!fp
+!CO2           
+      if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
+         co2_t%use_fix_value  = .false.
+         !read from file
+         flb = open_namelist_file( 'INPUT/' // trim(co2_filename) )
+         read(flb,FMT='(i12)') series_length
+         allocate( co2_t%gas_value(series_length), co2_t%gas_time(series_length) )
+         do n = 1,series_length
+            read (flb, FMT = '(2f12.4)') input_time, co2_t%gas_value(n)
+            year = INT(input_time)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
+            co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
+         end do
+         call close_file(flb)
+         if (co2_scale_factor .gt. 0) then
+            co2_t%gas_value = co2_t%gas_value * co2_scale_factor
+         end if
+         if (co2_fixed_year .gt. 0) then
+            co2_t%use_fix_time = .true.
+            year = INT(fixed_year)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (fixed_year - year)*diy*SECONDS_PER_DAY 
+            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
+         end if
+      else
+         co2_t%use_fix_value  = .true.
+         co2_t%fixed_value    = co2_fixed_value
+      end if
+ 
 !-----------------------------------------------------------------------
 !     ... Print out settings for tracer
 !-----------------------------------------------------------------------
