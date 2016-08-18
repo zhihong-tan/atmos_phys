@@ -279,7 +279,8 @@ integer                      :: id_rlds, id_rldscs, id_rlus, id_rsds,   &
                                 id_rsdscs, id_rsus, id_rsuscs, id_rsdt, &
                                 id_rsut, id_rsutcs, id_rlut, id_rlutcs, &
                                 id_rtmt, id_rsdsdiff, id_rsdscsdiff
-type(cmip_diag_id_type)      :: ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs
+type(cmip_diag_id_type)      :: ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs, &
+                                ID_rsu, ID_rsucs, ID_rsd, ID_rsdcs
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
                                         id_netlw_special
@@ -1059,6 +1060,22 @@ logical,         intent(in) :: do_lwaerosol
         ID_tntrscs = register_cmip_diag_field_3d (mod_name, 'tntrscs', Time, & 
            'Tendency of Air Temperature due to Clear Sky Shortwave Radiative Heating', 'K s-1', &
             standard_name = 'tendency_of_air_temperature_due_to_clear_sky_shortwave_heating' )
+
+        ID_rsu = register_cmip_diag_field_3d (mod_name, 'rsu', Time, & 
+                             'Upwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'upwelling_shortwave_flux_in_air', axis='half' )
+
+        ID_rsucs = register_cmip_diag_field_3d (mod_name, 'rsucs', Time, & 
+                             'Upwelling Clear-Sky Shortwave Radiation', 'W m-2', &
+            standard_name = 'upwelling_shortwave_flux_in_air_assuming_clear_sky', axis='half' )
+
+        ID_rsd = register_cmip_diag_field_3d (mod_name, 'rsd', Time, & 
+                             'Downwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'downwelling_shortwave_flux_in_air', axis='half' )
+
+        ID_rsdcs = register_cmip_diag_field_3d (mod_name, 'rsdcs', Time, & 
+                             'Downwelling Clear-Sky Shortwave Radiation', 'W m-2', &
+            standard_name = 'downwelling_shortwave_flux_in_air_assuming_clear_sky', axis='half' )
 
         ID_tntrl = register_cmip_diag_field_3d (mod_name, 'tntrl', Time, & 
            'Tendency of Air Temperature due to Longwave Radiative Heating', 'K s-1', &
@@ -1870,6 +1887,18 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                             Time_diag, is, js, 1)
         endif
 
+!------- 3d upward sw flux -------
+        if (query_cmip_diag_id(ID_rsu)) then
+          used = send_cmip_data_3d (ID_rsu, Rad_output%ufsw(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
+!------- 3d downward sw flux -------
+        if (query_cmip_diag_id(ID_rsd)) then
+          used = send_cmip_data_3d (ID_rsd, Rad_output%dfsw(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
 !------- downward sw flux surface -------
         if (id_rsds > 0 ) then
           used = send_data (id_rsds, swdns,   &
@@ -2009,6 +2038,18 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
             used = send_cmip_data_3d (ID_tntrscs, Rad_output%tdtsw_clr(is:ie,js:je,:),  &
                               Time_diag, is, js, 1)
           endif
+
+!------- 3d upward sw flux -------
+        if (query_cmip_diag_id(ID_rsucs)) then
+          used = send_cmip_data_3d (ID_rsucs, Rad_output%ufsw_clr(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
+!------- 3d downward sw flux -------
+        if (query_cmip_diag_id(ID_rsdcs)) then
+          used = send_cmip_data_3d (ID_rsdcs, Rad_output%dfsw_clr(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
 
 !------- downward sw flux surface -------
           if (id_rsdscs > 0 ) then

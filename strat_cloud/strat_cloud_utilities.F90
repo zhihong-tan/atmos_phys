@@ -1,6 +1,7 @@
 module strat_cloud_utilities_mod
 
-use  fms_mod,        only : write_version_number
+use  fms_mod,             only : write_version_number
+use  atmos_cmip_diag_mod, only : cmip_diag_id_type
 
 IMPLICIT NONE
 PRIVATE
@@ -144,6 +145,8 @@ TYPE diag_id_type
              lsf_strat, lcf_strat, mfls_strat, &
              dcond, vfall
 
+!   CMIP diagnostics (3d)
+  type(cmip_diag_id_type) :: cdnc
 
 END TYPE diag_id_type
 
