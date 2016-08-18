@@ -22,6 +22,7 @@ use tracer_manager_mod, only: get_number_tracers, get_tracer_index, NO_TRACER
  type radiation_input_control_type
      integer :: sphum                    ! index for specific humidity tracer
      logical :: phys_hydrostatic         ! hydrostratic flag for physics
+     logical :: do_uni_zfull             ! miz
      type (domain2D) :: domain
  end type radiation_input_control_type
 
@@ -175,16 +176,17 @@ contains
  end subroutine compute_g_avg
 
 
- subroutine alloc_radiation_type (Radiation, Atm_block, p_hydro)
+ subroutine alloc_radiation_type (Radiation, Atm_block, p_hydro, do_uni_zfull) !miz
   type (radiation_type), intent(inout) :: Radiation
   type (block_control_type), intent(in) :: Atm_block
-  logical,               intent(in)    :: p_hydro
+  logical,               intent(in)    :: p_hydro, do_uni_zfull !miz
 !--- local varialbes
   integer :: n, ix, jx, npz, nt_prog 
 
 !---allocate/set control data
    npz = Atm_block%npz
    Radiation%control%phys_hydrostatic = p_hydro
+   Radiation%control%do_uni_zfull = do_uni_zfull !miz
 
    call get_number_tracers(MODEL_ATMOS, num_prog=nt_prog)
    Radiation%control%sphum = get_tracer_index(MODEL_ATMOS, 'sphum')

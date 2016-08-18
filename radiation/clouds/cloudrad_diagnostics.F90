@@ -906,7 +906,7 @@ type(microphysics_type),        intent(in)   :: Model_microphys
 !----------------------------------------------------------------------
                 if (Model_microphys%lsc_conc_drop(i,j,k) > 0.0) then
                   cldtop_reff  (i,j) =  0.5*  &
-                                Model_microphys%cldamt(i,j,k)* &
+                                Model_microphys%lsc_cldamt(i,j,k)* &
                                          Model_microphys%lsc_size_drop(i,j,k)
                   cldtop_dropnum(i,j) = (press(i,j,k)/  &
                                    (RDGAS*temp(i,j,k)))* &

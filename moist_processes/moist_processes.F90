@@ -86,7 +86,8 @@ use moist_proc_utils_mod,  only: capecalcnew, tempavg, column_diag, rh_calc, pma
 use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
                                  moistproc_lscale_cond, moistproc_strat_cloud, &
                                  moistproc_cmt, moistproc_uw_conv, &
-                                 moistproc_scale_uw, moistproc_scale_donner
+                                 moistproc_scale_uw, moistproc_scale_donner, &
+				 height_adjust !miz
 ! atmos_shared modules
 use atmos_tracer_utilities_mod, only : wet_deposition
 use atmos_dust_mod, only : atmos_dust_init, dust_tracers, n_dust_tracers, do_dust, atmos_dust_wetdep_flux_set
@@ -259,6 +260,7 @@ private
    logical :: detrain_liq_num=.false.
    logical :: detrain_ice_num =.false.
    logical :: do_legacy_strat_cloud = .true.
+   logical :: do_height_adjust = .false.
    character(len=64)  :: cmt_mass_flux_source = 'ras'
 
    integer :: tau_sg = 0
@@ -285,7 +287,7 @@ namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_uw_conv, do_strat,    
                                do_limit_uw, do_limit_donner, using_fms,          &
                                use_cf_metadata,                                  &
                                do_bm, do_bmmass, do_bmomp, do_simple, &
-                               do_ice_num, do_legacy_strat_cloud, &
+                               do_ice_num, do_legacy_strat_cloud, do_height_adjust, &!miz
                                detrain_liq_num, detrain_ice_num,  &
                                conv_frac_max, use_updated_profiles_for_clubb, remain_detrain_bug !h1g
 
@@ -458,10 +460,11 @@ character(len=64), dimension(9) :: cmip_stdnames = &
 !#######################################################################
 
 subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
-                            phalf, pfull, zhalf, zfull, omega, diff_t, &
+                            phalf, pfull, zhalf_b, zfull_b, omega, diff_t, & !miz
                             radturbten, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &!miz
 			    hmint, cush, cbmf, cgust, tke, pblhto, rkmo, taudpo,     &!miz
-                            exist_shconv, exist_dpconv,                              &!miz
+                            exist_shconv, exist_dpconv,                &
+			    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
                             pblht, ustar, bstar, qstar, shflx, lhflx,  &
                             t, q, r, u, v, w, tm, qm, rm, um, vm,      &
                             tdt, qdt, rdt, rdiag, udt, vdt, diff_cu_mo,&
@@ -590,8 +593,9 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
    real, intent(in) , dimension(:,:)     :: land, pblht, ustar, bstar, qstar, shflx, lhflx !miz
    real, intent(inout), dimension(:,:)   :: cush, cbmf, hmint, cgust, tke, pblhto, rkmo, taudpo
    integer, intent(inout), dimension(:,:,:) :: exist_shconv, exist_dpconv
+   real, intent(inout), dimension(:,:,:) :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev !miz
    real, intent(in),    dimension(:,:,:) :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn !miz
-   real, intent(in) , dimension(:,:,:)   :: phalf, pfull, zhalf, zfull, omega, &
+   real, intent(in) , dimension(:,:,:)   :: phalf, pfull, zhalf_b, zfull_b, omega, & !miz
                                             diff_t, t, q, u, v, tm, qm, um, vm
    real, dimension(:,:,:), intent(in)    :: radturbten
    real, intent(in), dimension(:,:,:,:)  :: r, rm
@@ -768,6 +772,10 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(r,1),size(r,2),size(r,3),num_uw_tracers) :: qtruw
 
    integer, dimension(size(pfull,1),size(pfull,2)) :: maxTe_launch_level
+
+   real, dimension(size(zfull_b,1),size(zfull_b,2),size(zfull_b,3)) :: zfull, d_zfull
+   real, dimension(size(zhalf_b,1),size(zhalf_b,2),size(zhalf_b,3)) :: zhalf, d_zhalf
+
    character(len=128) :: warn_mesg
 ! <--- h1g, 2014-01-24     
 !-------- input array size and position in global storage --------------
@@ -818,6 +826,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    initialize local arrays which will hold sums.
 !---------------------------------------------------------------------
+      zhalf(:,:,:)=0.0          !miz
+      zfull(:,:,:)=0.0          !miz
       tdt_dif=tdt;                            !miz
       qdt_dif=qdt+rdt(:,:,:,nql)+rdt(:,:,:,nqi);  !miz
 
@@ -847,6 +857,15 @@ logical, intent(out), dimension(:,:)     :: convect
         uin = um + udt*dt
         vin = vm + vdt*dt
         tracer = rm + rdt*dt
+	if (do_height_adjust) then !miz
+           call height_adjust(tm, qm, rm, tin, qin, tracer, & 
+           	phalf, pfull, zhalf_b, zfull_b, d_zhalf, d_zfull)
+	   zhalf(:,:,:)=zhalf_b(:,:,:)+d_zhalf(:,:,:)
+	   zfull(:,:,:)=zfull_b(:,:,:)+d_zfull(:,:,:)
+	else
+	   zhalf(:,:,:)=zhalf_b(:,:,:)
+	   zfull(:,:,:)=zfull_b(:,:,:)
+	endif
       endif
 
 !--------------------------------------------------------------------
@@ -981,7 +1000,8 @@ logical, intent(out), dimension(:,:)     :: convect
                              land, coldT, Aerosol, tdt_rad,tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &!miz
                              tdt_dif, qdt_dif, hmint, lat, lon, & !miz
                              cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
-                             cmf, conv_calc_completed,            &
+                             pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+			     cmf, conv_calc_completed,                        &!miz
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1667,7 +1687,8 @@ logical, intent(out), dimension(:,:)     :: convect
 			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
                                tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
                                cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
-                               cmf, conv_calc_completed,            &
+                               pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+			       cmf, conv_calc_completed,                        &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1686,7 +1707,8 @@ logical, intent(out), dimension(:,:)     :: convect
 			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
                                tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
                                cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
-                               cmf, conv_calc_completed,                        &
+                               pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+			       cmf, conv_calc_completed,                        &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
