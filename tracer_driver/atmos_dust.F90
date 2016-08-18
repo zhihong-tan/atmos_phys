@@ -327,6 +327,7 @@ subroutine atmos_dust_sourcesink1 ( &
           + ( setl(1:kb-1) - setl(2:kb) )/pwt(i,j,2:kb)*mtv
      endif
      dust_setl(i,j)  = setl(kb)          ! at the bottom of the atmos
+     rho_air = air_dens(kb)           ! rho_air is not defined
      dsetl_dtr(i,j) = rho_air/mtv*vdep(kb) ! derivative of settling flux w.r.t tracer conc
      if (do_surf_exch) &
        setl(kb) = setl(kb)*(1-frac_land(i,j)) ! settlement tendency in the  
