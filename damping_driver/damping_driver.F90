@@ -131,7 +131,7 @@ contains
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real, dimension(:,:), intent(in)           :: z_pbl, area 
+ real,    intent(in),    dimension(:,:)     :: z_pbl, area 
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -277,7 +277,7 @@ contains
 !-----------------------------------------------------------------------
    if (do_topo_drag) then
 
-     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf,  &
+     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, z_pbl,  &
                       utnd, vtnd, ttnd, taubx, tauby, taus, kbot )
 
      if (use_topo_drag) then  
