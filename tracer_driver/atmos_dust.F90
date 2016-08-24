@@ -188,14 +188,15 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
           + dust_tracers(i)%dust_setl(is:ie,js:je) + pwt(:,:,kd)*dsinku(:,:,ndust) ! shouldn't kd be kbot?
 
 !     all_dust_setl(:,:) = 1.0-frac_land(:,:)  !The exchanged flux of this becomes >1 at some points within ocean near shore!!
-     call atmos_dust_drydep_flux_set(all_dust_setl, is,ie,js,je)
      
      if (id_dust_emis > 0) then
         ! accumulate total dust emission flux
         all_dust_emis(:,:) = all_dust_emis(:,:) + dust_emis(:,:) 
      endif
   enddo
-  
+
+  call atmos_dust_drydep_flux_set(all_dust_setl, is,ie,js,je)
+ 
   if (id_dust_ddep > 0) then
      used = send_data (id_dust_ddep, all_dust_setl(:,:), Time, is_in=is, js_in=js)
   endif
@@ -652,16 +653,16 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
    !
 
    if (ind > 0) then
-      ind_dry_dep_lith_dust_flux = aof_set_coupler_flux('dry_dep_lith',     &
+      ind_dry_dep_lith_dust_flux = aof_set_coupler_flux('dry_dep_lith', &
            flux_type = 'air_sea_deposition', implementation = 'dry',    &
            atm_tr_index = ind,                                          &
-           param = (/ 1.0,1.0 /),                          &
+           mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
            caller = trim(mod_name) // '(' // trim(sub_name) // ')')
 
-      ind_wet_dep_lith_dust_flux = aof_set_coupler_flux('wet_dep_lith',     &
+      ind_wet_dep_lith_dust_flux = aof_set_coupler_flux('wet_dep_lith', &
            flux_type = 'air_sea_deposition', implementation = 'wet',    &
            atm_tr_index = ind,                                          &
-           param = (/ 1.0,1.0 /),                          &
+           mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
            caller = trim(mod_name) // '(' // trim(sub_name) // ')')
    endif
    endif !if(do_esm_dust_flux)
