@@ -765,12 +765,14 @@ end subroutine atmos_dust_endts
 subroutine atmos_dust_wetdep_flux_set(array, is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array
   integer,              intent(in) :: is,ie,js,je
+  if (n_dust_tracers == 0) return ! nothing to do
   wet_dep_lith_dust_flux(is:ie,js:je) = array(is:ie,js:je)
 end subroutine atmos_dust_wetdep_flux_set
 
 subroutine atmos_dust_drydep_flux_set(array, is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array
   integer,              intent(in) :: is,ie,js,je
+  if (n_dust_tracers == 0) return ! nothing to do
   dry_dep_lith_dust_flux(is:ie,js:je) = array(is:ie,js:je)
 end subroutine atmos_dust_drydep_flux_set
 
