@@ -110,8 +110,8 @@ use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
 use fms_io_mod, only: read_data
 
 use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
-                      CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P, &
-                      CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_LEGACY
+                      CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P,&
+                      CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
 implicit none
@@ -1656,6 +1656,8 @@ elseif ( trim(cloud_chem_type) == 'f1p' ) then
    trop_option%cloud_chem = CLOUD_CHEM_F1P
 elseif ( trim(cloud_chem_type) == 'f1p_bug' ) then
    trop_option%cloud_chem = CLOUD_CHEM_F1P_BUG
+elseif ( trim(cloud_chem_type) == 'f1p_bug2' ) then
+   trop_option%cloud_chem = CLOUD_CHEM_F1P_BUG2
 end if
 
 !cloud chem pH solver
