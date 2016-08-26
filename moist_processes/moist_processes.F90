@@ -1,5 +1,4 @@
-
-                    module moist_processes_mod
+module moist_processes_mod
 
 !-----------------------------------------------------------------------
 !
@@ -9,9 +8,9 @@
 !             relaxed arakawa-schubert
 !             donner deep convection
 !             large-scale condensation
-!             stratiform prognostic cloud scheme 
-!             rel humidity cloud scheme 
-!             diagnostic cloud scheme 
+!             stratiform prognostic cloud scheme
+!             rel humidity cloud scheme
+!             diagnostic cloud scheme
 !             lin cloud microphysics
 !             betts-miller convective adjustment
 !
@@ -86,7 +85,7 @@ use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
                                  moistproc_lscale_cond, moistproc_strat_cloud, &
                                  moistproc_cmt, moistproc_uw_conv, &
                                  moistproc_scale_uw, moistproc_scale_donner, &
-				 height_adjust !miz
+                                 height_adjust !miz
 ! atmos_shared modules
 use atmos_tracer_utilities_mod, only : wet_deposition
 use atmos_dust_mod, only : atmos_dust_init, dust_tracers, n_dust_tracers, do_dust, atmos_dust_wetdep_flux_set
@@ -101,7 +100,7 @@ private
    public   moist_processes, moist_processes_init, moist_processes_end, &
             set_cosp_precip_sources, moist_processes_time_vary, &
             moist_processes_endts, doing_strat, moist_processes_restart
-  
+
 
 !-----------------------------------------------------------------------
 !-------------------- private data -------------------------------------
@@ -124,7 +123,7 @@ private
 !                liquid or ice.
 !
 !   do_limit_uw = limit UW shallow tendencies to prevent the formation
-!                of grid points with negative total water specific 
+!                of grid points with negative total water specific
 !                humidities. This situation can occur because both
 !                shallow and deep convection operate on the same
 !                soundings without knowledge of what the other is doing
@@ -170,17 +169,17 @@ private
 !   gustmax    = maximum convective gustiness (m/s)
 !   gustconst  = precip rate which defines precip rate which begins to
  !               matter for convective gustiness (kg/m2/sec)
-!   cmt_mass_flux_source = parameterization(s) being used to supply the 
+!   cmt_mass_flux_source = parameterization(s) being used to supply the
 !                mass flux profiles seen by the cumulus momentum transport
-!                module; currently either 'ras', 'donner', 'uw', 
-!                'donner_and_ras', 'donner_and_uw', 'ras_and_uw', 
+!                module; currently either 'ras', 'donner', 'uw',
+!                'donner_and_ras', 'donner_and_uw', 'ras_and_uw',
 !                'donner_and_ras_and_uw' or 'all'
 !
 !   do_bm    = switch to turn on/off betts-miller scheme
 !                [logical, default: do_bm=false ]
 !   do_bmmass  = switch to turn on/off betts-miller massflux scheme
 !                [logical, default: do_bmmass=false ]
-!   do_bmomp  = switch to turn on/off olivier's version of the betts-miller 
+!   do_bmomp  = switch to turn on/off olivier's version of the betts-miller
 !                scheme (with separated boundary layer)
 !                [logical, default: do_bmomp=false ]
 !   do_simple = switch to turn on alternative definition of specific humidity.
@@ -188,10 +187,10 @@ private
 !
 !   notes: 1) do_lsc and do_strat cannot both be true
 !          2) pdepth and tfreeze are used to determine liquid vs. solid
-!             precipitation for mca, lsc, and ras schemes, the 
+!             precipitation for mca, lsc, and ras schemes, the
 !             stratiform scheme determines it's own precipitation type.
 !          3) if do_strat=true then stratiform cloud tracers: liq_wat,
-!             ice_wat, cld_amt must be present 
+!             ice_wat, cld_amt must be present
 !          4) do_donner_deep and do_rh_clouds cannot both be true
 !             (pending revision of code flow)
 !
@@ -206,21 +205,21 @@ private
    logical :: do_dryadj=.false.
    logical :: do_lin_cld_microphys=.false.
    logical :: do_lsc=.true.
-   logical :: do_mca=.true. 
+   logical :: do_mca=.true.
    logical :: do_ras=.false.
    logical :: do_rh_clouds=.false.
    logical :: do_strat=.false.
    logical :: do_uw_conv=.false.
-! tracers 
+! tracers
    logical :: do_tracers_in_donner =.false.
    logical :: do_tracers_in_mca = .false.
    logical :: do_tracers_in_ras = .false.
    logical :: do_tracers_in_uw = .false.
-! donner specific 
+! donner specific
    logical :: do_donner_before_uw = .false.
    logical :: do_donner_mca=.true.
    logical :: do_donner_conservation_checks = .false.
-   logical :: do_limit_donner = .false. ! .false. produces previous 
+   logical :: do_limit_donner = .false. ! .false. produces previous
                                         ! behavior (cjg)
    logical :: force_donner_moist_conserv = .false.
 ! cmt specific
@@ -353,7 +352,7 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_prod_no, id_m_cdet_donner, id_m_cellup, &
            id_conv_rain3d, id_conv_snow3d,   &
            id_lscale_rain3d, id_lscale_snow3d, id_lscale_precip3d
- 
+
 integer :: id_qvout, id_qaout, id_qlout, id_qiout
 integer :: id_qnout, id_qniout
 
@@ -401,7 +400,7 @@ integer :: area_id
    integer :: nNH4NO3   =0
    integer :: nNH4      =0
    integer :: nH2O2     =0
-   
+
 
 !------------------- other global variables and parameters -------------
    real, parameter :: epst=200.
@@ -424,7 +423,7 @@ integer :: area_id
    real, allocatable, dimension(:,:)   :: max_enthalpy_imbal, max_water_imbal, &
                                           max_enthalpy_imbal_don, max_water_imbal_don
 
-   real, allocatable, dimension(:,:)   :: prec_intgl  
+   real, allocatable, dimension(:,:)   :: prec_intgl
 
 !-----------------------------------------------------------------------
 
@@ -435,9 +434,9 @@ integer :: area_id
 subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             phalf, pfull, zhalf_b, zfull_b, omega, diff_t, & !miz
                             radturbten, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &!miz
-			    hmint, cush, cbmf, cgust, tke, pblhto, rkmo, taudpo,     &!miz
+                            hmint, cush, cbmf, cgust, tke, pblhto, rkmo, taudpo,     &!miz
                             exist_shconv, exist_dpconv,                &
-			    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+                            pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
                             pblht, ustar, bstar, qstar, shflx, lhflx,  &
                             t, q, r, u, v, w, tm, qm, rm, um, vm,      &
                             tdt, qdt, rdt, rdiag, udt, vdt, diff_cu_mo,&
@@ -499,24 +498,24 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
 !                      [real, dimension(nlon,nlat,nlev)]
 !
 !         r          tracer fields at full model levels,
-!                    at the current time step if leapfrog 
+!                    at the current time step if leapfrog
 !                      [real, dimension(nlon,nlat,nlev,ntrace)]
 !
 !         u, v,      zonal and meridional wind [m/s] at full model levels,
 !                    at the current time step if leapfrog scheme
 !                      [real, dimension(nlon,nlat,nlev)]
-! 
+!
 !         tm, qm     temperature (t) [deg k] and specific humidity
 !                    of water vapor (q) [kg/kg] at full model levels,
 !                    at the previous time step if leapfrog scheme
 !                      [real, dimension(nlon,nlat,nlev)]
 !
 !         rm         tracer fields at full model levels,
-!                    at the previous time step if leapfrog 
+!                    at the previous time step if leapfrog
 !                      [real, dimension(nlon,nlat,nlev,ntrace)]
 !
 !         um, vm     zonal and meridional wind [m/s] at full model levels,
-!                    at the previous time step if leapfrog 
+!                    at the previous time step if leapfrog
 !                      [real, dimension(nlon,nlat,nlev)]
 !
 !         area       grid box area (in m2)
@@ -527,16 +526,16 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
 !
 !         lat        latitude in radians
 !                      [real, dimension(nlon,nlat)]
-!  
+!
 ! inout:  tdt, qdt   temperature (tdt) [deg k/sec] and specific
 !                    humidity of water vapor (qdt) tendency [1/sec]
 !                      [real, dimension(nlon,nlat,nlev)]
 !
-!         rdt        tracer tendencies 
+!         rdt        tracer tendencies
 !                      [real, dimension(nlon,nlat,nlev,ntrace)]
 !
 !         udt, vdt   zonal and meridional wind tendencies [m/s/s]
-! 
+!
 !   out:  convect    is moist convection occurring in this grid box?
 !                      [logical, dimension(nlon,nlat)]
 !
@@ -545,13 +544,13 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
 !
 !         fprec      frozen precipitation rate (snow) in kg/m2/s
 !                      [real, dimension(nlon,nlat)]
-! 
+!
 !         gust_cv    gustiness from convection  in m/s
 !                      [real, dimension(nlon,nlat)]
 !
 !       optional
 !  -----------------
-! 
+!
 !    in:  mask       mask (1. or 0.) for grid boxes above or below
 !                    the ground   [real, dimension(nlon,nlat,nlev)]
 !
@@ -600,7 +599,7 @@ logical, intent(out), dimension(:,:)     :: convect
 
    logical, intent(in), optional :: hydrostatic, phys_hydrostatic
    integer, intent(inout), dimension(:,:), optional ::  nsum_out
-   real, intent(inout), dimension(:,:,:), optional :: &      
+   real, intent(inout), dimension(:,:,:), optional :: &
                                   shallow_cloud_area, shallow_liquid,   &
                                   shallow_ice, shallow_droplet_number, &
                                   shallow_ice_number, &
@@ -651,7 +650,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !     tr_flux          tracer fux across the surface
 !                      [ kg(tracer) / (m**2 sec) ]
    real, dimension(size(t,1),size(t,2)) :: sfc_sh_flux, sfc_vapor_flux
-   real, dimension(size(t,1),size(t,2),num_donner_tracers) :: tr_flux  
+   real, dimension(size(t,1),size(t,2),num_donner_tracers) :: tr_flux
    real, dimension(size(t,1),size(t,2),num_donner_tracers) :: donner_wetdep, donner_wetdepm, donner_wetdepc !f1p
    real, dimension(size(t,1),size(t,2),num_uw_tracers) :: uw_wetdep
    real, dimension(size(t,1),size(t,2),size(rdt,4)   ) :: total_wetdep
@@ -671,7 +670,7 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(rdt,1),size(rdt,2),size(rdt,3),size(rdt,4)) :: wet_data
 !chemistry end
 
-   real, dimension(size(t,1),size(t,2))           ::  adjust_frac      
+   real, dimension(size(t,1),size(t,2))           ::  adjust_frac
    real, dimension(size(t,1),size(t,2),size(t,3)) ::  ttnd_adjustment
    real, dimension(size(t,1),size(t,2),size(t,3)) ::  available_cf_for_uw
 
@@ -690,7 +689,7 @@ logical, intent(out), dimension(:,:)     :: convect
   real :: wetdep_diag_conv
   real, dimension(size(t,1),size(t,2),size(t,3))          :: so2_so4_evap, so2_so4
 
- !> 
+ !>
 ! ---> h1g, 2010-08-23
    real                                 ::       current_total_sec
    integer                              ::       current_sec, current_days
@@ -710,13 +709,13 @@ logical, intent(out), dimension(:,:)     :: convect
                                  ndust, rbar_dust
    real, dimension(size(t,1),size(t,2)) :: sumneg,rain_uw, snow_uw
    real, dimension(size(t,1),size(t,2),size(t,3)) :: uin, vin, tin, qin, rin, &
-                                               qlin, qiin, qain, nilin, nllin, & 
+                                               qlin, qiin, qain, nilin, nllin, &
                                                tin_orig, qin_orig, &
                                                tdt_init, qdt_init, &
                                                t_ref, q_ref, &
                                                utnd_uw, vtnd_uw, &
-                                               ttnd, ttnd_don, ttnd_conv, ttnd_uw, & 
-                                               qtnd, qtnd_don, qtnd_conv, qtnd_uw, qtnd_wet, & 
+                                               ttnd, ttnd_don, ttnd_conv, ttnd_uw, &
+                                               qtnd, qtnd_don, qtnd_conv, qtnd_uw, qtnd_wet, &
                                                qltnd_uw, qitnd_uw, qatnd_uw, &
                                                qntnd_uw, qnitnd_uw,  &
                                                qldt_conv, qidt_conv, qadt_conv, &
@@ -731,11 +730,11 @@ logical, intent(out), dimension(:,:)     :: convect
                                                liquid_precip, frozen_precip, &
                                                liq_precflx, ice_precflx, &
                                                mca_frz, mca_liq, &
-                                               frz_meso, liq_meso, & 
+                                               frz_meso, liq_meso, &
                                                frz_cell, liq_cell, &
                                                det0, det_cmt,      &
                                                wetdeptnd, massflux, RH, qsat
-   real, dimension(size(t,1),size(t,2),size(t,3)+1) :: ice_precflxh, liq_precflxh, cmf, & 
+   real, dimension(size(t,1),size(t,2),size(t,3)+1) :: ice_precflxh, liq_precflxh, cmf, &
                                                        mc_half, mc_donner_half, &
                                                        mca_frzh, mca_liqh, &
                                                        frz_mesoh, liq_mesoh, &
@@ -750,11 +749,11 @@ logical, intent(out), dimension(:,:)     :: convect
    real, dimension(size(zhalf_b,1),size(zhalf_b,2),size(zhalf_b,3)) :: zhalf, d_zhalf
 
    character(len=128) :: warn_mesg
-! <--- h1g, 2014-01-24     
+! <--- h1g, 2014-01-24
 !-------- input array size and position in global storage --------------
       ix=size(t,1); jx=size(t,2); kx=size(t,3); nt=size(rdt,4)
 
-       
+
 !---------------------------------------------------------------------
 !    verify that the module has been initialized.
 !---------------------------------------------------------------------
@@ -780,7 +779,7 @@ logical, intent(out), dimension(:,:)     :: convect
       snow_don     = 0.0
       rain_donmca  = 0.0
       snow_donmca  = 0.0
-      lprec        = 0.0  
+      lprec        = 0.0
       fprec        = 0.0
       fl_lsrain(:,:,:) = 0.
       fl_lssnow(:,:,:) = 0.
@@ -790,7 +789,7 @@ logical, intent(out), dimension(:,:)     :: convect
       fl_donmca_snow(:,:,:) = 0.
       convect      = .false.
       gust_cv      = 0.0
-      precip       = 0.0 
+      precip       = 0.0
       rain3d       = 0.0
       snow3d       = 0.0
       liq_precflx  = 0.0
@@ -830,33 +829,33 @@ logical, intent(out), dimension(:,:)     :: convect
         uin = um + udt*dt
         vin = vm + vdt*dt
         tracer = rm + rdt*dt
-	if (do_height_adjust) then !miz
-           call height_adjust(tm, qm, rm, tin, qin, tracer, & 
-           	phalf, pfull, zhalf_b, zfull_b, d_zhalf, d_zfull)
-	   zhalf(:,:,:)=zhalf_b(:,:,:)+d_zhalf(:,:,:)
-	   zfull(:,:,:)=zfull_b(:,:,:)+d_zfull(:,:,:)
-	else
-	   zhalf(:,:,:)=zhalf_b(:,:,:)
-	   zfull(:,:,:)=zfull_b(:,:,:)
-	endif
+        if (do_height_adjust) then !miz
+           call height_adjust(tm, qm, rm, tin, qin, tracer, &
+                phalf, pfull, zhalf_b, zfull_b, d_zhalf, d_zfull)
+           zhalf(:,:,:)=zhalf_b(:,:,:)+d_zhalf(:,:,:)
+           zfull(:,:,:)=zfull_b(:,:,:)+d_zfull(:,:,:)
+        else
+           zhalf(:,:,:)=zhalf_b(:,:,:)
+           zfull(:,:,:)=zfull_b(:,:,:)
+        endif
       endif
 
 !--------------------------------------------------------------------
-!    if using eta vertical coordinate, define the appropriate values 
+!    if using eta vertical coordinate, define the appropriate values
 !    for any points located below the ground. values of 0.0 are given
-!    to u, v and q, and a temperature value of EPST (=200. K) is given 
+!    to u, v and q, and a temperature value of EPST (=200. K) is given
 !    to sub-surface  points.
 !--------------------------------------------------------------------
       if (present(mask) .and. present(kbot))  then
-        tin = mask*tin + (1.0 - mask)*EPST 
+        tin = mask*tin + (1.0 - mask)*EPST
         qin = mask*qin
         uin = mask*uin
         vin = mask*vin
         do tr=1,size(r,4)
           tracer(:,:,:,tr) = mask(:,:,:)*tracer(:,:,:,tr)
-        end do  
+        end do
       endif
-   
+
 !----------------------------------------------------------------------
 !    compute the mass in each model layer.
 !----------------------------------------------------------------------
@@ -865,7 +864,7 @@ logical, intent(out), dimension(:,:)     :: convect
       end do
 
 !----------------------------------------------------------------------
-!    output any requested convectively-transported tracer fields 
+!    output any requested convectively-transported tracer fields
 !    and / or their column sums before convective transport.
 !----------------------------------------------------------------------
       do n=1,num_tracers
@@ -873,7 +872,7 @@ logical, intent(out), dimension(:,:)     :: convect
                           is, js, 1, rmask=mask)
         if (id_conv_tracer_col(n) > 0)  &
           call column_diag(id_conv_tracer_col(n), is, js, Time, &
-                           tracer(:,:,:,n), 1.0) 
+                           tracer(:,:,:,n), 1.0)
       end do
 
 !----------------------------------------------------------------------
@@ -888,7 +887,7 @@ logical, intent(out), dimension(:,:)     :: convect
       where (snow(:,:) <= TFREEZE)
         coldT(:,:) = .true.
       endwhere
-      
+
 !---------------------------------------------------------------------
 !    begin the clock timing the dry and moist convection parameter-
 !    izations.
@@ -904,7 +903,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    if dry adjustment is desired call subroutine dry_adj to obtain
 !    the temperature tendencie swhich must be applied to adjust each
-!    column to a non-superadiabatic lapse rate. 
+!    column to a non-superadiabatic lapse rate.
 !---------------------------------------------------------------------
       if (do_dryadj) then
         call dry_adj (tin, pfull, phalf, delta_temp, mask)
@@ -974,7 +973,7 @@ logical, intent(out), dimension(:,:)     :: convect
                              tdt_dif, qdt_dif, hmint, lat, lon, & !miz
                              cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
                              pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
-			     cmf, conv_calc_completed,                        &!miz
+                             cmf, conv_calc_completed,                        &!miz
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -983,7 +982,7 @@ logical, intent(out), dimension(:,:)     :: convect
                              do_strat, do_limit_uw, do_liq_num, num_tracers,  &
                              tracers_in_uw, num_uw_tracers, shallow_cloud_area,&
                              shallow_liquid, shallow_ice, shallow_droplet_number, uw_wetdep, &
-                             do_ice_num, detrain_ice_num)                
+                             do_ice_num, detrain_ice_num)
     endif  !(do_uw_conv)
     call mpp_clock_end   (shallowcu_clock)
   else
@@ -1023,11 +1022,11 @@ logical, intent(out), dimension(:,:)     :: convect
     endif
 
 !--------------------------------------------------------------------
-!    if strat_cloud_mod is activated, define the cloud liquid and 
-!    cloud ice specific humidities and cloud area associated with 
-!    strat_cloud_mod, so that they may be input to donner_deep_mod. 
-!    if strat_cloud_mod is not activated, define these arrays to be 
-!    zero. 
+!    if strat_cloud_mod is activated, define the cloud liquid and
+!    cloud ice specific humidities and cloud area associated with
+!    strat_cloud_mod, so that they may be input to donner_deep_mod.
+!    if strat_cloud_mod is not activated, define these arrays to be
+!    zero.
 !--------------------------------------------------------------------
     if (do_strat) then
       qlin(:,:,:) = tracer(:,:,:,nql)
@@ -1044,8 +1043,8 @@ logical, intent(out), dimension(:,:)     :: convect
     rin = qin/(1.0 - qin)
 
 !---------------------------------------------------------------------
-!    if any tracers are to be transported by donner convection, 
-!    check each active tracer to find those to be transported and fill 
+!    if any tracers are to be transported by donner convection,
+!    check each active tracer to find those to be transported and fill
 !    the donner_tracers array with these fields.
 !---------------------------------------------------------------------
 !    donner_tracer = 0.0
@@ -1073,7 +1072,7 @@ logical, intent(out), dimension(:,:)     :: convect
     do n=1,num_tracers
       if (tracers_in_donner(n)) then
 !       tr_flux(:,:,nn) = INPUT_SFC_FLUX_FROM_COUPLER(:,:,n)
-        tr_flux(:,:,nn) = 0.0                                 
+        tr_flux(:,:,nn) = 0.0
         nn = nn + 1
       endif
     end do
@@ -1086,7 +1085,7 @@ logical, intent(out), dimension(:,:)     :: convect
     temp_2d = MAX (1.e-6, temp_2d)
 
 !---------------------------------------------------------------------
-!    call donner_deep to compute the effects of deep convection on the 
+!    call donner_deep to compute the effects of deep convection on the
 !    temperature, vapor mixing ratio, tracers, cloud liquid, cloud ice
 !    cloud area and precipitation fields.
 !---------------------------------------------------------------------
@@ -1112,7 +1111,7 @@ logical, intent(out), dimension(:,:)     :: convect
                         total_precip, liquid_precip, frozen_precip, &
                         frz_meso, liq_meso, frz_cell, liq_cell, &
                         qlin, qiin,  &
-                        qain, delta_ql, delta_qi, delta_qa)    !optional  
+                        qain, delta_ql, delta_qi, delta_qa)    !optional
     else
       call donner_deep (is, ie, js, je, dt, tin, rin, pfull,        &
                         phalf, zfull, zhalf, omega, pblht, temp_2d, &
@@ -1136,7 +1135,7 @@ logical, intent(out), dimension(:,:)     :: convect
     endif
 
 !---------------------------------------------------------------------
-!    update the current timestep tracer changes with the contributions 
+!    update the current timestep tracer changes with the contributions
 !    just obtained from donner transport.
 !---------------------------------------------------------------------
     nn = 1
@@ -1148,8 +1147,8 @@ logical, intent(out), dimension(:,:)     :: convect
     end do
 
 !--------------------------------------------------------------------
-!    obtain updated vapor specific humidity (qnew) resulting from deep 
-!    convection. define the vapor specific humidity change due to deep 
+!    obtain updated vapor specific humidity (qnew) resulting from deep
+!    convection. define the vapor specific humidity change due to deep
 !    convection (qtnd).
 !--------------------------------------------------------------------
     do k=1,kx
@@ -1174,7 +1173,7 @@ logical, intent(out), dimension(:,:)     :: convect
       diffint = 0.
       enthint = 0.
       enthdiffint = 0.
-    
+
       do k=1,kx
         vaporint(:,:) = vaporint(:,:) + pmass(is:ie,js:je,k)*delta_q(:,:,k)
         enthint(:,:) = enthint(:,:) + CP_AIR*pmass(is:ie,js:je,k)*delta_temp(:,:,k)
@@ -1186,7 +1185,7 @@ logical, intent(out), dimension(:,:)     :: convect
       precipint = total_precip/seconds_per_day
       diffint = (vaporint + condensint)*dtinv  + precipint
       enthdiffint = (enthint - lcondensint)*dtinv -    &
-                   lheat_precip/seconds_per_day - vert_motion/seconds_per_day 
+                   lheat_precip/seconds_per_day - vert_motion/seconds_per_day
       do j=1,size(enthdiffint,2)
        do i=1,size(enthdiffint,1)
          max_enthalpy_imbal_don(i,j) = max( abs(enthdiffint(i,j)), &
@@ -1227,7 +1226,7 @@ logical, intent(out), dimension(:,:)     :: convect
 
 !---------------------------------------------------------------------
 !    recalculate the precip using the delta specific humidity tenden-
-!    cies. define precip_adjustment as the change in precipitation 
+!    cies. define precip_adjustment as the change in precipitation
 !    resulting from the recalculation.
 !---------------------------------------------------------------------
     if (force_donner_moist_conserv) then
@@ -1251,8 +1250,8 @@ logical, intent(out), dimension(:,:)     :: convect
              (precip_adjustment(i,j)+precip_returned(i,j)) < 0.0 ) then
 ! If precip_returned is greater than the "change in water content" balance, and
 ! there is not enough water available to beg/borrow/steal from, we need to zero
-! out the various tendencies. i.e. donner_deep will not contribute to changing 
-! the column 
+! out the various tendencies. i.e. donner_deep will not contribute to changing
+! the column
 !           write (warn_mesg,'(2i4,2e12.4)') i,j,precip_adjustment(i,j), precip_returned(i,j)
 !           call error_mesg ('moist_processes_mod', 'moist_processes: &
 !                 &Change in water content does not balance precip &
@@ -1274,7 +1273,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !----------------------------------------------------------------------
 !    now adjust the temperature change to balance the precip adjustment
 !    and so conserve enthalpy in the column.
-!--------------------------------------------------------------------- 
+!---------------------------------------------------------------------
       do j=1,jx
        do i=1,ix
          if (precip_returned(i,j) > 0.0) then
@@ -1323,32 +1322,32 @@ logical, intent(out), dimension(:,:)     :: convect
         end do
       end do
     endif
-    
+
     if (only_one_conv_scheme_per_column) then
       conv_calc_completed = (rain_don + snow_don) > 0.0
     endif
 !---------------------------------------------------------------------
-!    convert the changes in temperature, vapor specific humidity and 
-!    precipitation resulting from deep convection to time tendencies 
+!    convert the changes in temperature, vapor specific humidity and
+!    precipitation resulting from deep convection to time tendencies
 !    of these quantities.
 !---------------------------------------------------------------------
-    ttnd_don = delta_temp*dtinv 
+    ttnd_don = delta_temp*dtinv
     ttnd_don = ttnd_don + ttnd_adjustment*dtinv
     qtnd_don = delta_q*dtinv
 
 !--------------------------------------------------------------------
 !    save the tendencies of temperature and specific humidity resulting
-!    from the deep convection component of the donner parameterization. 
+!    from the deep convection component of the donner parameterization.
 !--------------------------------------------------------------------
     ttnd_conv = ttnd_conv + ttnd_don
     qtnd_conv = qtnd_conv + qtnd_don
 
 !--------------------------------------------------------------------
-!    add the contributions to the temperature and vapor specific 
+!    add the contributions to the temperature and vapor specific
 !    humidity tendencies from donner_deep mod to the arrays accumulating
 !    the total tendencies due to all physics processes.
 !--------------------------------------------------------------------
-    tdt = tdt + ttnd_don 
+    tdt = tdt + ttnd_don
     qdt = qdt + qtnd_don
 
 !--------------------------------------------------------------------
@@ -1401,7 +1400,7 @@ logical, intent(out), dimension(:,:)     :: convect
       if (id_enth_donner_col6 > 0) call column_diag(id_enth_donner_col6, is, js, Time, &
                                         ttnd_adjustment, CP_AIR)
       used = send_data (id_enth_donner_col7, adjust_frac, Time, is, js)
-       
+
       temp_2d = 0.
       do k=1,kx
         temp_2d(:,:) = temp_2d(:,:)  &
@@ -1431,7 +1430,7 @@ logical, intent(out), dimension(:,:)     :: convect
     if (do_donner_mca) then
       call mpp_clock_begin (donner_mca_clock)
 !--------------------------------------------------------------------
-!    call subroutine moist_conv to handle any shallow convection 
+!    call subroutine moist_conv to handle any shallow convection
 !    present in the grid. in this call do_strat is always set to .false.
 !    so that no convective detrainment (and corresponding change in
 !    large-scale cloud amount and area) from moist convective adjustment
@@ -1466,7 +1465,7 @@ logical, intent(out), dimension(:,:)     :: convect
         mca_liq = 0.
       endif
 !---------------------------------------------------------------------
-!    update the current tracer tendencies with the contributions 
+!    update the current tracer tendencies with the contributions
 !    just obtained from moist convective adjustment. currently there
 !    is no tracer transport by this process.
 !---------------------------------------------------------------------
@@ -1479,9 +1478,9 @@ logical, intent(out), dimension(:,:)     :: convect
       end do
 
 !--------------------------------------------------------------------
-!    define the heating, moistening and precipitation rates as the sum 
-!    of the contributions from the deep convection pass and the moist 
-!    convective adjustment pass of the donner parameterization. if 
+!    define the heating, moistening and precipitation rates as the sum
+!    of the contributions from the deep convection pass and the moist
+!    convective adjustment pass of the donner parameterization. if
 !    ras_mod is also activated, store these values in temporary arrays
 !    until the contributions from ras_mod is calculated.
 !--------------------------------------------------------------------
@@ -1489,9 +1488,9 @@ logical, intent(out), dimension(:,:)     :: convect
       qtnd_conv = qtnd_conv + qtnd_don
 
 !--------------------------------------------------------------------
-!    add the contributions to the temperature and vapor specific 
+!    add the contributions to the temperature and vapor specific
 !    humidity tendencies from the moist convective adjustment pass of
-!    donner_deep_mod to the arrays accumulating the total tendencies 
+!    donner_deep_mod to the arrays accumulating the total tendencies
 !    due to all physics processes.
 !--------------------------------------------------------------------
       tdt = tdt + ttnd_don
@@ -1500,7 +1499,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !--------------------------------------------------------------------
 !    add the liquid (rain) and frozen (snow) precipitation generated by
 !    the moist convective adjustment pass of the donner parameterization
-!    on this step to the arrays accumulating precipitation from all 
+!    on this step to the arrays accumulating precipitation from all
 !    sources (lprec, fprec).
 !--------------------------------------------------------------------
       lprec  = lprec + rain_donmca
@@ -1508,12 +1507,12 @@ logical, intent(out), dimension(:,:)     :: convect
 
 !--------------------------------------------------------------------
 !    output the time tendencies of temperature, vapor specific humid-
-!    ity, precipitation and snow due to the moist convective 
+!    ity, precipitation and snow due to the moist convective
 !    adjustment pass of the donner parameterization.
 !--------------------------------------------------------------------
       used = send_data (id_tdt_mca_donner, ttnd_don, Time, is, js, 1, rmask=mask)
       used = send_data (id_qdt_mca_donner, qtnd_don, Time, is, js, 1, rmask=mask)
-      used = send_data (id_prec_mca_donner, rain_donmca+snow_donmca, Time, is, js) 
+      used = send_data (id_prec_mca_donner, rain_donmca+snow_donmca, Time, is, js)
       used = send_data (id_snow_mca_donner, snow_donmca, Time, is, js)
 
       if (id_enth_mca_donner_col > 0) then
@@ -1539,8 +1538,8 @@ logical, intent(out), dimension(:,:)     :: convect
       enddo
 
 !--------------------------------------------------------------------
-!    output the time tendencies of tracer and of column tracer 
-!    due to the moist convective adjustment pass of the donner 
+!    output the time tendencies of tracer and of column tracer
+!    due to the moist convective adjustment pass of the donner
 !    parameterization. currently moist convective adjustment does not
 !    affect the tracer fields, so these fields are always 0.0.
 !--------------------------------------------------------------------
@@ -1552,11 +1551,11 @@ logical, intent(out), dimension(:,:)     :: convect
       enddo
 
       call mpp_clock_end (donner_mca_clock)
-    endif !(do_donner_mca) 
+    endif !(do_donner_mca)
 
 !---------------------------------------------------------------------
-!    if donner_deep_mod is not active, define input fields normally 
-!    produced by donner_deep_mod and needed by strat_cloud_mod 
+!    if donner_deep_mod is not active, define input fields normally
+!    produced by donner_deep_mod and needed by strat_cloud_mod
 !    appropriately.
 !---------------------------------------------------------------------
   else   ! (do_donner_deep)
@@ -1586,8 +1585,8 @@ logical, intent(out), dimension(:,:)     :: convect
     endif
 
     IF (do_ice_num .AND. detrain_ice_num) THEN
-      CALL detr_ice_num (tin, delta_qi, delta_qni)   
-      tracer(:,:,:,nqni) =  nilin + delta_qni 
+      CALL detr_ice_num (tin, delta_qi, delta_qni)
+      tracer(:,:,:,nqni) =  nilin + delta_qni
       rdt(:,:,:,nqni) = rdt(:,:,:,nqni) + delta_qni*dtinv
 
       used = send_data (id_qnidt_deep_donner, &
@@ -1595,7 +1594,7 @@ logical, intent(out), dimension(:,:)     :: convect
     END IF
 
 !-------------------------------------------------------------------------
-!    detrain liquid droplets if desired. assume 10 micron mean volume 
+!    detrain liquid droplets if desired. assume 10 micron mean volume
 !    radius for detrained droplets
 !-------------------------------------------------------------------------
     IF (do_liq_num .AND. detrain_liq_num) THEN
@@ -1639,9 +1638,9 @@ logical, intent(out), dimension(:,:)     :: convect
                &output are present', FATAL)
       endif
 
-      if (use_updated_profiles_for_uw) then 
+      if (use_updated_profiles_for_uw) then
 !---------------------------------------------------------------------
-!    update tracer fields with tendencies due to donner convection and 
+!    update tracer fields with tendencies due to donner convection and
 !    wet deposition by donner deep precipitation.
 !---------------------------------------------------------------------
         do n=1,size(rdt,4)
@@ -1657,11 +1656,11 @@ logical, intent(out), dimension(:,:)     :: convect
                                uin, vin, tracer,    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
                                ustar, bstar, qstar,  shflx, lhflx,               &!miz
-			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
+                               land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
                                tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
                                cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
                                pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
-			       cmf, conv_calc_completed,                        &
+                               cmf, conv_calc_completed,                        &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1677,11 +1676,11 @@ logical, intent(out), dimension(:,:)     :: convect
                                uin, vin, tracer_orig,    &
                                pfull, phalf, zfull, zhalf, omega, pblht,        &
                                ustar, bstar, qstar, shflx, lhflx,               &!miz
-			       land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
+                               land, coldT, Aerosol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, &
                                tdt_dif, qdt_dif, hmint, lat, lon,  &!miz
                                cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
                                pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
-			       cmf, conv_calc_completed,                        &
+                               cmf, conv_calc_completed,                        &
                                available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                                ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                                liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -1698,7 +1697,7 @@ logical, intent(out), dimension(:,:)     :: convect
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!                B. MOIST CONVECTIVE ADJUSTMENT             
+!                B. MOIST CONVECTIVE ADJUSTMENT
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
    if (do_mca) then
@@ -1712,8 +1711,8 @@ logical, intent(out), dimension(:,:)     :: convect
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!           X. BETTS-MILLER CONVECTION SCHEME 
-!			
+!           X. BETTS-MILLER CONVECTION SCHEME
+!
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
    if ( any((/do_bm,do_bmmass,do_bmomp/)) ) then
@@ -1745,16 +1744,16 @@ logical, intent(out), dimension(:,:)     :: convect
      qtnd=qtnd*dtinv
      rain=rain*dtinv
      snow=snow*dtinv
-                                                                                   
+
 !-------- add on tendency ----------
-     tdt=tdt+ttnd 
+     tdt=tdt+ttnd
      qdt=qdt+qtnd
 
 !------- save total precip and snow ---------
      lprec=lprec+rain
      fprec=fprec+snow
      precip=precip+rain+snow
-                                                                         
+
 !------- compute rh clouds if desired ------
      if (do_rh_clouds) then
 !calculate relative humidity
@@ -1808,8 +1807,8 @@ logical, intent(out), dimension(:,:)     :: convect
    endif  ! (do_ras)
 
 !---------------------------------------------------------------------
-!    call subroutine cu_mo_trans if diffusive cumulus momentum 
-!    transport is desired. 
+!    call subroutine cu_mo_trans if diffusive cumulus momentum
+!    transport is desired.
 !---------------------------------------------------------------------
    if (do_cmt) then
      call mpp_clock_begin (cmt_clock)
@@ -1829,8 +1828,8 @@ logical, intent(out), dimension(:,:)     :: convect
        endif !(cmt_uses_ras)
 !
        if (cmt_uses_donner) then
-!        mc_cmt = m_cellup 
-!        det_cmt = m_cdet_donner 
+!        mc_cmt = m_cellup
+!        det_cmt = m_cdet_donner
          call moistproc_cmt ( Time, is, js, tin, uin, vin, &
                               tracer, pfull, phalf, &
                               zfull, zhalf, pmass(is:ie,js:je,:), tdt, udt, vdt, rdt,           &
@@ -1847,7 +1846,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !   CURRENTLY no detrained mass flux provided from uw_conv; should only
 !   use with 'diffusive' cmt scheme, not the non-local. (attempt to
 !   use non-local will cause FATAL in _init routine.)
-         det_cmt = 0.0   
+         det_cmt = 0.0
          call moistproc_cmt ( Time, is, js, tin, uin, vin, &
                               tracer, pfull, phalf, &
                               zfull, zhalf, pmass(is:ie,js:je,:), tdt, udt, vdt, rdt,           &
@@ -1865,7 +1864,7 @@ logical, intent(out), dimension(:,:)     :: convect
          mc_cmt = mc_cmt + mc
        endif
        if (cmt_uses_donner) then
-         mc_cmt = mc_cmt + m_cellup 
+         mc_cmt = mc_cmt + m_cellup
        endif
        if (cmt_uses_uw) then
          do k=2,kx
@@ -1886,9 +1885,9 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    calculate the tracer tendency due to wet deposition (wetdeptnd)
 !    caused by the convectively generated precipitation (rain, snow) for
-!    any tracers for which wet deposition has been activated. add this 
-!    tendency to the tracer tendency due to all physics (rdt). save it 
-!    also in an array which will be combined with any wet deposition 
+!    any tracers for which wet deposition has been activated. add this
+!    tendency to the tracer tendency due to all physics (rdt). save it
+!    also in an array which will be combined with any wet deposition
 !    resulting from large-scale precip producing the total wet deposition
 !    for the tracer (wet_data).
 !---------------------------------------------------------------------
@@ -1915,16 +1914,16 @@ logical, intent(out), dimension(:,:)     :: convect
          rdt (:,:,:,n) = rdt(:,:,:,n) - wetdeptnd(:,:,:)
          wet_data(:,:,:,n) = wetdeptnd(:,:,:)
        endif
-     endif  
+     endif
    end do
 
-   mc_full(:,:,1)=0.; 
-   mc_half(:,:,1)=0.; 
-   do k=2,kx   
+   mc_full(:,:,1)=0.;
+   mc_half(:,:,1)=0.;
+   do k=2,kx
      mc_full(:,:,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1)) + 0.5*(cmf(:,:,k)+cmf(:,:,k-1)) &
                       + mc_donner(:,:,k)
    end do
-   do k=2,kx+1   
+   do k=2,kx+1
      mc_half(:,:,k) = mc(:,:,k) + cmf(:,:,k-1)+ mc_donner_half(:,:,k)
    end do
 
@@ -2047,7 +2046,7 @@ logical, intent(out), dimension(:,:)     :: convect
                                do_strat, do_liq_num, num_tracers,         &
                                tracers_in_uw, scale, do_ice_num)
        used = send_data (id_scale_uw, scale, Time, is, js )
-     else !(do_limit_uw) 
+     else !(do_limit_uw)
         scale = 1.0
         used = send_data (id_scale_uw, scale, Time, is, js )
      endif !(do_limit_uw)
@@ -2069,8 +2068,8 @@ logical, intent(out), dimension(:,:)     :: convect
    endif !(uw_conv)
 
 !-----------------------------------------------------------------------
-! Note: the following two blocks of code were moved from before to after 
-! the call to moistproc_scale_uw in order to account for UW convection 
+! Note: the following two blocks of code were moved from before to after
+! the call to moistproc_scale_uw in order to account for UW convection
 ! contributions to 'precip'. This will change answers if UW is active
 ! and do_gust_cv = .true. or entrain_nml:convect_shutoff = .true. (cjg)
 !
@@ -2093,7 +2092,7 @@ logical, intent(out), dimension(:,:)     :: convect
    where (precip > 0.) convect = .true.
 
 !---------------------------------------------------------------------
-!    update tracer fields with tendencies due to convection and wet 
+!    update tracer fields with tendencies due to convection and wet
 !    deposition by convective precipitation.
 !---------------------------------------------------------------------
    do n=1,size(rdt,4)
@@ -2109,7 +2108,7 @@ logical, intent(out), dimension(:,:)     :: convect
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!                   CONVECTION DIAGNOSTICS      
+!                   CONVECTION DIAGNOSTICS
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -2135,11 +2134,11 @@ logical, intent(out), dimension(:,:)     :: convect
      used = send_data (id_qnidt_uw, qnitnd_uw, Time, is, js, 1, rmask=mask)
    end if
  endif
-        
+
    if (id_ras_freq > 0) then
      ltemp = rain_ras > 0. .or. snow_ras > 0.0
      temp_2d = 0.
-     where (ltemp) 
+     where (ltemp)
        temp_2d = 1.
      end where
      used = send_data (id_ras_freq, temp_2d,Time, is, js)
@@ -2149,7 +2148,7 @@ logical, intent(out), dimension(:,:)     :: convect
      ltemp = rain_don > 0. .or. snow_don > 0.0 .or. &
                 rain_donmca > 0. .or. snow_donmca > 0.0
      temp_2d = 0.
-     where (ltemp) 
+     where (ltemp)
        temp_2d = 1.
      end where
      used = send_data (id_don_freq, temp_2d, Time, is, js)
@@ -2158,7 +2157,7 @@ logical, intent(out), dimension(:,:)     :: convect
    if (id_uw_freq > 0) then
      ltemp = rain_uw > 0. .or. snow_uw > 0.0
      temp_2d = 0.
-     where (ltemp) 
+     where (ltemp)
        temp_2d = 1.
      end where
      used = send_data (id_uw_freq, temp_2d, Time, is, js)
@@ -2175,7 +2174,7 @@ logical, intent(out), dimension(:,:)     :: convect
      call column_diag(id_wat_uw_col, is, js, Time, qtnd_uw, 1.0, qltnd_uw, 1.0, &
                       qitnd_uw, 1.0, temp_2d)
    endif
-        
+
 !---------------------------------------------------------------------
 !    temperature change due to dry and moist convection:
 !---------------------------------------------------------------------
@@ -2239,12 +2238,12 @@ logical, intent(out), dimension(:,:)     :: convect
 !    water vapor path tendency due to convection:
 !---------------------------------------------------------------------
    if (id_q_conv_col > 0) call column_diag(id_q_conv_col, is, js, Time, qtnd_conv, 1.0)
-   
+
 !---------------------------------------------------------------------
 !    dry static energy tendency due to dry and moist convection:
 !---------------------------------------------------------------------
    if (id_t_conv_col > 0) call column_diag(id_t_conv_col, is, js, Time, ttnd_conv, CP_AIR)
-   
+
 !---------------------------------------------------------------------
 !    cloud liquid, ice and area tendencies due to convection:
 !---------------------------------------------------------------------
@@ -2299,7 +2298,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    cloud ice water path tendency due to convection:
 !---------------------------------------------------------------------
        if (id_qi_conv_col > 0) call column_diag(id_qi_conv_col, is, js, Time, temp_3d1, 1.0)
-     endif        
+     endif
 
 !---------------------------------------------------------------------
 !    if cloud ice number diagnostics requested:
@@ -2313,7 +2312,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
        used = send_data (id_qnidt_conv, temp_3d1, Time,   &
                                                    is, js, 1, rmask=mask)
- 
+
 !---------------------------------------------------------------------
 !    cloud column ice number tendency due to convection:
 !---------------------------------------------------------------------
@@ -2338,9 +2337,9 @@ logical, intent(out), dimension(:,:)     :: convect
        if (id_qa_conv_col > 0) call column_diag(id_qa_conv_col, is, js, Time, temp_3d1, 1.0)
      endif
    endif !(do_strat)
-         
+
 !---------------------------------------------------------------------
-!    column integrated enthalpy and total water tendencies due to 
+!    column integrated enthalpy and total water tendencies due to
 !    convection parameterization:
 !---------------------------------------------------------------------
    if (id_enth_conv_col > 0 .or. id_wat_conv_col > 0) then
@@ -2374,12 +2373,12 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
          if (id_tracerdt_conv_col(n) > 0) &
            call column_diag(id_tracerdt_conv_col(n), is, js, Time, temp_3d1, 1.0)
-       endif        
+       endif
      endif
    end do
 
 !---------------------------------------------------------------------
-!    total convective updraft mass flux (uw + donner cell up + 
+!    total convective updraft mass flux (uw + donner cell up +
 !    donner meso up
 !---------------------------------------------------------------------
     if (id_mc_conv_up > 0 ) &
@@ -2411,9 +2410,9 @@ logical, intent(out), dimension(:,:)     :: convect
 
 
 !-----------------------------------------------------------------------
-!    if a non-prognostic cloud scheme is active, then call lscale_cond 
-!    to calculate the temperature and specific humidity tendencies 
-!    related to the latent heat release associated with the large-scale 
+!    if a non-prognostic cloud scheme is active, then call lscale_cond
+!    to calculate the temperature and specific humidity tendencies
+!    related to the latent heat release associated with the large-scale
 !    supersaturation.
 !-----------------------------------------------------------------------
     call mpp_clock_begin (largescale_clock)
@@ -2451,20 +2450,20 @@ logical, intent(out), dimension(:,:)     :: convect
 !    define the ratio of the grid-box relative humidity to the humidity
 !    in the environment of the convective clouds.
 !----------------------------------------------------------------------
- 
+
 !----------------------------------------------------------------------
 !    grid box has vapor and there is vapor outside of the convective a
 !    clouds available for condensation.
 !----------------------------------------------------------------
               if (qrf /= 0.0 .and. env_qv > 0.0) then
- 
+
 !--------------------------------------------------------------------
 !    there is grid box area not filled with convective clouds
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
                  if (env_fraction > 0.0) then
                    convective_humidity_ratio_clubb(i,j,k) =    &
                       MAX (qrf*env_fraction/env_qv, 1.0)
- 
+
 !---------------------------------------------------------------------
 !    grid box is filled with convective clouds.
 !----------------------------------------------------------------------
@@ -2473,7 +2472,7 @@ logical, intent(out), dimension(:,:)     :: convect
                  endif
 
 !--------------------------------------------------------------------
-!    either no vapor or all vapor taken up in convective clouds so 
+!    either no vapor or all vapor taken up in convective clouds so
 !    none left for large-scale cd.
 !---------------------------------------------------------------------
               else
@@ -2556,7 +2555,7 @@ logical, intent(out), dimension(:,:)     :: convect
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!       B. TIEDTKE / ROTSTAYN / KLEIN PROGNOSTIC CLOUD SCHEME  
+!       B. TIEDTKE / ROTSTAYN / KLEIN PROGNOSTIC CLOUD SCHEME
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -2577,7 +2576,7 @@ logical, intent(out), dimension(:,:)     :: convect
                                  do_lin_cld_microphys, id_qvout, id_qlout,        &
                                  id_qaout, id_qiout, id_qnout, id_qniout, &
                                  limit_conv_cloud_frac, mask, &
-                                 hydrostatic, phys_hydrostatic, &     
+                                 hydrostatic, phys_hydrostatic, &
                                  zfull,                 &
                                  do_ice_num , lsc_ice_number,          &
                                 lsc_snow, lsc_rain, lsc_snow_size,  &
@@ -2588,8 +2587,8 @@ logical, intent(out), dimension(:,:)     :: convect
       call mpp_clock_end (stratcloud_clock)
     endif  ! (do_lsc)
 !---------------------------------------------------------------------
-!    calculate the wet deposition associated with the large scale 
-!    condensation. 
+!    calculate the wet deposition associated with the large scale
+!    condensation.
 !---------------------------------------------------------------------
     qtnd_wet = qtnd
     if (do_strat) then
@@ -2662,12 +2661,12 @@ logical, intent(out), dimension(:,:)     :: convect
 !    dry static energy tendency due to large-scale condensation:
 !---------------------------------------------------------------------
     if (id_t_ls_col > 0) &
-      call column_diag(id_t_ls_col, is, js, Time, ttnd, CP_AIR) 
+      call column_diag(id_t_ls_col, is, js, Time, ttnd, CP_AIR)
 !---------------------------------------------------------------------
 !    water vapor path tendency due to large-scale condensation:
 !---------------------------------------------------------------------
     if (id_q_ls_col > 0) &
-      call column_diag(id_q_ls_col, is, js, Time, qtnd, 1.0) 
+      call column_diag(id_q_ls_col, is, js, Time, qtnd, 1.0)
 
 !---------------------------------------------------------------------
 !    specific humidity change due to large-scale condensation:
@@ -2675,11 +2674,11 @@ logical, intent(out), dimension(:,:)     :: convect
     used = send_data (id_qdt_ls, qtnd, Time, is, js, 1, rmask=mask)
 
     used = send_data (id_lsc_precip, rain + snow, Time, is, js)
-        
+
     if (id_lsc_freq > 0) then
       ltemp = rain > 0. .or. snow > 0.0
       temp_2d = 0.
-      where (ltemp) 
+      where (ltemp)
         temp_2d = 1.
       end where
       used = send_data (id_lsc_freq, temp_2d, Time, is, js)
@@ -2712,7 +2711,7 @@ logical, intent(out), dimension(:,:)     :: convect
       used = send_data (id_mc, mc_half, Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
-!    cloud liquid, ice and area tendencies due to strat_cloud 
+!    cloud liquid, ice and area tendencies due to strat_cloud
 !    parameterization:
 !---------------------------------------------------------------------
       used = send_data (id_qldt_ls, q_tnd(:,:,:,nql), Time, is, js, 1, rmask=mask)
@@ -2725,37 +2724,37 @@ logical, intent(out), dimension(:,:)     :: convect
       endif
 
 !---------------------------------------------------------------------
-!    cloud liquid and ice water path tendencies due to strat_cloud 
+!    cloud liquid and ice water path tendencies due to strat_cloud
 !    parameterization:
 !---------------------------------------------------------------------
       if (id_ql_ls_col > 0) &
-        call column_diag(id_ql_ls_col, is, js, Time, q_tnd(:,:,:,nql), 1.0) 
+        call column_diag(id_ql_ls_col, is, js, Time, q_tnd(:,:,:,nql), 1.0)
       if (id_qi_ls_col > 0) &
-        call column_diag(id_qi_ls_col, is, js, Time, q_tnd(:,:,:,nqi), 1.0) 
+        call column_diag(id_qi_ls_col, is, js, Time, q_tnd(:,:,:,nqi), 1.0)
       if (do_liq_num .and. id_qn_ls_col > 0) &
-        call column_diag(id_qn_ls_col, is, js, Time, q_tnd(:,:,:,nqn), 1.0) 
+        call column_diag(id_qn_ls_col, is, js, Time, q_tnd(:,:,:,nqn), 1.0)
       if (do_ice_num .and. id_qni_ls_col > 0) &
         call column_diag(id_qni_ls_col, is, js, Time,   &
                                         q_tnd(:,:,:,nqni), 1.0)
-      
+
 !---------------------------------------------------------------------
-!    column integrated enthalpy and total water tendencies due to 
+!    column integrated enthalpy and total water tendencies due to
 !    strat_cloud  parameterization:
 !---------------------------------------------------------------------
       if (id_enth_ls_col > 0) then
         temp_2d = -HLV*rain -HLS*snow
         call column_diag(id_enth_ls_col, is, js, Time, ttnd, CP_AIR, &
-                q_tnd(:,:,:,nql), -HLV, q_tnd(:,:,:,nqi), -HLS, temp_2d) 
+                q_tnd(:,:,:,nql), -HLV, q_tnd(:,:,:,nqi), -HLS, temp_2d)
       endif
- 
+
       if (id_wat_ls_col > 0) then
         temp_2d = rain+snow
         call column_diag(id_wat_ls_col, is, js, Time, qtnd, 1.0, &
-                q_tnd(:,:,:,nql), 1.0, q_tnd(:,:,:,nqi), 1.0, temp_2d) 
+                q_tnd(:,:,:,nql), 1.0, q_tnd(:,:,:,nqi), 1.0, temp_2d)
       endif
 
 !---------------------------------------------------------------------
-!    stratiform cloud volume tendency due to strat_cloud 
+!    stratiform cloud volume tendency due to strat_cloud
 !    parameterization:
 !---------------------------------------------------------------------
       if (id_qa_ls_col > 0) &
@@ -2783,22 +2782,22 @@ logical, intent(out), dimension(:,:)     :: convect
 !    end the timing of the large-scale condensation code section.
 !---------------------------------------------------------------------
     call mpp_clock_end (largescale_clock)
- 
+
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!                  GENERAL MOISTURE DIAGNOSTICS 
+!                  GENERAL MOISTURE DIAGNOSTICS
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 
 !--------------------------------------------------------------------
 !    output diagnostics obtained from the combination of convective and
-!    large-scale parameterizations.  
+!    large-scale parameterizations.
 !--------------------------------------------------------------------
 
 !--------------------------------------------------------------------
 !    output diagnostics obtained from the combination of convective and
-!    large-scale parameterizations.  
+!    large-scale parameterizations.
 !--------------------------------------------------------------------
 
      total_wetdep(:,:,:) = 0.
@@ -2813,7 +2812,7 @@ logical, intent(out), dimension(:,:)     :: convect
          total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
                                                 donner_wetdep(:,:,m)
          total_wetdep_donner(:,:,n) = donner_wetdep(:,:,m)
-         total_wetdepc_donner(:,:,n) = donner_wetdepc(:,:,m)    
+         total_wetdepc_donner(:,:,n) = donner_wetdepc(:,:,m)
          total_wetdepm_donner(:,:,n) = donner_wetdepm(:,:,m)
          m=m+1
        endif
@@ -2881,21 +2880,21 @@ logical, intent(out), dimension(:,:)     :: convect
      endif
      if (id_wetdep_so4 > 0) then
        temp_2d = 0.0
-       if( do_donner_deep ) temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_donner(:,:,nso4) 
+       if( do_donner_deep ) temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_donner(:,:,nso4)
        if( do_uw_conv  )    temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_uw    (:,:,nso4)
        if( do_strat )       temp_2d = temp_2d + 0.096*ls_wetdep(:,:,nso4)
        used = send_data (id_wetdep_so4, temp_2d, Time, is,js)
      endif
      if (id_wetdep_so2 > 0) then
        temp_2d = 0.0
-       if( do_donner_deep ) temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_donner(:,:,nso2) 
+       if( do_donner_deep ) temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_donner(:,:,nso2)
        if( do_uw_conv  )    temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_uw    (:,:,nso2)
        if( do_strat )       temp_2d = temp_2d + 0.064*ls_wetdep(:,:,nso2)
        used = send_data (id_wetdep_so2, temp_2d, Time, is,js)
      endif
      if (id_wetdep_DMS > 0) then
        temp_2d = 0.0
-       if( do_donner_deep ) temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_donner(:,:,nDMS) 
+       if( do_donner_deep ) temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_donner(:,:,nDMS)
        if( do_uw_conv  )    temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_uw    (:,:,nDMS)
        if( do_strat )       temp_2d = temp_2d + 0.062*ls_wetdep(:,:,nDMS)
        used = send_data (id_wetdep_DMS, temp_2d, Time, is,js)
@@ -2914,7 +2913,7 @@ logical, intent(out), dimension(:,:)     :: convect
          nbin_seasalt=seasalt_tracers(n)%tr
          total_wetdep_seasalt(:,:)=total_wetdep_seasalt(:,:)+total_wetdep(:,:,nbin_seasalt)
        enddo
-       used = send_data (id_wetdep_seasalt  , total_wetdep_seasalt,  Time, is,js) 
+       used = send_data (id_wetdep_seasalt  , total_wetdep_seasalt,  Time, is,js)
      endif
 
      do n=1, n_dust_tracers
@@ -2924,7 +2923,7 @@ logical, intent(out), dimension(:,:)     :: convect
      call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
 
      if (id_wetdep_dust   > 0) then
-       used = send_data (id_wetdep_dust  , total_wetdep_dust,  Time, is,js) 
+       used = send_data (id_wetdep_dust  , total_wetdep_dust,  Time, is,js)
      endif
 
 !---------------------------------------------------------------------
@@ -2945,7 +2944,7 @@ logical, intent(out), dimension(:,:)     :: convect
     used = send_data (id_prsn, fprec, Time, is, js)
 
 !---------------------------------------------------------------------
-!    column integrated enthalpy and total water tendencies due to 
+!    column integrated enthalpy and total water tendencies due to
 !    moist processes:
 !---------------------------------------------------------------------
 
@@ -2960,7 +2959,7 @@ logical, intent(out), dimension(:,:)     :: convect
         used = send_data(id_max_enthalpy_imbal, max_enthalpy_imbal, Time, is, js)
       endif
     endif
-  
+
     if (id_wat_moist_col > 0 .or. id_max_water_imbal > 0) then
       temp_3d1 = qdt - qdt_init
       temp_3d2 = rdt(:,:,:,nql) - rdt_init(:,:,:,nql)
@@ -2977,13 +2976,13 @@ logical, intent(out), dimension(:,:)     :: convect
 !    water vapor, liquid water and ice water column paths:
 !---------------------------------------------------------------------
     if (id_WVP > 0) &
-      call column_diag(id_WVP, is, js, Time, qin, 1.0) 
+      call column_diag(id_WVP, is, js, Time, qin, 1.0)
     if (id_prw > 0) &
-      call column_diag(id_prw, is, js, Time, qin, 1.0) 
+      call column_diag(id_prw, is, js, Time, qin, 1.0)
     if (id_LWP > 0 .and. do_strat) &
-      call column_diag(id_LWP, is, js, Time, tracer(:,:,:,nql), 1.0) 
+      call column_diag(id_LWP, is, js, Time, tracer(:,:,:,nql), 1.0)
     if (id_IWP > 0 .and. do_strat) &
-      call column_diag(id_IWP, is, js, Time, tracer(:,:,:,nqi), 1.0) 
+      call column_diag(id_IWP, is, js, Time, tracer(:,:,:,nqi), 1.0)
 
     if (id_lsc_cloud_area > 0 .and. do_strat ) then
       used = send_data (id_lsc_cloud_area, 100.*lsc_cloud_area, Time, is,  &
@@ -3004,14 +3003,14 @@ logical, intent(out), dimension(:,:)     :: convect
     if (do_donner_deep) then
       total_conv_cloud = total_conv_cloud +   &
           cell_cld_frac*cell_ice_amt + meso_cld_frac*meso_ice_amt +  &
-          cell_cld_frac*cell_liq_amt + meso_cld_frac*meso_liq_amt 
+          cell_cld_frac*cell_liq_amt + meso_cld_frac*meso_liq_amt
       conv_cld_frac = conv_cld_frac + cell_cld_frac + meso_cld_frac
       total_cloud_area = total_cloud_area + cell_cld_frac +  &
                                                          meso_cld_frac
       tot_conv_liq = tot_conv_liq + cell_cld_frac*cell_liq_amt + &
-                                           meso_cld_frac*meso_liq_amt 
+                                           meso_cld_frac*meso_liq_amt
       tot_conv_ice = tot_conv_ice + cell_cld_frac*cell_ice_amt + &
-                                           meso_cld_frac*meso_ice_amt 
+                                           meso_cld_frac*meso_ice_amt
     endif
     if (do_uw_conv) then
       total_conv_cloud = total_conv_cloud +   &
@@ -3020,7 +3019,7 @@ logical, intent(out), dimension(:,:)     :: convect
       conv_cld_frac = conv_cld_frac + shallow_cloud_area
       total_cloud_area = total_cloud_area + shallow_cloud_area
       tot_conv_liq = tot_conv_liq + shallow_cloud_area*shallow_liquid
-      tot_conv_ice = tot_conv_ice + shallow_cloud_area*shallow_ice     
+      tot_conv_ice = tot_conv_ice + shallow_cloud_area*shallow_ice
     endif
 
     if (id_lsc_liq_amt > 0 .and. do_strat ) then
@@ -3045,7 +3044,7 @@ logical, intent(out), dimension(:,:)     :: convect
                                            Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
-!    define the total cloud area. 
+!    define the total cloud area.
 !---------------------------------------------------------------------
     if (id_tot_cld_amt > 0 ) then
       tca2 = 1.0
@@ -3066,7 +3065,7 @@ logical, intent(out), dimension(:,:)     :: convect
     endif
 
 !---------------------------------------------------------------------
-!    define the total and convective liquid and liquid water path. 
+!    define the total and convective liquid and liquid water path.
 !---------------------------------------------------------------------
     if (id_tot_liq_amt > 0 ) &
     used = send_data (id_tot_liq_amt, &
@@ -3083,13 +3082,13 @@ logical, intent(out), dimension(:,:)     :: convect
     used = send_data (id_conv_liq_amt, &
                    tot_conv_liq /(1.0 + total_conv_cloud), &
                                            Time, is, js, 1, rmask=mask)
- 
+
     if (id_LWP_all_clouds > 0 ) &
     call column_diag (id_LWP_all_clouds, is, js, Time, &
                       lsc_liquid+tot_conv_liq+lsc_rain, 1.0)
 
 !---------------------------------------------------------------------
-!    define the total and convective ice and ice water path. 
+!    define the total and convective ice and ice water path.
 !---------------------------------------------------------------------
 
     if (id_tot_ice_amt > 0 ) &
@@ -3111,14 +3110,14 @@ logical, intent(out), dimension(:,:)     :: convect
     if (id_IWP_all_clouds > 0 ) &
      call column_diag (id_IWP_all_clouds, is, js, Time, &
                        lsc_ice+tot_conv_ice+lsc_snow, 1.0)
- 
+
     if (id_clivi > 0 ) &
      call column_diag (id_clivi, is, js, Time, &
                        lsc_ice+tot_conv_ice+lsc_snow, 1.0)
 
 !---------------------------------------------------------------------
 !    define the total vapor, total water substance and condensate water
-!    path. 
+!    path.
 !---------------------------------------------------------------------
     used = send_data (id_tot_vapor, qin, Time, is, js, 1, rmask=mask)
     used = send_data (id_tot_h2o  , &
@@ -3140,20 +3139,20 @@ logical, intent(out), dimension(:,:)     :: convect
 !    column integrated cloud mass:
 !---------------------------------------------------------------------
     if (id_AWP > 0 .and. do_strat) &
-      call column_diag(id_AWP, is, js, Time, tracer(:,:,:,nqa), 1.0) 
+      call column_diag(id_AWP, is, js, Time, tracer(:,:,:,nqa), 1.0)
 
 !---------------------------------------------------------------------
-!    relative humidity:         
+!    relative humidity:
 !---------------------------------------------------------------------
     if (id_rh > 0) then
-      if (.not. (do_rh_clouds .or. do_diag_clouds)) then 
+      if (.not. (do_rh_clouds .or. do_diag_clouds)) then
         call rh_calc (pfull, tin, qin, RH, do_simple, mask)
       endif
       used = send_data (id_rh, rh*100., Time, is, js, 1, rmask=mask)
     endif
 
 !---------------------------------------------------------------------
-!    relative humidity (CMIP formulation):         
+!    relative humidity (CMIP formulation):
 !---------------------------------------------------------------------
     if (id_rh_cmip > 0) then
       if (.not. (do_rh_clouds .or. do_diag_clouds)) then
@@ -3172,14 +3171,14 @@ logical, intent(out), dimension(:,:)     :: convect
     endif
 
 !---------------------------------------------------------------------
-!    saturation specific humidity:         
+!    saturation specific humidity:
 !---------------------------------------------------------------------
     if (id_qs > 0) then
       call compute_qs (tin, pfull, qsat, q = qin)
       used = send_data (id_qs, qsat, Time, is, js, 1, rmask=mask)
     endif
 
-!------- diagnostics for CAPE and CIN, 
+!------- diagnostics for CAPE and CIN,
 
 !!-- compute and write out CAPE and CIN--
     if ( id_cape > 0 .or. id_cin > 0) then
@@ -3195,7 +3194,7 @@ logical, intent(out), dimension(:,:)     :: convect
       end do
       if (id_cape > 0) used = send_data ( id_cape, cape, Time, is, js )
       if ( id_cin > 0 ) used = send_data ( id_cin, cin, Time, is, js )
-    
+
       if ( id_tp  > 0 ) used = send_data ( id_tp,  tp, Time, is, js )
       if ( id_rp  > 0 ) used = send_data ( id_rp,  rp, Time, is, js )
       if ( id_lcl > 0 ) used = send_data ( id_lcl, 1.0*klcl, Time, is, js )
@@ -3209,13 +3208,13 @@ logical, intent(out), dimension(:,:)     :: convect
     prec_intgl(is:ie,js:je) = precip(:,:)*SECONDS_PER_DAY
 
 !----------------------------------------------------------------------
-!    define the precip fluxes needed for input to the COSP simulator 
+!    define the precip fluxes needed for input to the COSP simulator
 !    package.
 !---------------------------------------------------------------------
       if (do_cosp) then
 
 !---------------------------------------------------------------------
-!    define precip fluxes from convective schemes at each layer 
+!    define precip fluxes from convective schemes at each layer
 !    interface.  (index 1 is model lid)
 !---------------------------------------------------------------------
         liq_mesoh(:,:,1) = 0.
@@ -3243,7 +3242,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !    adjust precip fluxes to account for any negative values produced.
 !    precip contribution is determined as the negative of the moisture
 !    tendency, so at top of clouds a positive moisture tendency some-
-!    times results in a negative precipitation contribution. 
+!    times results in a negative precipitation contribution.
 !--------------------------------------------------------------------
         sumneg = 0.
         do k=2, size(t,3)+1
@@ -3255,7 +3254,7 @@ logical, intent(out), dimension(:,:)     :: convect
               sumneg(i,j) = 0.
             else
               sumneg(i,j) = sumneg(i,j) + liq_mesoh(i,j,k)
-              liq_mesoh(i,j,k) = 0.                        
+              liq_mesoh(i,j,k) = 0.
             endif
           else
             sumneg(i,j) = sumneg(i,j) + liq_mesoh(i,j,k)
@@ -3274,7 +3273,7 @@ logical, intent(out), dimension(:,:)     :: convect
               sumneg(i,j) = 0.
             else
               sumneg(i,j) = sumneg(i,j) + frz_mesoh(i,j,k)
-              frz_mesoh(i,j,k) = 0.                        
+              frz_mesoh(i,j,k) = 0.
             endif
           else
             sumneg(i,j) = sumneg(i,j) + frz_mesoh(i,j,k)
@@ -3293,7 +3292,7 @@ logical, intent(out), dimension(:,:)     :: convect
               sumneg(i,j) = 0.
             else
               sumneg(i,j) = sumneg(i,j) + liq_cellh(i,j,k)
-              liq_cellh(i,j,k) = 0.                        
+              liq_cellh(i,j,k) = 0.
             endif
           else
             sumneg(i,j) = sumneg(i,j) + liq_cellh(i,j,k)
@@ -3312,7 +3311,7 @@ logical, intent(out), dimension(:,:)     :: convect
               sumneg(i,j) = 0.
             else
               sumneg(i,j) = sumneg(i,j) + frz_cellh(i,j,k)
-              frz_cellh(i,j,k) = 0.                        
+              frz_cellh(i,j,k) = 0.
             endif
           else
             sumneg(i,j) = sumneg(i,j) + frz_cellh(i,j,k)
@@ -3331,7 +3330,7 @@ logical, intent(out), dimension(:,:)     :: convect
               sumneg(i,j) = 0.
             else
               sumneg(i,j) = sumneg(i,j) + ice_precflxh(i,j,k)
-              ice_precflxh(i,j,k) = 0.                        
+              ice_precflxh(i,j,k) = 0.
             endif
           else
             sumneg(i,j) = sumneg(i,j) + ice_precflxh(i,j,k)
@@ -3350,7 +3349,7 @@ logical, intent(out), dimension(:,:)     :: convect
               sumneg(i,j) = 0.
             else
               sumneg(i,j) = sumneg(i,j) + liq_precflxh(i,j,k)
-              liq_precflxh(i,j,k) = 0.                        
+              liq_precflxh(i,j,k) = 0.
             endif
           else
             sumneg(i,j) = sumneg(i,j) + liq_precflxh(i,j,k)
@@ -3370,7 +3369,7 @@ logical, intent(out), dimension(:,:)     :: convect
                 sumneg(i,j) = 0.
               else
                 sumneg(i,j) = sumneg(i,j) + mca_liqh(i,j,k)
-                mca_liqh(i,j,k) = 0.                        
+                mca_liqh(i,j,k) = 0.
               endif
             else
               sumneg(i,j) = sumneg(i,j) + mca_liqh(i,j,k)
@@ -3389,7 +3388,7 @@ logical, intent(out), dimension(:,:)     :: convect
                 sumneg(i,j) = 0.
               else
                 sumneg(i,j) = sumneg(i,j) + mca_frzh(i,j,k)
-                mca_frzh(i,j,k) = 0.                        
+                mca_frzh(i,j,k) = 0.
               endif
             else
               sumneg(i,j) = sumneg(i,j) + mca_frzh(i,j,k)
@@ -3401,7 +3400,7 @@ logical, intent(out), dimension(:,:)     :: convect
         endif
 
 !----------------------------------------------------------------------
-!     define the grid-box precip flux as the average of the interface 
+!     define the grid-box precip flux as the average of the interface
 !     fluxes.
 !----------------------------------------------------------------------
         do k=1, size(t,3)
@@ -3456,7 +3455,7 @@ end subroutine moist_processes
 
 
 !#####################################################################
- 
+
 subroutine moist_processes_time_vary (dt)
 
 real, intent(in) :: dt
@@ -3475,12 +3474,12 @@ end subroutine moist_processes_time_vary
 !#####################################################################
 
 subroutine moist_processes_endts (is, js)
- 
+
 integer, intent(in) :: is,js
 
       if (do_donner_deep) then
         call donner_deep_endts
-      endif 
+      endif
 
 
       call sum_diag_integral_field ('prec', prec_intgl)
@@ -3656,8 +3655,8 @@ integer            :: k
          if (do_donner_deep .and. do_rh_clouds) then
            call error_mesg ('moist_processes_init',  &
             'Cannot currently activate donner_deep_mod with rh_clouds', FATAL)
-         endif   
-         
+         endif
+
          if (force_donner_moist_conserv .and. &
                .not. do_donner_conservation_checks) then
            call error_mesg ('moist_processes', &
@@ -3696,7 +3695,7 @@ integer            :: k
 !RSH  endif
 
 !---------------------------------------------------------------------
-! --- Find the tracer indices 
+! --- Find the tracer indices
 !---------------------------------------------------------------------
 
       if (do_strat) then
@@ -3721,7 +3720,7 @@ integer            :: k
       if (nqni == NO_TRACER .and. do_ice_num ) &
          call error_mesg ('moist_processes', &
             'prognostic ice number scheme requested but &
-                                              &tracer not found', FATAL) 
+                                              &tracer not found', FATAL)
 
 !------------ initialize various schemes ----------
       if (do_lsc) then
@@ -3747,9 +3746,9 @@ integer            :: k
 ! <--- h1g, cjg
       if (do_dryadj) call     dry_adj_init ()
       if (do_cmt)    call cu_mo_trans_init (axes,Time, doing_diffusive)
-      if (do_bm)     call betts_miller_init () 
+      if (do_bm)     call betts_miller_init ()
       if (do_bmmass) call bm_massflux_init()
-      if (do_bmomp)  call bm_omp_init () 
+      if (do_bmomp)  call bm_omp_init ()
 
       if (do_cmt) then
         if ( .not. do_ras .and. .not. do_donner_deep  .and. &
@@ -3873,11 +3872,11 @@ integer            :: k
              'currently cannot do non-local cmt with uw as mass &
                                                 &flux_source', FATAL)
         endif
-          
+
 
       endif
 
-  
+
 !----- initialize quantities for global integral package -----
 
    call diag_integral_field_init ('prec', 'f6.3')
@@ -3885,7 +3884,7 @@ integer            :: k
    allocate( pmass     (id,jd,kd))
 
 !---------------------------------------------------------------------
-!    define output variables indicating whether certain convection 
+!    define output variables indicating whether certain convection
 !    schemes have been activated.
 !---------------------------------------------------------------------
      doing_donner = do_donner_deep
@@ -3905,7 +3904,7 @@ integer            :: k
    stratcloud_clock = mpp_clock_id( '   Moist Processes: Strat_cloud' , grain=CLOCK_MODULE )
    bm_clock         = mpp_clock_id( '   Moist Processes: Betts-Miller', grain=CLOCK_MODULE )
 
-       
+
       nbcphobic = get_tracer_index(MODEL_ATMOS,'bcphob')
       nbcphilic = get_tracer_index(MODEL_ATMOS,'bcphil')
       nomphobic = get_tracer_index(MODEL_ATMOS,'omphob')
@@ -3937,14 +3936,14 @@ integer            :: k
       nNH4NO3   = get_tracer_index(MODEL_ATMOS,'nh4no3')
       nNH4      = get_tracer_index(MODEL_ATMOS,'nh4')
 !---------------------------------------------------------------------
-!    retrieve the number of registered tracers in order to determine 
+!    retrieve the number of registered tracers in order to determine
 !    which tracers are to be convectively transported.
 !---------------------------------------------------------------------
       call get_number_tracers (MODEL_ATMOS, num_prog= num_tracers)
- 
+
 !---------------------------------------------------------------------
 !    allocate logical arrays to indicate the tracers which are to be
-!    transported by the various available convective schemes. 
+!    transported by the various available convective schemes.
 !    initialize these arrays to .false..
 !---------------------------------------------------------------------
       allocate (tracers_in_donner(num_tracers))
@@ -3958,7 +3957,7 @@ integer            :: k
 
 !----------------------------------------------------------------------
 !    for each tracer, determine if it is to be transported by convect-
-!    ion, and the convection schemes that are to transport it. set a 
+!    ion, and the convection schemes that are to transport it. set a
 !    logical flag to .true. for each tracer that is to be transported by
 !    each scheme and increment the count of tracers to be transported
 !    by that scheme.
@@ -4038,8 +4037,8 @@ integer            :: k
         do_tracers_in_uw = .true.
       else
         do_tracers_in_uw = .false.
-      endif     
-     
+      endif
+
 !---------------------------------------------------------------------
 !    check for proper use of do_unified_convective_closure.
 !---------------------------------------------------------------------
@@ -4056,7 +4055,7 @@ integer            :: k
                 &when do_unified_convective_closure is .true.', FATAL)
          endif
       endif
-        
+
 !---------------------------------------------------------------------
 !    allocate and initialize arrays to hold maximum enthalpy and water
 !    imbalances in each column.
@@ -4083,7 +4082,7 @@ integer            :: k
           max_water_imbal_don = 0.
         endif
       endif ! (do_donner_deep)
- 
+
       if (do_ras)  then
         call ras_init (do_strat, do_liq_num, axes,Time, tracers_in_ras)
       endif
@@ -4094,10 +4093,10 @@ integer            :: k
       if (do_mca .or. do_donner_deep)  then
         call  moist_conv_init (axes,Time, tracers_in_mca)
       endif
-  
- 
+
+
 !----- initialize quantities for diagnostics output -----
- 
+
 !--------------------------------------------------------------------
 !    retrieve the diag_manager id for the area diagnostic, needed for
 !    cmorizing various diagnostics.
@@ -4109,7 +4108,7 @@ integer            :: k
       call diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
 
       if (do_lin_cld_microphys) then
-!----- initialize Lin cloud microphysics 
+!----- initialize Lin cloud microphysics
          if (.not. do_strat) call error_mesg ('moist_processes_init',  &
                     'must also activate do_strat when do_lin_cld_microphys is active', FATAL)
          if (do_liq_num) call error_mesg ('moist_processes_init',  &
@@ -4136,7 +4135,7 @@ integer            :: k
       num_uw_tracers_out = num_uw_tracers
       do_strat_out = do_strat
 
-      call  detr_ice_num_init 
+      call  detr_ice_num_init
 
 
       module_is_initialized = .true.
@@ -4202,10 +4201,10 @@ end subroutine moist_processes_end
 !
 ! <DESCRIPTION>
 ! write out restart file.
-! Arguments: 
-!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+! Arguments:
+!   timestamp (optional, intent(in)) : A character string that represents the model time,
 !                                      used for writing restart. timestamp will append to
-!                                      the any restart file name as a prefix. 
+!                                      the any restart file name as a prefix.
 ! </DESCRIPTION>
 !
 subroutine moist_processes_restart(timestamp)
@@ -4257,7 +4256,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
          'no units', missing_value=missing_value            )
    endif
 
-      id_cape = register_diag_field ( mod_name, & 
+      id_cape = register_diag_field ( mod_name, &
         'cape', axes(1:2), Time, &
         'Convectively available potential energy',      'J/Kg')
 
@@ -4355,15 +4354,15 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
    id_q_conv_col = register_diag_field ( mod_name, &
      'q_conv_col', axes(1:2), Time, &
     'Water vapor path tendency from convection ',   'kg/m2/s' )
-   
+
    id_t_conv_col = register_diag_field ( mod_name, &
      't_conv_col', axes(1:2), Time, &
     'Column static energy tendency from convection ','W/m2' )
-   
+
    id_enth_conv_col = register_diag_field ( mod_name, &
      'enth_conv_col', axes(1:2), Time, &
      'Column enthalpy tendency from convection','W/m2' )
- 
+
    id_wat_conv_col = register_diag_field ( mod_name, &
      'wat_conv_col', axes(1:2), Time, &
      'Column total water tendency from convection','kg(h2o)/m2/s' )
@@ -4371,16 +4370,16 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
    id_enth_donner_col2 = register_diag_field ( mod_name, &
      'enth_donner_col2', axes(1:2), Time, &
      'column enthalpy tendency from Donner liq precip','W/m2' )
- 
+
    id_enth_donner_col3 = register_diag_field ( mod_name, &
      'enth_donner_col3', axes(1:2), Time, &
       'Column enthalpy tendency from Donner frzn precip','W/m2' )
- 
+
    id_enth_donner_col4 = register_diag_field ( mod_name, &
       'enth_donner_col4', axes(1:2), Time, &
      'Atmospheric column enthalpy tendency from Donner convection', &
                                                             'W/m2' )
- 
+
    id_enth_donner_col5 = register_diag_field ( mod_name, &
       'enth_donner_col5', axes(1:2), Time, &
       'Column enthalpy tendency due to condensate xfer from Donner &
@@ -4390,7 +4389,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      'enth_donner_col6', axes(1:2), Time, &
       'Column enthalpy tendency from donner moisture  &
                      &conservation  adjustment','W/m2' )
- 
+
    id_enth_donner_col7 = register_diag_field ( mod_name, &
       'enth_donner_col7', axes(1:2), Time, &
       'Precip adjustment needed to balance donner moisture  &
@@ -4416,7 +4415,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
    id_enth_uw_col = register_diag_field ( mod_name, &
      'enth_uw_col', axes(1:2), Time, &
      'Column enthalpy tendency from UW convection','W/m2' )
- 
+
    id_wat_uw_col = register_diag_field ( mod_name, &
      'wat_uw_col', axes(1:2), Time, &
      'Column total water tendency from UW convection','kg(h2o)/m2/s' )
@@ -4424,7 +4423,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
    id_scale_uw = register_diag_field ( mod_name, &
      'scale_uw', axes(1:2), Time, &
      'Scaling factor applied to UW convection tendencies','1' )
-          
+
    id_scale_donner = register_diag_field ( mod_name, &
      'scale_donner', axes(1:2), Time, &
      'Scaling factor applied to UW convection tendencies','1' )
@@ -4491,7 +4490,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
    id_lscale_snow3d= register_diag_field ( mod_name, &
      'lscale_snow3d', axes(half), Time, &
      'Snow fall rate from lscale -3D',       'kg(h2o)/m2/s' )
-   
+
    id_lscale_precip3d= register_diag_field ( mod_name, &
      'lscale_precip3d', axes(1:3), Time, &
      'LS Precip falling out of gridbox',       'kg(h2o)/m2/s' , &
@@ -4509,7 +4508,7 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
     id_enth_moist_col = register_diag_field ( mod_name, &
      'enth_moist_col', axes(1:2), Time, &
      'Column enthalpy imbalance from moist processes','W/m2' )
-  
+
     id_wat_moist_col = register_diag_field ( mod_name, &
       'wat_moist_col', axes(1:2), Time, &
       'Column total water imbalance from moist processes','kg/m2/s' )
@@ -4588,19 +4587,19 @@ if (do_strat ) then
    id_ql_conv_col = register_diag_field ( mod_name, &
      'ql_conv_col', axes(1:2), Time, &
     'Liquid water path tendency from convection',  'kg/m2/s' )
-   
+
    id_qn_conv_col = register_diag_field ( mod_name, &
      'qn_conv_col', axes(1:2), Time, &
      'Liquid drp tendency from convection',  'kg/m2/s' )
- 
+
    id_qi_conv_col = register_diag_field ( mod_name, &
      'qi_conv_col', axes(1:2), Time, &
     'Ice water path tendency from convection',     'kg/m2/s' )
-   
+
    id_qa_conv_col = register_diag_field ( mod_name, &
      'qa_conv_col', axes(1:2), Time, &
     'Cloud mass tendency from convection',         'kg/m2/s' )
-      
+
    id_qnidt_conv = register_diag_field ( mod_name, &
      'qnidt_conv', axes(1:3), Time, &
      'Ice number tendency from convection',      '#/kg/s',  &
@@ -4637,11 +4636,11 @@ if ( do_lsc ) then
    id_q_ls_col = register_diag_field ( mod_name, &
      'q_ls_col', axes(1:2), Time, &
     'Water vapor path tendency from large-scale cond','kg/m2/s' )
-   
+
    id_t_ls_col = register_diag_field ( mod_name, &
      't_ls_col', axes(1:2), Time, &
     'Column static energy tendency from large-scale cond','W/m2' )
-   
+
  endif
 
    id_conv_cld_base = register_diag_field ( mod_name, &
@@ -4678,12 +4677,12 @@ if ( do_strat ) then
      'mc_full', axes(1:3), Time, &
      'Net Mass Flux from convection',   'kg/m2/s', &
                        missing_value=missing_value               )
-   
+
    id_mc_half = register_diag_field ( mod_name, &
      'mc_half', axes(half), Time, &
      'Net Mass Flux from convection on half levs',   'kg/m2/s', &
                        missing_value=missing_value               )
-   
+
    id_mc = register_diag_field ( mod_name, &
      'mc', axes(half), Time, &
      'Convective Mass Flux',   'kg m-2 s-1', &
@@ -4712,11 +4711,11 @@ if ( do_strat ) then
    id_q_ls_col = register_diag_field ( mod_name, &
      'q_ls_col', axes(1:2), Time, &
     'Water vapor path tendency from strat cloud',   'kg/m2/s' )
-   
+
    id_t_ls_col = register_diag_field ( mod_name, &
      't_ls_col', axes(1:2), Time, &
     'Column static energy tendency from strat cloud','W/m2' )
-   
+
    id_qldt_ls = register_diag_field ( mod_name, &
      'qldt_ls', axes(1:3), Time, &
      'Liquid water tendency from strat cloud',       'kg/kg/s',  &
@@ -4744,7 +4743,7 @@ if ( do_strat ) then
    id_ql_ls_col = register_diag_field ( mod_name, &
      'ql_ls_col', axes(1:2), Time, &
     'Liquid water path tendency from strat cloud',   'kg/m2/s' )
-   
+
    id_qn_ls_col = register_diag_field ( mod_name, &
      'qn_ls_col', axes(1:2), Time, &
      'Column drop number tendency from strat cloud',  '#/m2/s' )
@@ -4756,15 +4755,15 @@ if ( do_strat ) then
    id_qi_ls_col = register_diag_field ( mod_name, &
      'qi_ls_col', axes(1:2), Time, &
     'Ice water path tendency from strat cloud',      'kg/m2/s' )
-   
+
    id_qa_ls_col = register_diag_field ( mod_name, &
      'qa_ls_col', axes(1:2), Time, &
     'Cloud mass tendency from strat cloud',          'kg/m2/s' )
-      
+
    id_enth_ls_col = register_diag_field ( mod_name, &
      'enth_ls_col', axes(1:2), Time, &
      'Column enthalpy tendency from strat cloud','W/m2' )
- 
+
    id_wat_ls_col = register_diag_field ( mod_name, &
      'wat_ls_col', axes(1:2), Time, &
      'Column total water tendency from strat cloud','kg/m2/s' )
@@ -4793,7 +4792,7 @@ endif
         'Water Vapor Path',                'kg m-2', &
       standard_name = 'atmosphere_water_vapor_content', &
      area=area_id, &
-      missing_value = CMOR_MISSING_VALUE) 
+      missing_value = CMOR_MISSING_VALUE)
 
 if ( do_strat ) then
 
@@ -4884,7 +4883,7 @@ if ( do_strat ) then
     id_conv_ice_amt = register_diag_field ( mod_name, &
       'conv_ice_amt', axes(1:3), Time, &
       'Convective cloud ice amount', 'kg/kg', missing_value=missing_value)
- 
+
     id_WP_all_clouds = register_diag_field ( mod_name, &
       'WP_all_clouds', axes(1:2), Time, &
       'Total  water path -- all clouds + ls precip',        'kg/m2'   )
@@ -4920,7 +4919,7 @@ endif
 
    id_rh = register_diag_field ( mod_name, &
      'rh', axes(1:3), Time, &
-         'relative humidity',                            'percent',  & 
+         'relative humidity',                            'percent',  &
                         missing_value=missing_value               )
 
    id_rh_cmip = register_diag_field ( mod_name, &
@@ -4930,9 +4929,9 @@ endif
 
    id_qs = register_diag_field ( mod_name, &
      'qs', axes(1:3), Time, &
-         'saturation specific humidity',                 'kg/kg',    & 
+         'saturation specific humidity',                 'kg/kg',    &
                         missing_value=missing_value               )
-   
+
    id_hur = register_diag_field ( mod_name, &
      'hur', axes(1:3), Time, &
      'Relative Humidity',                            '%',  &
@@ -5051,12 +5050,12 @@ if (do_donner_deep) then
 
 ! ---> h1g, cell and meso-scale cloud fraction from donner deep, 2011-08-08
    id_cell_cld_frac = register_diag_field ( mod_name, &
-           'cell_cld_frac', axes(1:3), Time, & 
+           'cell_cld_frac', axes(1:3), Time, &
            'cell cloud fraction from donner',   '', &
                         missing_value=missing_value               )
 
    id_meso_cld_frac = register_diag_field ( mod_name, &
-           'meso_cld_frac', axes(1:3), Time, & 
+           'meso_cld_frac', axes(1:3), Time, &
            'meso-scale cloud fraction from donner',   '', &
                         missing_value=missing_value               )
 
@@ -5150,7 +5149,7 @@ endif
 
 !-----------------------------------------------------------------------
 !---------------------------------------------------------------------
-!    register the diagnostics associated with convective tracer 
+!    register the diagnostics associated with convective tracer
 !    transport.
 !---------------------------------------------------------------------
       allocate (id_tracerdt_conv    (num_tracers))
@@ -5175,8 +5174,8 @@ endif
       id_wetdep_uw = -1
       id_conv_tracer = -1
       id_conv_tracer_col = -1
-      
- 
+
+
       id_wetdep_om = &
                          register_diag_field ( mod_name, &
                          'om_wet_dep',  &
@@ -5365,7 +5364,7 @@ endif
 
              conv_wetdep(n) = 1
 
-          else  
+          else
              if ( mpp_pe() == mpp_root_pe() ) then
                    print*,   "unsupported tracer",tracer_name,tracer_units
              end if
@@ -5394,7 +5393,7 @@ endif
                          TRIM(tracer_units)//'*(kg/m2)/s',   &
                          missing_value=missing_value)
          endif
- 
+
          diaglname = trim(tracer_name)
          id_conv_tracer(n) =    &
                         register_diag_field ( mod_name, &
@@ -5416,13 +5415,13 @@ endif
       end do
 
 !------------------------------------------------------------------
-!    register the variables associated with the mca component of 
+!    register the variables associated with the mca component of
 !    donner_deep transport.
 !------------------------------------------------------------------
      if (do_donner_deep) then
        allocate (id_tracerdt_mcadon  (num_donner_tracers))
        allocate (id_tracerdt_mcadon_col(num_donner_tracers))
- 
+
        nn = 1
        do n = 1,num_tracers
          call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
@@ -5448,7 +5447,7 @@ endif
            nn = nn + 1
          endif
        end do
- 
+
 
      endif
 
@@ -5467,7 +5466,7 @@ logical :: doing_strat
 end function doing_strat
 
 
-!#######################################################################  
+!#######################################################################
 
 subroutine set_cosp_precip_sources (cosp_precip_sources)
 
@@ -5493,7 +5492,7 @@ character(len=16),        intent(in) :: cosp_precip_sources
      else if (trim(cosp_precip_sources)  == 'uw') then
        uw_precip_in_cosp = 1.
      else if (trim(cosp_precip_sources)  == 'noprecip') then
-!     COSP run without any precip input     
+!     COSP run without any precip input
      else
        call error_mesg ('moist_processes_mod:set_cosp_precip_sources', &
         'cosp_precip_sources does not match any currently allowed string',&
@@ -5509,6 +5508,3 @@ end subroutine set_cosp_precip_sources
 
 
 end module moist_processes_mod
-
-  
-

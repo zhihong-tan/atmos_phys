@@ -1,4 +1,4 @@
-                           module physics_driver_mod
+module physics_driver_mod
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -11,7 +11,7 @@
 !
 !    physics_driver_mod accesses the model's physics modules and
 !    obtains tendencies and boundary fluxes due to the physical
-!    processes that drive atmospheric time tendencies and supply 
+!    processes that drive atmospheric time tendencies and supply
 !    boundary forcing to the surface models.
 ! </OVERVIEW>
 ! <DESCRIPTION>
@@ -44,7 +44,7 @@
 !   <LOADER FLAG="">       </LOADER>
 !   <TESTPROGRAM NAME="">  </TESTPROGRAM>
 !   <BUG>                  </BUG>
-!   <NOTE> 
+!   <NOTE>
 !   </NOTE>
 !   <FUTURE> Deal with conservation of total energy?              </FUTURE>
 
@@ -91,19 +91,19 @@ use physics_radiation_exch_mod, only: exchange_control_type, &
                                       cosp_from_rad_type, &
                                       cosp_from_rad_control_type, &
                                       cosp_from_rad_block_type, &
-                                      radiation_flux_control_type, & 
-                                      radiation_flux_block_type, & 
+                                      radiation_flux_control_type, &
+                                      radiation_flux_block_type, &
                                       alloc_clouds_from_moist_type, &
                                       alloc_cloud_scheme_data_type
 
 use physics_types_mod,       only: alloc_physics_tendency_type, &
-                                   physics_tendency_type, & 
+                                   physics_tendency_type, &
                                    physics_tendency_block_type, &
-                                   physics_type, & 
-                                   physics_control_type, & 
+                                   physics_type, &
+                                   physics_control_type, &
                                    physics_input_block_type, &
                                    dealloc_physics_tendency_type
-  
+
 use aerosol_mod,             only: aerosol_init, aerosol_driver, &
                                    aerosol_time_vary, &
                                    aerosol_endts, &
@@ -130,7 +130,7 @@ use vert_diff_driver_mod,    only: vert_diff_driver_down,  &
                                    vert_diff_driver_init,  &
                                    vert_diff_driver_end,   &
                                    surf_diff_type
- 
+
 use damping_driver_mod,      only: damping_driver,      &
                                    damping_driver_init, &
                                    damping_driver_time_vary,  &
@@ -159,7 +159,7 @@ private
 !---------------------------------------------------------------------
 !    physics_driver_mod accesses the model's physics modules and
 !    obtains tendencies and boundary fluxes due to the physical
-!    processes that drive atmospheric time tendencies and supply 
+!    processes that drive atmospheric time tendencies and supply
 !    boundary forcing to the surface models.
 !---------------------------------------------------------------------
 
@@ -198,7 +198,7 @@ end interface
 
 logical :: do_moist_processes = .true.
                                ! call moist_processes routines
-real    :: tau_diff = 3600.    ! time scale for smoothing diffusion 
+real    :: tau_diff = 3600.    ! time scale for smoothing diffusion
                                ! coefficients
 integer :: do_clubb = 0        ! activate clubb parameterization ?
 logical :: do_cosp = .false.   ! activate COSP simulator ?
@@ -207,22 +207,22 @@ logical :: do_radiation = .true.
                                ! calculating radiative fluxes and
                                ! heating rates?
 logical :: do_grey_radiation = .false. ! do grey radiation scheme?
-real    :: R1 = 0.25           ! rif:(09/10/09) In Grey radiation we are computing just the total   
+real    :: R1 = 0.25           ! rif:(09/10/09) In Grey radiation we are computing just the total
 real    :: R2 = 0.25           ! SW radiation. We need to divide it into 4 components
 real    :: R3 = 0.25           ! to go through the Coupler and Ice modules.
-real    :: R4 = 0.25           ! 	Sum[R(i)*SW] = SW  
+real    :: R4 = 0.25           !        Sum[R(i)*SW] = SW
 
 
-real    :: diff_min = 1.e-3    ! minimum value of a diffusion 
+real    :: diff_min = 1.e-3    ! minimum value of a diffusion
                                ! coefficient beneath which the
                                ! coefficient is reset to zero
 logical :: diffusion_smooth = .true.
-                               ! diffusion coefficients should be 
+                               ! diffusion coefficients should be
                                ! smoothed in time?
 logical :: donner_meso_is_largescale = .true.
-                               ! donner meso clouds are treated as 
+                               ! donner meso clouds are treated as
                                ! largescale (rather than convective)
-                               ! as far as the COSP simulator is 
+                               ! as far as the COSP simulator is
                                ! concerned ?
 logical :: allow_cosp_precip_wo_clouds = .true.
                                ! COSP will see {ls, cv} precip in grid-
@@ -240,16 +240,16 @@ logical :: override_aerosols_cloud = .false.
 !call moist_processes routines
 !  </DATA>
 !  <DATA NAME="tau_diff" UNITS="" TYPE="real" DIM="" DEFAULT="3600.">
-!time scale for smoothing diffusion 
+!time scale for smoothing diffusion
 ! coefficients
 !  </DATA>
 !  <DATA NAME="diff_min" UNITS="" TYPE="real" DIM="" DEFAULT="1.e-3">
-!minimum value of a diffusion 
+!minimum value of a diffusion
 ! coefficient beneath which the
 ! coefficient is reset to zero
 !  </DATA>
 !  <DATA NAME="diffusion_smooth" UNITS="" TYPE="logical" DIM="" DEFAULT=".true.">
-!diffusion coefficients should be 
+!diffusion coefficients should be
 ! smoothed in time?
 !  </DATA>
 !  <DATA NAME="override_aerosols_cloud" UNITS="" TYPE="logical" DIM="" DEFAULT=".false.">
@@ -265,7 +265,7 @@ logical :: l_host_applies_sfc_fluxes = .true.
 ! <--- h1g, 2012-08-28
 
 namelist / physics_driver_nml / do_radiation, &
-                                do_clubb, & 
+                                do_clubb, &
                                 do_cosp, &
                                 do_modis_yim, &
                                 donner_meso_is_largescale, &
@@ -297,12 +297,12 @@ public  surf_diff_type   ! defined in  vert_diff_driver_mod, republished
 !            used on the next step in vert_diff_down, necessitating
 !            its storage.
 !
-! version 2: adds pbltop as generated in vert_turb_driver_mod. This 
+! version 2: adds pbltop as generated in vert_turb_driver_mod. This
 !            variable is then used on the next timestep by topo_drag
-!            (called from damping_driver_mod), necessitating its 
+!            (called from damping_driver_mod), necessitating its
 !            storage.
 !
-! version 3: adds the diffusion coefficients which are passed to 
+! version 3: adds the diffusion coefficients which are passed to
 !            vert_diff_driver.  These diffusion are saved should
 !            smoothing of vertical diffusion coefficients be turned
 !            on.
@@ -311,7 +311,7 @@ public  surf_diff_type   ! defined in  vert_diff_driver_mod, republished
 !            or not the grid column is convecting. This diagnostic is
 !            needed by the entrain_module in vert_turb_driver.
 !
-! version 5: adds radturbten when strat_cloud_mod is active, adds 
+! version 5: adds radturbten when strat_cloud_mod is active, adds
 !            lw_tendency when edt_mod or entrain_mod is active.
 !
 ! version 6: adds donner cell and meso cloud variables when donner_deep
@@ -328,14 +328,14 @@ public  surf_diff_type   ! defined in  vert_diff_driver_mod, republished
 integer, dimension(8) :: restart_versions = (/ 1, 2, 3, 4, 5, 6, 7, 8 /)
 
 !--------------------------------------------------------------------
-!    the following allocatable arrays are either used to hold physics 
+!    the following allocatable arrays are either used to hold physics
 !    data between timesteps when required, or hold physics data between
 !    physics_down and physics_up.
-!  
+!
 !    diff_cu_mo     contains contribution to difusion coefficient
-!                   coming from cu_mo_trans_mod (called from 
-!                   moist_processes in physics_driver_up) and then used 
-!                   as input on the next time step to vert_diff_down 
+!                   coming from cu_mo_trans_mod (called from
+!                   moist_processes in physics_driver_up) and then used
+!                   as input on the next time step to vert_diff_down
 !                   called in physics_driver_down.
 !    diff_t         vertical diffusion coefficient for temperature
 !                   which optionally may be time smoothed, meaning
@@ -349,15 +349,15 @@ integer, dimension(8) :: restart_versions = (/ 1, 2, 3, 4, 5, 6, 7, 8 /)
 !                   in moist_processes
 !    pbltop         top of boundary layer obtained from vert_turb_driver
 !                   and then used on the next timestep in topo_drag_mod
-!                   called from damping_driver_down        
+!                   called from damping_driver_down
 !    convect        flag indicating whether convection is occurring in
 !                   a grid column. generated in physics_driver_up and
-!                   then used in vert_turb_driver called from 
+!                   then used in vert_turb_driver called from
 !                   physics_driver_down on the next step.
 !----------------------------------------------------------------------
 real,    dimension(:,:,:), allocatable :: diff_cu_mo, diff_t, diff_m
 real,    dimension(:,:,:), allocatable :: radturbten
-real,    dimension(:,:)  , allocatable :: pbltop, cush, cbmf, hmint, cgust !miz 
+real,    dimension(:,:)  , allocatable :: pbltop, cush, cbmf, hmint, cgust !miz
 real,    dimension(:,:)  , allocatable :: tke, pblhto, rkmo, taudpo        !miz
 integer, dimension(:,:,:), allocatable :: exist_shconv, exist_dpconv       !miz
 real,    dimension(:,:,:), allocatable :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev !miz
@@ -375,7 +375,7 @@ real,    dimension(:,:,:), allocatable ::  fl_lsrain, fl_lssnow, &
 real   ,    dimension(:,:)  , allocatable :: tsurf_save
 
 real,    dimension(:,:,:), allocatable ::  diff_t_clubb
-   
+
 !--- for netcdf restart
 type(restart_file_type), pointer, save :: Phy_restart => NULL()
 type(restart_file_type), pointer, save :: Til_restart => NULL()
@@ -398,23 +398,23 @@ integer :: damping_clock, turb_clock,   &
 !--------------------------------------------------------------------
 !    miscellaneous control variables:
 !---------------------------------------------------------------------
-logical   :: do_check_args = .true.   ! argument dimensions should 
+logical   :: do_check_args = .true.   ! argument dimensions should
                                       ! be checked ?
 logical   :: module_is_initialized = .false.
                                       ! module has been initialized ?
 logical   :: doing_edt                ! edt_mod has been activated ?
 logical   :: doing_entrain            ! entrain_mod has been activated ?
 logical   :: doing_strat              ! stratiform clouds has been activated ?
-logical   :: doing_donner             ! donner_deep_mod has been 
+logical   :: doing_donner             ! donner_deep_mod has been
                                       ! activated ?
-logical   :: doing_uw_conv            ! uw_conv shallow cu mod has been 
+logical   :: doing_uw_conv            ! uw_conv shallow cu mod has been
                                       ! activated ?
-logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has 
+logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has
                                       ! been activated?
 integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
 !integer   :: ncol                     ! number of stochastic columns
- 
+
 integer   :: num_uw_tracers
 
 
@@ -553,7 +553,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 !       aerosol_family_names
 !              names associated with the activated aerosol
 !              families that will be seen by the radiation package
-!       id,jd,kd      model dimensions on the processor  
+!       id,jd,kd      model dimensions on the processor
 !       ierr          error code
 !       io            io status returned from an io call
 !       unit          unit number used for an i/ operation
@@ -564,14 +564,14 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       if (module_is_initialized) return
 
 !---------------------------------------------------------------------
-!    verify that the modules used by this module that are not called 
+!    verify that the modules used by this module that are not called
 !    later in this subroutine have already been initialized.
 !---------------------------------------------------------------------
       call fms_init
       call time_manager_init
       call tracer_manager_init
       call field_manager_init (ndum)
- 
+
 !--------------------------------------------------------------------
 !    read namelist.
 !--------------------------------------------------------------------
@@ -589,7 +589,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       endif
 #endif
 
-      if(do_radiation .and. do_grey_radiation) & 
+      if(do_radiation .and. do_grey_radiation) &
         call error_mesg('physics_driver_init','do_radiation and do_grey_radiation cannot both be .true.',FATAL)
 
 !--------------------------------------------------------------------
@@ -599,12 +599,12 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
                write(logunit, nml=physics_driver_nml)
- 
+
 !---------------------------------------------------------------------
 !    define the model dimensions on the local processor.
 !---------------------------------------------------------------------
-      id = size(lonb,1)-1 
-      jd = size(latb,2)-1 
+      id = size(lonb,1)-1
+      jd = size(latb,2)-1
       kd = Atm_block%npz
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
@@ -659,7 +659,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 !-----------------------------------------------------------------------
       call alloc_physics_tendency_type (Physics_tendency, Atm_block)
 
-!--- define trs and p_half on the full domain 
+!--- define trs and p_half on the full domain
     allocate (trs(id,jd,kd,nt), phalf(id,jd,kd+1))
     do nb = 1, Atm_block%nblks
       ibs = Atm_block%ibs(nb)-Atm_block%isc+1
@@ -694,7 +694,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       diff_cu_mo = 0.0
       convect = .false.
     endif
-     
+
 !-----------------------------------------------------------------------
 !    initialize damping_driver_mod.
 !-----------------------------------------------------------------------
@@ -720,7 +720,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 
       if (do_moist_processes) then
 !-----------------------------------------------------------------------
-!    initialize aerosol_mod     
+!    initialize aerosol_mod
 !-----------------------------------------------------------------------
         call mpp_clock_begin ( aerosol_init_clock )
         call aerosol_init (lonb, latb, Aerosol_cld)
@@ -729,10 +729,10 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 
       if(do_grey_radiation) then
          call mpp_clock_begin ( grey_radiation_init_clock )
-         call grey_radiation_init(axes, Time) 
+         call grey_radiation_init(axes, Time)
          call mpp_clock_end ( grey_radiation_init_clock )
       endif
-        
+
 !-----------------------------------------------------------------------
 !    initialize atmos_tracer_driver_mod.
 !-----------------------------------------------------------------------
@@ -766,13 +766,13 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       allocate ( convect    (id, jd) )     ; convect = .false.
       allocate ( radturbten (id, jd, kd))  ; radturbten = 0.0
       allocate ( r_convect  (id, jd) )     ; r_convect   = 0.0
-       
+
       if (do_clubb > 0 ) then
         allocate ( diff_t_clubb(id, jd, kd) );      diff_t_clubb      = 0.0
       end if
 
 !--------------------------------------------------------------------
-!    these variables needed to preserve rain fluxes, q and T from end 
+!    these variables needed to preserve rain fluxes, q and T from end
 !    of one step for use in COSP simulator on next step.
 !--------------------------------------------------------------------
       allocate (fl_lsrain  (id, jd, kd))
@@ -824,7 +824,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 
 !--------------------------------------------------------------------
 !    call physics_driver_read_restart to obtain initial values for the module
-!    variables. Also register restart fields to be ready for intermediate 
+!    variables. Also register restart fields to be ready for intermediate
 !    restart.
 !--------------------------------------------------------------------
       allocate(Restart%Cloud_data(Exch_ctrl%ncld))
@@ -845,10 +845,10 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 !    present beginning with v4. if not present, set it to .false.
 !---------------------------------------------------------------------
       convect = .false.
-      where(r_convect .GT. 0.) 
+      where(r_convect .GT. 0.)
          convect = .true.
       end where
-         
+
 100 FORMAT("CHECKSUM::",A32," = ",Z20)
       outunit = stdout()
       write(outunit,*) 'BEGIN CHECKSUM(physics_driver_init):: '
@@ -937,7 +937,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
             Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain_size  = Restart%Cloud_data(nc)%rain_size  (ibs:ibe,jbs:jbe,:)
             Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow_size  = Restart%Cloud_data(nc)%snow_size  (ibs:ibe,jbs:jbe,:)
           endif
-  
+
           ! properties specific to donner deep clouds (both cell and meso)
           if (trim(Restart%Cloud_data(nc)%scheme_name) .eq. 'donner_cell' .or. &
               trim(Restart%Cloud_data(nc)%scheme_name) .eq. 'donner_meso') then
@@ -1010,7 +1010,7 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 
         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
                                units = tracer_units)
-        
+
         diaglname = trim(tracer_name)//  &
                     ' tendency from physics'
         id_tracer_phys(n) =    &
@@ -1099,9 +1099,9 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 subroutine physics_driver_down_time_vary (Time, Time_next, dt)
 
 !---------------------------------------------------------------------
-!    physics_driver_down_time_vary makes sure that all time-dependent, 
-!    spacially-independent calculations are completed before entering window 
-!    or thread loops. Resultant fields are usually saved as module variables in 
+!    physics_driver_down_time_vary makes sure that all time-dependent,
+!    spacially-independent calculations are completed before entering window
+!    or thread loops. Resultant fields are usually saved as module variables in
 !    the module where needed.
 !-----------------------------------------------------------------------
 
@@ -1109,11 +1109,11 @@ type(time_type),         intent(in)             :: Time, Time_next
 real,                    intent(in)             :: dt
 
 type(time_type) :: Time_last
-!---------------------------------------------------------------------      
+!---------------------------------------------------------------------
       call damping_driver_time_vary (dt)
       call atmos_tracer_driver_time_vary (Time)
 
-!-------------------------------------------------------------------------      
+!-------------------------------------------------------------------------
 
 end subroutine physics_driver_down_time_vary
 
@@ -1141,9 +1141,9 @@ end subroutine physics_driver_down_endts
 subroutine physics_driver_up_time_vary (Time, Time_next, dt)
 
 !---------------------------------------------------------------------
-!    physics_driver_up_time_vary makes sure that all time-dependent, 
-!    spacially-independent calculations are completed before entering 
-!    window or thread loops. Resultant fields are usually saved as 
+!    physics_driver_up_time_vary makes sure that all time-dependent,
+!    spacially-independent calculations are completed before entering
+!    window or thread loops. Resultant fields are usually saved as
 !    module variables in the module where needed.
 !-----------------------------------------------------------------------
 
@@ -1157,7 +1157,7 @@ real,                    intent(in)             :: dt
     endif
     if (do_cosp) call cosp_driver_time_vary (Time_next)
 
-!----------------------------------------------------------------------      
+!----------------------------------------------------------------------
 
 end subroutine physics_driver_up_time_vary
 
@@ -1192,7 +1192,7 @@ end subroutine physics_driver_up_endts
 !    physics_driver_down calculates "first pass" physics tendencies,
 !    associated with radiation, damping and turbulence, and obtains
 !    the vertical diffusion tendencies to be passed to the surface and
-!    used in the semi-implicit vertical diffusion calculation.    
+!    used in the semi-implicit vertical diffusion calculation.
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call physics_driver_down (is, ie, js, je,                       &
@@ -1269,7 +1269,7 @@ end subroutine physics_driver_up_endts
 !   multiple 3d tracer fields at previous time step
 !  </IN>
 !  <INOUT NAME="rd" TYPE="real">
-!   multiple 3d diagnostic tracer fields 
+!   multiple 3d diagnostic tracer fields
 !  </INOUT>
 !  <IN NAME="frac_land" TYPE="real">
 !   fraction of land coverage in a model grid point
@@ -1331,7 +1331,7 @@ end subroutine physics_driver_up_endts
 !  <OUT NAME="gust" TYPE="real">
 !  </OUT>
 !  <INOUT NAME="Surf_diff" TYPE="surface_diffusion_type">
-!   Surface diffusion 
+!   Surface diffusion
 !  </INOUT>
 !
 ! </SUBROUTINE>
@@ -1377,14 +1377,14 @@ real,dimension(:,:),     intent(out)            :: gust
 type(surf_diff_type),    intent(inout)          :: Surf_diff
 type(radiation_flux_control_type),  intent(in)  :: Rad_flux_control
 type(radiation_flux_block_type),    intent(in)  :: Rad_flux_block
-real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft 
+real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 
 !-----------------------------------------------------------------------
 !   intent(in) variables:
 !
-!      is,ie,js,je    starting/ending subdomain i,j indices of data in 
+!      is,ie,js,je    starting/ending subdomain i,j indices of data in
 !                     the physics_window being integrated
-!      Time_prev      previous time, for variables um,vm,tm,qm,rm 
+!      Time_prev      previous time, for variables um,vm,tm,qm,rm
 !                     (time_type)
 !      Time           current time, for variables u,v,t,q,r  (time_type)
 !      Time_next      next time, used for diagnostics   (time_type)
@@ -1402,7 +1402,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !      q              specific humidity at current time step  kg / kg ]
 !      r              multiple 3d tracer fields at current time step
 !      um,vm          zonal and meridional wind at previous time step
-!      tm,qm          temperature and specific humidity at previous 
+!      tm,qm          temperature and specific humidity at previous
 !                     time step
 !      rm             multiple 3d tracer fields at previous time step
 !      frac_land
@@ -1426,10 +1426,10 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !      udt            zonal wind tendency [ m / s**2 ]
 !      vdt            meridional wind tendency [ m / s**2 ]
 !      tdt            temperature tendency [ deg k / sec ]
-!      qdt            specific humidity tendency 
+!      qdt            specific humidity tendency
 !                     [  kg vapor / kg air / sec ]
 !      rdt            multiple tracer tendencies [ unit / unit / sec ]
-!      rd             multiple 3d diagnostic tracer fields 
+!      rd             multiple 3d diagnostic tracer fields
 !                     [ unit / unit / sec ]
 !      Surf_diff      surface_diffusion_type variable
 !
@@ -1474,10 +1474,10 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !
 !      diff_t_vert     vertical diffusion coefficient for temperature
 !                      calculated on the current step
-!      diff_m_vert     vertical diffusion coefficient for momentum   
+!      diff_m_vert     vertical diffusion coefficient for momentum
 !                      calculated on the current step
 !      z_pbl           height of planetary boundary layer
-!      sec, day        second and day components of the time_type 
+!      sec, day        second and day components of the time_type
 !                      variable
 !      dt              model physics time step [ seconds ]
 !      alpha           ratio of physics time step to diffusion-smoothing
@@ -1488,7 +1488,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       real, dimension(:,:,:), pointer :: p_full, p_half, z_full, z_half
       real, dimension(:,:,:), pointer :: udt, vdt, tdt
       real, dimension(:,:,:,:), pointer :: rdt, rdiag
-      real, dimension(:,:,:), pointer :: u, v, t, um, vm, tm 
+      real, dimension(:,:,:), pointer :: u, v, t, um, vm, tm
 
       u => Physics_input_block%u
       v => Physics_input_block%v
@@ -1546,7 +1546,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call get_time (Time_next - Time_prev, sec, day)
       dt = real(sec + day*86400)
 
-!rab      if(do_grey_radiation) then !rif:(09/10/09) 
+!rab      if(do_grey_radiation) then !rif:(09/10/09)
 !rab        call grey_radiation(is, js, Time, Time_next, lat, lon, phalfgrey, albedo, t_surf_rad, t, tdt, flux_sw, flux_lw)
 !rab        coszen = 1.0
 !rab        flux_sw_dir     = R1*flux_sw
@@ -1557,7 +1557,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 
       if (do_radiation) then
         radturbten(is:ie,js:je,:) = radturbten(is:ie,js:je,:) + Rad_flux_block%tdt_rad(:,:,:)
-	surf_diff%tdt_rad(is:ie,js:je,:)=Rad_flux_block%tdt_rad(:,:,:) !miz
+        surf_diff%tdt_rad(is:ie,js:je,:)=Rad_flux_block%tdt_rad(:,:,:) !miz
       endif
 #ifdef SCM
 ! Option to add SCM radiative tendencies from forcing to Rad_flux_block%tdt_lw
@@ -1573,9 +1573,9 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 
 !----------------------------------------------------------------------
 !    call damping_driver to calculate the various model dampings that
-!    are desired. 
+!    are desired.
 !----------------------------------------------------------------------
-      z_pbl(:,:) = pbltop(is:ie,js:je) 
+      z_pbl(:,:) = pbltop(is:ie,js:je)
       call mpp_clock_begin ( damping_clock )
       call damping_driver (is, js, lat, Time_next, dt, area,        &
                            p_full, p_half, z_full, z_half,          &
@@ -1649,7 +1649,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call mpp_clock_end ( tracer_clock )
 
 !-----------------------------------------------------------------------
-!    optionally use an implicit calculation of the vertical diffusion 
+!    optionally use an implicit calculation of the vertical diffusion
 !    coefficients.
 !
 !    the vertical diffusion coefficients are solved using an implicit
@@ -1658,7 +1658,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !    dK/dt   = - ( K - K_cur) / tau_diff
 !
 !    where K         = diffusion coefficient
-!          K_cur     = diffusion coefficient diagnosed from current 
+!          K_cur     = diffusion coefficient diagnosed from current
 !                      time steps' state
 !          tau_diff  = time scale for adjustment
 !
@@ -1775,18 +1775,18 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !#######################################################################
 ! <SUBROUTINE NAME="physics_driver_up">
 !  <OVERVIEW>
-!    physics_driver_up completes the calculation of vertical diffusion 
+!    physics_driver_up completes the calculation of vertical diffusion
 !    and also handles moist physical processes.
 !  </OVERVIEW>
 !  <DESCRIPTION>
-!    physics_driver_up completes the calculation of vertical diffusion 
+!    physics_driver_up completes the calculation of vertical diffusion
 !    and also handles moist physical processes.
 !  </DESCRIPTION>
 !  <TEMPLATE>
 !   call physics_driver_up (is, ie, js, je,                    &
 !                               Time_prev, Time, Time_next,        &
 !                               lat, lon, area,                    &
-!                               p_half, p_full, z_half, z_full,    & 
+!                               p_half, p_full, z_half, z_full,    &
 !                               omega,                             &
 !                               u, v, t, q, r, um, vm, tm, qm, rm, &
 !                               frac_land,                         &
@@ -1882,7 +1882,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !  <OUT NAME="gust" TYPE="real">
 !  </OUT>
 !  <INOUT NAME="Surf_diff" TYPE="surface_diffusion_type">
-!   Surface diffusion 
+!   Surface diffusion
 !  </INOUT>
 ! </SUBROUTINE>
 !
@@ -1901,7 +1901,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                lprec, fprec, gust)
 
 !----------------------------------------------------------------------
-!    physics_driver_up completes the calculation of vertical diffusion 
+!    physics_driver_up completes the calculation of vertical diffusion
 !    and also handles moist physical processes.
 !---------------------------------------------------------------------
 
@@ -1924,9 +1924,9 @@ real,dimension(:,:),    intent(inout)             :: gust
 !-----------------------------------------------------------------------
 !   intent(in) variables:
 !
-!      is,ie,js,je    starting/ending subdomain i,j indices of data in 
+!      is,ie,js,je    starting/ending subdomain i,j indices of data in
 !                     the physics_window being integrated
-!      Time_prev      previous time, for variables um,vm,tm,qm,rm 
+!      Time_prev      previous time, for variables um,vm,tm,qm,rm
 !                     (time_type)
 !      Time           current time, for variables u,v,t,q,r  (time_type)
 !      Time_next      next time, used for diagnostics   (time_type)
@@ -1945,7 +1945,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 !      q              specific humidity at current time step  kg / kg ]
 !      r              multiple 3d tracer fields at current time step
 !      um,vm          zonal and meridional wind at previous time step
-!      tm,qm          temperature and specific humidity at previous 
+!      tm,qm          temperature and specific humidity at previous
 !                     time step
 !      rm             multiple 3d tracer fields at previous time step
 !      frac_land
@@ -1965,7 +1965,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 !      udt            zonal wind tendency [ m / s**2 ]
 !      vdt            meridional wind tendency [ m / s**2 ]
 !      tdt            temperature tendency [ deg k / sec ]
-!      qdt            specific humidity tendency 
+!      qdt            specific humidity tendency
 !                     [  kg vapor / kg air / sec ]
 !      rdt            multiple tracer tendencies [ unit / unit / sec ]
 !      Surf_diff      surface_diffusion_type variable
@@ -1973,13 +1973,13 @@ real,dimension(:,:),    intent(inout)             :: gust
 !
 !   intent(out) variables:
 !
-!      lprec     
-!      fprec       
+!      lprec
+!      fprec
 !
 !   intent(in), optional variables:
 !
 !--------------------------------------------------------------------
- 
+
 !--------------------------------------------------------------------
 !   local variables:
 
@@ -2015,14 +2015,14 @@ real,dimension(:,:),    intent(inout)             :: gust
 
 ! save the temperature and moisture tendencies from sensible and latent heat fluxes
       real, dimension(ie-is+1, je-js+1) :: tdt_shf,  qdt_lhf
-   
+
 !---------------------------------------------------------------------
 !   local variables:
 !
-!        diff_cu_mo_loc   diffusion coefficient contribution due to 
+!        diff_cu_mo_loc   diffusion coefficient contribution due to
 !                         cumulus momentum transport
 !        gust_cv
-!        sec, day         second and day components of the time_type 
+!        sec, day         second and day components of the time_type
 !                         variable
 !        dt               physics time step [ seconds ]
 !      Aerosol         aerosol_type variable describing the aerosol
@@ -2137,7 +2137,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 
 !-----------------------------------------------------------------------
 !    if the fms integration path is being followed, call moist processes
-!    to compute moist physics, including convection and processes 
+!    to compute moist physics, including convection and processes
 !    involving condenstion.
 !-----------------------------------------------------------------------
       if (do_moist_processes) then
@@ -2164,13 +2164,13 @@ real,dimension(:,:),    intent(inout)             :: gust
           do i=2,size(p_full,3)
             pflux(:,:,i) = 0.5e+00*(p_full(:,:,i-1) + p_full(:,:,i))
           end do
-          pflux(:,:,size(p_full,3)+1) = p_full(:,:,size(p_full,3)) 
+          pflux(:,:,size(p_full,3)+1) = p_full(:,:,size(p_full,3))
           call aerosol_driver (is, js, Time, r, p_half, pflux, &
                                Aerosol_cld, Aerosol, override_aerosols_cloud)
         end if
 !--------------------------------------------------------------------
 !    on steps on which the cosp simulator is called, move the values
-!    of precip flux saved on the previous step so they will not be 
+!    of precip flux saved on the previous step so they will not be
 !    overwritten on the upcoming call to moist_processes.
 !--------------------------------------------------------------------
         if (do_cosp) then
@@ -2203,10 +2203,10 @@ real,dimension(:,:),    intent(inout)             :: gust
            surf_diff%qdt_dyn(is:ie,js:je,:), &
            surf_diff%dgz_dyn(is:ie,js:je,:), &
            surf_diff%ddp_dyn(is:ie,js:je,:), &
-	   hmint(is:ie,js:je),               &
+           hmint(is:ie,js:je),               &
            cush(is:ie,js:je), cbmf(is:ie,js:je), cgust(is:ie,js:je),  &!miz
-	   tke(is:ie,js:je),  pblhto(is:ie,js:je), rkmo(is:ie,js:je), &!miz
-	   taudpo(is:ie,js:je),                                       &!miz
+           tke(is:ie,js:je),  pblhto(is:ie,js:je), rkmo(is:ie,js:je), &!miz
+           taudpo(is:ie,js:je),                                       &!miz
            exist_shconv(is:ie,js:je,:), exist_dpconv(is:ie,js:je,:),  &!miz
            pblht_prev(is:ie,js:je,:), hlsrc_prev(is:ie,js:je,:),qtsrc_prev(is:ie,js:je,:), &!miz
            cape_prev (is:ie,js:je,:), cin_prev  (is:ie,js:je,:),tke_prev  (is:ie,js:je,:), &!miz
@@ -2226,7 +2226,7 @@ real,dimension(:,:),    intent(inout)             :: gust
            Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
       ! snow, rain
            Moist_clouds_block%Cloud_data(istrat)%snow,  &
-           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%rain,  &
            Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
            Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
            diff_t_clubb =diff_t_clubb,                       &
@@ -2258,15 +2258,15 @@ real,dimension(:,:),    intent(inout)             :: gust
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
                            surf_diff%tdt_rad(is:ie,js:je,:), & !miz
-			   surf_diff%tdt_dyn(is:ie,js:je,:), & !miz
-			   surf_diff%qdt_dyn(is:ie,js:je,:), & !miz
-			   surf_diff%dgz_dyn(is:ie,js:je,:), & !miz
-			   surf_diff%ddp_dyn(is:ie,js:je,:), & !miz
-			   hmint(is:ie,js:je),               & !miz
+                           surf_diff%tdt_dyn(is:ie,js:je,:), & !miz
+                           surf_diff%qdt_dyn(is:ie,js:je,:), & !miz
+                           surf_diff%dgz_dyn(is:ie,js:je,:), & !miz
+                           surf_diff%ddp_dyn(is:ie,js:je,:), & !miz
+                           hmint(is:ie,js:je),               & !miz
                            cush           (is:ie,js:je),             &
                            cbmf           (is:ie,js:je),             &
                            cgust          (is:ie,js:je),             &
-	                   tke            (is:ie,js:je),             &
+                           tke            (is:ie,js:je),             &
                            pblhto         (is:ie,js:je),             &!miz
                            rkmo           (is:ie,js:je),             &!miz
                            taudpo         (is:ie,js:je),             &!miz
@@ -2295,7 +2295,7 @@ real,dimension(:,:),    intent(inout)             :: gust
            Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
       ! snow, rain
            Moist_clouds_block%Cloud_data(istrat)%snow,  &
-           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%rain,  &
            Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
            Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
                            diff_t_clubb   =diff_t_clubb,                                           &
@@ -2316,7 +2316,7 @@ real,dimension(:,:),    intent(inout)             :: gust
            meso_droplet_number=Moist_clouds_block%Cloud_data(imeso)%droplet_number, &
            nsum_out           =Moist_clouds_block%Cloud_data(imeso)%nsum_out,   &
            hydrostatic=hydrostatic, phys_hydrostatic=phys_hydrostatic  )
-                          
+
        else if (doing_uw_conv) then
         call moist_processes (is, ie, js, je, Time_next, dt, frac_land,         &
                             p_half, p_full, z_half, z_full, omega,    &
@@ -2327,11 +2327,11 @@ real,dimension(:,:),    intent(inout)             :: gust
                             surf_diff%qdt_dyn(is:ie,js:je,:),         &!miz
                             surf_diff%dgz_dyn(is:ie,js:je,:),         &!miz
                             surf_diff%ddp_dyn(is:ie,js:je,:),         &!miz
-			    hmint(is:ie,js:je),                       &!miz
+                            hmint(is:ie,js:je),                       &!miz
                             cush           (is:ie,js:je),             &!
                             cbmf           (is:ie,js:je),             &!
                             cgust          (is:ie,js:je),             &!
-	                    tke            (is:ie,js:je),             &
+                            tke            (is:ie,js:je),             &
                             pblhto         (is:ie,js:je),             &!miz
                             rkmo           (is:ie,js:je),             &!miz
                             taudpo         (is:ie,js:je),             &!miz
@@ -2360,7 +2360,7 @@ real,dimension(:,:),    intent(inout)             :: gust
            Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
       ! snow, rain
            Moist_clouds_block%Cloud_data(istrat)%snow,  &
-           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%rain,  &
            Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
            Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
                            diff_t_clubb   =diff_t_clubb,                       &
@@ -2379,15 +2379,15 @@ real,dimension(:,:),    intent(inout)             :: gust
                            diff_t(is:ie,js:je,:),                    &
                            radturbten(is:ie,js:je,:),                &
                            surf_diff%tdt_rad(is:ie,js:je,:),         &!miz
-                           surf_diff%tdt_dyn(is:ie,js:je,:), 	     &!miz
-                           surf_diff%qdt_dyn(is:ie,js:je,:), 	     &!miz
-                           surf_diff%dgz_dyn(is:ie,js:je,:), 	     &!miz
-                           surf_diff%ddp_dyn(is:ie,js:je,:), 	     &!miz
-			   hmint(is:ie,js:je),                       &!miz
+                           surf_diff%tdt_dyn(is:ie,js:je,:),         &!miz
+                           surf_diff%qdt_dyn(is:ie,js:je,:),         &!miz
+                           surf_diff%dgz_dyn(is:ie,js:je,:),         &!miz
+                           surf_diff%ddp_dyn(is:ie,js:je,:),         &!miz
+                           hmint(is:ie,js:je),                       &!miz
                            cush           (is:ie,js:je),             &!
                            cbmf           (is:ie,js:je),             &!
                            cgust          (is:ie,js:je),             &!
-	                   tke            (is:ie,js:je),             &
+                           tke            (is:ie,js:je),             &
                            pblhto         (is:ie,js:je),             &!miz
                            rkmo           (is:ie,js:je),             &!miz
                            taudpo         (is:ie,js:je),             &!miz
@@ -2416,7 +2416,7 @@ real,dimension(:,:),    intent(inout)             :: gust
            Moist_clouds_block%Cloud_data(istrat)%ice_number,  &
       ! snow, rain
            Moist_clouds_block%Cloud_data(istrat)%snow,  &
-           Moist_clouds_block%Cloud_data(istrat)%rain,  & 
+           Moist_clouds_block%Cloud_data(istrat)%rain,  &
            Moist_clouds_block%Cloud_data(istrat)%snow_size,  &
            Moist_clouds_block%Cloud_data(istrat)%rain_size,  &
                            diff_t_clubb   =diff_t_clubb,                                           &
@@ -2430,7 +2430,7 @@ real,dimension(:,:),    intent(inout)             :: gust
         radturbten(is:ie,js:je,:) = 0.0
 
 !---------------------------------------------------------------------
-!    add the convective gustiness effect to that previously obtained 
+!    add the convective gustiness effect to that previously obtained
 !    from non-convective parameterizations.
 !---------------------------------------------------------------------
         gust = sqrt( gust*gust + gust_cv*gust_cv)
@@ -2458,18 +2458,18 @@ real,dimension(:,:),    intent(inout)             :: gust
 
       endif ! do_moist_processes
 
-      if (do_moist_processes) then  
+      if (do_moist_processes) then
         call aerosol_dealloc (Aerosol)
       endif
-      
+
       if (do_cosp) then
         call mpp_clock_begin ( cosp_clock )
         if (Cosp_control%step_to_call_cosp) then
 
 !---------------------------------------------------------------------
-!    on the first step of a job segment, the values of t,q and precip 
+!    on the first step of a job segment, the values of t,q and precip
 !    flux will not be available at the proper time level. in this case
-!    denoted by temp-_last = 0.0, use values from the current step for 
+!    denoted by temp-_last = 0.0, use values from the current step for
 !    t, q and precip flux.
 !---------------------------------------------------------------------
           alphb = SUM(temp_last(is:ie,js:je,:))
@@ -2491,15 +2491,15 @@ real,dimension(:,:),    intent(inout)             :: gust
 !----------------------------------------------------------------------
           tca = 0.
           cca = 0.
-          do n=1,Exch_ctrl%ncol                      
-            where (Cosp_block%stoch_cloud_type(:,:,:,n) > 0.) 
+          do n=1,Exch_ctrl%ncol
+            where (Cosp_block%stoch_cloud_type(:,:,:,n) > 0.)
               tca(:,:,:)  = tca(:,:,:) +  1.0
             end where
-            where (Cosp_block%stoch_cloud_type(:,:,:,n) == 2.) 
+            where (Cosp_block%stoch_cloud_type(:,:,:,n) == 2.)
               cca(:,:,:)  = cca(:,:,:) +  1.0
             end where
           end do
-          tca = tca/ float(Exch_ctrl%ncol)                
+          tca = tca/ float(Exch_ctrl%ncol)
           cca = cca/ float(Exch_ctrl%ncol)
 
 !--------------------------------------------------------------------
@@ -2510,16 +2510,16 @@ real,dimension(:,:),    intent(inout)             :: gust
             do j=1, size(t,2)
               do i=1, size(t,1)
                 rhoi(i,j,k) =  RDGAS*temp_last(i+is-1,j+js-1,k)/ &
-                                                          p_full(i,j,k) 
+                                                          p_full(i,j,k)
               end do
             end do
           end do
 
 !--------------------------------------------------------------------
-!   convert the condensate concentrations in each stochastic column to 
-!   mixing ratios. 
+!   convert the condensate concentrations in each stochastic column to
+!   mixing ratios.
 !--------------------------------------------------------------------
-          do n=1,Exch_ctrl%ncol                       
+          do n=1,Exch_ctrl%ncol
             do k=1, size(Cosp_block%stoch_cloud_type,3)
               do j=1, size(t,2)
                 do i=1, size(t,1)
@@ -2539,7 +2539,7 @@ real,dimension(:,:),    intent(inout)             :: gust
           stoch_mr_ice = stoch_mr_ice/(1.0-stoch_mr_ice)
 
 !---------------------------------------------------------------------
-!    define the grid box mean largescale and convective condensate 
+!    define the grid box mean largescale and convective condensate
 !    mixing ratios and sizes.
 !---------------------------------------------------------------------
           lsliq = 0.
@@ -2559,7 +2559,7 @@ real,dimension(:,:),    intent(inout)             :: gust
               do i=1, size(t,1)
                 nls = 0
                 ncc = 0
-                do n=1,Exch_ctrl%ncol                       
+                do n=1,Exch_ctrl%ncol
                   if (Cosp_block%stoch_cloud_type(i,j,k,n) == 1.) then
                     nls = nls + 1
                     lsliq(i,j,k) = lsliq(i,j,k) +  &
@@ -2609,7 +2609,7 @@ real,dimension(:,:),    intent(inout)             :: gust
               end do
             end do
           end do
-     
+
 !---------------------------------------------------------------------
 !   define land_mask array. set it to 1 over land, 0 over ocean; define
 !   based on frac_land > 0.5 being land.
@@ -2623,7 +2623,7 @@ real,dimension(:,:),    intent(inout)             :: gust
           if (allow_cosp_precip_wo_clouds) then
           else
 !--------------------------------------------------------------------
-!    allow ls precip only in columns containing ls cloud. allow 
+!    allow ls precip only in columns containing ls cloud. allow
 !    convective precip only in columns with convective cloud,
 !--------------------------------------------------------------------
           do j=1, size(t,2)
@@ -2631,7 +2631,7 @@ real,dimension(:,:),    intent(inout)             :: gust
               flag_ls = 0
               flag_cc = 0
               do k=1, size(Cosp_block%stoch_cloud_type,3)
-                do n=1,Exch_ctrl%ncol                        
+                do n=1,Exch_ctrl%ncol
                   if (Cosp_block%stoch_cloud_type(i,j,k,n) == 1.) then
                     flag_ls = 1
                     exit
@@ -2646,11 +2646,11 @@ real,dimension(:,:),    intent(inout)             :: gust
                 fl_lsrain_loc(i,j,:) = 0.
                 fl_lssnow_loc(i,j,:) = 0.
                 fl_lsgrpl_loc(i,j,:) = 0.
-              endif 
+              endif
               if (flag_cc == 0) then
                 fl_ccrain_loc(i,j,:) = 0.
                 fl_ccsnow_loc(i,j,:) = 0.
-              endif 
+              endif
             end do
           end do
           endif
@@ -2703,7 +2703,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 !--------------------------------------------------------------------
       temp_last(is:ie,js:je,:) = t(:,:,:) + tdt(:,:,:)*dt
       q_last   (is:ie,js:je,:) = r(:,:,:,1) + rdt(:,:,:,1)*dt
-       
+
 !-----------------------------------------------------------------------
 
       u => null()
@@ -2759,7 +2759,7 @@ type(block_control_type), intent(in) :: Atm_block
 
 !--------------------------------------------------------------------
 !   intent(in) variables:
-! 
+!
 !      Time      current time [ time_type(days, seconds) ]
 !
 !--------------------------------------------------------------------
@@ -2827,7 +2827,7 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
             Restart%Cloud_data(nc)%rain_size (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%rain_size
             Restart%Cloud_data(nc)%snow_size (ibs:ibe,jbs:jbe,:) = Moist_clouds(1)%block(nb)%Cloud_data(nc)%snow_size
           endif
- 
+
           ! properties specific to donner deep clouds (both cell and meso)
           if (trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_cell' .or. &
               trim(Moist_clouds(1)%block(nb)%Cloud_data(nc)%scheme_name) .eq. 'donner_meso') then
@@ -2871,10 +2871,10 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
       endif
 
       call mpp_clock_begin ( grey_radiation_term_clock )
-      if(do_grey_radiation) call grey_radiation_end 
+      if(do_grey_radiation) call grey_radiation_end
       call mpp_clock_end ( grey_radiation_term_clock )
 
-      if (do_moist_processes) then  
+      if (do_moist_processes) then
         call mpp_clock_begin ( moist_processes_term_clock )
         call moist_processes_end (clubb_term_clock)
         call mpp_clock_end ( moist_processes_term_clock )
@@ -2897,12 +2897,12 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !---------------------------------------------------------------------
       deallocate (diff_cu_mo, diff_t, diff_m, pbltop,  hmint, cush, cbmf, cgust, tke, pblhto,&
                   rkmo, taudpo, exist_shconv, exist_dpconv,         &
-		  pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
-		  convect, radturbten, r_convect)
+                  pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+                  convect, radturbten, r_convect)
       deallocate (fl_lsrain, fl_lssnow, fl_lsgrpl, fl_ccrain, fl_ccsnow, &
                   fl_donmca_snow, fl_donmca_rain, &
                   temp_last, q_last)
- 
+
       deallocate (id_tracer_phys_vdif_dn)
       deallocate (id_tracer_phys_vdif_up)
       deallocate (id_tracer_phys_turb)
@@ -2929,10 +2929,10 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !
 ! <DESCRIPTION>
 ! write out restart file.
-! Arguments: 
-!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+! Arguments:
+!   timestamp (optional, intent(in)) : A character string that represents the model time,
 !                                      used for writing restart. timestamp will append to
-!                                      the any restart file name as a prefix. 
+!                                      the any restart file name as a prefix.
 ! </DESCRIPTION>
 !
 subroutine physics_driver_restart(timestamp)
@@ -2956,12 +2956,12 @@ end subroutine physics_driver_restart
 ! <DESCRIPTION>
 ! Write out restart file for physics driver.
 ! This routine is needed so that physics_driver_restart and physics_driver_end
-! can call a routine which will not result in multiple copies of restart files 
+! can call a routine which will not result in multiple copies of restart files
 ! being written by the destructor routines.
-! Arguments: 
-!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+! Arguments:
+!   timestamp (optional, intent(in)) : A character string that represents the model time,
 !                                      used for writing restart. timestamp will append to
-!                                      the any restart file name as a prefix. 
+!                                      the any restart file name as a prefix.
 ! </DESCRIPTION>
 !
 subroutine physics_driver_netcdf(timestamp)
@@ -3005,13 +3005,13 @@ logical :: do_moist_in_phys_up
         call error_mesg ('do_moist_in_phys_up',  &
               'module has not been initialized', FATAL)
       endif
- 
+
 !-------------------------------------------------------------------
 !    define output variable.
 !-------------------------------------------------------------------
       do_moist_in_phys_up = do_moist_processes
 
- 
+
 end function do_moist_in_phys_up
 
 !#####################################################################
@@ -3094,14 +3094,14 @@ end subroutine zero_radturbten
 !                    PRIVATE SUBROUTINES
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-          
-               
-     
+
+
+
 !#####################################################################
 ! <SUBROUTINE NAME="physics_driver_register_restart">
 !  <OVERVIEW>
-!    physics_driver_register_restart will register restart field when do_netcdf file 
-!    is true. 
+!    physics_driver_register_restart will register restart field when do_netcdf file
+!    is true.
 !  </OVERVIEW>
 subroutine physics_driver_register_restart (Restart)
   type(clouds_from_moist_block_type), intent(inout), target :: Restart
@@ -3111,20 +3111,20 @@ subroutine physics_driver_register_restart (Restart)
   logical           :: reproduce_ulm_restart = .true.
   integer           :: index_strat
 
-  if (do_moist_processes) then  
-    if(doing_strat) then 
+  if (do_moist_processes) then
+    if(doing_strat) then
        now_doing_strat = 1
     else
        now_doing_strat = 0
     endif
 
-    if(doing_edt) then 
+    if(doing_edt) then
        now_doing_edt = 1
     else
        now_doing_edt = 0
     endif
 
-    if(doing_entrain) then 
+    if(doing_entrain) then
        now_doing_entrain = 1
     else
        now_doing_entrain = 0
@@ -3132,7 +3132,7 @@ subroutine physics_driver_register_restart (Restart)
   endif
 
   fname = 'physics_driver.res.nc'
-  call get_mosaic_tile_file(fname, fname2, .false. ) 
+  call get_mosaic_tile_file(fname, fname2, .false. )
   allocate(Phy_restart)
   if(trim(fname2) == trim(fname)) then
      Til_restart => Phy_restart
@@ -3167,7 +3167,7 @@ subroutine physics_driver_register_restart (Restart)
   id_restart = register_restart_field(Til_restart, fname, 'tke_prev',     tke_prev, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'diff_t',     diff_t)
   id_restart = register_restart_field(Til_restart, fname, 'diff_m',     diff_m)
-  id_restart = register_restart_field(Til_restart, fname, 'convect',    r_convect) 
+  id_restart = register_restart_field(Til_restart, fname, 'convect',    r_convect)
   if (do_clubb > 0) then
     id_restart = register_restart_field(Til_restart, fname, 'diff_t_clubb', diff_t_clubb, mandatory = .false.)
   end if
@@ -3231,7 +3231,7 @@ subroutine physics_driver_register_restart (Restart)
     endif
 
 end subroutine physics_driver_register_restart
-! </SUBROUTINE>    
+! </SUBROUTINE>
 !#####################################################################
 ! <SUBROUTINE NAME="check_args">
 !  <OVERVIEW>
@@ -3351,13 +3351,13 @@ real,    dimension(:,:,:,ntp+1:),intent(in)      :: rdiag
 !      q              specific humidity at current time step  kg / kg ]
 !      r              multiple 3d tracer fields at current time step
 !      um,vm          zonal and meridional wind at previous time step
-!      tm,qm          temperature and specific humidity at previous 
+!      tm,qm          temperature and specific humidity at previous
 !                     time step
 !      rm             multiple 3d tracer fields at previous time step
 !      udt            zonal wind tendency [ m / s**2 ]
 !      vdt            meridional wind tendency [ m / s**2 ]
 !      tdt            temperature tendency [ deg k / sec ]
-!      qdt            specific humidity tendency 
+!      qdt            specific humidity tendency
 !                     [  kg vapor / kg air / sec ]
 !      rdt            multiple tracer tendencies [ unit / unit / sec ]
 !
@@ -3368,15 +3368,15 @@ real,    dimension(:,:,:,ntp+1:),intent(in)      :: rdiag
 !----------------------------------------------------------------------
 !   local variables:
 
-      integer ::  id, jd, kd  ! model dimensions on the processor  
+      integer ::  id, jd, kd  ! model dimensions on the processor
       integer ::  ierr        ! error flag
 
 !--------------------------------------------------------------------
 !    define the sizes that the arrays should be.
 !--------------------------------------------------------------------
-      id = size(u,1) 
-      jd = size(u,2) 
-      kd = size(u,3) 
+      id = size(u,1)
+      jd = size(u,2)
+      kd = size(u,3)
 
 !--------------------------------------------------------------------
 !    check the dimensions of each input array. if they are incompat-
@@ -3476,7 +3476,7 @@ integer                             :: ierr
 !     data        array to be checked
 !     name        name associated with array to be checked
 !     id, jd      expected i and j dimensions
-!     
+!
 !  result variable:
 !
 !     ierr        set to 0 if ok, otherwise is a count of the number
@@ -3547,7 +3547,7 @@ integer  ierr
 !     data        array to be checked
 !     name        name associated with array to be checked
 !     id, jd,kd   expected i, j and k dimensions
-!     
+!
 !  result variable:
 !
 !     ierr        set to 0 if ok, otherwise is a count of the number
@@ -3625,7 +3625,7 @@ integer                                 :: ierr
 !     data          array to be checked
 !     name          name associated with array to be checked
 !     id,jd,kd,nt   expected i, j and k dimensions
-!     
+!
 !  result variable:
 !
 !     ierr          set to 0 if ok, otherwise is a count of the number
@@ -3665,5 +3665,5 @@ integer                                 :: ierr
       end function check_dim_4d
 
 
- 
-                end module physics_driver_mod
+
+end module physics_driver_mod

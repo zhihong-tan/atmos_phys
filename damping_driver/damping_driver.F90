@@ -1,4 +1,3 @@
-
 module damping_driver_mod
 
 !-----------------------------------------------------------------------
@@ -51,7 +50,7 @@ module damping_driver_mod
    logical  :: do_topo_drag = .false., use_topo_drag = .true.
    logical  :: do_conserve_energy = .false.
 
-   integer  :: kstart = 0.0         ! rjw 
+   integer  :: kstart = 0.0         ! rjw
 
    namelist /damping_driver_nml/  trayfric, nlev_rayfric,  &
                                   do_cg_drag, do_topo_drag,  &
@@ -103,7 +102,7 @@ character(len=7) :: mod_name = 'damping'
 
  real :: rfactr
 
-!   note:  
+!   note:
 !     rfactr = coeff. for damping momentum at the top level
 
  character(len=128) :: version = '$Id$'
@@ -119,7 +118,7 @@ contains
                             u, v, t, q, r,  udt, vdt, tdt, qdt, rdt,  &
 !                                   mask, kbot)
                             z_pbl,  mask, kbot)
- 
+
 !-----------------------------------------------------------------------
  integer,         intent(in)                :: is, js
  real, dimension(:,:), intent(in)           :: lat
@@ -131,7 +130,7 @@ contains
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real,    intent(in),    dimension(:,:)     :: z_pbl, area 
+ real,    intent(in),    dimension(:,:)     :: z_pbl, area
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -249,7 +248,7 @@ contains
 
      udt =  udt + utnd
      vdt =  vdt + vtnd
-     tdt =  tdt + ttnd  
+     tdt =  tdt + ttnd
 
 !----- diagnostics -----
 
@@ -280,13 +279,13 @@ contains
      call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, z_pbl,  &
                       utnd, vtnd, ttnd, taubx, tauby, taus, kbot )
 
-     if (use_topo_drag) then  
+     if (use_topo_drag) then
          if ( kstart > 0 ) then
            do k = kstart, size(u,3)
                 utnd(:,:,k)= 0.0*utnd(:,:,k)
                 vtnd(:,:,k)= 0.0*vtnd(:,:,k)
            enddo
-         endif 
+         endif
 
        udt = udt + utnd
        vdt = vdt + vtnd
@@ -333,9 +332,9 @@ contains
  endif
 
 
-!rjw         Save vertically-integrated momemtum flux 
+!rjw         Save vertically-integrated momemtum flux
      uxv = u*v   !stg
-!!!     vxt = v*t   !rjw 
+!!!     vxt = v*t   !rjw
 
      if ( id_mom_flux > 0 ) then      !stg
           do k = 1,size(u,3)
@@ -415,7 +414,7 @@ contains
 
 !--------------------------------------------------------------------
 !----- Alexander-Dunkerton gravity wave drag -----
- 
+
    if (do_cg_drag)  then
      call cg_drag_init (lonb, latb, pref, Time=Time, axes=axes)
    endif
@@ -439,7 +438,7 @@ if (do_rayleigh) then
    register_diag_field ( mod_name, 'tdt_diss_rdamp', axes(1:3), Time,  &
                       'Dissipative heating from Rayleigh damping',&
                              'deg_k/s', missing_value=missing_value   )
-       
+
    id_diss_heat_rdamp = &
    register_diag_field ( mod_name, 'diss_heat_rdamp', axes(1:2), Time,   &
                 'Integrated dissipative heating from Rayleigh damping',&
@@ -484,7 +483,7 @@ if (do_mg_drag) then
    register_diag_field ( mod_name, 'tdt_diss_gwd', axes(1:3), Time,     &
                           'Dissipative heating from gravity wave drag', &
                               'deg_K/s', missing_value=missing_value   )
-       
+
    id_diss_heat_gwd = &
    register_diag_field ( mod_name, 'diss_heat_gwd', axes(1:2), Time,      &
                 'Integrated dissipative heating from gravity wave drag',  &
@@ -552,7 +551,7 @@ endif
    register_diag_field ( mod_name, 'tdt_diss_topo', axes(1:3), Time,   &
                          'Dissipative heating from topo wave drag',    &
                          'deg_k/s', missing_value=missing_value )
-       
+
    id_diss_heat_topo = &
    register_diag_field ( mod_name, 'diss_heat_topo', axes(1:2), Time,          &
                          'Integrated dissipative heating from topo wave drag', &
@@ -561,7 +560,7 @@ endif
 
  endif
 
-! rjw     Save vertically-integrated momentum flux 
+! rjw     Save vertically-integrated momentum flux
 
    id_mom_flux = &                                                            !stg
    register_diag_field ( mod_name, 'mom_flux', axes(1:2), Time,                         &
@@ -624,10 +623,10 @@ end subroutine damping_driver_endts
 !
 ! <DESCRIPTION>
 ! write out restart file.
-! Arguments: 
-!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+! Arguments:
+!   timestamp (optional, intent(in)) : A character string that represents the model time,
 !                                      used for writing restart. timestamp will append to
-!                                      the any restart file name as a prefix. 
+!                                      the any restart file name as a prefix.
 ! </DESCRIPTION>
 !
 subroutine damping_driver_restart(timestamp)
@@ -638,7 +637,7 @@ subroutine damping_driver_restart(timestamp)
      if (do_topo_drag) call topo_drag_restart(timestamp)
 
 end subroutine damping_driver_restart
-! </SUBROUTINE> NAME="damping_driver_restart" 
+! </SUBROUTINE> NAME="damping_driver_restart"
 
 !#######################################################################
 
@@ -686,4 +685,3 @@ end subroutine damping_driver_restart
 !#######################################################################
 
 end module damping_driver_mod
-

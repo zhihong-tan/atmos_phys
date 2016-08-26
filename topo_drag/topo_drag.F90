@@ -151,7 +151,7 @@ real    :: dz
 ! estimate height of pbl
 
   call get_pbl ( atmp, zfull, pfull, phalf, kpbl, knod, kcut )
-! 
+!
   if (use_pbl_from_lock) then
      kpbl = kdim
      do k = kdim, 2, -1
@@ -203,7 +203,7 @@ real    :: dz
 end subroutine topo_drag
 
 !=======================================================================
-                                  
+
 subroutine base_flux (                                                 &
                                              is, js, uwnd, vwnd, atmp, &
                                              taux, tauy, dtaux, dtauy, &
@@ -264,7 +264,7 @@ real :: usum, vsum, delp
         dzfull = zhalf(i,j,kt) - zhalf(i,j,kb+1)
         density = (phalf(i,j,kb+1) - phalf(i,j,kt))/(Grav*dzfull)
         dzfull = zfull(i,j,kt-1) - zfull(i,j,kbp)
-        bfreq2 = Grav*((atmp(i,j,kt-1) - atmp(i,j,kbp))/dzfull+lapse)/& 
+        bfreq2 = Grav*((atmp(i,j,kt-1) - atmp(i,j,kbp))/dzfull+lapse)/&
                   (0.5*(atmp(i,j,kt-1) + atmp(i,j,kbp)))
 
         bfreq = sqrt(max(tiny, bfreq2))
@@ -306,7 +306,7 @@ real :: usum, vsum, delp
         rnormal =                                                      &
                    (frumax**(2.0*gamma - epsi)                         &
                   - frumin**(2.0*gamma - epsi))/(2.0*gamma - epsi)
-        rnormal = fru0**gamma * ro/rnormal  
+        rnormal = fru0**gamma * ro/rnormal
 
         taul(i,j) =                                                    &
                    (frumax**(2.0 + gamma - epsi)                       &
@@ -423,10 +423,10 @@ integer :: k, kdim, k1
            dzhalf = zfull(i,j,k-1) - zfull(i,j,k)
            density = (pfull(i,j,k) - pfull(i,j,k-1))/(Grav*dzhalf)
            bfreq2 = Grav*                                              &
-                       ((atmp(i,j,k-1) - atmp(i,j,k))/dzhalf + lapse)/ & 
+                       ((atmp(i,j,k-1) - atmp(i,j,k))/dzhalf + lapse)/ &
                    (0.5*(atmp(i,j,k-1) + atmp(i,j,k)))
            bfreq = sqrt(max(tiny, bfreq2))
-           
+
            vtau = max(tiny, 0.5*(dtaux(i,j,k-1) + dtaux(i,j,k)))
 
 !          WKB correction of vertical wavelength
@@ -684,7 +684,7 @@ integer :: k, kdim
   do k=kdim-2,2,-1
      where ( pfull(:,:,k) >= ppbl(:,:) .and.                          &
         tbot(:,:) - atmp(:,:,k) > lapse*(zfull(:,:,k) - zbot(:,:)) )
-        kpbl = k -1 
+        kpbl = k -1
      endwhere
   enddo
 
@@ -727,7 +727,7 @@ integer :: id_restart
 #ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=topo_drag_nml, iostat=io)
    ierr = check_nml_error(io,'topo_drag_nml')
-#else   
+#else
   unit_nml = open_namelist_file ( )
   ierr = 1
   do while ( ierr /= 0 )
@@ -788,7 +788,7 @@ integer :: id_restart
          call error_mesg('topo_drag_mod', 'Field \"hpos\" in file '//  &
                    trim(topography_file)//' has the wrong size', FATAL)
      endif
-     
+
      allocate (xdatb(ipts+1))
      allocate (ydatb(jpts+1))
      allocate (zdat(ipts,jpts))
@@ -890,10 +890,10 @@ end subroutine topo_drag_end
 !
 ! <DESCRIPTION>
 ! write out restart file.
-! Arguments: 
-!   timestamp (optional, intent(in)) : A character string that represents the model time, 
+! Arguments:
+!   timestamp (optional, intent(in)) : A character string that represents the model time,
 !                                      used for writing restart. timestamp will append to
-!                                      the any restart file name as a prefix. 
+!                                      the any restart file name as a prefix.
 ! </DESCRIPTION>
 !
 subroutine topo_drag_restart(timestamp)
