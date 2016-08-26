@@ -1,4 +1,3 @@
-
 module damping_driver_mod
 
 !-----------------------------------------------------------------------
@@ -131,7 +130,7 @@ contains
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real,    intent(in),    dimension(:,:)     :: z_pbl, area 
+ real,    intent(in),    dimension(:,:)     :: z_pbl, area
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -686,4 +685,3 @@ end subroutine damping_driver_restart
 !#######################################################################
 
 end module damping_driver_mod
-

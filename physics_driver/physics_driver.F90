@@ -1,4 +1,4 @@
-                           module physics_driver_mod
+module physics_driver_mod
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -2484,7 +2484,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       if (do_moist_processes) then  
         call aerosol_dealloc (Aerosol)
       endif
-
+      
       !------ CMIP diagnostics (tendencies due to physics) ------
       if (query_cmip_diag_id(ID_tntmp)) then
         used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js, 1)
@@ -3698,4 +3698,4 @@ integer                                 :: ierr
 
 
  
-                end module physics_driver_mod
+end module physics_driver_mod

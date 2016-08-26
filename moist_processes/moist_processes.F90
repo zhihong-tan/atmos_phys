@@ -1,5 +1,4 @@
-
-                    module moist_processes_mod
+module moist_processes_mod
 
 !-----------------------------------------------------------------------
 !
@@ -2206,13 +2205,13 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    temperature change due to dry and moist convection:
 !---------------------------------------------------------------------
-   used = send_data     (id_tdt_conv, ttnd_conv, Time, is, js, 1, rmask=mask)
+   used = send_data (id_tdt_conv, ttnd_conv, Time, is, js, 1, rmask=mask)
    used = send_cmip_data_3d (ID_tntc, ttnd_conv, Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
 !    vapor specific humidity change due to convection:
 !---------------------------------------------------------------------
-   used = send_data       (id_qdt_conv, qtnd_conv, Time, is, js, 1, rmask=mask)
+   used = send_data (id_qdt_conv, qtnd_conv, Time, is, js, 1, rmask=mask)
    used = send_cmip_data_3d (ID_tnhusc, qtnd_conv, Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
@@ -2692,7 +2691,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    temperature change due to large-scale condensation:
 !---------------------------------------------------------------------
-    used = send_data         (id_tdt_ls, ttnd, Time, is, js, 1, rmask=mask)
+    used = send_data (id_tdt_ls, ttnd, Time, is, js, 1, rmask=mask)
     used = send_cmip_data_3d (ID_tntscp, ttnd, Time, is, js, 1, rmask=mask)
 !---------------------------------------------------------------------
 !    dry static energy tendency due to large-scale condensation:
@@ -2708,7 +2707,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    specific humidity change due to large-scale condensation:
 !---------------------------------------------------------------------
-    used = send_data         (id_qdt_ls,   qtnd, Time, is, js, 1, rmask=mask)
+    used = send_data (id_qdt_ls, qtnd, Time, is, js, 1, rmask=mask)
     used = send_cmip_data_3d (ID_tnhusscp, qtnd, Time, is, js, 1, rmask=mask)
 
     used = send_data (id_lsc_precip, rain + snow, Time, is, js)
@@ -2745,7 +2744,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
 !    total cumulus mass flux on half levels:
 !---------------------------------------------------------------------
-      used = send_data    (id_mc_half, mc_half, Time, is, js, 1, rmask=mask)
+      used = send_data (id_mc_half, mc_half, Time, is, js, 1, rmask=mask)
       used = send_cmip_data_3d (ID_mc, mc_half, Time, is, js, 1, rmask=mask)
 
 !---------------------------------------------------------------------
@@ -2977,11 +2976,11 @@ logical, intent(out), dimension(:,:)     :: convect
      endif
 
      if (id_wetdep_dust > 0 .or. id_wetdust_cmip > 0) then
-       do n=1, n_dust_tracers
-         nbin_dust=dust_tracers(n)%tr
-         total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
-       enddo
-       call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
+     do n=1, n_dust_tracers
+        nbin_dust=dust_tracers(n)%tr
+        total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
+     enddo
+     call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
        if (id_wetdep_dust  > 0) used = send_data (id_wetdep_dust,  total_wetdep_dust, Time, is,js) 
        if (id_wetdust_cmip > 0) used = send_data (id_wetdust_cmip, total_wetdep_dust, Time, is,js) 
      endif
@@ -3164,7 +3163,7 @@ logical, intent(out), dimension(:,:)     :: convect
     if (query_cmip_diag_id(ID_cli)) then
        used = send_cmip_data_3d (ID_cli, &
 !                (lsc_ice + tot_conv_ice)/(1.0 + total_conv_cloud), &
-       (lsc_ice + tot_conv_ice+ lsc_snow)/(1.0 + total_conv_cloud), &
+     (lsc_ice + tot_conv_ice+ lsc_snow)/(1.0 + total_conv_cloud), &
                                             Time, is, js, 1, rmask=mask)
     endif
 
@@ -4904,13 +4903,13 @@ if ( do_strat ) then
                      standard_name='atmosphere_cloud_ice_content', &
                           area=area_id, missing_value=CMOR_MISSING_VALUE )
    else
-     id_LWP = register_diag_field ( mod_name, &
-       'LWP', axes(1:2), Time, &
-          'Liquid water path',                            'kg/m2'   )
-  
-     id_IWP = register_diag_field ( mod_name, &
-       'IWP', axes(1:2), Time, &
-          'Ice water path',                               'kg/m2'   )
+   id_LWP = register_diag_field ( mod_name, &
+     'LWP', axes(1:2), Time, &
+        'Liquid water path',                            'kg/m2'   )
+
+   id_IWP = register_diag_field ( mod_name, &
+     'IWP', axes(1:2), Time, &
+        'Ice water path',                               'kg/m2'   )
    endif
 
    id_AWP = register_diag_field ( mod_name, &
@@ -5622,6 +5621,3 @@ end subroutine set_cosp_precip_sources
 
 
 end module moist_processes_mod
-
-  
-

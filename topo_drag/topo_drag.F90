@@ -151,7 +151,7 @@ real    :: dz
 ! estimate height of pbl
 
   call get_pbl ( atmp, zfull, pfull, phalf, kpbl, knod, kcut )
-! 
+!
   if (use_pbl_from_lock) then
      kpbl = kdim
      do k = kdim, 2, -1
@@ -264,7 +264,7 @@ real :: usum, vsum, delp
         dzfull = zhalf(i,j,kt) - zhalf(i,j,kb+1)
         density = (phalf(i,j,kb+1) - phalf(i,j,kt))/(Grav*dzfull)
         dzfull = zfull(i,j,kt-1) - zfull(i,j,kbp)
-        bfreq2 = Grav*((atmp(i,j,kt-1) - atmp(i,j,kbp))/dzfull+lapse)/& 
+        bfreq2 = Grav*((atmp(i,j,kt-1) - atmp(i,j,kbp))/dzfull+lapse)/&
                   (0.5*(atmp(i,j,kt-1) + atmp(i,j,kbp)))
 
         bfreq = sqrt(max(tiny, bfreq2))
@@ -684,7 +684,7 @@ integer :: k, kdim
   do k=kdim-2,2,-1
      where ( pfull(:,:,k) >= ppbl(:,:) .and.                          &
         tbot(:,:) - atmp(:,:,k) > lapse*(zfull(:,:,k) - zbot(:,:)) )
-        kpbl = k -1 
+        kpbl = k -1
      endwhere
   enddo
 

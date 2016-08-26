@@ -35,7 +35,7 @@ use tracer_manager_mod, only: get_tracer_index, get_number_tracers
                                           um     => null(), &
                                           vm     => null(), &
                                           tm     => null()
-     real, dimension(:,:,:,:), pointer :: q      => null(), & 
+     real, dimension(:,:,:,:), pointer :: q      => null(), &
                                           qm     => null()
  end type physics_input_block_type
 
