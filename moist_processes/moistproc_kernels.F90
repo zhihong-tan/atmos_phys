@@ -37,7 +37,7 @@ implicit none
 private
 public  moistproc_mca, moistproc_ras, moistproc_lscale_cond, &
         moistproc_strat_cloud, moistproc_cmt, moistproc_uw_conv, &
-        moistproc_scale_uw, moistproc_scale_donner
+        moistproc_scale_uw, moistproc_scale_donner, height_adjust !miz
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
@@ -819,7 +819,8 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                              ustar, bstar, qstar, shflx, lhflx, land, coldT, Aerosol, &!miz
                              tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint, lat, lon, &!miz
                              cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
-			     cmf, conv_calc_completed,                        &
+			     pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+			     cmf, conv_calc_completed,                        &!miz
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -845,6 +846,7 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
   real, intent(inout), dimension(:,:)     :: lprec, fprec, precip, cush, cbmf, hmint, cgust
   real, intent(inout), dimension(:,:)     :: tke, pblhto, rkmo, taudpo
   integer, intent(inout), dimension(:,:,:) :: exist_shconv, exist_dpconv
+  real, intent(inout), dimension(:,:,:)   :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev !miz
   real, intent(in),    dimension(:,:,:)   :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif !miz
   real, intent(inout), dimension(:,:)     :: rain_uw, snow_uw
   real, intent(inout), dimension(:,:,:)   :: tdt, qdt, udt, vdt,   &
@@ -894,6 +896,7 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
                     shallow_droplet_number, cbmf, cgust, tke, pblhto,     &
 		    rkmo, taudpo, exist_shconv, exist_dpconv,             &
+		    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
                     trcr, qtruw, uw_wetdep)
 
 !-------------------------------------------------------------------------
@@ -1208,6 +1211,53 @@ subroutine moistproc_scale_uw(is,ie,js,je, dt, q, tracer, tdt, qdt, udt, vdt, rd
 
 end subroutine moistproc_scale_uw
 
+!#######################################################################
+subroutine height_adjust(t, qv, r, tn, qvn, rn, &
+                         phalf, pfull, zhalf, zfull, d_zhalf, d_zfull)
+
+!  integer, intent(in)           :: is, ie, js, je
+  real, intent(in),    dimension(:,:,:)   :: t, qv, tn, qvn
+  real, intent(in),    dimension(:,:,:,:) :: r, rn
+  real, intent(in),    dimension(:,:,:)   :: phalf, pfull, zhalf, zfull
+  real, intent(out),   dimension(:,:,:)   :: d_zhalf, d_zfull
+
+
+  integer :: i, j, k, ix, jx, kx, nql, nqi, nqa
+  real, dimension(size(t,1), size(t,2), size(t,3))   :: tv, tvn, dz, dz_n
+  real, dimension(size(t,1), size(t,2), size(t,3))   :: zfull_n
+  real, dimension(size(t,1), size(t,2), size(t,3)+1) :: zhalf_n
+
+      tv=0.; tvn=0.; dz=0.; dz_n=0; zhalf_n=0.; zfull_n=0.;
+      ix = size(t,1)
+      jx = size(t,2)
+      kx = size(t,3)
+      nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
+      nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
+
+      tv  = t(:,:,:) *(1 + 0.608*qv (:,:,:) - r (:,:,:,nql)-r (:,:,:,nqi))
+      tvn = tn(:,:,:)*(1 + 0.608*qvn(:,:,:) - rn(:,:,:,nql)-rn(:,:,:,nqi))
+
+      zhalf_n(:,:,kx+1)=zhalf(:,:,kx+1);
+      do k=kx,1,-1
+      	 dz     (:,:,k)=zhalf(:,:,k)-zhalf(:,:,k+1)
+      	 dz_n   (:,:,k)=dz(:,:,k)*tvn(:,:,k)/tv(:,:,k)
+	 zhalf_n(:,:,k)=zhalf_n(:,:,k+1)+dz_n(:,:,k)
+	 zfull_n(:,:,k)=(zhalf_n(:,:,k)+zhalf_n(:,:,k+1))*0.5
+      enddo
+
+      d_zhalf(:,:,:)=zhalf_n(:,:,:)-zhalf(:,:,:)
+      d_zfull(:,:,:)=zfull_n(:,:,:)-zfull(:,:,:)
+
+!      do k=1,kx
+!         dlp (:,:,k)=log(phalf(:,:,k+1))-log(phalf(:,:,k))
+!	 tmp1(:,:,k)=RDGAS/GRAV*tv (:,:,k)*dlp(:,:,k)
+!	 tmp2(:,:,k)=RDGAS/GRAV*tvn(:,:,k)*dlp(:,:,k)
+!      	 tv    (:,:,k)=zhalf_n(:,:,k)-zhalf(:,:,k)
+!      	 tvn   (:,:,k)=zfull_n(:,:,k)-zfull(:,:,k)
+!	 tmp   (:,:,k)=(zhalf(:,:,k+1)+zhalf(:,:,k))*0.5-zfull(:,:,k)
+!      enddo
+
+end subroutine height_adjust
 
 
 !#########################################################################

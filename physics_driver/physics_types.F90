@@ -10,7 +10,7 @@ use tracer_manager_mod, only: get_tracer_index, get_number_tracers
  public physics_control_type
  type physics_control_type
      integer :: sphum
-     logical :: hydrostatic, phys_hydrostatic
+     logical :: hydrostatic, phys_hydrostatic, do_uni_zfull !miz
  end type physics_control_type
 
 !--- atmosphere inputs block structure
@@ -75,10 +75,10 @@ public :: alloc_physics_type, dealloc_physics_type, &
 
 contains
 
- subroutine alloc_physics_type (Physics, Atm_block, p_hydro, hydro)
+ subroutine alloc_physics_type (Physics, Atm_block, p_hydro, hydro, do_uni_zfull) !miz
   type (physics_type), intent(inout) :: Physics
   type (block_control_type), intent(in) :: Atm_block
-  logical,               intent(in) :: p_hydro, hydro
+  logical,               intent(in) :: p_hydro, hydro, do_uni_zfull !miz
 !--- local varialbes
   integer :: n, ix, jx, npz, nt_tot, nt_prog
 
@@ -86,6 +86,7 @@ contains
    npz = Atm_block%npz
    Physics%control%phys_hydrostatic = p_hydro
    Physics%control%hydrostatic = hydro
+   Physics%control%do_uni_zfull = do_uni_zfull !miz
 
    call get_number_tracers(MODEL_ATMOS, num_tracers=nt_tot, num_prog=nt_prog)
    Physics%control%sphum = get_tracer_index(MODEL_ATMOS, 'sphum')
