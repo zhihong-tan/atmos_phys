@@ -254,7 +254,8 @@ integer, dimension(6) :: soa_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 real, save :: coef_omss_emis
 real :: omss_coef=-999.
 logical               :: no_biobur_if_no_pbl = .true.  ! true by default in order to reproduce AM3 (no BMB if zPBL=0)
-logical               :: do_biobur_pbl_bug = .false.   ! if T, bug causing double-counting of BMB emissions is present
+!logical               :: do_biobur_pbl_bug = .false.   ! if T, bug causing double-counting of BMB emissions is present
+logical               :: do_biobur_pbl_bug = .true.    ! TER 08/30/2016 This is set to true to reproduce answers.  Can be changed for a city release
 logical               :: do_dynamic_bc = .false.
 real                  :: bcage = 1.0
 real                  :: bcageslow = 25.
