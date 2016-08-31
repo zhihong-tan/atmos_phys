@@ -502,6 +502,8 @@ logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, p
                                       is_in=is_in, js_in=js_in, ks_in=ks_in, mask=mask, rmask=rmask)
          endif
       endif
+    else
+      send_cmip_data_3d = .false.
     endif
   enddo
 
