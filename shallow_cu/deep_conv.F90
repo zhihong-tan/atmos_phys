@@ -421,7 +421,7 @@ contains
        endif
     end if
 
-    zcldtop = 2000 !sd%z(cp%ltop)
+    zcldtop = sd%z(cp%ltop)
     wrel  = max(cc%wrel, wrel0)
     cbmf0 = dpc%cbmf0
     call cp_clear_k(cp);  cp %maxcldfrac=1.;
@@ -534,7 +534,7 @@ contains
     real          :: zcldtop, wrel, wrel0, cbmf0, cwfn_new, cwfn_th, cbmf_max, tmp, ufrc
     integer       :: ksrc, k, let, krel
     real          :: latx, lonx, lat1b, lat1e, lon1b, lon1e, lat2b, lat2e, lon2b, lon2e
-    real          :: zsrc, psrc, thcsrc, qctsrc, hlsrc, lofactor, cape_av
+    real          :: zsrc, psrc, thcsrc, qctsrc, hlsrc, lofactor, cape
 
     ier = 0
     ermesg = ' '
@@ -580,7 +580,7 @@ contains
        endif
     end if
 
-    zcldtop = dpn%scaleh0
+    zcldtop = sd%z(cp%ltop)
     wrel  = max(cc%wrel, wrel0)
     cbmf0 = dpc%cbmf0
     call cp_clear_k(cp);  cp %maxcldfrac=1.;
@@ -619,15 +619,15 @@ contains
     dcapedm=(ac%cape-ac1%cape)/cbmf0
 
     if (sd%use_capecin_avg) then
-       cape_av = sd%cape_avg
+       cape = sd%cape_avg
     else
-       cape_av = ac%cape
+       cape = ac%cape
     endif
 
-    if (dcapedm .lt. dpc%dcapedm_th .or. cape_av.lt.0.) then
+    if (dcapedm .lt. dpc%dcapedm_th .or. cape.lt.0.) then
        cbmf_deep=0.; ocode=9; return
     else
-       cbmf_deep= (cape_av - dpc%cape_th) / dcapedm / (taudp/sd%delt)
+       cbmf_deep= (cape - dpc%cape_th) / dcapedm / (taudp/sd%delt)
     end if
 
     krel=cp%krel

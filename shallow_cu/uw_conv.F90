@@ -971,7 +971,7 @@ contains
 !#####################################################################
 
   SUBROUTINE uw_conv(is, js, Time, tb, qv, ub, vb, pmid, pint,zmid,  & !input
-       zint, q, omega, delt, pblht, ustar, bstar, qstar, sflx, lflx, land, coldT,& !input
+       zint, qtr, omega, delt, pblht, ustar, bstar, qstar, sflx, lflx, land, coldT,& !input
        asol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint, lat, lon, & !input
        cush, do_strat,  skip_calculation, max_available_cf,          & !input
        tten, qvten, qlten, qiten, qaten, qnten,                      & !output
@@ -1003,7 +1003,7 @@ contains
     real, intent(in), dimension(:,:,:)   :: pint  !pressure@model interfaces(pa)
     real, intent(in), dimension(:,:,:)   :: tb    !temperature profile (K)
     real, intent(in), dimension(:,:,:)   :: qv    !specific humidity profile (kg/kg)
-    real, intent(in), dimension(:,:,:,:) :: q     !specific humidity profile (kg/kg)
+    real, intent(in), dimension(:,:,:,:) :: qtr   !cloud tracers (liq_wat, ice_wat, cld_amt, liq_drp)
     real, intent(in), dimension(:,:,:)   :: pmid  !pressure@model mid-levels (pa)
     real, intent(in), dimension(:,:,:)   :: zmid  !height@model mid-levels (m)
     real, intent(in), dimension(:,:,:)   :: omega !omega (Pa/s)
@@ -1522,7 +1522,7 @@ contains
 !========Pack column properties into a sounding structure====================
 
           if (do_qn) then
-             qntmp(:)=q(i,j,:,nqn)
+             qntmp(:)=qtr(i,j,:,nqn)
           else
              qntmp(:)=0.
           end if
@@ -1530,7 +1530,7 @@ contains
 	  tdt_dif_l(i,j,:)=tdt_dif(i,j,:)-tdt_rad(i,j,:);
           call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),     &
                zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), omega(i,j,:), tb(i,j,:), &
-               qv(i,j,:), q(i,j,:,nql), q(i,j,:,nqi), q(i,j,:,nqa), qntmp,       &
+               qv(i,j,:), qtr(i,j,:,nql), qtr(i,j,:,nqi), qtr(i,j,:,nqa), qntmp,       &
                am1(:), am2(:), am3(:), am4(:), &
 	       tdt_rad(i,j,:), tdt_dyn(i,j,:), qdt_dyn(i,j,:), dgz_dyn(i,j,:), ddp_dyn(i,j,:), &
 	       tdt_dif_l(i,j,:), qdt_dif(i,j,:), src_choice, tracers(i,j,:,:), sd, Uw_p)
@@ -2158,29 +2158,29 @@ contains
       do k=1,kmax
         do j=1,jmax
           do i=1,imax
-            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .lt. 0. .and. (qaten(i,j,k).ne.0.)) then
-              qaten(i,j,k) = -1.*q(i,j,k,nqa)/delt
+            if ((qtr(i,j,k,nqa) + qaten(i,j,k)*delt) .lt. 0. .and. (qaten(i,j,k).ne.0.)) then
+              qaten(i,j,k) = -1.*qtr(i,j,k,nqa)/delt
             end if
-            if ((q(i,j,k,nqa) + qaten(i,j,k)*delt) .gt. 1. .and. (qaten(i,j,k).ne.0.)) then
-              qaten(i,j,k)= (1. - q(i,j,k,nqa))/delt
-            end if
- 
-            if ((q(i,j,k,nql) + qlten(i,j,k)*delt) .lt. 0. .and. (qlten(i,j,k).ne.0.)) then
-              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nql)/delt+qlten(i,j,k))*HLv/Cp_Air
-              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nql)/delt+qlten(i,j,k))
-              qlten(i,j,k) = qlten(i,j,k)-(q(i,j,k,nql)/delt+qlten(i,j,k))
+            if ((qtr(i,j,k,nqa) + qaten(i,j,k)*delt) .gt. 1. .and. (qaten(i,j,k).ne.0.)) then
+              qaten(i,j,k)= (1. - qtr(i,j,k,nqa))/delt
             end if
  
-            if ((q(i,j,k,nqi) + qiten(i,j,k)*delt) .lt. 0. .and. (qiten(i,j,k).ne.0.)) then
-              tten (i,j,k) = tten(i,j,k) -(q(i,j,k,nqi)/delt+qiten(i,j,k))*HLs/Cp_Air
-              qvten(i,j,k) = qvten(i,j,k)+(q(i,j,k,nqi)/delt+qiten(i,j,k))
+            if ((qtr(i,j,k,nql) + qlten(i,j,k)*delt) .lt. 0. .and. (qlten(i,j,k).ne.0.)) then
+              tten (i,j,k) = tten(i,j,k) -(qtr(i,j,k,nql)/delt+qlten(i,j,k))*HLv/Cp_Air
+              qvten(i,j,k) = qvten(i,j,k)+(qtr(i,j,k,nql)/delt+qlten(i,j,k))
+              qlten(i,j,k) = qlten(i,j,k)-(qtr(i,j,k,nql)/delt+qlten(i,j,k))
+            end if
+ 
+            if ((qtr(i,j,k,nqi) + qiten(i,j,k)*delt) .lt. 0. .and. (qiten(i,j,k).ne.0.)) then
+              tten (i,j,k) = tten(i,j,k) -(qtr(i,j,k,nqi)/delt+qiten(i,j,k))*HLs/Cp_Air
+              qvten(i,j,k) = qvten(i,j,k)+(qtr(i,j,k,nqi)/delt+qiten(i,j,k))
     
-              qiten(i,j,k) = qiten(i,j,k)-(q(i,j,k,nqi)/delt+qiten(i,j,k))
+              qiten(i,j,k) = qiten(i,j,k)-(qtr(i,j,k,nqi)/delt+qiten(i,j,k))
             end if
 
             if (do_qn) then
-              if ((q(i,j,k,nqn) + qnten(i,j,k)*delt) .lt. 0. .and. (qnten(i,j,k).ne.0.)) then
-                qnten(i,j,k) = qnten(i,j,k)-(q(i,j,k,nqn)/delt+qnten(i,j,k))
+              if ((qtr(i,j,k,nqn) + qnten(i,j,k)*delt) .lt. 0. .and. (qnten(i,j,k).ne.0.)) then
+                qnten(i,j,k) = qnten(i,j,k)-(qtr(i,j,k,nqn)/delt+qnten(i,j,k))
               end if
             endif
     !rescaling to prevent negative specific humidity for each grid point
@@ -2217,14 +2217,14 @@ contains
 
    else !reproduce_old_version
 
-       temp = q(:,:,:,nql)/delt + qlten(:,:,:)
+       temp = qtr(:,:,:,nql)/delt + qlten(:,:,:)
        where (temp(:,:,:) .lt. 0. .and. qlten(:,:,:) .ne. 0.)
          tten (:,:,:) = tten (:,:,:) - temp(:,:,:)*HLV/CP_AIR
          qvten(:,:,:) = qvten(:,:,:) + temp(:,:,:)
          qlten(:,:,:) = qlten(:,:,:) - temp(:,:,:)
        end where
 
-       temp = q(:,:,:,nqi)/delt + qiten(:,:,:)
+       temp = qtr(:,:,:,nqi)/delt + qiten(:,:,:)
        where (temp(:,:,:) .lt. 0. .and. qiten(:,:,:) .ne. 0.)
          tten (:,:,:) = tten (:,:,:) - temp(:,:,:)*HLS/CP_AIR
          qvten(:,:,:) = qvten(:,:,:) + temp(:,:,:)
@@ -2236,16 +2236,16 @@ contains
          qaten(:,:,:) = 0.0
        end where
 
-       temp = q(:,:,:,nqa)/delt + qaten(:,:,:)
+       temp = qtr(:,:,:,nqa)/delt + qaten(:,:,:)
        where (temp(:,:,:) .lt. 0. .and. qaten(:,:,:) .ne. 0.)
          qaten(:,:,:) = qaten(:,:,:) - temp(:,:,:)
        end where
        where (temp(:,:,:)*delt .gt. 1. .and. qaten(:,:,:) .ne. 0.)
-         qaten(:,:,:) = (1. - q(:,:,:,nqa))/delt
+         qaten(:,:,:) = (1. - qtr(:,:,:,nqa))/delt
        end where
 
        if (do_qn) then
-      	  temp = q(:,:,:,nqn)/delt + qnten(:,:,:)
+      	  temp = qtr(:,:,:,nqn)/delt + qnten(:,:,:)
       	  where (temp(:,:,:) .lt. 0. .and. qnten(:,:,:) .ne. 0.)
            qnten(:,:,:) = qnten(:,:,:) - temp(:,:,:)
       	  end where
