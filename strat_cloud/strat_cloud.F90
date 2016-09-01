@@ -116,6 +116,7 @@ use constants_mod,             only : rdgas, rvgas, hlv, hls, hlf, cp_air, grav
 use cloud_rad_mod,             only : cloud_rad_init
 use diag_manager_mod,          only : register_diag_field, send_data
 use time_manager_mod,          only : time_type, get_date, get_time
+use atmos_cmip_diag_mod,       only : query_cmip_diag_id
 use aerosol_types_mod,         only : aerosol_type
 use microphysics_mod,          only : microphysics_init, microphysics, &
                                       microphysics_end
@@ -1700,7 +1701,7 @@ real, dimension(:,:,:), intent (out), optional :: SN_out, SNi_out,  &
         diag_4d(:,:,:,diag_pt%cf_ice_init) =   &
                                 MIN(diag_4d(:,:,:,diag_pt%cf_ice_init), 1.)
       end if
-      if (diag_id%droplets > 0) then
+      if (diag_id%droplets > 0 .or. query_cmip_diag_id(diag_id%cdnc)) then
         diag_4d(:,:,:,diag_pt%droplets) = N3D(:,:,:)
       end if
       if (diag_id%droplets_wtd > 0) then

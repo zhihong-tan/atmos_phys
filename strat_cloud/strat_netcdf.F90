@@ -710,7 +710,7 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
 !-----------------------------------------------------------------------
      if (query_cmip_diag_id(diag_id%cdnc)) then
        used = send_cmip_data_3d ( diag_id%cdnc, &
-                1.e06*diag_4d(:,:,:,diag_pt%droplets_wtd)/diag_4d(:,:,:,diag_pt%ql_wt), &
+                1.e06*diag_4d(:,:,:,diag_pt%droplets), &
                 Time, is, js, 1, mask=diag_4d(:,:,:,diag_pt%droplets) > 0.0)
      endif
 
@@ -1985,7 +1985,7 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
   !   18)  variables associated CMIP diagnostics
   !------------------------------------------------------------------------
        diag_id%cdnc = register_cmip_diag_field_3d ( mod_name, 'cdnc', Time, &
-                      'Cloud Droplet Number Concentration', 'm-3', &
+                      'Cloud Droplet Number Concentration', 'm-3', mask_variant=.true., &
                   standard_name='number_concentration_of_cloud_liquid_water_particles_in_air')
 
   !-----------------------------------------------------------------------
