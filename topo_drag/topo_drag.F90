@@ -79,14 +79,15 @@ logical :: &
   ,keep_residual_flux=.true. & ! redistribute residual pseudomomentum?
   ,do_pbl_average=.false.    & ! average u,rho,N over PBL for baseflux?
   ,use_mg_scaling=.false.    & ! base flux saturates with value 'usat'?
-  ,use_mask_for_pbl=.false.    ! use bottom no_drag_layer as pbl?
+  ,use_mask_for_pbl=.false.  & ! use bottom no_drag_layer as pbl?
+  ,use_pbl_from_lock=.false.   ! use pbl height from Lock boundary scheme  !bqx
 
 NAMELIST /topo_drag_nml/                                               &
   frcrit, alin, anonlin, beta, gamma, epsi,                            &
   h_frac, zref_fac, tboost, pcut, samp, max_udt,                       &
   no_drag_frac, max_pbl_frac,                                          &
   do_conserve_energy, keep_residual_flux, do_pbl_average,              &
-  use_mg_scaling, use_mask_for_pbl                                            !stg
+  use_mg_scaling, use_mask_for_pbl, use_pbl_from_lock                    !stg
 
 public topo_drag, topo_drag_init, topo_drag_end
 public topo_drag_restart
@@ -97,7 +98,7 @@ contains
 
 subroutine topo_drag (                                                 &
                                        is, js, delt, uwnd, vwnd, atmp, &
-                                           pfull, phalf, zfull, zhalf, &
+                                    pfull, phalf, zfull, zhalf, z_pbl, & !bqx+ z_pbl
                           dtaux, dtauy, dtemp, taux, tauy, taus, kbot )
 
 integer, intent(in) :: is, js
@@ -116,6 +117,7 @@ integer, intent(in), optional, dimension(:,:) :: kbot
 ! ZHALF    Height at half levels (IDIM x JDIM x KDIM+1)
 
 real, intent(in), dimension(:,:,:) :: uwnd, vwnd, atmp
+real, intent(in), dimension(:,:)   :: z_pbl  !bqx+
 real, intent(in), dimension(:,:,:) :: pfull, phalf, zfull, zhalf
 
 ! OUTPUT
@@ -139,7 +141,8 @@ real, dimension(size(zfull,1),size(zfull,2)) :: frulo, fruhi, frunl, rnorm
 
 integer :: idim
 integer :: jdim
-integer :: k, kdim
+integer :: i,j, k, kdim
+real    :: dz
 
   idim = size(uwnd,1)
   jdim = size(uwnd,2)
@@ -148,6 +151,15 @@ integer :: k, kdim
 ! estimate height of pbl
 
   call get_pbl ( atmp, zfull, pfull, phalf, kpbl, knod, kcut )
+! 
+  if (use_pbl_from_lock) then
+     kpbl = kdim
+     do k = kdim, 2, -1
+       where ( zfull(:,:,k) < zhalf(:,:,kdim+1) + z_pbl(:,:) )
+           kpbl(:,:) = k - 1           ! the first full model level above PBL
+       endwhere
+    enddo
+  endif
 
 ! calculate base flux
 
@@ -165,14 +177,14 @@ integer :: k, kdim
                                                      uwnd, vwnd, atmp, &
                                                    taup, taub, tausat, &
                                                   frulo, fruhi, frunl, &
-                        dtaux, dtauy, zfull, pfull, phalf, knod, kcut )
+                        dtaux, dtauy, zfull, pfull, phalf, kpbl, kcut )
 
 ! calculate momentum tendency
 
   call topo_drag_tend (                                                &
                                                delt, uwnd, vwnd, atmp, &
                                        taux, tauy, taul, taun, tausat, &
-                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, knod )
+                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, kpbl )
 
 ! put saturation flux profile into 'taus' for diagnostics
 
@@ -212,7 +224,7 @@ real, dimension(size(uwnd,1),size(uwnd,2)) :: ubar, vbar
 
 integer :: i, idim, id
 integer :: j, jdim, jd
-integer :: k, kdim, kb, kt
+integer :: k, kdim, kb, kbp, kt
 
 real :: usat, bfreq2, bfreq, dphdz, vtau, d2udz2, d2vdz2
 real :: dzfull, dzhalf, dzhalf1, dzhalf2, density
@@ -248,11 +260,12 @@ real :: usum, vsum, delp
         id = is+i-1
         kt = kpbl(i,j)
         kb = max(kd,kt)
+        kbp = min(kdim, kb+1) !bqx+
         dzfull = zhalf(i,j,kt) - zhalf(i,j,kb+1)
         density = (phalf(i,j,kb+1) - phalf(i,j,kt))/(Grav*dzfull)
-        dzfull = zfull(i,j,kt-1) - zfull(i,j,kb+1)
-        bfreq2 = Grav*((atmp(i,j,kb+1) - atmp(i,j,kt-1))/dzfull+lapse)/& 
-                  (0.5*(atmp(i,j,kb+1) + atmp(i,j,kt-1)))
+        dzfull = zfull(i,j,kt-1) - zfull(i,j,kbp)
+        bfreq2 = Grav*((atmp(i,j,kt-1) - atmp(i,j,kbp))/dzfull+lapse)/& 
+                  (0.5*(atmp(i,j,kt-1) + atmp(i,j,kbp)))
 
         bfreq = sqrt(max(tiny, bfreq2))
 
@@ -347,8 +360,8 @@ real :: usum, vsum, delp
 
   do j=1,jdim
      do i=1,idim
-        kt = kpbl(i,j)
-
+!        kt = kpbl(i,j)
+        kt = min(kdim-1, kpbl(i,j)) !bqx+
         do k=2,kt
            dzfull = zhalf(i,j,k) - zhalf(i,j,k+1)
            dzhalf1 = zfull(i,j,k-1) - zfull(i,j,k)
@@ -372,7 +385,7 @@ subroutine satur_flux (                                                &
                                                      uwnd, vwnd, atmp, &
                                                    taup, taub, tausat, &
                                                   frulo, fruhi, frunl, &
-                        dtaux, dtauy, zfull, pfull, phalf, knod, kcut )
+                        dtaux, dtauy, zfull, pfull, phalf, kpbl, kcut )
 
 real, intent(in),  dimension (:,:,:) :: uwnd, vwnd, atmp
 real, intent(in),  dimension (:,:,:) :: dtaux, dtauy
@@ -381,7 +394,7 @@ real, intent(in),  dimension (:,:)   :: taup
 real, intent(out), dimension (:,:)   :: taub
 real, intent(out), dimension (:,:,:) :: tausat
 real, intent(in),  dimension (:,:)   :: frulo, fruhi, frunl
-integer, intent(in), dimension (:,:) :: knod, kcut
+integer, intent(in), dimension (:,:) :: kpbl, kcut
 
 real, dimension(size(zfull,1),size(zfull,2)) :: usat
 
@@ -460,9 +473,9 @@ integer :: k, kdim, k1
 
 ! make propagating flux constant with height in zero-drag surface layer
 
-  k1 = minval(knod)
+  k1 = minval(kpbl)
   do k=kdim+1,k1+1,-1
-     where (k > knod)
+     where (k > kpbl)
         tausat(:,:,k) = taup
      endwhere
   enddo
@@ -484,7 +497,7 @@ endsubroutine satur_flux
 subroutine topo_drag_tend (                                            &
                                                delt, uwnd, vwnd, atmp, &
                                        taux, tauy, taul, taun, tausat, &
-                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, knod )
+                dtaux, dtauy, dtemp, zfull, zhalf, pfull, phalf, kpbl )
 
 real, intent(in) :: delt
 real, intent(in), dimension(:,:,:)    :: uwnd, vwnd, atmp
@@ -492,7 +505,7 @@ real, intent(in), dimension(:,:,:)    :: zfull, zhalf, pfull, phalf
 real, intent(in), dimension(:,:)      :: taux, tauy, taul, taun
 real, intent(inout), dimension(:,:,:) :: tausat
 real, intent(inout), dimension(:,:,:) :: dtaux, dtauy, dtemp
-integer, intent(in), dimension (:,:)  :: knod
+integer, intent(in), dimension (:,:)  :: kpbl
 
 real, parameter :: bfmin=0.7e-2, bfmax=1.7e-2  ! min/max buoyancy freq [1/s]
 real, parameter :: vvmin=1.0                   ! minimum surface wind [m/s]
@@ -525,7 +538,7 @@ real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
 
   do j=1,jdim
      do i=1,idim
-        k = knod(i,j)
+        k = kpbl(i,j)
 !stg        k = kdim
         phase = 0.0
         zlast = zhalf(i,j,k)
@@ -567,7 +580,7 @@ real,dimension(size(zfull,1),size(zfull,2)) :: dx, dy
   do j=1,jdim
      do i=1,idim
         kr = kref(i,j)
-        kt = knod(i,j)
+        kt = kpbl(i,j)
 !stg        kt = kdim
         gfac = taun(i,j)/taul(i,j) * Grav
         wtsum = 0.0
@@ -657,21 +670,23 @@ integer :: k, kdim
      endwhere
   enddo
 
-  if (kd == 0 .and. do_pbl_average) kd = kdim-1
+!bqx+
+!  if (kd == 0 .and. do_pbl_average) kd = kdim-1
+ if (kd == 0 .and. do_pbl_average) kd = kdim
 
   if ( use_mask_for_pbl ) then
      kpbl = knod
      return
   endif
 
-! find highest model level in surface mixed layer
+! find the first layer above PBL
 
   kpbl = kdim-1
 
   do k=kdim-2,2,-1
      where ( pfull(:,:,k) >= ppbl(:,:) .and.                          &
         tbot(:,:) - atmp(:,:,k) > lapse*(zfull(:,:,k) - zbot(:,:)) )
-        kpbl = k
+        kpbl = k -1 
      endwhere
   enddo
 
