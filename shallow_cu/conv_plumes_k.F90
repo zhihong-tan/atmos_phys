@@ -624,12 +624,30 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.9) then
-          scaleh1 = 1000. * (sd%ps(0)/cp%p(k))
+       	  rkm1 = rkm * (1.+cp%wu(k-1)*cpn%beta)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
+          scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.10) then
+!mass flux outside updraft in unit of Pa/s, downward positive
+          rkm1 = sd%omg(k-1)+cp%umf(k-1)*Uw_p%grav 
+!vertical velocity outside updraft in unit of m/s, upward positive
+          rkm1 = -rkm1/(sd%rho(k-1)*Uw_p%grav*(1.-cp%ufrc(k-1)))
+!difference in vertical velocity between updraft and environmental air
+          rkm1 = cp%wu(k-1) - rkm1
+          rkm1 = max(rkm1, 0.)
+       	  rkm1 = rkm * (1.+rkm1*cpn%beta)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
+          scaleh1 = cpn%scaleh0
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else
           scaleh1 = max(cpn%scaleh0, cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
