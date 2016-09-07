@@ -9,7 +9,7 @@ module MO_SETSOX_MOD
   use tracer_manager_mod,    only: get_tracer_index,  query_method
   use field_manager_mod,     only: parse
 
-  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG
+  use cloud_chem, only : CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2
   use aerosol_thermodynamics,   only : aerosol_thermo, AERO_LEGACY, AERO_ISORROPIA, NO_AERO
   use mpp_mod,            only : mpp_clock_id,         &
                                  mpp_clock_begin,      &
@@ -180,7 +180,9 @@ CONTAINS
        if ( trop_option%cloud_chem .eq. CLOUD_CHEM_LEGACY ) then
           xlwc(:,k) = cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
        elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P .or. &
-                trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG ) then
+                trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG .or. &
+                trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG2  &
+                ) then
           xlwc(:,k) = frac_liq(:,k) * cwat(:,k) *cfact(:,k)           ! cloud water  L(water)/L(air)
        end if
        if( hno3_ndx > 0 ) then
@@ -543,8 +545,10 @@ CONTAINS
 !                      * dtime                                        ! VMR
 
                 !<f1p: new cloud chemistry
-             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P .or. &
-                      trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG ) then
+             elseif ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P      .or. &
+                      trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG  .or. &
+                      trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG2      &
+                      ) then
 
                 if (trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG) then
                    patm = pz/1013.
@@ -589,11 +593,28 @@ CONTAINS
 
                    exp_factor = rso2_h2o2 * (xso2(i,k) - xh2o2(i,k)) * dtime            
 
-                   if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0.) then
-                      EF          = exp( exp_factor )
-                      pso4_h2o2   = max(xso2(i,k) * xh2o2(i,k) * ( 1. - EF ) / ( xh2o2(i,k) -  xso2(i,k) * EF ),0.)                        
+                   if (trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG2 ) then
+
+                      if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0.) then
+                         EF          = exp( exp_factor )
+                         pso4_h2o2   = max(xso2(i,k) * xh2o2(i,k) * ( 1. - EF ) / ( xh2o2(i,k) -  xso2(i,k) * EF ),0.)                        
+                      else
+                         pso4_h2o2   = min(xso2(i,k),xh2o2(i,k))
+                      end if
+                      
                    else
-                      pso4_h2o2   = min(xso2(i,k),xh2o2(i,k))
+
+                      !this should have little impact
+                      !this adds some safety when xso2~=xh2o2. There is also no reason to not calculate the exp when exp_factor<-600, although this will lead to the same results
+                      if ( exp_factor .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
+                         EF          = exp( exp_factor )
+                         pso4_h2o2   = max(xso2(i,k) * xh2o2(i,k) * ( 1. - EF ) / ( xh2o2(i,k) -  xso2(i,k) * EF ),0.)                        
+                      elseif (abs(exp_factor) .lt. small_value ) then
+                         pso4_h2o2   = rso2_h2o2 * xso2(i,k)**2 * dtime / (1 + rso2_h2o2*dtime*xso2(i,k))
+                      else
+                         pso4_h2o2   = min(xso2(i,k),xh2o2(i,k))
+                      end if                      
+                      
                    end if
 
                    !                   so2_after  = max(xso2(i,k) - pso4_h2o2,0.)
@@ -601,11 +622,22 @@ CONTAINS
 
                    exp_factor = rso2_o3 * (so2_after - xo3(i,k)) * dtime            
 
-                   if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0. ) then
-                      EF          = exp( exp_factor )
-                      pso4_o3     = max(so2_after * xo3(i,k) * ( 1. - EF ) / ( xo3(i,k) -  so2_after * EF ),0.)
-                   else
-                      pso4_o3 = min(so2_after,xo3(i,k))
+                   if ( trop_option%cloud_chem .eq. CLOUD_CHEM_F1P_BUG2 ) then
+                      if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0. ) then
+                         EF          = exp( exp_factor )
+                         pso4_o3     = max(so2_after * xo3(i,k) * ( 1. - EF ) / ( xo3(i,k) -  so2_after * EF ),0.)
+                      else
+                         pso4_o3 = min(so2_after,xo3(i,k))
+                      end if
+                   else                      
+                      if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
+                         EF          = exp( exp_factor )
+                         pso4_o3     = max(so2_after * xo3(i,k) * ( 1. - EF ) / ( xo3(i,k) -  so2_after * EF ),0.)
+                      elseif (abs(exp_factor) .lt. small_value ) then
+                         pso4_o3     = rso2_o3 * xso2(i,k)**2 * dtime / (1 + rso2_o3*dtime*xso2(i,k))
+                      else
+                         pso4_o3 = min(so2_after,xo3(i,k))
+                      end if                      
                    end if
                    !>        
 

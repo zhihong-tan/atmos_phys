@@ -9,7 +9,7 @@ module cloud_chem
   public :: cloud_ph, cloud_so2_chem, cloud_nb_diag
 
   public :: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, CLOUD_CHEM_PH_CUBIC
-  public :: CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG
+  public :: CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2
 
   private
 
@@ -24,6 +24,7 @@ module cloud_chem
   integer, parameter     :: CLOUD_CHEM_LEGACY    = 1
   integer, parameter     :: CLOUD_CHEM_F1P       = 2
   integer, parameter     :: CLOUD_CHEM_F1P_BUG   = 3
+  integer, parameter     :: CLOUD_CHEM_F1P_BUG2  = 4
   
   real*8, parameter      :: const0 = 1.e3/AVOGNO
 
