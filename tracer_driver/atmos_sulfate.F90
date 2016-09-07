@@ -2293,12 +2293,11 @@ end subroutine atmos_SOx_emission
             if ( exp_factor .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
                EF          = exp( exp_factor )
                pso4_o3     = max(xso2 * xo3 * ( 1. - EF ) / ( xo3 -  xso2 * EF ),0.)
-            else (abs(exp_factor) .le. small_value )
+            elseif (abs(exp_factor) .le. small_value ) then
                pso4_o3     = rso2_o3 * xso2**2 * dt / (1 + rso2_o3*dt*xso2)
             else
                pso4_o3 = min(xso2,xo3)
             end if
-
           endif
 
           !>        
