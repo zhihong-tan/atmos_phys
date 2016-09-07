@@ -127,6 +127,9 @@ MODULE UW_CONV_MOD
   integer :: gqt_choice = 0
   real    :: nbuo_max   = -10.
   real    :: plev_for   = 50000.
+  real    :: plev_umf   = 70000.
+  real    :: shallow_umf_thresh = 0.001
+  logical :: do_plev_umf = .false.
   real    :: duration = 10800
   real    :: tau_gust = 7200
   real    :: geff   = 1.
@@ -153,7 +156,7 @@ MODULE UW_CONV_MOD
        cush_ref, do_prog_gust, tau_gust, geff, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
        duration, do_stime, do_dtime, stime0, dtime0, do_subcloud_flx, do_new_subflx, src_choice, gqt_choice,   &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let, &
-       use_pblhttke_avg, use_hlqtsrc_avg, use_capecin_avg, reproduce_old_version
+       use_pblhttke_avg, use_hlqtsrc_avg, use_capecin_avg, reproduce_old_version, do_plev_umf, plev_umf, shallow_umf_thresh
 
   !namelist parameters for UW convective plume
   real    :: rle      = 0.10   ! for critical stopping distance for entrainment
@@ -1235,7 +1238,8 @@ contains
     cpn % stop_at_let = stop_at_let
     cpn % do_limit_wmax= do_limit_wmax
     cpn % plev_for = plev_for
-    if (ntracers > 0) then
+    cpn % plev_umf = plev_umf
+     if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
       allocate ( cpn%wetdep       (ntracers) )
@@ -1899,6 +1903,12 @@ contains
                 endif
 	     endif
 
+	     if (do_plev_umf) then
+ 	     	if (cp%umf_plev .lt. shallow_umf_thresh) then
+                   cbmf_deep = 0
+                endif
+	     endif
+ 
              dpn % do_ppen  = dpc % do_ppen_d
 	     dpn % rpen     = dpc % rpen_d
              dpn % do_pevap = dpc % do_pevap_d

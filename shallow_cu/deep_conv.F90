@@ -94,6 +94,7 @@ contains
     dpn % stop_at_let        = cpn % stop_at_let
     dpn % do_limit_wmax      = cpn % do_limit_wmax
     dpn % plev_for           = cpn % plev_for
+    dpn % plev_umf           = cpn % plev_umf
     dpn % do_detran_zero     = cpn % do_detran_zero
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
