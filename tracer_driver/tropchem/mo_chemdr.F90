@@ -417,7 +417,9 @@ logical                       :: module_is_initialized = .false.
                      coszen, albedo, &
                      cwat, cldfr, &
                      esfact, solar_phase, plonl )
-         else    
+         else   
+
+#ifndef AM3_CHEM
             call fphoto( reaction_rates(:,:,:phtcnt), &
                          pmid, pdel, &
                          tfld, zmid, &
@@ -435,6 +437,25 @@ logical                       :: module_is_initialized = .false.
                          r, &            
                          Time, & 
                          trop_option%time_varying_solarflux)
+#else
+            call fphoto( reaction_rates(:,:,:phtcnt), &
+                         pmid, pdel, &
+                         tfld, zmid, &
+                         col_dens, &
+                         coszen, albedo, &
+                         j_ndx, &
+                         cwat, &
+                         cldfr,  &
+                         esfact, solar_phase, plonl,&           
+                         trop_option%use_lsc_in_fastjx, &
+                         phalf,&
+                         zi,&
+                         pwt , &
+                         sh, &
+                         r)
+
+
+#endif
          end if
    call mpp_clock_end(photo_clock_id)
 
