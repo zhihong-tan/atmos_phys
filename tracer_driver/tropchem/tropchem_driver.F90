@@ -200,7 +200,7 @@ real               :: co2_scale_factor = 1.e-6
 real               :: co2_fixed_year   = -999
 
 character(len=64)  :: cloud_chem_pH_solver     = 'bisection'
-character(len=64)  :: cloud_chem_type          = 'legacy'
+character(len=64)  :: cloud_chem_type          = 'f1p_bug2'
 logical            :: het_chem_fine_aerosol_only = .false.
 real               :: min_lwc_for_cloud_chem     = 1.e-8
 real               :: frac_dust_incloud          = 0
