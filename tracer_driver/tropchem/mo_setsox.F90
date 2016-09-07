@@ -609,7 +609,7 @@ CONTAINS
                       if ( exp_factor .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
                          EF          = exp( exp_factor )
                          pso4_h2o2   = max(xso2(i,k) * xh2o2(i,k) * ( 1. - EF ) / ( xh2o2(i,k) -  xso2(i,k) * EF ),0.)                        
-                      elseif (abs(exp_factor) .lt. small_value ) then
+                      elseif (abs(exp_factor) .le. small_value ) then
                          pso4_h2o2   = rso2_h2o2 * xso2(i,k)**2 * dtime / (1 + rso2_h2o2*dtime*xso2(i,k))
                       else
                          pso4_h2o2   = min(xso2(i,k),xh2o2(i,k))
@@ -633,7 +633,7 @@ CONTAINS
                       if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
                          EF          = exp( exp_factor )
                          pso4_o3     = max(so2_after * xo3(i,k) * ( 1. - EF ) / ( xo3(i,k) -  so2_after * EF ),0.)
-                      elseif (abs(exp_factor) .lt. small_value ) then
+                      elseif (abs(exp_factor) .le. small_value ) then
                          pso4_o3     = rso2_o3 * xso2(i,k)**2 * dtime / (1 + rso2_o3*dtime*xso2(i,k))
                       else
                          pso4_o3 = min(so2_after,xo3(i,k))
