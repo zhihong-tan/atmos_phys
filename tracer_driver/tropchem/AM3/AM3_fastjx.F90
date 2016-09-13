@@ -1,4 +1,4 @@
-module MO_FASTJX_MOD
+module AM3_FASTJX_MOD
 !----------------------------------------------------------------------
 !       FAST-JX Photolysis rate 
 !       Revised by Junfeng Liu
@@ -3677,4 +3677,4 @@ module MO_FASTJX_MOD
                                                                         
       return 
       END  subroutine MATINW                                          
-end module MO_FASTJX_MOD
+end module AM3_FASTJX_MOD
