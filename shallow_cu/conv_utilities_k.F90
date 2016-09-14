@@ -73,7 +73,7 @@ MODULE CONV_UTILITIES_k_MOD
     real, _ALLOCATABLE :: t  (:)_NULL, qv  (:)_NULL, ql  (:)_NULL
     real, _ALLOCATABLE :: qi (:)_NULL, thc (:)_NULL, qct (:)_NULL
     real, _ALLOCATABLE :: thv(:)_NULL, nu  (:)_NULL, leff(:)_NULL
-    real, _ALLOCATABLE :: hl (:)_NULL, buo (:)_NULL, dbuodp(:)_NULL
+    real, _ALLOCATABLE :: hl (:)_NULL, buo (:)_NULL, buog(:)_NULL, dbuodp(:)_NULL
  end type adicloud
 
  public uw_params
@@ -371,6 +371,7 @@ contains
     allocate ( ac%leff  (1:kd)); ac%leff =0.;
     allocate ( ac%hl    (1:kd)); ac%hl   =0.;
     allocate ( ac%buo   (1:kd)); ac%buo  =0.;
+    allocate ( ac%buog  (1:kd)); ac%buog =0.;
     allocate ( ac%dbuodp(1:kd)); ac%dbuodp=0.;
   end subroutine ac_init_k
 
@@ -382,7 +383,7 @@ contains
     ac%t    =0.;    ac%qv   =0.;    ac%ql   =0.;
     ac%qi   =0.;    ac%thc  =0.;    ac%qct  =0.;
     ac%thv  =0.;    ac%nu   =0.;    ac%leff =0.; ac%hl   =0.;
-    ac%buo  =0.;    ac%dbuodp=0.;
+    ac%buo  =0.;    ac%buog =0.;    ac%dbuodp=0.;
   end subroutine ac_clear_k
 
 !#####################################################################
@@ -391,7 +392,7 @@ contains
   subroutine ac_end_k(ac)
     type(adicloud), intent(inout) :: ac
     deallocate (ac%t, ac%qv, ac%ql, ac%qi, ac%thc, ac%qct,  &
-                ac%thv, ac%nu, ac%leff, ac%hl, ac%buo, ac%dbuodp )
+                ac%thv, ac%nu, ac%leff, ac%hl, ac%buo, ac%buog, ac%dbuodp )
   end subroutine ac_end_k
 
 !#####################################################################
@@ -857,12 +858,13 @@ contains
        call findt_k(sd%zs(k),sd%ps(k), hlsrc, qctsrc, thj, ac%qv(k), &
                     ac%ql(k), ac%qi(k), qs, ac%thv(k), doice, Uw_p)
        ac%t(k) = thj*exn_k(sd%ps(k),Uw_p)
-       ac%buo(k) = (ac%thv(k) - sd%thvtop(k))/sd%thvtop(k)*Uw_p%grav
+       ac%buo(k) = ac%thv(k) - sd%thvtop(k)
+       ac%buog(k)= ac%buo(k)/sd%thvtop(k)*Uw_p%grav
     end do
   endif
 
   do k=1,kl-1
-     ac%dbuodp(k)=(ac%buo(k+1)-ac%buo(k))/sd%dp(k)
+     ac%dbuodp(k)=(ac%buog(k+1)-ac%buog(k))/sd%dp(k)
   end do
 
     !Determine the convective inhibition (CIN)

@@ -1343,7 +1343,8 @@ subroutine physics_driver_down (is, ie, js, je, npz,              &
                                 frac_land, rough_mom,             &
                                 frac_open_sea,                    &
                                 albedo,                           &
-                                t_surf_rad, t_ref, q_ref,         &
+                                t_surf_rad,                       & 
+                                t_ref, q_ref,                     &
                                 u_star,    b_star, q_star,        &
                                 dtau_du, dtau_dv,  tau_x,  tau_y, &
                                 Physics_tendency_block,           &
@@ -1580,7 +1581,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call damping_driver (is, js, lat, Time_next, dt, area,        &
                            p_full, p_half, z_full, z_half,          &
                            um, vm, tm, rm(:,:,:,1), rm(:,:,:,1:ntp),&
-                           udt, vdt, tdt, rdt(:,:,:,1), rdt, z_pbl)
+                           z_pbl, udt, vdt, tdt, rdt(:,:,:,1), rdt)
      call mpp_clock_end ( damping_clock )
 
 !---------------------------------------------------------------------

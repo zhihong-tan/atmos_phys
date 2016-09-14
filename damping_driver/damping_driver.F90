@@ -85,6 +85,7 @@ integer :: id_tdt_diss_rdamp,  id_diss_heat_rdamp, &
            id_mom_flux,  id_diss_heat_cgwd                 !stg
 
 integer :: id_udt_topo,   id_vdt_topo,    &
+           id_udtnp_topo, id_vdtnp_topo,  &
            id_taubx_topo, id_tauby_topo,  &
            id_taus_topo
 
@@ -116,9 +117,8 @@ contains
 !#######################################################################
 
  subroutine damping_driver (is, js, lat, Time, delt, area, pfull, phalf, zfull, zhalf, &
-                            u, v, t, q, r,  udt, vdt, tdt, qdt, rdt,  &
-!                                   mask, kbot)
-                            z_pbl,  mask, kbot)
+                            u, v, t, q, r, z_pbl, udt, vdt, tdt, qdt, rdt,  &
+                             mask, kbot)
  
 !-----------------------------------------------------------------------
  integer,         intent(in)                :: is, js
@@ -128,10 +128,11 @@ contains
  real,    intent(in),    dimension(:,:,:)   :: pfull, phalf, &
                                                zfull, zhalf, &
                                                u, v, t, q
+ real,    intent(in),    dimension(:,:)     :: z_pbl !bqx
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real,    intent(in),    dimension(:,:)     :: z_pbl, area 
+ real,    intent(in),    dimension(:,:)     :: area
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -140,6 +141,7 @@ contains
  real, dimension(size(udt,1),size(udt,2))             :: taubx, tauby
  real, dimension(size(udt,1),size(udt,2),size(udt,3)) :: taus
  real, dimension(size(udt,1),size(udt,2),size(udt,3)) :: utnd, vtnd, &
+                                                         utnd_np, vtnd_np, & !bqx
                                                          ttnd, pmass, &
                                                          p2, uxv            !stg
  integer :: k
@@ -277,14 +279,16 @@ contains
 !-----------------------------------------------------------------------
    if (do_topo_drag) then
 
-     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, z_pbl,  &
-                      utnd, vtnd, ttnd, taubx, tauby, taus, kbot )
+     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, lat, z_pbl, & 
+                     utnd, vtnd, utnd_np, vtnd_np, ttnd, taubx, tauby, taus, kbot )
 
      if (use_topo_drag) then  
          if ( kstart > 0 ) then
            do k = kstart, size(u,3)
                 utnd(:,:,k)= 0.0*utnd(:,:,k)
                 vtnd(:,:,k)= 0.0*vtnd(:,:,k)
+                utnd_np(:,:,k)= 0.0*utnd_np(:,:,k)
+                vtnd_np(:,:,k)= 0.0*vtnd_np(:,:,k)
            enddo
          endif 
 
@@ -303,6 +307,17 @@ contains
         used = send_data ( id_vdt_topo, vtnd, Time, is, js, 1, &
                            rmask=mask )
      endif
+!bqx+
+     if ( id_udtnp_topo > 0 ) then
+        used = send_data ( id_udtnp_topo, utnd_np, Time, is, js, 1, &
+                           rmask=mask )
+     endif
+
+     if ( id_vdtnp_topo > 0 ) then
+        used = send_data ( id_vdtnp_topo, vtnd_np, Time, is, js, 1, &
+                           rmask=mask )
+     endif
+!bqx
 
      if ( id_taubx_topo > 0 ) then
        used = send_data ( id_taubx_topo, taubx, Time, is, js )
@@ -531,6 +546,16 @@ endif
    id_vdt_topo = &
    register_diag_field ( mod_name, 'vdt_topo', axes(1:3), Time,        &
                          'v wind tendency for topo wave drag', 'm/s2', &
+                         missing_value=missing_value )
+
+   id_udtnp_topo = &
+   register_diag_field ( mod_name, 'udtnp_topo', axes(1:3), Time,        &
+                         'u wind tendency for non-propagating topo wave drag', 'm/s2', &
+                         missing_value=missing_value )
+
+   id_vdtnp_topo = &
+   register_diag_field ( mod_name, 'vdtnp_topo', axes(1:3), Time,        &
+                         'v wind tendency for non-propagating topo wave drag', 'm/s2', &
                          missing_value=missing_value )
 
    id_taubx_topo = &
