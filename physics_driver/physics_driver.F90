@@ -1,4 +1,4 @@
-                           module physics_driver_mod
+module physics_driver_mod
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -80,6 +80,13 @@ use fms_io_mod,              only: restore_state, &
 use constants_mod,           only: RDGAS
 
 use diag_manager_mod,        only: register_diag_field, send_data
+
+! shared atmospheric package modules:
+
+use atmos_cmip_diag_mod,     only: register_cmip_diag_field_3d, &
+                                   send_cmip_data_3d, &
+                                   cmip_diag_id_type, &
+                                   query_cmip_diag_id
 
 !    shared radiation package modules:
 
@@ -414,6 +421,7 @@ logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has
 integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
 !integer   :: ncol                     ! number of stochastic columns
+integer   ::  nsphum                  ! index for specific humidity tracer
  
 integer   :: num_uw_tracers
 
@@ -438,6 +446,8 @@ integer, dimension(:), allocatable :: id_tracer_phys,         &
                                       id_tracer_phys_vdif_up, &
                                       id_tracer_phys_turb,    &
                                       id_tracer_phys_moist
+
+type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp
 
 type (clouds_from_moist_block_type) :: Restart
 
@@ -999,6 +1009,19 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
          'tdt_phys', axes(1:3), Time,                          &
          'temperature tendency from physics ', &
          'K/s', missing_value=missing_value)
+
+     !-------- CMIP diagnostics (tendencies due to physics) --------
+      ID_tntmp = register_cmip_diag_field_3d ( mod_name, 'tntmp', Time, &
+                  'Tendency of Air Temperature due to Model Physics', 'K s-1', & 
+             standard_name='tendency_of_air_temperature_due_to_model_physics' )
+
+      nsphum = get_tracer_index(MODEL_ATMOS,'sphum')
+      if (nsphum /= NO_TRACER) then
+        ID_tnhusmp = register_cmip_diag_field_3d ( mod_name, 'tnhusmp', Time, &
+                    'Tendency of Specific Humidity due to Model Physics', 's-1', &
+               standard_name='tendency_of_specific_humidity_due_to_model_physics' )
+      endif
+ 
 
       allocate (id_tracer_phys(ntp))
       allocate (id_tracer_phys_vdif_dn(ntp))
@@ -2463,6 +2486,15 @@ real,dimension(:,:),    intent(inout)             :: gust
         call aerosol_dealloc (Aerosol)
       endif
       
+      !------ CMIP diagnostics (tendencies due to physics) ------
+      if (query_cmip_diag_id(ID_tntmp)) then
+        used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js, 1)
+      endif
+      if (query_cmip_diag_id(ID_tnhusmp)) then
+        used = send_cmip_data_3d (ID_tnhusmp, rdt(:,:,:,nsphum), Time_next, is, js, 1)
+      endif
+      
+      
       if (do_cosp) then
         call mpp_clock_begin ( cosp_clock )
         if (Cosp_control%step_to_call_cosp) then
@@ -3667,4 +3699,4 @@ integer                                 :: ierr
 
 
  
-                end module physics_driver_mod
+end module physics_driver_mod
