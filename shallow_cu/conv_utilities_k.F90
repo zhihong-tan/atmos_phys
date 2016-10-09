@@ -32,8 +32,8 @@ MODULE CONV_UTILITIES_k_MOD
     logical  :: coldT, do_gust_qt, use_hlqtsrc_avg, use_capecin_avg
     integer  :: kmax, kinv, ktoppbl, ktopconv, ksrc, src_choice, gqt_choice
     real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, usrc, vsrc, plev_cin, lts, eis, gam, z700
-    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre
-    real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon, p_minmse
+    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre, omg0, omg_avg
+    real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon, p_minmse, plev_omg
     real     :: dpsum, hmint, hm_vadv0
     real     :: pblht_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, numx
     real     :: tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int
@@ -164,6 +164,7 @@ contains
     sd%coldT    = .false.
     sd%kmax     = kd
     sd%plev_cin = 0.0
+    sd%plev_omg = 0.0
     sd%src_choice = 0
     sd%gqt_choice = 0
     sd%ksrc     = 1
@@ -183,6 +184,8 @@ contains
     sd%qint     = 0.0
     sd%delt     = 0.0
     sd%crh      = 0.0
+    sd%omg0     = 0.0
+    sd%omg_avg  = 0.0
     sd%tke      = 0.0
     sd%lat      = 0.0
     sd%lon      = 0.0
@@ -276,6 +279,7 @@ contains
     sd1% ktopconv = sd % ktopconv
     sd1% kmax = sd % kmax
     sd1% plev_cin   = sd % plev_cin
+    sd1% plev_omg   = sd % plev_omg
     sd1% src_choice = sd % src_choice
     sd1% gqt_choice = sd % gqt_choice
     sd1% ksrc = sd % ksrc
@@ -300,6 +304,7 @@ contains
     sd1% pblht_avg = sd % pblht_avg
     sd1% cape_avg  = sd % cape_avg
     sd1% cin_avg   = sd % cin_avg
+    sd1% omg_avg   = sd % omg_avg
 
     sd1% do_gust_qt= sd % do_gust_qt
     sd1% cgust= sd % cgust
@@ -603,6 +608,15 @@ contains
     end do
     sd % crh_fre  = qt_sum / qs_sum
     sd % crh = sd%crh_fre
+
+    tmp=0.; dpsum=0.;
+    do k=sd%kinv, sd%ktopconv
+      if (sd%p(k) .gt. sd%plev_omg) then
+       	  tmp   = tmp + sd % omg(k) * sd%dp(k)
+       	  dpsum = dpsum + sd%dp(k)
+      end if
+    end do
+    sd % omg0 = tmp/dpsum
 
 !determine source air property based on max hm within PBL
     if (sd%src_choice.eq.0) then

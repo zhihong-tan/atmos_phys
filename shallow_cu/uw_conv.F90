@@ -97,6 +97,7 @@ MODULE UW_CONV_MOD
   logical :: do_debug     = .false.
   real    :: cush_ref     = 0.
   real    :: plev_cin     = 60000.
+  real    :: plev_omg     = 60000.
   real    :: pblht0 = 500.
   real    :: lofactor0 = 1.
   integer :: lochoice  = 0
@@ -147,7 +148,7 @@ MODULE UW_CONV_MOD
 
   logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
-  NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, nbuo_max, do_peff_land, &
+  NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, plev_omg, nbuo_max, do_peff_land, &
        do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_convcld,  &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, do_minmse, aerol, tkemin, cldhgt_max_shallow,do_umf_pbl,&
@@ -203,11 +204,12 @@ MODULE UW_CONV_MOD
   real    :: beta       = 1000.
   real    :: tten_max   = 1000.
   real    :: rkm_max    = 20.
+  real    :: rkm_min    = 0.0001
 
   NAMELIST / uw_plume_nml / rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, do_limit_wmax, &
        auto_th0, auto_rate, tcrit, deltaqc0, do_pdfpcp, do_pmadjt, do_emmax, do_pnqv, do_tten_max, rad_crit, emfrac_max, &
        mixing_assumption, mp_choice, de_choice, Nl_land, Nl_ocean, qi_thresh, r_thresh, do_pevap, cfrac, hcevap, rkm_max, &
-       hcevappbl, pblfac, include_emf_s, do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max, scaleh0, beta
+       hcevappbl, pblfac, include_emf_s, do_weffect, do_new_pblfac, weffect, peff_l, peff_i, tten_max, scaleh0, beta, rkm_min
   !namelist parameters for UW convective closure
   integer :: igauss   = 1      ! options for cloudbase massflux closure
                                ! 1: cin/gaussian closure, using TKE to compute CIN.
@@ -320,7 +322,7 @@ MODULE UW_CONV_MOD
        id_hm_vadv_uwc, id_pflx_uwc, id_lhflx_uwc, id_shflx_uwc, id_dbuodp_uws, id_dbuodp_uwd, &
        id_tdt_rad_uwc, id_tdt_dyn_uwc, id_tdt_dif_uwc, id_qdt_dyn_uwc, id_qdt_dif_uwc, &
        id_tdt_rad_int, id_tdt_dyn_int, id_tdt_dif_int, id_qdt_dyn_int, id_qdt_dif_int, &
-       id_pblht_avg, id_hlsrc_avg, id_qtsrc_avg, id_cape_avg, id_cin_avg, id_tke_avg,  &
+       id_pblht_avg, id_hlsrc_avg, id_qtsrc_avg, id_cape_avg, id_cin_avg, id_omg_avg,  &
        id_cpool_uwc, id_bflux_uwc, &
        id_dgz_dyn_uwc, id_ddp_dyn_uwc, id_dgz_dyn_int, id_ddp_dyn_int, id_lts_uwc, &
        id_nbuo_uws, id_buo_uws, id_pdep_uws,                                       &
@@ -658,8 +660,8 @@ contains
          'cin_avg', 'm2/s2', interp_method = "conserve_order1" )
     id_pblht_avg = register_diag_field (mod_name,'pblht_avg', axes(1:2), Time, &
          'pblht_avg', 'm', interp_method = "conserve_order1" )
-    id_tke_avg = register_diag_field (mod_name,'tke_avg', axes(1:2), Time, &
-         'tke_avg', 'm2/s2', interp_method = "conserve_order1" )
+    id_omg_avg = register_diag_field (mod_name,'omg_avg', axes(1:2), Time, &
+         'omg_avg', 'Pa/s', interp_method = "conserve_order1" )
 
     id_cpool_uwc = register_diag_field (mod_name,'cpool_uwc', axes(1:2), Time, &
          'cold pool', 'm2/s3', &
@@ -981,7 +983,7 @@ contains
        uten, vten, rain, snow,                                       & !output
        cmf, liq_pflx, ice_pflx, cldql, cldqi, cldqa,cldqn,           &
        cbmfo, gusto, tkep, pblhto, rkmo, taudpo, exist_shconv,       &
-       exist_dpconv, pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &
+       exist_dpconv, pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, omg_prev, &
        tracers, trtend, uw_wetdep)
 
 !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
@@ -1025,7 +1027,7 @@ contains
     real, intent(in),  dimension(:,:,:)  :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif!miz
 
     integer, intent(inout), dimension(:,:,:)  :: exist_shconv, exist_dpconv
-    real, intent(inout), dimension(:,:,:)  :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev
+    real, intent(inout), dimension(:,:,:)  :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, omg_prev
 
     type(aerosol_type),  intent (in)     :: asol
    
@@ -1085,7 +1087,7 @@ contains
 	 rhos,       &
 	 lhflx,      &
 	 shflx,      &
-         hmint_old,  pblht_avg, tke_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, &
+         hmint_old,  pblht_avg, omg_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, &
          hm_vadv0,   &
          hm_hadv0,   &
          hm_tot0,    &
@@ -1198,6 +1200,7 @@ contains
     cpn % do_tten_max   = do_tten_max
     cpn % tten_max  = tten_max
     cpn % rkm_max   = rkm_max
+    cpn % rkm_min   = rkm_min
     cpn % scaleh0   = scaleh0
     cpn % beta      = beta
     cpn % emfrac_max= emfrac_max
@@ -1321,7 +1324,7 @@ contains
     kmax  = size( tb, 3 )
     sd % kmax=kmax
     sd % plev_cin=plev_cin
-
+    sd % plev_omg=plev_omg
 
     kl=kmax-1
     klm=kl-1
@@ -1347,7 +1350,7 @@ contains
     fero_s=0.; fdro_s=0.; fdrso_s=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0; cmf_s=0.; cfq_s=0.;
     dcapeo=0.; dcino=0.; xpsrc=0.; xhlsrc=0.; xqtsrc=0.; feq_s=0.; feq_d=0.; feq_c=0; rkm_s=0.;
     trtend=0.; trwet=0.; crho=0.; hmo=0.; hms=0.; abu=0.; dbuodp_s=0.; dbuodp_d=0.; 
-    pblht_avg=0.; tke_avg=0.; hlsrc_avg=0.; qtsrc_avg=0.; cape_avg=0.; cin_avg=0.;
+    pblht_avg=0.; omg_avg=0.; hlsrc_avg=0.; qtsrc_avg=0.; cape_avg=0.; cin_avg=0.;
     qldet_s=0.; qidet_s=0.; qadet_s=0.; qndet_s=0.;
     qldet_d=0.; qidet_d=0.; qadet_d=0.; qndet_d=0.;
     dting = 0.; cush_s=-1.; 
@@ -1401,7 +1404,7 @@ contains
 	 qtsrc_avg(i,j)=0.;
 	 cape_avg (i,j)=0.;
 	 cin_avg  (i,j)=0.;
-	 tke_avg  (i,j)=0.;
+	 omg_avg  (i,j)=0.;
 	 do k=1,numx-1
 	    stime(i,j)=stime(i,j)+exist_shconv(i,j,k)
 	    dtime(i,j)=dtime(i,j)+exist_dpconv(i,j,k)
@@ -1410,7 +1413,7 @@ contains
 	    qtsrc_avg(i,j)=qtsrc_avg(i,j)+qtsrc_prev(i,j,k)
 	    cape_avg (i,j)=cape_avg (i,j)+cape_prev (i,j,k)
 	    cin_avg  (i,j)=cin_avg  (i,j)+cin_prev  (i,j,k)
-	    tke_avg  (i,j)=tke_avg  (i,j)+tke_prev  (i,j,k)
+	    omg_avg  (i,j)=omg_avg  (i,j)+omg_prev  (i,j,k)
 	 end do
 	 stime(i,j)=stime(i,j)/(numx-1)
 	 dtime(i,j)=dtime(i,j)/(numx-1)
@@ -1419,7 +1422,7 @@ contains
 	 qtsrc_avg(i,j)=qtsrc_avg(i,j)/(numx-1)
 	 cape_avg (i,j)=cape_avg (i,j)/(numx-1)
 	 cin_avg  (i,j)=cin_avg  (i,j)/(numx-1)
-	 tke_avg  (i,j)=tke_avg  (i,j)/(numx-1)
+	 omg_avg  (i,j)=omg_avg  (i,j)/(numx-1)
 
       	 do k=numx,2,-1
 	    exist_shconv(i,j,k) = exist_shconv(i,j,k-1)
@@ -1429,7 +1432,7 @@ contains
 	    qtsrc_prev  (i,j,k) = qtsrc_prev  (i,j,k-1)
 	    cape_prev   (i,j,k) = cape_prev   (i,j,k-1)
 	    cin_prev    (i,j,k) = cin_prev    (i,j,k-1)
-	    tke_prev    (i,j,k) = tke_prev    (i,j,k-1)
+	    omg_prev    (i,j,k) = omg_prev    (i,j,k-1)
 	 end do
          exist_shconv(i,j,1) = 0
          exist_dpconv(i,j,1) = 0
@@ -1438,7 +1441,7 @@ contains
 	 qtsrc_prev  (i,j,1) = 0.
 	 cape_prev   (i,j,1) = 0.
 	 cin_prev    (i,j,1) = 0.
-	 tke_prev    (i,j,1) = 0.
+	 omg_prev    (i,j,1) = 0.
 
        	 trtend_t=0.; trwet_t=0.;
          do k=1,kmax
@@ -1463,7 +1466,6 @@ contains
          temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
          if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
          tkeo(i,j) = MAX (tkemin, temp_1)
-	 tke_prev(i,j,1)=tkeo(i,j)
 
          cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
@@ -1554,7 +1556,6 @@ contains
 
      	  sd%use_capecin_avg = use_capecin_avg
      	  sd%use_hlqtsrc_avg = use_hlqtsrc_avg
-	  tke_avg  (i,j)=(tke_prev  (i,j,1)+tke_avg  (i,j)*(numx-1))/numx
 	  pblht_avg(i,j)=(pblht_prev(i,j,1)+pblht_avg(i,j)*(numx-1))/numx
           sd%pblht_avg = pblht_avg(i,j)
 	  sd%hlsrc_avg = hlsrc_avg(i,j)
@@ -1566,6 +1567,10 @@ contains
 	  if (use_turb_tke ) sd%tke = tkep(i,j)   !h1g, 2015-08-11
 
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
+
+	  omg_prev(i,j,1)=sd%omg0
+	  omg_avg  (i,j)=(omg_prev(i,j,1)+omg_avg(i,j)*(numx-1))/numx
+	  sd%omg_avg = omg_avg(i,j)
 
           xpsrc (i,j)= sd%psrc
           xhlsrc(i,j)= sd%hlsrc
@@ -1706,9 +1711,9 @@ contains
 	     sd%cin_avg  = cin_avg(i,j)
 	     ac%cin      = cin_avg(i,j)
 	  endif
-	  if (use_pblhttke_avg) then
-	     sd%tke = tke_avg(i,j)
-	  endif
+!	  if (use_pblhttke_avg) then
+!	     sd%tke = tke_avg(i,j)
+!	  endif
 
           cbmf_old=cbmfo(i,j); cc%cbmf=cbmf_old;
 
@@ -1865,7 +1870,7 @@ contains
              dcrh0  = crh_max-crh_th
 	     if (del_crh .gt. 0.) then
 	        cbmf_deep = 0.0001 !first assuming existence of deep convective cloud base mass flux
-	        dcrh = del_crh/dcrh0; !dcrh = dcrh**(1./norder)
+	        dcrh = del_crh/dcrh0; dcrh = dcrh**(norder) !dcrh = dcrh**(1./norder)
 		if (dcrh.gt.1) then
 		   rkm_dp = dpc%rkm_dp2
 	   	else
@@ -2403,7 +2408,7 @@ contains
     used = send_data( id_qtsrc_avg,        qtsrc_avg,          Time, is, js)
     used = send_data( id_cape_avg,         cape_avg,           Time, is, js)
     used = send_data( id_cin_avg,          cin_avg,            Time, is, js)
-    used = send_data( id_tke_avg,          tke_avg,            Time, is, js)
+    used = send_data( id_omg_avg,          omg_avg,            Time, is, js)
     used = send_data( id_pblht_avg,        pblht_avg,          Time, is, js)
 
     used = send_data( id_tdt_pevap_uwc,    tten_pevap,         Time, is, js, 1)
