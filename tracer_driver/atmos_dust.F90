@@ -22,6 +22,7 @@ use              fms_mod, only : write_version_number, mpp_pe,  mpp_root_pe, &
                                  NOTE, FATAL
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data, register_diag_field
+use  atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use   tracer_manager_mod, only : get_number_tracers, get_tracer_index, &
                                  get_tracer_names, set_tracer_atts, & 
                                  query_method, NO_TRACER
@@ -46,7 +47,7 @@ public  atmos_dust_sourcesink, atmos_dust_init, atmos_dust_end, &
 
 public do_dust, n_dust_tracers, dust_tracers
 
-character(len=6), parameter :: module_name = 'tracer'
+character(len=7), parameter :: module_name = 'tracers'
 
 ! data type to hold the individual dust tracer parameters
 type :: dust_data_type
@@ -81,6 +82,7 @@ type(dust_data_type), allocatable :: dust_tracers(:) ! parameters for specific d
 type(interpolate_type),save       :: dust_source_interp
 ! ---- identification numbers for diagnostic fields ----
 integer :: id_dust_source, id_dust_emis, id_dust_ddep
+integer :: id_emidust, id_drydust ! cmip
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -188,20 +190,30 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
           + dust_tracers(i)%dust_setl(is:ie,js:je) + pwt(:,:,kd)*dsinku(:,:,ndust) ! shouldn't kd be kbot?
 
 !     all_dust_setl(:,:) = 1.0-frac_land(:,:)  !The exchanged flux of this becomes >1 at some points within ocean near shore!!
-     call atmos_dust_drydep_flux_set(all_dust_setl, is,ie,js,je)
      
      if (id_dust_emis > 0) then
         ! accumulate total dust emission flux
         all_dust_emis(:,:) = all_dust_emis(:,:) + dust_emis(:,:) 
      endif
   enddo
-  
+
+  call atmos_dust_drydep_flux_set(all_dust_setl, is,ie,js,je)
+ 
   if (id_dust_ddep > 0) then
      used = send_data (id_dust_ddep, all_dust_setl(:,:), Time, is_in=is, js_in=js)
   endif
   if (id_dust_emis > 0) then
      used = send_data (id_dust_emis, all_dust_emis(:,:), Time, is_in=is, js_in=js)
   endif
+
+  ! cmip variables
+  if (id_drydust) then
+     used = send_data (id_drydust, all_dust_setl(:,:), Time, is_in=is, js_in=js)
+  endif
+  if (id_emidust > 0) then
+     used = send_data (id_emidust, all_dust_emis(:,:), Time, is_in=is, js_in=js)
+  endif
+
 end subroutine atmos_dust_sourcesink
 
 
@@ -316,6 +328,7 @@ subroutine atmos_dust_sourcesink1 ( &
           + ( setl(1:kb-1) - setl(2:kb) )/pwt(i,j,2:kb)*mtv
      endif
      dust_setl(i,j)  = setl(kb)          ! at the bottom of the atmos
+     rho_air = air_dens(kb)           ! rho_air is not defined
      dsetl_dtr(i,j) = rho_air/mtv*vdep(kb) ! derivative of settling flux w.r.t tracer conc
      if (do_surf_exch) &
        setl(kb) = setl(kb)*(1-frac_land(i,j)) ! settlement tendency in the  
@@ -568,6 +581,15 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
       'dust_emis', axes(1:2), Time, &
       'total emission of dust', 'kg/m2/s')
 
+  ! register cmip variables
+  id_drydust = register_cmip_diag_field_2d ( module_name, 'drydust', Time, &
+                              'Dry Deposition Rate of Dust', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_due_to_dry_deposition')
+
+  id_emidust = register_cmip_diag_field_2d ( module_name, 'emidust', Time, &
+                              'Total Emission Rate of Dust', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_due_to_emission')
+
  
   if (do_emission) then
      call interpolator_init (dust_source_interp, trim(dust_source_filename),  &
@@ -652,16 +674,16 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
    !
 
    if (ind > 0) then
-      ind_dry_dep_lith_dust_flux = aof_set_coupler_flux('dry_dep_lith',     &
+      ind_dry_dep_lith_dust_flux = aof_set_coupler_flux('dry_dep_lith', &
            flux_type = 'air_sea_deposition', implementation = 'dry',    &
            atm_tr_index = ind,                                          &
-           param = (/ 1.0,1.0 /),                          &
+           mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
            caller = trim(mod_name) // '(' // trim(sub_name) // ')')
 
-      ind_wet_dep_lith_dust_flux = aof_set_coupler_flux('wet_dep_lith',     &
+      ind_wet_dep_lith_dust_flux = aof_set_coupler_flux('wet_dep_lith', &
            flux_type = 'air_sea_deposition', implementation = 'wet',    &
            atm_tr_index = ind,                                          &
-           param = (/ 1.0,1.0 /),                          &
+           mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
            caller = trim(mod_name) // '(' // trim(sub_name) // ')')
    endif
    endif !if(do_esm_dust_flux)
@@ -763,12 +785,14 @@ end subroutine atmos_dust_endts
 subroutine atmos_dust_wetdep_flux_set(array, is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array
   integer,              intent(in) :: is,ie,js,je
+  if (n_dust_tracers == 0) return ! nothing to do
   wet_dep_lith_dust_flux(is:ie,js:je) = array(is:ie,js:je)
 end subroutine atmos_dust_wetdep_flux_set
 
 subroutine atmos_dust_drydep_flux_set(array, is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array
   integer,              intent(in) :: is,ie,js,je
+  if (n_dust_tracers == 0) return ! nothing to do
   dry_dep_lith_dust_flux(is:ie,js:je) = array(is:ie,js:je)
 end subroutine atmos_dust_drydep_flux_set
 

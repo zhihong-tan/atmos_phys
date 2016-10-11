@@ -19,6 +19,7 @@ use              fms_mod, only : write_version_number, mpp_pe,  mpp_root_pe, &
                                  NOTE, FATAL
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data, register_diag_field
+use  atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use   tracer_manager_mod, only : get_number_tracers, get_tracer_index, &
                                  get_tracer_names, set_tracer_atts, & 
                                  query_method, NO_TRACER
@@ -38,7 +39,7 @@ public do_seasalt, n_seasalt_tracers, seasalt_tracers
 !---- version number -----
 character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
-character(len=6), parameter :: module_name = 'tracer'
+character(len=7), parameter :: module_name = 'tracers'
 
 ! data type to hold the individual seasalt tracer parameters
 type :: seasalt_data_type
@@ -59,6 +60,7 @@ integer :: n_seasalt_tracers = 0 ! number of seasalt tracers
 type(seasalt_data_type), allocatable :: seasalt_tracers(:) ! parameters for specific seasalt tracers
 ! ---- identification numbers for diagnostic fields ----
 integer :: id_seasalt_emis, id_seasalt_ddep
+integer :: id_emiss, id_dryss ! cmip
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -185,12 +187,12 @@ subroutine atmos_sea_salt_sourcesink ( lon, lat, ocn_flx_fraction, pwt, &
      endif
 
      ! Accumulate total emission and deposition fluxes for output
-     if (id_seasalt_ddep > 0) then
+     if (id_seasalt_ddep > 0 .or. id_dryss > 0) then
         ! accumulate total seasalt deposition flux
         all_seasalt_setl(:,:) = all_seasalt_setl(:,:) &
                + seasalt_setl(:,:) + pwt(:,:,kd)*dsinku(:,:,nseasalt) ! shouldn't kd be kbot?
      endif
-     if (id_seasalt_emis > 0) then
+     if (id_seasalt_emis > 0 .or. id_emiss > 0) then
         ! accumulate total seasalt emission flux
         all_seasalt_emis(:,:) = all_seasalt_emis(:,:) + seasalt_emis(:,:) 
      endif
@@ -202,6 +204,16 @@ subroutine atmos_sea_salt_sourcesink ( lon, lat, ocn_flx_fraction, pwt, &
   if (id_seasalt_emis > 0) then
      used = send_data (id_seasalt_emis, all_seasalt_emis(:,:), Time, is_in=is, js_in=js)
   endif
+
+  ! cmip variables
+  if (id_dryss > 0) then
+     used = send_data (id_dryss, all_seasalt_setl(:,:), Time, is_in=is, js_in=js)
+  endif
+  if (id_emiss > 0) then
+     used = send_data (id_emiss, all_seasalt_emis(:,:), Time, is_in=is, js_in=js)
+  endif
+  
+
 end subroutine atmos_sea_salt_sourcesink
 
 
@@ -674,6 +686,15 @@ subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
   id_seasalt_emis = register_diag_field ( module_name, &
       'seasalt_emis', axes(1:2), Time, &
       'total emission of seasalt', 'kg/m2/s')
+
+  ! cmip variables
+  id_dryss = register_cmip_diag_field_2d ( module_name, 'dryss', Time, &
+                                  'Dry Deposition Rate of Seasalt', 'kg m-2 s-1', &
+             standard_name='tendency_of_atmosphere_mass_content_of_seasalt_dry_aerosol_due_to_dry_deposition')
+
+  id_emiss = register_cmip_diag_field_2d ( module_name, 'emiss', Time, &
+                                  'Total Emission Rate of Seasalt', 'kg m-2 s-1', &
+             standard_name='tendency_of_atmosphere_mass_content_of_seasalt_dry_aerosol_due_to_emission')
 
  
   do_seasalt = .TRUE.

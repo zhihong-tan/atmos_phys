@@ -108,6 +108,12 @@ use time_manager_mod,      only : time_type, &
                                   get_date, get_date_julian, &
                                   real_to_time_type
 use diag_manager_mod,      only : register_diag_field, send_data
+use atmos_cmip_diag_mod,   only : register_cmip_diag_field_3d, &
+                                  register_cmip_diag_field_2d, &
+                                  send_cmip_data_3d, &
+                                  cmip_diag_id_type, &
+                                  query_cmip_diag_id
+
 use astronomy_mod,         only : astronomy_init, diurnal_solar
 use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_number_tracers, &
@@ -203,6 +209,7 @@ public  atmos_tracer_driver,            &
         atmos_tracer_driver_end,        &
         atmos_tracer_flux_init,         &
         atmos_tracer_driver_gather_data, &
+        atmos_tracer_driver_gather_data_down, &
         atmos_tracer_has_surf_setl_flux, &
         get_atmos_tracer_surf_setl_flux
 
@@ -269,6 +276,8 @@ integer :: nNH4NO3   =0
 integer :: nNH4      =0
 integer :: nDMS_cmip =0
 integer :: nSO2_cmip =0
+integer :: nSO4_cmip =0
+integer :: nNH3_cmip =0
 integer :: noh       =0
 integer :: ncodirect =0    
 integer :: ne90 =0          
@@ -313,6 +322,10 @@ integer :: id_nh4no3_cmipv2, id_nh4_cmipv2
 integer :: id_so2_cmip, id_dms_cmip
 integer :: id_so2_cmipv2, id_dms_cmipv2
 
+ type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
+ integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
+ integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
+            id_drynh4, id_drybc, id_drypoa, id_drysoa
 !-----------------------------------------------------------------------
 type(time_type) :: Time
 
@@ -668,43 +681,110 @@ character(len=32) :: tracer_units, tracer_name
          end if
       enddo
 
-      if (id_om_ddep > 0) then
+      if (id_om_ddep > 0 .and. nomphilic > 0 .and. nomphobic > 0) then
         used  = send_data (id_om_ddep,  &
          pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic)),  &
                                               Time_next, is_in=is, js_in=js)
       endif
-      if (id_bc_ddep > 0) then
+      if (id_bc_ddep > 0 .and. nbcphilic > 0 .and. nbcphobic > 0) then
         used  = send_data (id_bc_ddep,  &
          pwt(:,:,kd)*(dsinku(:,:,nbcphilic) + dsinku(:,:,nbcphobic)),  &
                                                Time_next, is_in=is, js_in=js)
       endif
-      if (id_nh4_ddep_cmip > 0) then
+      if (id_nh4_ddep_cmip > 0 .and. nNH4NO3 > 0 .and. nNH4 > 0) then
         used  = send_data (id_nh4_ddep_cmip,  &
         0.018*1.0e03*pwt(:,:,kd)*(dsinku(:,:,nNH4NO3) + dsinku(:,:,nNH4))/WTMAIR,  &
                                               Time_next, is_in=is, js_in=js)
       endif
 
+      !---- cmip variables ----
+      if (id_dryso2 > 0) then
+        if (nSO2_cmip > 0) then
+          used = send_data (id_dryso2, 0.064*1.e3*pwt(:,:,kd)*dsinku(:,:,nSO2_cmip)/WTMAIR, &
+                          Time_next, is_in=is, js_in=js)
+        else if (nSO2 > 0) then ! fast-aerosol simpleSO2
+          used = send_data (id_dryso2, 0.064*1.e3*pwt(:,:,kd)*dsinku(:,:,nSO2)/WTMAIR, &
+                          Time_next, is_in=is, js_in=js)
+        endif
+      endif
+      if (id_dryso4 > 0) then
+        if (nSO4_cmip > 0) then
+          used = send_data (id_dryso4, 0.096*1.e3*pwt(:,:,kd)*dsinku(:,:,nSO4_cmip)/WTMAIR, &
+                            Time_next, is_in=is, js_in=js)
+        else if (nSO4 > 0) then ! fast-aerosol simpleSO4
+          used = send_data (id_dryso4, 0.096*1.e3*pwt(:,:,kd)*dsinku(:,:,nSO4)/WTMAIR, &
+                            Time_next, is_in=is, js_in=js)
+        endif
+      endif
+      if (id_drydms > 0) then
+        if (nDMS_cmip > 0) then
+          used = send_data (id_drydms, 0.062*1.e3*pwt(:,:,kd)*dsinku(:,:,nDMS_cmip)/WTMAIR, &
+                          Time_next, is_in=is, js_in=js)
+        else if (nDMS > 0) then ! fast-aerosol simpleDMS
+          used = send_data (id_drydms, 0.062*1.e3*pwt(:,:,kd)*dsinku(:,:,nDMS)/WTMAIR, &
+                          Time_next, is_in=is, js_in=js)
+        endif
+      endif
+      if (id_drynh3 > 0 .and. nNH3_cmip > 0) then
+        used = send_data (id_drynh3, 0.017*1.e3*pwt(:,:,kd)*dsinku(:,:,nNH3_cmip)/WTMAIR, &
+                          Time_next, is_in=is, js_in=js)
+      endif
+      if (id_drysoa > 0 .and. nSOA > 0) then
+        used = send_data (id_drysoa, pwt(:,:,kd)*dsinku(:,:,nSOA), Time_next, is_in=is, js_in=js)
+      endif
+
+      if (id_drynh4 > 0 .and. nNH4NO3 > 0 .and. nNH4 > 0) then  ! same as nh4_ddep_cmip
+        used  = send_data (id_drynh4,  &
+                   0.018*1.e3*pwt(:,:,kd)*(dsinku(:,:,nNH4NO3)+dsinku(:,:,nNH4))/WTMAIR,  &
+                              Time_next, is_in=is, js_in=js)
+      endif
+      if (id_drybc > 0 .and. nbcphilic > 0 .and. nbcphobic > 0) then  ! same as bc_ddep
+        used  = send_data (id_bc_ddep,  &
+           pwt(:,:,kd)*(dsinku(:,:,nbcphilic) + dsinku(:,:,nbcphobic)),  &
+                                               Time_next, is_in=is, js_in=js)
+      endif
+      if (id_drypoa > 0 .and. nomphilic > 0 .and. nomphobic > 0) then
+        used  = send_data (id_drypoa,  &
+            pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic)),  &
+                                     Time_next, is_in=is, js_in=js)
+      endif
+
 !----------------------------------------------------------------------
 !   output the nh4no3 and nh4 loads.
 !----------------------------------------------------------------------
-      if(id_nh4_col > 0) then
-        suma = 0.
-        do k=1,kd
-          suma(:,:) = suma(:,:) + pwt(:,:,k)*(tracer(:,:,k,nNH4) + &
-                           tracer(:,:,k,nNH4NO3))
-        end do
-        used  = send_data (id_nh4_col,  &
-               0.018*1.0e03*suma(:,:)/WTMAIR,  &
-                                              Time_next, is_in=is, js_in=js)
+      if (nNH4NO3 > 0 .and. nNH4 > 0) then
+        if (id_nh4_col > 0 .or. id_loadnh4 > 0) then
+          suma = 0.
+          do k=1,kd
+            suma(:,:) = suma(:,:) + pwt(:,:,k)*(tracer(:,:,k,nNH4) + &
+                             tracer(:,:,k,nNH4NO3))
+          end do
+          suma(:,:) = 0.018*1.0e03*suma(:,:)/WTMAIR
+          if (id_nh4_col > 0) then
+            used  = send_data (id_nh4_col, suma, Time_next, is_in=is, js_in=js)
+          endif
+          ! cmip named field
+          if (id_loadnh4 > 0) then
+            used  = send_data (id_loadnh4, suma, Time_next, is_in=is, js_in=js)
+          endif
+        endif
       endif
-      if(id_nh4no3_col > 0) then
-        suma = 0.
-        do k=1,kd
-          suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,nNH4NO3)
-        end do
-        used  = send_data (id_nh4no3_col,  &
-                  0.062*1.0e03*suma(:,:)/WTMAIR,  &
-                                              Time_next, is_in=is, js_in=js)
+
+      if (nNH4NO3 > 0) then
+        if (id_nh4no3_col > 0 .or. id_loadno3 > 0) then
+          suma = 0.
+          do k=1,kd
+            suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,nNH4NO3)
+          end do
+          suma(:,:) = 0.062*1.0e03*suma(:,:)/WTMAIR
+          if (id_nh4no3_col > 0) then
+            used  = send_data (id_nh4no3_col, suma(:,:), Time_next, is_in=is, js_in=js)
+          endif
+          ! cmip named field
+          if (id_loadno3 > 0) then
+            used  = send_data (id_loadno3, suma(:,:), Time_next, is_in=is, js_in=js)
+          endif
+        endif
       endif
 
 !----------------------------------------------------------------------
@@ -752,6 +832,57 @@ character(len=32) :: tracer_units, tracer_name
                 0.062*1.0e03*rho(:,:,:)*tracer(:,:,:,nDMS_cmip)/WTMAIR,  &
                                          Time_next, is_in=is, js_in=js, ks_in=1)
      endif
+
+     !---- cmip named variables ----
+
+     if (nNH4NO3 > 0 .and. nNH4 > 0) then
+       ! concentration
+       if (query_cmip_diag_id(ID_concnh4)) then
+         used = send_cmip_data_3d (ID_concnh4,  &
+                 0.018*1.0e03*rho(:,:,:)*(tracer(:,:,:,nNH4NO3) + tracer(:,:,:,nNH4)) /WTMAIR,  &
+                                   Time_next, is_in=is, js_in=js, ks_in=1)
+       endif
+       ! surface concentration (lowest level)
+       if (id_sconcnh4 > 0) then
+         used = send_data (id_sconcnh4, &
+             0.018*1.0e03*rho(:,:,kd)*(tracer(:,:,kd,nNH4NO3) + tracer(:,:,kd,nNH4)) /WTMAIR,  &
+                                 Time_next, is_in=is, js_in=js)
+       endif
+     endif
+
+     if (nNH4NO3 > 0) then
+       if (query_cmip_diag_id(ID_concno3)) then
+         used = send_cmip_data_3d ( ID_concno3,  &
+                0.062*1.0e03*rho(:,:,:)*tracer(:,:,:,nNH4NO3)/WTMAIR,  &
+                                 Time_next, is_in=is, js_in=js, ks_in=1)
+       endif
+       ! cmip surface concentration (lowest level)
+       if (id_sconcno3 > 0) then
+         used = send_data (id_sconcno3, &
+                0.062*1.0e03*rho(:,:,kd)*tracer(:,:,kd,nNH4NO3)/WTMAIR,  &
+                                 Time_next, is_in=is, js_in=js)
+       endif
+     endif
+
+     if (query_cmip_diag_id(ID_concso2)) then
+       if (nSO2_cmip > 0) then
+         used = send_cmip_data_3d ( ID_concso2, tracer(:,:,:,nSO2_cmip), &
+                                    Time_next, is_in=is, js_in=js, ks_in=1)
+       else if (nSO2 > 0) then ! fast-aerosol simpleSO2
+         used = send_cmip_data_3d ( ID_concso2, tracer(:,:,:,nSO2), &
+                                    Time_next, is_in=is, js_in=js, ks_in=1)
+       endif
+     endif
+     if (query_cmip_diag_id(ID_concdms)) then
+       if (nDMS_cmip > 0) then
+         used = send_cmip_data_3d ( ID_concdms, tracer(:,:,:,nDMS_cmip), &
+                                Time_next, is_in=is, js_in=js, ks_in=1)
+       else if (nDMS > 0) then ! fast-aerosol simpleDMS
+         used = send_cmip_data_3d ( ID_concdms, tracer(:,:,:,nDMS), &
+                                Time_next, is_in=is, js_in=js, ks_in=1)
+       endif
+     endif
+
 
 !------------------------------------------------------------------------
 ! Compute radon source-sink tendency
@@ -1277,14 +1408,16 @@ type(time_type), intent(in)                                :: Time
         tr_nbr_sulfate(5)=nMSA
         do_tracer_sulfate(5)=.true.
       endif
-      nnH4NO3   = get_tracer_index(MODEL_ATMOS,'nh4no3')
-      nnH4      = get_tracer_index(MODEL_ATMOS,'nh4')
+      nNH4NO3   = get_tracer_index(MODEL_ATMOS,'nh4no3')
+      nNH4      = get_tracer_index(MODEL_ATMOS,'nh4')
       nSOA      = get_tracer_index(MODEL_ATMOS,'SOA')
       nsf6      = get_tracer_index(MODEL_ATMOS,'sf6')
       nch3i     = get_tracer_index(MODEL_ATMOS,'ch3i')
       nco2      = get_tracer_index(MODEL_ATMOS,'co2')
       nDMS_cmip = get_tracer_index(MODEL_ATMOS,'DMS')
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
+      nSO4_cmip = get_tracer_index(MODEL_ATMOS,'so4')
+      nNH3_cmip = get_tracer_index(MODEL_ATMOS,'nh3')
       noh       = get_tracer_index(MODEL_ATMOS,'oh')
       ncodirect = get_tracer_index(MODEL_ATMOS,'codirect')
       ne90      = get_tracer_index(MODEL_ATMOS,'e90')
@@ -1424,6 +1557,74 @@ type(time_type), intent(in)                                :: Time
       id_dms_cmipv2  = register_diag_field (mod_name, &
           'dms_cmipv2', axes(1:3), Time, &
           'DMS', 'kg/m3')
+
+      !---- register cmip named variables ----
+
+      ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
+                   'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
+                   standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+
+      ID_concso2 = register_cmip_diag_field_3d ( mod_name, &
+                   'concso2', Time, 'Mole Fraction of SO2', '1.0', &
+                   standard_name='mole_fraction_of_sulfur_dioxide_in_air')
+
+      ID_concdms = register_cmip_diag_field_3d ( mod_name, &
+                   'concdms', Time, 'Mole Fraction of DMS', '1.0', &
+                    standard_name='mole_fraction_of_dimethyl_sulfide_in_air')
+
+      ID_concnh4 = register_cmip_diag_field_3d ( mod_name, &
+                   'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
+                   standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+
+      id_sconcno3 = register_cmip_diag_field_2d ( mod_name, &
+                  'sconcno3', Time, 'Surface Concentration of NO3', 'kg m-3', &
+                  standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+
+      id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, & 
+                  'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
+                  standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+
+      id_loadno3 = register_cmip_diag_field_2d ( mod_name, &
+                   'loadno3', Time, 'Load of NO3', 'kg m-2', &
+                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol')
+
+      id_loadnh4 = register_cmip_diag_field_2d ( mod_name, &
+                   'loadnh4', Time, 'Load of NH4', 'kg m-2', &
+                   standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
+
+      id_dryso2 = register_cmip_diag_field_2d ( mod_name, &
+                     'dryso2', Time, 'Dry Deposition Rate of SO2', 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_dry_deposition')
+
+      id_dryso4 = register_cmip_diag_field_2d ( mod_name, &
+                    'dryso4', Time, 'Dry Deposition Rate of SO4', 'kg m-2 s-1', &
+                    standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_dry_deposition')
+
+      id_drydms = register_cmip_diag_field_2d ( mod_name, &
+                    'drydms', Time, 'Dry Deposition Rate of DMS', 'kg m-2 s-1', &
+                    standard_name='tendency_of_atmosphere_mass_content_of_dimethyl_sulfide_due_to_dry_deposition')
+
+      id_drynh3 = register_cmip_diag_field_2d ( mod_name, &
+                    'drynh3', Time, 'Dry Deposition Rate of NH3', 'kg m-2 s-1', &
+                    standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_dry_deposition')
+
+      id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
+                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_due_to_dry_deposition')
+
+      id_drybc = register_cmip_diag_field_2d ( mod_name, &
+                  'drybc', Time, 'Dry Deposition Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_due_to_dry_deposition')
+
+      id_drypoa = register_cmip_diag_field_2d ( mod_name, &
+                  'drypoa', Time, 'Dry Deposition Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_dry_deposition')
+
+      id_drysoa = register_cmip_diag_field_2d ( mod_name, &
+                  'drysoa', Time, 'Dry Deposition Rate of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_due_to_dry_deposition')
+      !----
+
 !<f1p: tracer diagnostics
       allocate( id_tracer_diag(nt) )
       id_tracer_diag(:) = 0
@@ -1613,11 +1814,25 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 !-----------------------------------------------------------------------
 
   call atmos_co2_gather_data(gas_fields, tr_bot)
-  call atmos_dust_gather_data(gas_fields, tr_bot)
 
 !-----------------------------------------------------------------------
 
  end subroutine atmos_tracer_driver_gather_data
+
+ subroutine atmos_tracer_driver_gather_data_down(gas_fields, tr_bot)
+
+use coupler_types_mod, only: coupler_2d_bc_type
+
+type(coupler_2d_bc_type), intent(inout) :: gas_fields
+real, dimension(:,:,:), intent(in)      :: tr_bot
+
+!-----------------------------------------------------------------------
+
+  call atmos_dust_gather_data(gas_fields, tr_bot)
+
+!-----------------------------------------------------------------------
+
+ end subroutine atmos_tracer_driver_gather_data_down
 ! </SUBROUTINE>
 !######################################################################
 ! given a tracer index, returns true if this tracer has non-zero 

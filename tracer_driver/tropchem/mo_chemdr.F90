@@ -445,7 +445,7 @@ logical                       :: module_is_initialized = .false.
                          j_ndx, &
                          cwat, &
                          cldfr,  &
-                         esfact, solar_phase, plonl,&           
+                         esfact, solar_phase, plonl,&
                          trop_option%use_lsc_in_fastjx, &
                          phalf,&
                          zi,&

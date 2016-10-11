@@ -51,6 +51,7 @@ use           diag_manager_mod, only : send_data,            &
                                        register_diag_field,  &
                                        register_static_field, &
                                        get_base_time
+use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,     &
                                        get_tracer_names,     &
                                        query_method,         &
@@ -110,8 +111,8 @@ use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
 use fms_io_mod, only: read_data
 
 use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
-                      CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P, &
-                      CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_LEGACY
+                      CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P,&
+                      CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
 implicit none
@@ -365,6 +366,7 @@ integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
 integer :: id_co_emis_cmip2, id_no_emis_cmip2
 integer :: id_so2_emis_cmip2, id_nh3_emis_cmip2
+integer :: id_emico, id_emino, id_emiso2, id_eminh3
 integer :: id_glaiage, id_gtemp, id_glight, id_tsfc, id_fsds, id_ctas, id_cfsds
 integer :: isop_oldmonth = 0
 logical :: newmonth            
@@ -804,11 +806,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
              used = send_data(id_no_emis_cmip2,emisz(:,:,n)*1.0e04*0.030/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
            endif
+          !if (id_emino > 0) then ! not an official cmip variable
+          !  used = send_data(id_emino, emisz(:,:,n)*1.0e04*0.030/AVOGNO, Time_next, is_in=is,js_in=js)
+          !endif
          endif
          if (tracnam(n) == 'CO') then
            if (id_co_emis_cmip2 > 0) then
              used = send_data(id_co_emis_cmip2,emisz(:,:,n)*1.0e04*0.028/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
+           endif
+           if (id_emico > 0) then
+             used = send_data(id_emico, emisz(:,:,n)*1.0e04*0.028/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
          if (tracnam(n) == 'SO2') then
@@ -816,11 +824,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
              used = send_data(id_so2_emis_cmip2,emisz(:,:,n)*1.0e04*0.064/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
            endif
+           if (id_emiso2 > 0) then
+             used = send_data(id_emiso2, emisz(:,:,n)*1.0e04*0.064/AVOGNO, Time_next, is_in=is,js_in=js)
+           endif
          endif
          if (tracnam(n) == 'NH3') then
            if (id_nh3_emis_cmip2 > 0) then
              used = send_data(id_nh3_emis_cmip2,emisz(:,:,n)*1.0e04*0.017/AVOGNO,Time_next, &
                                                   is_in=is,js_in=js)
+           endif
+           if (id_eminh3 > 0) then
+             used = send_data(id_eminh3, emisz(:,:,n)*1.0e04*0.017/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
    end do
@@ -1656,6 +1670,8 @@ elseif ( trim(cloud_chem_type) == 'f1p' ) then
    trop_option%cloud_chem = CLOUD_CHEM_F1P
 elseif ( trim(cloud_chem_type) == 'f1p_bug' ) then
    trop_option%cloud_chem = CLOUD_CHEM_F1P_BUG
+elseif ( trim(cloud_chem_type) == 'f1p_bug2' ) then
+   trop_option%cloud_chem = CLOUD_CHEM_F1P_BUG2
 end if
 
 !cloud chem pH solver
@@ -1957,38 +1973,6 @@ end if
          end if
       end if
 
-!fp
-!CO2           
-      if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
-         co2_t%use_fix_value  = .false.
-         !read from file
-         flb = open_namelist_file( 'INPUT/' // trim(co2_filename) )
-         read(flb,FMT='(i12)') series_length
-         allocate( co2_t%gas_value(series_length), co2_t%gas_time(series_length) )
-         do n = 1,series_length
-            read (flb, FMT = '(2f12.4)') input_time, co2_t%gas_value(n)
-            year = INT(input_time)
-            Year_t = set_date(year,1,1,0,0,0)
-            diy = days_in_year (Year_t)
-            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
-            co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
-         end do
-         call close_file(flb)
-         if (co2_scale_factor .gt. 0) then
-            co2_t%gas_value = co2_t%gas_value * co2_scale_factor
-         end if
-         if (co2_fixed_year .gt. 0) then
-            co2_t%use_fix_time = .true.
-            year = INT(fixed_year)
-            Year_t = set_date(year,1,1,0,0,0)
-            diy = days_in_year (Year_t)
-            extra_seconds = (fixed_year - year)*diy*SECONDS_PER_DAY 
-            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
-         end if
-      else
-         co2_t%use_fix_value  = .true.
-         co2_t%fixed_value    = co2_fixed_value
-      end if
 !-----------------------------------------------------------------------
 !     ... Initial conditions
 !-----------------------------------------------------------------------
@@ -2066,7 +2050,41 @@ end if
       end if
          
    end do
-   
+  
+!move CO2 input out of the loop of "do i = 1,pcnstm1", 2016-07-25
+!fp
+!CO2           
+      if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
+         co2_t%use_fix_value  = .false.
+         !read from file
+         flb = open_namelist_file( 'INPUT/' // trim(co2_filename) )
+         read(flb,FMT='(i12)') series_length
+         allocate( co2_t%gas_value(series_length), co2_t%gas_time(series_length) )
+         do n = 1,series_length
+            read (flb, FMT = '(2f12.4)') input_time, co2_t%gas_value(n)
+            year = INT(input_time)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
+            co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
+         end do
+         call close_file(flb)
+         if (co2_scale_factor .gt. 0) then
+            co2_t%gas_value = co2_t%gas_value * co2_scale_factor
+         end if
+         if (co2_fixed_year .gt. 0) then
+            co2_t%use_fix_time = .true.
+            year = INT(co2_fixed_year)
+            Year_t = set_date(year,1,1,0,0,0)
+            diy = days_in_year (Year_t)
+            extra_seconds = (co2_fixed_year - year)*diy*SECONDS_PER_DAY 
+            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
+         end if
+      else
+         co2_t%use_fix_value  = .true.
+         co2_t%fixed_value    = co2_fixed_value
+      end if
+ 
 !-----------------------------------------------------------------------
 !     ... Print out settings for tracer
 !-----------------------------------------------------------------------
@@ -2205,6 +2223,22 @@ end if
    id_nh3_emis_cmip2 =     &
         register_diag_field( module_name, 'nh3_emis_cmip2', axes(1:2), &
                             Time, 'nh3_emis_cmip2', 'kg/m2/s')  
+   !---- register cmip-named variables ----
+   id_emico = register_cmip_diag_field_2d ( module_name, 'emico', Time, &
+                             'Total Emission Rate of CO', 'kg m-2 s-1', &
+               standard_name='tendency_of_atmosphere_mass_content_of_carbon_monoxide_due_to_emission')
+   id_emiso2 = register_cmip_diag_field_2d ( module_name, 'emiso2', Time, &
+                              'Total Emission Rate of SO2', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_emission')
+   id_eminh3 = register_cmip_diag_field_2d ( module_name, 'eminh3', Time, &
+                              'Total Emission Rate of NH3', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_emission')
+  !emino = eminox ???
+  !id_emino = register_cmip_diag_field_2d ( module_name, 'emino', Time, &
+  !                          'Total Emission Rate of NO', 'kg m-2 s-1', &
+  !            standard_name='tendency_of_atmosphere_mass_content_of_no_expressed_as_nitrogen_due_to_emission')
+   !----
+
 !--for Ox(jmao,1/1/2011)
    id_prodox = register_diag_field( module_name, 'Ox_prod', axes(1:3), &
         Time, 'Ox_prod','VMR/s')

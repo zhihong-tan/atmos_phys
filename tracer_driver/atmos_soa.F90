@@ -29,6 +29,7 @@ use           time_manager_mod, only : time_type
 use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
                                        register_static_field
+use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
@@ -64,6 +65,7 @@ integer ::   id_OH_conc            = 0
 integer ::   id_C4H10_conc         = 0
 integer ::   id_SOA_chem           = 0
 integer ::   id_SOA_chem_col       = 0
+integer ::   id_chepsoa            = 0 ! cmip field (same as SOA_chem_col)
 
 type(interpolate_type),save         ::  gas_conc_interp
 character(len=32)  :: gas_conc_filename = 'gas_conc_3D.nc'
@@ -170,6 +172,11 @@ character(len=7), parameter :: mod_name = 'tracers'
                       'SOA_chem_col',axes(1:2),Time,            &
                       'column SOA production by C4H10 + OH',        &
                       'kg/m2/s')
+
+      id_chepsoa = register_cmip_diag_field_2d ( mod_name, 'chepsoa', Time, &
+                       'Production Rate of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
+                      standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_due_to_net_chemical_production')
+                      
 
       call write_version_number (version, tagname)
 
@@ -341,6 +348,10 @@ end subroutine atmos_SOA_endts
       if (id_SOA_chem_col > 0) then
         used = send_data ( id_SOA_chem_col, &
                            SOA_prod, Time_next,is_in=is,js_in=js)
+      endif
+
+      if (id_chepsoa > 0) then
+        used = send_data ( id_chepsoa, SOA_prod, Time_next, is_in=is,js_in=js)
       endif
 
 
