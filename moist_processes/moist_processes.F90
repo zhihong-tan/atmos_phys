@@ -306,7 +306,7 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv, id_snow_conv, &
            id_ci, &
            id_tdt_ls  , id_qdt_ls  , id_prec_ls  , id_snow_ls  , &
            id_precip  , id_WVP, id_LWP, id_IWP, id_AWP, id_gust_conv, &
-           id_pr, id_prw, id_prc, id_prrc, id_prsn, id_prsnc, &
+           id_pr, id_prw, id_prc, id_prrc, id_prsn, id_prra, id_prsnc, &
            id_clt,   &
            id_tot_cloud_area,  id_tot_liq_amt,  id_tot_ice_amt,  &
            id_tot_h2o, id_tot_vapor, &
@@ -394,7 +394,7 @@ integer :: area_id
 ! cmip names, long_names, standard names for wetdep diag fields
 integer :: id_wetpoa_cmip, id_wetsoa_cmip, id_wetbc_cmip, id_wetdust_cmip, &
            id_wetss_cmip, id_wetso4_cmip, id_wetso2_cmip, id_wetdms_cmip, id_wetnh4_cmip
-character(len=8), dimension(9) :: cmip_names = (/"poa","soa","bc","dust","ss","so4","so2","dms","nh4xx"/)
+character(len=8), dimension(9) :: cmip_names = (/"poa","soa","bc","dust","ss","so4","so2","dms","nh4"/)
 character(len=64), dimension(9) :: cmip_longnames = &
                                   (/"Dry Aerosol Primary Organic Matter", &
                                     "Dry Aerosol Secondary Organic Matter", &
@@ -3005,6 +3005,11 @@ logical, intent(out), dimension(:,:)     :: convect
     used = send_data (id_prsn, fprec, Time, is, js)
 
 !---------------------------------------------------------------------
+!    rainfall rate due to all sources:
+!---------------------------------------------------------------------
+    used = send_data (id_prra, lprec, Time, is, js)
+
+!---------------------------------------------------------------------
 !    column integrated enthalpy and total water tendencies due to 
 !    moist processes:
 !---------------------------------------------------------------------
@@ -4541,6 +4546,12 @@ subroutine diag_field_init ( axes, Time, num_tracers, num_donner_tracers )
      missing_value = CMOR_MISSING_VALUE, &
      interp_method = "conserve_order1" )
 
+   id_prra  = register_diag_field ( mod_name, 'prra', axes(1:2), Time, &
+                                    'Rainfall Rate', 'kg m-2 s-1', &
+                                    standard_name = 'rainfall_flux', &
+                                    area=area_id, missing_value = CMOR_MISSING_VALUE, &
+                                    interp_method = "conserve_order1" )
+
    id_prsnc = register_diag_field ( mod_name, 'prsnc', axes(1:2), Time, &
                             'Convective Snowfall Flux', 'kg m-2 s-1', &
                             standard_name='convective_snowfall_flux', &
@@ -5384,7 +5395,7 @@ endif
         if (TRIM(cmip_names(ic)) .eq. 'so4'  ) id_wetso4_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'so2'  ) id_wetso2_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'dms'  ) id_wetdms_cmip  = id_wetdep_cmip
-        if (TRIM(cmip_names(ic)) .eq. 'nh4xx') id_wetnh4_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'nh4'  ) id_wetnh4_cmip  = id_wetdep_cmip
       enddo
      !-----------------------------------------------
 
