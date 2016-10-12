@@ -1157,6 +1157,8 @@ contains
     integer ::  ier
     character(len=256) :: ermesg
 
+    temp_max = -10000.0  !Initialize temp_max and temp_min to be unrealistic temperature values
+    temp_min = 10000.0
     kd = size(tracers,3)
     ntracers = size(tracers,4)
     call sd_init_k(kd,ntracers,sd);
