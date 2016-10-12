@@ -38,7 +38,7 @@ MODULE CONV_PLUMES_k_MOD
   public cpnlist
   type cpnlist
      integer :: mixing_assumption, mp_choice, de_choice
-     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, scaleh0
+     real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, scaleh0, plev_umf
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, beta, &
              wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, rkm_max, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
@@ -54,7 +54,7 @@ MODULE CONV_PLUMES_k_MOD
   public cplume
   type cplume
      integer :: ltop, let, krel
-     real    :: cush, cldhgt, prel, zrel, nbuo, pdep, ptop
+     real    :: cush, cldhgt, prel, zrel, nbuo, pdep, ptop, umf_plev
      real    :: maxcldfrac
      real, _ALLOCATABLE :: thcu  (:) _NULL, qctu  (:) _NULL, uu    (:) _NULL
      real, _ALLOCATABLE :: vu    (:) _NULL, qlu   (:) _NULL, qiu   (:) _NULL
@@ -70,7 +70,7 @@ MODULE CONV_PLUMES_k_MOD
      real, _ALLOCATABLE :: hlu   (:) _NULL, hl    (:) _NULL, clu   (:) _NULL
      real, _ALLOCATABLE :: ciu   (:) _NULL, buo   (:) _NULL, t     (:) _NULL
      real, _ALLOCATABLE :: crate (:) _NULL, prate (:) _NULL, peff  (:) _NULL
-     real, _ALLOCATABLE :: dbuodp(:) _NULL
+     real, _ALLOCATABLE :: dbuodp(:) _NULL, buog  (:) _NULL
 !!++++yim
      real, _ALLOCATABLE :: tr  (:,:) _NULL, tru (:,:) _NULL, tru_dwet(:,:) _NULL
      real, _ALLOCATABLE :: pptn  (:) _NULL, rhu   (:) _NULL
@@ -119,6 +119,7 @@ contains
     allocate ( cp%clu   (0:kd)); cp%clu   =0.;
     allocate ( cp%ciu   (0:kd)); cp%ciu   =0.;
     allocate ( cp%buo   (0:kd)); cp%buo   =0.;
+    allocate ( cp%buog  (0:kd)); cp%buog  =0.;
     allocate ( cp%dbuodp(1:kd)); cp%dbuodp=0.;
     allocate ( cp%t     (0:kd)); cp%t     =0.;
     allocate ( cp%rhu   (0:kd)); cp%rhu   =0.;
@@ -171,7 +172,7 @@ contains
                 cp%v, cp%p, cp%ps, cp%ufrc, cp%thvbot, cp%thvtop, &
                 cp%fdrsat, cp%peff, cp%qnu, cp%ql, cp%qi, cp%qa, cp%qn, &
                 cp%pptn, cp%z, cp%zs, cp%hl, cp%hlu, cp%clu, cp%ciu, &
-                cp%buo, cp%dbuodp, cp%t, cp%rhu, cp%crate, cp%prate, cp%tr, cp%tru, &
+                cp%buo, cp%buog, cp%dbuodp, cp%t, cp%rhu, cp%crate, cp%prate, cp%tr, cp%tru, &
                 cp%tru_dwet)
   end subroutine cp_end_k
 
@@ -193,7 +194,7 @@ contains
     cp%crate =0.;    cp%prate =0.;    cp%peff  =0.;    !cp%maxcldfrac = 1.;
     cp%ltop  =0;     cp%let   =0;     cp%krel  =0;     cp%cush  =-1;
     cp%cldhgt=0.;    cp%prel  =0.;    cp%zrel  =0.;    cp%dbuodp=0.
-    cp%nbuo  =0.;    cp%pdep  =0.;    cp%ptop  =0.;
+    cp%nbuo  =0.;    cp%pdep  =0.;    cp%ptop  =0.;    cp%buog  =0.;   cp%umf_plev=0.;
 
     cp%pptn  =0.;    cp%tr    =0.;    cp%tru   =0.;    cp%tru_dwet = 0.
   end subroutine cp_clear_k
@@ -421,7 +422,7 @@ contains
     real    :: bogtop, bogbot, delbog, drage, expfac
     real    :: zrel, prel, nu, leff, qrj, qsj, temp
     real    :: qctu_new, hlu_new, qlu_new, qiu_new, clu_new, ciu_new
-    real    :: scaleh1
+    real    :: scaleh1, plev
     real    :: qct_env_k, hl_env_k
     real    :: t_mid, tv_mid, air_density, total_condensate,   &
                total_rain, total_snow, delta_tracer, delta_qn, wrel2, gamma
@@ -466,7 +467,8 @@ contains
        thv0rel = ac % thv0lcl
     endif
 
-    cp%buo(1:krel-1)=ac%buo(1:krel-1)
+    cp%buo (1:krel-1)=ac%buo (1:krel-1)
+    cp%buog(1:krel-1)=ac%buog(1:krel-1)
 
     cp%krel=krel
     cp%prel=prel
@@ -588,7 +590,16 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
        else if (cpn%mixing_assumption.eq.7) then
-          scaleh1 = max(cpn%scaleh0, sd%pblht)
+!mass flux outside updraft in unit of Pa/s, downward positive
+          rkm1 = sd%omg(k-1)+cp%umf(k-1)*Uw_p%grav 
+!vertical velocity outside updraft in unit of m/s, upward positive
+          rkm1 = -rkm1/(sd%rho(k-1)*Uw_p%grav*(1.-cp%ufrc(k-1)))
+!difference in vertical velocity between updraft and environmental air
+          rkm1 = cp%wu(k-1) - rkm1
+          rkm1 = max(rkm1, 0.)
+       	  rkm1 = rkm * (1.+rkm1*cpn%beta)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
+          scaleh1 = cpn%scaleh0*(max(sd%pblht,300.)/500.)
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
@@ -603,7 +614,9 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
        else if (cpn%mixing_assumption.eq.9) then
-          scaleh1 = 1000. * (sd%ps(0)/cp%p(k))
+       	  rkm1 = rkm * (1.+cp%wu(k-1)*cpn%beta)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
+          scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
@@ -721,9 +734,9 @@ contains
 
        cp%thvu(k)=temp/exn_k(cp%ps(k),Uw_p)*(1.+Uw_p%zvir*(cp%qctu(k)-cp%qlu(k)-cp%qiu(k))-cp%qlu(k)-cp%qiu(k))
        cp%buo (k)=(cp%thvu(k)-cp%thvtop(k))!/cp%thvtop(k)
-!       cp%buo (k)=(cp%thvu(k)-cp%thvtop(k))/cp%thvtop(k)*Uw_p%grav
-       cp%dbuodp(k)=(cp%buo(k)/cp%thvtop(k)-cp%buo(k-1)/cp%thvtop(k-1))*Uw_p%grav/cp%dp(k)
-       cp%dbuodp(k)=abs(cp%dbuodp(k))
+       cp%buog(k)= cp%buo (k)/cp%thvtop(k)*Uw_p%grav
+       cp%dbuodp(k)=(cp%buog(k)-cp%buog(k-1))/cp%dp(k)
+!       cp%dbuodp(k)=abs(cp%dbuodp(k))
        cp%t   (k)=temp
        cp%rhu  (k)=(cp%qctu(k)-cp%qlu(k)-cp%qiu(k))/qsat_k(temp,cp%ps(k),Uw_p)
        nu = max(min((268. - temp)/20.,1.0),0.0)
@@ -900,6 +913,14 @@ contains
        cp%fdr(ltop)    = 1./sd%dp(ltop)
        cp%fdrsat(ltop) = 1.
     end if
+
+    plev=cpn%plev_umf
+    do k=1,let
+      if (sd%p(k).gt.plev .and. sd%p(k+1).lt.plev) then
+          cp%umf_plev=(cp%umf(k)*(plev-sd%p(k+1))+cp%umf(k+1)*(sd%p(k)-plev))/(sd%p(k)-sd%p(k+1))
+          exit
+      end if
+    enddo
 
   end subroutine cumulus_plume_k
 
