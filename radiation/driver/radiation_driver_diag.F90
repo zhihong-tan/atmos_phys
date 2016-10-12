@@ -279,7 +279,7 @@ integer                      :: id_rlds, id_rldscs, id_rlus, id_rsds,   &
                                 id_rsdscs, id_rsus, id_rsuscs, id_rsdt, &
                                 id_rsut, id_rsutcs, id_rlut, id_rlutcs, &
                                 id_rtmt, id_rsdsdiff, id_rsdscsdiff
-type(cmip_diag_id_type)      :: ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs, &
+type(cmip_diag_id_type)      :: ID_tntr, ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs, &
                                 ID_rsu, ID_rsucs, ID_rsd, ID_rsdcs
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
@@ -1052,6 +1052,10 @@ logical,         intent(in) :: do_lwaerosol
                  'watts/m2', missing_value=missing_value)
  
        end do
+
+        ID_tntr = register_cmip_diag_field_3d ( mod_name, 'tntr', Time, &
+           'Tendency of Air Temperature due to Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_radiative_heating' )
 
         ID_tntrs = register_cmip_diag_field_3d ( mod_name, 'tntrs', Time, &
            'Tendency of Air Temperature due to Shortwave Radiative Heating', 'K s-1', &
@@ -2079,6 +2083,11 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         if (id_allradp > 0 ) then
           used = send_data (id_allradp    ,    &
                             Rad_output%tdt_rad(is:ie,js:je,:),   &
+                            Time_diag, is, js, 1)
+        endif
+
+        if (query_cmip_diag_id(ID_tntr)) then
+          used = send_cmip_data_3d (ID_tntr, Rad_output%tdt_rad(is:ie,js:je,:),  &
                             Time_diag, is, js, 1)
         endif
 
