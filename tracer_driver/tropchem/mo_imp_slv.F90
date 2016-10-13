@@ -295,7 +295,7 @@ logical                       :: module_is_initialized = .false.
             do_ox_pl = .false.
          end if
          if( do_ox_pl ) then
-            ol_o1d_ndx = get_rxt_ndx( 'o1_o1d' )
+            ol_o1d_ndx = get_rxt_ndx( 'ol_o1d' )
             ol_oh_ndx = get_rxt_ndx( 'ol_oh' )
             ol_ho2_ndx = get_rxt_ndx( 'ol_ho2' )
             ol_c3h6_ndx = get_rxt_ndx( 'ol_c3h6' )
@@ -306,7 +306,7 @@ logical                       :: module_is_initialized = .false.
             ol_c10h16_ndx = get_rxt_ndx( 'ol_terp' )
             uoh_no2_ndx = get_rxt_ndx( 'uoh_no2' )
             n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
-            no3_ndx = get_rxt_ndx( 'no3' )
+            no3_ndx = get_rxt_ndx( 'no3h' )
             wrk(1:12) = (/ ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ol_c3h6_ndx, ol_isop_ndx, &
                            ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_c10h16_ndx, uoh_no2_ndx, &
                            n2o5h_ndx, no3_ndx /)
