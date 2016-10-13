@@ -185,7 +185,11 @@ logical                       :: module_is_initialized = .false.
       use AM3_mo_phtadj_mod,    only : phtadj
 #endif
       use mo_setsox_mod,    only : setsox
+#ifndef AM3_CHEM
       use mo_fphoto_mod,    only : fphoto
+#else
+      use AM3_fphoto_mod,    only : fphoto
+#endif
       use mo_chem_utls_mod, only : inti_mr_xform, adjh2o, negtrc, mmr2vmr, vmr2mmr !<f1p get_spc_ndx, get_grp_mem_ndx >
       use time_manager_mod, only : time_type
       use strat_chem_utilities_mod, only : psc_type
@@ -414,6 +418,7 @@ logical                       :: module_is_initialized = .false.
                      cwat, cldfr, &
                      esfact, solar_phase, plonl )
          else    
+#ifndef AM3_CHEM
             call fphoto( reaction_rates(:,:,:phtcnt), &
                          pmid, pdel, &
                          tfld, zmid, &
@@ -428,8 +433,26 @@ logical                       :: module_is_initialized = .false.
                          zi,&
                          pwt , &
                          sh, &
-                         r &            
-                          )
+                         r, &            
+                         Time, & 
+                         trop_option%time_varying_solarflux)
+#else
+            call fphoto( reaction_rates(:,:,:phtcnt), &
+                         pmid, pdel, &
+                         tfld, zmid, &
+                         col_dens, &
+                         coszen, albedo, &
+                         j_ndx, &
+                         cwat, &
+                         cldfr,  &
+                         esfact, solar_phase, plonl,&
+                         trop_option%use_lsc_in_fastjx, &
+                         phalf,&
+                         zi,&
+                         pwt , &
+                         sh, &
+                         r)
+#endif
          end if
    call mpp_clock_end(photo_clock_id)
 

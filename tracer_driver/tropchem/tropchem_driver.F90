@@ -111,8 +111,8 @@ use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
 use fms_io_mod, only: read_data
 
 use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
-                      CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P, &
-                      CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_LEGACY
+                      CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P,&
+                      CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
 implicit none
@@ -186,6 +186,7 @@ logical            :: do_fastjx_photo = .false.         ! use fastjx routine ?
 character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen in fastjx calculation; may currently be 'none' or 'lsc_only' (default)
 logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
 real               :: e90_tropopause_vmr = 9.e-8        ! e90 tropopause concentration
+logical            :: time_varying_solarflux = .false.  ! allow sloar cycle on fastjx v7.1
 
 ! namelist to fix solar flux bug
 ! if set to true then solar flux will vary with time
@@ -200,7 +201,7 @@ real               :: co2_scale_factor = 1.e-6
 real               :: co2_fixed_year   = -999
 
 character(len=64)  :: cloud_chem_pH_solver     = 'bisection'
-character(len=64)  :: cloud_chem_type          = 'legacy'
+character(len=64)  :: cloud_chem_type          = 'f1p_bug2'
 logical            :: het_chem_fine_aerosol_only = .false.
 real               :: min_lwc_for_cloud_chem     = 1.e-8
 real               :: frac_dust_incloud          = 0
@@ -286,6 +287,7 @@ namelist /tropchem_driver_nml/    &
 	                       solar_flux_bugfix, &
                                e90_tropopause_vmr, &                               
                                aerosol_thermo_method, &
+                               het_chem_type, &
                                gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
                                do_h2so4_nucleation, &
                                check_convergence, &
@@ -296,7 +298,7 @@ namelist /tropchem_driver_nml/    &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
                                max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &
-			       sim_data_filename
+			       sim_data_filename,time_varying_solarflux
 
 integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
@@ -1668,6 +1670,8 @@ elseif ( trim(cloud_chem_type) == 'f1p' ) then
    trop_option%cloud_chem = CLOUD_CHEM_F1P
 elseif ( trim(cloud_chem_type) == 'f1p_bug' ) then
    trop_option%cloud_chem = CLOUD_CHEM_F1P_BUG
+elseif ( trim(cloud_chem_type) == 'f1p_bug2' ) then
+   trop_option%cloud_chem = CLOUD_CHEM_F1P_BUG2
 end if
 
 !cloud chem pH solver
@@ -1726,7 +1730,7 @@ trop_option%cloud_ho2_h2o2 = cloud_ho2_h2o2
 trop_option%max_rh_aerosol = max_rh_aerosol
 trop_option%limit_no3      = limit_no3
 trop_option%frac_aerosol_incloud = frac_aerosol_incloud
-
+trop_option%time_varying_solarflux = time_varying_solarflux
 
 
 !aerosol thermo

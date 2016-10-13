@@ -54,7 +54,7 @@ use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR, PSTD_MKS
 
 !f1p
 use cloud_chem, only : cloud_so2_chem, CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, &
-                       CLOUD_CHEM_F1P_BUG
+                       CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2    ! h1g, 2016-09-07
 
 implicit none
 
@@ -830,6 +830,9 @@ integer :: n, m, nsulfate
       cloud_chem_type = CLOUD_CHEM_F1P
    elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p_bug" ) then
       cloud_chem_type = CLOUD_CHEM_F1P_BUG
+   elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p_bug2" ) then
+      cloud_chem_type = CLOUD_CHEM_F1P_BUG2
+
    else
       call error_mesg ('atmos_sulfate_mod', &
            'unknown cloud chem solver', FATAL)
@@ -2090,7 +2093,8 @@ end subroutine atmos_SOx_emission
        if ( cloud_chem_type .eq. CLOUD_CHEM_LEGACY ) then
           xlwc  = lwc(i,j,k)*rho_air *1.e-3 !L(water)/L(air)
        elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
-                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG .or. &  ! h1g, 2016-09-07
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then ! h1g, 2016-09-07
           xlwc  = lwc(i,j,k)*min(max(fliq(i,j,k),0.),1.)*rho_air *1.e-3 !only liquid water
        end if
        DMS_0 = max(0.,DMS(i,j,k))
@@ -2287,7 +2291,8 @@ end subroutine atmos_SOx_emission
             xso2 = max(xso2 - ccc2, small_value)         ! mozart2
        end if
        elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
-                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG  .or. &
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then   ! h1g, 2016-09-07
 !f1p cloud chem
        !calculate in cloud-production   
           !first calculate in-cloud liquid
@@ -2308,21 +2313,47 @@ end subroutine atmos_SOx_emission
           !production via H2O2
           exp_factor = rso2_h2o2 * (xso2 - xh2o2) * dt
 
-          if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0.) then
-             EF          = exp( exp_factor )
-             pso4_h2o2   = max(xso2 * xh2o2 * ( 1. - EF ) / ( xh2o2 - xso2 * EF ),0.)                    
-          else
-             pso4_h2o2   = min(xso2,xh2o2)
-          end if
+
+          if ( cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then  ! h1g, 2016-09-07
+
+            if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0.) then
+               EF          = exp( exp_factor )
+               pso4_h2o2   = max(xso2 * xh2o2 * ( 1. - EF ) / ( xh2o2 - xso2 * EF ),0.)                    
+            else
+               pso4_h2o2   = min(xso2,xh2o2)
+            end if
+      
+          else !cloud_chem_type .eq. CLOUD_CHEM_F1P  ! h1g, 2016-09-07
+            if ( exp_factor .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
+               EF          = exp( exp_factor )
+               pso4_h2o2   = max(xso2 * xh2o2 * ( 1. - EF ) / ( xh2o2 - xso2 * EF ),0.)                    
+            elseif (abs(exp_factor) .le. small_value ) then
+               pso4_h2o2   = rso2_h2o2 * xso2**2 * dt / (1 + rso2_h2o2*dt*xso2)
+            else
+               pso4_h2o2   = min(xso2,xh2o2)
+            end if
+          endif
+
 
           exp_factor = rso2_o3 * (xso2 - xo3) * dt
+          if ( cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then  ! h1g, 2016-09-07
+            if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0. ) then
+               EF          = exp( exp_factor )
+               pso4_o3     = max(xso2 * xo3 * ( 1. - EF ) / ( xo3 -  xso2 * EF ),0.)
+            else
+               pso4_o3 = min(xso2,xo3)
+            end if
+          else  !cloud_chem_type .eq. CLOUD_CHEM_F1P  ! h1g, 2016-09-07
+            if ( exp_factor .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
+               EF          = exp( exp_factor )
+               pso4_o3     = max(xso2 * xo3 * ( 1. - EF ) / ( xo3 -  xso2 * EF ),0.)
+            elseif (abs(exp_factor) .le. small_value ) then
+               pso4_o3     = rso2_o3 * xso2**2 * dt / (1 + rso2_o3*dt*xso2)
+            else
+               pso4_o3 = min(xso2,xo3)
+            end if
+          endif
 
-          if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0. ) then
-             EF          = exp( exp_factor )
-             pso4_o3     = max(xso2 * xo3 * ( 1. - EF ) / ( xo3 -  xso2 * EF ),0.)
-          else
-             pso4_o3 = min(xso2,xo3)
-          end if
           !>        
 
           if ( (pso4_o3 + pso4_h2o2) .gt. xso2 ) then
