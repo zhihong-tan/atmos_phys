@@ -190,6 +190,7 @@ use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
 use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_emissions,          &
+                                  atmos_co2_time_vary,          &
                                   atmos_co2_gather_data,        &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
@@ -1473,7 +1474,7 @@ type(time_type), intent(in)                                :: Time
 
 !co2
       if (nco2 > 0) then
-      call atmos_co2_init ( Time, axes(1:3))
+      call atmos_co2_init ( Time, size(lonb,1), size(latb,2), axes(1:3))
         co2_clock = mpp_clock_id( 'Tracer: CO2', &
                     grain=CLOCK_MODULE )
       endif
@@ -1680,6 +1681,10 @@ type(time_type), intent(in) :: Time
         call atmos_sulfate_time_vary (Time)
       endif
 
+      if (nco2 > 0) then
+        call atmos_co2_time_vary (Time)
+      endif
+
       call dry_deposition_time_vary (drydep_data, Time)
 
       if (do_tropchem) then
@@ -1689,8 +1694,6 @@ type(time_type), intent(in) :: Time
 
 
 end subroutine atmos_tracer_driver_time_vary
-
-
 
 
 !#####################################################################
