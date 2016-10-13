@@ -344,7 +344,7 @@ if (ind_co2 > 0 .and. do_co2_emissions) then
 ! lowest model layer
     do j=1,jd
       do i=1,id
-        co2_emis_dt(i,j,kd) = co2_emis2d(i+is-1,j+js-1) * (WTMCO2/WTMC) / pwt(i,j,kd)
+        co2_emiss_dt(i,j,kd) = co2_emis2d(i+is-1,j+js-1) * (WTMCO2/WTMC) / pwt(i,j,kd)
       enddo
     enddo
   
