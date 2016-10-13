@@ -255,7 +255,8 @@ integer, dimension(6) :: soa_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!
 real, save :: coef_omss_emis
 real :: omss_coef=-999.
-logical               :: no_biobur_if_no_pbl = .true.  ! true by default in order to reproduce AM3
+logical               :: no_biobur_if_no_pbl = .true.  ! true by default in order to reproduce AM3 (no BMB if zPBL=0)
+logical               :: do_biobur_pbl_bug = .false.   ! if T, bug causing double-counting of BMB emissions is present
 logical               :: do_dynamic_bc = .false.
 real                  :: bcage = 1.0
 real                  :: bcageslow = 25.
@@ -298,7 +299,7 @@ namelist /carbon_aerosol_nml/ &
  frac_bcbb_philic, frac_bcbb_phobic,&
  soa_source, gas_conc_name,soa_filename, &
  soa_time_dependency_type, soa_dataset_entry, &
- no_biobur_if_no_pbl
+ no_biobur_if_no_pbl, do_biobur_pbl_bug
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -642,7 +643,7 @@ real, parameter                            :: yield_soa = 0.1
 ! Calculate fraction of emission at every levels for open fires
 !
         fbb(:,:)=0.
-        if (.not.no_biobur_if_no_pbl) fbb(kd,:)=1.
+        if (.not.no_biobur_if_no_pbl .and. do_biobur_pbl_bug) fbb(kd,:)=1.
 !
 ! In case of multiple levels, which are fixed
 !
@@ -674,6 +675,7 @@ real, parameter                            :: yield_soa = 0.1
 !
 ! --- Inject equally through the boundary layer -------
 !
+          if (.not. no_biobur_if_no_pbl .and. .not. do_biobur_pbl_bug) fbb(kd,1)=1.
           bltop = z_pbl(i,j)
           do l = kd,1,-1
             z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
