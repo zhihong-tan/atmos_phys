@@ -77,6 +77,9 @@ use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
                                  send_cmip_data_3d, &
                                  cmip_diag_id_type, &
                                  query_cmip_diag_id
+use atmos_global_diag_mod, only: register_global_diag_field, &
+                                 buffer_global_diag, &
+                                 send_global_diag
 
 ! atmos physics modules
 
@@ -292,6 +295,8 @@ integer, dimension(2)        :: id_swtoa, id_swsfc,               &
                                 id_swup_toa_ad,                   &
                                 id_olr_ad, id_lwsfc_ad
 
+! globally averaged diagnostics
+integer :: id_rlut_g, id_rlutcs_g, id_rsut_g, id_rsutcs_g, id_rsdt_g
 
 real, dimension(:,:), allocatable :: swups_acc, swdns_acc
 real, dimension(:,:), allocatable :: olr_intgl, swabs_intgl
@@ -1162,6 +1167,29 @@ logical,         intent(in) :: do_lwaerosol
          id_heat2d_sw = register_diag_field (mod_name,   &
                  'heat2d_sw', axes(1:2), Time, &
                  'integrated shortwave radiative heating', 'watts/m2')
+
+!----- initialize global integrals for netCDF output -----
+
+        id_rsdt_g = register_global_diag_field ('rsdt', Time, &
+                        'TOA Incident Shortwave Radiation', 'W m-2',   &
+                         standard_name = 'toa_incoming_shortwave_flux')
+
+        id_rsut_g = register_global_diag_field ('rsut', Time, &
+                       'TOA Outgoing Shortwave Radiation', 'W m-2',    &
+                        standard_name = 'toa_outgoing_shortwave_flux')
+
+        id_rsutcs_g = register_global_diag_field ('rsutcs', Time, &
+                 'TOA Outgoing Clear-Sky Shortwave Radiation', 'W m-2',    &
+                 standard_name = 'toa_outgoing_shortwave_flux_assuming_clear_sky')
+
+        id_rlut_g = register_global_diag_field ('rlut', Time, &
+                        'TOA Outgoing Longwave Radiation', 'W m-2',    &
+                         standard_name = 'toa_outgoing_longwave_flux')
+
+        id_rlutcs_g = register_global_diag_field ('rlutcs', Time, &
+                   'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
+                 standard_name = 'toa_outgoing_longwave_flux_assumimg_clear_sky')
+
 
 !----------------------------------------------------------------------
 !    register fields that are not clear-sky depedent.
@@ -2734,11 +2762,18 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !--------------------------------------------------------------------
       if (Rad_control%do_lw_rad .or. all_step_diagnostics) then
         olr_intgl(is:ie,js:je) = olr(:,:)
+
+        if (id_rlut_g   > 0) call buffer_global_diag (id_rlut_g,   olr,     Time_diag, is, js)
+        if (id_rlutcs_g > 0) call buffer_global_diag (id_rlutcs_g, olr_clr, Time_diag, is, js)
       endif
 
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
           all_step_diagnostics) then
         swabs_intgl(is:ie,js:je) = swin(:,:) - swout(:,:)
+
+        if (id_rsdt_g   > 0) call buffer_global_diag (id_rsdt_g,   swin,      Time_diag, is, js)
+        if (id_rsut_g   > 0) call buffer_global_diag (id_rsut_g,   swout,     Time_diag, is, js)
+        if (id_rsutcs_g > 0) call buffer_global_diag (id_rsutcs_g, swout_clr, Time_diag, is, js)
       endif
 
 !--------------------------------------------------------------------
@@ -2980,17 +3015,25 @@ subroutine radiation_driver_diag_endts (Rad_control)
 
 type(radiation_control_type),  intent(in) :: Rad_control
 
+logical :: used
 !---------------------------------------------------------------------
 !    compute and write out global integrals
 !---------------------------------------------------------------------
 
       if (Rad_control%do_lw_rad .or. all_step_diagnostics) then
         call sum_diag_integral_field ('olr',    olr_intgl)
+
+        if (id_rlut_g   > 0) used = send_global_diag (id_rlut_g)
+        if (id_rlutcs_g > 0) used = send_global_diag (id_rlutcs_g)
       endif
 
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
           all_step_diagnostics) then
         call sum_diag_integral_field ('abs_sw', swabs_intgl )
+
+        if (id_rsdt_g   > 0) used = send_global_diag (id_rsdt_g)
+        if (id_rsut_g   > 0) used = send_global_diag (id_rsut_g)
+        if (id_rsutcs_g > 0) used = send_global_diag (id_rsutcs_g)
       endif
 
 !---------------------------------------------------------------------
