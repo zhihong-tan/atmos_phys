@@ -421,8 +421,13 @@ contains
     	  call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
        endif
     end if
+!> To fix debug compile error
+    if (cp%ltop == 0) then
+     zcldtop = 1000.0 
+    else 
+     zcldtop = sd%z(cp%ltop)
+    endif
 
-    zcldtop = sd%z(cp%ltop)
     wrel  = max(cc%wrel, wrel0)
     cbmf0 = dpc%cbmf0
     call cp_clear_k(cp);  cp %maxcldfrac=1.;
