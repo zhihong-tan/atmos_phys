@@ -387,10 +387,10 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint, &
-                      u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,&
-             tdt_rad, tdt_dyn, qvdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qvdt_dif,&
-     src_choice, tracers, sd, Uw_p)
+  subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint,      &
+              u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,     &
+	      tracers, src_choice, tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn,&
+	      dgz_dyn, ddp_dyn, tdt_dif, qvdt_dif, qidt_dif, sd, Uw_p)
 
     real,    intent(in)              :: land
     logical, intent(in)              :: coldT
@@ -402,8 +402,8 @@ contains
     real, intent(in), dimension(:)   :: t, qv      !temperature and specific humidity
     real, intent(in), dimension(:)   :: ql, qi, qa, qn      !cloud tracers
     real, intent(in), dimension(:)   :: am1, am2, am3, am4  ! aerosal species
-    real, intent(in), dimension(:)   :: tdt_rad, tdt_dyn, qvdt_dyn, dgz_dyn, ddp_dyn
-    real, intent(in), dimension(:)   :: tdt_dif, qvdt_dif
+    real, intent(in), dimension(:)   :: tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn, dgz_dyn, ddp_dyn
+    real, intent(in), dimension(:)   :: tdt_dif, qvdt_dif, qidt_dif
     real, intent(in), dimension(:,:) :: tracers        !env. tracers    
     type(sounding), intent(inout)    :: sd
     type(uw_params), intent(inout)    :: Uw_p
@@ -446,11 +446,13 @@ contains
        sd % tdt_rad (k) = tdt_rad(nk)
        sd % tdt_dyn (k) = tdt_dyn(nk)
        sd % qvdt_dyn(k) = qvdt_dyn(nk)
+       sd % qidt_dyn(k) = qidt_dyn(nk)
        sd % dgz_dyn (k) = dgz_dyn(nk)
        sd % ddp_dyn (k) = ddp_dyn(nk)
        sd % tdt_dif (k) = tdt_dif(nk) !-tdt_rad(nk)
        sd % qvdt_dif(k) = qvdt_dif(nk)
-!++++yim
+       sd % qidt_dif(k) = qidt_dif(nk)
+
        do m=1, size(tracers,2)
           sd % tr (k,m) = tracers (nk,m)
        end do

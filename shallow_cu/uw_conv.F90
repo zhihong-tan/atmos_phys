@@ -319,14 +319,18 @@ MODULE UW_CONV_MOD
        id_qldet_uws, id_qidet_uws, id_qadet_uws, id_qndet_uws, id_dting_uwc, &
        id_cfq_uws, id_feq_uws, id_feq_uwc, id_hmo_uwc, id_hms_uwc, id_abu_uwc, id_peo_uwc, &
        id_tten_rad_uwc, id_tdt_forc_uwc, id_qdt_forc_uwc, id_tdt_diss_uwc, &
-       id_hm_vadv_uwc, id_pflx_uwc, id_lhflx_uwc, id_shflx_uwc, id_dbuodp_uws, id_dbuodp_uwd, &
-       id_tdt_rad_uwc, id_tdt_dyn_uwc, id_tdt_dif_uwc, id_qdt_dyn_uwc, id_qdt_dif_uwc, &
-       id_tdt_rad_int, id_tdt_dyn_int, id_tdt_dif_int, id_qdt_dyn_int, id_qdt_dif_int, &
-       id_pblht_avg, id_hlsrc_avg, id_qtsrc_avg, id_cape_avg, id_cin_avg, id_omg_avg,  &
-       id_cpool_uwc, id_bflux_uwc, &
-       id_dgz_dyn_uwc, id_ddp_dyn_uwc, id_dgz_dyn_int, id_ddp_dyn_int, id_lts_uwc, &
-       id_nbuo_uws, id_buo_uws, id_pdep_uws,                                       &
-       id_hmint_uwc, id_hm_vadv0_uwc, id_hm_hadv0_uwc, id_hm_tot0_uwc, id_hm_total_uwc,&
+       id_dbuodp_uws, id_dbuodp_uwd, &
+       id_pflx_uwc, id_lhflx_uwc, id_shflx_uwc, id_hmint_uwc, id_hmint0_uwc, &
+       id_tdt_rad_uwc, id_tdt_dyn_uwc, id_tdt_dif_uwc, id_qvdt_dyn_uwc, id_qvdt_dif_uwc, &
+       id_dgz_dyn_uwc, id_ddp_dyn_uwc, id_hdt_tot_int, id_hdt_ver_int,                   &
+       id_hdt_vadv_int, id_hdt_hadv_int, id_hdt_sum_int,                                 &
+       id_tdt_rad_int, id_tdt_dyn_int, id_tdt_dif_int, id_dgz_dyn_int, id_hdp_dyn_int,   &
+       id_qvdt_dyn_int, id_qvdt_dif_int, id_hdt_forc_int,                                &
+       id_hdt_vadv_int0, id_hdt_hadv_int0, id_hdt_sum_int0,                                 &
+       id_tdt_rad_int0, id_tdt_dyn_int0, id_tdt_dif_int0, id_dgz_dyn_int0, id_hdp_dyn_int0, &
+       id_qvdt_dyn_int0, id_qvdt_dif_int0, id_hdt_forc_int0,                                &
+       id_pblht_avg, id_hlsrc_avg, id_qtsrc_avg, id_cape_avg, id_cin_avg, id_omg_avg,       &
+       id_cpool_uwc, id_bflux_uwc, id_lts_uwc, id_nbuo_uws, id_buo_uws, id_pdep_uws,     &
        id_qtflx_up_uwc, id_qtflx_dn_uwc, id_omega_up_uwc, id_omega_dn_uwc, &
        id_omgmc_up_uwc, id_rkm_uws, id_stime_uwc, id_scale_uwc, id_scaletr_uwc
 
@@ -580,8 +584,6 @@ contains
          'Total mass flux from resolved upward flow', 'kg/m2/s', missing_value=mv)
     id_omega_dn_uwc = register_diag_field (mod_name,'omega_dn_uwc',axes(half),Time, &
          'Total mass flux from resolved downward flow', 'kg/m2/s', missing_value=mv)
-    id_hm_vadv_uwc = register_diag_field (mod_name,'hm_vadv_uwc',axes(half),Time, &
-         'Vertical advection of MSE', 'W/m2', missing_value=mv)
     id_pflx_uwc = register_diag_field (mod_name,'pflx_uwc',axes(half),Time, &
          'vertical distribution of precipitation flux', 'kg/m2/s', missing_value=mv)
 
@@ -600,17 +602,80 @@ contains
     id_hmint_uwc = register_diag_field (mod_name,'hmint_uwc', axes(1:2), Time, &
          'vertically averaged MSE', 'J/m2',                       &
          interp_method = "conserve_order1" )
-    id_hm_vadv0_uwc = register_diag_field (mod_name,'hm_vadv0_uwc', axes(1:2), Time, &
-         'vertical advection of MSE from uw_conv',   'W/m2',   &
+    id_hmint0_uwc = register_diag_field (mod_name,'hmint0_uwc', axes(1:2), Time, &
+         'vertically averaged MSE normalized by total column mass', 'J/kg',      &
          interp_method = "conserve_order1" )
-    id_hm_hadv0_uwc = register_diag_field (mod_name,'hm_hadv0_uwc', axes(1:2), Time, &
-         'horizontal advection of MSE from uw_conv', 'W/m2',   &
+
+    id_hdt_tot_int = register_diag_field (mod_name,'hdt_tot_int', axes(1:2), Time,          &
+         'total vertically integrated MSE tendency based on consecutive time step', 'W/m2', &
          interp_method = "conserve_order1" )
-    id_hm_tot0_uwc = register_diag_field (mod_name,'hm_tot0_uwc', axes(1:2), Time, &
-         'total MSE tendency from uw_conv',   'W/m2',   &
+    id_hdt_ver_int = register_diag_field (mod_name,'hdt_ver_int', axes(1:2), Time, &
+         'total vertically integrated MSE budget for verfication purpose', 'W/m2',   &
          interp_method = "conserve_order1" )
-    id_hm_total_uwc = register_diag_field (mod_name,'hm_total_uwc', axes(1:2), Time, &
-         'total MSE tendency computed based on previous time step value', 'W/m2',   &
+    id_hdt_forc_int = register_diag_field (mod_name,'hdt_forc_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to all forcings before convection', 'W/m2',   &
+         interp_method = "conserve_order1" )
+
+    id_hdt_vadv_int0 = register_diag_field (mod_name,'hdt_vadv_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to vertical advection',   'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_hdt_hadv_int0 = register_diag_field (mod_name,'hdt_hadv_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to horizontal advection', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_hdt_sum_int0 = register_diag_field (mod_name,'hdt_sum_int0', axes(1:2), Time, &
+         'sum of the column integrated MSE tendencies',   'W/m2',              &
+         interp_method = "conserve_order1" )
+    id_tdt_rad_int0 = register_diag_field (mod_name,'tdt_rad_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to radiation', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_tdt_dyn_int0 = register_diag_field (mod_name,'tdt_dyn_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to dynamical tendency for T', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_tdt_dif_int0 = register_diag_field (mod_name,'tdt_dif_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to diffusion tendency for T', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_qvdt_dyn_int0 = register_diag_field (mod_name,'qvdt_dyn_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to dynamical tendency for vapor', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_qvdt_dif_int0 = register_diag_field (mod_name,'qvdt_dif_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to diffusion tendency for vapor', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_dgz_dyn_int0 = register_diag_field (mod_name,'dgz_dyn_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to dynamical tendency for geopotential height', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_hdp_dyn_int0 = register_diag_field (mod_name,'hdp_dyn_int0', axes(1:2), Time, &
+         'column integrated MSE tendency due to mass divergence from the dynamics', 'W/m2',   &
+         interp_method = "conserve_order1" )
+
+    id_hdt_vadv_int = register_diag_field (mod_name,'hdt_vadv_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to vertical advection',   'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_hdt_hadv_int = register_diag_field (mod_name,'hdt_hadv_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to horizontal advection', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_hdt_sum_int = register_diag_field (mod_name,'hdt_sum_int', axes(1:3), Time, &
+         'sum of the vertically integrated MSE tendencies',   'W/m2',              &
+         interp_method = "conserve_order1" )
+    id_tdt_rad_int = register_diag_field (mod_name,'tdt_rad_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to radiation', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_tdt_dyn_int = register_diag_field (mod_name,'tdt_dyn_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to dynamical tendency for T', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_tdt_dif_int = register_diag_field (mod_name,'tdt_dif_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to diffusion tendency for T', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_qvdt_dyn_int = register_diag_field (mod_name,'qvdt_dyn_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to dynamical tendency for vapor', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_qvdt_dif_int = register_diag_field (mod_name,'qvdt_dif_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to diffusion tendency for vapor', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_dgz_dyn_int = register_diag_field (mod_name,'dgz_dyn_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to dynamical tendency for geopotential height', 'W/m2',   &
+         interp_method = "conserve_order1" )
+    id_hdp_dyn_int = register_diag_field (mod_name,'hdp_dyn_int', axes(1:3), Time, &
+         'vertically integrated MSE tendency due to mass divergence from the dynamics', 'W/m2',   &
          interp_method = "conserve_order1" )
 
     id_tdt_rad_uwc = register_diag_field (mod_name,'tdt_rad_uwc',axes(1:3),Time, &
@@ -619,36 +684,14 @@ contains
          'dynamics T tendency', 'K/s', missing_value=mv)
     id_tdt_dif_uwc = register_diag_field (mod_name,'tdt_dif_uwc',axes(1:3),Time, &
          'diffusion T tendency', 'K/s', missing_value=mv)
-    id_qdt_dyn_uwc = register_diag_field (mod_name,'qdt_dyn_uwc',axes(1:3),Time, &
+    id_qvdt_dyn_uwc = register_diag_field (mod_name,'qvdt_dyn_uwc',axes(1:3),Time, &
          'dynamics qv tendency', 'kg/kg/s', missing_value=mv)
-    id_qdt_dif_uwc = register_diag_field (mod_name,'qdt_dif_uwc',axes(1:3),Time, &
+    id_qvdt_dif_uwc = register_diag_field (mod_name,'qvdt_dif_uwc',axes(1:3),Time, &
          'diffusion qv tendency', 'kg/kg/s', missing_value=mv)
     id_dgz_dyn_uwc = register_diag_field (mod_name,'dgz_dyn_uwc',axes(1:3),Time, &
          'geopotential height tendency due to dynamics', 'm2/s2/s', missing_value=mv)
     id_ddp_dyn_uwc = register_diag_field (mod_name,'ddp_dyn_uwc',axes(1:3),Time, &
-         'hm change due to mass change from the dynamics', 'm2/s2/s', missing_value=mv)
-
-    id_tdt_rad_int = register_diag_field (mod_name,'tdt_rad_int', axes(1:2), Time, &
-         'vertically integrated radiative T tedency', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_tdt_dyn_int = register_diag_field (mod_name,'tdt_dyn_int', axes(1:2), Time, &
-         'vertically integrated dynamic T tendency', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_tdt_dif_int = register_diag_field (mod_name,'tdt_dif_int', axes(1:2), Time, &
-         'vertically integrated diffusion T tendency', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_qdt_dyn_int = register_diag_field (mod_name,'qdt_dyn_int', axes(1:2), Time, &
-         'vertically integrated dynamic q tendency', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_qdt_dif_int = register_diag_field (mod_name,'qdt_dif_int', axes(1:2), Time, &
-         'vertically integrated diffusion q tendency', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_dgz_dyn_int = register_diag_field (mod_name,'dgz_dyn_int', axes(1:2), Time, &
-         'geopotential height tendency due to dynamics', 'W/m2',   &
-         interp_method = "conserve_order1" )
-    id_ddp_dyn_int = register_diag_field (mod_name,'ddp_dyn_int', axes(1:2), Time, &
-         'hm change due to mass change from the dynamics', 'W/m2',   &
-         interp_method = "conserve_order1" )
+         'frozen MSE times density tendency from dynamics', 'W/m3', missing_value=mv)
 
     id_hlsrc_avg = register_diag_field (mod_name,'hlsrc_avg', axes(1:2), Time, &
          'hlsrc_avg', 'J/m2', interp_method = "conserve_order1" )
@@ -975,16 +1018,17 @@ contains
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE uw_conv(is, js, Time, tb, qv, ub, vb, pmid, pint,zmid,  & !input
-       zint, qtr, omega, delt, pblht, ustar, bstar, qstar, sflx, lflx, land, coldT,& !input
-       asol, tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint, lat, lon, & !input
-       cush, do_strat,  skip_calculation, max_available_cf,          & !input
-       tten, qvten, qlten, qiten, qaten, qnten,                      & !output
-       uten, vten, rain, snow,                                       & !output
-       cmf, liq_pflx, ice_pflx, cldql, cldqi, cldqa,cldqn,           &
-       cbmfo, gusto, tkep, pblhto, rkmo, taudpo, exist_shconv,       &
-       exist_dpconv, pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, omg_prev, &
-       tracers, trtend, uw_wetdep)
+  SUBROUTINE uw_conv(is, js, Time, tb, qv, ub, vb, pmid, pint, zmid,    & !input
+       zint, qtr, omega, delt, pblht,                                   & !input
+       ustar, bstar, qstar, sflx, lflx, land, coldT, asol, tdt_rad,     & !input
+       tdt_dyn, qvdt_dyn,                     dgz_dyn, ddp_dyn,         & !input
+       tdt_tot, qvdt_dif,                     hmint, lat, lon,          & !input
+       cush, do_strat,  skip_calculation, max_available_cf,             & !input
+       tten, qvten, qlten, qiten, qaten, qnten,                         & !output
+       uten, vten, rain, snow, cmf, liq_pflx, ice_pflx,                 & !output
+       cldql, cldqi, cldqa, cldqn, tracers, trtend, uw_wetdep,          & !output
+       cbmfo, gusto, tkep, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, &
+       pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, omg_prev)
 
 !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 !
@@ -1024,7 +1068,8 @@ contains
     real, intent(in),    dimension(:,:)  :: pblht, ustar, bstar, qstar, sflx, lflx, lat, lon !pbl height...
     real, intent(inout), dimension(:,:)  :: cush  ! convective scale height (m) 
     real, intent(inout), dimension(:,:)  :: hmint ! vertically-averaged MSE (J/kg)
-    real, intent(in),  dimension(:,:,:)  :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif!miz
+    real, intent(in),  dimension(:,:,:)  :: tdt_rad, tdt_dyn, qvdt_dyn
+    real, intent(in),  dimension(:,:,:)  :: dgz_dyn, ddp_dyn, tdt_tot, qvdt_dif
 
     integer, intent(inout), dimension(:,:,:)  :: exist_shconv, exist_dpconv
     real, intent(inout), dimension(:,:,:)  :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, omg_prev
@@ -1088,16 +1133,14 @@ contains
 	 lhflx,      &
 	 shflx,      &
          hmint_old,  pblht_avg, omg_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, &
-         hm_vadv0,   &
-         hm_hadv0,   &
-         hm_tot0,    &
-         hm_total,   &
-	 tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int, &  
-         cpool, bflux,dgz_dyn_int, ddp_dyn_int, lts, & 
-	 nbuo_s, nbuo_d, pdep_s, pdep_d, pcb_s, pcb_d, pcb_c, pct_s, pct_d, pct_c
+         hmint0, hten, lts, hdt_tot_int, hdt_ver_int,                             &
+	 cpool, bflux, nbuo_s, nbuo_d, pdep_s, pdep_d, pcb_s, pcb_d, pcb_c, pct_s, pct_d, pct_c, omgavg
 
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx, qtflx, pflx, qtflx_up, qtflx_dn, hm_vadv
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: omgmc_up, ddp_dyn_hm, nqtflx, omega_up, omega_dn
+    real, dimension(size(tb,1),size(tb,2)) :: hdt_dgz_adj
+    real, dimension(size(tb,1),size(tb,2),size(tb,3))   :: qidt_dyn, qidt_dif
+
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx, qtflx, pflx, qtflx_up, qtflx_dn
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: omgmc_up, nqtflx, omega_up, omega_dn
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: fero_s,fdro_s,fdrso_s, tten_pevap, qvten_pevap, temp
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet_s, qidet_s, qadet_s, qndet_s, peo, hmo, hms, abu, buo_s
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: qldet_d, qidet_d, qadet_d, qndet_d, dbuodp_s, dbuodp_d
@@ -1105,6 +1148,11 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_s, cqa_s, cql_s, cqi_s, cqn_s, wuo_s, cmf_s
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: cfq_d, cqa_d, cql_d, cqi_d, cqn_d, wuo_d, cmf_d
     real, dimension(size(tb,3)+1)                       :: cqa, cql, cqi, cqn
+
+    real, dimension(size(tb,1),size(tb,2),size(tb,3))   :: hdt_vadv_int, hdt_hadv_int, hdt_forc_int,           &
+    	  						   hdt_adv_int, hdp_dyn_int, hdt_dyn_int, hdt_sum_int, &
+							   tdt_rad_int, tdt_dyn_int, tdt_dif_int, dgz_dyn_int, &
+							   qvdt_dyn_int,qvdt_dif_int,qidt_dyn_int,qidt_dif_int
 
     real, dimension(size(tb,1),size(tb,2))            :: scale_uw, scale_tr
     real :: tnew, qtin, dqt, temp_1, temp_max, temp_min
@@ -1148,7 +1196,7 @@ contains
     real, dimension(size(tb,3)) :: tten_tmp, qvten_tmp !f1p
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tten_rad
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: dissipative_heat
-    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tdt_dif_l
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tdt_dif
     real  :: latx, lonx, lat1b, lat1e, lon1b, lon1e, lat2b, lat2e, lon2b, lon2e
     
     logical used
@@ -1242,7 +1290,7 @@ contains
     cpn % do_limit_wmax= do_limit_wmax
     cpn % plev_for = plev_for
     cpn % plev_umf = plev_umf
-     if (ntracers > 0) then
+    if (ntracers > 0) then
       allocate ( cpn%tracername   (ntracers) )
       allocate ( cpn%tracer_units (ntracers) )
       allocate ( cpn%wetdep       (ntracers) )
@@ -1331,6 +1379,8 @@ contains
 
    !initialize 3D variables outside the loop
 
+    qidt_dyn=0.; qidt_dif=0.; hdt_dgz_adj=0.;
+
     tten=0.; qvten=0.; qlten=0.; qiten=0.; qaten=0.; qnten=0.;
     uten=0.; vten =0.; rain =0.; snow =0.; plcl =0.; plfc=0.; plnb=0.;  
     cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.; zlcl=0.; 
@@ -1338,13 +1388,17 @@ contains
     cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
     hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.;
     tten_pevap=0.; qvten_pevap=0.; temp=0.;
-    ice_pflx = 0. ; liq_pflx = 0.; qtflx_up=0.; qtflx_dn=0.; 
-    omega_up=0.; omega_dn=0.; omgmc_up=0.;  ddp_dyn_hm=0.;
-    hm_vadv0=0.; hm_hadv0=0.; hm_tot0=0.; hm_total=0.; tdt_dif_l=0.; 
+    ice_pflx = 0. ; liq_pflx = 0.; qtflx_up=0.; qtflx_dn=0.;
+    omega_up=0.; omega_dn=0.; omgmc_up=0.;
 
-    tdt_rad_int=0.; tdt_dyn_int=0.; tdt_dif_int=0.; qdt_dyn_int=0.; qdt_dif_int=0.; 
+    hdt_ver_int=0.; hdt_tot_int=0.;
+    hdt_vadv_int=0.; hdt_hadv_int=0.; hdt_adv_int=0.; hdp_dyn_int=0.; hdt_dyn_int=0.; hdt_sum_int=0.; 
+    tdt_rad_int =0.; tdt_dyn_int =0.; tdt_dif_int=0.; dgz_dyn_int=0.; hdt_forc_int=0.;
+    qvdt_dyn_int=0.; qidt_dyn_int=0.; qvdt_dif_int=0.; qidt_dif_int=0.; 
+
+    tdt_dif=0.; 
+
     cpool=0.; bflux=0.; scale_uw=1.; scale_tr=1.;
-    dgz_dyn_int=0.; ddp_dyn_int=0.;
 
     cino=0.; capeo=0.; tkeo=0.; wrelo=0.; ufrco=0.; zinvo=0.; einso=0.; wuo_s=0.; peo=0.; 
     fero_s=0.; fdro_s=0.; fdrso_s=0.; cmf=0.; denth=0.;  dqtmp=0.; ocode=0; cmf_s=0.; cfq_s=0.;
@@ -1357,7 +1411,7 @@ contains
     pcb_s=0.; pcb_d=0.; pcb_c=0.; 
     pct_s=0.; pct_d=0.; pct_c=0.;
     dissipative_heat = 0.; rhos=0; lhflx=0; shflx=0; pdep_s=0.; pdep_d=0.;
-    hmint_old=hmint; hmint=0; lts=0.; nbuo_s=0.; nbuo_d=0.; lofactor=1.;
+    hmint_old=hmint; hmint=0; hmint0=0.; lts=0.; nbuo_s=0.; nbuo_d=0.; lofactor=1.; omgavg=0.;
 
     naer = size(asol%aerosol,4)
 
@@ -1533,13 +1587,14 @@ contains
              qntmp(:)=0.
           end if
 	  ksrc=1
-	  tdt_dif_l(i,j,:)=tdt_dif(i,j,:)-tdt_rad(i,j,:);
-          call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),     &
-               zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), omega(i,j,:), tb(i,j,:), &
-               qv(i,j,:), qtr(i,j,:,nql), qtr(i,j,:,nqi), qtr(i,j,:,nqa), qntmp,       &
-               am1(:), am2(:), am3(:), am4(:), &
-	       tdt_rad(i,j,:), tdt_dyn(i,j,:), qdt_dyn(i,j,:), dgz_dyn(i,j,:), ddp_dyn(i,j,:), &
-	       tdt_dif_l(i,j,:), qdt_dif(i,j,:), src_choice, tracers(i,j,:,:), sd, Uw_p)
+	  tdt_dif(i,j,:)=tdt_tot(i,j,:)-tdt_rad(i,j,:);
+	  call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),    &
+	  zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), omega(i,j,:), tb(i,j,:), &
+	  qv(i,j,:), qtr(i,j,:,nql), qtr(i,j,:,nqi), qtr(i,j,:,nqa), qntmp,        &
+	  am1(:), am2(:), am3(:), am4(:), tracers(i,j,:,:), src_choice,            &
+	  tdt_rad(i,j,:), tdt_dyn(i,j,:), qvdt_dyn(i,j,:), qidt_dyn(i,j,:),        &
+	  dgz_dyn(i,j,:), ddp_dyn(i,j,:), tdt_dif(i,j,:),                        &
+	  qvdt_dif(i,j,:), qidt_dif(i,j,:), sd, Uw_p)
 
 !========Finite volume intepolation==========================================
 
@@ -1569,7 +1624,7 @@ contains
           call extend_sd_k(sd, pblht(i,j), do_ice, Uw_p)
 
 	  omg_prev(i,j,1)=sd%omg0
-	  omg_avg  (i,j)=(omg_prev(i,j,1)+omg_avg(i,j)*(numx-1))/numx
+	  omg_avg (i,j)  =(omg_prev(i,j,1)+omg_avg(i,j)*(numx-1))/numx
 	  sd%omg_avg = omg_avg(i,j)
 
           xpsrc (i,j)= sd%psrc
@@ -1590,41 +1645,49 @@ contains
 
 	  tmp=sd%thvbot(1)*sd%exners(1)
           rhos(i,j)= sd%ps(0)/(rdgas*tmp)
-!         lhflx(i,j)=rhos(i,j)*ustar(i,j)*qstar(i,j)
+!	  lhflx(i,j)=rhos(i,j)*ustar(i,j)*qstar(i,j)
 !	  qvs=sd%qv(1)+sd%ssqct(1)*(sd%ps(0)-sd%p(1))
-!         tvs=tmp*(1+0.608*qvs)
-!         shflx(i,j)=Uw_p%cp_air*(rhos(i,j)*ustar(i,j)*bstar(i,j)*tvs/Uw_p%grav-0.608*tmp*lhflx(i,j))&
+!	  tvs=tmp*(1+0.608*qvs)
+!	  shflx(i,j)=Uw_p%cp_air*(rhos(i,j)*ustar(i,j)*bstar(i,j)*tvs/Uw_p%grav-0.608*tmp*lhflx(i,j))&
 !                       / (1+0.608*qvs);
 !	  lhflx(i,j)=lhflx(i,j)*Uw_p%hlv
 
-          shflx(i,j)=sflx(i,j)
-	  lhflx(i,j)=lflx(i,j)*Uw_p%hlv
-
+          shflx(i,j) = sflx(i,j)
+	  lhflx(i,j) = lflx(i,j)*Uw_p%hlv
 	  hmint(i,j) = sd%hmint;
-!	  tdt_rad_int(i,j) = sd%tdt_rad_int;
-!	  tdt_dyn_int(i,j) = sd%tdt_dyn_int;
-!	  tdt_dif_int(i,j) = sd%tdt_dif_int;
-!	  qdt_dyn_int(i,j) = sd%qdt_dyn_int;
-!	  qdt_dif_int(i,j) = sd%qdt_dif_int;
-!	  dgz_dyn_int(i,j) = sd%dgz_dyn_int;
-!	  ddp_dyn_int(i,j) = sd%ddp_dyn_int;
-!          hm_vadv0(i,j) = sd%hm_vadv0
-!	  hm_hadv0(i,j) = sd%tdt_dyn_int + sd%qdt_dyn_int + sd%dgz_dyn_int + ddp_dyn_int(i,j) - sd%hm_vadv0
-!note: qdt_dif_int = lhflx; tdt_dif_int approximately equal to shflx
-!!         hm_tot0 (i,j) = hm_hadv0(i,j)+hm_vadv0(i,j)+tdt_rad_int(i,j)+shflx(i,j)+lhflx(i,j)
-!          hm_tot0 (i,j) = hm_hadv0(i,j)+hm_vadv0(i,j)+tdt_rad_int(i,j)+tdt_dif_int(i,j)+qdt_dif_int(i,j)
+	  hmint0(i,j)= sd%hmint0;
 
-!          hm_total(i,j) = (hmint(i,j)-hmint_old(i,j))/delt
+	  do k = 1,kmax
+	     nk = kmax+1-k
+	     tdt_rad_int (i,j,nk) = sd%tdt_rad (k);
+	     tdt_dyn_int (i,j,nk) = sd%tdt_dyn (k);
+	     tdt_dif_int (i,j,nk) = sd%tdt_dif (k);
+	     qvdt_dyn_int(i,j,nk) = sd%qvdt_dyn(k);
+	     qidt_dyn_int(i,j,nk) = sd%qidt_dyn(k);
+	     qvdt_dif_int(i,j,nk) = sd%qvdt_dif(k);
+	     dgz_dyn_int (i,j,nk) = sd%dgz_dyn (k);
+	     hdp_dyn_int (i,j,nk) = sd%hdp_dyn (k);
+	     hdt_vadv_int(i,j,nk) = sd%hdt_vadv(k);
+	     hdt_forc_int(i,j,nk) = sd%hdt_forc(k);
 
-          do k = 1,kmax
-             nk = kmax+1-k
-             qtflx_up(i,j,nk) = sd%qtflx_up(k)
-             qtflx_dn(i,j,nk) = sd%qtflx_dn(k)
-             omega_up(i,j,nk) = sd%omega_up(k)
-             omega_dn(i,j,nk) = sd%omega_dn(k)
-!             hm_vadv(i,j,nk)  = sd%hm_vadv(k)
-             ddp_dyn_hm(i,j,nk) = sd%ddp_dyn(k)
-          enddo
+	     qtflx_up(i,j,nk) = sd%qtflx_up(k)
+	     qtflx_dn(i,j,nk) = sd%qtflx_dn(k)
+	     omega_up(i,j,nk) = sd%omega_up(k)
+	     omega_dn(i,j,nk) = sd%omega_dn(k)
+	  enddo
+
+	  hdt_adv_int (i,j,:)=tdt_dyn_int(i,j,:)+qvdt_dyn_int(i,j,:)-qidt_dyn_int(i,j,:)+dgz_dyn_int(i,j,:);
+	  hdt_hadv_int(i,j,:)=hdt_adv_int(i,j,:)-hdt_vadv_int(i,j,:)
+	  hdt_dyn_int (i,j,:)=hdt_adv_int(i,j,:)+hdp_dyn_int (i,j,:)
+
+	  hdt_sum_int(i,j,:)=hdt_dyn_int(i,j,:)+tdt_rad_int(i,j,:)+tdt_dif_int(i,j,:)+qvdt_dif_int(i,j,:)
+!note:    qvdt_dif_int = lhflx; tdt_dif_int = shflx
+!         hdt_sum_int(i,j)=hdt_dyn_int(i,j,kmax)+tdt_rad_int(i,j,kmax)+shflx(i,j)+lhflx(i,j)
+
+!for verification purpose, the current value of hdt_ver_int should equal hdt_sum_int at previous time-step
+	  hdt_tot_int(i,j) = (hmint(i,j)-hmint_old(i,j))/delt
+	  hdt_ver_int(i,j) = hdt_tot_int(i,j) - hdt_dgz_adj(i,j)
+
 
 !========Find source air, and do adiabatic cloud lifting======================
 	  ksrc  =sd%ksrc    
@@ -1870,7 +1933,7 @@ contains
              dcrh0  = crh_max-crh_th
 	     if (del_crh .gt. 0.) then
 	        cbmf_deep = 0.0001 !first assuming existence of deep convective cloud base mass flux
-	        dcrh = del_crh/dcrh0; dcrh = dcrh**(norder) !dcrh = dcrh**(1./norder)
+                dcrh = del_crh/dcrh0; dcrh = dcrh**(norder) !dcrh = dcrh**(1./norder)
 		if (dcrh.gt.1) then
 		   rkm_dp = dpc%rkm_dp2
 	   	else
@@ -1913,7 +1976,7 @@ contains
                    cbmf_deep = 0
                 endif
 	     endif
- 
+
              dpn % do_ppen  = dpc % do_ppen_d
 	     dpn % rpen     = dpc % rpen_d
              dpn % do_pevap = dpc % do_pevap_d
@@ -2260,10 +2323,10 @@ contains
        end where
 
        if (do_qn) then
-      	  temp = qtr(:,:,:,nqn)/delt + qnten(:,:,:)
-      	  where (temp(:,:,:) .lt. 0. .and. qnten(:,:,:) .ne. 0.)
-           qnten(:,:,:) = qnten(:,:,:) - temp(:,:,:)
-      	  end where
+       	  temp = qtr(:,:,:,nqn)/delt + qnten(:,:,:)
+       	  where (temp(:,:,:) .lt. 0. .and. qnten(:,:,:) .ne. 0.)
+            qnten(:,:,:) = qnten(:,:,:) - temp(:,:,:)
+       	  end where
        end if
 
       !rescaling to prevent negative specific humidity for each grid point
@@ -2452,7 +2515,7 @@ contains
     used = send_data( id_omgmc_up_uwc, omgmc_up,   Time, is, js, 1)
     used = send_data( id_omega_up_uwc, omega_up,   Time, is, js, 1)
     used = send_data( id_omega_dn_uwc, omega_dn,   Time, is, js, 1)
-!    used = send_data( id_hm_vadv_uwc, hm_vadv,     Time, is, js, 1)
+
     used = send_data( id_pflx_uwc,   pflx,         Time, is, js, 1)
     used = send_data( id_hmo_uwc,    hmo,          Time, is, js, 1)
     used = send_data( id_hms_uwc,    hms,          Time, is, js, 1)
@@ -2461,35 +2524,49 @@ contains
     used = send_data( id_dbuodp_uws, dbuodp_s,     Time, is, js, 1)
     used = send_data( id_dbuodp_uwd, dbuodp_d,     Time, is, js, 1)
 
-    used = send_data( id_tdt_rad_uwc,  tdt_rad,  Time, is, js, 1)
-    used = send_data( id_tdt_dyn_uwc,  tdt_dyn,  Time, is, js, 1)
-    used = send_data( id_tdt_dif_uwc,  tdt_dif,  Time, is, js, 1)
-    used = send_data( id_qdt_dyn_uwc,  qdt_dyn,  Time, is, js, 1)
-    used = send_data( id_qdt_dif_uwc,  qdt_dif,  Time, is, js, 1)
-    used = send_data( id_dgz_dyn_uwc,  dgz_dyn,  Time, is, js, 1)
-    used = send_data( id_ddp_dyn_uwc,  ddp_dyn_hm,  Time, is, js, 1)
+    used = send_data( id_tdt_rad_uwc,  tdt_rad,      Time, is, js, 1)
+    used = send_data( id_tdt_dyn_uwc,  tdt_dyn,      Time, is, js, 1)
+    used = send_data( id_tdt_dif_uwc,  tdt_dif,      Time, is, js, 1)
+    used = send_data( id_qvdt_dyn_uwc, qvdt_dyn,     Time, is, js, 1)
+    used = send_data( id_qvdt_dif_uwc, qvdt_dif,     Time, is, js, 1)
+    used = send_data( id_dgz_dyn_uwc,  dgz_dyn,      Time, is, js, 1)
+    used = send_data( id_ddp_dyn_uwc,  ddp_dyn,      Time, is, js, 1)
+
+    used = send_data( id_hdt_forc_int, hdt_forc_int, Time, is, js, 1)
+
+    used = send_data( id_tdt_rad_int,  tdt_rad_int,  Time, is, js, 1)
+    used = send_data( id_tdt_dyn_int,  tdt_dyn_int,  Time, is, js, 1)
+    used = send_data( id_tdt_dif_int,  tdt_dif_int,  Time, is, js, 1)
+    used = send_data( id_qvdt_dyn_int, qvdt_dyn_int, Time, is, js, 1)
+    used = send_data( id_qvdt_dif_int, qvdt_dif_int, Time, is, js, 1)
+    used = send_data( id_dgz_dyn_int,  dgz_dyn_int,  Time, is, js, 1)
+    used = send_data( id_hdp_dyn_int,  hdp_dyn_int,  Time, is, js, 1)
+    used = send_data( id_hdt_vadv_int, hdt_vadv_int, Time, is, js, 1)
+    used = send_data( id_hdt_hadv_int, hdt_hadv_int, Time, is, js, 1)
+    used = send_data( id_hdt_sum_int,  hdt_sum_int,  Time, is, js, 1)
+
+    used = send_data( id_tdt_rad_int0,  tdt_rad_int (:,:,kmax), Time, is, js)
+    used = send_data( id_tdt_dyn_int0,  tdt_dyn_int (:,:,kmax), Time, is, js)
+    used = send_data( id_tdt_dif_int0,  tdt_dif_int (:,:,kmax), Time, is, js)
+    used = send_data( id_qvdt_dyn_int0, qvdt_dyn_int(:,:,kmax), Time, is, js)
+    used = send_data( id_qvdt_dif_int0, qvdt_dif_int(:,:,kmax), Time, is, js)
+    used = send_data( id_dgz_dyn_int0,  dgz_dyn_int (:,:,kmax), Time, is, js)
+    used = send_data( id_hdp_dyn_int0,  hdp_dyn_int (:,:,kmax), Time, is, js)
+    used = send_data( id_hdt_vadv_int0, hdt_vadv_int(:,:,kmax), Time, is, js)
+    used = send_data( id_hdt_hadv_int0, hdt_hadv_int(:,:,kmax), Time, is, js)
+    used = send_data( id_hdt_sum_int0,  hdt_sum_int (:,:,kmax), Time, is, js)
+
+    used = send_data( id_hdt_tot_int,  hdt_tot_int,  Time, is, js)
+    used = send_data( id_hdt_ver_int,  hdt_ver_int,  Time, is, js)
+    used = send_data( id_lhflx_uwc,    lhflx,        Time, is, js)
+    used = send_data( id_shflx_uwc,    shflx,        Time, is, js)
+    used = send_data( id_hmint_uwc,    hmint,        Time, is, js)
+    used = send_data( id_hmint0_uwc,   hmint0,       Time, is, js)
 
     used = send_data( id_lts_uwc,      lts,      Time, is, js )
     used = send_data( id_nbuo_uws,     nbuo_s,   Time, is, js )
     used = send_data( id_pdep_uws,     pdep_s,   Time, is, js )
-    used = send_data( id_lhflx_uwc,    lhflx,    Time, is, js )
-    used = send_data( id_shflx_uwc,    shflx,    Time, is, js )
-    used = send_data( id_hmint_uwc,    hmint,    Time, is, js )
-!    used = send_data( id_hm_vadv0_uwc, hm_vadv0, Time, is, js )
-!    used = send_data( id_hm_hadv0_uwc, hm_hadv0, Time, is, js )
-    used = send_data( id_hm_tot0_uwc,  hm_tot0,  Time, is, js )
-    used = send_data( id_hm_total_uwc, hm_total, Time, is, js )
 
-    used = send_data( id_tdt_rad_int,  tdt_rad_int, Time, is, js )
-    used = send_data( id_tdt_dyn_int,  tdt_dyn_int, Time, is, js )
-    used = send_data( id_tdt_dif_int,  tdt_dif_int, Time, is, js )
-    used = send_data( id_qdt_dyn_int,  qdt_dyn_int, Time, is, js )
-    used = send_data( id_qdt_dif_int,  qdt_dif_int, Time, is, js )
-    used = send_data( id_dgz_dyn_int,  dgz_dyn_int, Time, is, js )
-    used = send_data( id_ddp_dyn_int,  ddp_dyn_int, Time, is, js )
-
-!    used = send_data( id_tdt_rad0_uwc, tdt_rad0, Time, is, js )
- 
     used = send_data( id_prec_uws, (rain+snow-rain_d-snow_d), Time, is, js )
     used = send_data( id_snow_uws, (snow-snow_d),      Time, is, js )
     used = send_data( id_prec_uwc, (rain+snow),        Time, is, js )
@@ -2729,6 +2806,14 @@ contains
 	enddo
     end if
 
+    do j = 1,jmax
+       do i=1,imax
+       	  hten(i,j)=0
+	  do k=1,kmax
+	     hten(i,j)=hten(i,j)+(cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
+	  enddo
+       enddo
+    enddo
 
   END SUBROUTINE UW_CONV
 
