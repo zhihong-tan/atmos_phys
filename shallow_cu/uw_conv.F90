@@ -1601,20 +1601,20 @@ contains
 	  lhflx(i,j)=lflx(i,j)*Uw_p%hlv
 
 	  hmint(i,j) = sd%hmint;
-	  tdt_rad_int(i,j) = sd%tdt_rad_int;
-	  tdt_dyn_int(i,j) = sd%tdt_dyn_int;
-	  tdt_dif_int(i,j) = sd%tdt_dif_int;
-	  qdt_dyn_int(i,j) = sd%qdt_dyn_int;
-	  qdt_dif_int(i,j) = sd%qdt_dif_int;
-	  dgz_dyn_int(i,j) = sd%dgz_dyn_int;
-	  ddp_dyn_int(i,j) = sd%ddp_dyn_int;
-          hm_vadv0(i,j) = sd%hm_vadv0
-	  hm_hadv0(i,j) = sd%tdt_dyn_int + sd%qdt_dyn_int + sd%dgz_dyn_int + ddp_dyn_int(i,j) - sd%hm_vadv0
+!	  tdt_rad_int(i,j) = sd%tdt_rad_int;
+!	  tdt_dyn_int(i,j) = sd%tdt_dyn_int;
+!	  tdt_dif_int(i,j) = sd%tdt_dif_int;
+!	  qdt_dyn_int(i,j) = sd%qdt_dyn_int;
+!	  qdt_dif_int(i,j) = sd%qdt_dif_int;
+!	  dgz_dyn_int(i,j) = sd%dgz_dyn_int;
+!	  ddp_dyn_int(i,j) = sd%ddp_dyn_int;
+!          hm_vadv0(i,j) = sd%hm_vadv0
+!	  hm_hadv0(i,j) = sd%tdt_dyn_int + sd%qdt_dyn_int + sd%dgz_dyn_int + ddp_dyn_int(i,j) - sd%hm_vadv0
 !note: qdt_dif_int = lhflx; tdt_dif_int approximately equal to shflx
-!         hm_tot0 (i,j) = hm_hadv0(i,j)+hm_vadv0(i,j)+tdt_rad_int(i,j)+shflx(i,j)+lhflx(i,j)
-          hm_tot0 (i,j) = hm_hadv0(i,j)+hm_vadv0(i,j)+tdt_rad_int(i,j)+tdt_dif_int(i,j)+qdt_dif_int(i,j)
+!!         hm_tot0 (i,j) = hm_hadv0(i,j)+hm_vadv0(i,j)+tdt_rad_int(i,j)+shflx(i,j)+lhflx(i,j)
+!          hm_tot0 (i,j) = hm_hadv0(i,j)+hm_vadv0(i,j)+tdt_rad_int(i,j)+tdt_dif_int(i,j)+qdt_dif_int(i,j)
 
-          hm_total(i,j) = (hmint(i,j)-hmint_old(i,j))/delt
+!          hm_total(i,j) = (hmint(i,j)-hmint_old(i,j))/delt
 
           do k = 1,kmax
              nk = kmax+1-k
@@ -1622,7 +1622,7 @@ contains
              qtflx_dn(i,j,nk) = sd%qtflx_dn(k)
              omega_up(i,j,nk) = sd%omega_up(k)
              omega_dn(i,j,nk) = sd%omega_dn(k)
-             hm_vadv(i,j,nk)  = sd%hm_vadv(k)
+!             hm_vadv(i,j,nk)  = sd%hm_vadv(k)
              ddp_dyn_hm(i,j,nk) = sd%ddp_dyn(k)
           enddo
 
@@ -2452,7 +2452,7 @@ contains
     used = send_data( id_omgmc_up_uwc, omgmc_up,   Time, is, js, 1)
     used = send_data( id_omega_up_uwc, omega_up,   Time, is, js, 1)
     used = send_data( id_omega_dn_uwc, omega_dn,   Time, is, js, 1)
-    used = send_data( id_hm_vadv_uwc, hm_vadv,     Time, is, js, 1)
+!    used = send_data( id_hm_vadv_uwc, hm_vadv,     Time, is, js, 1)
     used = send_data( id_pflx_uwc,   pflx,         Time, is, js, 1)
     used = send_data( id_hmo_uwc,    hmo,          Time, is, js, 1)
     used = send_data( id_hms_uwc,    hms,          Time, is, js, 1)
@@ -2475,8 +2475,8 @@ contains
     used = send_data( id_lhflx_uwc,    lhflx,    Time, is, js )
     used = send_data( id_shflx_uwc,    shflx,    Time, is, js )
     used = send_data( id_hmint_uwc,    hmint,    Time, is, js )
-    used = send_data( id_hm_vadv0_uwc, hm_vadv0, Time, is, js )
-    used = send_data( id_hm_hadv0_uwc, hm_hadv0, Time, is, js )
+!    used = send_data( id_hm_vadv0_uwc, hm_vadv0, Time, is, js )
+!    used = send_data( id_hm_hadv0_uwc, hm_hadv0, Time, is, js )
     used = send_data( id_hm_tot0_uwc,  hm_tot0,  Time, is, js )
     used = send_data( id_hm_total_uwc, hm_total, Time, is, js )
 
