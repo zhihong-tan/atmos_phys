@@ -612,7 +612,11 @@ contains
        	  dpsum = dpsum + sd%dp(k)
       end if
     end do
-    sd % omg0 = tmp/dpsum
+    if (dpsum .ne. 0.) then
+      sd%omg0 = tmp/dpsum
+    else
+      sd%omg0 = 0
+    end if
 
 !determine source air property based on max hm within PBL
     if (sd%src_choice.eq.0) then
