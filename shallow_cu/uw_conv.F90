@@ -124,6 +124,7 @@ MODULE UW_CONV_MOD
   logical :: use_hlqtsrc_avg =.false.
   logical :: use_capecin_avg =.false.
   logical :: zero_out_conv_area = .false.
+  logical :: do_mse_budget = .false.
   integer :: src_choice = 0
   integer :: gqt_choice = 0
   real    :: nbuo_max   = -10.
@@ -149,7 +150,7 @@ MODULE UW_CONV_MOD
   logical :: use_turb_tke = .false.  !h1g, 2015-08-11
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, plev_omg, nbuo_max, do_peff_land, &
-       do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_convcld,  &
+       do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_convcld, do_mse_budget, &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, do_minmse, aerol, tkemin, cldhgt_max_shallow,do_umf_pbl,&
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
@@ -330,7 +331,7 @@ MODULE UW_CONV_MOD
        id_tdt_rad_int0, id_tdt_dyn_int0, id_tdt_dif_int0, id_dgz_dyn_int0, id_hdp_dyn_int0, &
        id_qvdt_dyn_int0, id_qvdt_dif_int0, id_hdt_forc_int0,                                &
        id_pblht_avg, id_hlsrc_avg, id_qtsrc_avg, id_cape_avg, id_cin_avg, id_omg_avg,       &
-       id_cpool_uwc, id_bflux_uwc, id_lts_uwc, id_nbuo_uws, id_buo_uws, id_pdep_uws,     &
+       id_cpool_uwc, id_lts_uwc, id_nbuo_uws, id_buo_uws, id_pdep_uws,     &
        id_qtflx_up_uwc, id_qtflx_dn_uwc, id_omega_up_uwc, id_omega_dn_uwc, &
        id_omgmc_up_uwc, id_rkm_uws, id_stime_uwc, id_scale_uwc, id_scaletr_uwc
 
@@ -606,6 +607,7 @@ contains
          'vertically averaged MSE normalized by total column mass', 'J/kg',      &
          interp_method = "conserve_order1" )
 
+  if(do_mse_budget) then
     id_hdt_tot_int = register_diag_field (mod_name,'hdt_tot_int', axes(1:2), Time,          &
          'total vertically integrated MSE tendency based on consecutive time step', 'W/m2', &
          interp_method = "conserve_order1" )
@@ -692,6 +694,7 @@ contains
          'geopotential height tendency due to dynamics', 'm2/s2/s', missing_value=mv)
     id_ddp_dyn_uwc = register_diag_field (mod_name,'ddp_dyn_uwc',axes(1:3),Time, &
          'frozen MSE times density tendency from dynamics', 'W/m3', missing_value=mv)
+  endif
 
     id_hlsrc_avg = register_diag_field (mod_name,'hlsrc_avg', axes(1:2), Time, &
          'hlsrc_avg', 'J/m2', interp_method = "conserve_order1" )
@@ -709,9 +712,6 @@ contains
     id_cpool_uwc = register_diag_field (mod_name,'cpool_uwc', axes(1:2), Time, &
          'cold pool', 'm2/s3', &
          interp_method = "conserve_order1" )
-!    id_bflux_uwc = register_diag_field (mod_name,'bflux_uwc', axes(1:2), Time, &
-!         'surface buoyancy flux', 'm2/s3', &
-!         interp_method = "conserve_order1" )
 
     id_prec_uwc = register_diag_field (mod_name,'prec_uwc', axes(1:2), Time, &
          'Precipitation rate from uw_conv', 'kg/m2/sec',                     &
@@ -1021,8 +1021,10 @@ contains
   SUBROUTINE uw_conv(is, js, Time, tb, qv, ub, vb, pmid, pint, zmid,    & !input
        zint, qtr, omega, delt, pblht,                                   & !input
        ustar, bstar, qstar, sflx, lflx, land, coldT, asol, tdt_rad,     & !input
-       tdt_dyn, qvdt_dyn,                     dgz_dyn, ddp_dyn,         & !input
-       tdt_tot, qvdt_dif,                     hmint, lat, lon,          & !input
+       tdt_dyn, qvdt_dyn,                     dgz_dyn, ddp_dyn,         & !commented out when do_mse_budget=T
+       tdt_tot, qvdt_dif,                     hmint, lat, lon,          & !commented out when do_mse_budget=T
+!       tdt_dyn, qvdt_dyn, qldt_dyn, qidt_dyn, dgz_dyn, ddp_dyn, hdt_dgz_adj, & !input
+!       tdt_tot, qvdt_dif, qldt_dif, qidt_dif, hmint, lat, lon,          & !input
        cush, do_strat,  skip_calculation, max_available_cf,             & !input
        tten, qvten, qlten, qiten, qaten, qnten,                         & !output
        uten, vten, rain, snow, cmf, liq_pflx, ice_pflx,                 & !output
@@ -1070,6 +1072,11 @@ contains
     real, intent(inout), dimension(:,:)  :: hmint ! vertically-averaged MSE (J/kg)
     real, intent(in),  dimension(:,:,:)  :: tdt_rad, tdt_dyn, qvdt_dyn
     real, intent(in),  dimension(:,:,:)  :: dgz_dyn, ddp_dyn, tdt_tot, qvdt_dif
+
+!required when do_mse_budget=T
+!    real, intent(in),  dimension(:,:,:)  :: qldt_dyn, qidt_dyn, qldt_dif, qidt_dif
+!    real, intent(in),  dimension(:,:)    :: hdt_dgz_adj
+!required when do_mse_budget=T
 
     integer, intent(inout), dimension(:,:,:)  :: exist_shconv, exist_dpconv
     real, intent(inout), dimension(:,:,:)  :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, omg_prev
@@ -1136,8 +1143,10 @@ contains
          hmint0, hten, lts, hdt_tot_int, hdt_ver_int,                             &
 	 cpool, bflux, nbuo_s, nbuo_d, pdep_s, pdep_d, pcb_s, pcb_d, pcb_c, pct_s, pct_d, pct_c, omgavg
 
-    real, dimension(size(tb,1),size(tb,2)) :: hdt_dgz_adj
+!commented out when do_mse_buget=T
     real, dimension(size(tb,1),size(tb,2),size(tb,3))   :: qidt_dyn, qidt_dif
+    real, dimension(size(tb,1),size(tb,2))              :: hdt_dgz_adj
+!commented out when do_mse_buget=T
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx, qtflx, pflx, qtflx_up, qtflx_dn
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: omgmc_up, nqtflx, omega_up, omega_dn
@@ -1379,7 +1388,9 @@ contains
 
    !initialize 3D variables outside the loop
 
-    qidt_dyn=0.; qidt_dif=0.; hdt_dgz_adj=0.;
+!commented out when do_mse_budget=T
+    qidt_dyn=0.; qidt_dif=0.; hdt_dgz_adj=0.; 
+!commented out when do_mse_budget=T
 
     tten=0.; qvten=0.; qlten=0.; qiten=0.; qaten=0.; qnten=0.;
     uten=0.; vten =0.; rain =0.; snow =0.; plcl =0.; plfc=0.; plnb=0.;  
@@ -1643,6 +1654,7 @@ contains
 	  hlsrc_avg(i,j)=(hlsrc_prev(i,j,1)+hlsrc_avg(i,j)*(numx-1))/numx
 	  qtsrc_avg(i,j)=(qtsrc_prev(i,j,1)+qtsrc_avg(i,j)*(numx-1))/numx
 
+        if (do_mse_budget) then
 	  tmp=sd%thvbot(1)*sd%exners(1)
           rhos(i,j)= sd%ps(0)/(rdgas*tmp)
 !	  lhflx(i,j)=rhos(i,j)*ustar(i,j)*qstar(i,j)
@@ -1687,7 +1699,7 @@ contains
 !for verification purpose, the current value of hdt_ver_int should equal hdt_sum_int at previous time-step
 	  hdt_tot_int(i,j) = (hmint(i,j)-hmint_old(i,j))/delt
 	  hdt_ver_int(i,j) = hdt_tot_int(i,j) - hdt_dgz_adj(i,j)
-
+        endif
 
 !========Find source air, and do adiabatic cloud lifting======================
 	  ksrc  =sd%ksrc    
@@ -2524,6 +2536,7 @@ contains
     used = send_data( id_dbuodp_uws, dbuodp_s,     Time, is, js, 1)
     used = send_data( id_dbuodp_uwd, dbuodp_d,     Time, is, js, 1)
 
+  if (do_mse_budget) then
     used = send_data( id_tdt_rad_uwc,  tdt_rad,      Time, is, js, 1)
     used = send_data( id_tdt_dyn_uwc,  tdt_dyn,      Time, is, js, 1)
     used = send_data( id_tdt_dif_uwc,  tdt_dif,      Time, is, js, 1)
@@ -2533,7 +2546,6 @@ contains
     used = send_data( id_ddp_dyn_uwc,  ddp_dyn,      Time, is, js, 1)
 
     used = send_data( id_hdt_forc_int, hdt_forc_int, Time, is, js, 1)
-
     used = send_data( id_tdt_rad_int,  tdt_rad_int,  Time, is, js, 1)
     used = send_data( id_tdt_dyn_int,  tdt_dyn_int,  Time, is, js, 1)
     used = send_data( id_tdt_dif_int,  tdt_dif_int,  Time, is, js, 1)
@@ -2560,6 +2572,8 @@ contains
     used = send_data( id_hdt_ver_int,  hdt_ver_int,  Time, is, js)
     used = send_data( id_lhflx_uwc,    lhflx,        Time, is, js)
     used = send_data( id_shflx_uwc,    shflx,        Time, is, js)
+   endif
+
     used = send_data( id_hmint_uwc,    hmint,        Time, is, js)
     used = send_data( id_hmint0_uwc,   hmint0,       Time, is, js)
 
@@ -2575,7 +2589,6 @@ contains
     used = send_data( id_cape_uwc, (capeo),            Time, is, js )
     used = send_data( id_gust_uwc, (gusto),            Time, is, js )
     used = send_data( id_cpool_uwc,(cpool),            Time, is, js )
-!    used = send_data( id_bflux_uwc,(bflux),            Time, is, js )
     used = send_data( id_crh_uwc,  (crho),             Time, is, js )
     used = send_data( id_pblht_uwc,(pblht),            Time, is, js )
     used = send_data( id_tke_uwc,  (tkeo),             Time, is, js )
@@ -2806,14 +2819,16 @@ contains
 	enddo
     end if
 
-    do j = 1,jmax
-       do i=1,imax
+    if (do_mse_budget) then
+      do j = 1,jmax
+        do i=1,imax
        	  hten(i,j)=0
 	  do k=1,kmax
 	     hten(i,j)=hten(i,j)+(cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
 	  enddo
-       enddo
-    enddo
+        enddo
+      enddo
+    endif
 
   END SUBROUTINE UW_CONV
 
