@@ -1,10 +1,10 @@
 !FDOC_TAG_GFDL
-module strat_netcdf_mod
+                module lscloud_netcdf_mod
 
 use fms_mod,                   only :  write_version_number
 use diag_manager_mod,          only :  register_diag_field, send_data
 use time_manager_mod,          only :  time_type
-use strat_cloud_utilities_mod, only :  strat_cloud_utilities_init, &
+use lscloud_types_mod,         only :  lscloud_types_init, &
                                        diag_id_type, diag_pt_type
 
 implicit none
@@ -12,13 +12,13 @@ private
 
 !-----------------------------------------------------------------------
 !---interfaces----------------------------------------------------------
-public strat_netcdf_init, strat_netcdf, strat_netcdf_end
+public lscloud_netcdf_init, lscloud_netcdf, lscloud_netcdf_end
 private diag_field_init
 
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
-Character(len=128) :: Version = '$Id$'
-Character(len=128) :: Tagname = '$Name$'
+Character(len=128) :: Version = '$Id: $'
+Character(len=128) :: Tagname = '$Name: $'
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics variables-----------------------------
@@ -31,13 +31,13 @@ real :: missing_value = -999.
 logical  :: module_is_initialized = .false.
 
 
-CONTAINS
+                             CONTAINS
 
 
 !#########################################################################
 
-subroutine strat_netcdf_init (axes, Time, diag_id, diag_pt, n_diag_4d, &
-                              n_diag_4d_kp1)
+subroutine lscloud_netcdf_init (axes, Time, diag_id, diag_pt, n_diag_4d, &
+                                n_diag_4d_kp1)
 
 !------------------------------------------------------------------------
 integer,             intent(in)    :: axes(4)
@@ -46,8 +46,10 @@ type(diag_id_type),  intent(inout) :: diag_id
 type(diag_pt_type),  intent(inout) :: diag_pt
 integer,             intent(out)   :: n_diag_4d, n_diag_4d_kp1
 
+
 !------------------------------------------------------------------------
       if (module_is_initialized) return
+
 
 !-----------------------------------------------------------------------
 !    write version info to standard log.
@@ -57,25 +59,26 @@ integer,             intent(out)   :: n_diag_4d, n_diag_4d_kp1
 !------------------------------------------------------------------------
 !    make sure needed modules have been initialized.
 !------------------------------------------------------------------------
-      call strat_cloud_utilities_init
+      call lscloud_types_init
 
 !------------------------------------------------------------------------
 !    call diag_field_init to initialize any desired netcdf output fields.
 !------------------------------------------------------------------------
       call diag_field_init (axes, Time, diag_id, diag_pt, n_diag_4d, &
-                            n_diag_4d_kp1)
+                                                          n_diag_4d_kp1)
+
 
 !-----------------------------------------------------------------------
       module_is_initialized = .true.
 
 
-end subroutine strat_netcdf_init
+end subroutine lscloud_netcdf_init
  
 
 !#######################################################################
 
-subroutine strat_netcdf (diag_id, diag_pt, diag_4d, diag_4d_kp1, &
-                         diag_3d, Time, is, js, kdim, mask3d)
+subroutine lscloud_netcdf (diag_id, diag_pt, diag_4d, diag_4d_kp1, &
+                                              diag_3d, Time, is, js, kdim)
 
 !------------------------------------------------------------------------
 type(diag_id_type),              intent(in) :: diag_id
@@ -84,24 +87,12 @@ real,dimension(:,:,:,0:),        intent(in) :: diag_4d, diag_4d_kp1
 real,dimension(:,:,0:),          intent(in) :: diag_3d
 type(time_type),                 intent(in) :: Time
 integer,                         intent(in) :: is, js, kdim
-real, dimension(:,:,:),optional, intent(in) :: mask3d
 
 
 !---local variables------------------------------------------------------
-      real, dimension (size(diag_4d,1), size(diag_4d,2), kdim+1) :: mask3
       logical, dimension (size(diag_4d,1), size(diag_4d,2), kdim) :: mask4
       logical :: used
 
-!----------------------------------------------------------------------
-!    set up half level mask.
-!----------------------------------------------------------------------
-      mask3(:,:,1:(kdim+1)) = 1.
-      if (present(mask3d)) then
-        where (mask3d(:,:,1:kdim) <= 0.5)
-             mask3(:,:,2:(kdim+1)) = 0.
-        end where
-      endif
-        
 !-----------------------------------------------------------------------
 !
 !                    3-DIMENSIONAL DIAGNOSTICS
@@ -114,13 +105,13 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%droplets, diag_4d(:,:,:,diag_pt%droplets),  &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%droplets_wtd, diag_4d(:,:,:,diag_pt%droplets_wtd),&
                Time, is, js, 1, mask=diag_4d(:,:,:,diag_pt%droplets) > 0.0)
       used = send_data    &
               (diag_id%rvolume, diag_4d(:,:,:,diag_pt%rvolume),   &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    2) variables associated with cloud liquid content:
@@ -134,78 +125,78 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%lsf_strat, diag_4d(:,:,:,diag_pt%lsf_strat),  &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%dcond, diag_4d(:,:,:,diag_pt%dcond),  &
-               Time, is, js, 1, rmask=mask3d )
+               Time, is, js, 1 )
       used = send_data    &
               (diag_id%aauto, diag_4d(:,:,:,diag_pt%aauto),   &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%vfall, diag_4d(:,:,:,diag_pt%vfall),  &
-               Time, is, js, 1, rmask=mask3d) 
+               Time, is, js, 1) 
       used = send_data   &
               (diag_id%delta_cf, diag_4d(:,:,:,diag_pt%delta_cf), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
-              (diag_id%cf_liq_init  , diag_4d(:,:,:,diag_pt%cf_liq_init  ), &
-               Time, is, js, 1, rmask=mask3d)
+              (diag_id%cf_liq_init, diag_4d(:,:,:,diag_pt%cf_liq_init), &
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%subgrid_w_variance,   &
                diag_4d(:,:,:,diag_pt%subgrid_w_variance), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%potential_droplets,   &
                diag_4d(:,:,:,diag_pt%potential_droplets), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%potential_crystals,  &
                diag_4d(:,:,:,diag_pt%potential_crystals), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%dust_berg_flag,    &
                diag_4d(:,:,:,diag_pt%dust_berg_flag), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%cf_ice_init, diag_4d(:,:,:,diag_pt%cf_ice_init), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qdt_snow_sublim,    &
                diag_4d(:,:,:,diag_pt%qdt_snow_sublim), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%snow_melt, diag_4d(:,:,:,diag_pt%snow_melt), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%rain_freeze, diag_4d(:,:,:,diag_pt%rain_freeze), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    4) variables associated with model convection:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%lcf_strat, diag_4d(:,:,:,diag_pt%lcf_strat),  &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%mfls_strat, diag_4d(:,:,:,diag_pt%mfls_strat), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    5) variables associated with ice particle number:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%nice, diag_4d(:,:,:,diag_pt%nice),   &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    6) variables associated with precipitation and precipitation area:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%qrout, diag_4d(:,:,:,diag_pt%qrout),  &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qsout, diag_4d(:,:,:,diag_pt%qsout),   &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%rain3d, diag_4d_kp1(:,:,:,diag_pt%rain3d),  &
                Time, is, js, 1)
@@ -214,49 +205,49 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
                Time, is, js, 1)
       used = send_data   &
               (diag_id%rain_clr, diag_4d_kp1(:,:,:,diag_pt%rain_clr), &
-               Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%a_rain_clr, diag_4d_kp1(:,:,:,diag_pt%a_rain_clr), &
-               Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%rain_cld, diag_4d_kp1(:,:,:,diag_pt%rain_cld), &
-               Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%a_rain_cld, diag_4d_kp1(:,:,:,diag_pt%a_rain_cld), &
-               Time, is, js, 1,rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%a_precip_clr,   &
                                  diag_4d_kp1(:,:,:,diag_pt%a_precip_clr), &
-               Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%a_precip_cld,    &
                                  diag_4d_kp1(:,:,:,diag_pt%a_precip_cld), &
-               Time, is, js, 1,rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%snow_clr, diag_4d_kp1(:,:,:, diag_pt%snow_clr), &
-               Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
                (diag_id%a_snow_clr, diag_4d_kp1(:,:,:,diag_pt%a_snow_clr),&
-                Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%snow_cld, diag_4d_kp1(:,:,:,diag_pt%snow_cld), &
-               Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%a_snow_cld, diag_4d_kp1(:,:,:,diag_pt%a_snow_cld), &
-               Time, is, js, 1, rmask=mask3)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    7) variables associated with cloud fraction:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%aall, diag_4d(:,:,:,diag_pt%aall),   &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%aliq, diag_4d(:,:,:,diag_pt%aliq),   &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%aice, diag_4d(:,:,:,diag_pt%aice),   &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       mask4 = diag_4d(:,:,:,diag_pt%cfin) .ne. -1.e30
       used = send_data   &
               (diag_id%cfin, diag_4d(:,:,:,diag_pt%cfin), &
@@ -267,177 +258,177 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
 !-----------------------------------------------------------------------
       used = send_data    &
               (diag_id%qldt_cond, diag_4d(:,:,:,diag_pt%qldt_cond), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%qldt_evap,  diag_4d(:,:,:,diag_pt%qldt_evap), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%qldt_eros, diag_4d(:,:,:,diag_pt%qldt_eros), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_accr, diag_4d(:,:,:,diag_pt%qldt_accr), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_auto, diag_4d(:,:,:,diag_pt%qldt_auto), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%liq_adj, diag_4d(:,:,:,diag_pt%liq_adj), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_fill, diag_4d(:,:,:,diag_pt%qldt_fill), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  &
               (diag_id%qldt_berg, diag_4d(:,:,:,diag_pt%qldt_berg), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_freez, diag_4d(:,:,:,diag_pt%qldt_freez), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_rime, diag_4d(:,:,:,diag_pt%qldt_rime), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_destr, diag_4d(:,:,:,diag_pt%qldt_destr), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_freez2, diag_4d(:,:,:,diag_pt%qldt_freez2), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_sedi, diag_4d(:,:,:,diag_pt%qldt_sedi), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_accrs, diag_4d(:,:,:,diag_pt%qldt_accrs), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qldt_bergs, diag_4d(:,:,:,diag_pt%qldt_bergs), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    9) variables associated with cloud droplet number time tendency:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%qndt_cond, diag_4d(:,:,:,diag_pt%qndt_cond), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_evap, diag_4d(:,:,:,diag_pt%qndt_evap), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_fill, diag_4d(:,:,:,diag_pt%qndt_fill), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_destr, diag_4d(:,:,:,diag_pt%qndt_destr), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_super, diag_4d(:,:,:,diag_pt%qndt_super), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_berg, diag_4d(:,:,:,diag_pt%qndt_berg), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_freez, diag_4d(:,:,:,diag_pt%qndt_freez), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_sacws, diag_4d(:,:,:,diag_pt%qndt_sacws), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  &
               (diag_id%qndt_sacws_o, diag_4d(:,:,:,diag_pt%qndt_sacws_o), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_eros, diag_4d(:,:,:,diag_pt%qndt_eros), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_pra, diag_4d(:,:,:,diag_pt%qndt_pra), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_auto, diag_4d(:,:,:,diag_pt%qndt_auto), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_nucclim, diag_4d(:,:,:,diag_pt%qndt_nucclim), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_sedi, diag_4d(:,:,:,diag_pt%qndt_sedi), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_melt, diag_4d(:,:,:,diag_pt%qndt_melt), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_ihom, diag_4d(:,:,:,diag_pt%qndt_ihom), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_size_adj,diag_4d(:,:,:,diag_pt%qndt_size_adj),&
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_fill2, diag_4d(:,:,:,diag_pt%qndt_fill2), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    10) variables associated with ice particle number time tendency:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%qnidt_fill, diag_4d(:,:,:,diag_pt%qnidt_fill), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  &
               (diag_id%qnidt_nnuccd, diag_4d(:,:,:,diag_pt%qnidt_nnuccd), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_nsubi, diag_4d(:,:,:,diag_pt%qnidt_nsubi), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  & 
               (diag_id%qnidt_nerosi, diag_4d(:,:,:,diag_pt%qnidt_nerosi), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_nprci, diag_4d(:,:,:,diag_pt%qnidt_nprci), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_nprai, diag_4d(:,:,:,diag_pt%qnidt_nprai), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_nucclim1,   &
                                   diag_4d(:,:,:,diag_pt%qnidt_nucclim1), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  &
               (diag_id%qnidt_nucclim2,    &
                                   diag_4d(:,:,:,diag_pt%qnidt_nucclim2), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_sedi, diag_4d(:,:,:,diag_pt%qnidt_sedi), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_melt, diag_4d(:,:,:,diag_pt%qnidt_melt), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_size_adj, &
                                 diag_4d(:,:,:,diag_pt%qnidt_size_adj), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_fill2, diag_4d(:,:,:,diag_pt%qnidt_fill2), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_super, diag_4d(:,:,:,diag_pt%qnidt_super), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_ihom, diag_4d(:,:,:,diag_pt%qnidt_ihom), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qnidt_destr, diag_4d(:,:,:,diag_pt%qnidt_destr), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%qnidt_cleanup,     &
                                   diag_4d(:,:,:,diag_pt%qnidt_cleanup), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%qnidt_cleanup2,     &
                                   diag_4d(:,:,:,diag_pt%qnidt_cleanup2), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    11) variables associated with relative humidity:
 !-----------------------------------------------------------------------
       used = send_data    &
               (diag_id%rhcrit, diag_4d(:,:,:,diag_pt%rhcrit), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%rhcrit_min, diag_4d(:,:,:,diag_pt%rhcrit_min), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       mask4 = diag_4d(:,:,:,diag_pt%rhiin) .ne. -1.e30
       used = send_data   &
               (diag_id%rhiin, 100.*diag_4d(:,:,:,diag_pt%rhiin), &
@@ -452,211 +443,211 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%imass7, diag_4d(:,:,:,diag_pt%imass7), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%ni_dust, diag_4d(:,:,:,diag_pt%ni_dust), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%ni_sulf, diag_4d(:,:,:,diag_pt%ni_sulf), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%ni_bc, diag_4d(:,:,:,diag_pt%ni_bc), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%ndust1, diag_4d(:,:,:,diag_pt%ndust1), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%ndust2, diag_4d(:,:,:,diag_pt%ndust2), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data    &
               (diag_id%ndust3, diag_4d(:,:,:,diag_pt%ndust3), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%ndust4, diag_4d(:,:,:,diag_pt%ndust4), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%ndust5, diag_4d(:,:,:,diag_pt%ndust5), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%sulfate, diag_4d(:,:,:,diag_pt%sulfate),  &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%seasalt_sub, diag_4d(:,:,:,diag_pt%seasalt_sub), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%seasalt_sup, diag_4d(:,:,:,diag_pt%seasalt_sup), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%om, diag_4d(:,:,:,diag_pt%om),    &
-                Time, is, js, 1, rmask=mask3d)
+                Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    13) variables associated with water vapor tendency:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%rain_evap, diag_4d(:,:,:,diag_pt%rain_evap), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    14) variables associated with cloud ice tendency:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%qidt_dep, diag_4d(:,:,:,diag_pt%qidt_dep), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_subl, diag_4d(:,:,:,diag_pt%qidt_subl), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_eros, diag_4d(:,:,:,diag_pt%qidt_eros), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  &
               (diag_id%qidt_fall, diag_4d(:,:,:,diag_pt%qidt_fall), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  &
               (diag_id%qidt_melt, diag_4d(:,:,:,diag_pt%qidt_melt), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data  &
               (diag_id%qidt_melt2, diag_4d(:,:,:,diag_pt%qidt_melt2), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%ice_adj, diag_4d(:,:,:,diag_pt%ice_adj), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_destr, diag_4d(:,:,:,diag_pt%qidt_destr), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_qvdep, diag_4d(:,:,:,diag_pt%qidt_qvdep), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_fill, diag_4d(:,:,:,diag_pt%qidt_fill), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_auto, diag_4d(:,:,:,diag_pt%qidt_auto), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_accr, diag_4d(:,:,:,diag_pt%qidt_accr), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qidt_accrs, diag_4d(:,:,:,diag_pt%qidt_accrs), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    15) variables associated with cloud area tendency:
 !-----------------------------------------------------------------------
       used = send_data   &
               (diag_id%qadt_lsform, diag_4d(:,:,:,diag_pt%qadt_lsform), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_lsdiss, diag_4d(:,:,:,diag_pt%qadt_lsdiss), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_rhred, diag_4d(:,:,:,diag_pt%qadt_rhred), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_eros, diag_4d(:,:,:,diag_pt%qadt_eros), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_fill, diag_4d(:,:,:,diag_pt%qadt_fill), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_super, diag_4d(:,:,:,diag_pt%qadt_super), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_destr, diag_4d(:,:,:,diag_pt%qadt_destr), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_limits, diag_4d(:,:,:,diag_pt%qadt_limits), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
       used = send_data   &
               (diag_id%qadt_ahuco, diag_4d(:,:,:,diag_pt%qadt_ahuco), &
-               Time, is, js, 1, rmask=mask3d)
+               Time, is, js, 1)
 
 !------------------------------------------------------------------------
 !   16)  variables added by h1g with ncar M-G microphysics
 !------------------------------------------------------------------------
       used = send_data ( diag_id%SA3d, diag_4d(:,:,:,diag_pt%SA3d),  &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%ST3d, diag_4d(:,:,:,diag_pt%ST3d),  &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%SQ3d, diag_4d(:,:,:,diag_pt%SQ3d),  &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%SL3d, diag_4d(:,:,:,diag_pt%SL3d),  &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%SI3d, diag_4d(:,:,:,diag_pt%SI3d),  &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%SN3d, diag_4d(:,:,:,diag_pt%SN3d),  &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1 )
       used = send_data ( diag_id%SNI3d, diag_4d(:,:,:,diag_pt%SNI3d),  &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qndt_contact_frz,    &
                           diag_4d(:,:,:,diag_pt%qndt_contact_frz), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qndt_cleanup,    &
                           diag_4d(:,:,:,diag_pt%qndt_cleanup), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qndt_cleanup2,   &
                           diag_4d(:,:,:,diag_pt%qndt_cleanup2), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qnidt_nsacwi,   &
                           diag_4d(:,:,:,diag_pt%qnidt_nsacwi), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_liquid_init,    &
                           diag_4d(:,:,:,diag_pt%qdt_liquid_init), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_ice_init,    &
                           diag_4d(:,:,:,diag_pt%qdt_ice_init), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_rain_evap,     &
                           diag_4d(:,:,:,diag_pt%qdt_rain_evap), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_snow_sublim,    &
                           diag_4d(:,:,:,diag_pt%qdt_snow_sublim), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_cond,    &
                           diag_4d(:,:,:,diag_pt%qdt_cond), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_deposition,    &
                           diag_4d(:,:,:,diag_pt%qdt_deposition), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_eros_l,   &
                           diag_4d(:,:,:,diag_pt%qdt_eros_l), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_eros_i,     &
                          diag_4d(:,:,:,diag_pt%qdt_eros_i), &
-                         Time, is, js, 1, rmask=mask3d )
+                         Time, is, js, 1)
       used = send_data ( diag_id%qdt_qv_on_qi,     &
                           diag_4d(:,:,:,diag_pt%qdt_qv_on_qi), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_snow2vapor,    &
                           diag_4d(:,:,:,diag_pt%qdt_snow2vapor), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_sedi_ice2vapor,    &
                           diag_4d(:,:,:,diag_pt%qdt_sedi_ice2vapor), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_sedi_liquid2vapor,     &
                           diag_4d(:,:,:,diag_pt%qdt_sedi_liquid2vapor), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_super_sat_rm,    &
                           diag_4d(:,:,:,diag_pt%qdt_super_sat_rm), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_destr,    &
                           diag_4d(:,:,:,diag_pt%qdt_destr), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_cleanup_liquid,    &
                           diag_4d(:,:,:,diag_pt%qdt_cleanup_liquid), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%qdt_cleanup_ice,     &
                           diag_4d(:,:,:,diag_pt%qdt_cleanup_ice), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1 )
       used = send_data ( diag_id%srfrain_evap,    &
                           diag_4d(:,:,:,diag_pt%srfrain_evap ), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
       used = send_data ( diag_id%srfrain_accrs,     &
                           diag_4d(:,:,:,diag_pt%srfrain_accrs ), &
-                          Time, is, js, 1, rmask=mask3d )
+                          Time, is, js, 1)
      used = send_data ( diag_id%srfrain_freez,     &
                          diag_4d(:,:,:,diag_pt%srfrain_freez ), &
-                         Time, is, js, 1, rmask=mask3d )
+                         Time, is, js, 1)
      used = send_data ( diag_id%snow_mass_conv,   &
                         diag_3d(:,:,  diag_pt%snow_mass_conv), &
                         Time, is, js )
@@ -671,36 +662,31 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
                          Time, is, js )
      used = send_data ( diag_id%qldt_HM_splinter,    &
                          diag_4d(:,:,:,diag_pt%qldt_HM_splinter), &
-                         Time, is, js, 1, rmask=mask3d )
+                         Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !    17) variables associated with budget verification:
 !-----------------------------------------------------------------------
      used = send_data ( diag_id%SA_imb, diag_4d(:,:,:,diag_pt%SA_imb), &
-                               Time, is, js, 1, rmask=mask3d )
+                               Time, is, js, 1)
      used = send_data ( diag_id%ST_imb, diag_4d(:,:,:,diag_pt%ST_imb), &
-                               Time, is, js, 1, rmask=mask3d )
+                               Time, is, js, 1)
      used = send_data ( diag_id%SQ_imb, diag_4d(:,:,:,diag_pt%SQ_imb), &
-                               Time, is, js, 1, rmask=mask3d )
+                               Time, is, js, 1)
      used = send_data ( diag_id%SL_imb, diag_4d(:,:,:,diag_pt%SL_imb), &
-                               Time, is, js, 1, rmask=mask3d )
+                               Time, is, js, 1)
      used = send_data ( diag_id%SI_imb, diag_4d(:,:,:,diag_pt%SI_imb), &
-                               Time, is, js, 1, rmask=mask3d )
+                               Time, is, js, 1)
      used = send_data ( diag_id%SN_imb, diag_4d(:,:,:,diag_pt%SN_imb), &
-                               Time, is, js, 1, rmask=mask3d )
+                               Time, is, js, 1)
      used = send_data ( diag_id%SNi_imb, diag_4d(:,:,:,diag_pt%SNi_imb), &
-                               Time, is, js, 1, rmask=mask3d )
-     used = send_data ( diag_id%rain_imb, diag_4d(:,:,:,diag_pt%rain_imb),&
-                               Time, is, js, 1, rmask=mask3d )
+                               Time, is, js, 1)
      used = send_data ( diag_id%cld_liq_imb,   &
                          diag_4d(:,:,:,diag_pt%cld_liq_imb), &
-                         Time, is, js, 1, rmask=mask3d )
-     used = send_data ( diag_id%snow_imb,    &
-                         diag_4d(:,:,:,diag_pt%snow_imb), &
-                         Time, is, js, 1, rmask=mask3d )
+                         Time, is, js, 1)
      used = send_data ( diag_id%cld_ice_imb,     &
                          diag_4d(:,:,:,diag_pt%cld_ice_imb), &
-                         Time, is, js, 1, rmask=mask3d )
+                         Time, is, js, 1)
 
 !-----------------------------------------------------------------------
 !
@@ -1039,13 +1025,13 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
                                Time, is, js )
      used = send_data ( diag_id%SNi_imb_col, diag_3d(:,:,diag_pt%SNi_imb),&
                                Time, is, js )
-     used = send_data ( diag_id%rain_imb_col,   &
+     used = send_data ( diag_id%rain_imb,   &
                         diag_3d(:,:,diag_pt%rain_imb),&
                         Time, is, js )
      used = send_data ( diag_id%cld_liq_imb_col,   &
                         diag_3d(:,:,diag_pt%cld_liq_imb),&
                         Time, is, js )
-     used = send_data ( diag_id%snow_imb_col,   &
+     used = send_data ( diag_id%snow_imb,   &
                         diag_3d(:,:,diag_pt%snow_imb),&
                         Time, is, js )
      used = send_data ( diag_id%cld_ice_imb_col,   &
@@ -1119,16 +1105,16 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
 !------------------------------------------------------------------------
 
 
-end subroutine strat_netcdf
+end subroutine lscloud_netcdf
 
 
 !########################################################################
 
-subroutine strat_netcdf_end
+subroutine lscloud_netcdf_end
 
      module_is_initialized = .false.
 
-end subroutine strat_netcdf_end
+end subroutine lscloud_netcdf_end
 
 
 !#######################################################################
@@ -1952,17 +1938,9 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'SNi_imb',  axes(1:3), Time, &
              'difference between qni tendency and sum of individ terms', &
              '#/kg/sec', missing_value=missing_value)
-      diag_id%rain_imb =    register_diag_field ( mod_name, &
-             'rain_imb',  axes(1:3), Time, &
-             'difference between rain rate at sfc and sum of &
-             &individ terms', 'kg/kg/sec', missing_value=missing_value)
       diag_id%cld_liq_imb =    register_diag_field ( mod_name, &
              'cld_liq_imb',  axes(1:3), Time, &
              'difference between ql fallout rate at sfc and sum of &
-             &individ terms', 'kg/kg/sec', missing_value=missing_value)
-      diag_id%snow_imb =    register_diag_field ( mod_name, &
-             'snow_imb',  axes(1:3), Time, &
-             'difference between snow rate at sfc and sum of &
              &individ terms', 'kg/kg/sec', missing_value=missing_value)
       diag_id%cld_ice_imb =    register_diag_field ( mod_name, &
              'cld_ice_imb',  axes(1:3), Time, &
@@ -2483,8 +2461,8 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'difference between column-integrated qni tendency and &
              &sum of individ terms', &
              '#/m2/sec', missing_value=missing_value)
-      diag_id%rain_imb_col =    register_diag_field ( mod_name, &
-             'rain_imb_col',  axes(1:2), Time, &
+      diag_id%rain_imb =    register_diag_field ( mod_name, &
+             'rain_imb',  axes(1:2), Time, &
              'difference between column-integrated rainfall rate and &
              &sum of individ terms', &
              'kg/m2/sec', missing_value=missing_value)
@@ -2493,8 +2471,8 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'difference between column-integrated ql fallout rate and &
              &sum of individ terms', &
              'kg/m2/sec', missing_value=missing_value)
-      diag_id%snow_imb_col =    register_diag_field ( mod_name, &
-             'snow_imb_col',  axes(1:2), Time, &
+      diag_id%snow_imb =    register_diag_field ( mod_name, &
+             'snow_imb',  axes(1:2), Time, &
              'difference between column-integrated snowfall rate and &
              &sum of individ terms', &
              'kg/m2/sec', missing_value=missing_value)
@@ -3369,7 +3347,7 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
         diag_pt%SNi_imb      = n_diag_4d
         n_diag_4d = n_diag_4d + 1 
       end if
-      if (diag_id%rain_imb  + diag_id%rain_imb_col > 0) then
+      if (diag_id%rain_imb                         > 0) then
         diag_pt%rain_imb      = n_diag_4d
         n_diag_4d = n_diag_4d + 1 
       end if
@@ -3377,7 +3355,7 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
         diag_pt%cld_liq_imb      = n_diag_4d
         n_diag_4d = n_diag_4d + 1 
       end if
-      if (diag_id%snow_imb  + diag_id%snow_imb_col > 0) then
+      if (diag_id%snow_imb                         > 0) then
         diag_pt%snow_imb      = n_diag_4d
         n_diag_4d = n_diag_4d + 1 
       end if
@@ -3398,4 +3376,4 @@ end subroutine diag_field_init
 
 
 
-end module strat_netcdf_mod
+                 end module lscloud_netcdf_mod

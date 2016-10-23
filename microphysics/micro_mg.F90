@@ -101,8 +101,7 @@ module micro_mg1_5
 
 #ifdef GFDL_COMPATIBLE_MICROP
 use gamma_mg_mod,              only: gamma =>gamma_mg
-use strat_cloud_utilities_mod, only: diag_id_type, diag_pt_type,   &
-                                     strat_nml_type
+use lscloud_types_mod,         only: diag_id_type, diag_pt_type
 use mpp_mod,                   only: input_nml_file
 use fms_mod,                   only: mpp_pe, file_exist, error_mesg,  &
                                      open_namelist_file, FATAL, &
@@ -111,6 +110,7 @@ use fms_mod,                   only: mpp_pe, file_exist, error_mesg,  &
                                      mpp_root_pe
 use simple_pdf_mod,            only: simple_pdf
 use sat_vapor_pres_mod,        only: lookup_es2, lookup_es3, compute_qs
+use physics_radiation_exch_mod, only : exchange_control_type
 
 
 #else
@@ -137,8 +137,8 @@ public :: &
 !------------------------------------------------------------------------
 !--version number--------------------------------------------------------
 
-character(len=128) :: Version = '$Id: micro_mg.F90,v 1.1.2.2.2.1 2014/05/16 14:50:42 Huan.Guo Exp $'
-character(len=128) :: Tagname = '$Name:  $'
+character(len=128) :: Version = '$Id$'
+character(len=128) :: Tagname = '$Name$'
 #endif
  
 #ifndef GFDL_COMPATIBLE_MICROP
@@ -187,8 +187,8 @@ real(r8), parameter :: ninst = 0.1e6_r8     ! ice num concentration when nicons=
 real(r8), parameter :: rhosn = 250._r8  ! bulk density snow
 real(r8), parameter :: rhoi = 500._r8   ! bulk density ice
 #else
-!  rhosn is in nml used by GFDL code. see below.
-!  this was added in nml because Marc Salzmann used a value of 100 
+!  rhosn, rhoi are in nml used by GFDL code. see below.
+!  rhosn was added in nml because Marc Salzmann used a value of 100 
 !  with his model, while MG use a value of 250., as seen here.
 #endif
 real(r8), parameter :: rhow = 1000._r8  ! bulk density liquid
@@ -227,8 +227,9 @@ real(r8), parameter :: eii = 0.1_r8
 
 ! autoconversion size threshold for cloud ice to snow (m)
 #ifdef GFDL_COMPATIBLE_MICROP
-! for gfdl, dcs is contained in the nml. Default value is 400e-6 (ncar's 
-! old value), but are using 200.e-6 as used by Marc Salzmann.
+! for gfdl, dcs is obtained from Exch_ctrl%(physics_driver_nml). 
+! Old NCAR value is 400e-6, but GFDL default is 200.e-6 as 
+! used by Marc Salzmann.
 #else
 real(r8), parameter :: dcs = 250.e-6_r8
 #endif
@@ -250,6 +251,11 @@ real(r8)            :: mi0
 #else
 ! mass of new crystal due to aerosol freezing and growth (kg)
 real(r8), parameter :: mi0 = 4._r8/3._r8*pi*rhoi*(10.e-6_r8)*(10.e-6_r8)*(10.e-6_r8)
+real(r8) :: rhmini      ! Minimum rh for ice cloud fraction > 0.
+logical :: activate_all_ice_always
+logical :: do_hallet_mossop         
+logical :: microp_uniform
+logical :: do_cldice
 #endif
 
 !Range of cloudsat reflectivities (dBz) for analytic simulator
@@ -274,11 +280,13 @@ real(r8) :: xxlv        ! vaporization
 real(r8) :: xlf         ! freezing
 real(r8) :: xxls        ! sublimation
 
-real(r8) :: rhmini      ! Minimum rh for ice cloud fraction > 0.
+!real(r8) :: rhmini      ! Minimum rh for ice cloud fraction > 0.
 
 ! flags
-logical :: microp_uniform
-logical :: do_cldice
+!logical :: microp_uniform
+!logical :: do_cldice
+!logical :: activate_all_ice_always
+!logical :: do_hallet_mossop         
 
 real(r8) :: rhosu       ! typical 850mn air density
 
@@ -307,14 +315,17 @@ real(r8) :: cons28
 
 #ifdef GFDL_COMPATIBLE_MICROP
  
-real       :: dcs = 400.e-6_r8    !autoconversion size threshold
-real       :: min_diam_ice = 10.e-6_r8
+!real       :: dcs = 400.e-6_r8    !autoconversion size threshold
+!real       :: min_diam_ice = 10.e-6_r8
+real       :: dcs                 !autoconversion size threshold
+real       :: min_diam_ice              
 logical    :: allow_all_cldtop_collection = .false.
 logical    :: rho_factor_in_max_vt = .true.
 real       :: max_rho_factor_in_vt = 1.0
 real       :: lowest_temp_for_sublimation = 180._r8
 real       :: rhosn = 100._r8
 real       :: rhoi  = 500._r8
+
 ! switch for specification rather than prediction of droplet and crystal number
 ! note: number will be adjusted as needed to keep mean size within bounds,
 ! even when specified droplet or ice number is used
@@ -351,6 +362,7 @@ real(r8), private :: accretion_scale_max    = 2.0
 real(r8), private :: accr_scale
 
 ! <---h1g, 2012-06-12
+
 logical           :: liu_in = .false.
                              ! True = Liu et al 2007 Ice nucleation
                              ! False = cooper fixed ice nucleation (MG2008)
@@ -363,8 +375,6 @@ logical           :: use_Meyers = .false.
 !
 !  Ni (/m3) = 1000 * exp( 12.96* (tfreeze-T)/80 - 0.639 )
 
-
-!---> h1g, 2014-05-19
 logical           :: CldFallNew  = .true.
 logical           :: SedBugFix   = .true.
 logical           :: ActNew      = .true.
@@ -380,24 +390,44 @@ logical           :: include_homo_freez_in_qn = .true.      ! h1g, 2014-07-22
 logical           :: include_contact_freez_in_qn = .true.   ! h1g, 2014-07-23
 logical           :: include_immersion_freez_in_qn = .true. ! h1g, 2014-07-23
 real              :: r_cri  = 0.0
-real              :: q_cri
 logical           :: use_RK_auto = .false.
 logical           :: use_RK_accr = .false.
 
 logical           :: liq_sedi_mass_only = .false.   ! h1g, 2016-03-07
 logical           :: no_liq_sedi        = .false.   ! h1g, 2016-03-07
-!<--- h1g, 2014-05-19
 
+
+real              ::  rhmini=0.80     ! minimum rh for ice cld fraction > 0
+logical           :: activate_all_ice_always = .false.
+logical           :: do_hallet_mossop = .false.
+logical           ::  microp_uniform = .false.
+                                      ! .true. = configure uniform for 
+                                      ! sub-columns 
+                                      ! .false. = use w/o sub-columns 
+                                      ! (default) 
+logical           ::  do_cldice = .true.
+                                      ! .true. = do all processes (default)
+                                      ! .false. = skip all processes 
+                                      ! affecting cloud ice
+
+!  <DATA NAME="activate_all_ice_always" TYPE="logical" DEFAULT=".true.">
+!   should all potentially available ice particles be activated under all
+!   conditions ? (or only when dqa is increasing)
+!  </DATA>
+!  <DATA NAME="do_hallet_mossop" TYPE="logical" DEFAULT=".false.">
+!   the hallet-mossop process should be included in the NCAR microphysics?
+!  </DATA>
 
 namelist / micro_mg_nml /   &
-                 dcs, min_diam_ice,  &
+                 rhmini, activate_all_ice_always, do_hallet_mossop, &
+                  microp_uniform, do_cldice, &
                  allow_all_cldtop_collection, &
                  max_rho_factor_in_vt, &
                  rho_factor_in_max_vt, lowest_temp_for_sublimation, &
 !--> cjg: modifications incorporated from Huan's code
                  allow_rain_num_evap, accretion_scale, &
 !<--cjg
-                 rhosn,  rhoi,                 &  ! h1g
+                 rhosn, rhoi,         &  ! h1g
                  nccons, ncnst,                &  ! cjg
                  nicons, ninst,                &  ! cjg
                  liu_in,                       &  ! h1g
@@ -405,17 +435,21 @@ namelist / micro_mg_nml /   &
                  qcvar_min4accr,               &  ! h1g
                  qcvar_max4accr,               &  ! h1g
                  accretion_scale_max,          &  ! h1g
-                 CldFallNew, SedBugFix, ActNew, use_Meyers, tc_cooper,      & !h1g
-                 IceFallFac, SnowFallFac, use_K2013_auto, use_K2013_accr,   & !h1g
-                 use_const_accretion_scale, include_contact_freeze_in_berg, & !h1g
-                 Bergeron_fac,                                              & !h1g  
-                 include_homo_freez_in_qn,                                  & !h1g
-                 include_contact_freez_in_qn,                               & !h1g
-                 include_immersion_freez_in_qn, r_cri,                      & !h1g
-                 use_RK_auto,  use_RK_accr,                                 & !h1g
-                 liq_sedi_mass_only, no_liq_sedi            !h1g 2016-03-07
-#endif
+                 CldFallNew, SedBugFix, ActNew, use_Meyers, tc_cooper, & 
+                 IceFallFac, SnowFallFac, use_K2013_auto, use_K2013_accr, &
+                 use_const_accretion_scale,   &
+                 include_contact_freeze_in_berg, Bergeron_fac, &   
+                 include_homo_freez_in_qn, include_contact_freez_in_qn, & 
+                 include_immersion_freez_in_qn, r_cri, use_RK_auto,   &
+                 use_RK_accr, liq_sedi_mass_only, no_liq_sedi
 
+
+
+real              :: q_cri
+
+
+
+#endif
 
 ! Generic interface for packing routines
 interface pack_array
@@ -431,15 +465,27 @@ interface unpack_array
    module procedure unpack_array_2Dr8_arrayfill
 end interface
 
+logical :: do_ice_nucl_wpdf
+
+#ifdef GFDL_COMPATIBLE_MICROP
+logical :: clubb_active
+#endif
 !===============================================================================
 contains
 !===============================================================================
 
+#ifdef GFDL_COMPATIBLE_MICROP
 subroutine micro_mg_init( &
      kind, gravit, rair, rh2o, cpair,    &
      tmelt_in, latvap, latice,           &
-     rhmini_in, microp_uniform_in, do_cldice_in, &
+     do_ice_nucl_wpdf_in, errstring, Exch_ctrl)
+#else
+subroutine micro_mg_init( &
+     kind, gravit, rair, rh2o, cpair,    &
+     tmelt_in, latvap, latice,           &
+     rhmini_in, microp_uniform_in, do_cldice_in,  &
      errstring)
+#endif
   
   !----------------------------------------------------------------------- 
   ! 
@@ -449,6 +495,9 @@ subroutine micro_mg_init( &
   ! Author: Andrew Gettelman Dec 2005
   ! 
   !-----------------------------------------------------------------------
+#ifdef GFDL_COMPATIBLE_MICROP
+  type(exchange_control_type), intent(in) :: Exch_ctrl   
+#endif
   
   integer,  intent(in)  :: kind         ! Kind used for reals
   real(r8), intent(in)  :: gravit
@@ -458,14 +507,21 @@ subroutine micro_mg_init( &
   real(r8), intent(in)  :: tmelt_in     ! Freezing point of water (K)
   real(r8), intent(in)  :: latvap
   real(r8), intent(in)  :: latice
-  real(r8), intent(in)  :: rhmini_in    ! Minimum rh for ice cloud fraction > 0.
+#ifndef GFDL_COMPATIBLE_MICROP
+ real(r8), intent(in)  :: rhmini_in    ! Minimum rh for ice cloud fraction > 0.
 
-  logical,  intent(in)  :: microp_uniform_in    ! .true. = configure uniform for sub-columns 
+ logical,  intent(in)  :: microp_uniform_in    ! .true. = configure uniform for sub-columns 
                                             ! .false. = use w/o sub-columns (standard)
-  logical,  intent(in)  :: do_cldice_in     ! .true. = do all processes (standard)
+ logical,  intent(in)  :: do_cldice_in     ! .true. = do all processes (standard)
                                             ! .false. = skip all processes affecting
                                             !           cloud ice
+#endif
 
+! logical, intent(in) :: activate_all_ice_always_in
+! logical, intent(in) :: do_hallet_mossop_in
+#ifdef GFDL_COMPATIBLE_MICROP
+  logical, intent(in) :: do_ice_nucl_wpdf_in
+#endif
   character(128), intent(out) :: errstring    ! Output status (non-blank for error return)
  
 #ifdef GFDL_COMPATIBLE_MICROP
@@ -487,7 +543,11 @@ subroutine micro_mg_init( &
   rv= rh2o                  ! water vapor gas constant
   cpp = cpair               ! specific heat of dry air
   tmelt = tmelt_in
+#ifndef GFDL_COMPATIBLE_MICROP
   rhmini = rhmini_in
+  microp_uniform = microp_uniform_in
+  do_cldice  = do_cldice_in
+#endif
 
   ! latent heats
 
@@ -496,8 +556,10 @@ subroutine micro_mg_init( &
   xxls = xxlv + xlf     ! latent heat of sublimation
 
   ! flags
-  microp_uniform = microp_uniform_in
-  do_cldice  = do_cldice_in
+! microp_uniform = microp_uniform_in
+! do_cldice  = do_cldice_in
+! activate_all_ice_always = activate_all_ice_always_in
+! do_hallet_mossop = do_hallet_mossop_in
 
 #ifdef GFDL_COMPATIBLE_MICROP
 
@@ -525,10 +587,23 @@ subroutine micro_mg_init( &
       logunit = stdlog()
       if (mpp_pe() == mpp_root_pe()) &
                       write (logunit, nml=micro_mg_nml)
+
+       dcs = Exch_ctrl%dcs
+       min_diam_ice = Exch_ctrl%min_diam_ice
+   do_ice_nucl_wpdf = do_ice_nucl_wpdf_in
+      
 #endif
 
 #ifdef GFDL_COMPATIBLE_MICROP
    mi0 = 4._r8/3._r8*pi*rhoi*(min_diam_ice)*(min_diam_ice)*(min_diam_ice)
+   clubb_active=(Exch_ctrl%do_clubb>0)
+!-----------------------------------------------------------------------
+!    check for nml variable compatibility.
+!-----------------------------------------------------------------------
+   if ( liq_sedi_mass_only .and. no_liq_sedi        ) &
+        call error_mesg ('micro_mg_mod',  &
+           'liq_sedi_mass_only and no_liq_sedi cannot be true at the same time', FATAL)
+
 #endif
   ! typical air density at 850 mb
 
@@ -569,27 +644,18 @@ end subroutine micro_mg_init
 #ifdef GFDL_COMPATIBLE_MICROP
 subroutine micro_mg_tend ( &
       dqa_activation, total_activation, tiedtke_macrophysics, &
-      j, jdim, &
-     mgncol,   mgcols,   nlev,     top_lev,  deltatin,           &
-     tn,                 qn,                                     &
-     qcn,                          qin,                          &
-     ncn,                          nin,                          &
-     relvarn,            accre_enhann,                           &     
+      j, jdim, mgncol,   mgcols, nlev, top_lev,  deltatin,           &
+     tn,  qn, qcn, qin, ncn, nin, relvarn, accre_enhann,          &     
      pn,                 pdeln,              pint,               &
      cldn,               liqcldf,            icecldf,            &
-     
-      delta_cfin, D_eros_l4in, nerosc4in, D_eros_i4in, nerosi4in, dqcdtin, dqidtin, &
-
-                         naain,    npccnin,  rndstn,   naconin,  &
+     delta_cfin, D_eros_l4in, nerosc4in, D_eros_i4in, nerosi4in,   &
+     dqcdtin, dqidtin, naain,    npccnin,  rndstn,   naconin,  &
      tlato,    qvlato,   qctendo,  qitendo,  nctendo,  nitendo,  &
-                                             precto,   precio,   &
-                         qsouto,             rflxo,    sflxo,    &
-     qrouto,             reff_raino,         reff_snowo,         &
+     precto,   precio,  qsouto, rflxo,    sflxo,    &
+     qrouto,   reff_raino,         reff_snowo,         &
      tnd_qsnown,         tnd_nsnown,         re_icen,            &
-     errstring,                                                  &
-     f_snow_berg, Nml,                                  &
-     ssat_disposalout, n_diag_4d, diag_4d, diag_id, &
-     diag_pt, do_clubb, qcvar_clubbin)
+     errstring,  f_snow_berg,                                       &
+     ssat_disposalout, n_diag_4d, diag_4d, diag_id, diag_pt        )
 
   !Authors: Hugh Morrison, Andrew Gettelman, NCAR, Peter Caldwell, LLNL
   ! e-mail: morrison@ucar.edu, andrew@ucar.edu
@@ -599,15 +665,15 @@ subroutine micro_mg_tend ( &
   logical, intent (in) :: total_activation
   logical, intent (in) :: tiedtke_macrophysics
   integer,  intent(in) :: j, jdim
-  integer,  intent(in) :: mgncol                ! number of microphysics columns
-  integer,  intent(in) :: mgcols(:)             ! list of microphysics columns
-  integer,  intent(in) :: nlev                  ! number of layers
-  integer,  intent(in) :: top_lev               ! top level to do microphysics
-  real(r8), intent(in) :: deltatin              ! time step (s)
-  real(r8), intent(in) :: tn(:,:)               ! input temperature (K)
-  real(r8), intent(in) :: qn(:,:)               ! input h20 vapor mixing ratio (kg/kg)
-  real(r8), intent(in) :: relvarn(:,:)          ! relative variance of cloud water (-)
-  real(r8), intent(in) :: accre_enhann(:,:)     ! optional accretion enhancement factor (-)
+  integer,  intent(in) :: mgncol           ! number of microphysics columns
+  integer,  intent(in) :: mgcols(:)        ! list of microphysics columns
+  integer,  intent(in) :: nlev             ! number of layers
+  integer,  intent(in) :: top_lev          ! top level to do microphysics
+  real(r8), intent(in) :: deltatin         ! time step (s)
+  real(r8), intent(in) :: tn(:,:)          ! input temperature (K)
+  real(r8), intent(in) :: qn(:,:)          ! input h20 vapor mixing ratio (kg/kg)
+  real(r8), intent(in) :: relvarn(:,:)     ! relative variance of cloud water (-)
+  real(r8), intent(in) :: accre_enhann(:,:)! optional accretion enhancement factor (-)
 
   ! note: all input cloud variables are grid-averaged
   real(r8), intent(in) :: qcn(:,:)       ! cloud water mixing ratio (kg/kg)
@@ -646,27 +712,26 @@ subroutine micro_mg_tend ( &
 
   ! output arguments
 
-  real(r8), intent(out) :: tlato(:,:)         ! latent heating rate       (W/kg)
-  real(r8), intent(out) :: qvlato(:,:)        ! microphysical tendency qv (1/s)
-  real(r8), intent(out) :: qctendo(:,:)       ! microphysical tendency qc (1/s)
-  real(r8), intent(out) :: qitendo(:,:)       ! microphysical tendency qi (1/s)
-  real(r8), intent(out) :: nctendo(:,:)       ! microphysical tendency nc (1/(kg*s))
-  real(r8), intent(out) :: nitendo(:,:)       ! microphysical tendency ni (1/(kg*s))
-  real(r8), intent(out) :: precto(:)          ! surface precip rate (m/s)
-  real(r8), intent(out) :: precio(:)          ! cloud ice/snow precip rate (m/s)
-  real(r8), intent(out) :: qsouto(:,:)        ! snow mixing ratio (kg/kg)
-  real(r8), intent(out) :: rflxo(:,:)         ! grid-box average rain flux (kg m^-2 s^-1)
-  real(r8), intent(out) :: sflxo(:,:)         ! grid-box average snow flux (kg m^-2 s^-1)
-  real(r8), intent(out) :: qrouto(:,:)        ! grid-box average rain mixing ratio (kg/kg)
-  real(r8), intent(out) :: reff_raino(:,:)    ! rain effective radius (micron)
-  real(r8), intent(out) :: reff_snowo(:,:)    ! snow effective radius (micron)
+  real(r8), intent(out) :: tlato(:,:)   ! latent heating rate       (W/kg)
+  real(r8), intent(out) :: qvlato(:,:)  ! microphysical tendency qv (1/s)
+  real(r8), intent(out) :: qctendo(:,:) ! microphysical tendency qc (1/s)
+  real(r8), intent(out) :: qitendo(:,:) ! microphysical tendency qi (1/s)
+  real(r8), intent(out) :: nctendo(:,:) ! microphysical tendency nc (1/(kg*s))
+  real(r8), intent(out) :: nitendo(:,:) ! microphysical tendency ni (1/(kg*s))
+  real(r8), intent(out) :: precto(:)    ! surface precip rate (m/s)
+  real(r8), intent(out) :: precio(:)    ! cloud ice/snow precip rate (m/s)
+  real(r8), intent(out) :: qsouto(:,:)  ! snow mixing ratio (kg/kg)
+  real(r8), intent(out) :: rflxo(:,:)   ! grid-box average rain flux (kg m^-2 s^-1)
+  real(r8), intent(out) :: sflxo(:,:)   ! grid-box average snow flux (kg m^-2 s^-1)
+  real(r8), intent(out) :: qrouto(:,:)  ! grid-box average rain mixing ratio (kg/kg)
+  real(r8), intent(out) :: reff_raino(:,:) ! rain effective radius (micron)
+  real(r8), intent(out) :: reff_snowo(:,:) ! snow effective radius (micron)
 
   character(128),   intent(out) :: errstring        ! output status (non-blank for error return)
   real(r8), intent(out) :: f_snow_berg  (:,:) ! ratio of bergeron 
                                                      ! production of qi to 
                                                      ! sum of bergeron, 
                                                      ! riming and freezing
-  type(strat_nml_type), intent(in) :: Nml
   real(r8), intent(out) :: ssat_disposalout(:,:)
                                  ! disposition of supersaturation at end 
                                  ! of step; 0.= no ssat, 1.= liq, 2.=ice)
@@ -675,10 +740,6 @@ REAL, dimension( :,:,:, 0: ), INTENT(INOUT) ::  diag_4d
 TYPE(diag_id_type),INTENT(IN) :: diag_id
 TYPE(diag_pt_type),INTENT(INout) :: diag_pt
 
-! --> h1g, 2012-10-05
-integer,  intent(in), optional :: do_clubb
-real(r8), intent(in), optional :: qcvar_clubbin (:,:)
-! <-- h1g, 2012-10-05
 #else
 subroutine micro_mg_tend ( &
      mgncol,   mgcols,   nlev,     top_lev,  deltatin,           &
@@ -847,7 +908,6 @@ subroutine micro_mg_tend ( &
   real(r8) :: dqcdt            (mgncol,nlev)   
   real(r8) :: dqidt            (mgncol,nlev)   
   real(r8) :: ssat_disposal    (mgncol,nlev)   
-  real(r8) :: qcvar_clubb      (mgncol,nlev)   
   real(r8) :: rate1ord_cw2pr_st(mgncol,nlev)    ! 1st order rate for
   ! direct cw to precip conversion
   real(r8) :: effco(mgncol,nlev)         ! droplet effective radius (micron)
@@ -971,7 +1031,6 @@ subroutine micro_mg_tend ( &
     real(r8) :: qs2d(mgncol,nlev)
    real(r8) :: qtot(mgncol,nlev)
 
-  logical  :: clubb_active = .false.
 
 #endif
 
@@ -1333,11 +1392,6 @@ subroutine micro_mg_tend ( &
   ! assign variable deltat for sub-stepping...
   deltat  = deltatin
 
-#ifdef GFDL_COMPATIBLE_MICROP
-! define flag indicating if routine being accessed from an experiment
-! using CLUBB.
-  if (PRESENT(do_clubb)) clubb_active=(do_clubb>0)
-#endif
 
 
 #ifdef GFDL_COMPATIBLE_MICROP 
@@ -1350,8 +1404,6 @@ subroutine micro_mg_tend ( &
   call pack_array(   nerosi4in  , mgcols, top_lev,   nerosi4  )
   call pack_array(    dqcdtin   , mgcols, top_lev,   dqcdt    )
   call pack_array(    dqidtin   , mgcols, top_lev,   dqidt    )
-if (present(qcvar_clubbin)) &
-  call pack_array(qcvar_clubbin , mgcols, top_lev, qcvar_clubb)
 #endif
   call pack_array(          qn, mgcols, top_lev,           q)
   call pack_array(          tn, mgcols, top_lev,           t)
@@ -1509,9 +1561,8 @@ if (present(qcvar_clubbin)) &
   else
     acn = ac * rhof
     ain = ai * rhof * IceFallFac
-  endif 
+  endif
 ! <---h1g, 2014-07-01
-
 
   !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
   ! Get humidity and saturation vapor pressures
@@ -1563,15 +1614,17 @@ if (present(qcvar_clubbin)) &
 ! define particles available on this step (dum2a).
     if ( liu_in ) then
        dum2a(i,k) = naai(i,k)
-! --->h1g, 2014-05-30 add Meyers ice nucleation formula (Only temperature dependent)
+
+! --->h1g, 2014-05-30 add Meyers ice nucleation formula (Only temperature d
+! ependent)
     elseif ( use_Meyers ) then
        dum2a(i,k) =  (exp(12.96* (tmelt -t(i,k))/80 - 0.639)) *1000._r8
        dum2a(i,k)= ( dum2a(i,k) )/rho(i,k) ! convert from m-3 to kg-1
-! <--- h1g,  2014-05-30 
-   
-    elseif ( Nml%do_ice_nucl_wpdf ) THEN
+! <--- h1g,  2014-05-30    
+
+    elseif (do_ice_nucl_wpdf ) THEN
       if (total_activation) then
-        if (Nml%activate_all_ice_always) then
+        if (activate_all_ice_always) then
           dum2a(i,k) = naai(i,k)
         else
           if (delta_cf(i,k) .gt. 0._r8) then
@@ -1651,11 +1704,10 @@ if (present(qcvar_clubbin)) &
                dum2i(i,k) = naai(i,k)
 ! --->h1g, 2014-05-30 add Meyers ice nucleation formula (Only temperature dependent)
             elseif ( use_Meyers ) then
-               dum2i(i,k) =  (exp(12.96* (tmelt -t(i,k))/80 - 0.639)) *1000._r8
+               dum2i(i,k) =  (exp(12.96* (tmelt -t(i,k))/80. - 0.639)) *1000._r8
                dum2i(i,k)= ( dum2i(i,k) )/rho(i,k) ! convert from m-3 to kg-1
-! <--- h1g,  2014-05-30 
-
-            elseif ( Nml%do_ice_nucl_wpdf ) THEN
+! <--- h1g,  2014-05-30
+            elseif (do_ice_nucl_wpdf ) THEN
  
 ! if aerosols interact with ice set number of activated ice nuclei
                if (total_activation) then
@@ -1907,13 +1959,13 @@ if (present(qcvar_clubbin)) &
 
 
 if ( ActNew ) then
-  
-  if (.not. tiedtke_macrophysics) then
-    if (do_cldice) then
 
+  if (.not. tiedtke_macrophysics) then
+     if (do_cldice) then
+      
 ! --->h1g, 2014-05-30 add Meyers ice nucleation option
       if( liu_in .or. use_Meyers ) then
-! <--- h1g,  2014-05-30 
+! <--- h1g,  2014-05-30
         where (dum2i > 0._r8 .and. t < icenuct .and. &
           relhum*esl/esi > rhmini+0.05_r8)
                   nnuccd = (dum2i - ni/icldm)/deltat*icldm
@@ -1923,7 +1975,6 @@ if ( ActNew ) then
            nimax = 0._r8
            mnuccd = 0._r8
         end where
-
       elseif (total_activation) then
         where (dum2i > 0._r8 .and. t < icenuct .and. &
           relhum*esl/esi > rhmini+0.05_r8)
@@ -1939,7 +1990,8 @@ if ( ActNew ) then
            mnuccd = 0._r8
         end where
 
-      else if (dqa_activation) then
+
+     else if (dqa_activation) then
         where (dum2i > 0._r8 .and. t < icenuct .and. &
           relhum*esl/esi > rhmini+0.05_r8)
 
@@ -1952,7 +2004,6 @@ if ( ActNew ) then
            nimax = 0._r8
            mnuccd = 0._r8
         end where
-
 !---> h1g, for cooper nucleation, 2014-05-29
       else
         where (dum2i > 0._r8 .and. t < icenuct .and. &
@@ -1965,32 +2016,32 @@ if ( ActNew ) then
            mnuccd = 0._r8
         end where
 !<--- h1g, 2014-05-29
-      endif ! liu_in .or. use_Meyers 
-      nimax = dum2i*icldm
+      
+      endif ! liu_in .or. use_Meyers
+           nimax = dum2i*icldm
 
-      if (.not. dqa_activation) then
-       !Calc mass of new particles using new crystal mass...
-       !also this will be multiplied by mtime as nnuccd is...
-        mnuccd = nnuccd * mi0
+         if (.not. dqa_activation) then
+           !Calc mass of new particles using new crystal mass...
+           !also this will be multiplied by mtime as nnuccd is...
 
-       !  add mnuccd to cmei....
-        cmei = cmei + mnuccd
+           mnuccd = nnuccd * mi0
+
+           !  add mnuccd to cmei....
+           cmei = cmei + mnuccd
         
-       !  limit cmei
-       !-------------------------------------------------------
-        cmei = min(cmei,(q-qvi)/calc_ab(t, qvi, xxls)/deltat)
+           !  limit cmei
+           !-------------------------------------------------------
+           cmei = min(cmei,(q-qvi)/calc_ab(t, qvi, xxls)/deltat)
 
-       ! limit for roundoff error
-        cmei = cmei * omsm
-      else
-        mnuccd = 0._r8
-      endif ! dqa_activation
-    end if  ! do_cldice
-  end if  ! .not. tiedtke
+           ! limit for roundoff error
+           cmei = cmei * omsm
+         else
+           mnuccd = 0._r8
+         endif
 
-
-
-else !use cldwat2m_micro.F90 activation
+     end if  ! do_cldice
+     end if  ! .not. tiedtke
+ else !use cldwat2m_micro.F90 activation
   do k = 1, nlev
     do i = 1, mgncol
 
@@ -2030,12 +2081,12 @@ else !use cldwat2m_micro.F90 activation
             else
               mnuccd(i,k) = 0._r8
             endif ! dqa_activation
-
-          else ! NOT (  dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct  ... )                    
+ 
+          else ! NOT (  dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct  ... )                         
             nnuccd(i,k) = 0._r8
             nimax(i,k)  = 0._r8
             mnuccd(i,k) = 0._r8
-          end if  ! (  dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct  ... )    
+         end if  ! (  dum2i(i,k).gt.0._r8.and.t(i,k).lt. icenuct  ... )         
         end if  ! do_cldice
       end if  ! .not. tiedtke
 
@@ -2087,8 +2138,6 @@ endif !ActNew
 
         pre_col_loop: do i=1,mgncol
 
-           ! obtain in-cloud values of cloud water/ice mixing ratios and number concentrations
-           !-------------------------------------------------------
            ! for microphysical process calculations
            ! units are kg/kg for mixing ratio, 1/kg for number conc
 
@@ -2235,7 +2284,7 @@ endif !ActNew
            !note: this is gridbox averaged
            ! hm, modify to use mtime
                 if (total_activation) then
-                  if (Nml%activate_all_ice_always) then
+                  if (activate_all_ice_always) then
                     nnuccd(i,k) = (dum2i(i,k)-ni(i,k)/icldm(i,k))/mtime*icldm(i,k)
                   else 
                        if (delta_cf(i,k) .gt. 0._r8) then
@@ -2293,13 +2342,13 @@ endif !ActNew
          npccn2(i,k) = max (delta_cf(i,k), 0._r8)*dum2l  (i,k)/deltatin
        END IF
         ncmax(i,k) = dum2l  (i,k)*cldm(i,k)
-      endif ! (clubb_active)
-     else
+       endif ! (clubb_active)
+    else
        npccn2(i,k)=0._r8
        ncmax(i,k) = 0._r8
-     end if  
-    end do
-   end do
+    end if  
+      end do
+      end do
 #endif
 
      !=========================================================
@@ -2361,17 +2410,10 @@ endif !ActNew
         ! minimum qc of 1 x 10^-8 prevents floating point error
 
 #ifdef GFDL_COMPATIBLE_MICROP
-     if (present(qcvar_clubbin)) then
-       do i=1,mgncol
-        call kk2000_liq_autoconversion(qcic(i,k), ncic(i,k), rho(i,k), &
-             qcvar_clubb(i,k), prc(i,k), nprc(i,k), nprc1(i,k))
-       end do
-     else
        do i=1,mgncol
         call kk2000_liq_autoconversion(qcic(i,k), ncic(i,k), rho(i,k), &
              relvar(i,k), prc(i,k), nprc(i,k), nprc1(i,k))
        end do
-     endif
 #else
         call kk2000_liq_autoconversion(qcic(:,k), ncic(:,k), rho(:,k), &
              relvar(:,k), prc(:,k), nprc(:,k), nprc1(:,k))
@@ -2562,17 +2604,10 @@ endif !ActNew
            !----------------------------------------------
 
 #ifdef GFDL_COMPATIBLE_MICROP
-      if (present(qcvar_clubbin)) then
-      do i=1,mgncol
-           call immersion_freezing(t(i,k), pgam(i,k), lamc(i,k), cdist1(i,k), qcic(i,k), &
-           qcvar_clubb(i,k), mnuccc(i,k), nnuccc(i,k))
-       end do
-      else
       do i=1,mgncol
            call immersion_freezing(t(i,k), pgam(i,k), lamc(i,k), cdist1(i,k), qcic(i,k), &
                 relvar(i,k), mnuccc(i,k), nnuccc(i,k))
        end do
-      endif
 #else
            call immersion_freezing(t(:,k), pgam(:,k), lamc(:,k), cdist1(:,k), qcic(:,k), &
                 relvar(:,k), mnuccc(:,k), nnuccc(:,k))
@@ -2601,15 +2636,9 @@ endif !ActNew
               mnucct(:,k) = 0._r8
               nnucct(:,k) = 0._r8
              else
-              if (present(qcvar_clubbin)) then
-           call contact_freezing(t(:,k), p(:,k), rndst(:,k,:), nacon(:,k,:), &
-                pgam(:,k), lamc(:,k), cdist1(:,k), qcic(:,k), &
-                qcvar_clubb(:,k), mnucct(:,k), nnucct(:,k))
-              else
            call contact_freezing(t(:,k), p(:,k), rndst(:,k,:), nacon(:,k,:), &
                 pgam(:,k), lamc(:,k), cdist1(:,k), qcic(:,k), &
                 relvar(:,k), mnucct(:,k), nnucct(:,k))
-              endif
              endif
 #else  
            call contact_freezing(t(:,k), p(:,k), rndst(:,k,:), nacon(:,k,:), &
@@ -2632,7 +2661,7 @@ endif !ActNew
              psacws(:,k), npsacws(:,k))
 
 #ifdef GFDL_COMPATIBLE_MICROP
-            if (Nml%do_hallet_mossop .or. clubb_active ) then
+            if (do_hallet_mossop .or. clubb_active ) then
 #endif
         if (do_cldice) then
            call secondary_ice_production(t(:,k), psacws(:,k), msacwi(:,k), nsacwi(:,k))
@@ -2655,40 +2684,43 @@ endif !ActNew
              mnuccr(:,k), nnuccr(:,k))
 
 #ifdef GFDL_COMPATIBLE_MICROP
-       if (present(qcvar_clubbin)) then
+       if(clubb_active) then
         do i=1,mgncol
            if( use_qcvar_in_accretion ) then
-             if ( qcvar_clubb(i,k) > qcvar_max4accr ) then
+             if ( relvar(i,k) > qcvar_max4accr ) then
                  accr_scale = 1.0
-             elseif( qcvar_clubb(i,k) < qcvar_min4accr ) then
+             elseif( relvar(i,k) < qcvar_min4accr ) then
                  accr_scale = accretion_scale_max
              else
                  accr_scale =   (accretion_scale_max-1.0)/  &
                   (1.0/qcvar_min4accr - 1.0/qcvar_max4accr) &
-                * (1.0/qcvar_clubb(i,k) - 1.0/qcvar_max4accr     ) + 1.0
+                * (1.0/relvar(i,k) - 1.0/qcvar_max4accr     ) + 1.0
              endif
            else
              accr_scale = accretion_scale
            endif
-        call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), rho(i,k), umr(i,k), &
-            qcvar_clubb(i,k), accr_scale      , pra(i,k), npra(i,k))
+        call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), &
+            rho(i,k), umr(i,k), relvar(i,k), accr_scale, pra(i,k),   &
+            npra(i,k))
         end do
        else
         do i=1,mgncol
-! ---> h1g, boost accretion in MG, 2014-07-17 
+! ---> h1g, boost accretion in MG, 2014-07-17
          if( use_const_accretion_scale ) then
-          call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), rho(i,k), umr(i,k), &
-               relvar(i,k), accretion_scale, pra(i,k), npra(i,k))
+           call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), &
+              rho(i,k), umr(i,k), relvar(i,k), accretion_scale, pra(i,k), &
+                                                                npra(i,k))
          else
-          call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), rho(i,k), umr(i,k), &
-               relvar(i,k), accre_enhan(i,k), pra(i,k), npra(i,k))
-         endif 
+           call accrete_cloud_water_rain(qric(i,k), qcic(i,k), ncic(i,k), &
+              rho(i,k), umr(i,k), relvar(i,k), accre_enhan(i,k),    &
+                                                      pra(i,k), npra(i,k))
+         endif
 ! <--- h1g, 2014-07-17
-
         end do
        endif
 #else
-        call accrete_cloud_water_rain(qric(:,k), qcic(:,k), ncic(:,k), rho(i,k), umr(i,k), &
+        call accrete_cloud_water_rain(qric(:,k), qcic(:,k), ncic(:,k), &
+             rho(i,k), umr(i,k), &
              relvar(:,k), accre_enhan(:,k), pra(:,k), npra(:,k))
 #endif
 
@@ -3570,10 +3602,6 @@ endif !ActNew
 
   mnuccdtot=mnuccdtot/real(iter)
 
-  if ( liq_sedi_mass_only .and. no_liq_sedi        ) &
-        call error_mesg ('micro_mg_mod',  &
-           'liq_sedi_mass_only and no_liq_sedi cannot be true at the same time', FATAL)
-
   sed_col_loop: do i=1,mgncol
 
      do k=1,nlev
@@ -3591,12 +3619,12 @@ endif !ActNew
         dumni(i,k) = max((ni(i,k)+nitend(i,k)*deltat)/icldm(i,k),0._r8)
 
         ! hm add 6/2/11 switch for specification of droplet and crystal number
-        if (nccons  .or. liq_sedi_mass_only) then       ! h1g, 2016-03-07
+        if (nccons) then
            dumnc(i,k)=ncnst/rho(i,k)
         end if
 
         ! hm add 6/2/11 switch for specification of cloud ice number
-        if (nicons) then
+        if (nccons  .or. liq_sedi_mass_only) then       ! h1g, 2016-03-07
            dumni(i,k)=ninst/rho(i,k)
         end if
 
@@ -3622,11 +3650,11 @@ endif !ActNew
                 acn(i,k)*gamma(1._r8+bc+pgam(i,k))/ &
                 (lamc(i,k)**bc*gamma(pgam(i,k)+1._r8))
 
-!---> h1g, 2016-03-07
+ !---> h1g, 2016-03-07
            if ( no_liq_sedi ) then
               fc(k)  = 0.0
               fnc(k) = 0.0
-           endif 
+           endif
 !<--- h1g, 2016-03-07
 
         else
@@ -3790,7 +3818,7 @@ endif !ActNew
            dumnc(i,k) = dumnc(i,k)-faltndnc*deltat/nstep
 
 ! ---> h1g, 2014-05-23 keep the sedimentation bugs in previous MG versions
-           if( .not. SedBugFix ) then   !sedimentation increases with pressure (or decreases with altitude)     
+           if( .not. SedBugFix ) then   !sedimentation increases with press ure (or decreases with altitude)     
              Fni(K) = MAX(Fni(K)/pdel(i,K), Fni(K-1)/pdel(i,K-1))*pdel(i,K)
              FI(K) = MAX(FI(K)/pdel(i,K), FI(K-1)/pdel(i,K-1))*pdel(i,K)
              fnc(k) = max(fnc(k)/pdel(i,k), fnc(k-1)/pdel(i,k-1))*pdel(i,k)
@@ -4682,11 +4710,10 @@ endif !ActNew
                                   sum_freeze (i,k) + sum_freeze2(i,k) )/qldt_sum
            else
             f_snow_berg_l(i,k) = (sum_berg(i,k) + sum_cond(i,k) +   &
-                                  sum_ice_adj(i,k) +    &
-                                  MAX( sum_bergs(i,k), 0.0) +     &
-                                  sum_freeze (i,k) + mnuccctot(i,k) )/qldt_sum  ! h1g 2015-06-05
-
-           endif
+                                sum_ice_adj(i,k) +    &
+                                MAX( sum_bergs(i,k), 0.0) +     &
+                                sum_freeze (i,k) + mnuccctot(i,k))/qldt_sum        
+            endif
 ! <--- h1g, 2014-07-18
           else
             f_snow_berg_l(i,k) = 0._r8
@@ -4816,7 +4843,6 @@ elemental subroutine size_dist_param_ice(qiic, niic, lami, n0i)
   ! m = cD^d
   ! cloud ice mass-diameter relationship
   real(r8), parameter :: ci = rhoi*pi/6._r8
-
 #endif
 
 #ifdef GFDL_COMPATIBLE_MICROP
@@ -5242,7 +5268,7 @@ elemental subroutine ice_deposition_sublimation_init(deltat, t, q, qc, qi, ni, &
           ! max berg is val which removes all ice supersaturation from vapor phase. 
           cmei=min(cmei,(q-qvl*esi/esl)/ab/deltat)
 #ifdef GFDL_COMPATIBLE_MICROP
-    endif ! .not. tiedtke_macrophysics
+    endif  ! .not. tiedtke_macrophysics
 #endif
 #ifdef GFDL_COMPATIBLE_MICROP
 ! Marc includes a restriction on berg at T < -40C
@@ -5330,9 +5356,9 @@ elemental subroutine kk2000_liq_autoconversion(qcic, ncic, rho, relvar, &
      nprc_denom = cons22
   end if
 
-  q_cri = 4._r8/3._r8*pi*rhow*(r_cri**3) * ncic 
+  q_cri = 4._r8/3._r8*pi*rhow*(r_cri**3) * ncic
   q_cri = max (icsmall, q_cri)
-
+  
   if (qcic .ge. q_cri) then
 
      ! nprc is increase in rain number conc due to autoconversion
@@ -5341,16 +5367,17 @@ elemental subroutine kk2000_liq_autoconversion(qcic, ncic, rho, relvar, &
      ! assume exponential sub-grid distribution of qc, resulting in additional
      ! factor related to qcvar below
      ! hm switch for sub-columns, don't include sub-grid qc
-    if ( use_K2013_auto ) then
-     prc = prc_coef * &
-          7.98e10_r8 * qcic**4.22_r8 * (ncic/1.e6_r8*rho)**(-3.01_r8)
-    elseif ( use_RK_auto ) then
-     prc =  &
-          32681 * qcic**2.33_r8 * (ncic*rho*rhow)**(-0.33_r8)
-    else 
+     
+      if ( use_K2013_auto ) then
+         prc = prc_coef * &
+            7.98e10_r8 * qcic**4.22_r8 * (ncic/1.e6_r8*rho)**(-3.01_r8)
+      elseif ( use_RK_auto ) then
+        prc =  &
+          32681. * qcic**2.33_r8 * (ncic*rho*rhow)**(-0.33_r8)
+      else
      prc = prc_coef * &
           1350._r8 * qcic**2.47_r8 * (ncic/1.e6_r8*rho)**(-1.79_r8)
-    endif
+      endif
      nprc = prc/nprc_denom
      nprc1 = prc/(qcic/ncic)
 
@@ -5765,9 +5792,11 @@ end subroutine heterogeneous_rain_freezing
 ! gravitational collection kernel, droplet fall speed neglected
 
 #ifdef GFDL_COMPATIBLE_MICROP
-          subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, umr, &
+          subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, &
+                                              umr, &
 #else
-elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, umr, &
+elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, &
+                                              umr, &
 #endif
                      relvar, accre_enhan, pra, npra)
 
@@ -5788,7 +5817,6 @@ elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, umr, &
   ! mass-weighted
   real(r8), intent(in) :: umr ! rain
 
-
   ! Output tendencies
   real(r8), intent(out) :: pra  ! MMR
   real(r8), intent(out) :: npra ! Number
@@ -5800,7 +5828,8 @@ elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, umr, &
 
   rad_liq = (0.75*qcic/ncic /pi /rhow)**(1.0/3.0)
   rad_liq = rad_liq*1.e6
- 
+
+
   if (microp_uniform) then
      pra_coef = 1._r8
   else
@@ -5820,6 +5849,7 @@ elemental subroutine accrete_cloud_water_rain(qric, qcic, ncic, rho_air, umr, &
     else
      pra = pra_coef * 67._r8*(qcic*qric)**1.15_r8
     endif
+
      npra = pra/(qcic/ncic)
 
   else

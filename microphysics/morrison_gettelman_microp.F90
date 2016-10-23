@@ -1,4 +1,4 @@
-MODULE morrison_gettelman_microp_mod
+                MODULE morrison_gettelman_microp_mod
 
 use sat_vapor_pres_mod,        only : lookup_des, compute_qs,  &
                                       sat_vapor_pres_init
@@ -12,14 +12,16 @@ use fms_mod,                   only : mpp_pe, file_exist, error_mesg,  &
                                       stdlog, write_version_number, &
                                       check_nml_error, close_file, &
                                       mpp_root_pe
-use strat_cloud_utilities_mod, only : strat_cloud_utilities_init, &
-                                      diag_id_type, diag_pt_type, &
-                                      strat_nml_type
-use  gamma_mg_mod,             only : gamma_mg, gamma_mg_init, gamma_mg_end
-use mg_const_mod,              only : mg_const_init, rhow, rhoi,  &
+use lscloud_debug_mod,         only : record_micro_refusal
+use lscloud_types_mod,         only : lscloud_types_init, &
+                                      lscloud_nml_type, &
+                                      diag_id_type, diag_pt_type
+use gamma_mg_mod,              only : gamma_mg, gamma_mg_init, gamma_mg_end
+use lscloud_constants_mod,     only : lscloud_constants_init, rhow, rhoi, &
                                       mg_pr, di_mg, ci_mg
 use simple_pdf_mod,            only : simple_pdf, simple_pdf_init, &
                                       simple_pdf_end
+use physics_radiation_exch_mod, only : exchange_control_type
   
 implicit none
 private 
@@ -38,6 +40,11 @@ Character(len=128) :: Tagname = '$Name$'
 
 !------------------------------------------------------------------------
 !--namelist--------------------------------------------------------------
+
+!  <DATA NAME="super_choice" TYPE="logical" DEFAULT=".false.">
+!   excess vapor in supersaturated conditions should be put into
+!   cloud water (true) or precipitation fluxes (false) ?
+!  </DATA>
 
 logical           :: do_morrison_gettelman_eros = .true.
 integer           :: auto_conv_ice_choice = 1
@@ -73,15 +80,11 @@ real              :: max_vt_snow       = 1.2_mg_pr
 real              :: nucl_thresh = 208.9e3_mg_pr
 integer           :: no_rh_adj_opt = 0
 
-real              :: min_diam_ice = 10.e-6_mg_pr
-real              :: min_diam_drop = 2.e-6_mg_pr
-real              :: max_diam_drop = 50.e-6_mg_pr
 
 real              :: max_diam_ii = 2400.e-6_mg_pr
 real              :: min_diam_ii = 1.e-6_mg_pr
 logical           :: rain_evap_opt  = .false.
 logical           :: subl_snow    = .false.
-logical           :: mass_cons = .false.
 
 logical           :: collect_frzreg = .true.
 logical           :: do_contact_frz = .false.
@@ -93,7 +96,6 @@ logical           :: one_ice = .false.
 logical           :: scav_by_cloud_ice = .false.
 real              :: tmin_fice =  tfreeze - 40._mg_pr ! min temperature for
                                          ! ice deposition/bergeron process
-real              :: Dcs  = 200.e-6_mg_pr
 real              :: qsmall =  1.e-14_mg_pr ! smallest mixing ratio 
                                             ! considered in microphysics
 logical           :: tiedtke_qa_test = .false.
@@ -112,10 +114,11 @@ real              :: rhosn = 100._mg_pr       ! bulk density snow  (from
 
 logical           :: mg_repartition_first = .true.
 logical           :: meyers_test = .false.
-logical    :: allow_all_cldtop_collection = .false.
-logical    :: rho_factor_in_max_vt = .true.
-real       :: max_rho_factor_in_vt = 1.0
-real       :: lowest_temp_for_sublimation = 180._mg_pr
+logical           :: allow_all_cldtop_collection = .false.
+logical           :: rho_factor_in_max_vt = .true.
+real              :: max_rho_factor_in_vt = 1.0
+real              :: lowest_temp_for_sublimation = 180._mg_pr
+logical :: super_choice = .true.
 
 namelist / morrison_gettelman_microp_nml /   &
                  do_morrison_gettelman_eros, auto_conv_ice_choice,   &
@@ -123,9 +126,8 @@ namelist / morrison_gettelman_microp_nml /   &
                  ai, bi, as , bs, act_choice, super_act, in_cloud_limit, &
                  do_berg_snow, do_excess1, hd_sedi_sens, vfact, vfact_n, &
                  vfact_m, max_vt_ice, max_vt_snow, sub_cld_var,          &
-                 nucl_thresh, no_rh_adj_opt, min_diam_ice,     &
-                 min_diam_drop, max_diam_drop, rain_evap_opt, mass_cons, &
-                 subl_snow, collect_frzreg, one_ice, tmin_fice, Dcs,     &
+                 nucl_thresh, no_rh_adj_opt, rain_evap_opt,            &
+                 subl_snow, collect_frzreg, one_ice, tmin_fice,          &
                  qsmall, tiedtke_qa_test, qv_on_qi, scav_by_cloud_ice,  &
                  max_diam_ii, min_diam_ii, sat_adj_opt, autoconv_ice_thr, &
                  eii, size_hom, limit_berg, do_nevap, berg_lim, rhosn, &
@@ -134,7 +136,7 @@ namelist / morrison_gettelman_microp_nml /   &
                  mg_repartition_first, meyers_test, &
                  allow_all_cldtop_collection, rho_factor_in_max_vt,&
                  max_rho_factor_in_vt, &
-                 lowest_temp_for_sublimation
+                 lowest_temp_for_sublimation, super_choice
 
 !-----------------------------------------------------------------------
 !-----internal parameters and constants---------------------------------
@@ -203,22 +205,26 @@ REAL(kind=mg_pr), PARAMETER  :: epsqs = 0.62197_mg_pr
 ! xxlv - latent heat of vaporization
 ! xlf  - latent heat of freezing
 ! xxls - xxlv + xlf, latent heat of sublimation
-REAL(kind=mg_pr), PARAMETER  :: xxlv = hlv       
-REAL(kind=mg_pr), PARAMETER  :: xlf = hlf   
-REAL(kind=mg_pr), PARAMETER  :: xxls = hls
+REAL(kind=mg_pr), PARAMETER  :: xxlv = HLV       
+REAL(kind=mg_pr), PARAMETER  :: xlf = HLF   
+REAL(kind=mg_pr), PARAMETER  :: xxls = HLS
 
 !------------------------------------------------------------------------
 ! water vapor gas contstant
-REAL(kind=mg_pr), PARAMETER  :: rv= rvgas  
+REAL(kind=mg_pr), PARAMETER  :: rv= RVGAS  
 
 !------------------------------------------------------------------------
 ! specific heat of dry air at const. press
-REAL(kind=mg_pr), PARAMETER  ::  cpp = cp_air         
+REAL(kind=mg_pr), PARAMETER  ::  cpp = CP_AIR         
 
 !------------------------------------------------------------------------
 ! constants related to subgrid cloud variance
 REAL (kind=mg_pr)            :: sfac1, sfac2, sfac3, sfac4, sfac5
 
+real              :: min_diam_ice  
+real              :: min_diam_drop 
+real              :: max_diam_drop 
+real              :: Dcs  
 
 !------------------------------------------------------------------------
 
@@ -228,18 +234,26 @@ logical    :: module_is_initialized = .false.
 ! see morrison and gettelman, 2007, J. Climate for details
 real              :: qcvar 
 
+real :: qmin
+integer :: super_ice_opt
+logical :: do_ice_nucl_wpdf
+logical :: do_pdf_clouds
+integer :: betaP
+real    :: qthalfwidth
+logical :: pdf_org
 
-CONTAINS
+
+                              CONTAINS
 
 
 
 !#########################################################################
 
-SUBROUTINE morrison_gettelman_microp_init (do_pdf_clouds, qcvar_in)
+SUBROUTINE morrison_gettelman_microp_init ( Nml_lsc, Exch_ctrl)
 
 !-----------------------------------------------------------------------
-LOGICAL, INTENT(IN ) :: do_pdf_clouds
-Real,    INTENT(IN ) :: qcvar_in      
+type(lscloud_nml_type),      intent(in) :: Nml_lsc
+type(exchange_control_type), intent(in) :: Exch_ctrl
 
 !-----------------------------------------------------------------------
 !--local variables------------------------------------------------------
@@ -248,8 +262,6 @@ Real,    INTENT(IN ) :: qcvar_in
 
 !-----------------------------------------------------------------------
       if (module_is_initialized) return
-
-      qcvar = qcvar_in
 
 !-----------------------------------------------------------------------
 !    process namelist.
@@ -276,15 +288,28 @@ Real,    INTENT(IN ) :: qcvar_in
       if (mpp_pe() == mpp_root_pe()) &
                        write (logunit, nml=morrison_gettelman_microp_nml)
 
+      min_diam_ice = Exch_ctrl%min_diam_ice
+      min_diam_drop = Exch_ctrl%min_diam_drop
+      mAx_diam_drop = Exch_ctrl%max_diam_drop
+      dcs = Exch_ctrl%dcs
+      qcvar = Exch_ctrl%qcvar
+      qmin = Exch_ctrl%qmin
+      super_ice_opt = Nml_lsc%super_ice_opt
+      do_ice_nucl_wpdf = Nml_lsc%do_ice_nucl_wpdf
+      do_pdf_clouds = Nml_lsc%do_pdf_clouds 
+      betaP = Nml_lsc%betaP
+      qthalfwidth = Nml_lsc%qthalfwidth
+      pdf_org = Nml_lsc%pdf_org
+
 !------------------------------------------------------------------------
 !    be sure needed modules have been initilized.
 !------------------------------------------------------------------------
       CALL sat_vapor_pres_init
-      call mg_const_init
-      call strat_cloud_utilities_init
-      CALL polysvp_init
+      call lscloud_constants_init
+      call lscloud_types_init
+      call polysvp_init (Nml_lsc)
       IF (do_pdf_clouds) THEN
-        CALL  simple_pdf_init
+        CALL  simple_pdf_init (Nml_lsc)
       END IF
       CALL gamma_mg_init
 
@@ -326,23 +351,21 @@ END SUBROUTINE morrison_gettelman_microp_init
 
 SUBROUTINE morrison_gettelman_microp  (      &
                   tiedtke_macrophysics, total_activation, dqa_activation, &
-                  ncall, j, idim, jdim, kdim, Nml, deltatin, pfull, &
-                  pdel, t_in, t0, qv_in, qv0, qc_in, qi_in, nc_in, ni_in, &
+                  j, idim, jdim, kdim, deltatin, pfull, pdel, t_in, &
+                  t0, qv_in, qv0, qc_in, qi_in, nc_in, ni_in, &
                   cldn_in, dqcdt, dqidt, drop2, crystal1, rbar_dust,   &
                   ndust, delta_cf, qa_upd, qa_upd_0, SA_0, D_eros_l4, &
                   nerosc4,  D_eros_i4, nerosi4, gamma, inv_dtcloud, qa0, & 
                   ST, SQ,  ssat_disposal, tlat, qvlat, qctend, qitend,    &
                   nctend, nitend, SA, rain3d, snow3d, prect, preci,   &
                   qrout, qsout, lsc_rain_size, lsc_snow_size,   &
-                  f_snow_berg, n_diag_4d, diag_4d, diag_id, diag_pt,  &
-                  nrefuse, debugo0, debugo1, otun)
+                  f_snow_berg, n_diag_4d, diag_4d, diag_id, diag_pt)
        
 !------------------------------------------------------------------------
 logical,                 intent(in)    ::  tiedtke_macrophysics,  &
                                            total_activation, &
                                            dqa_activation
-INTEGER,                 INTENT(IN )   ::  ncall, j, idim, jdim, kdim
-type(strat_nml_type),    intent(in)    ::  Nml
+INTEGER,                 INTENT(IN )   ::         j, idim, jdim, kdim
 REAL(kind=mg_pr),        INTENT(IN )   ::  deltatin        ! time step (s)
 REAL(kind=mg_pr), DIMENSION(idim,kdim),   INTENT(IN)    & 
                                        ::  pfull ! air pressure (pa)
@@ -439,12 +462,6 @@ TYPE(diag_id_type),                       intent(in)     &
                                        :: diag_id
 TYPE(diag_pt_type),                       intent(inout)    &
                                        :: diag_pt
-INTEGER,                                  INTENT(INOUT)     &
-                                       :: nrefuse
-LOGICAL,                                  INTENT(IN )    &
-                                       :: debugo0, debugo1 
-INTEGER,                                  INTENT(IN )     &
-                                       :: otun
 
 !-------------------------------------------------------------------------
 
@@ -903,7 +920,7 @@ INTEGER,                                  INTENT(IN )     &
 
 !some sanity checking (more needed!!)
 
-         IF ( .NOT. Nml%do_pdf_clouds ) THEN
+         IF ( .NOT. do_pdf_clouds ) THEN
            IF (auto_conv_ice_choice .EQ. 2 ) THEN
              call error_mesg ( 'morrison_gettelman_microp', &
               'ERROR auto_conv_ice_choice =2 not compatible w. Tiedtke&
@@ -1134,7 +1151,7 @@ INTEGER,                                  INTENT(IN )     &
            do i=1,idim
              prd = 0._mg_pr
              if (t(i,k) .lt. tfreeze - 5._mg_pr) then
-               IF (Nml%do_ice_nucl_wpdf) THEN
+               IF (do_ice_nucl_wpdf) THEN
 
 !use number calculated outside this code
                  IF (total_activation) THEN
@@ -1155,7 +1172,7 @@ INTEGER,                                  INTENT(IN )     &
                  else
                    dumnnuc = 0._mg_pr
                  end if
-		 ELSE  IF (dqa_activation) THEN
+               ELSE  IF (dqa_activation) THEN
                  dumnnuc = max(delta_cf(i,k), 0.)*dum/deltat
                END IF
                dumnnuc=max(dumnnuc,0._mg_pr)
@@ -1188,7 +1205,7 @@ INTEGER,                                  INTENT(IN )     &
 
              qvdep_qi(i,k) = 0._mg_pr
 
-! cmel and cmei are liquid and ice condensate as clacuklated in nc_cond.F90
+! cmel and cmei are liquid and ice condensate as clacuklated in tiedtke_macro.F90
 ! and input here
              cmel(i,k) = dqcdt(i,k)
              cmei(i,k) = dqidt(i,k)
@@ -1297,7 +1314,7 @@ INTEGER,                                  INTENT(IN )     &
              if (t(i,k) <  tfreeze - 5.0_mg_pr) then
 
 ! use number calculated outside this code
-               IF (Nml%do_ice_nucl_wpdf) THEN
+               IF (do_ice_nucl_wpdf) THEN
                  IF (total_activation) THEN
                    if (delta_cf(i,k) .gt. 0._mg_pr) then 
                      dum2i(i,k) = crystal1(i,k)*cldm(i,k)/rho(i,k)
@@ -1322,16 +1339,16 @@ INTEGER,                                  INTENT(IN )     &
 
 !pdf clouds option -- validity ??
 !re-calculate cloud fraction
-         IF (Nml%do_pdf_clouds .AND.   &
-            (Nml%super_ice_opt .EQ. 1 .OR. Nml%super_ice_opt .EQ. 2)) THEN
-           IF (Nml%super_ice_opt .EQ. 1) THEN
+         IF (do_pdf_clouds .AND.   &
+            (super_ice_opt .EQ. 1 .OR. super_ice_opt .EQ. 2)) THEN
+           IF (super_ice_opt .EQ. 1) THEN
              DO k=1,kdim
                DO i=1,idim
                  ttmp = t(i,k) 
                  IF (ttmp .LT. tfreeze - 40._mg_pr .OR.    &
                     (ttmp .LE. tfreeze .AND. qc(i,k) +    &
                          (cmel(i,k) - berg(i,k) )/deltat  &
-                                          .LT. 3._mg_pr*Nml%qmin)) THEN 
+                                          .LT. 3._mg_pr*qmin)) THEN 
                    eslt = polysvp_i(ttmp)
                  ELSE
                    eslt = polysvp_l(ttmp)
@@ -1343,14 +1360,14 @@ INTEGER,                                  INTENT(IN )     &
              END DO
            END IF
 
-           IF (Nml%super_ice_opt .EQ. 2) THEN
+           IF (super_ice_opt .EQ. 2) THEN
              DO k=1,kdim
                DO i=1,idim
                  ttmp = t(i,k) 
                  IF (ttmp .LT. tfreeze - 40._mg_pr .OR.   &
                     (ttmp .LE. tfreeze .AND. qc(i,k) +   &
                          (cmel(i,k) - berg(i,k) )/deltat   &
-                                       .LT. 3._mg_pr*Nml%qmin) ) THEN 
+                                       .LT. 3._mg_pr*qmin) ) THEN 
                    eslt = polysvp_i(ttmp)
                    tc = ttmp - tfreeze
 !!!                rhi=MIN( max_super_ice, 0.000195*tc**2+0.00266*tc+1.005)
@@ -1369,13 +1386,12 @@ INTEGER,                                  INTENT(IN )     &
 
            qtot = qv_in + qc_in + qi_in 
 
-           IF ( Nml%pdf_org )    &
+           IF (pdf_org )    &
                  call error_mesg ( 'morrison_gettelman_microp', &
                                         'ERROR 1 simple_pdf ', FATAL)
 
-           CALL  simple_pdf (j, idim, jdim, kdim, Nml%qmin, qa0, &
-                             qtot, qs,  gamma, Nml%qthalfwidth,  &
-                             Nml%betaP, inv_dtcloud,                 &
+           CALL  simple_pdf (j, idim, jdim, kdim, qmin, qa0, &
+                             qtot, qs,  gamma, inv_dtcloud,  &
 !inout
                              SA_0,                            &
 !diag
@@ -1424,8 +1440,11 @@ INTEGER,                                  INTENT(IN )     &
              if (qc(i,k) + qi(i,k) + qv(i,k) .lt. -1.e-9_mg_pr .OR.  &
                  qv(i,k)  .lt. -1.e-9_mg_pr) then
                ltrue(i) = 0
+!RSH:exit needs to be after nrefuse is incremented or nrefuse never changes
+!              exit
+!              nrefuse = nrefuse + 1
+               call record_micro_refusal ()
                exit
-               nrefuse = nrefuse + 1
              end if
            end do
          end do
@@ -3776,7 +3795,7 @@ INTEGER,                                  INTENT(IN )     &
              ssat_disposal(i,k) = 0._mg_pr
 
              IF (no_rh_adj_opt .EQ. 0) THEN
-               IF (Nml%super_ice_opt .EQ. 0) THEN
+               IF (super_ice_opt .EQ. 0) THEN
 
 !RSH: This is the code section which is intended to mimic the RK treatment.
 !RSH  (super_ice_opt = 0)
@@ -3817,7 +3836,7 @@ INTEGER,                                  INTENT(IN )     &
 ! increment temperature
                  if (ttmp .le. tfreeze - 40._mg_pr .and.     &
                                           tmp1 .gt. 0._mg_pr) then
-                   IF (Nml%super_choice) THEN 
+                   IF (super_choice) THEN 
                      qitend(i,k) = qitend(i,k) + tmp1/deltat
                      ssat_disposal(i,k) = 2._mg_pr
                      IF (diag_id%ice_adj + diag_id%ice_adj_col > 0) &
@@ -3838,7 +3857,7 @@ INTEGER,                                  INTENT(IN )     &
 
                  if (ttmp .gt. tfreeze - 40._mg_pr .and.    &
                                                tmp1 .gt. 0._mg_pr) then   
-                   IF (Nml%super_choice) THEN 
+                   IF (super_choice) THEN 
                      qctend(i,k) = qctend(i,k) + tmp1/deltat 
                      ssat_disposal(i,k) = 1._mg_pr
                      IF (diag_id%liq_adj + diag_id%liq_adj_col > 0 ) &
@@ -3853,7 +3872,7 @@ INTEGER,                                  INTENT(IN )     &
                    END IF
                    tlat(i,k) = tlat(i,k) + hlv*tmp1/deltat             
                  end if
-               ELSE IF (Nml%super_ice_opt .GE. 1) THEN 
+               ELSE IF (super_ice_opt .GE. 1) THEN 
                  ssat_disposal(i,k) = 0._mg_pr
 
 !RSH: THis is the code section  used with M-G (super_ice_opt >= 1).
@@ -4252,9 +4271,7 @@ END SUBROUTINE morrison_gettelman_microp
 
 !#########################################################################
 
-SUBROUTINE morrison_gettelman_microp_end (do_pdf_clouds)
-
-LOGICAL, INTENT(IN ) :: do_pdf_clouds
+SUBROUTINE morrison_gettelman_microp_end 
 
 !------------------------------------------------------------------------
 !    call destructor routines for modules used here.
@@ -4280,4 +4297,4 @@ END SUBROUTINE morrison_gettelman_microp_end
 
 
 
-END MODULE morrison_gettelman_microp_mod
+                    END MODULE morrison_gettelman_microp_mod

@@ -1,32 +1,42 @@
-module nc_cond_mod
+                      module tiedtke_macro_mod
 
-use mpp_mod,                   only : input_nml_file
-use  fms_mod,                  only : FATAL, error_mesg, mpp_pe, &
-                                      mpp_root_pe, open_namelist_file, &
-                                      check_nml_error, close_file,  &
-                                      write_version_number, file_exist, &
-                                      stdlog
-use constants_mod,             only : grav,tfreeze, cp_air, hlv, hls, &
-                                      rvgas, pi
-use beta_dist_mod,             only : incomplete_beta, beta_dist_init, &
-                                      beta_dist_end
-use strat_cloud_utilities_mod, only : strat_cloud_utilities_init, &
-                                      diag_id_type, diag_pt_type, &
-                                      strat_nml_type, atmos_state_type,&
-                                      cloud_state_type, particles_type,&
-                                      strat_constants_type, &
-                                      cloud_processes_type
-use polysvp_mod,               only : polysvp_init, polysvp_end,  &
-                                      compute_qs_x1
+use mpp_mod,                    only : input_nml_file
+use fms_mod,                    only : FATAL, error_mesg, mpp_pe, &
+                                       mpp_root_pe, open_namelist_file, &
+                                       check_nml_error, close_file,  &
+                                       write_version_number, file_exist, &
+                                       stdlog
+use constants_mod,              only : GRAV, TFREEZE, CP_AIR, HLV, HLS, &
+                                       RVGAS, pi
+use beta_dist_mod,              only : incomplete_beta, beta_dist_init, &
+                                       beta_dist_end
+use lscloud_types_mod,          only : lscloud_types_init, &
+                                       diag_id_type, diag_pt_type, &
+                                       atmos_state_type,  &
+                                       lscloud_nml_type, &
+                                       cloud_state_type, particles_type,&
+                                       lsc_constants_type, &
+                                       cloud_processes_type
+use lscloud_debug_mod,          only : lscloud_debug_init,  &
+                                       macrophysics_debug
+use polysvp_mod,                only : polysvp_init, polysvp_end,  &
+                                       compute_qs_x1
+use moist_proc_utils_mod,       only : mp_input_type, mp_conv2ls_type, &
+                                       mp_nml_type,   &
+                                       mp_lsdiag_type
+use physics_radiation_exch_mod, only : exchange_control_type
 
 implicit none
 private 
 
 !-----------------------------------------------------------------------
 !---interfaces----------------------------------------------------------
-public  nc_cond, nc_cond_init, nc_cond_end
-private nc_cond_nopdf_nosuper, nc_cond_nopdf_super, nc_cond_pdf, &
-        ppm2m_sak, kmppm_sak, steepz_sak
+public  tiedtke_macro_init, tiedtke_macro, tiedtke_macro_diagnostics,  &
+        tiedtke_macro_end, tiedtke_macro_time_vary
+
+private tiedtke_macro_nopdf_nosuper, tiedtke_macro_nopdf_super,   &
+        tiedtke_macro_Single_Gaussian_pdf, erf, &
+        tiedtke_macro_pdf, ppm2m_sak, kmppm_sak, steepz_sak
 
 !-----------------------------------------------------------------------
 !---version number------------------------------------------------------
@@ -36,6 +46,44 @@ Character(len=128) :: Tagname = '$Name$'
 
 !-----------------------------------------------------------------------
 !---namelist------------------------------------------------------------
+
+!  <DATA NAME="U00" UNITS="fraction" TYPE="real" DEFAULT="0.80">
+!   threshold rel hum for cloud formation by large-scale condensation.
+!  </DATA
+!  <DATA NAME="u00_profile" TYPE="logical"  DEFAULT=".false.">
+!   the low-level u00 ECMWF profile should be applied?
+!  </DATA>
+!  <DATA NAME="eros_scale" UNITS="1/sec" TYPE="real" DEFAULT="1.E-06">
+!   normal erosion rate constant for cloud destruction (default = 1.E-06)
+!  </DATA>
+!  <DATA NAME="eros_choice" TYPE="logical"  DEFAULT=".false.">
+!   enhanced erosion should occur in turbulent or convective conditions ?
+!  </DATA>
+!  <DATA NAME="eros_scale_c" UNITS="1/sec" TYPE="real"  DEFAULT="8.E-06">
+!   erosion rate constant for cloud destruction for convective conditions.
+!  </DATA>
+!  <DATA NAME="eros_scale_t" UNITS="1/sec" TYPE="real" DEFAULT="5.E-05">
+!   erosion rate constant for cloud destruction for turbulent conditions.
+!  </DATA>
+!  <DATA NAME="mc_thresh" UNITS="kg/m2/sec" TYPE="real" DEFAULT="0.001">
+!   convective mass-flux threshold for enhanced erosion to turn on.
+!  </DATA
+!  <DATA NAME="diff_thresh" UNITS="m2/s" TYPE="real" DEFAULT="1.0">
+!   diffusion coefficient threshold for enhanced erosion to turn on.
+!  </DATA>
+!  <DATA NAME="efact" UNITS="dimensionless" TYPE="real" DEFAULT="0.0">
+!   factor used in formula to enhance cloud erosion as a function of height
+!  </DATA>
+
+real    :: U00 =0.80
+logical :: u00_profile = .true.
+real    :: eros_scale     =  1.E-06
+logical :: eros_choice    =  .false.
+real    :: eros_scale_c   =  8.E-06
+real    :: eros_scale_t   =  5.E-05
+real    :: mc_thresh      =  0.001   
+real    :: diff_thresh   =  0.1      
+real    :: efact = 0.
 
 logical :: add_ahuco = .true.              ! include convective cloud area
                                            ! in grid box when determining 
@@ -57,25 +105,61 @@ real    :: ae_lb = 0.8                     ! used in aero_eros calculation
 real    :: ae_ub = 1.2                     ! used in aero_eros calculation
 real    :: ae_N_lb = 0.                    ! used in aero_eros calculation
 real    :: ae_N_ub = 150.                  ! used in aero_eros calculation
+logical :: include_neg_mc = .false.
+logical :: Single_Gaussion_pdf = .false.
 
-namelist / nc_cond_nml /  add_ahuco, use_qabar, rk_repartition_first, &
-                          do_aero_eros, ae_lb, ae_ub, ae_N_lb, ae_N_ub
+namelist / tiedtke_macro_nml /  &
+                       U00, U00_profile, eros_scale, eros_choice,      &
+                       eros_scale_c, eros_scale_t, mc_thresh, diff_thresh,&
+                       efact, add_ahuco, use_qabar, rk_repartition_first, &
+                       do_aero_eros, ae_lb, ae_ub, ae_N_lb, ae_N_ub, &
+                       include_neg_mc, Single_Gaussion_pdf
  
 !------------------------------------------------------------------------
-logical     :: module_is_initialized = .false.
+!    module variables obtained from other modules
+!------------------------------------------------------------------------
+real    :: qmin
+real    :: qcvar
+logical :: limit_conv_cloud_frac
+real    :: Dmin
+real    :: cfact
+integer :: super_ice_opt
+logical :: do_pdf_clouds
+integer :: betaP
+real    :: qthalfwidth
+integer :: nsublevels
+integer :: kmap
+integer :: kord
+logical :: pdf_org
+real    :: dtcloud, inv_dtcloud
+logical :: do_rk_microphys
+logical :: total_activation
+logical :: debug
+
+!------------------------------------------------------------------------
+
+logical :: module_is_initialized = .false.
 
 
-CONTAINS
+
+
+
+                               CONTAINS
+
+
 
 !#######################################################################
 
-SUBROUTINE nc_cond_init( do_pdf_clouds )
+SUBROUTINE tiedtke_macro_init (Nml_mp, Nml_lsc, Constants_lsc, Exch_ctrl)
 
 !-----------------------------------------------------------------------
-LOGICAL, INTENT(IN ) :: do_pdf_clouds
+type(lscloud_nml_type),      intent(in) :: Nml_lsc
+type(lsc_constants_type),    intent(in) :: Constants_lsc
+type(mp_nml_type),           intent(in) :: Nml_mp
+type(exchange_control_type), intent(in) :: Exch_ctrl
  
 !-----------------------------------------------------------------------
-!---local variables-----------------------------------------------------
+!---local variables----
 
       integer :: unit, io, ierr, logunit
 
@@ -86,14 +170,14 @@ LOGICAL, INTENT(IN ) :: do_pdf_clouds
 !    process namelist.
 !-------------------------------------------------------------------------
 #ifdef INTERNAL_FILE_NML
-      read (input_nml_file, nml=nc_cond_nml, iostat=io)
-      ierr = check_nml_error(io,'nc_cond_nml')
+      read (input_nml_file, nml=tiedtke_macro_nml, iostat=io)
+      ierr = check_nml_error(io,'tiedtke_macro_nml')
 #else
       if ( file_exist('input.nml')) then
         unit = open_namelist_file ( )
         ierr=1; do while (ierr /= 0)
-        read  (unit, nml=nc_cond_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'nc_cond_nml')
+        read  (unit, nml=tiedtke_macro_nml, iostat=io, end=10)
+        ierr = check_nml_error(io,'tiedtke_macro_nml')
         enddo
 10      call close_file (unit)
       endif
@@ -105,50 +189,81 @@ LOGICAL, INTENT(IN ) :: do_pdf_clouds
       call write_version_number ( version, tagname )
       logunit = stdlog()
       if ( mpp_pe() == mpp_root_pe() ) &
-                        write ( logunit, nml=nc_cond_nml )
+                        write ( logunit, nml=tiedtke_macro_nml )
+
+!----------------------------------------------------------------------
+!    save variables that will be needed later in this module.
+!----------------------------------------------------------------------
+      qmin = Exch_ctrl%qmin
+      qcvar = Exch_ctrl%qcvar
+      limit_conv_cloud_frac = Nml_mp%limit_conv_cloud_frac
+      Dmin = Nml_lsc%Dmin
+      cfact = Nml_lsc%cfact
+      super_ice_opt = Nml_lsc%super_ice_opt
+      do_pdf_clouds = Nml_lsc%do_pdf_clouds
+      betaP = Nml_lsc%betaP
+      qthalfwidth = Nml_lsc%qthalfwidth
+      nsublevels = Nml_lsc%nsublevels
+      kmap = Nml_lsc%kmap
+      kord = Nml_lsc%kord
+      pdf_org = Nml_lsc%pdf_org
+      do_rk_microphys = Constants_lsc%do_rk_microphys
+      total_activation = Constants_lsc%total_activation
 
 !------------------------------------------------------------------------
 !    be sure needed modules are initialized.
 !------------------------------------------------------------------------
-      call strat_cloud_utilities_init
-      call polysvp_init
+      call lscloud_types_init
+      call lscloud_debug_init (debug)
+      call polysvp_init (Nml_lsc)
       if (do_pdf_clouds) then
         call beta_dist_init
       endif
 
-!-----------------------------------------------------------------------
       module_is_initialized = .true.
 
+!-----------------------------------------------------------------------
 
-END SUBROUTINE nc_cond_init
+
+END SUBROUTINE tiedtke_macro_init
+
+
+!########################################################################
+
+subroutine tiedtke_macro_time_vary (dtcloud_in)
+
+real, intent(in) :: dtcloud_in
+
+!---------------------------------------------------------------------
+!    save variables needed during prognostic loop.
+!---------------------------------------------------------------------
+      dtcloud = dtcloud_in
+      inv_dtcloud = 1./dtcloud
+
+end subroutine tiedtke_macro_time_vary 
 
 
 
 !########################################################################
 
-SUBROUTINE nc_cond (idim, jdim, kdim, Nml, Constants, Atmos_state,  &
-                    Cloud_state, ST, SQ, Cloud_processes, Particles,  &
-                    n_diag_4d, diag_4d, diag_id, diag_pt, otun)        
+SUBROUTINE tiedtke_macro (     &
+             idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,    &
+             Cloud_state, ST, SQ, Cloud_processes, Particles, Lsdiag_mp)
 
 !------------------------------------------------------------------------
 INTEGER,                         INTENT(IN )   :: idim, jdim, kdim 
-type(strat_nml_type),            intent(in)    :: Nml
+type(mp_conv2ls_type),           intent(inout) :: C2ls_mp    
+type(mp_input_type),             intent(inout) :: Input_mp    
 type(atmos_state_type),          intent(inout) :: Atmos_state
 type(cloud_state_type),          intent(inout) :: Cloud_state
+REAL, dimension(idim,jdim,kdim), INTENT(IN )   :: ST, SQ
 type(cloud_processes_type),      intent(inout) :: Cloud_processes
 type(particles_type),            intent(inout) :: Particles
-type(strat_constants_type),      intent(inout) :: Constants  
-REAL, dimension(idim,jdim,kdim), INTENT(IN )   :: ST, SQ
-INTEGER,                         INTENT(IN )   :: n_diag_4d
-REAL, dimension(idim,jdim,kdim,0:n_diag_4d),    &
-                                 INTENT(INOUT) :: diag_4d
-TYPE(diag_id_type),              intent(in)    :: diag_id
-TYPE(diag_pt_type),              intent(in)    :: diag_pt 
-INTEGER,                         INTENT(IN)    :: otun
+type(mp_lsdiag_type),            intent(inout) :: Lsdiag_mp    
 
 !------------------------------------------------------------------------
-!----local variables---------------------------------------
-!------------------------------------------------------------------------
+!----local variables----
+!
 !       SA             cloud area tendency
 !       U00p           critical relative humidity fraction which may be 
 !                      a function of pressure 
@@ -171,35 +286,43 @@ INTEGER,                         INTENT(IN)    :: otun
                                           ice_frac, erosion_scale, edum
       real                             :: dum, D2_dts, A_plus_B_s, mdum, &
                                           bdum
-      INTEGER                          :: i,j,k
+      INTEGER                          :: i, j ,k
 
 
 !-----------------------------------------------------------------------
-!    define a local copy of the current cloud area tendency.
+!    define a local copy of the current cloud area tendency. this will
+!    be modified in this routine and the modified version returned to the
+!    Cloud_state%SA_out variable upon completion.
 !-----------------------------------------------------------------------
       SA = Cloud_state%SA_out
 
 !------------------------------------------------------------------------
 !    process the non-convective condensation for pdf clouds. 
-!                                                                      !
-!                NON-CONVECTIVE CONDENSATION                          !
-!                                                                      !
-!                STATISTICAL CLOUD FRACTION                            !
-!                                                                      !
+!                                                                      
+!                NON-CONVECTIVE CONDENSATION                          
+!                                                                      
+!                STATISTICAL CLOUD FRACTION                            
+!                                                                      
 !------------------------------------------------------------------------
-      if (Nml%do_pdf_clouds) then
-        if ( Nml%Single_Gaussion_pdf) then
-          call nc_cond_Single_Gaussian_pdf(idim, jdim, kdim, Nml, Constants, Atmos_state, &
-                          Cloud_state, ST, SQ, Cloud_processes, &
-                          Particles, n_diag_4d, diag_4d, diag_id,  &
-                          diag_pt, otun, SA)
+      if (do_pdf_clouds) then
+        if (Single_Gaussion_pdf) then
+!RSH remove constants, nml, otun as args.
+!         call nc_cond_Single_Gaussian_pdf(idim, jdim, kdim, Nml, 
+!         call nc_cond_Single_Gaussian_pdf(idim, jdim, kdim,      
+          call tiedtke_macro_Single_Gaussian_pdf(idim, jdim, kdim,    & 
+!                         Constants, Atmos_state, &
+                       Atmos_state, Input_mp, &
+                       Cloud_state, ST, SQ, Cloud_processes, &
+                       Particles, Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d, &
+!                      Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt, otun, SA)
+                       Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt,       SA)
         else
-          call nc_cond_pdf (idim, jdim, kdim, Nml, Constants, Atmos_state, &
-                          Cloud_state, ST, SQ, Cloud_processes, &
-                          Particles, n_diag_4d, diag_4d, diag_id,  &
-                          diag_pt, otun, SA)
+          call tiedtke_macro_pdf (     &
+              idim, jdim, kdim, Atmos_state, Input_mp, Cloud_state, ST,  &
+              SQ, Cloud_processes, Particles, Lsdiag_mp%n_diag_4d,  &
+              Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt, SA)
         endif
-      else
+      else  !(do_pdf_clouds)
 
 !------------------------------------------------------------------------
 !    process the non-convective condensation for non-pdf clouds. some
@@ -207,7 +330,7 @@ INTEGER,                         INTENT(IN)    :: otun
 !
 !                 NON-CONVECTIVE CONDENSATION                          
 !                                                                     
-!                  TIEDTKE (1993) CLOUD FRACTION                    
+!                 TIEDTKE (1993) CLOUD FRACTION                    
 !                                                                    
 !       ANALYTIC INTEGRATION OF SATURATED VOLUME FRACTION EQUATION     
 !
@@ -232,15 +355,15 @@ INTEGER,                         INTENT(IN)    :: otun
 !    condensation (U00p) following ECMWF formula if desired. otherwise,
 !    it is given by the nml variable u00.
 !------------------------------------------------------------------------
-        U00p = Nml%U00
-        if (Nml%u00_profile) then
+        U00p = U00
+        if (u00_profile) then
           DO k=1,kdim
-            where (Atmos_state%pfull(:,:,k).gt.   &
-                          0.8*Atmos_state%phalf(:,:,KDIM+1)) 
-              U00p(:,:,k) = Nml%U00 + (1.-Nml%U00)* &
-                         (((Atmos_state%pfull(:,:,k) -   &
-                            (0.8*Atmos_state%phalf(:,:,KDIM+1)))/  &
-                               (0.2*Atmos_state%phalf(:,:,KDIM+1)) )**2.)
+            where (Input_mp%pfull(:,:,k).gt.   &
+                          0.8*Input_mp%phalf(:,:,KDIM+1)) 
+              U00p(:,:,k) = U00 + (1.- U00)* &
+                         (((Input_mp%pfull(:,:,k) -   &
+                            (0.8*Input_mp%phalf(:,:,KDIM+1)))/  &
+                               (0.2*Input_mp%phalf(:,:,KDIM+1)) )**2.)
             end where
           END DO
         endif       
@@ -253,7 +376,7 @@ INTEGER,                         INTENT(IN)    :: otun
 !    better written : ahuco*100% + (1-ahuco)*u00p = gridboxmean rh
 !------------------------------------------------------------------------
         IF (add_ahuco) THEN
-          u00pr = u00p + (1. - u00p)*Atmos_state%ahuco
+          u00pr = u00p + (1. - u00p)*C2ls_mp%convective_humidity_area
           u00p = u00pr
         END IF
 
@@ -284,7 +407,7 @@ INTEGER,                         INTENT(IN)    :: otun
 !-----------------------------------------------------------------------
 !    define array with background erosion scale.
 !-----------------------------------------------------------------------
-        erosion_scale = Nml%eros_scale
+        erosion_scale =     eros_scale
        
 !-----------------------------------------------------------------------
 !    Do enhanced erosion in convective or turbulent layers?
@@ -295,7 +418,7 @@ INTEGER,                         INTENT(IN)    :: otun
 !    convection occur in the same layer, the erosion rate for turbulence 
 !    is selected.                
 !-----------------------------------------------------------------------
-        if (Nml%eros_choice) then
+        if (eros_choice) then
           do k=1,kdim
             do j=1,jdim
               do i=1,idim
@@ -303,20 +426,19 @@ INTEGER,                         INTENT(IN)    :: otun
 !-----------------------------------------------------------------------
 !    Enhanced erosion in convective layers
 !-----------------------------------------------------------------------
-	      if (Nml%include_neg_mc) then
-                if (abs(Atmos_state%Mc(i,j,k)) .gt. Nml%mc_thresh) then !miz
-                  erosion_scale(i,j,k) = Nml%eros_scale_c
+                if (include_neg_mc) then
+                  if (abs(C2ls_mp%mc_full(i,j,k)) .gt. mc_thresh) then 
+                    erosion_scale(i,j,k) = eros_scale_c
+                  endif
+                else
+                  if (C2ls_mp%mc_full(i,j,k) .gt. mc_thresh) then
+                    erosion_scale(i,j,k) = eros_scale_c
+                  endif
                 endif
-              else
-                if (Atmos_state%Mc(i,j,k) .gt. Nml%mc_thresh) then
-                  erosion_scale(i,j,k) = Nml%eros_scale_c
-                endif
-              endif
-
-                if ((Atmos_state%diff_t(i,j,K) .gt.Nml%diff_thresh) .or.&
-                    (Atmos_state%diff_t(i,j,min(k+1,KDIM)) .gt.  &
-                                                   Nml%diff_thresh) ) then
-                  erosion_scale(i,j,K) = Nml%eros_scale_t
+                if ((Input_mp%diff_t(i,j,K) .gt. diff_thresh) .or.&
+                    (Input_mp%diff_t(i,j,min(k+1,KDIM)) .gt.  &
+                                                       diff_thresh) ) then
+                  erosion_scale(i,j,K) = eros_scale_t
                 endif 
               END DO
             END DO
@@ -331,33 +453,35 @@ INTEGER,                         INTENT(IN)    :: otun
 !------------------------------------------------------------------------
 !     determine condensation for different supersaturation assumptions.
 !------------------------------------------------------------------------
-        IF (Nml%super_ice_opt .LT. 1 ) THEN
+        IF (super_ice_opt .LT. 1 ) THEN
 
 !------------------------------------------------------------------------
-!    if supersaturation is not to be allowed call subroutine 
-!    nc_cond_nopdf_nosuper to calculate the condensation.
+!    if supersaturation is not to be allowed in the clear-sky portion
+!    of the grid box, call subroutine tiedtke_macro_nopdf_nosuper to 
+!    calculate the condensation.
 !------------------------------------------------------------------------
-          call nc_cond_nopdf_nosuper (    &
-                       idim, jdim, kdim, Nml, Constants, Atmos_state,   &
-                       Cloud_state, ST, SQ, Cloud_processes, Particles,  &
-                       n_diag_4d, diag_4d, diag_id, diag_pt, otun, edum, &
-                       SA, U00p, erosion_scale)
+          call tiedtke_macro_nopdf_nosuper (    &
+               idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,   &
+               Cloud_state, ST, SQ, Cloud_processes, Particles,   &
+               Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, &
+               Lsdiag_mp%diag_pt, edum, SA, U00p, erosion_scale)
         else
 
 !------------------------------------------------------------------------
-!    if supersaturation is to be allowed call subroutine 
-!    nc_cond_nopdf_super to calculate the condensation.
+!    if supersaturation is to be allowed in the clear-sky portion of the
+!    gridbox, call subroutine tiedtke_macro_nopdf_super to calculate the 
+!    condensation.
 !------------------------------------------------------------------------
-          call nc_cond_nopdf_super  (     &
-                     idim, jdim, kdim, Nml, Constants, Atmos_state,  &
-                     Cloud_state, ST, SQ, Cloud_processes, Particles,  &
-                     n_diag_4d, diag_4d, diag_id, diag_pt, otun, edum,  &
-                     SA, U00p, erosion_scale)
+          call tiedtke_macro_nopdf_super  (     &
+               idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,   &
+               Cloud_state, ST, SQ, Cloud_processes, Particles,   &
+               Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, &
+               Lsdiag_mp%diag_pt, edum, SA, U00p, erosion_scale)
         endif
-      endif
+      endif  ! (do_pdf_clouds)
 
 !-----------------------------------------------------------------------
-!    the next step is the apportionment on the non-convective condensation !    between liquid and ice phases. Following the suggestion of Rostayn
+!    the next step is the apportionment of the non-convective condensation !    between liquid and ice phases. Following the suggestion of Rostayn
 !    (2000), all condensation at temperatures greater than -40C is in 
 !    liquid form as ice nuclei are generally limited in the atmosphere.
 !    The droplets may subsequently be converted to ice by the 
@@ -386,7 +510,7 @@ INTEGER,                         INTENT(IN)    :: otun
 !    create only ice,
 !-----------------------------------------------------------------------
       where (Cloud_processes%dcond_ls .ge. 0. .and.   &
-                                Atmos_state%T_in .lt. tfreeze - 40.)
+                                Input_mp%tin .lt. tfreeze - 40.)
         liq_frac = 0.
         ice_frac = 1.
       endwhere
@@ -396,10 +520,10 @@ INTEGER,                         INTENT(IN)    :: otun
 !    evaporation to preferentially occur first.
 !-----------------------------------------------------------------------
       where ((Cloud_processes%dcond_ls .lt. 0.) .and.   &
-                     (Cloud_state%ql_upd .gt. Nml%qmin)  .and.        &
-                            (Cloud_state%qi_upd .gt. Nml%qmin))   
+                     (Cloud_state%ql_upd .gt. qmin)  .and.        &
+                            (Cloud_state%qi_upd .gt. qmin))   
         liq_frac = min(-1.*Cloud_processes%dcond_ls, Cloud_state%ql_upd)/ &
-                   max(-1.*Cloud_processes%dcond_ls, Nml%qmin)
+                              max(-1.*Cloud_processes%dcond_ls, qmin)
         ice_frac = 1. - liq_frac
       end where
 
@@ -407,8 +531,8 @@ INTEGER,                         INTENT(IN)    :: otun
 !    do evaporation of pure ice cloud.
 !-----------------------------------------------------------------------
       where ( (Cloud_processes%dcond_ls .lt. 0.) .and.   &
-                 (Cloud_state%ql_upd .le. Nml%qmin)  .and.            &
-                          (Cloud_state%qi_upd .gt. Nml%qmin) )
+                 (Cloud_state%ql_upd .le. qmin)  .and.            &
+                          (Cloud_state%qi_upd .gt. qmin) )
         liq_frac = 0.
         ice_frac = 1.
       end where
@@ -422,13 +546,8 @@ INTEGER,                         INTENT(IN)    :: otun
 !------------------------------------------------------------------------
 !    output debug diagnostics, if desired.
 !------------------------------------------------------------------------
-      if (Nml%debugo) then
-        write( otun,*) " dcond_ls ",    &
-                 Cloud_processes%dcond_ls(Nml%isamp,Nml%jsamp,Nml%ksamp)
-        write( otun,*) " D_eros ",   &
-                  Cloud_processes%D_eros(Nml%isamp,Nml%jsamp,Nml%ksamp)
-        write( otun,*) " qa_upd ",  &
-                   Cloud_state%qa_upd(Nml%isamp,Nml%jsamp,Nml%ksamp)
+      if (debug) then
+        call macrophysics_debug (Cloud_processes, Cloud_state)
       end if
 
 !-------------------------------------------------------------------------
@@ -443,27 +562,25 @@ INTEGER,                         INTENT(IN)    :: otun
                     Cloud_processes%dcond_ls(i,j,k) +   &
                                Cloud_processes%dcond_ls_ice(i,j,k)
               A_plus_B_s =   &
-                ( (hlv/0.024/Atmos_state%T_in(i,j,k))*   &
-                             ((hlv/rvgas/Atmos_state%T_in(i,j,k))-1.) ) + &
-                (rvgas*Atmos_state%T_in(i,j,k)*Atmos_state%pfull(i,j,k)/ &
+                ( (HLV/0.024/Input_mp%tin(i,j,k))*   &
+                             ((HLV/RVGAS/Input_mp%tin(i,j,k))-1.) ) + &
+                (rvgas*Input_mp%tin(i,j,k)*Input_mp%pfull(i,j,k)/ &
                                          2.21/Atmos_state%esat0(i,j,k))
-              if ( (Atmos_state%T_in(i,j,k) < tfreeze)    &
+              if ( (Input_mp%tin(i,j,k) < TFREEZE)    &
                   .and. (CLoud_state%ql_upd(i,j,k) + max  &
-                      (Cloud_processes%dcond_ls(i,j,k), 0.) > Nml%qmin) &
-                  .and. (CLoud_state%qa_upd(i,j,k) .gt. Nml%qmin))  then 
-                D2_dts =  Constants%dtcloud*Cloud_state%qa_upd(i,j,k)* &
-                              ((Nml%cfact*1000.*exp((12.96*0.0125*   &
-                          (tfreeze - Atmos_state%T_in(i,j,k))) - 0.639)/  &
+                      (Cloud_processes%dcond_ls(i,j,k), 0.) > qmin) &
+                  .and. (CLoud_state%qa_upd(i,j,k) .gt. qmin))  then 
+                D2_dts = dtcloud*Cloud_state%qa_upd(i,j,k)* &
+                              ((cfact*1000.*exp((12.96*0.0125*   &
+                          (TFREEZE - Input_mp%tin(i,j,k))) - 0.639)/  &
                                 Atmos_state%airdens(i,j,k))**(2./3.))* &
                          7.8* ((max(CLoud_state%qi_upd(i,j,k)/  &
-                 Cloud_state%qa_upd(i,j,k),1.E-12*Nml%cfact*1000.*   &
-                       exp((12.96*0.0125*(tfreeze -   &
-                                      Atmos_state%T_in(i,j,k)))-0.639)   &
+                         Cloud_state%qa_upd(i,j,k),1.E-12*cfact*1000.*   &
+                          exp((12.96*0.0125*(TFREEZE -   &
+                                      Input_mp%tin(i,j,k)))-0.639)   &
                       /Atmos_state%airdens(i,j,k)))**(1./3.))*0.0125*  &
-                     (tfreeze - Atmos_state%T_in(i,j,k))/((700.**(1./3.))*&
+                     (TFREEZE - Input_mp%tin(i,j,k))/((700.**(1./3.))*&
                        A_plus_B_s)
-!note:
-!!                      A_plus_B_s*(ql_upd(i,k) + max(dcond_ls(i,k)  ,0.)))
               else
                 D2_dts = 0.0        
               end if
@@ -481,16 +598,22 @@ INTEGER,                         INTENT(IN)    :: otun
         END DO
       END IF
  
-!-----------------------------------------------------------------------
-!    save a diagnostic if desired.
-!-----------------------------------------------------------------------
-      if ( diag_id%delta_cf > 0 ) then
-        diag_4d(:,:,:,diag_pt%delta_cf) = Cloud_processes%delta_cf
-      end if
+
+!----------------------------------------------------------------------
+!    return new value of cloud area tendency to permanent location.
+!----------------------------------------------------------------------
+      Cloud_state%SA_out = SA
+
+!----------------------------------------------------------------------
+!    define the relative variance of the subgrid scale cloud water 
+!    distribution. For now it is nml-supplied (through Exch_ctrl), may 
+!    later be defined based on atmospheric conditions.
+!----------------------------------------------------------------------
+      Cloud_state%relvarn = qcvar
 
 !-----------------------------------------------------------------------
 !    the next step is to compute semi-implicit qa,ql,qi which are used in 
-!    many of the formulas below.  this gives a somewhat implicitness to the
+!    the r-k microphysics.  this gives a somewhat implicitness to the
 !    scheme. in this calculation an estimate is made of what the cloud 
 !    fields would be in the absence of cloud microphysics and cloud 
 !    erosion.
@@ -503,77 +626,211 @@ INTEGER,                         INTENT(IN)    :: otun
 !    diagnosed from the beta-distribution apart from the corrections for 
 !    mixed phase clouds.
 !-----------------------------------------------------------------------
-      Cloud_state%qa_mean(:,:,:) = Cloud_state%qa_upd(:,:,:)
+      if (do_rk_microphys) then
+        Cloud_state%qa_mean(:,:,:) = Cloud_state%qa_upd(:,:,:)
 
-      if (.not. Nml%do_pdf_clouds) then
-        Cloud_state%ql_mean(:,:,:) = Cloud_state%ql_upd(:,:,:) +  &
+        if (.not. do_pdf_clouds) then
+          Cloud_state%ql_mean(:,:,:) = Cloud_state%ql_upd(:,:,:) +  &
                              max(Cloud_Processes%dcond_ls(:,:,:)    ,0.)
-        Cloud_state%qi_mean(:,:,:) = Cloud_state%qi_upd(:,:,:) +  &
+          Cloud_state%qi_mean(:,:,:) = Cloud_state%qi_upd(:,:,:) +  &
                              max(Cloud_Processes%dcond_ls_ice(:,:,:),0.)
-      else
-        Cloud_state%ql_mean(:,:,:) = max(Cloud_state%ql_upd(:,:,:) + &
-                          Cloud_processes%dcond_ls(:,:,:), Nml%qmin)
-        Cloud_state%qi_mean(:,:,:) = max(Cloud_state%qi_upd(:,:,:) + &
-                          Cloud_processes%dcond_ls_ice(:,:,:), Nml%qmin) 
+        else
+          Cloud_state%ql_mean(:,:,:) = max(Cloud_state%ql_upd(:,:,:) + &
+                          Cloud_processes%dcond_ls(:,:,:), qmin)
+          Cloud_state%qi_mean(:,:,:) = max(Cloud_state%qi_upd(:,:,:) + &
+                          Cloud_processes%dcond_ls_ice(:,:,:), qmin) 
+        end if
+
+!------------------------------------------------------------------------
+!    define the mean droplet number after this timestep's activation. 
+!    distinguish two cases: total activation, in which the percent of
+!    available droplets activated is equal to cloud fraction, and partial 
+!    activation, in which droplet number increases only by the amount that
+!    the cloud area has increased during the timestep. this process only 
+!    applies to r-k microphysics. (ncar flavors handle this process within
+!    the microphysics.)
+!    delta_cf:  A_dt * (1.-qabar)   where A_dt = A*dt , A source rate
+!    Eq. 7 of Yi's 2007 paper
+!------------------------------------------------------------------------
+        do k=1,kdim
+          do j=1,jdim
+            do i=1,idim
+              if (total_activation) then
+                Cloud_state%qn_mean(i,j,k) =  MAX( 0.,   &
+                   Cloud_state%qa_upd(i,j,k)*Particles%drop1(i,j,k)*1.e6/ &
+                                               Atmos_state%airdens(i,j,k))
+              else if (Cloud_processes%da_ls(i,j,k) > 0.0 ) then
+                Cloud_state%qn_mean(i,j,k) =   &
+                    Cloud_state%qn_upd(i,j,k) +   &
+                        max(Cloud_processes%delta_cf(i,j,k),0.)*  &
+                           Particles%drop1(i,j,k)*1.e6/  &
+                                               Atmos_state%airdens(i,j,k)
+              else
+                Particles%drop1(i,j,k) = 0.                
+                Cloud_state%qn_mean(i,j,k) = Cloud_state%qn_upd(i,j,k)
+              end if
+            end do
+          end do
+        end do
+      else  ! do_rk
+        Cloud_state%qa_mean(:,:,:) = Cloud_state%qa_upd(:,:,:)
+
+        if (.not. do_pdf_clouds) then
+          Cloud_state%ql_mean(:,:,:) = Cloud_state%ql_upd(:,:,:) +  &
+                             max(Cloud_Processes%dcond_ls(:,:,:)    ,0.)
+          Cloud_state%qi_mean(:,:,:) = Cloud_state%qi_upd(:,:,:) +  &
+                             max(Cloud_Processes%dcond_ls_ice(:,:,:),0.)
+        else
+          Cloud_state%ql_mean(:,:,:) = max(Cloud_state%ql_upd(:,:,:) + &
+                          Cloud_processes%dcond_ls(:,:,:), qmin)
+          Cloud_state%qi_mean(:,:,:) = max(Cloud_state%qi_upd(:,:,:) + &
+                          Cloud_processes%dcond_ls_ice(:,:,:), qmin) 
+        end if
+
+!------------------------------------------------------------------------
+!    define the mean droplet number after this timestep's activation. 
+!    distinguish two cases: total activation, in which the percent of
+!    available droplets activated is equal to cloud fraction, and partial 
+!    activation, in which droplet number increases only by the amount that
+!    the cloud area has increased during the timestep. this process only 
+!    applies to r-k microphysics. (ncar flavors handle this process within
+!    the microphysics.)
+!    delta_cf:  A_dt * (1.-qabar)   where A_dt = A*dt , A source rate
+!    Eq. 7 of Yi's 2007 paper
+!------------------------------------------------------------------------
+        do k=1,kdim
+          do j=1,jdim
+            do i=1,idim
+              if (total_activation) then
+                Cloud_state%qn_mean(i,j,k) =  MAX( 0.,   &
+                   Cloud_state%qa_upd(i,j,k)*Particles%drop1(i,j,k)*1.e6/ &
+                                               Atmos_state%airdens(i,j,k))
+              else if (Cloud_processes%da_ls(i,j,k) > 0.0 ) then
+                Cloud_state%qn_mean(i,j,k) =   &
+                    Cloud_state%qn_upd(i,j,k) +   &
+                        max(Cloud_processes%delta_cf(i,j,k),0.)*  &
+                           Particles%drop1(i,j,k)*1.e6/  &
+                                               Atmos_state%airdens(i,j,k)
+              else
+                Cloud_state%qn_mean(i,j,k) = Cloud_state%qn_upd(i,j,k)
+              end if
+            end do
+          end do
+        end do
+      endif  ! do_rk
+
+!----------------------------------------------------------------------!
+
+
+END SUBROUTINE tiedtke_macro
+
+
+!#########################################################################
+
+subroutine tiedtke_macro_diagnostics (     &
+                       idim, jdim, kdim, n_diag_4d, diag_id, diag_4d,    &
+                       diag_pt, Cloud_processes, Cloud_state)
+
+!------------------------------------------------------------------------
+!    subroutine tiedtke_macro_diagnostics calculates requested diagnostics
+!    related to the tiedtke macrophysics.
+!------------------------------------------------------------------------
+
+integer,                                 intent(in)    :: idim,jdim,kdim
+INTEGER,                                 INTENT(IN)    :: n_diag_4d
+type(diag_id_type),                      intent(in)    :: diag_id
+type(diag_pt_type),                      intent(in)    :: diag_pt
+REAL,     &
+  dimension(idim,jdim,kdim,0:n_diag_4d), INTENT(INOUT) :: diag_4d
+type(cloud_processes_type),              intent(in)    :: Cloud_processes
+type(cloud_state_type),                  intent(in)    :: Cloud_state  
+
+!-----------------------------------------------------------------------
+!   local variables:
+
+      integer :: i,j,k
+
+!-----------------------------------------------------------------------
+!    save a diagnostic for change in cloud fraction, if desired.
+!-----------------------------------------------------------------------
+      if ( diag_id%delta_cf > 0 ) then
+        diag_4d(:,:,:,diag_pt%delta_cf) = Cloud_processes%delta_cf
       end if
 
 !-----------------------------------------------------------------------
-!    compute diagnostics for cloud fraction.
+!    compute other diagnostics for cloud fraction.
 !-----------------------------------------------------------------------
       if (diag_id%aall > 0)   &
                 diag_4d(:,:,:,diag_pt%aall) = Cloud_state%qa_mean(:,:,:)
       if (diag_id%aliq > 0 .or. diag_id%rvolume > 0) then
-        where (Cloud_State%ql_mean(:,:,:) .gt. Nml%qmin) &
+        where (Cloud_State%ql_mean(:,:,:) .gt. qmin) &
                 diag_4d(:,:,:,diag_pt%aliq) = Cloud_state%qa_mean(:,:,:)
       end if
       if (diag_id%aice > 0 .or. diag_id%vfall > 0) then
-        where (Cloud_state%qi_mean(:,:,:) .gt. Nml%qmin)  &
+        where (Cloud_state%qi_mean(:,:,:) .gt. qmin)  &
                  diag_4d(:,:,:,diag_pt%aice) = Cloud_state%qa_mean(:,:,:)
       end if              
 
       if (diag_id%dcond > 0 )   &
            diag_4d(:,:,:,diag_pt%dcond) = Cloud_processes%dcond_ls(:,:,:)
 
-!----------------------------------------------------------------------
-!    return new value of cloud area tendency to permanent location.
-!----------------------------------------------------------------------
-      Cloud_state%SA_out = SA
+      do k=1,kdim
+        do j=1,jdim
+          do i=1,idim
+            if (diag_id%potential_droplets > 0 .and.   &
+                      Cloud_processes%da_ls(i,j,k) <= 0.0)   &
+                 diag_4d(i,j,k,diag_pt%potential_droplets) = 0.0
+            if (diag_id%subgrid_w_variance > 0 .and.   &
+                      Cloud_processes%da_ls(i,j,k) <= 0.0)   &
+                 diag_4d(i,j,k,diag_pt%subgrid_w_variance) = 0.0
+          end do
+        end do
+      end do
 
-!----------------------------------------------------------------------!
+!-----------------------------------------------------------------------
 
-
-END SUBROUTINE nc_cond
+end subroutine tiedtke_macro_diagnostics
 
 
 
 !########################################################################
 
-SUBROUTINE nc_cond_end( do_pdf_clouds )
+SUBROUTINE tiedtke_macro_end
 
-LOGICAL, INTENT(IN ) :: do_pdf_clouds
+!----------------------------------------------------------------------
 
       module_is_initialized = .false.
+
+!------------------------------------------------------------------------
+!    terminate the modules used by tiedtke_macro_mod.
+!------------------------------------------------------------------------
       call polysvp_end
       if ( do_pdf_clouds ) then
         call beta_dist_end
       end if
 
-END SUBROUTINE nc_cond_end
+!-----------------------------------------------------------------------
+
+END SUBROUTINE tiedtke_macro_end
 
 
 
 !########################################################################
 
-SUBROUTINE nc_cond_nopdf_nosuper (idim, jdim, kdim, Nml, Constants, &
-                                  Atmos_state, Cloud_state, ST, SQ, &
-                                  Cloud_processes, Particles, &
-                                  n_diag_4d, diag_4d, diag_id, diag_pt, &
-                                  otun, edum, SA, U00p, erosion_scale)  
+SUBROUTINE tiedtke_macro_nopdf_nosuper (    &
+            idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,   &
+            Cloud_state, ST, SQ, Cloud_processes, Particles, n_diag_4d, &
+            diag_4d, diag_id, diag_pt, edum, SA, U00p, erosion_scale)
 
 !------------------------------------------------------------------------
+!   subroutine tiedtke_macro_nopdf_nosuper calculates non-convective
+!   condensation while not allowing supersaturation in the clear-sky 
+!   portion of grid boxes (as in original Tiedtke scheme).
+!------------------------------------------------------------------------
+
 INTEGER,                         INTENT(IN )   :: idim, jdim, kdim      
-type(strat_nml_type),            intent(in)    :: Nml
-type(strat_constants_type),      intent(inout) :: Constants  
+type(mp_input_type),             intent(inout) :: Input_mp   
+type(mp_conv2ls_type),           intent(inout) :: C2ls_mp   
 type(atmos_state_type),          intent(inout) :: Atmos_state
 type(cloud_state_type),          intent(inout) :: Cloud_state
 type(cloud_processes_type),      intent(inout) :: Cloud_processes
@@ -582,14 +839,14 @@ REAL, dimension(idim,jdim,kdim), INTENT(IN)    :: ST, SQ, edum, U00p,  &
                                                   erosion_scale
 REAL, dimension(idim,jdim,kdim), INTENT(INOUT) :: SA
 INTEGER,                         INTENT(IN )   :: n_diag_4d
-REAL, dimension(idim, jdim, kdim, 0:n_diag_4d),   &
+REAL,  &
+ dimension(idim, jdim, kdim, 0:n_diag_4d),   &
                                  INTENT(INOUT) :: diag_4d
 TYPE(diag_id_type),              intent(in)    :: diag_id
 TYPE(diag_pt_type),              intent(in)    :: diag_pt
-INTEGER,                         INTENT(IN )   :: otun
 
 !-------------------------------------------------------------------------
-!----local variables-----------------------------------------------------
+!----local variables----
 
 !-------------------------------------------------------------------------
 !       dqs_ls         change in qs due to large 
@@ -659,11 +916,10 @@ INTEGER,                         INTENT(IN )   :: otun
         do j=1,jdim
           do i=1,idim
             dqs_ls(i,j,k) = ((                    &
-                     (Atmos_state%omega(i,j,k) +   &
-                                   grav*Atmos_State%Mc(i,j,k))/&
-                                Atmos_state%airdens(i,j,k)/cp_air) +   &
-                         Atmos_state%radturbten2(i,j,k))* &
-                               Constants%dtcloud*Atmos_state%dqsdT(i,j,k)
+              (Input_mp%omega(i,j,k) + grav*C2ls_mp%mc_full(i,j,k))/  &
+                                Atmos_state%airdens(i,j,k)/cp_air)  +   &
+                         Input_mp%radturbten(i,j,k))* &
+                                         dtcloud*Atmos_state%dqsdT(i,j,k)
             if (dqs_ls(i,j,k) .le. 0. .and.    &
                        Atmos_state%U_ca(i,j,k) .ge. U00p(i,j,k) .and.   &
                                 Cloud_state%qa_upd(i,j,k) .lt. 1.)  then
@@ -673,7 +929,7 @@ INTEGER,                         INTENT(IN )   :: otun
                                      (1. - Cloud_state%qa_upd(i,j,k))*&
                                  Atmos_state%gamma(i,j,k)*dqs_ls(i,j,k)/&
                                           Atmos_state%qs(i,j,k)/      &
-                    max(1.-Atmos_state%U_ca(i,j,k),Nml%qmin) ) -   &
+                    max(1.-Atmos_state%U_ca(i,j,k), qmin) ) -   &
                         (1. + Cloud_state%qa_upd(i,j,k)*  &
                                                Atmos_state%gamma(i,j,k))
               tmp1(i,j,k) = -1.*tmp1(i,j,k)/((1. -   &
@@ -681,7 +937,7 @@ INTEGER,                         INTENT(IN )   :: otun
                                (1. - Cloud_state%qa_upd(i,j,k))*  &
                                             Atmos_state%gamma(i,j,k)/&
                                 Atmos_state%qs(i,j,k)/   &
-                            max(1. - Atmos_state%U_ca(i,j,k),Nml%qmin)/2.)
+                            max(1. - Atmos_state%U_ca(i,j,k), qmin)/2.)
               dqs_ls(i,j,k) = min(tmp1(i,j,k),dqs_ls(i,j,k)/(1. +   &
                               0.5*(1. + Cloud_State%qa_upd(i,j,k))*  &
                                              Atmos_state%gamma(i,j,k)))
@@ -731,16 +987,16 @@ INTEGER,                         INTENT(IN )   :: otun
         do j=1,jdim
           do i=1,idim
             if ((dqs_ls(i,j,k) .le. 0. .and.    &
-                      Atmos_state%U_ca(i,j,k) .ge. U00p(i,j,k)) .and. &
-                  (Cloud_state%qa_upd(i,j,k) +  &
-                                Atmos_state%ahuco(i,j,k) .le. 1.))   then
+               Atmos_state%U_ca(i,j,k) .ge. U00p(i,j,k)) .and. &
+                (Cloud_state%qa_upd(i,j,k) +  &
+                  C2ls_mp%convective_humidity_area(i,j,k) .le. 1.))   then
               Cloud_processes%da_ls(i,j,k) =    &
                       -0.5*(1. - Cloud_state%qa_upd(i,j,k) -  &
-                                            Atmos_state%ahuco(i,j,k))*  &
-                      (1. - Cloud_state%qa_upd(i,j,k) -    &
-                               Atmos_state%ahuco(i,j,k) )*dqs_ls(i,j,k)/&
-                                           Atmos_state%qs(i,j,k) /  &
-                                  max(1.-Atmos_state%U_ca(i,j,k),Nml%qmin)
+                               C2ls_mp%convective_humidity_area(i,j,k))*  &
+                            (1. - Cloud_state%qa_upd(i,j,k) -    &
+                              C2ls_mp%convective_humidity_area(i,j,k) )* &
+                                   dqs_ls(i,j,k)/Atmos_state%qs(i,j,k) /  &
+                                  max(1.-Atmos_state%U_ca(i,j,k), qmin)
             else
               Cloud_processes%da_ls(i,j,k) = 0.
             endif
@@ -768,25 +1024,25 @@ INTEGER,                         INTENT(IN )   :: otun
       do k=1,kdim
         do j=1,jdim
           do i=1,idim
-            if (Cloud_state%ql_upd(i,j,k) .gt. Nml%qmin .or.   &
-                        Cloud_state%qi_upd (i,j,k).gt. Nml%qmin) then
+            if (Cloud_state%ql_upd(i,j,k) .gt. qmin .or.   &
+                        Cloud_state%qi_upd (i,j,k).gt. qmin) then
               Cloud_processes%D_eros(i,j,k) =   &
                     Cloud_state%qa_upd(i,j,k) * erosion_scale(i,j,k) *   &
-                     Constants%dtcloud * Atmos_state%qs(i,j,k) *      &
+                               dtcloud * Atmos_state%qs(i,j,k) *      &
                       (1.-Atmos_state%U_ca(i,j,k)) /   &
                    (Cloud_state%qi_upd(i,j,k) + CLoud_state%ql_upd(i,j,k))
 
-              if (Atmos_state%pfull(i,j,k) .gt. 400.e02) then
+              if (Input_mp%pfull(i,j,k) .gt. 400.e02) then
                 Cloud_processes%D_eros(i,j,k) =  &
-                     Cloud_processes%D_eros(i,j,k) + Nml%efact*  &
+                     Cloud_processes%D_eros(i,j,k) + efact*  &
                                       Cloud_processes%D_eros(i,j,k)* &
-                          ((Atmos_state%pfull(i,j,kdim) -   &
-                                            Atmos_state%pfull(i,j,k))/  &
-                                (Atmos_state%pfull(i,j,kdim) - 400.e02))
+                          ((Input_mp%pfull(i,j,kdim) -   &
+                                               Input_mp%pfull(i,j,k))/  &
+                                (Input_mp%pfull(i,j,kdim) - 400.e02))
               else
                 Cloud_processes%D_eros(i,j,k)=  &
                       Cloud_processes%D_eros(i,j,k) +  &
-                                 Nml%efact*CLoud_processes%D_eros(i,j,k)
+                                     efact*CLoud_processes%D_eros(i,j,k)
 
               endif
             else
@@ -841,7 +1097,7 @@ INTEGER,                         INTENT(IN )   :: otun
 !
 !
 !       3.   Qa goes to zero only in the case of ql and qi less than or
-!            equal to Nml%qmin; see 'cloud destruction code' near the end of 
+!            equal to     qmin; see 'cloud destruction code' near the end of 
 !            this loop over levels.
 !------------------------------------------------------------------------
         
@@ -853,14 +1109,14 @@ INTEGER,                         INTENT(IN )   :: otun
         do j=1,jdim
           do i=1,idim
             A_dt(i,j,k) = Cloud_processes%da_ls(i,j,k)/   &
-                              max((1.-Cloud_state%qa_upd(i,j,k)), Nml%qmin)
+                              max((1.-Cloud_state%qa_upd(i,j,k)), qmin)
             B_dt(i,j,k) = Cloud_processes%D_eros(i,j,k)
   
 !------------------------------------------------------------------------
 !    do analytic integration.      
 !------------------------------------------------------------------------
-            if ( (A_dt(i,j,k) .gt. Nml%Dmin) .or.   &
-                 (B_dt(i,j,k) .gt. Nml%Dmin) )  then
+            if ( (A_dt(i,j,k) .gt. Dmin) .or.   &
+                 (B_dt(i,j,k) .gt. Dmin) )  then
               qa0(i,j,k) = Cloud_state%qa_upd(i,j,k)
               qaeq(i,j,k) = A_dt(i,j,k)/(A_dt(i,j,k)  + B_dt(i,j,k))
               qa1(i,j,k) = qaeq(i,j,k) - (qaeq(i,j,k) - qa0(i,j,k)) * &
@@ -883,68 +1139,62 @@ INTEGER,                         INTENT(IN )   :: otun
 !------------------------------------------------------------------------
 !    save some diagnostics.
 !------------------------------------------------------------------------
-!           if ( (A_dt(i,j,k) .gt. Nml%Dmin) .or.   &
-            if ( (A_dt(i,j,k) .gt. Nml%Dmin) .and.   &
-                 (B_dt(i,j,k) .gt. Nml%Dmin) )  then
-      if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
-      diag_4d(i,j,k,diag_pt%qadt_lsform) =  A_dt(i,j,k)*(1.-qabar(i,j,k))     *  &                                            
-                                                 Constants%inv_dtcloud
-      end if
-      if ( diag_id%qadt_eros + diag_id%qa_eros_col > 0 ) then
-        diag_4d(i,j,k,diag_pt%qadt_eros)  = ((qa1(i,j,k) - qa0(i,j,k))*  &
-                                          Constants%inv_dtcloud )- &
-                            diag_4d(i,j,k,diag_pt%qadt_lsform)                                           
-                               
-      end if
-
-          else if (A_dt(i,j,k) .gt. Nml%Dmin) then
-             if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
- 
-        diag_4d(i,j,k,diag_pt%qadt_lsform) = (qa1(i,j,k) - qa0(i,j,k))*  &
-                                                Constants%inv_dtcloud
-              end if 
-          else if (B_dt(i,j,k) .gt. Nml%Dmin)  then
+            if ( (A_dt(i,j,k) .gt.     Dmin) .and.   &
+                 (B_dt(i,j,k) .gt.     Dmin) )  then
+              if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
+                diag_4d(i,j,k,diag_pt%qadt_lsform) =  A_dt(i,j,k)*  &
+                                            (1.-qabar(i,j,k))*inv_dtcloud
+              end if
               if ( diag_id%qadt_eros + diag_id%qa_eros_col > 0 ) then
-            diag_4d(i,j,k,diag_pt%qadt_eros)  = (qa1(i,j,k) - qa0(i,j,k))*&
-                                                Constants%inv_dtcloud
+                diag_4d(i,j,k,diag_pt%qadt_eros)  =    &
+                     ((qa1(i,j,k) - qa0(i,j,k))*inv_dtcloud )- &
+                                     diag_4d(i,j,k,diag_pt%qadt_lsform)   
+              end if
+            else if (A_dt(i,j,k) .gt. Dmin) then
+              if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
+                diag_4d(i,j,k,diag_pt%qadt_lsform) =   &
+                          (qa1(i,j,k) - qa0(i,j,k))*inv_dtcloud
               end if 
-          endif
-
+            else if (B_dt(i,j,k) .gt. Dmin)  then
+              if ( diag_id%qadt_eros + diag_id%qa_eros_col > 0 ) then
+                diag_4d(i,j,k,diag_pt%qadt_eros)  =   &
+                          (qa1(i,j,k) - qa0(i,j,k))*inv_dtcloud
+              end if 
+            endif
           END DO    
         END DO    
       END DO    
+
+!-----------------------------------------------------------------------
+!   define value needed for diagnostic calculation.
+!-----------------------------------------------------------------------
       if (diag_id%qadt_ahuco + diag_id%qa_ahuco_col > 0) then
-        diag_4d(:,:,:,diag_pt%qadt_ahuco) =   &
-                                      qa1(:,:,:)
+        diag_4d(:,:,:,diag_pt%qadt_ahuco) = qa1(:,:,:)
       end if
 
 !------------------------------------------------------------------------
 !    limit cloud area to be no more than that which is not being
-!    taken by convective clouds
+!    taken by convective clouds.
 !------------------------------------------------------------------------
-      if (Constants%limit_conv_cloud_frac) then
-        qa1 = MIN(qa1, 1.0 -Atmos_state%ahuco)
+      if (limit_conv_cloud_frac) then
+        qa1 = MIN(qa1, 1.0 -C2ls_mp%convective_humidity_area)
       endif
                  
+!------------------------------------------------------------------------
+!    complete calculation of diagnostic.
+!------------------------------------------------------------------------
       if (diag_id%qadt_ahuco + diag_id%qa_ahuco_col > 0) then
         diag_4d(:,:,:,diag_pt%qadt_ahuco) =    &
                   (qa1(:,:,:) - diag_4d(:,:,:,diag_pt%qadt_ahuco))* & 
-                                             Constants%inv_dtcloud 
+                                                              inv_dtcloud 
       end if
 
 !------------------------------------------------------------------------
 !    set total tendency term and update cloud fraction    
 !------------------------------------------------------------------------
-
-
       SA = (SA + qa1) - qa0
-
-
-
-
       Cloud_state%qa_upd = qa1
         
-
 !------------------------------------------------------------------------
 !       The next step is to calculate the change in condensate
 !       due to non-convective condensation, dcond_ls. Note that this is
@@ -970,39 +1220,43 @@ INTEGER,                         INTENT(IN )   :: otun
 !-----------------------------------------------------------------------
 
 
-end subroutine nc_cond_nopdf_nosuper 
+end subroutine tiedtke_macro_nopdf_nosuper 
 
 
 !########################################################################
 
-SUBROUTINE nc_cond_nopdf_super (idim, jdim, kdim, Nml, Constants, &
-                                Atmos_state, Cloud_state, ST,SQ, & 
-                                Cloud_processes, Particles, &
-                                n_diag_4d, diag_4d, diag_id, diag_pt, &
-                                otun, edum, SA, U00p, erosion_scale) 
+SUBROUTINE tiedtke_macro_nopdf_super (   &
+                   idim, jdim, kdim, C2ls_mp,Input_mp, Atmos_state,    &
+                   Cloud_state, ST, SQ, Cloud_processes, Particles,  &
+                   n_diag_4d, diag_4d, diag_id, diag_pt, edum, SA,   &
+                                                      U00p, erosion_scale) 
 
 !------------------------------------------------------------------------
-INTEGER,                            INTENT(IN )   :: idim, jdim, kdim  
-type(strat_nml_type),               intent(in)    :: Nml
-type(atmos_state_type),             intent(inout) :: Atmos_state
-type(cloud_state_type),             intent(inout) :: Cloud_state
-type(cloud_processes_type),         intent(inout) :: Cloud_processes
-type(particles_type),               intent(inout) :: Particles
-type(strat_constants_type),         intent(inout) :: Constants  
-REAL, dimension(idim,jdim,kdim),    INTENT(IN )   :: ST, SQ, edum, U00p,&
-!                                                    tmp2
-                                                     erosion_scale
-REAL, dimension(idim,jdim,kdim),    INTENT(INout ):: SA
-INTEGER,                            INTENT(IN )   :: n_diag_4d
-REAL, dimension(idim, jdim, kdim, 0:n_diag_4d),    &
-                                    INTENT(INOUT ):: diag_4d
-TYPE(diag_id_type),                 intent(in)    :: diag_id
-TYPE(diag_pt_type),                 intent(in)    :: diag_pt
-INTEGER,                            INTENT(IN )   :: otun
+!   subroutine tiedtke_macro_nopdf_super calculates non-convective
+!   condensation while allowing ice supersaturation in the clear-sky 
+!   portion of grid boxes, as is needed in order to activate ice crystals 
+!   (see Tompkins et al 2007, Salzmann et al , 2010).
+!------------------------------------------------------------------------
+
+INTEGER,                            INTENT(IN )    :: idim, jdim, kdim  
+type(atmos_state_type),             intent(inout)  :: Atmos_state
+type(mp_input_type),                intent(in)     :: Input_mp   
+type(mp_conv2ls_type),              intent(in)     :: C2ls_mp   
+type(cloud_state_type),             intent(inout)  :: Cloud_state
+type(cloud_processes_type),         intent(inout)  :: Cloud_processes
+type(particles_type),               intent(inout)  :: Particles
+REAL, dimension(idim,jdim,kdim),    INTENT(IN )    :: ST, SQ, edum, U00p,&
+                                                      erosion_scale
+REAL, dimension(idim,jdim,kdim),    INTENT(INout ) :: SA
+INTEGER,                            INTENT(IN )    :: n_diag_4d
+REAL, dimension(idim, jdim, kdim, 0:n_diag_4d),        &
+                                    INTENT(INOUT ) :: diag_4d
+TYPE(diag_id_type),                 intent(in)     :: diag_id
+TYPE(diag_pt_type),                 intent(in)     :: diag_pt
 
 !-------------------------------------------------------------------------
-!-----local variables-----------------------------------------------------
- 
+!-----local variables-----
+! 
 !       A_dt           product of A and dtcloud in     dimensionless in 
 !                      in the analytic integration     qa integration
 !                      of the qa equation, or C and
@@ -1049,6 +1303,47 @@ INTEGER,                            INTENT(IN )   :: otun
       INTEGER                          :: i,j,k
 
 !------------------------------------------------------------------------
+!    calculate the derivative of the threshold relative humidity over water!    (for temps > 233) and over ice (temps < 233) with respect to 
+!    temperature, and the L/Cp drhqsdT term (beta) in the
+!    temperature equation to be used in this calculation. for
+!    the water case (T >= 233), no supersaturation is allowed. For the ice
+!    case, superstaurations up to rh_crit are permitted.
+!------------------------------------------------------------------------
+      do k=1,kdim
+        do j=1,jdim
+          do i=1,idim
+            if (Input_mp%tin(i,j,k) .GE. TFREEZE - 40. ) then 
+              drhcqsdT(i,j,k) =  HLV*Atmos_state%qsl(i,j,k)/  &
+                                        (RVGAS*Input_mp%tin(i,j,k)**2)
+              beta(i,j,k) = drhcqsdT(i,j,k)*HLV/CP_AIR
+            else
+              drhcqsdT(i,j,k) = Atmos_state%rh_crit(i,j,k)*   &
+                          HLS*Atmos_state%qsi(i,j,k)/  &
+                                       (RVGAS*Input_mp%tin(i,j,k)**2) +  &
+                           Particles%hom(i,j,k)*Atmos_state%qsi(i,j,k)*  &
+                       (2.*0.0073*(Input_mp%tin(i,j,k) - TFREEZE) + 1.466)
+              beta(i,j,k) = drhcqsdT(i,j,k)*HLS/CP_AIR
+            endif 
+          end do
+        end do
+      end do
+
+      do k=1,kdim
+        do j=1,jdim
+          do i=1,idim
+
+!------------------------------------------------------------------------
+!    calculate environmental specific humidity (qve) based on input cloud 
+!    fraction. take into account convective cloud presence.
+!------------------------------------------------------------------------
+            qa_t(i,j,k) =    &
+              MAX(MIN(Cloud_State%qa_upd(i,j,k) +   &
+                          C2ls_mp%convective_humidity_area(i,j,k), 1.),0.)
+            qve(i,j,k) =  (Input_mp%qin(i,j,k) - qa_t(i,j,k)*  &
+                            Atmos_state%qs(i,j,k) ) /   &
+                                       MAX((1. - qa_t(i,j,k) ), qmin)
+
+!------------------------------------------------------------------------
 !       The first step is to compute the change in qs due to large-
 !       scale processes, dqs_ls.   In Tiedtke, it has contributions from 
 !       large-scale uplift, convection induced compensating subsidence,
@@ -1063,44 +1358,10 @@ INTEGER,                            INTENT(IN )   :: otun
 !       of dqs_ls, a quadratic equation must be solved for dqs_ls in
 !       the case that da_ls is not equal to zero.
 !------------------------------------------------------------------------
-      do k=1,kdim
-        do j=1,jdim
-          do i=1,idim
-            if (Atmos_state%T_in(i,j,k) .GE. tfreeze  - 40. ) then 
-              drhcqsdT(i,j,k) =  hlv*Atmos_state%qsl(i,j,k)/  &
-                                        (rvgas*Atmos_state%T_in(i,j,k)**2)
-              beta(i,j,k) = drhcqsdT(i,j,k) * hlv /cp_air
-            else
-              drhcqsdT(i,j,k)  =  Atmos_state%rh_crit(i,j,k)*hls*  &
-                                  Atmos_state%qsi(i,j,k)/  &
-                                    (rvgas*Atmos_state%T_in(i,j,k)**2) +  &
-                                    Particles%hom(i,j,k)*  &
-                                   Atmos_state%qsi(i,j,k)*  &
-                                     ( 2.*0.0073*(Atmos_state%T_in(i,j,k) -&
-                                                   tfreeze      ) + 1.466)
-              beta(i,j,k) = drhcqsdT(i,j,k) * hls/ cp_air
-            endif 
-          end do
-        end do
-      end do
-
-!------------------------------------------------------------------------
-!    first calculate environmental specific humidity based on old cloud 
-!    fraction. take into account ahuco.
-!------------------------------------------------------------------------
-      do k=1,kdim
-        do j=1,jdim
-          do i=1,idim
-            qa_t(i,j,k) =  MAX(MIN(Cloud_State%qa_upd(i,j,k) +  &
-                                      Atmos_state%ahuco(i,j,k), 1.),0.)
-            qve(i,j,k) =  (Atmos_state%qv_in(i,j,k) - qa_t(i,j,k)*  &
-                            Atmos_state%qs(i,j,k) ) /   &
-                                       MAX((1. - qa_t(i,j,k) ), Nml%qmin)
-            dum(i,j,k) = (((Atmos_state%omega(i,j,k) + grav*  &
-                             Atmos_state%Mc(i,j,k))/ &
+            dum(i,j,k) = (((Input_mp%omega(i,j,k) + grav*  &
+                             C2ls_mp%mc_full(i,j,k))/ &
                                  Atmos_state%airdens(i,j,k)/cp_air) + &
-                                   Atmos_State%radturbten2(i,j,k))* &
-                                                         Constants%dtcloud
+                                   Input_mp%radturbten(i,j,k))*dtcloud
             dqs_ls(i,j,k) = dum(i,j,k) * Atmos_state%dqsdT(i,j,k)
             drhcqs_ls(i,j,k) = dum(i,j,k) *drhcqsdT(i,j,k)
           end do
@@ -1147,15 +1408,14 @@ INTEGER,                            INTENT(IN )   :: otun
                                                                     dqs_ls
         tmp1 = SQRT( (1.+qa_t*Atmos_state%gamma)**2. - (1.-qa_t)* &
                          beta * tmp0 /MAX( (  Atmos_state%rh_crit *  &
-                          Atmos_state%qs - qve ), Nml%qmin ) ) -  &
+                          Atmos_state%qs - qve ), qmin ) ) -  &
                                             (1.+qa_t*Atmos_State%gamma) 
         tmp1 = -1.*tmp1/((1. - qa_t)*beta/(2.*MAX(   &
-                   (Atmos_state%rh_crit*Atmos_State%qs - qve),  &
-                                                              Nml%qmin )) )
+                   (Atmos_state%rh_crit*Atmos_State%qs - qve), qmin )) )
         drhcqs_ls = min(tmp1, tmp0 / MAX(1.+ Atmos_state%gamma*qa_t +&
-                                         beta*0.5*(1. - qa_t), Nml%qmin))
+                                         beta*0.5*(1. - qa_t), qmin))
         Cloud_processes%da_ls = -0.5*(1. - qa_t)*drhcqs_ls/   &
-             MAX( Atmos_state%rh_crit*Atmos_state%qs - qve, Nml%qmin)
+             MAX( Atmos_state%rh_crit*Atmos_state%qs - qve, qmin)
         dqs_ls = (dqs_ls - Atmos_state%gamma*0.5*  &
                   Cloud_processes%da_ls*drhcqs_ls)/   &
                                           (1. + qa_t*Atmos_state%gamma)
@@ -1185,27 +1445,25 @@ INTEGER,                            INTENT(IN )   :: otun
       DO k=1,kdim
         DO j=1,jdim
           DO i=1,idim
-            if (Cloud_state%ql_upd(i,j,k) .gt. Nml%qmin .or. &
-                           Cloud_state%qi_upd (i,j,k).gt. Nml%qmin) then
+            if (Cloud_state%ql_upd(i,j,k) .gt. qmin .or. &
+                           Cloud_state%qi_upd (i,j,k).gt. qmin) then
               Cloud_processes%D_eros(i,j,k) =    &
                         Cloud_state%qa_upd(i,j,k)*erosion_scale(i,j,k)*   &
-                                                 Constants%dtcloud*    &
-                   (MAX(Atmos_state%qs(i,j,k) - Atmos_state%qv_in(i,j,k),&
+                                                           dtcloud*    &
+                   (MAX(Atmos_state%qs(i,j,k) - Input_mp%qin(i,j,k),&
                          0.)/(1. + Atmos_state%gamma(i,j,k)) ) /      &
-                    (Cloud_state%qi_upd(i,j,k) +  &
-                                             Cloud_state%ql_upd(i,j,k))
+                    (Cloud_state%qi_upd(i,j,k) + Cloud_state%ql_upd(i,j,k))
 
-              if (Atmos_state%pfull(i,j,k) .gt. 400.e02) then
+              if (Input_mp%pfull(i,j,k) .gt. 400.e02) then
                 Cloud_processes%D_eros(i,j,k) =   &
-                     Cloud_processes%D_eros(i,j,k) + Nml%efact*  &
+                     Cloud_processes%D_eros(i,j,k) + efact*  &
                                 Cloud_processes%D_eros(i,j,k)*  &
-                    ((Atmos_state%pfull(i,j,kdim) -     &
-                                       Atmos_state%pfull(i,j,k))/  &
-                                (Atmos_state%pfull(i,j,kdim) - 400.e02))
+                    ((Input_mp%pfull(i,j,kdim) - Input_mp%pfull(i,j,k))/  &
+                                (Input_mp%pfull(i,j,kdim) - 400.e02))
 
               else
                 Cloud_processes%D_eros(i,j,k) =  &
-                     Cloud_processes%D_eros(i,j,k) + Nml%efact*  &
+                     Cloud_processes%D_eros(i,j,k) + efact*  &
                                           Cloud_processes%D_eros(i,j,k)
               endif
             else
@@ -1260,7 +1518,7 @@ INTEGER,                            INTENT(IN )   :: otun
 !
 !
 !       3.   Qa goes to zero only in the case of ql and qi less than or
-!            equal to Nml%qmin; see 'cloud destruction code' near the end of 
+!            equal to     qmin; see 'cloud destruction code' near the end of 
 !            this loop over levels.
 !------------------------------------------------------------------------
         
@@ -1273,10 +1531,10 @@ INTEGER,                            INTENT(IN )   :: otun
         do j=1,jdim
           do i=1,idim
             A_dt(i,j,k) = Cloud_processes%da_ls(i,j,k)/   &
-                                            max((1.-qa_t(i,j,k)),Nml%qmin)
+                                            max((1.-qa_t(i,j,k)), qmin)
             B_dt(i,j,k) = Cloud_processes%D_eros(i,j,k)
-            if ( (A_dt(i,j,k) .gt. Nml%Dmin) .or.   &
-                                      (B_dt(i,j,k) .gt. Nml%Dmin) ) then 
+            if ( (A_dt(i,j,k) .gt. Dmin) .or.   &
+                                      (B_dt(i,j,k) .gt. Dmin) ) then 
               qa0(i,j,k)   = Cloud_state%qa_upd(i,j,k)
               qaeq(i,j,k)  =                                     &
                                  A_dt(i,j,k)/(A_dt(i,j,k) + B_dt(i,j,k))
@@ -1300,50 +1558,53 @@ INTEGER,                            INTENT(IN )   :: otun
       do k=1,kdim
         do j=1,jdim
           do i=1,idim
-            if ( (A_dt(i,j,k) .gt. Nml%Dmin) .and.   &
-                 (B_dt(i,j,k) .gt. Nml%Dmin) )  then
-      if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
-        diag_4d(i,j,k,diag_pt%qadt_lsform) =  A_dt(i,j,k)*(1. - qabar(i,j,k))*  &
-                                                     Constants%inv_dtcloud
-      end if
-      if ( diag_id%qadt_eros + diag_id%qa_eros_col > 0 ) then
-        diag_4d(i,j,k,diag_pt%qadt_eros)  = ((qa1(i,j,k) - qa0(i,j,k))*  &
-                                          Constants%inv_dtcloud )- &
-                            diag_4d(i,j,k,diag_pt%qadt_lsform)                                           
-      end if
-
-          else if (A_dt(i,j,k) .gt. Nml%Dmin) then
-             if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
- 
-        diag_4d(i,j,k,diag_pt%qadt_lsform) = (qa1(i,j,k) - qa0(i,j,k))*  &
-                                                Constants%inv_dtcloud
-              end if 
-          else if (B_dt(i,j,k) .gt. Nml%Dmin)  then
+            if ( (A_dt(i,j,k) .gt. Dmin) .and.   &
+                 (B_dt(i,j,k) .gt. Dmin) )  then
+              if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
+                diag_4d(i,j,k,diag_pt%qadt_lsform) =  A_dt(i,j,k)*  &
+                              (1. - qabar(i,j,k))*inv_dtcloud
+              end if
               if ( diag_id%qadt_eros + diag_id%qa_eros_col > 0 ) then
-            diag_4d(i,j,k,diag_pt%qadt_eros)  = (qa1(i,j,k) - qa0(i,j,k))*&
-                                                Constants%inv_dtcloud
+                diag_4d(i,j,k,diag_pt%qadt_eros)  =   &
+                     ((qa1(i,j,k) - qa0(i,j,k))*inv_dtcloud ) - &
+                                       diag_4d(i,j,k,diag_pt%qadt_lsform)  
+              end if
+            else if (A_dt(i,j,k) .gt. Dmin) then
+              if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
+                diag_4d(i,j,k,diag_pt%qadt_lsform) =    &
+                          (qa1(i,j,k) - qa0(i,j,k))*inv_dtcloud
               end if 
-                  endif
+            else if (B_dt(i,j,k) .gt. Dmin)  then
+              if ( diag_id%qadt_eros + diag_id%qa_eros_col > 0 ) then
+                diag_4d(i,j,k,diag_pt%qadt_eros)  =    &
+                           (qa1(i,j,k) - qa0(i,j,k))*inv_dtcloud
+              end if 
+            endif
+          end do
         end do
-        end do
-        end do
+      end do
+
+!-----------------------------------------------------------------------
+!   define value needed for diagnostic calculation.
+!-----------------------------------------------------------------------
+      if ( diag_id%qadt_ahuco + diag_id%qa_ahuco_col > 0 ) then
+        diag_4d(:,:,:,diag_pt%qadt_ahuco)  = qa1
+      end if
 
 !-------------------------------------------------------------------------
 !    limit cloud area to be no more than that which is not being
 !    taken by convective clouds.
 !-------------------------------------------------------------------------
-      if ( diag_id%qadt_ahuco + diag_id%qa_ahuco_col > 0 ) then
-        diag_4d(:,:,:,diag_pt%qadt_ahuco)  = qa1
-      end if
-
-      if (Constants%limit_conv_cloud_frac) then
-        qa1 = MIN(qa1, 1.0 - Atmos_state%ahuco)
+      if (limit_conv_cloud_frac) then
+        qa1 = MIN(qa1, 1.0 - C2ls_mp%convective_humidity_area)
       endif
 
+!------------------------------------------------------------------------
+!    complete calculation of diagnostic.
+!------------------------------------------------------------------------
       if ( diag_id%qadt_ahuco + diag_id%qa_ahuco_col > 0 ) then
         diag_4d(:,:,:,diag_pt%qadt_ahuco)  =   &
-                  (qa1(:,:,:) - diag_4d(:,:,:,diag_pt%qadt_ahuco))* & 
-                                             Constants%inv_dtcloud 
+             (qa1(:,:,:) - diag_4d(:,:,:,diag_pt%qadt_ahuco))*inv_dtcloud 
       end if
                  
 !-------------------------------------------------------------------------
@@ -1366,22 +1627,22 @@ INTEGER,                            INTENT(IN )   :: otun
 !       This is accomplished by using the variable qabar.
 
 !cms but qabar is not limited to area outside  conv. clouds ...
-  !!      dcond_ls = -1. * MIN(qabar, 1.- ahuco)  * dqs_ls
+!!      dcond_ls = -1. * MIN(qabar, 1.- ahuco)  * dqs_ls
 !-----------------------------------------------------------------------
       Cloud_processes%dcond_ls = -1.*qa_t*dqs_ls -    &
            0.5*MAX(MIN(Cloud_processes%da_ls, 1. - qa_t),0.)*drhcqs_ls 
 
 !-----------------------------------------------------------------------
-!     compute qs and condensation using updated temps and vapor.
+!     compute qs and condensation using updated temps and vapor. 
+!     see Tompkins et al., 2007
 !-----------------------------------------------------------------------
-      ttmp=Atmos_state%T_in + ST        
-      qtmp= Atmos_state%qv_in + SQ         
-      CALL compute_qs_x1 (idim, jdim, kdim, ttmp, Atmos_state%pfull, &
-                             qs_t, qs_l, qs_i, dqsdT1, gamma1 )
+      ttmp=Input_mp%tin + ST        
+      qtmp= Input_mp%qin + SQ         
+      CALL compute_qs_x1 (idim, jdim, kdim, ttmp, Input_mp%pfull, &
+                                       qs_t, qs_l, qs_i, dqsdT1, gamma1 )
       DO k=1,kdim
         do j=1,jdim
           DO i=1, idim
-             !see Tompkins et al., 2007
             qvmax = qs_t(i,j,k)*(qa_t(i,j,k) + (1. -  qa_t(i,j,k))*  &
                                              Atmos_state%rh_crit(i,j,k) )
             tmp1s =  max(0., (qtmp(i,j,k) - qvmax) )/(1. + gamma1(i,j,k))
@@ -1404,17 +1665,18 @@ INTEGER,                            INTENT(IN )   :: otun
         END DO
       END DO
 
-!------------------------------------------------------------------------                                 
+!-------------------------------------------------------------------  
 
 
-end SUBROUTINE nc_cond_nopdf_super 
+end SUBROUTINE tiedtke_macro_nopdf_super 
 
 
 !#########################################################################
 
-SUBROUTINE nc_cond_pdf (idim, jdim, kdim, Nml, Constants, Atmos_state,   &
-                        Cloud_state, ST, SQ, Cloud_processes, Particles, &
-                        n_diag_4d, diag_4d, diag_id, diag_pt, otun, SA)  
+SUBROUTINE tiedtke_macro_pdf (  &
+             idim, jdim, kdim, Atmos_state, Input_mp, Cloud_state, ST,   &
+             SQ, Cloud_processes, Particles, n_diag_4d, diag_4d,    &
+                                                     diag_id, diag_pt, SA)
 
 !----------------------------------------------------------------------!
 !                                                                      !
@@ -1422,24 +1684,22 @@ SUBROUTINE nc_cond_pdf (idim, jdim, kdim, Nml, Constants, Atmos_state,   &
 !                                                                      !
 !-----------------------------------------------------------------------
 
-integer,                           intent(in)    :: idim, jdim, kdim     
-type(strat_nml_type),              intent(in)    :: Nml
+integer,                           intent(in )   :: idim, jdim, kdim     
 type(atmos_state_type),            intent(inout) :: Atmos_state
+type(mp_input_type),               intent(inout) :: Input_mp    
 type(cloud_state_type),            intent(inout) :: Cloud_state
 type(cloud_processes_type),        intent(inout) :: Cloud_processes
 type(particles_type),              intent(inout) :: Particles
-type(strat_constants_type),        intent(inout) :: Constants  
-real, dimension(idim,jdim,kdim),   intent(in)    :: ST, SQ
+real, dimension(idim,jdim,kdim),   intent(in )   :: ST, SQ
 real, dimension(idim,jdim,kdim),   intent(inout) :: SA
-integer,                           intent(in)    :: n_diag_4d
-real, dimension(idim,jdim,kdim,0:n_diag_4d),         &
+integer,                           intent(in )   :: n_diag_4d
+real, dimension( idim, jdim, kdim, 0:n_diag_4d ),         &
                                    intent(inout) :: diag_4d
 type(diag_id_type),                intent(in)    :: diag_id
 type(diag_pt_type),                intent(in)    :: diag_pt
-integer,                           intent(in)    :: otun
 
 !-----------------------------------------------------------------------
-!-----local variables---------------------------------------------------
+!-----local variables
  
 !-----------------------------------------------------------------------
 !                STATISTICAL CLOUD SCHEME VARIABLES
@@ -1478,48 +1738,85 @@ integer,                           intent(in)    :: otun
 !       qtmin          the minimum value to the total  kg water /
 !                      sub-grid scale distribution     kg air
 !
-      real, dimension(idim,jdim,kdim)    :: qa1, qa0, qcg, qag
-      real, dimension(idim,jdim,kdim)    :: qta, qtqsa
+      real, dimension(idim, jdim,kdim)   :: qa1, qa0, qcg, qag
+      real, dimension(idim, jdim,kdim)   :: qta, qtqsa
       real, dimension(idim,jdim)         :: qagtmp, qcgtmp, qvgtmp, qtbar,&
                                             deltaQ, qtmin, qs_norm     
       real                               :: icbp, icbp1
       integer                            :: i,j,k
+
  
 !-----------------------------------------------------------------------
-!     Compute total water and excess saturation
+!    Compute total water and excess saturation.
 !-----------------------------------------------------------------------
-
-      if (Nml%pdf_org) then
-        qta(:,:,:) = max(Nml%qmin, Atmos_state%qv_in +  &
-                                     Cloud_state%ql_in + Cloud_state%qi_in)
+      if (pdf_org) THEN
+        qta(:,:,:) = max(qmin, Input_mp%qin +  &
+                                  Cloud_state%ql_in + Cloud_state%qi_in)
       else
-        qta(:,:,:) = max(Nml%qmin, Atmos_State%qv_in + SQ +  &
-                                     Cloud_state%ql_upd + Cloud_state%qi_upd)
-      endif
+        qta(:,:,:) = max(qmin, Input_mp%qin + SQ +  &
+                             Cloud_state%ql_upd + Cloud_state%qi_upd)
+      endif 
+
       qtqsa(:,:,:) = qta(:,:,:) - Atmos_state%qs
+        
+
+#ifdef SKIP
+      qcg(:,:,:) = 0.
+      Cloud_processes%qvg(:,:,:) = 0.
+      qag(:,:,:) = 0.
+#endif
        
 !-----------------------------------------------------------------------
-!     Set Tiedtke erosion term to zero.
+!    set Tiedtke erosion term to zero.
 !-----------------------------------------------------------------------
-
       Cloud_processes%D_eros = 0.
         
 !-----------------------------------------------------------------------
-!     Compute pdf cloud fraction and condensate
+!    compute pdf cloud fraction and condensate
 ! 
-!     Note that the SYMMETRIC beta distribution is used here.
+!    Note that the SYMMETRIC beta distribution is used here.
 !
-!     qag: cloud fraction
-!     qcg: cloud condensate
-!     qvg: clear sky water vapor
+!
+!    Initialize grid-box mean values of cloud fraction (qag),
+!    cloud condensate(qcg), and clear sky water vapor (qvg)
 !-----------------------------------------------------------------------
-
-      ks_loop: do k= 1,kdim
+     ks_loop: DO k=1,kdim
+       !! qcg(:,k) = 0.
+        ! qvg(:,k) = 0.
+        !!qag (:,k)= 0.
         
+#ifdef SKIP
+        !Create loop over sub-levels within a grid box
+   
+        sublevel_loop: do ns = 1, nsublevels
+        
+             !calculate normalized vertical level
+             ! 0. = top of gridbox
+             ! 1. = bottom of gridbox
+        
+             pnorm =  (real(ns) - 0.5 )/real(nsublevels)
+        
+             !First step is to calculating the minimum (qtmin)
+             !of the total water distribution and 
+             !the width of the qt distribution (deltaQ)
+             !
+             !For diagnostic variance this is set to (1.-qthalfwidth)*qtbar
+             !and 2*qthalfwidth*qtbar, respectively, where qtbar is the
+             !mean total water in the grid box.        
+             !
+             !
+
+             qtbar = qta4(2,:,:,k) + pnorm*((qta4(3,:,:,k) -   &
+                                qta4(2,:,:,k)) + qta4(4,:,:,k)*(1-pnorm) )
+             
+             qtbar  = max(qmin ,qtbar )
+             deltaQ  = 2.*qthalfwidth *qtbar
+             qtmin = (1.- qthalfwidth )*qtbar 
+#endif
              qtbar = qta(:,:,k)
-             qtbar  = max(Nml%qmin ,qtbar )
-             deltaQ  = 2.*Nml%qthalfwidth *qtbar
-             qtmin = (1.-Nml%qthalfwidth )*qtbar 
+             qtbar  = max(qmin ,qtbar )
+             deltaQ  = 2.*qthalfwidth *qtbar
+             qtmin = (1.-qthalfwidth )*qtbar
         
              !From this the variable normalized saturation specific
              !humidity qs_norm is calculated.
@@ -1531,6 +1828,10 @@ integer,                           intent(in)    :: otun
              !Note that if qs_norm > 1., the grid box is fully clear.
              !If qs_norm < 0., the grid box is fully cloudy.
         
+!            qs_norm = qtqsa4(2,:,:,k)+  &
+!                      pnorm*( (qtqsa4(3,:,:,k)-qtqsa4(2,:,:,k)) + &
+!                      qtqsa4(4,:,:,k)*(1-pnorm) )
+
              qs_norm = qtqsa(:,:,k)
              qs_norm = 0.5 - ( qs_norm/deltaQ )
              
@@ -1558,47 +1859,274 @@ integer,                           intent(in)    :: otun
              ! is equal to (p/(p+q)).
              !
 
-             do j = 1,jdim
+             do j=1,jdim
+             
              do i = 1,idim
         
-               if (qs_norm(i,j).le.1.) then
+             if (qs_norm(i,j).le.1.) then
                  
                  icbp = incomplete_beta(max(0.,qs_norm(i,j)), &
-                                      p = Nml%betaP    , q = Nml%betaP)
+                                      p = betaP    , q =     betaP)
                  icbp1= incomplete_beta(max(0.,qs_norm(i,j)), &
-                                      p = Nml%betaP + 1, q = Nml%betaP)
+                                      p = betaP + 1, q =     betaP)
                  qagtmp(i,j) = 1.-icbp
                  qcgtmp(i,j) = (qtbar(i,j)-qtmin(i,j))*(1.-icbp1)&
                                - qs_norm(i,j)*deltaQ(i,j)*(1.-icbp)    
                  qcgtmp(i,j) = qcgtmp(i,j)/   &
                                           (1.+Atmos_state%gamma(i,j,k))
                  qvgtmp(i,j) = qtmin(i,j) + &
-                               0.5*(icbp1/max(icbp,Nml%qmin))*deltaQ(i,j)
+                               0.5*(icbp1/max(icbp, qmin))*deltaQ(i,j)
              
                  !bound very very small cloud fractions which may
                  !cause negative cloud condensates due to roundoff 
                  !errors or similar errors in the beta table lookup.
-                 if ((qagtmp(i,j).lt.0.).or.(qcgtmp(i,j).le.0.)) then
+                 if((qagtmp(i,j).lt.0.).or.(qcgtmp(i,j).le.0.))then
                       qagtmp(i,j) = 0.
                       qcgtmp(i,j) = 0.
                       qvgtmp(i,j) = qtbar(i,j)
                  end if
                  
-               else             
+             else             
                  qagtmp(i,j) = 0.
                  qcgtmp(i,j) = 0.
                  qvgtmp(i,j) = qtbar(i,j)             
-               end if
+             end if
              
              enddo
              enddo
               
+#ifdef SKIP
+             !sum vertically
+             !
+             !note special averaging of clear-sky water vapor
+             !this is weighting clear-sky relative humidity by the 
+             !clear-sky fraction
+         
+             qag(:,:,k) = qag(:,:,k) + qagtmp
+             qcg(:,:,k) = qcg(:,:,k) + qcgtmp
+             Cloud_processes%qvg(:,:,k) =    &
+                     Cloud_processes%qvg(:,:,k)+ &
+                               (1.-qagtmp)*min(max(qvgtmp/max(qmin, &
+                                   (qtbar+((qs_norm-0.5)*deltaQ))),0.),1.)
+             
+        enddo sublevel_loop!for number of sublevels loop
+
+        
+
+
+        !compute grid-box average cloud fraction, cloud condensate
+        !and water vapor
+        
+        if (nsublevels.gt.1) then
+             qag (:,:,k)= qag(:,:,k) / real(nsublevels)
+             qcg(:,:,k) = qcg(:,:,k) / real(nsublevels)
+             
+             !note special averaging of clear-sky water vapor
+            
+             do j = 1,jdim
+             do id = 1,idim
+                  if ((1.-qag(id,j,k)).gt. qmin) then
+                    Cloud_processes%qvg(id,j,k) =  &
+                       Cloud_processes%qvg(id,j,k)/real(nsublevels)/&
+                                                        (1.-qag(id,j,k))
+                    Cloud_processes%qvg(id,j,k) =  &
+                              Cloud_processes%qvg(id,j,k)*   &
+                                                 Atmos_state%qs(id,j,k)
+                  else
+                    Cloud_processes%qvg(id,j,k) =   &
+                                                Atmos_state%qs(id,j,k)
+                  end if
+             enddo
+             enddo
+          
+             
+!       else
+#endif
              qag(:,:,k) = qagtmp
              qcg(:,:,k) = qcgtmp
              Cloud_processes%qvg(:,:,k) = qvgtmp
+!        end if
      
-      enddo ks_loop
+       
+   END DO ks_loop
         
+        !do adjustment of cloud fraction
+        qa0 = Cloud_state%qa_in
+        qa1 = qag
+
+        !set total tendency term and update cloud fraction    
+        SA   = (SA   + qa1) - qa0
+        Cloud_state%qa_upd     = qa1
+
+
+        !define da_ls and tmp5 needed when do_liq_num = .true. (cjg)
+        Cloud_processes%da_ls = max(qa1-qa0,0.)
+        Cloud_processes%delta_cf = max(qa1-qa0,0.)
+
+        !compute large-scale condensation / evaporation
+        Cloud_processes%dcond_ls = qcg -    &
+                              (Cloud_state%ql_upd + Cloud_state%qi_upd)
+
+
+
+   IF ( .NOT. pdf_org ) THEN
+   !!!! INVESTIGATE!!!
+   !make sure super/subsat is not created here
+   ! this is different from the original PDF assumption
+   !  (as is saturation adjustment) 
+
+     Cloud_processes%dcond_ls = MAX( ((Input_mp%qin + SQ -  &
+                Atmos_State%qs)/(1.+Atmos_state%gamma)),    &
+                                               Cloud_processes%dcond_ls)
+       
+      
+   endif 
+
+!-----------------------------------------------------------------------
+!     Diagnostics
+!-----------------------------------------------------------------------
+
+      if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
+          diag_4d(:,:,:,diag_pt%qadt_lsform ) =  max(qa1 - qa0, 0.)*  &
+                                                               inv_dtcloud
+      end if
+      if (diag_id%qadt_lsdiss + diag_id%qa_lsdiss_col > 0) then
+          diag_4d(:,:,:,diag_pt%qadt_lsdiss ) =  max(qa0 - qa1, 0.)* &
+                                                               inv_dtcloud
+      end if
+
+!------------------------------------------------------------------------
+ 
+
+
+end SUBROUTINE tiedtke_macro_pdf 
+
+
+!#########################################################################
+
+!SUBROUTINE nc_cond_Single_Gaussian_pdf (idim, jdim, kdim, Nml, Constants, Atmos_state,   &
+SUBROUTINE tiedtke_macro_Single_Gaussian_pdf (idim, jdim, kdim,  Atmos_state,   &
+                        Input_mp, &
+                        Cloud_state, ST, SQ, Cloud_processes, Particles, &
+                        n_diag_4d, diag_4d, diag_id, diag_pt,       SA)  
+
+!----------------------------------------------------------------------!
+!                                                                      !
+!                     STATISTICAL CLOUD SCHEME                         !
+!                                                                      !
+!-----------------------------------------------------------------------
+
+integer,                           intent(in)    :: idim, jdim, kdim     
+!type(strat_nml_type),              intent(in)    :: Nml
+type(atmos_state_type),            intent(inout) :: Atmos_state
+type(mp_input_type),               intent(inout) :: Input_mp
+type(cloud_state_type),            intent(inout) :: Cloud_state
+type(cloud_processes_type),        intent(inout) :: Cloud_processes
+type(particles_type),              intent(inout) :: Particles
+!type(strat_constants_type),        intent(inout) :: Constants  
+real, dimension(idim,jdim,kdim),   intent(in)    :: ST, SQ
+real, dimension(idim,jdim,kdim),   intent(inout) :: SA
+integer,                           intent(in)    :: n_diag_4d
+real, dimension(idim,jdim,kdim,0:n_diag_4d),         &
+                                   intent(inout) :: diag_4d
+type(diag_id_type),                intent(in)    :: diag_id
+type(diag_pt_type),                intent(in)    :: diag_pt
+!integer,                           intent(in)    :: otun
+
+!-----------------------------------------------------------------------
+!-----local variables---------------------------------------------------
+ 
+!-----------------------------------------------------------------------
+!                STATISTICAL CLOUD SCHEME VARIABLES
+!
+!
+!       qcg            total condensate diagnosed        kg condensate /
+!                      from Single-Gaussian PDF          kg air        
+!
+!       qag            cloud fraction diagnosed          dimensionless 
+!                      from Single-Gaussian PDF                                  
+!
+!
+!       qtbar          total water specific humidity     kg water /
+!                      which is equal to the sum of      kg air
+!                      liquid water, ice water, and
+!                      water vapor
+!
+!       s              s = (qt -qs)/(1 + L/Cp * dqsdT)   kg condensate/kg air
+!                     
+!       stddev_s       standard deviation of s           kg condensate/kg air
+!
+!       if ignoring liquid potential temperature variance,  
+!       and correlation between liquid potential temperature
+!       and total water, 
+!
+!       stddev_s = stddev_qt /(1 + L/Cp * dqsdT)
+!                = stddev_qt /(1 + Atmos_state%gamma ) 
+
+
+      real, dimension(idim,jdim,kdim)    :: qa1, qa0, qcg, qag
+      real, dimension(idim,jdim,kdim)    :: qta, qtqsa
+ 
+!---> h1g, 2015-07-22
+     real, dimension(idim,jdim,kdim)    ::  s,   stdev_s
+     real                               ::  s_mellor_tol, zeta
+     integer                            ::  i, j, k
+!-----------------------------------------------------------------------
+!     Compute total water and excess saturation
+!-----------------------------------------------------------------------
+      if (pdf_org) then
+!RSH  change to Input_mp%qin ??
+!       qta(:,:,:) = max(qmin, Atmos_state%qv_in +  &
+        qta(:,:,:) = max(qmin, Input_mp%qin +  &
+                                     Cloud_state%ql_in + Cloud_state%qi_in)
+      else
+!       qta(:,:,:) = max(qmin, Atmos_State%qv_in + SQ +  &
+        qta(:,:,:) = max(qmin, Input_mp%qin + SQ +  &
+                                     Cloud_state%ql_upd + Cloud_state%qi_upd)
+      endif
+      qtqsa(:,:,:) = qta(:,:,:) - Atmos_state%qs      
+
+      s =  qtqsa(:,:,:) / (1.0 +  Atmos_state%gamma )
+
+!---> h1g, 2015-07-23
+! 99.7% data are within mean +- 3 stdev 
+      stdev_s =     qthalfwidth * qta * 0.333
+      stdev_s = stdev_s / ( 1.0 +  Atmos_state%gamma ) 
+
+      s_mellor_tol = 1.e-8
+      do k= 1,kdim
+        do  j = 1,jdim
+          do i = 1,idim
+            if( stdev_s(i,j,k)  > s_mellor_tol ) then
+              zeta = s(i,j,k)/stdev_s(i,j,k)
+              qag(i,j,k)  = 0.5 * ( 1.0 + erf( zeta /sqrt(2.0) ) )
+              qcg(i,j,k)  = s(i,j,k) * qag(i,j,k)  &
+                          + stdev_s(i,j,k)/sqrt(2.0*pi) * exp( -0.5 *zeta*zeta )
+            else
+              if ( s(i,j,k) < 0.0 ) then
+                qag(i,j,k)  = 0.0
+                qcg(i,j,k)  = 0.0
+              else
+                qag(i,j,k)  = 1.0
+                qcg(i,j,k)  = s(i,j,k)
+              endif  
+            endif
+
+!---> h1g, 2015-07-23
+!     qtbar:     grid-average total specific humidity
+!     qv,clr:    clear-sky  water vapor specific humidity
+!     qc,cld:    in-cloud  cloud condensate
+!     qs:        satuation vapor specific humidity
+!
+!     qtbar = (1.-CF) * qv,clr + CF * ( qc,cld + qs )
+!     qv,clr = (qtbar - CF * ( qc,cld + qs ) )/(1.-CF)      
+!<--- h1g, 2015-07-23
+            Cloud_processes%qvg(i,j,k) = (qta(i,j,k) - qcg(i,j,k) - qag(i,j,k)*Atmos_state%qs(i,j,k))  &
+                                        /(max( (1.0 - qag(i,j,k)), qmin) )
+          enddo
+        enddo
+      enddo        
+
       !do adjustment of cloud fraction
       qa0 = Cloud_state%qa_in
       qa1 = qag
@@ -1615,17 +2143,21 @@ integer,                           intent(in)    :: otun
       Cloud_processes%dcond_ls = qcg -    &
                               (Cloud_state%ql_upd + Cloud_state%qi_upd)
 
-      if ( .not. Nml%pdf_org ) then
+
+!--->h1g, the following is inherited from nc_cond_pdf, 2015-07-22
+      if ( .not. pdf_org ) then
       !!!! INVESTIGATE!!!
       ! make sure super/subsat is not created here
       ! this is different from the original PDF assumption
       ! (as is saturation adjustment) 
 
-        Cloud_processes%dcond_ls = MAX( ((Atmos_state%qv_in + SQ -  &
+!RSH    Cloud_processes%dcond_ls = MAX( ((Atmos_state%qv_in + SQ -  &
+        Cloud_processes%dcond_ls = MAX( ((Input_mp%qin      + SQ -  &
                 Atmos_State%qs)/(1.+Atmos_state%gamma)),    &
                                                Cloud_processes%dcond_ls)
-       
+  
       end if
+!<--- h1g, 2015-07-22
 
 !-----------------------------------------------------------------------
 !     Diagnostics
@@ -1633,18 +2165,37 @@ integer,                           intent(in)    :: otun
 
       if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
           diag_4d(:,:,:,diag_pt%qadt_lsform ) =  max(qa1 - qa0, 0.)*  &
-                                                     Constants%inv_dtcloud 
+                                                     inv_dtcloud 
       end if
       if (diag_id%qadt_lsdiss + diag_id%qa_lsdiss_col > 0) then
           diag_4d(:,:,:,diag_pt%qadt_lsdiss ) =  max(qa0 - qa1, 0.)* &
-                                                     Constants%inv_dtcloud
+                                                     inv_dtcloud
       end if
-
 !------------------------------------------------------------------------
 
-end SUBROUTINE nc_cond_pdf 
+end SUBROUTINE tiedtke_macro_Single_Gaussian_pdf 
 
-!########################################################################
+!#####################################################################
+ 
+  function erf(x)
+!--------------------------------------------------------------
+! This numerical recipes routine calculates the error function.
+!--------------------------------------------------------------
+ 
+   real :: erf
+   real, intent(in) :: x
+   real :: t,z
+ 
+   z=abs(x)
+   t=1./(1.+0.5*z)
+ 
+    erf= 1.0 - t*exp(-z*z-1.26551223+t*(1.00002368+t*(.37409196+t*      &
+         (.09678418+t*(-.18628806+t*(.27886807+t*(-1.13520398+t*    &
+         (1.48851587+t*(-.82215223+t*.17087277)))))))))
+ 
+    if (x.lt.0.) erf= -erf
+ 
+   end function erf
 
 
 !----------------------------------------------------------------------- 
@@ -2099,194 +2650,9 @@ end SUBROUTINE nc_cond_pdf
 !----------------------------------------------------------------------- 
 
 
-!#########################################################################
 
-SUBROUTINE nc_cond_Single_Gaussian_pdf (idim, jdim, kdim, Nml, Constants, Atmos_state,   &
-                        Cloud_state, ST, SQ, Cloud_processes, Particles, &
-                        n_diag_4d, diag_4d, diag_id, diag_pt, otun, SA)  
-
-!----------------------------------------------------------------------!
-!                                                                      !
-!                     STATISTICAL CLOUD SCHEME                         !
-!                                                                      !
-!-----------------------------------------------------------------------
-
-integer,                           intent(in)    :: idim, jdim, kdim     
-type(strat_nml_type),              intent(in)    :: Nml
-type(atmos_state_type),            intent(inout) :: Atmos_state
-type(cloud_state_type),            intent(inout) :: Cloud_state
-type(cloud_processes_type),        intent(inout) :: Cloud_processes
-type(particles_type),              intent(inout) :: Particles
-type(strat_constants_type),        intent(inout) :: Constants  
-real, dimension(idim,jdim,kdim),   intent(in)    :: ST, SQ
-real, dimension(idim,jdim,kdim),   intent(inout) :: SA
-integer,                           intent(in)    :: n_diag_4d
-real, dimension(idim,jdim,kdim,0:n_diag_4d),         &
-                                   intent(inout) :: diag_4d
-type(diag_id_type),                intent(in)    :: diag_id
-type(diag_pt_type),                intent(in)    :: diag_pt
-integer,                           intent(in)    :: otun
-
-!-----------------------------------------------------------------------
-!-----local variables---------------------------------------------------
- 
-!-----------------------------------------------------------------------
-!                STATISTICAL CLOUD SCHEME VARIABLES
-!
-!
-!       qcg            total condensate diagnosed        kg condensate /
-!                      from Single-Gaussian PDF          kg air        
-!
-!       qag            cloud fraction diagnosed          dimensionless 
-!                      from Single-Gaussian PDF                                  
-!
-!
-!       qtbar          total water specific humidity     kg water /
-!                      which is equal to the sum of      kg air
-!                      liquid water, ice water, and
-!                      water vapor
-!
-!       s              s = (qt -qs)/(1 + L/Cp * dqsdT)   kg condensate/kg air
-!                     
-!       stddev_s       standard deviation of s           kg condensate/kg air
-!
-!       if ignoring liquid potential temperature variance,  
-!       and correlation between liquid potential temperature
-!       and total water, 
-!
-!       stddev_s = stddev_qt /(1 + L/Cp * dqsdT)
-!                = stddev_qt /(1 + Atmos_state%gamma ) 
-
-
-      real, dimension(idim,jdim,kdim)    :: qa1, qa0, qcg, qag
-      real, dimension(idim,jdim,kdim)    :: qta, qtqsa
- 
-!---> h1g, 2015-07-22
-     real, dimension(idim,jdim,kdim)    ::  s,   stdev_s
-     real                               ::  s_mellor_tol, zeta
-     integer                            ::  i, j, k
-!-----------------------------------------------------------------------
-!     Compute total water and excess saturation
-!-----------------------------------------------------------------------
-      if (Nml%pdf_org) then
-        qta(:,:,:) = max(Nml%qmin, Atmos_state%qv_in +  &
-                                     Cloud_state%ql_in + Cloud_state%qi_in)
-      else
-        qta(:,:,:) = max(Nml%qmin, Atmos_State%qv_in + SQ +  &
-                                     Cloud_state%ql_upd + Cloud_state%qi_upd)
-      endif
-      qtqsa(:,:,:) = qta(:,:,:) - Atmos_state%qs      
-
-      s =  qtqsa(:,:,:) / (1.0 +  Atmos_state%gamma )
-
-!---> h1g, 2015-07-23
-! 99.7% data are within mean +- 3 stdev 
-      stdev_s = Nml%qthalfwidth * qta * 0.333
-      stdev_s = stdev_s / ( 1.0 +  Atmos_state%gamma ) 
-
-      s_mellor_tol = 1.e-8
-      do k= 1,kdim
-        do  j = 1,jdim
-          do i = 1,idim
-            if( stdev_s(i,j,k)  > s_mellor_tol ) then
-              zeta = s(i,j,k)/stdev_s(i,j,k)
-              qag(i,j,k)  = 0.5 * ( 1.0 + erf( zeta /sqrt(2.0) ) )
-              qcg(i,j,k)  = s(i,j,k) * qag(i,j,k)  &
-                          + stdev_s(i,j,k)/sqrt(2.0*pi) * exp( -0.5 *zeta*zeta )
-            else
-              if ( s(i,j,k) < 0.0 ) then
-                qag(i,j,k)  = 0.0
-                qcg(i,j,k)  = 0.0
-              else
-                qag(i,j,k)  = 1.0
-                qcg(i,j,k)  = s(i,j,k)
-              endif  
-            endif
-
-!---> h1g, 2015-07-23
-!     qtbar:     grid-average total specific humidity
-!     qv,clr:    clear-sky  water vapor specific humidity
-!     qc,cld:    in-cloud  cloud condensate
-!     qs:        satuation vapor specific humidity
-!
-!     qtbar = (1.-CF) * qv,clr + CF * ( qc,cld + qs )
-!     qv,clr = (qtbar - CF * ( qc,cld + qs ) )/(1.-CF)      
-!<--- h1g, 2015-07-23
-            Cloud_processes%qvg(i,j,k) = (qta(i,j,k) - qcg(i,j,k) - qag(i,j,k)*Atmos_state%qs(i,j,k))  &
-                                        /(max( (1.0 - qag(i,j,k)), Nml%qmin) )
-          enddo
-        enddo
-      enddo        
-
-      !do adjustment of cloud fraction
-      qa0 = Cloud_state%qa_in
-      qa1 = qag
-
-      !set total tendency term and update cloud fraction    
-      SA   = (SA   + qa1) - qa0
-      Cloud_state%qa_upd     = qa1
-
-      !define da_ls and tmp5 needed when do_liq_num = .true. (cjg)
-      Cloud_processes%da_ls = max(qa1-qa0,0.)
-      Cloud_processes%delta_cf = max(qa1-qa0,0.)
-
-      !compute large-scale condensation / evaporation
-      Cloud_processes%dcond_ls = qcg -    &
-                              (Cloud_state%ql_upd + Cloud_state%qi_upd)
-
-
-!--->h1g, the following is inherited from nc_cond_pdf, 2015-07-22
-      if ( .not. Nml%pdf_org ) then
-      !!!! INVESTIGATE!!!
-      ! make sure super/subsat is not created here
-      ! this is different from the original PDF assumption
-      ! (as is saturation adjustment) 
-
-        Cloud_processes%dcond_ls = MAX( ((Atmos_state%qv_in + SQ -  &
-                Atmos_State%qs)/(1.+Atmos_state%gamma)),    &
-                                               Cloud_processes%dcond_ls)
-  
-      end if
-!<--- h1g, 2015-07-22
-
-!-----------------------------------------------------------------------
-!     Diagnostics
-!-----------------------------------------------------------------------
-
-      if (diag_id%qadt_lsform + diag_id%qa_lsform_col > 0) then
-          diag_4d(:,:,:,diag_pt%qadt_lsform ) =  max(qa1 - qa0, 0.)*  &
-                                                     Constants%inv_dtcloud 
-      end if
-      if (diag_id%qadt_lsdiss + diag_id%qa_lsdiss_col > 0) then
-          diag_4d(:,:,:,diag_pt%qadt_lsdiss ) =  max(qa0 - qa1, 0.)* &
-                                                     Constants%inv_dtcloud
-      end if
-!------------------------------------------------------------------------
-end SUBROUTINE nc_cond_Single_Gaussian_pdf 
-
-
-!#####################################################################
-
-  function erf(x)
-    !--------------------------------------------------------------
-    ! This numerical recipes routine calculates the error function.
-    !--------------------------------------------------------------
-   
-    real :: erf
-    real, intent(in) :: x 
-    real :: t,z
-   
-    z=abs(x)      
-    t=1./(1.+0.5*z)
-   
-    erf= 1.0 - t*exp(-z*z-1.26551223+t*(1.00002368+t*(.37409196+t*      &
-         (.09678418+t*(-.18628806+t*(.27886807+t*(-1.13520398+t*    &
-         (1.48851587+t*(-.82215223+t*.17087277)))))))))
-    
-    if (x.lt.0.) erf= -erf
-    
-  end function erf
 
 !#######################################################################
 
-end module nc_cond_mod
+
+                end module tiedtke_macro_mod

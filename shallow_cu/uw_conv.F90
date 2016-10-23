@@ -15,6 +15,7 @@ MODULE UW_CONV_MOD
                                  get_tracer_index, NO_TRACER
   use  sat_vapor_pres_mod,only : sat_vapor_pres_init
   use atmos_tracer_utilities_mod, only : get_wetdep_param
+  use moist_proc_utils_mod, only : mp_nml_type
 
   use  aerosol_types_mod, only : aerosol_type
   
@@ -89,8 +90,6 @@ MODULE UW_CONV_MOD
   real    :: aerol = 1.e-12
   real    :: tkemin   = 1.e-6
   real    :: wmin_ratio = 0.05
-  logical :: use_online_aerosol = .false.
-  logical :: use_sub_seasalt = .true.
   logical :: do_auto_aero = .false.
   logical :: do_rescale   = .false.
   logical :: do_rescale_t = .false.
@@ -101,8 +100,6 @@ MODULE UW_CONV_MOD
   real    :: lofactor0 = 1.
   integer :: lochoice  = 0
   real    :: wrel_min = 1.
-  real    :: om_to_oc = 1.67
-  real    :: sea_salt_scale = 0.1
   logical :: do_stime  = .false.
   logical :: do_dtime  = .false.
   logical :: do_umf_pbl = .false.
@@ -151,8 +148,8 @@ MODULE UW_CONV_MOD
        do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_convcld,  &
        do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
        atopevap, apply_tendency, prevent_unreasonable, do_minmse, aerol, tkemin, cldhgt_max_shallow,do_umf_pbl,&
-       wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
-       do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, do_debug, &
+       wmin_ratio, landfact_m, pblht0, lofactor0, lochoice, &
+       do_auto_aero, do_rescale, do_rescale_t, wrel_min, do_debug, &
        cush_ref, do_prog_gust, tau_gust, geff, cgust0, cgust_max, sigma0,  do_qctflx_zero, do_detran_zero, &
        duration, do_stime, do_dtime, stime0, dtime0, do_subcloud_flx, do_new_subflx, src_choice, gqt_choice,   &
        zero_out_conv_area, tracer_check_type, use_turb_tke, use_lcl_only, do_new_pevap, plev_for, stop_at_let, &
@@ -353,15 +350,21 @@ MODULE UW_CONV_MOD
   character(len=32), dimension(:), allocatable   :: tracername 
   character(len=32), dimension(:), allocatable   :: tracer_units 
 
+  logical :: use_online_aerosol
+  logical :: use_sub_seasalt
+  real    :: sea_salt_scale
+  real    :: om_to_oc
+ 
 contains
 
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE UW_CONV_INIT(do_strat, axes, Time, kd, tracers_in_uw)
+  SUBROUTINE UW_CONV_INIT(do_strat, axes, Time, kd, Nml_mp, tracers_in_uw)
     logical,         intent(in) :: do_strat
     integer,         intent(in) :: axes(4), kd
     type(time_type), intent(in) :: Time
+    type(mp_nml_type), intent(in) :: Nml_mp
     logical,         intent(in) :: tracers_in_uw(:)
     
 !---------------------------------------------------------------------
@@ -449,6 +452,12 @@ contains
 !========Option for idealized forcing=====================================
     end if
 #endif
+
+    use_online_aerosol = Nml_mp%use_online_aerosol
+    use_sub_seasalt = Nml_mp%use_sub_seasalt
+    sea_salt_scale = Nml_mp%sea_salt_scale
+    om_to_oc = Nml_mp%om_to_oc
+
     call write_version_number (version, tagname)
     logunit = stdlog()
     WRITE( logunit, nml = uw_closure_nml )
@@ -2609,8 +2618,10 @@ contains
 !        end do
 !     end if
 
-!now calculated uw for all tracers
-
+!-------------------------------------------------------------------------
+!   calculate uw_wetdep column-sum array for all tracers, regardless of 
+!   whether diagnostics are requested.
+!----------------------------------------------------------------------
     uw_wetdep = 0.
     do n=1,ntracers
        tempdiag = 0.
@@ -2620,13 +2631,14 @@ contains
        uw_wetdep(:,:,n) = tempdiag(:,:)       
     end do
 
-     if ( allocated(id_tracerdtwet_uwc_col) ) then
-        do n = 1,size(id_tracerdtwet_uwc_col)
-           if ( id_tracerdtwet_uwc_col(n) > 0 ) then
-             used = send_data( id_tracerdtwet_uwc_col(n), uw_wetdep(:,:,n), Time, is, js)
-           end if
-        end do
-     end if
+    if ( allocated(id_tracerdtwet_uwc_col) ) then
+      do n = 1,size(id_tracerdtwet_uwc_col)
+        if ( id_tracerdtwet_uwc_col(n) > 0 ) then
+          used = send_data( id_tracerdtwet_uwc_col(n), uw_wetdep(:,:,n), &
+                                                             Time, is, js)
+        end if
+      end do
+    end if
 
 !>>>
 

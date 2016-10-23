@@ -1,7 +1,8 @@
-MODULE gamma_mg_mod
+                     MODULE gamma_mg_mod
 
-use fms_mod,      only : write_version_number
-use mg_const_mod, only : mg_const_init, mg_pr
+
+use fms_mod,               only : write_version_number
+use lscloud_constants_mod, only : lscloud_constants_init, mg_pr
 
 implicit none
 private
@@ -19,7 +20,9 @@ Character(len=128) :: Tagname = '$Name$'
 logical            :: module_is_initialized = .false.
 
   
-CONTAINS
+                               CONTAINS
+
+
 
 !##########################################################################
 
@@ -36,7 +39,7 @@ SUBROUTINE gamma_mg_init
 !-----------------------------------------------------------------------
 !    be sure needed modules are initialized.
 !-----------------------------------------------------------------------
-      call mg_const_init
+      call lscloud_constants_init
 
 !------------------------------------------------------------------------
 !    declare module initialized.
@@ -321,4 +324,4 @@ END SUBROUTINE  gamma_mg_end
 !########################################################################
 
 
-END MODULE gamma_mg_mod
+                      END MODULE gamma_mg_mod

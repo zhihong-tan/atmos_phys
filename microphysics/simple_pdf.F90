@@ -1,11 +1,12 @@
-MODULE simple_pdf_mod
+                        MODULE simple_pdf_mod
 
 !MNS NOTE: THIS IS EXPERIMENTAL...
 
 use fms_mod,                   only: write_version_number
 use beta_dist_mod,             only: incomplete_beta, beta_dist_init,  &
                                      beta_dist_end
-use strat_cloud_utilities_mod, only: strat_cloud_utilities_init, &
+use lscloud_types_mod,         only: lscloud_types_init, &
+                                     lscloud_nml_type, &
                                      diag_id_type, diag_pt_type
 
 implicit none
@@ -13,26 +14,34 @@ private
 
 !-----------------------------------------------------------------------
 !----interfaces--------------------------------------------------------
+
 public  simple_pdf, simple_pdf_init, simple_pdf_end
 
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
-Character(len=128) :: Version = '$Id$'
-Character(len=128) :: Tagname = '$Name$'
+Character(len=128) :: Version = '$Id'
+Character(len=128) :: Tagname = '$Name'
 
 
+integer :: betaP
+real :: qthalfwidth
 
 logical            :: module_is_initialized = .false.
 
 
+!##########################################################################
 
-CONTAINS
+
+
+                             CONTAINS
 
 
 
 !#########################################################################
 
-SUBROUTINE simple_pdf_init
+SUBROUTINE simple_pdf_init (Nml_lsc)
+
+type(lscloud_nml_type), intent(in) :: Nml_lsc
 
 !-----------------------------------------------------------------------
       if (module_is_initialized) return
@@ -45,9 +54,14 @@ SUBROUTINE simple_pdf_init
 !-----------------------------------------------------------------------
 !    make sure needed modules have been initialized.
 !-----------------------------------------------------------------------
-      call strat_cloud_utilities_init
+      call lscloud_types_init
       call beta_dist_init
 
+      betaP = Nml_lsc%betaP
+      qthalfwidth = Nml_lsc%qthalfwidth
+      
+      
+      
 !-----------------------------------------------------------------------
 !    mark this module initialized.
 !-----------------------------------------------------------------------
@@ -61,7 +75,7 @@ END SUBROUTINE simple_pdf_init
 !#########################################################################
 
 SUBROUTINE simple_pdf (j, idim, jdim, kdim, qmin, qa, qtot, qs, gamma, &
-                       qthalfwidth, betaP, inv_dtcloud, SA_0, n_diag_4d, &
+                       inv_dtcloud, SA_0, n_diag_4d, &
                        diag_4d, diag_id, diag_pt, SA, qa_upd)    
 
 !-------------------------------------------------------------------------
@@ -69,8 +83,6 @@ INTEGER,                               INTENT(IN)    :: j, idim, jdim, kdim
 REAL,                                  INTENT(IN)    :: qmin, inv_dtcloud
 REAL, dimension(idim,kdim),            INTENT(IN)    :: qtot, qa, qs, &
                                                         gamma, SA_0
-INTEGER,                               INTENT(IN)    :: betaP
-REAL,                                  INTENT(IN)    :: qthalfwidth
 INTEGER,                               INTENT(IN)    :: n_diag_4d
 REAL, dimension(idim, jdim, kdim, 0:n_diag_4d),   &
                                        INTENT(INOUT) :: diag_4d
@@ -80,6 +92,7 @@ REAL, dimension(idim, kdim),           INTENT(OUT)   :: SA, qa_upd
 
 !------------------------------------------------------------------------
 !local variables
+!
       REAL, dimension(idim, kdim)   :: qta3, qtqsa3, qcg, qag, qa1, qa0, &
                                        qabar
       real, dimension(idim)         :: qtbar, deltaQ, qtmin, qs_norm, &
@@ -232,4 +245,4 @@ END SUBROUTINE simple_pdf_end
 
 
 
-END MODULE simple_pdf_mod
+                       END MODULE simple_pdf_mod

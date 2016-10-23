@@ -1,10 +1,11 @@
 module detr_ice_num_mod
 
-use mg_const_mod, only : mg_const_init, rhoi 
-use mpp_mod,      only : input_nml_file
-use fms_mod,      only : mpp_pe, mpp_root_pe, file_exist, stdlog, &
-                         open_namelist_file, check_nml_error, close_file, &
-                         write_version_number, error_mesg, FATAL
+use lscloud_constants_mod, only : lscloud_constants_init, rhoi 
+use mpp_mod,               only : input_nml_file
+use fms_mod,               only : mpp_pe, mpp_root_pe, file_exist, stdlog, &
+                                  open_namelist_file, check_nml_error,   &
+                                  close_file, write_version_number,  &
+                                  error_mesg, FATAL
 
 implicit none
 private
@@ -73,15 +74,15 @@ SUBROUTINE detr_ice_num_init
 
 !--------- write version and namelist to standard log ------------
 
-        call write_version_number ( version, tagname )
-        logunit = stdlog()
-        if ( mpp_pe() == mpp_root_pe() ) &
+      call write_version_number ( version, tagname )
+      logunit = stdlog()
+      if ( mpp_pe() == mpp_root_pe() ) &
                       write ( logunit, nml=detr_ice_num_nml )
 
 !--------------------------------------------------------------------------
 !    make sure needed modules have been initialized.
 !--------------------------------------------------------------------------
-      call mg_const_init
+      call lscloud_constants_init
 
 !--------------------------------------------------------------------------
 !    check for valid values.

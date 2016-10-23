@@ -21,7 +21,8 @@ use tracer_manager_mod,    only: tracer_manager_init, &
 
 use aerosol_types_mod,     only: aerosol_type
 
-use physics_radiation_exch_mod, only: clouds_from_moist_block_type
+use physics_radiation_exch_mod, only: clouds_from_moist_block_type, &
+                                      exchange_control_type
 
 !  cloud radiation modules:
 
@@ -79,11 +80,9 @@ logical ::  module_is_initialized = .false. ! module initialized?
 
 subroutine cloudrad_driver_init (Time, rad_time_step,  &
                                  lonb, latb, axes, pref, &
-                                 donner_meso_is_largescale, &
                                  num_sw_cloud_bands, &
                                  num_lw_cloud_bands, &
-                                 Cldrad_control, &
-                                 cloud_type_form_out)
+                                 Cldrad_control, Exch_ctrl )
 
 !---------------------------------------------------------------------
 !   cloudrad_driver_init is the constructor
@@ -96,11 +95,10 @@ integer,                     intent(in)    :: rad_time_step
 real, dimension(:,:),        intent(in)    :: lonb, latb
 integer, dimension(4),       intent(in)    :: axes
 real, dimension(:,:),        intent(in)    :: pref
-logical,                     intent(in)    :: donner_meso_is_largescale
 integer,                     intent(in)    :: num_sw_cloud_bands, &
                                               num_lw_cloud_bands
 type(cloudrad_control_type), intent(inout) :: Cldrad_control
-character(len=16),           intent(out)   :: cloud_type_form_out
+type(exchange_control_type), intent(inout) :: Exch_ctrl
 !----------------------------------------------------------------------
 !   intent(in) variables:
 !
@@ -168,11 +166,11 @@ character(len=16),           intent(out)   :: cloud_type_form_out
 !    initialize the modules that are accessed from radiation_driver_mod.
 !---------------------------------------------------------------------
 
-      call cloud_spec_init (pref, lonb, latb, axes, Time, rad_time_step, &
-                            Cldrad_control, cloud_type_form_out)
+      call cloud_spec_init (Exch_ctrl, pref, lonb, latb, axes, Time,   &
+                            rad_time_step, Cldrad_control)
 
       call cloudrad_package_init   (pref, lonb, latb, axes, Time, &
-                                    donner_meso_is_largescale, Cldrad_control)
+                       Exch_ctrl%donner_meso_is_largescale, Cldrad_control)
 
 !---------------------------------------------------------------------
 !    set flag to indicate that module has been successfully initialized.

@@ -337,34 +337,9 @@ logical :: apply_temp_limits = .true.  ! upper and lower limits are
 logical :: apply_vapor_limits = .true. ! lower limit is applied to
                                        ! water vapor
 
-! NOTE: this variable needs to be passed to
-!       moist_processes_init and return_cosp_inputs
-!logical :: donner_meso_is_largescale = .true.
-!                               ! donner meso clouds are treated as 
-!                               ! largescale (rather than convective)
-!                               ! as far as the COSP simulator is 
-!                               ! concerned ?
-
 logical :: nonzero_rad_flux_init = .false.
 
 logical :: do_radiation = .true.
-
-character(len=16) :: cosp_precip_sources = '    '
-                               ! sources of the precip fields to be sent to
-                               ! COSP. Default = '  ' implies precip from
-                               ! the radiatively-active clouds defined by
-                               ! variable cloud_type_form in cloud_spec_nml
-                               ! will be sent. Other available choices:
-                               ! 'strat', 'deep', 'uw', 'stratdeep',
-                               ! 'stratuw', deepuw', 'stratdeepuw',
-                               ! 'noprecip'.
-                               ! CURRENTLY NOT AVAILABLE: precip from ras,
-                               ! lsc and mca. For completeness, these could
-                               ! be made available, but since no cloud
-                               ! fields are saved for these schemes to be
-                               ! made available to COSP, they are also
-                               ! currently not considered as precip
-                               ! sources.
 
 logical :: do_conserve_energy = .false.
                                       ! when true, the actually model layer
@@ -487,7 +462,6 @@ namelist /radiation_driver_nml/ do_radiation, &
                                 lat_for_solar_input, lon_for_solar_input, &
                                 rad_time_step, sw_rad_time_step, use_single_lw_sw_ts, &
                                 nonzero_rad_flux_init, &
-                                cosp_precip_sources, &
                                 do_conserve_energy
 !---------------------------------------------------------------------
 !---- public data ----
@@ -884,7 +858,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       integer           ::   ico2
       integer           ::   num_sw_bands, num_lw_bands
 
-      character(len=16) ::  cosp_precip_sources_modified
 
 !---------------------------------------------------------------------
 !   local variables
@@ -1280,10 +1253,9 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       call cloudrad_driver_init (Time, rad_time_step, &
                                  lonb, latb, axes, &
                                  Radiation%glbl_qty%pref, &
-                                 Exch_ctrl%donner_meso_is_largescale, &
                                  num_sw_bands, num_lw_bands, &
                                  Cldrad_control, &
-                                 Exch_ctrl%cloud_type_form)
+                                 Exch_ctrl)
       call mpp_clock_end ( cloud_spec_init_clock )
 
 !-----------------------------------------------------------------------
@@ -1402,19 +1374,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !---------------------------------------------------------------------
         deallocate (aerosol_names, aerosol_family_names)
 
-!--------------------------------------------------------------------
-!    these variables are needed to preserve radiative inputs to COSP from 
-!    physics_driver_down/radiation_block to physics_driver_up.
-!--------------------------------------------------------------------
-
-       if (do_radiation) then
-         if (trim(cosp_precip_sources) .ne. '  ') then
-           if (trim(Exch_ctrl%cloud_type_form) /= trim(cosp_precip_sources))   &
-                call error_mesg ('radiation_package_init',  &
-                'cloud_type_form (cloud_spec_nml) does not match cosp_precip_sources', NOTE)
-         endif
-       endif ! do_radiation
-
 !----------------------------------------------------------------------
 ! restart logic needs to be handled for many different cases
 ! 1) concurrent radiation where radiation restart data must
@@ -1516,6 +1475,11 @@ type(radiation_flux_control_type), intent(inout) :: Rad_flux_control
     call define_rad_times (Time, Time_next, Rad_time)
 
     if (do_rad) then
+
+!----------------------------------------------------------------------
+!    call radiative_gases_time_vary to retrieve appropriate gas fields from
+!    the climatology, if that source for radiative gases is being used.
+!----------------------------------------------------------------------
        call radiative_gases_time_vary (Rad_time, gavg_rrv, &
                                        Rad_control%do_lw_rad, Rad_gases_tv)
 
@@ -1896,10 +1860,10 @@ real, dimension(:,:,:,:), pointer :: r, rm
       gavg_rrv => Radiation_glbl_qty%gavg_q
 
 !----------------------------------------------------------------------
-!    prepare to calculate radiative forcings. obtain the valid time
-!    at which the radiation calculation is to apply, the needed atmos-
-!    pheric fields, and any needed inputs from other physics modules.
-!---------------------------------------------------------------------
+!    prepare to calculate radiative fluxes and heating rates. obtain the 
+!    needed atmospheric fields, and needed inputs from other physics 
+!    modules.
+!----------------------------------------------------------------------
       call mpp_clock_begin ( radiation_clock )
 
 !---------------------------------------------------------------------
@@ -2156,27 +2120,20 @@ real, dimension(:,:,:,:), pointer :: r, rm
 
 !---------------------------------------------------------------------
 !    if COSP is activated and this is a step upon which the cosp
-!    simulator is to be called, verify that stochastic clouds are
-!    also activated. if they are not, then exit, since COSP should only
-!    be requested when stochastic clouds are active.
+!    simulator is to be called, call return_cosp_inputs to obtain the 
+!    radiative inputs that COSP will need.
 !---------------------------------------------------------------------
       if (Exch_ctrl%do_cosp .or. Exch_ctrl%do_modis_yim) then
-        if (do_rad) then
-
-
-!---------------------------------------------------------------------
-!    call return_cosp_inputs to retrieve the radiation inputs needed 
-!    by COSP.
-!---------------------------------------------------------------------
+!       if (Cosp_rad_control%step_to_call_cosp) then
+        if (Cosp_rad_control%step_to_call_cosp .or. do_rad) then
           call return_cosp_inputs        &
-                (is, ie, js, je, Exch_ctrl%donner_meso_is_largescale,  &
+                (is, ie, js, je,  &
                  Time_next, Atmos_input%psfc, Atmos_input%press, Atmos_input%pflux, &
                  Atmos_input%temp, Atmos_input%deltaz, Cosp_rad_block%stoch_cloud_type, &
                  Cosp_rad_block%stoch_conc_drop, Cosp_rad_block%stoch_conc_ice, &
                  Cosp_rad_block%stoch_size_drop, Cosp_rad_block%stoch_size_ice, &
                  Cosp_rad_block%tau_stoch, Cosp_rad_block%lwem_stoch, &
                  Model_microphys, Cldrad_control, Exch_ctrl)
-                !Exch_ctrl%do_cosp, Exch_ctrl%do_modis_yim)
 
           Cosp_rad_block%mr_ozone(:,:,:) = Rad_gases%qo3(:,:,:)
           where (Rad_output%flux_sw_surf(is:ie,js:je) > 0.0)
@@ -2185,13 +2142,17 @@ real, dimension(:,:,:,:), pointer :: r, rm
              Cosp_rad_block%daytime(:,:) = 0.0
           endwhere
 
-        endif ! (do_rad)
-!--------------------------------------------------------------------
-! define step_to_call_cosp to indicate that this is a radiation
-! step and therefore one on which COSP should be called in 
-! physics_driver_up.
-!--------------------------------------------------------------------
-        Cosp_rad_control%step_to_call_cosp = do_rad
+        endif ! (step_to_call_cosp)
+
+! 11/15/15 define here rather than in physics_driver_down
+         Cosp_rad_block%tsurf_save(:,:) = t_surf_rad(:,:)
+
+        if (Exch_ctrl%do_modis_yim .and. do_rad) then
+          call  modis_yim (is, js, Time_next, Atmos_input%psfc,  &
+                           Atmos_input%press,  &
+                           Cosp_rad_block%tau_stoch(:,:,:,:), &
+                           Model_microphys)
+        endif
       endif ! (Exch_ctrl%do_cosp)
 
 !-------------------------------------------------------------------
@@ -2202,8 +2163,7 @@ real, dimension(:,:,:,:), pointer :: r, rm
 !    for use in other component models. the lw heating rate is stored
 !    in a module variable for potential use in other physics modules.
 !    the radiative heating rate is also added to a variable which is
-!    accumulating the radiative and turbulent heating rates, and which
-!    is needed by strat_cloud_mod.
+!    accumulating the radiative and turbulent heating rates.
 !-------------------------------------------------------------------
       Rad_flux_block%tdt_rad = Rad_output%tdt_rad(is:ie,js:je,:)
       Rad_flux_block%tdt_lw  = Rad_output%tdtlw(is:ie,js:je,:)
@@ -3326,13 +3286,12 @@ end subroutine radiation_driver_end
 !######################################################################
 
 subroutine return_cosp_inputs (  &
-                      is, ie, js, je, donner_meso_is_largescale, Time_diag, &
+                      is, ie, js, je, Time_diag, &
                       psfc, press, pflux, temp, deltaz, stoch_cloud_type, &
                       stoch_conc_drop, stoch_conc_ice, stoch_size_drop,&
                       stoch_size_ice, tau_stoch, lwem_stoch, &
                       Model_microphys, Cldrad_control, Exch_ctrl)
 
-                     !Model_microphys, do_cosp, do_modis_yim)
 
 !---------------------------------------------------------------------
 !    subroutine return_cosp_inputs calculates and returns the fields 
@@ -3340,7 +3299,6 @@ subroutine return_cosp_inputs (  &
 !---------------------------------------------------------------------
 
 integer, intent(in)                     :: is,ie, js, je
-logical, intent(in)                     :: donner_meso_is_largescale
 type(time_type),        intent(in)      :: Time_diag
 real, dimension(:,:),   intent(in)      :: psfc
 real, dimension(:,:,:), intent(in)      :: press, pflux, temp, deltaz
@@ -3411,7 +3369,7 @@ real, dimension(:,:,:,:), intent(out)   ::    &
 !    donner meso clouds may be treated either as large-scale or
 !    convective clouds, dependent on donner_meso_is_largescale.
 !---------------------------------------------------------------------
-        if (donner_meso_is_largescale) then
+        if (Exch_ctrl%donner_meso_is_largescale) then
           where (stoch_cloud_type(:,:,:,:) == donner_meso_index)  ! == 2)
             stoch_cloud_type(:,:,:,:) = strat_index               ! = 1
           end where
@@ -3443,10 +3401,10 @@ real, dimension(:,:,:,:), intent(out)   ::    &
       endif
 
 !-------------------------------------------------------------------
-      if (Exch_ctrl%do_modis_yim) then
-        call  modis_yim (is, js, Time_diag, psfc, press, &
-                         Tau_stoch(:,:,:,:), Model_microphys)
-      endif
+!     if (Exch_ctrl%do_modis_yim) then
+!       call  modis_yim (is, js, Time_diag, psfc, press, &
+!                        Tau_stoch(:,:,:,:), Model_microphys)
+!     endif
       call modis_cmip (is, js, Time_diag, press, pflux, temp, &
                        Model_microphys)
 

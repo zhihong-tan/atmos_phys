@@ -12,7 +12,7 @@ use block_control_mod,  only: block_control_type
 !---Exch_ctrl
  public exchange_control_type
  type  exchange_control_type
-     logical           :: doing_strat
+     logical           :: doing_prog_clouds
      logical           :: doing_donner
      logical           :: doing_uw_conv
      logical           :: do_cosp
@@ -20,7 +20,22 @@ use block_control_mod,  only: block_control_type
      logical           :: donner_meso_is_largescale
      integer           :: ncol
      integer           :: ncld
+     real              :: min_diam_ice
+     real              :: dcs
+     real              :: min_diam_drop
+     real              :: max_diam_drop
+     real              :: cosp_frequency
      character(len=16) :: cloud_type_form  ! indicator of radiatively active clouds
+     character(len=16) :: cosp_precip_sources ! indicator of precipitation sources that are seen in COSP
+     real              :: qmin
+     real              :: N_min
+     real              :: N_land
+     real              :: N_ocean
+     real              :: qcvar
+     integer           :: overlap
+     logical           :: do_liq_num
+     logical           :: do_ice_num
+     integer           :: do_clubb
  end type  exchange_control_type
 
 !---
@@ -110,6 +125,7 @@ end type cloud_scheme_data_type
                                                stoch_size_ice   _NULL
      real, dimension(:,:,:),   _ALLOCATABLE :: mr_ozone         _NULL
      real, dimension(:,:),     _ALLOCATABLE :: daytime          _NULL
+     real, dimension(:,:),     _ALLOCATABLE :: tsurf_save       _NULL
  end type cosp_from_rad_block_type
 
 !--- Cosp Rad control type
@@ -156,6 +172,7 @@ contains
                       Cosp_rad(n)%block(nb)%stoch_size_drop (ix,jx,npz,ncol), &
                       Cosp_rad(n)%block(nb)%stoch_size_ice  (ix,jx,npz,ncol), &
                       Cosp_rad(n)%block(nb)%mr_ozone        (ix,jx,npz),      &
+                      Cosp_rad(n)%block(nb)%tsurf_save      (ix,jx) ,         &
                       Cosp_rad(n)%block(nb)%daytime         (ix,jx)          )
       ! initial values
            Cosp_rad(n)%block(nb)%tau_stoch        = 0.
@@ -166,6 +183,7 @@ contains
            Cosp_rad(n)%block(nb)%stoch_size_drop  = 0.
            Cosp_rad(n)%block(nb)%stoch_size_ice   = 0.
            Cosp_rad(n)%block(nb)%mr_ozone         = 0.
+           Cosp_rad(n)%block(nb)%tsurf_save       = 0.
            Cosp_rad(n)%block(nb)%daytime          = 0.
          end do
        endif
@@ -192,6 +210,7 @@ contains
                       Cosp_rad(n)%block(nb)%stoch_size_drop,  &
                       Cosp_rad(n)%block(nb)%stoch_size_ice,   &
                       Cosp_rad(n)%block(nb)%mr_ozone,         &
+                      Cosp_rad(n)%block(nb)%tsurf_save,       &
                       Cosp_rad(n)%block(nb)%daytime)
         end do
       endif
@@ -351,7 +370,16 @@ contains
         allocate(Moist_clouds(n)%block(nb)%Cloud_data(Exch_ctrl%ncld)) ! may want to compute locally from flag in Exch_ctrl
         nc = 0
 
-        if (Exch_ctrl%doing_strat) then
+!-------------------------------------------------------------------------
+!    Initialize here so that these may be variables may be referenced even 
+!    when scheme not active.
+!-------------------------------------------------------------------------
+        Moist_clouds(n)%block(nb)%index_strat = 0
+        Moist_clouds(n)%block(nb)%index_donner_cell = 0
+        Moist_clouds(n)%block(nb)%index_donner_meso = 0
+        Moist_clouds(n)%block(nb)%index_uw_conv     = 0
+
+        if (Exch_ctrl%doing_prog_clouds) then
            nc = nc+1
            Moist_clouds(n)%block(nb)%index_strat = nc
            call alloc_cloud_scheme_data_type('strat_cloud',ix,jx,npz,Moist_clouds(n)%block(nb)%Cloud_data(nc))
@@ -553,6 +581,7 @@ end subroutine alloc_cloud_scheme_data_type
          Cosp_rad(1)%block(nb)%stoch_size_ice   = Cosp_rad(2)%block(nb)%stoch_size_ice 
          Cosp_rad(1)%block(nb)%mr_ozone         = Cosp_rad(2)%block(nb)%mr_ozone
          Cosp_rad(1)%block(nb)%daytime          = Cosp_rad(2)%block(nb)%daytime 
+         Cosp_rad(1)%block(nb)%tsurf_save       = Cosp_rad(2)%block(nb)%tsurf_save
        endif
 
        do nc = 1, size(Moist_clouds(1)%block(nb)%Cloud_data,1)

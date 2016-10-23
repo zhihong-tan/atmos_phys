@@ -613,6 +613,7 @@ type(ctend),             intent(inout)  :: ct
         endif
       else  ! (calc_conv_on_this_step)
         total_precip(:,:) = 0.0
+        mhalf_3d_local = 0.
 
 !---------------------------------------------------------------------
 !    end of if loop for code executed only on steps for which the donner

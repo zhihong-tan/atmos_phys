@@ -193,8 +193,6 @@ real, parameter :: gust_const = 1.0
 ! Aerorols related
 integer, parameter  :: n_totmass = 4
 integer, parameter  :: n_imass   = 12
-real                :: sea_salt_scale = 0.1
-real                :: om_to_oc       = 1.67
 
 ! For the ice nucleation
 integer :: rh_act_opt = 2           ! option as to which rh to use for ice
@@ -224,12 +222,8 @@ LOGICAL :: do_var_limit_ice
 
 logical   ::                       &
    use_sclr_HOC       = .false.,   &
-   use_online_aerosol = .false.,   &
-   use_sub_seasalt    = .true.,    &
    use_cloud_cover    = .false.,   &
-   do_dust_berg       = .false.,   &
    do_drp_evap_cf     = .true.,    &
-   do_liq_num         = .true.,    &
    spread_host_tdcy   = .true.
 
 real ::  cloud_frac_min_in = 0.008  ! minimum cloud fraction
@@ -249,7 +243,6 @@ integer ::   debug_level = 2     ! Amount of debugging information
 
 logical :: do_aeromass_clubb_const = .false.
 real    :: aeromass_clubb_const = 2.25e-12
-logical :: do_ice_nucl_wpdf       = .true.
 real    :: rh_factor = 1.0
 
 real    :: host_dx = 4.0e5
@@ -267,10 +260,6 @@ integer ::  do_alt_cloud = 0
 logical                 ::  do_liquid_only_in_clubb = .false.
 ! <--- h1g, 2012-06-14
 
-! ---> h1g, 2012-08-23, add option of applying surface fluxes in host-model
-!                       by default .true. (that is, applying surface fluxes in host-model)
-logical                 ::  l_host_applies_sfc_fluxes = .true.
-! <--- h1g, 2012-08-23
 real    ::  qcvar_clubb_min = 0.001,               &
             qcvar_clubb_max = 2.0,                 &
             scale_negative_qcvar_factor = 1.0,     &
@@ -286,12 +275,8 @@ logical                 :: use_avg_qcvar = .false.
 
 namelist /clubb_setting_nml/                                &
          use_sclr_HOC,                                      &
-         use_online_aerosol,                                &
-         use_sub_seasalt,                                   &
          use_cloud_cover,                                   &
-         do_dust_berg,                                      &
          do_drp_evap_cf,                                    &
-         do_liq_num,                                        &
          spread_host_tdcy,                                  &
          cloud_frac_min_in,                                 &
          saturation_formula_in,                             &
@@ -300,7 +285,6 @@ namelist /clubb_setting_nml/                                &
          clubb_dt,                                          &
          debug_level,                                       &
          do_aeromass_clubb_const, aeromass_clubb_const,     &
-         do_ice_nucl_wpdf,                                  &
          host_dx, host_dy, icheck_temp,                     &
          do_conv_flag_clubb,                                &
          avg_deltaz,                                        &
@@ -310,7 +294,6 @@ namelist /clubb_setting_nml/                                &
          var_limit_ice,                                     &
          cf_thresh_nucl,                                    &
          rh_factor,                                         &
-         l_host_applies_sfc_fluxes,                         &
          qcvar_clubb_min,  qcvar_clubb_max,                 &
          use_qcvar_in_cloud, do_scale_negative_qcvar,       & 
          use_avg4qcvar, use_avg_qcvar,                      &
@@ -344,6 +327,7 @@ namelist /clubb_stats_setting_nml/ &
       do_stats, lon_stats, lat_stats, fname_prefix, stats_tsamp, stats_tout, stats_fmt
 #endif
 
+ 
 ! ----- Local arrays -----
 
 real, dimension(:),     allocatable :: momentum_heights, thermodynamic_heights
@@ -415,6 +399,16 @@ integer :: id_sulfate,                   &  ! sulfate aerosol mass concentration
 integer, dimension(:), allocatable :: id_tracer_clubb
 integer, dimension(:), allocatable :: id_tracer_clubb_col
 
+!module variables obtained during initialization from other modules
+
+! ---> h1g, 2012-08-23, add option of applying surface fluxes in host-model
+!                       by default .true. (that is, applying surface fluxes in host-model)
+logical                 ::  l_host_applies_sfc_fluxes 
+! <--- h1g, 2012-08-23
+!RSH Obtain from lscloud_driver:
+logical :: do_ice_nucl_wpdf    
+logical :: do_liq_num
+
 !-----------------------------------------------------------------------
 
 contains
@@ -431,7 +425,7 @@ contains
                    tdt, qdt, rdt, rdiag, udt, vdt,                   &
                    dcond_ls_liquid, dcond_ls_ice,             &
                    Ndrop_act_clubb, Icedrop_act_clubb,        &
-                   ndust, rbar_dust,                          &
+                   totalmass1, imass1,  &
                    diff_t_clubb,                              &
                    qcvar_clubb,                               &
                    tdt_shf,  qdt_lhf ,                        &                   
@@ -556,7 +550,7 @@ contains
   real, intent(out), dimension(:,:,:)           ::  dcond_ls_ice
   real, intent(out), dimension(:,:,:)           ::  Ndrop_act_clubb
   real, intent(out), dimension(:,:,:)           ::  Icedrop_act_clubb
-  real, intent(out), dimension(:,:,:)           ::  ndust, rbar_dust
+  real, intent( in), dimension(:,:,:,:)         ::  totalmass1, imass1
   real, intent(out), dimension(:,:,:)           ::  diff_t_clubb
   real, intent(out), optional, dimension(:,:,:) ::  qcvar_clubb   
   type(aerosol_type), intent(in), optional      ::  Aerosol
@@ -568,10 +562,6 @@ contains
   ! ----- Local variables -----
 
   type(time_type)                             Time
-  ! get online aerosol mass
-  real, dimension(size(t,1),size(t,2),size(t,3))     ::  airdens, concen_dust_sub
-  real, dimension(size(t,1),size(t,2),size(t,3), n_totmass)  :: totalmass1
-  real, dimension(size(t,1),size(t,2),size(t,3), n_imass)    :: imass1
 
   real, dimension( size(t,3)+1 )                :: diff_t_1d
   real, dimension( size(t,3)+1 )                :: qcvar_clubb_1d, rcp2_zt, cf_avg, rcm_avg, rcp2_avg, qcvar_clubb_avg, qcvar_clubb_tmp, &
@@ -759,19 +749,6 @@ contains
   dcond_ls_liquid  = 0.0
   dcond_ls_ice     = 0.0
 
-  concen_dust_sub = 0.0
-  totalmass1 = 0.0
-  imass1 = 0.0
-
-  airdens = pfull/(Rd*t*(1.0-r(:,:,:,nql)-r(:,:,:,nqi)))
-
-  ! get aerosol mass
-! --->h1g, 2012-06-15, get both total (totalmass1) and ice aerosol mass (imass1)
-  !if ( nqn> 0 ) call get_aer_mass_host (is, js, Time_next, phalf, airdens, t, &
-  !                     concen_dust_sub, totalmass1, Aerosol, mask)
-    if ( nqn> 0 ) call get_aer_mass_fron_strat( idim,jdim,kdim,  phalf, airdens, t, &
-                            concen_dust_sub, ndust, rbar_dust, totalmass1, imass1, Aerosol)
-! <---h1g, 2012-06-15
 
   omega                = omega_avg
   env_qv_scale         = 1.0
@@ -2196,7 +2173,9 @@ contains
   !=====================================================================
   !=====================================================================
 
-  subroutine clubb_init(id, jd, kd, lon, lat, axes, Time, phalf )
+  subroutine clubb_init(id, jd, kd, lon, lat, axes, Time, phalf, &
+                              l_host_applies_sfc_fluxes_in , &
+                                   do_ice_nucl_wpdf_in, do_liq_num_in)
 
   !---------------------------------------------------------------------
   ! Initialize and set-up clubb
@@ -2227,6 +2206,9 @@ contains
   integer, dimension(4), intent(in)    :: axes
   type(time_type), intent(in)          :: Time
   real, dimension(:,:,:), intent(in)   :: phalf
+  logical,   intent(in)                :: l_host_applies_sfc_fluxes_in
+  logical,   intent(in)                :: do_ice_nucl_wpdf_in   
+  logical,   intent(in)                :: do_liq_num_in         
  
   ! ----- Local variables -----
 
@@ -2249,6 +2231,7 @@ contains
   else
     module_is_initialized = .true.
   endif
+
 
   clubb_core_clock = mpp_clock_id( '   clubb_driver: core',    &
                                    grain=CLOCK_MODULE_DRIVER )
@@ -2274,6 +2257,12 @@ contains
 20  call close_file( unit )
 
   end if
+
+!   Save needed module variables
+  do_liq_num = do_liq_num_in
+  do_ice_nucl_wpdf = do_ice_nucl_wpdf_in
+  l_host_applies_sfc_fluxes = l_host_applies_sfc_fluxes_in
+
 
   ! Get tracer indices
   nsphum = get_tracer_index ( MODEL_ATMOS, 'sphum' )
@@ -3363,389 +3352,6 @@ enddo
 return
 end subroutine  warm_ice_nucl_mns_clubb
 !#######################################################################    
-
-
-  ! ----------------------------------------------------------------------------
-  ! This subroutine gets total aerosol mass: totalmass1; ice aerosol mass: imass1 
-  
-  subroutine get_aer_mass_fron_strat( idim,jdim,kdim,  phalf, airdens, T, &
-                            concen_dust_sub, ndust, rbar_dust, totalmass1, imass1, Aerosol)
-
-use aerosol_params_mod,        only :  Nfact_du1,  &
-                                       Nfact_du2, Nfact_du3, Nfact_du4, &
-                                       Nfact_du5, rbar_du1, rbar_du2,   &
-                                       rbar_du3, rbar_du4, rbar_du5
-
-implicit none
-  ! Calling arguments
-INTEGER,                                   INTENT (in)   :: idim, jdim,  &
-                                                            kdim
-REAL, DIMENSION(idim,jdim,kdim+1),         INTENT(in )   :: phalf
-REAL, DIMENSION(idim,jdim,kdim),           INTENT(in )   :: airdens, T 
-REAL, DIMENSION(idim,jdim,kdim),           INTENT(inout) :: concen_dust_sub
-REAL, DIMENSION(idim,jdim,kdim),           INTENT(inout) :: ndust
-REAL, DIMENSION(idim,jdim,kdim),           INTENT(inout) :: rbar_dust
-REAL, DIMENSION(idim,jdim,kdim,n_totmass), INTENT(inout) :: totalmass1
-REAL, DIMENSION(idim,jdim,kdim,n_imass),   INTENT(inout) :: imass1
-TYPE(aerosol_type),                        INTENT (in)   :: Aerosol
-
-
-
-! local  variable
-REAL, DIMENSION(idim,jdim,kdim) :: pthickness, concen_all_sub, &
-                                  concen_ss_sub, concen_ss_sup
-INTEGER :: i, j, k, na, s
-!-------------------------------------------------------------------------
-
-!-------------------------------------------------------------------------
-!    initialize output field (sub-micron dust content).
-!-------------------------------------------------------------------------
-      do k=1,kdim
-        do j=1,jdim
-          do i=1,idim
-            concen_dust_sub(i,j,k) = 0.
-          end do
-        end do
-      end do
-      
-      
-!-------------------------------------------------------------------------
-!    initialize local accumulation arrays. 
-!-------------------------------------------------------------------------
-      if ( use_online_aerosol ) then
-        do k=1,kdim
-          do j=1,jdim
-            do i=1,idim
-              concen_ss_sub(i,j,k) = 0.
-              concen_ss_sup(i,j,k) = 0.
-              concen_all_sub(i,j,k) = 0.
-            end do
-          end do
-        end do
-      endif
-
-!------------------------------------------------------------------------
-!    define layer thickness.
-!------------------------------------------------------------------------
-      do k=1,kdim
-        do j=1,jdim
-          do i=1,idim
-            if (phalf(i,j,k) < 1.0) then
-              pthickness(i,j,k) = (phalf(i,j,k+1) - phalf(i,j,k))/&
-                                               grav/airdens(i,j,k)
-            else
-              pthickness(i,j,k) = log(phalf(i,j,k+1)/ &
-                                  phalf(i,j,k))*8.314*T(i,j,k)/(9.8*0.02888)
-            end if
-          end do
-        end do 
-      end do
-!-------------------------------------------------------------------------
-!    define the aerosol content in various categories that may be used for
-!    droplet or ice crystal nucleation. save various diagnostics as they
-!    are calculated.
-!-------------------------------------------------------------------------
-      if ( do_liq_num ) then
-        if ( use_online_aerosol ) then
-          do na = 1,size(Aerosol%aerosol,4)               
-            if (trim(Aerosol%aerosol_names(na)) == 'so4' .or. &
-                trim(Aerosol%aerosol_names(na)) == 'so4_anthro' .or.&
-                trim(Aerosol%aerosol_names(na)) == 'so4_natural')  then
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    totalmass1(i,j,k,1) = totalmass1(i,j,k,1) + &
-                                          Aerosol%aerosol(i,j,k,na)
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'omphilic' .or.&
-                   trim(Aerosol%aerosol_names(na)) == 'omphobic')  then
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    totalmass1(i,j,k,4) = totalmass1(i,j,k,4) +  &
-                                          Aerosol%aerosol(i,j,k,na)
-
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt1' ) then 
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_ss_sub(i,j,k) = concen_ss_sub(i,j,k) +  &
-                                           Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,1) = Aerosol%aerosol(i,j,k,na)/  &
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt2') then
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_ss_sub(i,j,k) = concen_ss_sub(i,j,k) +  &
-                                           Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,2) = Aerosol%aerosol(i,j,k,na)/   &
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt3') then 
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_ss_sup(i,j,k) = concen_ss_sup(i,j,k) +  &
-                                           Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,3) = Aerosol%aerosol(i,j,k,na)/  &
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt4' ) then 
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_ss_sup(i,j,k) = concen_ss_sup(i,j,k) +  &
-                                           Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,4) = Aerosol%aerosol(i,j,k,na)/  &
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'seasalt5' ) then
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_ss_sup(i,j,k) = concen_ss_sup(i,j,k) +  &
-                                           Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,5) = Aerosol%aerosol(i,j,k,na)/   &
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-             
-            else if(trim(Aerosol%aerosol_names(na)) == 'bcphilic') then 
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_all_sub(i,j,k) = concen_all_sub(i,j,k) +  &
-                                            Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,6) = Aerosol%aerosol(i,j,k,na)/ &
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'bcphobic' ) then 
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_all_sub(i,j,k) = concen_all_sub(i,j,k) +  &
-                                            Aerosol%aerosol(i,j,k,na)
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'dust1') then      
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_all_sub(i,j,k) = concen_all_sub(i,j,k) +  &
-                                            Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,8) = Aerosol%aerosol(i,j,k,na)/  &
-                                                         pthickness(i,j,k)
-! according to Paul dust 1  and dust2 are sub- 2.5 micron
-                    imass1(i,j,k,7) =    imass1(i,j,k,7) +   &
-                                              Aerosol%aerosol(i,j,k,na)
-                    if ( do_dust_berg ) then
-                      concen_dust_sub(i,j,k) =   concen_dust_sub(i,j,k) + &
-                                                 Aerosol%aerosol(i,j,k,na)
-                    endif
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'dust2' ) then   
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_all_sub(i,j,k) = concen_all_sub(i,j,k) +  &
-                                            Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,9) = Aerosol%aerosol(i,j,k,na)/  &
-                                                         pthickness(i,j,k)
-! according to Paul dust 1  and dust2 are sub- 2.5 micron
-                    imass1(i,j,k,7) =    imass1(i,j,k,7) +   &
-                                              Aerosol%aerosol(i,j,k,na)
-                    if ( do_dust_berg ) then
-                      concen_dust_sub(i,j,k) = concen_dust_sub(i,j,k) + &
-                                               Aerosol%aerosol(i,j,k,na)
-                    endif
-                  end do
-                end do
-              end do
-
-            else if(trim(Aerosol%aerosol_names(na)) == 'dust3' ) then 
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    concen_all_sub(i,j,k) = concen_all_sub(i,j,k) +  &
-                                            Aerosol%aerosol(i,j,k,na)
-                    imass1(i,j,k,10) = Aerosol%aerosol(i,j,k,na)/   &
-                                                         pthickness(i,j,k)
-                    if (do_dust_berg) then
-                      concen_dust_sub(i,j,k) = concen_dust_sub(i,j,k) + &
-                                               Aerosol%aerosol(i,j,k,na)
-                    endif
-                  end do
-                end do
-              end do
-
-            else if (trim(Aerosol%aerosol_names(na)) == 'dust4') then
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    imass1(i,j,k,11) = Aerosol%aerosol(i,j,k,na)/   &   
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-
-            else if (trim(Aerosol%aerosol_names(na)) == 'dust5') then
-              do k=1,kdim
-                do j=1,jdim
-                  do i=1,idim
-                    imass1(i,j,k,12) = Aerosol%aerosol(i,j,k,na)/ &      
-                                                         pthickness(i,j,k)
-                  end do
-                end do
-              end do
-
-            endif
-          end do
-          
-          do k=1,kdim
-            do j=1,jdim
-              do i=1,idim
-                totalmass1(i,j,k,3) = concen_ss_sub(i,j,k)
-                totalmass1(i,j,k,2) = concen_all_sub(i,j,k) + &
-                                      totalmass1(i,j,k,4) + &
-                                      concen_ss_sub(i,j,k)
-                if (use_sub_seasalt) then
-                else
-                  totalmass1(i,j,k,3) = concen_ss_sub(i,j,k) +  &
-                                                  concen_ss_sup(i,j,k)
-                endif
-                if (sea_salt_scale_onl .NE. 1. ) then
-                  totalmass1(i,j,k,3) =     sea_salt_scale_onl*  &
-                                                       totalmass1(i,j,k,3)
-                end if
-
-              end do
-            end do
-           end do
-
-         else  ! (use_online_aerosol)
-
-           if (do_dust_berg) then
-
-!     YMice submicron dust (NO. 14 to NO. 18)
-             do s = 14,18
-               do k=1,kdim
-                 do j=1,jdim
-                   do i=1,idim
-                     concen_dust_sub(i,j,k) = concen_dust_sub(i,j,k)+ &
-                                              Aerosol%aerosol(i,j,k,s)
-                   end do
-                 end do
-               end do
-             end do
-           endif
-
-
-!offline
-! NO. 1 natural Sulfate; NO. 2 anthro. sulfate; NO. 3 Sea Salt; NO. 4 Or        ganics
-           do k=1,kdim
-             do j=1,jdim
-               do i=1,idim
-                 totalmass1(i,j,k,1) = Aerosol%aerosol(i,j,k,2)
-                 totalmass1(i,j,k,2) = Aerosol%aerosol(i,j,k,1)
-                 totalmass1(i,j,k,3) = sea_salt_scale*  &
-                                       Aerosol%aerosol(i,j,k,5)
-                 totalmass1(i,j,k,4) = om_to_oc*  &
-                                       Aerosol%aerosol(i,j,k,3)
-               end do
-             end do
-           end do
-         endif ! (use_online_aerosol)
-
-!cms2008-10-08         do na = 1, 3
-        do na = 1, 4
-          do k=1,kdim
-            do j=1,jdim
-              do i=1,idim
-                totalmass1(i,j,k,na) = totalmass1(i,j,k,na)/  &
-                                       pthickness(i,j,k)*1.0e9*1.0e-12
-              end do
-            end do
-          end do
-        end do
-
-        do k=1,kdim
-          do j=1,jdim
-            do i=1,idim
-! submicron dust concentration (ug/m3) (NO. 2 to NO. 4)
-              imass1(i,j,k,7) = imass1(i,j,k,7)/pthickness(i,j,k)*1.0e9 
-            end do
-          end do
-        end do
-
-
-        if (do_dust_berg) then
-! submicron dust concentration (ug/m3) (NO. 2 to NO. 4)
-          do k=1,kdim
-            do j=1,jdim
-              do i=1,idim
-                concen_dust_sub(i,j,k) = concen_dust_sub(i,j,k)/ &
-                                                   pthickness(i,j,k)*1.0e9 
-              end do
-            end do
-          end do
-        endif
-
-      endif  ! (do_liq_num)
-
-!----------------------------------------------------------------------
-      do k = 1,kdim
-        do j=1,jdim
-          do i = 1,idim
-                      ndust(i,j,k) = Nfact_du1*imass1(i,j,k,8) +   &
-                                     Nfact_du2*imass1(i,j,k,9) +   &
-                                     Nfact_du3*imass1(i,j,k,10) +  &
-                                     Nfact_du4*imass1(i,j,k,11) +  &
-                                     Nfact_du5*imass1(i,j,k,12)
-
-            rbar_dust(i,j,k) = (  &
-                                 Nfact_du1*imass1(i,j,k,8)*rbar_du1  +  &
-                                 Nfact_du2*imass1(i,j,k,9)*rbar_du2  +  &
-                                 Nfact_du3*imass1(i,j,k,10)*rbar_du3  + &
-                                 Nfact_du4*imass1(i,j,k,11)*rbar_du4  + &
-                                 Nfact_du5*imass1(i,j,k,12)*rbar_du5 ) / &
-                                       MAX (ndust(i,j,k),1.e-10)
-          end do
-        end do        
-      end do        
-
-return
-end subroutine get_aer_mass_fron_strat
- !#######################################################################    
 
 
 

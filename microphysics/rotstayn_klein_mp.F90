@@ -1,4 +1,5 @@
-MODULE rotstayn_klein_mp_mod
+                    MODULE rotstayn_klein_mp_mod
+
 
 use mpp_mod,             only : input_nml_file
 use fms_mod,             only : error_mesg, FATAL, mpp_pe, mpp_root_pe, &
@@ -7,15 +8,17 @@ use fms_mod,             only : error_mesg, FATAL, mpp_pe, mpp_root_pe, &
                                 file_exist, stdlog
 use cloud_generator_mod, only : cloud_generator_init, do_cloud_generator, &
                                 compute_overlap_weighting
-use  constants_mod,      only : hlv,hlf,hls, rdgas, cp_air, grav, &
-                                tfreeze, dens_h2o, rvgas
+use  constants_mod,      only : HLV, HLF, HLS, RDGAS, CP_AIR, GRAV, &
+                                TFREEZE, DENS_H2O, RVGAS
 use  aer_in_act_mod,     only : Jhete_dep
 use  sat_vapor_pres_mod, only : compute_qs,  sat_vapor_pres_init 
 use polysvp_mod,         only : polysvp_init, polysvp_end, polysvp_l,  &
                                 polysvp_i
-use strat_cloud_utilities_mod,     &
-                         only : strat_cloud_utilities_init, &
-                                diag_id_type, diag_pt_type, strat_nml_type
+use lscloud_types_mod,   only : lscloud_types_init, lscloud_nml_type, &
+                                diag_id_type, diag_pt_type
+use lscloud_debug_mod,   only : microphysics_debug1, microphysics_debug2,&
+                                lscloud_debug_init
+use physics_radiation_exch_mod, only : exchange_control_type
 
 implicit none
 private 
@@ -50,27 +53,103 @@ logical :: use_inconsistent_lh = .true.         ! use the legacy latent
                                                 ! (this is non-entropy-
                                                 ! conserving and physically
                                                 ! unrealistic ??)
-logical :: include_homogeneous_for_wetdep = .true. ! treat homogeneous freezing
-                                                   ! as Bergeron process for
-						   ! wetdep
-logical :: include_adjustment_for_wetdep = .true.  ! account for large-scale
-                                                   ! deposition and saturation
-                                                   ! adjustment when calculating
-						   ! Bergeron fraction for wetdep
-						   ! (to test compatability with
-						   ! treatment in strat_cloud_legacy)
+logical :: include_homogeneous_for_wetdep = .true. 
+                                                ! treat homogeneous 
+                                                ! freezing as Bergeron 
+                                                ! process for  wetdep
+logical :: include_adjustment_for_wetdep = .true.  
+                                                ! account for large-scale
+                                                ! deposition and saturation
+                                                ! adjustment when 
+                                                ! calculating Bergeron 
+                                                ! fraction for wetdep
+                                                ! (to test compatability 
+                                                ! with treatment in 
+                                                ! strat_cloud_legacy)
+
+!  <DATA NAME="rthresh" UNITS="microns" TYPE="real" DEFAULT="10.">
+!   liquid cloud drop radius threshold for autoconversion.
+!  </DATA>
+!  <DATA NAME="use_kk_auto" TYPE="logical"  DEFAULT=".false.">
+!   the Khairoutdinov and Kogan (2000) autoconversion should be used?
+!  </DATA>
+!  <DATA NAME="U_evap" UNITS="fraction" TYPE="real" DEFAULT="1.0">
+!   critical relative humidity above which rain does not evaporate.
+!  </DATA>
+!  <DATA NAME="U_evap_snow" UNITS="fraction" TYPE="real" DEFAULT="1.0">
+!   critical relative humidity above which snow does not evaporate.
+!  </DATA>
+!  <DATA NAME="tracer_advec" TYPE="logical" DEFAULT=".false.">
+!   cloud liquid, ice and fraction are advected by the grid resolved motion?
+!  </DATA>
+!  <DATA NAME="vfact" UNITS="" TYPE="real" DEFAULT="1.0">
+!   factor used to enhance ice fall velocity.
+!  </DATA>
+!  <DATA NAME="do_old_snowmelt" TYPE="logical" DEFAULT=".false.">
+!   the old version of snow melting, which has a bug, should be run?
+!  </DATA>
+!  <DATA NAME="iwc_crit" UNITS="kg(ice)/m**3" TYPE="real"  DEFAULT="0.0">
+!   critical ice-water content below which to apply alternate fall
+!   speed formula
+!  </DATA>
+!  <DATA NAME="vfall_const2" UNITS="" TYPE="real"  DEFAULT="3.29">
+!   factor for alternate fall speed formula
+!  </DATA>
+!  <DATA NAME="vfall_exp2" UNITS="" TYPE="real" DEFAULT="0.16">
+!   exponent for alternate fall speed formula
+!  </DATA>
+!  <DATA NAME="num_mass_ratio1" UNITS="" TYPE="real" DEFAULT="1.0">
+!
+!  </DATA>
+!  <DATA NAME="num_mass_ratio2" UNITS="" TYPE="real" DEFAULT="1.0">
+!
+!  </DATA>
+!  <DATA NAME="retain_cm3_bug" TYPE="logical" DEFAULT=".false.">
+!   the minor bug present in CM3, in which several small terms in qv and
+!   temp equations were retained while corresponding terms in ql and qi
+!   were not, is retained?
+!  </DATA>
+!  <DATA NAME="super_choice" TYPE="logical" DEFAULT=".false.">
+!   excess vapor in supersaturated conditions should be put into
+!   cloud water (true) or precipitation fluxes (false) ?
+!  </DATA>
+
+
+
+
+real    :: rthresh = 10.
+logical :: use_kk_auto = .false.
+real    :: U_evap =  1.0
+real    :: U_evap_snow =  1.0
+logical :: tracer_advec = .true.
+real    :: vfact = 1.0
+logical :: do_old_snowmelt = .false.
+real    :: iwc_crit = 0.
+real    :: vfall_const2 = 3.29
+real    :: vfall_exp2 = 0.16
+real    :: num_mass_ratio1 = 1.0
+real    :: num_mass_ratio2 = 0.0
+logical :: retain_cm3_bug = .false.
+logical :: super_choice = .true.
+
 
 namelist / rotstayn_klein_mp_nml /   rk_alt_adj_opt, &
                                      rk_act_only_if_ql_gt_qmin, &
-                                     use_inconsistent_lh, &
-				     include_homogeneous_for_wetdep, &
-				     include_adjustment_for_wetdep
+                                     rthresh, use_kk_auto, U_evap, &
+                                     U_evap_snow, tracer_advec, vfact, &
+                                     do_old_snowmelt, &
+                                     iwc_crit, vfall_const2, vfall_exp2, &
+                                     num_mass_ratio1, num_mass_ratio2, &
+                                     retain_cm3_bug, &
+                                     use_inconsistent_lh, super_choice, &
+                                     include_homogeneous_for_wetdep, &
+                                     include_adjustment_for_wetdep
 
 
 !-------------------------------------------------------------------------
 !---local module variables and parameters---------------------------------
 
-real, parameter :: d622 = rdgas / rvgas
+real, parameter :: d622 = RDGAS / RVGAS
 real, parameter :: d378 = 1. - d622
 real, parameter :: rho_ice        =  100.  ! mass density of ice crystals 
                                            ! [ kg/(m*m*m) ]
@@ -83,15 +162,28 @@ logical         :: cloud_generator_on      ! stochastic clouds are active?
 logical         :: module_is_initialized = .false.
 
 
+real    :: qmin
+logical :: do_liq_num
+real    :: Dmin
+real    :: cfact
+real    :: N_min
+logical :: do_dust_berg
+logical :: do_pdf_clouds
+integer :: overlap
+logical :: debug
+
 !----------------------------------------------------------------------
 
 
-CONTAINS
+                             CONTAINS
 
 
 !########################################################################
 
-SUBROUTINE rotstayn_klein_microp_init
+SUBROUTINE rotstayn_klein_microp_init (Nml_lsc, Exch_ctrl)
+
+type(lscloud_nml_type),      intent(in) :: Nml_lsc
+type(exchange_control_type), intent(in) :: Exch_ctrl
 
 !-----------------------------------------------------------------------
       integer :: unit, ierr, io, logunit
@@ -100,6 +192,15 @@ SUBROUTINE rotstayn_klein_microp_init
 !    if module has already been initialized, return.
 !------------------------------------------------------------------------
       if (module_is_initialized) return
+
+      qmin = Exch_ctrl%qmin
+      do_liq_num = Exch_ctrl%do_liq_num
+      Dmin = Nml_lsc%Dmin
+      cfact = Nml_lsc%cfact
+      N_min = Exch_ctrl%N_min
+      do_dust_berg = Nml_lsc%do_dust_berg
+      do_pdf_clouds = Nml_lsc%do_pdf_clouds
+      overlap = Exch_ctrl%overlap
 
 !-------------------------------------------------------------------------
 !    process namelist.
@@ -130,9 +231,10 @@ SUBROUTINE rotstayn_klein_microp_init
 !    be sure needed modules have been initialized.
 !------------------------------------------------------------------------
       call sat_vapor_pres_init
-      call strat_cloud_utilities_init
-      call polysvp_init
+      call lscloud_types_init
+      call polysvp_init (Nml_lsc)
       call cloud_generator_init
+      call lscloud_debug_init (debug)
       cloud_generator_on = do_cloud_generator()
 
 !-----------------------------------------------------------------------
@@ -147,30 +249,25 @@ END SUBROUTINE rotstayn_klein_microp_init
 !########################################################################
 
 SUBROUTINE rotstayn_klein_microp (&
-                     idim, jdim, kdim, Nml, N3D,  &
-                     total_activation,  &  ! cjg: total activation for RK
-                     overlap, dtcloud,  &
-                     inv_dtcloud, pfull, deltpg, airdens, mask_present, &
-                     mask, esat0, ql, qi, qa, ql_mean, qa_mean, qn_mean, &
-                     omega, T, U, qv, qs, D_eros, dcond_ls, dcond_ls_ice, &
-                     qvg, gamma, delta_cf, drop1, concen_dust_sub, ql_upd,&
-                     qi_upd, qn_upd, qi_mean, qa_upd, ahuco, n_diag_4d, &
-                     diag_4d, diag_id, diag_pt, n_diag_4d_kp1,   &
-                     diag_4d_kp1, limit_conv_cloud_frac, SA, SN, ST, SQ, &
-                     SL, SI, rain3d, snow3d, snowclr3d, surfrain,   &
-                     surfsnow, f_snow_berg, otun)                 
+                   idim, jdim, kdim, N3D,  &
+                   total_activation,  &  ! cjg: total activation for RK
+                   dtcloud, inv_dtcloud, pfull, deltpg, airdens, &
+                   esat0, ql, qi, qa, ql_mean, qa_mean, qn_mean, omega,  &
+                   T, U, qv, qs, D_eros, dcond_ls, dcond_ls_ice, qvg,  &
+                   gamma, delta_cf, drop1, concen_dust_sub, ql_upd,&
+                   qi_upd, qn_upd, qi_mean, qa_upd, ahuco, n_diag_4d, &
+                   diag_4d, diag_id, diag_pt, n_diag_4d_kp1,   &
+                   diag_4d_kp1, limit_conv_cloud_frac, SA, SN, ST, SQ, &
+                   SL, SI, rain3d, snow3d, snowclr3d, surfrain,   &
+                   surfsnow, f_snow_berg )                 
 
 !------------------------------------------------------------------------
-type(strat_nml_type),                intent(in)   :: Nml
-LOGICAL,                             INTENT(IN)   :: mask_present,   &
-                                                     limit_conv_cloud_frac
+LOGICAL,                             INTENT(IN)   :: limit_conv_cloud_frac
 logical,                             intent(in)   :: total_activation
-INTEGER,                             INTENT(IN)   :: overlap
 INTEGER,                             INTENT(IN)   :: idim, jdim, kdim
 INTEGER,                             intent(in)   :: n_diag_4d,  &
                                                      n_diag_4d_kp1
 REAL,                                INTENT(IN)   :: dtcloud, inv_dtcloud
-REAL, dimension(idim, jdim,kdim),    INTENT(IN)   :: MASK
 REAL, dimension(idim,jdim,kdim),     INTENT(IN)   ::   &
                               N3D, pfull, deltpg, airdens, ql, qi, qa, &
                               ql_mean, qn_mean, qa_mean, T, qv, drop1, U, &
@@ -181,20 +278,19 @@ real, dimension(idim,jdim,kdim),     INTENT(INOUT)::   &
                               ql_upd, qi_upd, qn_upd, qs, delta_cf, &
                               dcond_ls,dcond_ls_ice    
 REAL, dimension(idim,jdim,kdim,0:n_diag_4d),   &
-                                     INTENT(INOUT)::  diag_4d
+                                     INTENT(INOUT):: diag_4d
 REAL, dimension( idim,jdim,kdim+1,0:n_diag_4d_kp1),   &
-                                     INTENT(INOUT)::  diag_4d_kp1
+                                     INTENT(INOUT):: diag_4d_kp1
 TYPE(diag_id_type),                  intent(in)   :: diag_id
 TYPE(diag_pt_type),                  intent(in)   :: diag_pt
 real, dimension(idim, jdim, kdim+1), INTENT(OUT)  :: rain3d, snow3d
 real, dimension(idim, jdim, kdim+1), INTENT(OUT)  :: snowclr3d
 real, dimension(idim,jdim),          INTENT(OUT)  :: surfrain,surfsnow
 real, dimension(idim, jdim, kdim  ), INTENT(OUT)  :: f_snow_berg 
-INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 
 !------------------------------------------------------------------------
-!---local variables-----------------------------------------------------
+!---local variables
 !
 !       rain_cld       grid mean flux of rain enter-   kg condensate/
 !                      ing the grid box from above     (m*m)/s
@@ -321,6 +417,7 @@ INTEGER,                             INTENT(IN)   :: otun
                                             tcrit, qldt_sum
       integer                            :: i, j, k, km1
 
+      real, dimension(idim,jdim     )    :: iwc      
  
 !------------------------------------------------------------------------  
 !    initialize top levels of precip and precip area arrays.
@@ -451,7 +548,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    rain transfers are done first; compute cloud to clear transfer.
 !------------------------------------------------------------------------
-        call cloud_clear_xfer (k, Nml, cloud_generator_on, overlap, tmp3, &
+        call cloud_clear_xfer (k, cloud_generator_on, overlap, tmp3, &
                                qa_mean, a_rain_clr, a_rain_cld,   &
                                                       rain_clr, rain_cld)
   
@@ -459,7 +556,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    snow transfers are done second, in a manner exactly like that
 !    done for the rain fluxes
 !------------------------------------------------------------------------
-        call cloud_clear_xfer (k, Nml, cloud_generator_on, overlap, tmp3, &
+        call cloud_clear_xfer (k, cloud_generator_on, overlap, tmp3, &
                                qa_mean, a_snow_clr, a_snow_cld,  &
                                                       snow_clr, snow_cld)
 
@@ -480,7 +577,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    compute grid mean change in snow flux to cool the grid box to tfreeze 
 !    and store in temporary variable tmp1
 !-----------------------------------------------------------------------
-        if (Nml%do_old_snowmelt) then
+        if (do_old_snowmelt) then
           tmp1(:,:,k) = cp_air*(T(:,:,k) - tfreeze - 2.)*   &
                                               deltpg(:,:,k)*inv_dtcloud/hlf
         else
@@ -504,7 +601,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    clear-sky snow (a_snow_clr) IF AND only IF melting occurs and 
 !    a_rain_clr < a_snow_clr.
 !------------------------------------------------------------------------
-        where (tmp2(:,:,k) .gt. 0. .and. a_snow_clr(:,:,k) .gt. Nml%qmin)
+        where (tmp2(:,:,k) .gt. 0. .and. a_snow_clr(:,:,k) .gt. qmin)
           a_rain_clr(:,:,k) = max(a_rain_clr(:,:,k), a_snow_clr(:,:,k))
         end where
 
@@ -512,7 +609,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    if all of the snow has melted, then zero out a_snow_clr
 !------------------------------------------------------------------------
         where (snow_clr(:,:,k).lt.tmp1(:,:,k) .and.   &
-                                        a_snow_clr(:,:,k).gt.Nml%qmin)
+                                        a_snow_clr(:,:,k).gt. qmin)
           snow_clr(:,:,k) = 0.
           a_snow_clr(:,:,k) = 0.
         elsewhere
@@ -535,7 +632,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    amount of melting is limited to the melted amount that would 
 !    cool the temperature to tfreeze.
 !-------------------------------------------------------------------------
-        if (.not.Nml%do_old_snowmelt) then
+        if (.not. do_old_snowmelt) then
 
 !----------------------------------------------------------------------
 !    compute grid mean change in snow flux to cool the grid box to tfreeze
@@ -567,7 +664,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    cloudy-sky snow (a_snow_cld) IF AND only IF melting occurs and 
 !    a_rain_cld < a_snow_cld.
 !-----------------------------------------------------------------------
-          where (tmp2 (:,:,k).gt. 0. .and. a_snow_cld(:,:,k) .gt. Nml%qmin)
+          where (tmp2 (:,:,k).gt. 0. .and. a_snow_cld(:,:,k) .gt. qmin)
             a_rain_cld(:,:,k) = max(a_rain_cld(:,:,k), a_snow_cld(:,:,k))
           end where
 
@@ -575,7 +672,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    If all of the snow has melted, then zero out a_snow_cld.
 !------------------------------------------------------------------------
           where (snow_cld(:,:,k).lt.tmp1(:,:,k) .and.   &
-                                         a_snow_cld(:,:,k).gt.Nml%qmin)
+                                         a_snow_cld(:,:,k).gt. qmin)
             snow_cld(:,:,k)= 0.
             a_snow_cld(:,:,k) = 0.
           elsewhere
@@ -649,9 +746,9 @@ INTEGER,                             INTENT(IN)   :: otun
 !    compute slope factor lamda_f.
 !RSH  -- conditionally calculate this only when needed
 !-----------------------------------------------------------------------
-        where ( ((a_snow_cld(:,:,k).gt.Nml%qmin) .and.   &
-                     (ql_mean(:,:,k).gt.Nml%qmin) .and. &
-                (qa_mean(:,:,k).gt.Nml%qmin) ) .or. snow_clr(:,:,k) > 0.0 )
+        where ( ((a_snow_cld(:,:,k).gt. qmin) .and.   &
+                     (ql_mean(:,:,k).gt. qmin) .and. &
+                (qa_mean(:,:,k).gt. qmin) ) .or. snow_clr(:,:,k) > 0.0 )
           lamda_f(:,:,k) = 1.6*10**(3.+0.023*(tfreeze - T(:,:,k)))
         elsewhere
           lamda_f(:,:,k) = 0.
@@ -741,7 +838,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !       integration.  D1_dt represents the conversion of liquid to rain.
 !------------------------------------------------------------------------
 
-        if (.not. Nml%do_liq_num) then
+        if (.not. do_liq_num) then
 
 !-----------------------------------------------------------------------
 !    compute rad_liq.  The constant below is equal to   
@@ -749,19 +846,18 @@ INTEGER,                             INTENT(IN)   :: otun
 !    meters to microns. do not let very small cloud fractions contribute 
 !    to autoconversion or accretion.
 !-----------------------------------------------------------------------
-          where (qa_mean(:,:,k) .gt. Nml%qmin) 
+          where (qa_mean(:,:,k) .gt. qmin) 
             rad_liq(:,:,k)= 620350.49 *( (airdens(:,:,k)*ql_mean(:,:,k)/ &
-                              max(qa_mean(:,:,k), Nml%qmin)/   &
+                              max(qa_mean(:,:,k), qmin)/   &
                                           N3D(:,:,k)/dens_h2o)**(1./3.))
           elsewhere
             rad_liq(:,:,k) = 0.0
           end where
         else        
-          where (qa_mean(:,:,k) .gt. Nml%qmin .and.   &
-                 qn_upd(:,:,k) .gt.Nml%qmin) 
+          where (qa_mean(:,:,k) .gt. qmin .and.   &
+                 qn_upd(:,:,k) .gt.  qmin) 
             rad_liq(:,:,k) = 620350.49*( (ql_mean(:,:,k)/  &
-                             max(qn_mean(:,:,k),   &
-                                            Nml%qmin)/dens_h2o)**(1./3.))
+                             max(qn_mean(:,:,k), qmin)/dens_h2o)**(1./3.))
           elsewhere
             rad_liq(:,:,k) = 0.
           endwhere
@@ -778,11 +874,11 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
         where  (rad_liq(:,:,k) > 0.0) 
           D1_dt(:,:,k) =  dtcloud*65.772565*(a_rain_cld(:,:,k)/  &
-                                      max(qa_mean(:,:,k), Nml%qmin))* &
+                                      max(qa_mean(:,:,k), qmin))* &
                         (rad_liq(:,:,k)*rad_liq(:,:,k)/  &
                              (rad_liq(:,:,k)*rad_liq(:,:,k) + 20.5) )*   &
                         ((rain_cld(:,:,k)/   &
-                               max(a_rain_cld(:,:,k), Nml%qmin)/  &
+                               max(a_rain_cld(:,:,k), qmin)/  &
                                                       dens_h2o)**(7./9.))
         elsewhere
           D1_dt(:,:,k) = 0.
@@ -888,29 +984,29 @@ INTEGER,                             INTENT(IN)   :: otun
 !
 !  (34A) D_aut   =   CA * [(N)^(-1.79)] * [(ql/qa)^(1.47)]
 !------------------------------------------------------------------------
-        if (Nml%do_liq_num) then
-          if (Nml%use_kk_auto) then
+        if (do_liq_num) then
+          if (use_kk_auto) then
             where (ql_mean(:,:,k) > 0.0) 
               tmp1(:,:,k) = dtcloud*1350.*(1.e-6*   &
                 max(qn_mean(:,:,k)*airdens(:,:,k),  &
-                      max(qa_mean(:,:,k), Nml%qmin)*Nml%N_min))**(-1.79)* &
+                      max(qa_mean(:,:,k), qmin)*N_min))**(-1.79)* &
                             (ql_mean(:,:,k))**(1.47)*  &
-                                     max(qa_mean(:,:,k),Nml%qmin)**(0.32)
+                                     max(qa_mean(:,:,k), qmin)**(0.32)
             elsewhere
               tmp1(:,:,k) = 0.
             end where
           else
             where (ql_mean(:,:,k) > 0.0) 
               tmp1(:,:,k) = 32681.*dtcloud*    &
-                             ((max(qn_mean(:,:,k), Nml%qmin)*  &
+                             ((max(qn_mean(:,:,k), qmin)*  &
                                     airdens(:,:,k)*dens_h2o)**(-1./3.))*  &
                                        (ql_mean(:,:,k)**(4./3.))/   &
-                                             max(qa_mean(:,:,k), Nml%qmin)
+                                             max(qa_mean(:,:,k), qmin)
 !------------------------------------------------------------------------
 !    compute limiter as in (35) and  limit autoconversion to the limiter
 !------------------------------------------------------------------------
-              tmp2(:,:,k) =max(3*log(max(rad_liq(:,:,k), Nml%qmin)/  &
-                                                         Nml%rthresh), 0.)
+              tmp2(:,:,k) =max(3*log(max(rad_liq(:,:,k), qmin)/  &
+                                                             rthresh), 0.)
               tmp1(:,:,k) = min(tmp1(:,:,k), tmp2(:,:,k))
             elsewhere
               tmp1(:,:,k) = 0.
@@ -921,14 +1017,14 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !   for non-predicted cloud number:
 !------------------------------------------------------------------------
-          if (Nml%use_kk_auto) then
+          if (use_kk_auto) then
 
 !------------------------------------------------------------------------
 !    compute autoconversion sink as in (34A)
 !------------------------------------------------------------------------
-            where (ql_mean(:,:,k).gt.Nml%qmin)
+            where (ql_mean(:,:,k).gt. qmin)
               tmp1(:,:,k) = 7.4188E+13*dtcloud*(N3D(:,:,k)**(-1.79))*     &
-                   ((ql_mean(:,:,k)/max(qa_mean(:,:,k), Nml%qmin))**(1.47))
+                   ((ql_mean(:,:,k)/max(qa_mean(:,:,k), qmin))**(1.47))
             elsewhere
               tmp1(:,:,k) = 0.
             endwhere
@@ -940,13 +1036,13 @@ INTEGER,                             INTENT(IN)   :: otun
             where (ql_mean(:,:,k) > 0.0) 
               tmp1(:,:,k) = 32681.*dtcloud*((N3D(:,:,k)*   &
                               dens_h2o)**(-1./3.))*((ql_mean(:,:,k)/   &
-                                  max(qa_mean(:,:,k), Nml%qmin))**(4./3.))
+                                  max(qa_mean(:,:,k), qmin))**(4./3.))
         
 !------------------------------------------------------------------------
 !    compute limiter as in (35) and  limit autoconversion to the limiter
 !------------------------------------------------------------------------
-              tmp2(:,:,k) = max(3*log(max(rad_liq(:,:,k), Nml%qmin)/  &
-                                                       Nml%rthresh), 0.)
+              tmp2(:,:,k) = max(3*log(max(rad_liq(:,:,k), qmin)/  &
+                                                           rthresh), 0.)
               tmp1(:,:,k) = min(tmp1(:,:,k), tmp2(:,:,k))
             elsewhere
               tmp1(:,:,k) = 0.
@@ -962,7 +1058,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    autoconversion will increase a_rain_cld to area of cloud
 !------------------------------------------------------------------------
-        where (tmp1(:,:,k) .gt. Nml%Dmin) a_rain_cld(:,:,k) =   &
+        where (tmp1(:,:,k) .gt. Dmin) a_rain_cld(:,:,k) =   &
                                                            qa_mean(:,:,k)
 
 !------------------------------------------------------------------------
@@ -973,7 +1069,7 @@ INTEGER,                             INTENT(IN)   :: otun
         if  (diag_id%qndt_auto  + diag_id%qn_auto_col > 0)   &
                            diag_4d(:,:,k,diag_pt%qndt_auto) = -tmp1(:,:,k)  
         if ( diag_id%aauto > 0 ) then
-          where ( rad_liq(:,:,k) .gt. Nml%rthresh )    &
+          where ( rad_liq(:,:,k) .gt. rthresh )    &
                             diag_4d(:,:,k,diag_pt%aauto) = qa_mean(:,:,k)
         end if
         
@@ -1023,12 +1119,12 @@ INTEGER,                             INTENT(IN)   :: otun
 !       and sublimation part of the code which is for larger particles 
 !       which have much lower densities.
 !------------------------------------------------------------------------
-        if (Nml%do_dust_berg) then
+        if (do_dust_berg) then
           do j=1,jdim
             do i=1,idim
               if ( (T(i,j,k) .lt. tfreeze) .and.   &
-                   (ql_mean(i,j,k) .gt. Nml%qmin) .and.   &
-                   (qa_mean(i,j,k) .gt. Nml%qmin))  then
+                   (ql_mean(i,j,k) .gt. qmin) .and.   &
+                   (qa_mean(i,j,k) .gt. qmin))  then
                 Si0 = 1. + 0.0125*(tfreeze-T(i,j,k))
                 call Jhete_dep (T(i,j,k), Si0, concen_dust_sub(i,j,k), &
                                                             crystal(i,j,k))
@@ -1050,8 +1146,8 @@ INTEGER,                             INTENT(IN)   :: otun
 !    do Bergeron process
 !------------------------------------------------------------------------
           where ( (T(:,:,k) .lt. tfreeze) .and.  &
-                  (ql_mean(:,:,k) .gt. Nml%qmin) .and.   &
-                  (qa_mean(:,:,k) .gt. Nml%qmin))              
+                  (ql_mean(:,:,k) .gt. qmin) .and.   &
+                  (qa_mean(:,:,k) .gt. qmin))              
             D2_dt(:,:,k) = dtcloud*qa_mean(:,:,k)*((1.e6*crystal(:,:,k)/  &
                                   airdens(:,:,k))**(2./3.))* 7.8*  &
                       ((max(qi_mean(:,:,k)/qa_mean(:,:,k),   &
@@ -1068,13 +1164,13 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
         else
           where ( (T(:,:,k) .lt. tfreeze) .and.  &
-                  (ql_mean(:,:,k) .gt. Nml%qmin) .and.   &
-                  (qa_mean(:,:,k) .gt. Nml%qmin))           
-            D2_dt(:,:,k) = dtcloud*qa_mean(:,:,k)*((Nml%cfact*1000.*  &
+                  (ql_mean(:,:,k) .gt. qmin) .and.   &
+                  (qa_mean(:,:,k) .gt. qmin))           
+            D2_dt(:,:,k) = dtcloud*qa_mean(:,:,k)*((cfact*1000.*  &
                            exp((12.96*0.0125*(tfreeze - T(:,:,k))) -   &
                                0.639)/airdens(:,:,k))**(2./3.))* 7.8* &
                                ((max(qi_mean(:,:,k)/qa_mean(:,:,k),  &
-                                       1.E-12*Nml%cfact*1000.*   &
+                                       1.E-12*cfact*1000.*   &
                             exp((12.96*0.0125*(tfreeze-T(:,:,k)))-0.639)/ &
                                    airdens(:,:,k)))**(1./3.))*0.0125*     &
                                 (tfreeze - T(:,:,k))/((700.**(1./3.))*  &
@@ -1117,10 +1213,10 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    compute the tendency due to riming.
 !------------------------------------------------------------------------
-        if (Nml%do_old_snowmelt) then
-          where ((a_snow_cld(:,:,k).gt.Nml%qmin) .and.    &
-                 (ql_mean(:,:,k).gt.Nml%qmin) .and. &
-                 (qa_mean(:,:,k).gt.Nml%qmin) .and.   &
+        if (do_old_snowmelt) then
+          where ((a_snow_cld(:,:,k).gt. qmin) .and.    &
+                 (ql_mean(:,:,k).gt. qmin) .and. &
+                 (qa_mean(:,:,k).gt. qmin) .and.   &
                  (T(:,:,k) .lt. tfreeze) )            
             tmp1(:,:,k) = dtcloud*0.5*ELI*lamda_f(:,:,k)*snow_cld(:,:,k)/ &
                                                    qa_mean(:,:,k)/rho_ice 
@@ -1128,9 +1224,9 @@ INTEGER,                             INTENT(IN)   :: otun
             tmp1(:,:,k) = 0.0
           end where
         else
-          where ((a_snow_cld(:,:,k).gt.Nml%qmin) .and. &
-                 (ql_mean(:,:,k).gt.Nml%qmin) .and. &
-                 (qa_mean(:,:,k).gt.Nml%qmin) )            
+          where ((a_snow_cld(:,:,k).gt. qmin) .and. &
+                 (ql_mean(:,:,k).gt. qmin) .and. &
+                 (qa_mean(:,:,k).gt. qmin) )            
             tmp1(:,:,k) = dtcloud*0.5*ELI*lamda_f(:,:,k)*  &
                                     snow_cld(:,:,k)/qa_mean(:,:,k)/rho_ice 
           elsewhere
@@ -1154,7 +1250,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !       droplets will occur.   To accomplish this numerically in one 
 !       time step:
 !
-!  (40) D*dtcloud =  ln( ql / Nml%qmin ).
+!  (40) D*dtcloud =  ln( ql /     qmin ).
 !
 !       With this form it is guaranteed that if this is the only
 !       process acting that ql = qmin after one integration.
@@ -1167,9 +1263,9 @@ INTEGER,                             INTENT(IN)   :: otun
         do j=1,jdim
           do i=1,idim
             if ((T(i,j,k) .lt. tfreeze - 40.) .and.     &
-                (ql_mean(i,j,k) .gt. Nml%qmin).and.     &
-                (qa_mean(i,j,k) .gt. Nml%qmin))  then
-              D2_dt(i,j,k) = log ( ql_mean(i,j,k)/Nml%qmin )
+                (ql_mean(i,j,k) .gt. qmin).and.     &
+                (qa_mean(i,j,k) .gt. qmin))  then
+              D2_dt(i,j,k) = log ( ql_mean(i,j,k)/qmin )
               sum_freeze(i,j,k) = D2_dt(i,j,k)
               sum_rime(i,j,k) = 0.
               sum_berg(i,j,k) = 0.
@@ -1242,12 +1338,12 @@ INTEGER,                             INTENT(IN)   :: otun
         C_dt(:,:,k) = max(dcond_ls(:,:,k),0.)     
         D_dt(:,:,k) = D1_dt(:,:,k) + D2_dt(:,:,k) + D_eros(:,:,k) + &
                                      (max(-1.*dcond_ls(:,:,k), 0.)/    &
-                                          max(ql_mean(:,:,k), Nml%qmin)) 
+                                          max(ql_mean(:,:,k), qmin)) 
 
 !------------------------------------------------------------------------
 !    do analytic integration      
 !------------------------------------------------------------------------
-        where ( D_dt(:,:,k).gt.Nml%Dmin ) 
+        where ( D_dt(:,:,k).gt. Dmin ) 
           qc0 (:,:,k) = ql_upd(:,:,k)
           qceq(:,:,k) = C_dt(:,:,k)/D_dt(:,:,k)
           qc1(:,:,k) = qceq(:,:,k) - (qceq(:,:,k) - qc0(:,:,k))*  &
@@ -1295,24 +1391,25 @@ INTEGER,                             INTENT(IN)   :: otun
 
 !       initialize tmp2 to hold (-Dterm)/D
 !------------------------------------------------------------------------
-     if (Nml%retain_cm3_bug) then
-        tmp2(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/max(D_dt(:,:,k), Nml%Dmin)
- 
-     else
-          where (D_dt(:,:,k) > Nml%Dmin) 
-          tmp2(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/max(D_dt(:,:,k), Nml%Dmin)
+        if (retain_cm3_bug) then
+          tmp2(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/   &
+                                                 max(D_dt(:,:,k), Dmin)
+        else
+          where (D_dt(:,:,k) > Dmin) 
+            tmp2(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/   &
+                                                 max(D_dt(:,:,k), Dmin)
           elsewhere
-          tmp2(:,:,k) = 0.0              
+            tmp2(:,:,k) = 0.0              
           endwhere
-      endif
+        endif
 
-         if (diag_id%qldt_cond + diag_id%ql_cond_col > 0)  &
+        if (diag_id%qldt_cond + diag_id%ql_cond_col > 0)  &
                  diag_4d(:,:,k,diag_pt%qldt_cond) =    &
                                        max(dcond_ls(:,:,k),0.) *inv_dtcloud
-         if (diag_id%qldt_evap + diag_id%ql_evap_col > 0)   &
+        if (diag_id%qldt_evap + diag_id%ql_evap_col > 0)   &
               diag_4d(:,:,k,diag_pt%qldt_evap) =    &
                   - (max(0., -1.*dcond_ls(:,:,k) )/  &
-                     max(ql_mean(:,:,k), Nml%qmin))*tmp2(:,:,k)*inv_dtcloud
+                     max(ql_mean(:,:,k), qmin))*tmp2(:,:,k)*inv_dtcloud
         if (diag_id%qldt_accr  + diag_id%ql_accr_col > 0)   &
             diag_4d(:,:,k,diag_pt%qldt_accr) =    &
                   diag_4d(:,:,k,diag_pt%qldt_accr)*tmp2(:,:,k)*inv_dtcloud
@@ -1334,22 +1431,23 @@ INTEGER,                             INTENT(IN)   :: otun
                  diag_4d(:,:,k,diag_pt%qldt_freez) =   &
                   diag_4d(:,:,k,diag_pt%qldt_freez)*tmp2(:,:,k)*inv_dtcloud
         sum_freeze(:,:,k) = sum_freeze(:,:,k)*tmp2(:,:,k)*inv_dtcloud
+
 !-------------------------------------------------------------------------
 !    do phase changes from large-scale processes and boundary
 !    layer condensation/evaporation
 !-------------------------------------------------------------------------
         ST(:,:,k) = ST(:,:,k) + (hlv*max(dcond_ls(:,:,k), 0.)/cp_air) -   &
                     (hlv*(max(-1.*dcond_ls(:,:,k), 0.)/     &
-                       max(ql_mean(:,:,k), Nml%qmin))*tmp2(:,:,k)/cp_air)
+                       max(ql_mean(:,:,k), qmin))*tmp2(:,:,k)/cp_air)
         SQ(:,:,k) = SQ (:,:,k) - max(dcond_ls(:,:,k),0.) +            &
                     (max(-1.*dcond_ls(:,:,k), 0.)/    &
-                               max(ql_mean(:,:,k), Nml%qmin))*tmp2(:,:,k)
+                               max(ql_mean(:,:,k), qmin))*tmp2(:,:,k)
 
 !------------------------------------------------------------------------  
 !    if debug is requested, output some fields.
 !------------------------------------------------------------------------  
-        if (Nml%debugo .and.                        k .eq. Nml%ksamp) then
-          write(otun,*) "ccc ST 5 ",   ST(Nml%isamp,Nml%jsamp,Nml%ksamp)
+        if (debug ) then
+          call microphysics_debug1 (k, ST, 'ccc ST 5 ')
         end if
 
 !------------------------------------------------------------------------
@@ -1362,12 +1460,10 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------  
 !    if debug is requested, output some fields.
 !------------------------------------------------------------------------  
-        if (Nml%debugo .and.                        k .eq. Nml%ksamp) then
-          write(otun,*) "ccc D_eros, D2_dt, tmp2 ",   &
-                         D_eros(Nml%isamp, Nml%jsamp,Nml%ksamp),   &
-                         D2_dt(Nml%isamp,Nml%jsamp,Nml%ksamp),&
-                         tmp2(Nml%isamp,Nml%jsamp,Nml%ksamp)
-          write(otun,*) "ccc ST 6 ",   ST(Nml%isamp,Nml%jsamp,Nml%ksamp)
+        if (debug ) then
+          call microphysics_debug2 (k, D_eros, D2_dt, tmp2,    &
+                                            "ccc D_eros, D2_dt, tmp2 ")
+          call microphysics_debug1 (k, ST, 'ccc ST 6 ')
         end if
 
 !------------------------------------------------------------------------  
@@ -1423,7 +1519,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !
 !       C and -D * (qcbar)
 !------------------------------------------------------------------------
-        if (Nml%do_liq_num) then
+        if (do_liq_num) then
             
 !------------------------------------------------------------------------
 !    calculate C_dt
@@ -1431,7 +1527,7 @@ INTEGER,                             INTENT(IN)   :: otun
           if (total_activation) then
 
             if (rk_act_only_if_ql_gt_qmin) then
-              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
+              where (ql_upd(:,:,k) .gt. qmin )
                 C_dt(:,:,k) = max( 0.,  &
                                    drop1(:,:,k)*1.e6/airdens(:,:,k)*   &
                                    qa_upd(:,:,k) - qn_upd(:,:,k))
@@ -1447,7 +1543,7 @@ INTEGER,                             INTENT(IN)   :: otun
           else
 
             if (rk_act_only_if_ql_gt_qmin) then
-              where (ql_upd(:,:,k) .gt. Nml%qmin ) 
+              where (ql_upd(:,:,k) .gt. qmin )
                 C_dt(:,:,k) = max(delta_cf(:,:,k), 0.)*drop1(:,:,k)*  &
                                                        1.e6/airdens(:,:,k)
               elsewhere
@@ -1464,10 +1560,10 @@ INTEGER,                             INTENT(IN)   :: otun
 !    set total tendency term and update cloud
 !    Note that the amount of SN calculated here is stored in tmp1.
 !------------------------------------------------------------------------
-          D_dt(:,:,k) =  Nml%num_mass_ratio1*D1_dt(:,:,k) +   &
-                        (Nml%num_mass_ratio2*D2_dt(:,:,k) + D_eros(:,:,k))
+          D_dt(:,:,k) =  num_mass_ratio1*D1_dt(:,:,k) +   &
+                        (num_mass_ratio2*D2_dt(:,:,k) + D_eros(:,:,k))
           qc0(:,:,k) = qn_upd(:,:,k)
-          where (D_dt(:,:,k) > Nml%Dmin) 
+          where (D_dt(:,:,k) > Dmin) 
             qceq(:,:,k) = C_dt(:,:,k) / D_dt(:,:,k)
             qc1(:,:,k) = qceq(:,:,k) - (qceq(:,:,k) - qc0(:,:,k))*  &
                                                     exp(-1.*D_dt(:,:,k))
@@ -1505,38 +1601,40 @@ INTEGER,                             INTENT(IN)   :: otun
               diag_4d(:,:,k,diag_pt%qndt_cond) = 0.
             endwhere
           end if  
-       if (Nml%retain_cm3_bug) then
-          tmp8(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/max(D_dt(:,:,k), Nml%Dmin)
-       else
-          where (D_dt(:,:,k) > Nml%Dmin) 
-          tmp8(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/max(D_dt(:,:,k), Nml%Dmin)
-          elsewhere
-          tmp8(:,:,k) = 0.0              
-          endwhere
-       endif
+          if (retain_cm3_bug) then
+            tmp8(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/   &
+                                              max(D_dt(:,:,k), Dmin)
+          else
+            where (D_dt(:,:,k) > Dmin) 
+              tmp8(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/  &
+                                               max(D_dt(:,:,k), Dmin)
+            elsewhere
+              tmp8(:,:,k) = 0.0              
+            endwhere
+          endif
 
           if (diag_id%qndt_pra  + diag_id%qn_pra_col > 0) then
             diag_4d(:,:,k,diag_pt%qndt_pra) =    &
-                   Nml%num_mass_ratio1*diag_4d(:,:,k,diag_pt%qndt_pra)* &
+                       num_mass_ratio1*diag_4d(:,:,k,diag_pt%qndt_pra)* &
                                                     tmp8(:,:,k)*inv_dtcloud
           end if
           if (diag_id%qndt_auto  + diag_id%qn_auto_col > 0) then
             diag_4d(:,:,k,diag_pt%qndt_auto) =   &
-                   Nml%num_mass_ratio1*diag_4d(:,:,k,diag_pt%qndt_auto)* &
+                       num_mass_ratio1*diag_4d(:,:,k,diag_pt%qndt_auto)* &
                                                    tmp8(:,:,k) *inv_dtcloud
           end if
           if (diag_id%qndt_berg  + diag_id%qn_berg_col > 0) then
             diag_4d(:,:,k,diag_pt%qndt_berg) =  &
-                 Nml%num_mass_ratio2*diag_4d(:,:,k,diag_pt%qndt_berg)*   &
+                     num_mass_ratio2*diag_4d(:,:,k,diag_pt%qndt_berg)*   &
                                                    tmp8(:,:,k) *inv_dtcloud
           end if
           if (diag_id%qndt_eros  + diag_id%qn_eros_col > 0) then
             diag_4d(:,:,k,diag_pt%qndt_eros) = -D_eros(:,:,k)*  &
                                                    tmp8(:,:,k)*inv_dtcloud
           end if
-        end if  ! (Nml%do_liq_num)
+        end if  ! (do_liq_num)
 
-        if (Nml%do_liq_num) then
+        if (do_liq_num) then
           if (diag_id%qndt_cond + diag_id%qn_cond_col > 0)   &
                    diag_4d(:,:,k,diag_pt%qndt_cond) =   &
                                diag_4d(:,:,k,diag_pt%qndt_cond)*inv_dtcloud
@@ -1604,13 +1702,16 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    compute Vfall
 !------------------------------------------------------------------------
-        where (qi_mean(:,:,k) > 0.0) 
-          Vfall(:,:,k) = Nml%vfact*3.29*((airdens(:,:,k) *qi_mean(:,:,k)/ &
-                                     max(qa_mean(:,:,k), Nml%qmin))**0.16)
+      iwc(:,:) = airdens(:,:,k)*qi_mean(:,:,k)/max(qa_mean(:,:,k),qmin)
+        where (iwc >=     iwc_crit)
+           Vfall(:,:,k) = vfact*3.29 * iwc(:,:)**0.16
         elsewhere
-          Vfall(:,:,k) = 0.
+           Vfall(:,:,k) = vfact*    vfall_const2 * iwc(:,:)**    vfall_exp2
         end where
-        if (diag_id%vfall > 0) diag_4d(:,:,k,diag_pt%vfall) = Vfall(:,:,k)* qa_mean(:,:,k)
+
+
+        if (diag_id%vfall > 0)    &
+               diag_4d(:,:,k,diag_pt%vfall) = Vfall(:,:,k)* qa_mean(:,:,k)
 
 !------------------------------------------------------------------------
 !    add to ice source the settling ice flux from above
@@ -1624,14 +1725,14 @@ INTEGER,                             INTENT(IN)   :: otun
 !    convert to units of D_dt. Note that if tracers are not advected then 
 !    this is done relative to the local vertical motion.
 !------------------------------------------------------------------------
-        if (Nml%tracer_advec) then
+        if (tracer_advec) then
           tmp1(:,:,k) = 0.
         else
           tmp1(:,:,k) = omega(:,:,k)
         end if 
         
-        where (qi_mean(:,:,k) .gt. Nml%qmin .and.   &
-               qa_mean(:,:,k) .gt. Nml%qmin)
+        where (qi_mean(:,:,k) .gt. qmin .and.   &
+               qa_mean(:,:,k) .gt. qmin)
           D1_dt(:,:,k) = max(0., ((airdens(:,:,k)*Vfall(:,:,k)) +   &
                                 (tmp1(:,:,k)/grav))*dtcloud/deltpg(:,:,k) )
           a_snow_cld(:,:,k) = qa_mean(:,:,k)     
@@ -1670,13 +1771,13 @@ INTEGER,                             INTENT(IN)   :: otun
 !    otherwise melt all qi_mean.  The amount melted is stored in tmp2
 !------------------------------------------------------------------------
         tmp2(:,:,k)  = max(min(qi_mean(:,:,k), tmp1(:,:,k)),0.)     
-        D2_dt(:,:,k) = max(0., log(max(qi_mean(:,:,k),Nml%qmin)/   &
-                              max(qi_mean(:,:,k) - tmp2(:,:,k), Nml%qmin)))
+        D2_dt(:,:,k) = max(0., log(max(qi_mean(:,:,k), qmin)/   &
+                              max(qi_mean(:,:,k) - tmp2(:,:,k), qmin)))
             
 !-----------------------------------------------------------------------
 !    melting of ice adds area to a_rain_cld
 !-----------------------------------------------------------------------
-        where (D2_dt(:,:,k) .gt. Nml%Dmin) 
+        where (D2_dt(:,:,k) .gt. Dmin) 
           a_rain_cld(:,:,k) = qa_mean(:,:,k)
         endwhere
                   
@@ -1685,7 +1786,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    the grid box and set a_snow_cld to zero.
 !-------------------------------------------------------------------------
         where (qi_mean(:,:,k) .lt. tmp1(:,:,k) .and.   &
-               qi_mean(:,:,k) .gt. Nml%qmin) 
+               qi_mean(:,:,k) .gt. qmin) 
           D1_dt(:,:,k) = 0.
           snow_cld(:,:,k) = 0.
           a_snow_cld(:,:,k) = 0.
@@ -1709,12 +1810,12 @@ INTEGER,                             INTENT(IN)   :: otun
         sum_cond(:,:,k) =  max(dcond_ls_ice(:,:,k), 0.)*inv_dtcloud
         D_dt(:,:,k) = D1_dt(:,:,k) + D2_dt(:,:,k) + D_eros(:,:,k) +   &
                        (max(-1.*dcond_ls_ice(:,:,k), 0.)/   &
-                                max(qi_mean(:,:,k), Nml%qmin))
+                                max(qi_mean(:,:,k), qmin))
         
 !-----------------------------------------------------------------------
 !    do analytic integration      
 !-----------------------------------------------------------------------
-        where ( D_dt(:,:,k).gt.Nml%Dmin ) 
+        where ( D_dt(:,:,k).gt. Dmin ) 
           qc0(:,:,k) = qi_upd(:,:,k)
           qceq(:,:,k) = C_dt(:,:,k)/D_dt(:,:,k)
           qc1(:,:,k) = qceq(:,:,k) - (qceq(:,:,k) - qc0(:,:,k))*  &
@@ -1759,25 +1860,27 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    initialize tmp2 to hold (-Dterm)/D
 !------------------------------------------------------------------------
-   if (Nml%retain_cm3_bug) then
-        tmp2 (:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/max(D_dt(:,:,k), Nml%Dmin)
-   else
-       where (D_dt(:,:,k) > Nml%Dmin)
-          tmp2(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/max(D_dt(:,:,k), Nml%Dmin)
-      elsewhere
-          tmp2(:,:,k) = 0.0
-      endwhere
-   endif
+        if (retain_cm3_bug) then
+          tmp2 (:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/  &
+                                               max(D_dt(:,:,k), Dmin)
+        else
+          where (D_dt(:,:,k) > Dmin)
+            tmp2(:,:,k) = D_dt(:,:,k)*qcbar(:,:,k)/   &
+                                                max(D_dt(:,:,k), Dmin)
+          elsewhere
+            tmp2(:,:,k) = 0.0
+          endwhere
+        endif
 
 !------------------------------------------------------------------------
 !    do phase changes from large-scale processes 
 !------------------------------------------------------------------------
         ST(:,:,k) = ST(:,:,k) + hls*max(dcond_ls_ice(:,:,k) ,0.)/cp_air - &
                          hls*(max(-1.*dcond_ls_ice(:,:,k), 0.)/   &
-                         max(qi_mean(:,:,k), Nml%qmin))*tmp2(:,:,k)/cp_air
+                         max(qi_mean(:,:,k), qmin))*tmp2(:,:,k)/cp_air
         SQ(:,:,k)  = SQ(:,:,k) - max(dcond_ls_ice(:,:,k) ,0.) +       &
                          (max(-1.*dcond_ls_ice(:,:,k), 0.)/  &
-                                max(qi_mean(:,:,k), Nml%qmin))*tmp2(:,:,k) 
+                                max(qi_mean(:,:,k), qmin))*tmp2(:,:,k) 
 
 !------------------------------------------------------------------------
 !    cloud erosion changes temperature and vapor
@@ -1811,7 +1914,7 @@ INTEGER,                             INTENT(IN)   :: otun
         if (diag_id%qidt_subl + diag_id%qi_subl_col > 0)   &
                   diag_4d(:,:,k,diag_pt%qidt_subl) =   &
                         -(max(0., -1.*dcond_ls_ice(:,:,k) )/   &
-                           max(qi_mean(:,:,k), Nml%qmin))*tmp2(:,:,k)  &
+                           max(qi_mean(:,:,k), qmin))*tmp2(:,:,k)  &
                                                               *inv_dtcloud
         if (diag_id%qidt_melt + diag_id%qi_melt_col > 0)    &
                   diag_4d(:,:,k,diag_pt%qidt_melt) = -D2_dt(:,:,k)*  &
@@ -1898,11 +2001,11 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    compute U_clr. keep U_clr > 0. and U_clr < 1.
 !------------------------------------------------------------------------
-        if (.not. Nml%do_pdf_clouds) then 
+        if (.not. do_pdf_clouds) then 
           where (snow_clr(:,:,k) > 0. .or.   &
                  rain_clr(:,:,k) > 0. )           
             U_clr(:,:,k) = (U(:,:,k) - qa_mean(:,:,k))/  &
-                                      max((1. - qa_mean(:,:,k)), Nml%qmin)
+                                      max((1. - qa_mean(:,:,k)), qmin)
           elsewhere
             U_clr(:,:,k) = 0.
           end where
@@ -1916,7 +2019,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
         where (rain_clr(:,:,k) > 0)
           tmp1(:,:,k) = 56788.636*dtcloud*((rain_clr(:,:,k)/   &
-                            max(a_rain_clr(:,:,k), Nml%qmin)/  &
+                            max(a_rain_clr(:,:,k), qmin)/  &
                                            dens_h2o)**(11./18.))/  &
                             SQRT(airdens(:,:,k))/A_plus_B(:,:,k)/qs(:,:,k)
 
@@ -1931,9 +2034,9 @@ INTEGER,                             INTENT(IN)   :: otun
 !    humidity to U_evap in the clear portion of the grid box
 !------------------------------------------------------------------------
           tmp1(:,:,k) = min(tmp1(:,:,k), ((1.-qa_mean(:,:,k))/  &
-                            max(a_rain_clr(:,:,k), Nml%qmin))*qs(:,:,k)* &
-                          max(0. ,Nml%U_evap-U_clr(:,:,k))/  &
-                            (1. + (Nml%U_evap*(1. - qa_mean(:,:,k)) +  &
+                            max(a_rain_clr(:,:,k), qmin))*qs(:,:,k)* &
+                          max(0. , U_evap-U_clr(:,:,k))/  &
+                            (1. + (U_evap*(1. - qa_mean(:,:,k)) +  &
                                            qa_mean(:,:,k))*gamma(:,:,k)) )
         
 !------------------------------------------------------------------------
@@ -1955,7 +2058,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    if all of the rain evaporates set things to zero.    
 !------------------------------------------------------------------------
         where (tmp1(:,:,k) .gt. rain_clr(:,:,k) .and.    &
-               a_rain_clr(:,:,k) .gt. Nml%qmin)         
+               a_rain_clr(:,:,k) .gt. qmin)         
           rain_clr(:,:,k) = 0.
           a_rain_clr(:,:,k) = 0.
         elsewhere
@@ -2007,12 +2110,12 @@ INTEGER,                             INTENT(IN)   :: otun
 !-------------------------------------------------------------------------
           tmp1(:,:,k) = dtcloud*(4./3.14159/rho_ice/airdens(:,:,k)/       &
                         A_plus_B(:,:,k)/qs(:,:,k))*((snow_clr(:,:,k)/  &
-                       max(a_snow_clr(:,:,k), Nml%qmin)/3.29)**(1./1.16))*&
+                       max(a_snow_clr(:,:,k), qmin)/3.29)**(1./1.16))*&
                         (0.65*lamda_f(:,:,k)*lamda_f(:,:,k) +         &
                             198.92227*lamda_f(:,:,k)*  &
                                   SQRT(airdens(:,:,k)*lamda_f(:,:,k))*   &
                                           ( (snow_clr(:,:,k)/    &
-                           max(a_snow_clr(:,:,k),Nml%qmin))**(1./14.5) )  )
+                           max(a_snow_clr(:,:,k), qmin))**(1./14.5) )  )
 
 !-------------------------------------------------------------------------
 !    compute local change in vapor mixing ratio due to snow sublimation.
@@ -2025,9 +2128,9 @@ INTEGER,                             INTENT(IN)   :: otun
 !    humidity to U_evap in the clear portion of the grid box
 !-------------------------------------------------------------------------
           tmp1 (:,:,k) = min(tmp1(:,:,k), ((1. - qa_mean(:,:,k))/  &
-                           max(a_snow_clr(:,:,k), Nml%qmin))*qs(:,:,k)* &
-                           max(0., Nml%U_evap_snow  -U_clr(:,:,k))/  &         !miz
-                               (1. + (Nml%U_evap_snow*(1. - qa_mean(:,:,k)) + &!miz
+                           max(a_snow_clr(:,:,k), qmin))*qs(:,:,k)* &
+                           max(0., U_evap_snow  -U_clr(:,:,k))/  &
+                               (1. + (U_evap_snow*(1. - qa_mean(:,:,k)) + &
                                            qa_mean(:,:,k))*gamma(:,:,k)) )
         
 !-------------------------------------------------------------------------
@@ -2047,7 +2150,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !    if all of the snow sublimates set things to zero.    
 !-------------------------------------------------------------------------
         where (tmp1(:,:,k) .gt. snow_clr(:,:,k) .and.   &
-               a_snow_clr(:,:,k) .gt. Nml%qmin)         
+               a_snow_clr(:,:,k) .gt. qmin)         
           snow_clr(:,:,k) = 0.
           a_snow_clr(:,:,k) = 0.
         elsewhere
@@ -2074,7 +2177,7 @@ INTEGER,                             INTENT(IN)   :: otun
                diag_4d(:,:,k,diag_pt%qidt_destr) =   &
                  diag_4d(:,:,k,diag_pt%qidt_destr) + SI(:,:,k)*inv_dtcloud
         if   (diag_id%qndt_destr + diag_id%qn_destr_col > 0 .and.    &
-                    Nml%do_liq_num )      &
+                do_liq_num )      &
                 diag_4d(:,:,k,diag_pt%qndt_destr) = &
                  diag_4d(:,:,k,diag_pt%qndt_destr) + SN(:,:,k)*inv_dtcloud
       
@@ -2118,9 +2221,9 @@ INTEGER,                             INTENT(IN)   :: otun
 !    qa is .le. qmin. In this case, ql, qi, and qa are set to zero 
 !    conserving moisture and energy.
 !-----------------------------------------------------------------------
-      if (.not.Nml%do_liq_num) then
-        where ((ql_upd .le. Nml%qmin .and. qi_upd .le. Nml%qmin) .or.   &
-               (qa_upd .le. Nml%qmin))
+      if (.not. do_liq_num) then
+        where ((ql_upd .le. qmin .and. qi_upd .le. qmin) .or.   &
+               (qa_upd .le. qmin))
           SL = SL - ql_upd 
           SI = SI - qi_upd 
           SQ = SQ + ql_upd + qi_upd 
@@ -2131,8 +2234,8 @@ INTEGER,                             INTENT(IN)   :: otun
           qa_upd = 0.0
         end where
       else
-        where ((ql_upd .le. Nml%qmin .and. qi_upd .le. Nml%qmin) .or.  &
-               (qa_upd .le. Nml%qmin))
+        where ((ql_upd .le. qmin .and. qi_upd .le. qmin) .or.  &
+               (qa_upd .le. qmin))
           SL = SL - ql_upd 
           SI = SI - qi_upd 
           SQ = SQ + ql_upd + qi_upd 
@@ -2187,14 +2290,14 @@ INTEGER,                             INTENT(IN)   :: otun
 !       as statistical clouds should remove supersaturation according
 !       to the beta distribution used.
 !------------------------------------------------------------------------
-      if (.not.Nml%do_pdf_clouds) then
+      if (.not. do_pdf_clouds) then
 
 !-------------------------------------------------------------------------
 !    updated temperature in tmp8, updated qs in tmp2,  
 !    updated gamma in tmp3, updated dqsdT in tmp5
 !------------------------------------------------------------------------
         tmp8 = T + ST
-        IF (rk_alt_adj_opt .and. Nml%super_choice ) THEN
+        IF (rk_alt_adj_opt .and. super_choice ) THEN
           where ( tmp8 > tfreeze - 40. )      
             est_a = polysvp_l(tmp8, idim, jdim, kdim)   
 
@@ -2256,9 +2359,8 @@ INTEGER,                             INTENT(IN)   :: otun
 !   NOTE: The above is essentially what rk_alt_adj_opt is doing, but
 !   with different formulae for es.
 !------------------------------------------------------------------------
-!         if (use_inconsistent_lh) then
-            call compute_qs (tmp8, pfull, tmp2, dqsdT=tmp5)
-            tmp3 = tmp5*(min(1., max(0.,     &
+          call compute_qs (tmp8, pfull, tmp2, dqsdT=tmp5)
+          tmp3 = tmp5*(min(1., max(0.,     &
                                    0.05*(tmp8 - tfreeze + 20.)))*hlv +  &
                               min(1., max(0.,    &
                                       0.05*(tfreeze - tmp8)))*hls)/cp_air
@@ -2266,33 +2368,7 @@ INTEGER,                             INTENT(IN)   :: otun
 !-------------------------------------------------------------------------
 !    compute excess over saturation
 !-------------------------------------------------------------------------
-            tmp1 = max(0., qv + SQ - tmp2)/(1. + tmp3)
-!RSH
-!         else
-!           if (Nml%super_choice) then
-!             tcrit = tfreeze - 40.
-!           else
-!             tcrit = tfreeze - 20.
-!           endif
-!           call compute_qs (tmp8, pfull, tmp2, dqsdT=tmp5,  &
-!                                                   es_over_liq = .true.)
-!           where (tmp8 > tcrit) 
-!             tmp3 = tmp5*hlv/cp_air
-!-------------------------------------------------------------------------
-!    compute excess over saturation
-!-------------------------------------------------------------------------
-!             tmp1 = max(0., qv + SQ - tmp2)/(1. + tmp3)
-!           endwhere
-!           call compute_qs (tmp8, pfull, tmp2, dqsdT=tmp5)
-!           where (tmp8 <= tcrit) 
-!             tmp3 = tmp5*hls/cp_air
-!-------------------------------------------------------------------------
-!    compute excess over saturation
-!-------------------------------------------------------------------------
-!             tmp1 = max(0., qv + SQ - tmp2)/(1. + tmp3)
-!           end where
-!         endif
-
+          tmp1 = max(0., qv + SQ - tmp2)/(1. + tmp3)
         END IF !  rk_alt_adj_if
 
 !------------------------------------------------------------------------
@@ -2303,13 +2379,13 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    if super_choice is .true., then put supersaturation into cloud,
 !------------------------------------------------------------------------
-        if (Nml%super_choice) then
+        if (super_choice) then
 
 
 !------------------------------------------------------------------------
 !    assign additional droplets where supersaturation is predicted. 
 !------------------------------------------------------------------------
-          if (Nml%do_liq_num) then
+          if (do_liq_num) then
             do k=1,kdim
               do j=1,jdim
                 do i=1,idim
@@ -2325,7 +2401,7 @@ INTEGER,                             INTENT(IN)   :: otun
             end do
           endif
           if (diag_id%qndt_super + diag_id%qn_super_col > 0) then
-            if (Nml%do_liq_num) then
+            if (do_liq_num) then
               where (T .gt. tfreeze - 40. .and. tmp1 .gt. 0.)
                 diag_4d(:,:,:,diag_pt%qndt_super) =     &
                          diag_4d(:,:,:,diag_pt%qndt_super) + drop1*1.e6/ &
@@ -2381,9 +2457,9 @@ INTEGER,                             INTENT(IN)   :: otun
 !------------------------------------------------------------------------
 !    save adjustment diagnostics.
 !------------------------------------------------------------------------
-            where (T .le. tfreeze - 40.)
-              sum_ice_adj(:,:,:) = tmp1*inv_dtcloud
-            endwhere
+          where (T .le. tfreeze - 40.)
+            sum_ice_adj(:,:,:) = tmp1*inv_dtcloud
+          endwhere
           if (diag_id%liq_adj  + diag_id%liq_adj_col +   &
               diag_id%ice_adj + diag_id%ice_adj_col  > 0) then       
             where (T .le. tfreeze - 40.)
@@ -2428,7 +2504,7 @@ INTEGER,                             INTENT(IN)   :: otun
             endwhere
           end if
         end if !super choice
-      end if !for Nml%do_pdf_clouds
+      end if !for do_pdf_clouds
 
 !------------------------------------------------------------------------
 !    complete calculation of the adjustment part of the destruction 
@@ -2444,7 +2520,7 @@ INTEGER,                             INTENT(IN)   :: otun
            diag_4d(:,:,:,diag_pt%qidt_destr) =    &
                       diag_4d(:,:,:,diag_pt%qidt_destr) + SI*inv_dtcloud
       if  (diag_id%qndt_destr + diag_id%qn_destr_col > 0 .and.    &
-                                                  Nml%do_liq_num )   &
+                                                         do_liq_num )   &
            diag_4d(:,:,:,diag_pt%qndt_destr) =    &
                       diag_4d(:,:,:,diag_pt%qndt_destr) + SN*inv_dtcloud
 
@@ -2452,21 +2528,21 @@ INTEGER,                             INTENT(IN)   :: otun
 !    final clean up to remove numerical noise
 !----------------------------------------------------------------------
       ql_upd = ql + SL
-      where ( abs(ql_upd) .le. Nml%qmin .and. qv + SQ + ql_upd > 0.0 )    
+      where ( abs(ql_upd) .le. qmin .and. qv + SQ + ql_upd > 0.0 )    
         SL = -ql
         SQ = SQ + ql_upd
         ST = ST - hlv*ql_upd/cp_air
         ql_upd = 0.0
       end where
       qi_upd = qi + SI
-      where ( abs(qi_upd) .le. Nml%qmin .and. qv + SQ + qi_upd > 0.0 )   
+      where ( abs(qi_upd) .le. qmin .and. qv + SQ + qi_upd > 0.0 )   
         SI = -qi
         SQ = SQ + qi_upd
         ST = ST - hls*qi_upd/cp_air
         qi_upd = 0.0
       end where
       qa_upd = qa + SA
-      where ( abs(qa_upd) .le. Nml%qmin )         
+      where ( abs(qa_upd) .le. qmin )         
         SA  = -qa
         qa_upd = 0.0
       end where
@@ -2486,7 +2562,7 @@ INTEGER,                             INTENT(IN)   :: otun
            diag_4d(:,:,:,diag_pt%qidt_destr) =    &
                   -( diag_4d(:,:,:,diag_pt%qidt_destr) - SI*inv_dtcloud)
       if (diag_id%qndt_destr + diag_id%qn_destr_col > 0 .and.    &
-                                                    Nml%do_liq_num )  &
+                                                        do_liq_num )  &
            diag_4d(:,:,:,diag_pt%qndt_destr) =    &
                    diag_4d(:,:,:,diag_pt%qndt_destr) - SN *inv_dtcloud
        
@@ -2494,14 +2570,14 @@ INTEGER,                             INTENT(IN)   :: otun
            diag_4d(:,:,:,diag_pt%qldt_destr) =     &
                    -diag_4d(:,:,:,diag_pt%qldt_destr) 
       if (diag_id%qndt_destr + diag_id%qn_destr_col > 0 .and.    &
-                                                    Nml%do_liq_num )  &
+                                                        do_liq_num )  &
            diag_4d(:,:,:,diag_pt%qndt_destr) =    &
                    -diag_4d(:,:,:,diag_pt%qndt_destr) 
 
 !-----------------------------------------------------------------------
 !    add the ice falling out from cloud to  the qidt_fall diagnostic.
 !-----------------------------------------------------------------------
-        if (diag_id%qidt_fall + diag_id%qi_fall_col > 0)  &
+      if (diag_id%qidt_fall + diag_id%qi_fall_col > 0)  &
              diag_4d(:,:,1:kdim,diag_pt%qidt_fall) =    &
                       diag_4d(:,:,1:kdim,diag_pt%qidt_fall) - &
                       (snow_cld(:,:,1:kdim)/deltpg(:,:,1:kdim))
@@ -2545,96 +2621,58 @@ INTEGER,                             INTENT(IN)   :: otun
 !    MASK = 1. equals above ground point, MASK = 0. equals below ground 
 !    point.
 !------------------------------------------------------------------------
-      if ( mask_present ) then
-
-!------------------------------------------------------------------------
-!    zero out all tendencies below ground
-!------------------------------------------------------------------------
-        ST = MASK*ST
-        SQ = MASK*SQ
-        SL = MASK*SL
-        SI = MASK*SI
-        SA = MASK*SA
-        rain3d(:,:,1:kdim) = mask*rain3d(:,:,1:kdim)
-        snow3d(:,:,1:kdim) = mask*snow3d(:,:,1:kdim)
-        rain3d(:,:,kdim+1) = mask(:,:,kdim)*rain3d(:,:,kdim+1)
-        snow3d(:,:,kdim+1) = mask(:,:,kdim)*snow3d(:,:,kdim+1)
-        if (Nml%do_liq_num) then
-          SN = MASK*SN
-        endif
-
-!------------------------------------------------------------------------
-!    determine the true bottom of columns which contain some below-ground
-!    points. grab that value as surfrain or surfsnow and set the other
-!    rain and asnow arrays at that level to 0.
-!------------------------------------------------------------------------
-        DO k=1,kdim-1
-          where(MASK(:,:,k) .eq. 1. .and. MASK(:,:,k+1) .eq. 0.)
-            surfrain(:,:) = dtcloud*rain3d(:,:,k+1)
-            surfsnow(:,:) = dtcloud*snow3d(:,:,k+1)
-          end where
-        END DO
-
-!-----------------------------------------------------------------------
-!    define the precip at the surface in those columns with no below-ground
-!    points.
-!-----------------------------------------------------------------------
-        where(MASK(:,:,kdim) .eq. 1.)
-          surfrain(:,:) = dtcloud*rain3d(:,:,kdim+1)
-          surfsnow(:,:) = dtcloud*snow3d(:,:,kdim+1)
-        end where
-      else
-
 !------------------------------------------------------------------------
 !    when mask not present, the surface precip is defined as the values
 !    at level kdim.
 !------------------------------------------------------------------------
         surfrain(:,:) = dtcloud*rain3d(:,:,kdim+1)
         surfsnow(:,:) = dtcloud*snow3d(:,:,kdim+1)
-      end if 
                   
 !-----------------------------------------------------------------------
 !  Used for BC aerosol in-cloud scavenging:
       if (include_adjustment_for_wetdep) then
-         do k=1,kdim
-         do j=1,jdim
-         do i=1,idim
-               qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
-                          sum_ice_adj(i,j,k) + sum_cond(i,j,k) +   &
-                          sum_freeze(i,j,k)
-	       if (qldt_sum > 0.)  then
-                  if (include_homogeneous_for_wetdep) then
-                     f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k) + &
-                                 sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
-                  else
-                     f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
-	          endif
-               else
-                 f_snow_berg(i,j,k) = 0.
-               endif
-         end do
-         end do
-         end do
+        do k=1,kdim
+          do j=1,jdim
+            do i=1,idim
+              qldt_sum = sum_berg(i,j,k) + sum_rime(i,j,k) +   &
+                         sum_ice_adj(i,j,k) + sum_cond(i,j,k) +   &
+                         sum_freeze(i,j,k)
+              if (qldt_sum > 0.)  then
+                if (include_homogeneous_for_wetdep) then
+                  f_snow_berg(i,j,k) =    &
+                        (sum_berg(i,j,k) + sum_freeze(i,j,k) + &
+                          sum_ice_adj(i,j,k) + sum_cond(i,j,k))/qldt_sum
+                else
+                   f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
+                endif
+              else
+                f_snow_berg(i,j,k) = 0.
+              endif
+            end do
+          end do
+        end do
       else
-         do k=1,kdim
-         do j=1,jdim
-         do i=1,idim
-               qldt_sum = sum_berg(i,j,k) + sum_freeze(i,j,k) + sum_rime(i,j,k)
-	       if (qldt_sum > 0.)  then
-                 if (include_homogeneous_for_wetdep) then
-                    f_snow_berg(i,j,k) = (sum_berg(i,j,k) + sum_freeze(i,j,k))/qldt_sum
-                 else
-                    f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
-	         endif
-               else
-                 f_snow_berg(i,j,k) = 0.
-               endif
-         end do
-         end do
-         end do
+        do k=1,kdim
+          do j=1,jdim
+            do i=1,idim
+              qldt_sum = sum_berg(i,j,k) + sum_freeze(i,j,k) +   &
+                                                          sum_rime(i,j,k)
+              if (qldt_sum > 0.)  then
+                if (include_homogeneous_for_wetdep) then
+                  f_snow_berg(i,j,k) =    &
+                           (sum_berg(i,j,k) + sum_freeze(i,j,k))/qldt_sum
+                else
+                  f_snow_berg(i,j,k) = sum_berg(i,j,k)/qldt_sum
+                endif
+              else
+                f_snow_berg(i,j,k) = 0.
+              endif
+            end do
+          end do
+        end do
       endif
         
-
+!------------------------------------------------------------------------
 
 
 END SUBROUTINE rotstayn_klein_microp
@@ -2661,12 +2699,11 @@ END SUBROUTINE rotstayn_klein_microp_end
 
 !########################################################################
 
-subroutine cloud_clear_xfer (k, Nml, cloud_generator_on, overlap,  &
+subroutine cloud_clear_xfer (k, cloud_generator_on, overlap,  &
                              tmp3, qa_mean, a_clr, a_cld, clr, cld)
 
 !---------------------------------------------------------------------
 integer,                intent(in)    :: k, overlap
-type(strat_nml_type),   intent(in)    :: Nml
 logical,                intent(in)    :: cloud_generator_on
 real, dimension(:,:,:), intent(in)    :: tmp3, qa_mean
 real, dimension(:,:,:), intent(inout) :: a_clr, a_cld, clr, cld
@@ -2720,10 +2757,9 @@ real, dimension(:,:,:), intent(inout) :: a_clr, a_cld, clr, cld
 !------------------------------------------------------------------------
 !    calculate precipitation transfers
 !------------------------------------------------------------------------
-      dprec_cld2clr = cld(:,:,km1)*(da_cld2clr/max(a_cld(:,:,km1),  &
-                                                                Nml%qmin))
+      dprec_cld2clr = cld(:,:,km1)*(da_cld2clr/max(a_cld(:,:,km1), qmin))
       dprec_clr2cld = clr(:,:,km1)*(da_clr2cld(:,:)/max(a_clr(:,:,km1), &
-                                                                 Nml%qmin))
+                                                                     qmin))
         
 !------------------------------------------------------------------------
 !    add in transfers
@@ -2743,4 +2779,4 @@ end subroutine cloud_clear_xfer
 
 
 
-END MODULE rotstayn_klein_mp_mod
+                 END MODULE rotstayn_klein_mp_mod

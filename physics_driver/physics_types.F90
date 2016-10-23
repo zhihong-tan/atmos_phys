@@ -10,7 +10,12 @@ use tracer_manager_mod, only: get_tracer_index, get_number_tracers
  public physics_control_type
  type physics_control_type
      integer :: sphum
+     integer :: nsphum, nql, nqi, nqa, nqn, nqni, nqr, nqs, nqg
+     integer :: num_prog_tracers
      logical :: hydrostatic, phys_hydrostatic, do_uni_zfull !miz
+     logical :: l_host_applies_sfc_fluxes
+     logical :: use_tau
+     logical, dimension(:), _ALLOCATABLE :: cloud_tracer _NULL
  end type physics_control_type
 
 !--- atmosphere inputs block structure
@@ -68,6 +73,61 @@ use tracer_manager_mod, only: get_tracer_index, get_number_tracers
  type physics_tendency_type
      type (physics_tendency_block_type), dimension(:), _ALLOCATABLE :: block _NULL
  end type physics_tendency_type
+
+ public phys_mp_exch_type
+ type phys_mp_exch_type
+      real, dimension(:,:,:), pointer :: diff_t => null()
+      real, dimension(:,:,:), pointer :: radturbten => null()
+      real, dimension(:,:,:), pointer :: diff_cu_mo => null()
+      real, dimension(:,:,:), pointer :: diff_t_clubb => null()
+      real, dimension(:,:  ), pointer :: cush        => null()
+      real, dimension(:,:  ), pointer :: cbmf        => null()
+      real, dimension(:,:  ), pointer :: pbltop      => null()
+   logical, dimension(:,:  ), pointer :: convect     => null()
+      real, dimension(:,:  ), pointer :: tdt_shf     => null()
+      real, dimension(:,:  ), pointer :: qdt_lhf     => null() 
+      real, dimension(:,:  ), pointer :: hmint       => null() 
+      real, dimension(:,:  ), pointer :: cgust       => null() 
+      real, dimension(:,:  ), pointer :: tke         => null() 
+      real, dimension(:,:  ), pointer :: pblhto      => null() 
+      real, dimension(:,:  ), pointer :: rkmo        => null() 
+      real, dimension(:,:  ), pointer :: taudpo     => null() 
+   integer, dimension(:,:,:), pointer :: exist_shconv=> null() 
+   integer, dimension(:,:,:), pointer :: exist_dpconv=> null() 
+      real, dimension(:,:,:), pointer :: pblht_prev => null() 
+      real, dimension(:,:,:), pointer :: hlsrc_prev => null() 
+      real, dimension(:,:,:), pointer :: qtsrc_prev => null() 
+      real, dimension(:,:,:), pointer ::  cape_prev => null() 
+      real, dimension(:,:,:), pointer ::   cin_prev => null() 
+      real, dimension(:,:,:), pointer ::   tke_prev => null() 
+ end type phys_mp_exch_type
+
+public Phys2cosp_type
+type Phys2cosp_type 
+   real, dimension(:,:,:), pointer :: temp_last=>NULL()
+   real, dimension(:,:,:), pointer :: q_last=>NULL()
+   real, dimension(:,:,:), pointer :: p_full=>NULL()
+   real, dimension(:,:,:), pointer :: p_half=>NULL()
+   real, dimension(:,:,:), pointer :: z_full=>NULL()
+   real, dimension(:,:,:), pointer :: z_half=>NULL()
+   real, dimension(:,:,:), pointer ::      u=>NULL()
+   real, dimension(:,:,:), pointer ::      v=>NULL()
+   real, dimension(:,:  ), pointer :: frac_land=>NULL()
+   real, dimension(:,:  ), pointer :: lat=>NULL()
+   real, dimension(:,:  ), pointer :: lon=>NULL()
+end type Phys2cosp_type 
+
+public precip_flux_type
+type precip_flux_type
+   real, dimension(:,:,:),        pointer :: fl_lsrain=>NULL()
+   real, dimension(:,:,:),        pointer :: fl_lssnow=>NULL()
+   real, dimension(:,:,:),        pointer :: fl_lsgrpl=>NULL()
+   real, dimension(:,:,:),        pointer :: fl_ccrain=>NULL()
+   real, dimension(:,:,:),        pointer :: fl_ccsnow=>NULL()
+   real, dimension(:,:,:),        pointer :: fl_donmca_rain=>NULL()
+   real, dimension(:,:,:),        pointer :: fl_donmca_snow=>NULL()
+end type precip_flux_type
+
 
 
 public :: alloc_physics_type, dealloc_physics_type, &

@@ -3398,17 +3398,23 @@ if (Time_diag > Time) then
 !    content and path, liquid water content and path, ice particle size,
 !    droplet size, droplet number. 
 !--------------------------------------------------------------------
-          used = send_data (id_cldfrac_cols_only_lsc(n),   &
+          if (id_cldfrac_cols_only_lsc(n) > 0) then
+            used = send_data (id_cldfrac_cols_only_lsc(n),   &
                             Lsc_microphys%stoch_cldamt(:,:,:,n), &
                             Time_diag, is, js, 1)
+          endif
 
-          used = send_data (id_ice_conc_cols_only_lsc(n),    &
+          if (id_ice_conc_cols_only_lsc(n) > 0) then
+            used = send_data (id_ice_conc_cols_only_lsc(n),    &
                             Lsc_microphys%stoch_conc_ice(:,:,:,n), &
                             Time_diag, is, js, 1)
+          endif
 
-          used = send_data (id_drop_conc_cols_only_lsc(n),   &
+          if (id_drop_conc_cols_only_lsc(n) > 0) then
+            used = send_data (id_drop_conc_cols_only_lsc(n),   &
                             Lsc_microphys%stoch_conc_drop(:,:,:,n), &
                             Time_diag, is, js, 1)
+          endif
 
           if (id_iwp_cols_only_lsc(n) > 0) then
             cloud2d(:,:) =   &
