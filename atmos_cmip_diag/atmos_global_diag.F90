@@ -38,7 +38,8 @@ public :: atmos_global_diag_init, &
 
 interface send_global_diag
    module procedure send_global_diag_data
-   module procedure send_global_diag_only
+   module procedure send_global_diag_tile_data
+   module procedure send_global_diag_buffer
 end interface
 
 !-----------------------------------------------------------------------
@@ -49,6 +50,7 @@ type atmos_global_diag_type
   integer            :: field_id
   real, pointer      :: buffer(:,:)
   type(time_type)    :: Time
+  logical            :: use_buffer
   logical            :: use_masking
 end type atmos_global_diag_type
 
@@ -154,11 +156,11 @@ end subroutine atmos_global_diag_init
 !#######################################################################
 
 function register_global_diag_field (field_name, Time_init, long_name, &
-                                     units, standard_name, use_masking )
+                                     units, standard_name, buffer, use_masking )
 character(len=*), intent(in) :: field_name
 type(time_type),  intent(in) :: Time_init
 character(len=*), intent(in), optional :: long_name, units, standard_name
-logical,          intent(in), optional :: use_masking
+logical,          intent(in), optional :: buffer, use_masking
 
 !-----------------------------------------------------------------------
 
@@ -190,10 +192,18 @@ integer :: field_index, field_id
 
   fields(num_fields)%field_name = trim(field_name)
   fields(num_fields)%field_id = field_id
-  allocate(fields(num_fields)%buffer(id,jd))
-  fields(num_fields)%buffer = missing_value
   fields(num_fields)%use_masking = .false.
-  if (present(use_masking)) fields(num_fields)%use_masking = use_masking
+  fields(num_fields)%use_buffer = .false.
+
+  if (present(buffer)) then
+    if (buffer) then
+      allocate(fields(num_fields)%buffer(id,jd))
+      fields(num_fields)%buffer = missing_value
+      fields(num_fields)%use_buffer = .true.
+      if (present(use_masking)) fields(num_fields)%use_masking = use_masking
+    endif
+  endif
+
   return
 
 !-----------------------------------------------------------------------
@@ -243,6 +253,9 @@ integer :: is, ie, js, je
   if (field_num < 0 .or. field_num > num_fields) call error_mesg &
       ('atmos_global_diag_mod', 'invalid field number in buffer_global_data', FATAL)
 
+  if (.not.fields(field_num)%use_buffer) call error_mesg ('atmos_global_diag_mod', &
+      'buffer not allocated in buffer_global_data for field='//trim(fields(field_num)%field_name), FATAL)
+
   is = 1; if (present(is_in)) is = is_in
   js = 1; if (present(js_in)) js = js_in
   ie = is + size(data,1) -1
@@ -264,25 +277,112 @@ end subroutine buffer_global_diag
 
 !#######################################################################
 
-function send_global_diag_data (field_num, data, Time, mask)
+function send_global_diag_data (field_num, data, Time, area, mask)
 integer,           intent(in) :: field_num
 real,              intent(in) :: data(:,:)
 type(time_type),   intent(in) :: Time
+real,    optional, intent(in) :: area(:,:)
 logical, optional, intent(in) :: mask(:,:)
 
 logical :: send_global_diag_data
 !-----------------------------------------------------------------------
-call buffer_global_diag (field_num, data, Time, mask=mask)
-send_global_diag_data = send_global_diag_only (field_num)
+
+real, dimension(id,jd) :: data_gbl, area_gbl
+real :: gbl_sum, area_sum
+
+!-----------------------------------------------------------------------
+
+  if (.not.module_is_initialized) call error_mesg &
+      ('atmos_global_diag_mod', 'module has not been initialized', FATAL)
+
+  if (field_num == 0) return
+  if (field_num < 0 .or. field_num > num_fields) call error_mesg &
+      ('atmos_global_diag_mod', 'invalid field number in send_global_diag_data', FATAL)
+
+  if (fields(field_num)%use_buffer) call error_mesg ('atmos_global_diag_mod', &
+       'buffer allocated in send_global_diag_data for field='//trim(fields(field_num)%field_name), FATAL)
+
+  if (.not.present(area) .and. .not.present(mask)) then
+    data_gbl = data*area_g
+    area_sum = area_g_sum
+    
+  else if (present(area) .and. present(mask)) then
+    where (mask)
+      data_gbl = data*area
+      area_gbl = area
+    elsewhere
+      data_gbl = 0.0
+      area_gbl = 0.0
+    endwhere
+    area_sum = mpp_global_sum (Domain2, area_gbl, flags=BITWISE_EFP_SUM)
+
+  else if (present(area) .and. .not.present(mask)) then
+    data_gbl = data*area
+    area_sum = mpp_global_sum (Domain2, area, flags=BITWISE_EFP_SUM)
+ 
+  else if (.not.present(area) .and. present(mask)) then
+    where (mask)
+      data_gbl = data
+      area_gbl = area_g
+    elsewhere
+      data_gbl = 0.0
+      area_gbl = 0.0
+    endwhere
+    area_sum = mpp_global_sum (Domain2, area_gbl, flags=BITWISE_EFP_SUM)
+  endif
+
+  gbl_sum = mpp_global_sum (Domain2, data_gbl, flags=BITWISE_EFP_SUM)
+  send_global_diag_data = send_data (fields(field_num)%field_id, gbl_sum/area_sum, Time)
+
 !-----------------------------------------------------------------------
 
 end function send_global_diag_data
 
 !#######################################################################
 
-function send_global_diag_only (field_num)
+function send_global_diag_tile_data (field_num, data, area, Time, mask)
+integer,           intent(in) :: field_num
+real,              intent(in) :: data(:,:,:)
+real,              intent(in) :: area(:,:,:)
+type(time_type),   intent(in) :: Time
+logical,           intent(in) :: mask(:,:,:)
+
+logical :: send_global_diag_tile_data
+!-----------------------------------------------------------------------
+
+integer :: k
+real, dimension(size(data,1),size(data,2)) :: avg, wt
+
+!-----------------------------------------------------------------------
+
+avg = 0.0
+wt  = 0.0
+
+! average over tiles
+  do k = 1, size(area,3)
+    where (mask(:,:,k))
+      avg = avg + data(:,:,k)*area(:,:,k)
+      wt  = wt  + area(:,:,k)
+    endwhere
+  enddo
+
+  where (wt > 0.0)
+    avg = avg/wt
+  elsewhere
+    avg = 0.0
+  endwhere
+
+  send_global_diag_tile_data = send_global_diag_data (field_num, avg, Time, wt, any(mask,dim=3))
+
+!-----------------------------------------------------------------------
+
+end function send_global_diag_tile_data
+
+!#######################################################################
+
+function send_global_diag_buffer (field_num)
 integer,         intent(in) :: field_num
-logical :: send_global_diag_only
+logical :: send_global_diag_buffer
 !-----------------------------------------------------------------------
 
 real, dimension(id,jd) :: data_g, area_m
@@ -295,7 +395,10 @@ real :: gbl_sum, area_sum
 
   if (field_num == 0) return
   if (field_num < 0 .or. field_num > num_fields) call error_mesg &
-      ('atmos_global_diag_mod', 'invalid field number in send_global_diag', FATAL)
+      ('atmos_global_diag_mod', 'invalid field number in send_global_diag_buffer', FATAL)
+
+  if (.not.fields(field_num)%use_buffer) call error_mesg ('atmos_global_diag_mod', &
+      'buffer not allocated in send_global_diag_buffer for field='//trim(fields(field_num)%field_name), FATAL)
 
   ! weight data with area
   data_g = fields(field_num)%buffer*area_g
@@ -316,12 +419,12 @@ real :: gbl_sum, area_sum
   ! sum of data*area
   gbl_sum = mpp_global_sum (Domain2, data_g, flags=BITWISE_EFP_SUM)
 
-  send_global_diag_only = send_data (fields(field_num)%field_id, gbl_sum/area_sum, &
-                                     fields(field_num)%Time)
+  send_global_diag_buffer = send_data (fields(field_num)%field_id, gbl_sum/area_sum, &
+                                      fields(field_num)%Time)
 
 !-----------------------------------------------------------------------
 
-end function send_global_diag_only
+end function send_global_diag_buffer
 
 !#######################################################################
 
@@ -339,7 +442,10 @@ integer :: ind
   endif
 
   do ind = 1, num_fields
-    deallocate(fields(ind)%buffer)
+    if (fields(ind)%use_buffer) then
+       deallocate(fields(ind)%buffer)
+       fields(ind)%use_buffer = .false.
+    endif
   enddo
   deallocate(fields)
 
