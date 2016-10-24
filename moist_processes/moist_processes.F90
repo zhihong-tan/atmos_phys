@@ -90,7 +90,7 @@ use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
                                  moistproc_lscale_cond, moistproc_strat_cloud, &
                                  moistproc_cmt, moistproc_uw_conv, &
                                  moistproc_scale_uw, moistproc_scale_donner, &
-				 height_adjust !miz
+                                 height_adjust !miz
 ! atmos_shared modules
 use atmos_tracer_utilities_mod, only : wet_deposition
 use atmos_dust_mod, only : atmos_dust_init, dust_tracers, n_dust_tracers, do_dust, atmos_dust_wetdep_flux_set
@@ -3971,9 +3971,9 @@ integer            :: k
 
 !----- initialize global integrals for netCDF output -----
    id_pr_g = register_global_diag_field ('pr', Time, 'Precipitation', &
-                     'kg m-2 s-1', standard_name='precipitation_flux' )
+                     'kg m-2 s-1', standard_name='precipitation_flux', buffer=.true. )
    id_prc_g = register_global_diag_field ('prc', Time, 'Convective Precipitation', &
-                     'kg m-2 s-1', standard_name='convective_precipitation_flux' )
+                     'kg m-2 s-1', standard_name='convective_precipitation_flux', buffer=.true. )
 
 !---------------------------------------------------------------------
 !    define output variables indicating whether certain convection 

@@ -1172,23 +1172,23 @@ logical,         intent(in) :: do_lwaerosol
 
         id_rsdt_g = register_global_diag_field ('rsdt', Time, &
                         'TOA Incident Shortwave Radiation', 'W m-2',   &
-                         standard_name = 'toa_incoming_shortwave_flux')
+                       standard_name='toa_incoming_shortwave_flux', buffer=.true.)
 
         id_rsut_g = register_global_diag_field ('rsut', Time, &
                        'TOA Outgoing Shortwave Radiation', 'W m-2',    &
-                        standard_name = 'toa_outgoing_shortwave_flux')
+                      standard_name='toa_outgoing_shortwave_flux', buffer=.true.)
 
         id_rsutcs_g = register_global_diag_field ('rsutcs', Time, &
                  'TOA Outgoing Clear-Sky Shortwave Radiation', 'W m-2',    &
-                 standard_name = 'toa_outgoing_shortwave_flux_assuming_clear_sky')
+                 standard_name='toa_outgoing_shortwave_flux_assuming_clear_sky', buffer=.true.)
 
         id_rlut_g = register_global_diag_field ('rlut', Time, &
                         'TOA Outgoing Longwave Radiation', 'W m-2',    &
-                         standard_name = 'toa_outgoing_longwave_flux')
+                      standard_name='toa_outgoing_longwave_flux', buffer=.true.)
 
         id_rlutcs_g = register_global_diag_field ('rlutcs', Time, &
                    'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
-                 standard_name = 'toa_outgoing_longwave_flux_assumimg_clear_sky')
+                 standard_name='toa_outgoing_longwave_flux_assumimg_clear_sky', buffer=.true.)
 
 
 !----------------------------------------------------------------------
