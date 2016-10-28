@@ -563,7 +563,7 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
         end do
        end do
       end do
-
+        
 !-----------------------------------------------------------------------
 !    call strat_cloud to integrate the prognostic cloud equations.
 !-----------------------------------------------------------------------
@@ -894,10 +894,9 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                     qitnd_uw, qatnd_uw, qntnd_uw, utnd_uw, vtnd_uw,       &
                     rain_uw, snow_uw, cmf, liq_precflx, ice_precflx,      &
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
-                    shallow_droplet_number, cbmf, cgust, tke, pblhto,     &
-                    rkmo, taudpo, exist_shconv, exist_dpconv,             &
-                    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
-                    trcr, qtruw, uw_wetdep)
+                    shallow_droplet_number, trcr, qtruw, uw_wetdep,       &
+		    cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, &
+		    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev)
 
 !-------------------------------------------------------------------------
 !    currently qnitnd_uw is the tendency due to detrainment proportional

@@ -148,6 +148,7 @@ contains
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
     dpn % rkm_max            = cpn % rkm_max
+    dpn % rkm_min            = cpn % rkm_min
     dpn % scaleh0            = cpn % scaleh0
     dpn % beta               = cpn % beta
 
@@ -421,7 +422,12 @@ contains
        endif
     end if
 
-    zcldtop = sd%z(cp%ltop)
+    if (cp%ltop == 0) then
+       zcldtop = 1000.
+    else
+	zcldtop = sd%z(cp%ltop)
+    endif
+
     wrel  = max(cc%wrel, wrel0)
     cbmf0 = dpc%cbmf0
     call cp_clear_k(cp);  cp %maxcldfrac=1.;
@@ -726,7 +732,7 @@ contains
     call sd_copy_k(sd, sd1)
     do k=1,sd%kmax
        sd1%t (k)=sd1%t (k)-(sd%tdt_rad(k)+sd%tdt_dyn(k)+sd%tdt_dif(k)) * sd%delt
-       sd1%qv(k)=sd1%qv(k)-(sd%qdt_dyn(k)+sd%qdt_dif(k)) * sd%delt
+       sd1%qv(k)=sd1%qv(k)-(sd%qvdt_dyn(k)+sd%qvdt_dif(k)) * sd%delt
        sd1%qv(k)=max(sd1%qv(k),0.)
     end do
     call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
@@ -993,7 +999,7 @@ contains
     call sd_copy_k(sd, sd1)
     do k=1,sd%kmax
        sd1%t (k)=sd1%t (k)-(sd%tdt_rad(k)+sd%tdt_dyn(k)+sd%tdt_dif(k)) * sd%delt
-       sd1%qv(k)=sd1%qv(k)-(sd%qdt_dyn(k)+sd%qdt_dif(k)) * sd%delt
+       sd1%qv(k)=sd1%qv(k)-(sd%qvdt_dyn(k)+sd%qvdt_dif(k)) * sd%delt
        sd1%qv(k)=max(sd1%qv(k),0.)
     end do
     call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
@@ -1239,7 +1245,7 @@ contains
     call sd_copy_k(sd, sd1)
     k=sd%kinv-1;
     sd1%t (1:k)=sd1%t (1:k)+(sd%tdt_rad(1:k)+sd%tdt_dyn(1:k)+sd%tdt_dif(1:k)+ct%tten(1:k)) * sd%delt
-    sd1%qv(1:k)=sd1%qv(1:k)+(sd%qdt_dyn(1:k)+sd%qdt_dif(1:k)+ct%qvten(1:k)) * sd%delt
+    sd1%qv(1:k)=sd1%qv(1:k)+(sd%qvdt_dyn(1:k)+sd%qvdt_dif(1:k)+ct%qvten(1:k)) * sd%delt
     call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
 
 !lauch both adiabatic and entraining plumes to compute cape and cwfn
@@ -1287,7 +1293,7 @@ contains
        dcwfn_ndp1=dcwfn_ndp1-tmp/sd%t(k)*sd%dp(k)
 
        hltmp=sd%hl (k)+(sd%tdt_dyn(k)+sd%tdt_dif(k)+ct%tten(k)+sd%tdt_rad(k))*sd%delt*Uw_p%cp_air
-       qttmp=sd%qct(k)+(sd%qdt_dyn(k)+sd%qdt_dif(k)+ct%qvten(k))*sd%delt
+       qttmp=sd%qct(k)+(sd%qvdt_dyn(k)+sd%qvdt_dif(k)+ct%qvten(k))*sd%delt
        call findt_k (sd%z(k),sd%p(k),hltmp,qttmp,thj,qvj,qlj,qij,qse,thvj,dpn%do_ice,Uw_p)
        temp=thj*exn_k(sd%p(k),Uw_p)
        temp=(temp-sd%t(k))/sd%delt

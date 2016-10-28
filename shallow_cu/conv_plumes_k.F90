@@ -40,7 +40,7 @@ MODULE CONV_PLUMES_k_MOD
      integer :: mixing_assumption, mp_choice, de_choice
      real :: rle, rpen, rmaxfrac, wmin, wmax, rbuoy, rdrag, frac_drs, frac_dr0, bigc, scaleh0, plev_umf
      real :: auto_th0, auto_rate, tcrit, cldhgt_max, atopevap, rad_crit, tten_max, nbuo_max, beta, &
-             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, rkm_max, &
+             wtwmin_ratio, deltaqc0, emfrac_max, wrel_min, pblfac, ffldep, plev_for, hcevappbl, rkm_max, rkm_min, &
              Nl_land, Nl_ocean, r_thresh, qi_thresh, peff_l, peff_i, cfrac,hcevap, weffect, cldhgt_max_shallow
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, use_online_aerosol, do_umf_pbl, do_minmse
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
@@ -574,16 +574,20 @@ contains
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
                          rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
        else if (cpn%mixing_assumption.eq.5) then
-          scaleh1 = min(max(sd%pblht_avg, cpn%scaleh0), 10.*cpn%scaleh0)
-          scaleh1 = 1000. * (scaleh1 / (2.*cpn%scaleh0))
+          if (cp%buog(k-1).gt.0) then
+            rkm1 = rkm * (1.+cp%buog(k-1)*cpn%beta)
+	  else
+            rkm1 = rkm 
+          endif
+          rkm1 = min(rkm1,cpn%rkm_max)
+          scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.6) then
-          scaleh1 = 1000. * (sd%pblht_avg / 300.)
-          scaleh1 = max(scaleh1, 300.)
+          scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
@@ -604,15 +608,16 @@ contains
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.8) then
-          rkm1 = rkm * (1.+abs(cp%dbuodp(k-1))*cpn%beta)
+       	  rkm1 = rkm * (1.+ac%cape*cpn%beta)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
           scaleh1 = cpn%scaleh0
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else if (cpn%mixing_assumption.eq.9) then
        	  rkm1 = rkm * (1.+cp%wu(k-1)*cpn%beta)
           rkm1 = max(min(rkm1,cpn%rkm_max),0.)
@@ -621,7 +626,65 @@ contains
                          qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
                          cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
                          cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
-                         rkm, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.10) then
+!mass flux outside updraft in unit of Pa/s, downward positive
+          rkm1 = sd%omg(k-1)+cp%umf(k-1)*Uw_p%grav 
+!vertical velocity outside updraft in unit of m/s, upward positive
+          rkm1 = -rkm1/(sd%rho(k-1)*Uw_p%grav*(1.-cp%ufrc(k-1)))
+!difference in vertical velocity between updraft and environmental air
+          rkm1 = cp%wu(k-1) - rkm1
+          rkm1 = max(rkm1, 0.)
+       	  rkm1 = rkm * (1.+rkm1*cpn%beta)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
+          scaleh1 = cpn%scaleh0
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.11) then
+          rkm1 = max(sd%pblht, 250.)
+       	  rkm1 = rkm * (1.+cpn%beta/rkm1)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
+          scaleh1 = cpn%scaleh0
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.12) then
+          rkm1 = max(sd%pblht, 250.)
+       	  rkm1 = rkm * (cpn%beta / rkm1)
+          rkm1 = max(min(rkm1,cpn%rkm_max),0.)
+          scaleh1 = cpn%scaleh0
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.13) then
+       	  rkm1 = rkm * (1.+sd%omg_avg*cpn%beta)
+          rkm1 = max(min(rkm1,cpn%rkm_max),cpn%rkm_min)
+          scaleh1 = cpn%scaleh0
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
+       else if (cpn%mixing_assumption.eq.14) then
+          if (sd%omg_avg .lt. 0.) then
+       	    rkm1 = rkm * (1.+sd%omg_avg*cpn%beta)
+          else
+	    rkm1 = rkm
+          end if
+          rkm1 = max(min(rkm1,cpn%rkm_max),cpn%rkm_min)
+          scaleh1 = cpn%scaleh0
+          call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
+                         qct_env_k, cp%hlu(km1), cp%thcu(km1),  &
+                         cp%qctu(km1), cp%wu(km1), scaleh1, cp%rei(k), &
+                         cp%fer(k), cp%fdr(k), cp%fdrsat(k), rho0j, &
+                         rkm1, Uw_p, cp%umf(km1), cp%dp(k), sd%delt)      
        else
           scaleh1 = max(cpn%scaleh0, cp%z(k)-sd%zs(0))
           call mixing_k (cpn, cp%z(k), cp%p(k), hl_env_k, cp%thc(k), &
