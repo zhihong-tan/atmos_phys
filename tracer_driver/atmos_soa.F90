@@ -88,6 +88,18 @@ type(time_type) :: terpene_time
 ! Initial calendar time for model
 type(time_type) :: model_init_time
 
+real, parameter       :: wtm_C = 12.
+real, parameter       :: wtm_C4H10 = 58.
+integer, parameter    :: carbon_per_isoprene = 5
+integer, parameter    :: carbon_per_terpene = 10
+real, parameter       :: cm2_per_m2 = 1.e4
+real, parameter       :: kg_per_g = 1.e-3
+real, parameter       :: om_oc_ratio = 1.5
+! Factors to convert from molecules(BVOC)/cm2/s to kg(OM)/m2/s
+real, parameter       :: isoprene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_isoprene * om_oc_ratio
+real, parameter       :: terpene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_terpene * om_oc_ratio
+integer, parameter    :: TS_CONSTANT=1, TS_FIXED=2, TS_VARYING=3
+
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
 !-----------------------------------------------------------------------
@@ -107,17 +119,6 @@ character(len=80)     :: isoprene_time_dependency_type = 'constant'
 character(len=80)     :: terpene_time_dependency_type  = 'constant'
 real                  :: isoprene_SOA_yield = 0.05
 real                  :: terpene_SOA_yield  = 0.05
-real, parameter       :: wtm_C = 12.
-real, parameter       :: wtm_C4H10 = 58.
-integer, parameter    :: carbon_per_isoprene = 5
-integer, parameter    :: carbon_per_terpene = 10
-real, parameter       :: cm2_per_m2 = 1.e4
-real, parameter       :: kg_per_g = 1.e-3
-real, parameter       :: om_oc_ratio = 1.5
-! Factors to convert from molecules(BVOC)/cm2/s to kg(OM)/m2/s
-real, parameter       :: isoprene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_isoprene * om_oc_ratio
-real, parameter       :: terpene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_terpene * om_oc_ratio
-
 namelist /secondary_organics_nml/ gas_conc_filename, gas_conc_name, &
                                   isoprene_source, &
                                   isoprene_filename, &
@@ -223,13 +224,13 @@ character(len=7), parameter :: mod_name = 'tracers'
         isoprene_offset = set_time (0,0)
         isoprene_entry = set_time (0,0)
         isoprene_negative_offset = .false.
-        isoprene_time_series_type = 1
+        isoprene_time_series_type = TS_CONSTANT
 
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
       if (trim(isoprene_time_dependency_type) == 'constant' ) then
-        isoprene_time_series_type = 1
+        isoprene_time_series_type = TS_CONSTANT
         isoprene_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
           print *, 'isoprene is constant in atmos_soa module'
@@ -239,7 +240,7 @@ character(len=7), parameter :: mod_name = 'tracers'
 !    for isoprene is selected.
 !---------------------------------------------------------------------
       else if (trim(isoprene_time_dependency_type) == 'time_varying') then
-        isoprene_time_series_type = 3
+        isoprene_time_series_type = TS_VARYING
         if (isoprene_dataset_entry(1) == 1 .and. &
             isoprene_dataset_entry(2) == 1 .and. &
             isoprene_dataset_entry(3) == 1 .and. &
@@ -270,7 +271,7 @@ character(len=7), parameter :: mod_name = 'tracers'
           isoprene_negative_offset = .false.
         endif
       else if (trim(isoprene_time_dependency_type) == 'fixed_year') then
-        isoprene_time_series_type = 2
+        isoprene_time_series_type = TS_FIXED
         if (isoprene_dataset_entry(1) == 1 .and. &
             isoprene_dataset_entry(2) == 1 .and. &
             isoprene_dataset_entry(3) == 1 .and. &
@@ -306,13 +307,13 @@ character(len=7), parameter :: mod_name = 'tracers'
         terpene_offset = set_time (0,0)
         terpene_entry = set_time (0,0)
         terpene_negative_offset = .false.
-        terpene_time_series_type = 1
+        terpene_time_series_type = TS_CONSTANT
 
 !---------------------------------------------------------------------
 !    Set time for input file base on selected time dependency.
 !---------------------------------------------------------------------
       if (trim(terpene_time_dependency_type) == 'constant' ) then
-        terpene_time_series_type = 1
+        terpene_time_series_type = TS_CONSTANT
         terpene_offset = set_time(0, 0)
         if (mpp_pe() == mpp_root_pe() ) then
           print *, 'terpene is constant in atmos_soa module'
@@ -322,7 +323,7 @@ character(len=7), parameter :: mod_name = 'tracers'
 !    for terpene is selected.
 !---------------------------------------------------------------------
       else if (trim(terpene_time_dependency_type) == 'time_varying') then
-        terpene_time_series_type = 3
+        terpene_time_series_type = TS_VARYING
         if (terpene_dataset_entry(1) == 1 .and. &
             terpene_dataset_entry(2) == 1 .and. &
             terpene_dataset_entry(3) == 1 .and. &
@@ -353,7 +354,7 @@ character(len=7), parameter :: mod_name = 'tracers'
           terpene_negative_offset = .false.
         endif
       else if (trim(terpene_time_dependency_type) == 'fixed_year') then
-        terpene_time_series_type = 2
+        terpene_time_series_type = TS_FIXED
         if (terpene_dataset_entry(1) == 1 .and. &
             terpene_dataset_entry(2) == 1 .and. &
             terpene_dataset_entry(3) == 1 .and. &
@@ -452,14 +453,14 @@ type(time_type), intent(in) :: Time
 !    define the time in the isoprene data set from which data is to be 
 !    taken. if isoprene is not time-varying, it is simply Time.
 !---------------------------------------------------------------------
-     if(isoprene_time_series_type .eq. 3) then
+     if(isoprene_time_series_type .eq. TS_VARYING) then
        if (isoprene_negative_offset) then
          isoprene_time = Time - isoprene_offset
        else
          isoprene_time = Time + isoprene_offset
        endif
      else 
-       if(isoprene_time_series_type .eq. 2 ) then
+       if(isoprene_time_series_type .eq. TS_FIXED ) then
          call get_date (isoprene_entry, yr, dum,dum,dum,dum,dum)
          call get_date (Time, mo_yr, mo, dy, hr, mn, sc)
          if (mo ==2 .and. dy == 29) then
@@ -485,14 +486,14 @@ type(time_type), intent(in) :: Time
 !    define the time in the terpene data set from which data is to be 
 !    taken. if terpene is not time-varying, it is simply Time.
 !---------------------------------------------------------------------
-     if(terpene_time_series_type .eq. 3) then
+     if(terpene_time_series_type .eq. TS_VARYING) then
        if (terpene_negative_offset) then
          terpene_time = Time - terpene_offset
        else
          terpene_time = Time + terpene_offset
        endif
      else 
-       if(terpene_time_series_type .eq. 2 ) then
+       if(terpene_time_series_type .eq. TS_FIXED ) then
          call get_date (terpene_entry, yr, dum,dum,dum,dum,dum)
          call get_date (Time, mo_yr, mo, dy, hr, mn, sc)
          if (mo ==2 .and. dy == 29) then
