@@ -413,17 +413,17 @@ character(len=7), parameter :: mod_name = 'tracers'
                       standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_due_to_net_chemical_production')
                       
       id_SOA_isoprene  = register_diag_field ( mod_name,       &
-                        'SOA_isoprene',axes(1:3),Time,            &
+                        'SOA_isoprene',axes(1:2),Time,            &
                         'SOA pseudo-emission from isoprene',        &
                         'kg/m2/s')
 
       id_SOA_terpene   = register_diag_field ( mod_name,       &
-                        'SOA_terpene',axes(1:3),Time,            &
+                        'SOA_terpene',axes(1:2),Time,            &
                         'SOA pseudo-emission from terpene',        &
                         'kg/m2/s')
 
       id_SOA_biogenic  = register_diag_field ( mod_name,       &
-                        'SOA_biogenic',axes(1:3),Time,            &
+                        'SOA_biogenic',axes(1:2),Time,            &
                         'total SOA pseudo-emission from biogenic VOCs',        &
                         'kg/m2/s')
 
@@ -707,7 +707,7 @@ end subroutine atmos_SOA_endts
               terpene_emis, Time_next,is_in=is,js_in=js)
       endif
       if (id_SOA_biogenic > 0) then
-        used = send_data ( id_SOA_terpene, &
+        used = send_data ( id_SOA_biogenic, &
               isoprene_emis+terpene_emis, Time_next,is_in=is,js_in=js)
       endif
 
