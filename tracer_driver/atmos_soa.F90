@@ -32,7 +32,7 @@ use           time_manager_mod, only : time_type,               &
 use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
                                        register_static_field,   &
-				       get_base_time
+                                       get_base_time
 use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
@@ -122,16 +122,16 @@ real                  :: terpene_SOA_yield  = 0.05
 namelist /secondary_organics_nml/ gas_conc_filename, gas_conc_name, &
                                   isoprene_source, &
                                   isoprene_filename, &
-				  isoprene_input_name, &
-				  isoprene_SOA_yield, &
+                                  isoprene_input_name, &
+                                  isoprene_SOA_yield, &
                                   isoprene_time_dependency_type, &
-				  isoprene_dataset_entry, &
+                                  isoprene_dataset_entry, &
                                   terpene_source, &
-				  terpene_filename, &
-				  terpene_input_name, &
-				  terpene_SOA_yield, &
+                                  terpene_filename, &
+                                  terpene_input_name, &
+                                  terpene_SOA_yield, &
                                   terpene_time_dependency_type, &
-				  terpene_dataset_entry				  
+                                  terpene_dataset_entry
 
 logical :: module_is_initialized=.FALSE.
 logical :: used
@@ -674,7 +674,8 @@ end subroutine atmos_SOA_endts
       endif
       terpene_emis(:,:) = terpene_emis(:,:) * terpene_factor * terpene_SOA_yield
 
-      SOA_dt(:,:,kd) = SOA_dt(:,:,kd) + isoprene_emis(:,:) + terpene_emis(:,:)
+      SOA_dt(:,:,kd) = SOA_dt(:,:,kd) &
+                     + (isoprene_emis(:,:) + terpene_emis(:,:)) / pwt(:,:,kd)
 
       if (id_SOA_chem > 0) then
         used = send_data ( id_SOA_chem, &
