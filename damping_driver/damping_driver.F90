@@ -295,6 +295,7 @@ contains
 
        udt = udt + utnd
        vdt = vdt + vtnd
+       tdt = tdt + ttnd  
      endif
 
 !----- diagnostics -----
