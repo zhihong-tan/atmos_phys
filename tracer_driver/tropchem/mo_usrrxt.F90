@@ -320,24 +320,6 @@ end if
 !        end if
 
 !-----------------------------------------------------------------
-!        ... ho2 + ho2 --> h2o2
-!        note: this rate involves the water vapor number density
-!-----------------------------------------------------------------
-         if( uho2_ho2_ndx > 0 ) then
-            if( indexh2o > 0 ) then
-               tmp_indexh2o = indexh2o
-               fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp( 2200.*tinv(:) )
-            else if( h2o_ndx > 0 ) then
-               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp( 2200.*tinv(:) )
-            else
-               fc(:) = 1.
-            end if
-            ko(:)   = 3.5e-13 * exp( 430.*tinv(:) )
-            kinf(:) = 1.7e-33 * m(:,k) * exp( 1000.*tinv(:) )
-            rxt(:,k,uho2_ho2_ndx) = (ko(:) + kinf(:)) * fc(:)
-         end if
-
-!-----------------------------------------------------------------
 !            ... mco3 + no2 -> mpan
 !-----------------------------------------------------------------
          if( umpan_f_ndx > 0 ) then
@@ -369,6 +351,7 @@ end if
 
 !-----------------------------------------------------------------
 !       ... xooh + oh -> h2o + oh
+!   This reaction has been removed in AM4. We put it here only for AM3.
 !-----------------------------------------------------------------
          if( uoh_xooh_ndx > 0 ) then
             rxt(:,k,uoh_xooh_ndx) = temp(:,k)**2 * 7.69e-17 * exp( 253.*tinv(:) )
@@ -382,15 +365,6 @@ end if
                                  + 1.33e-13
          end if
 !-----------------------------------------------------------------
-!       ... DMS + OH -> .75 * SO2
-!-----------------------------------------------------------------
-         if( uoh_dms_ndx > 0 ) then
-            ko(:) = 1. + 5.0e-30 * exp( 6280.*tinv(:) ) * m(:,k) * 0.21
-            rxt(:,k,uoh_dms_ndx) = 1.0e-39 * exp( 5820.*tinv(:) ) &
-                                 * m(:,k) * 0.21 / ko(:)
-         end if
-
-!-----------------------------------------------------------------
 !        ... Cl2O2 + M -> 2*ClO + M
 !-----------------------------------------------------------------
          if( strat38_ndx > 0 ) then
@@ -402,6 +376,33 @@ end if
          end if
 
 if (trop_option%het_chem .eq. HET_CHEM_LEGACY) then
+!-----------------------------------------------------------------
+!        ... ho2 + ho2 --> h2o2
+!        note: this rate involves the water vapor number density
+!-----------------------------------------------------------------
+         if( uho2_ho2_ndx > 0 ) then
+            if( indexh2o > 0 ) then
+               tmp_indexh2o = indexh2o
+               fc(:)   = 1. + 1.4e-21 * invariants(:,k,tmp_indexh2o) * exp( 2200.*tinv(:) )
+            else if( h2o_ndx > 0 ) then
+               fc(:)   = 1. + 1.4e-21 * qin(:,k,h2o_ndx) * m(:,k) * exp( 2200.*tinv(:) )
+            else
+               fc(:) = 1.
+            end if
+            ko(:)   = 3.5e-13 * exp( 430.*tinv(:) )
+            kinf(:) = 1.7e-33 * m(:,k) * exp( 1000.*tinv(:) )
+            rxt(:,k,uho2_ho2_ndx) = (ko(:) + kinf(:)) * fc(:)
+         end if
+!-----------------------------------------------------------------
+!       ... DMS + OH -> .75 * SO2
+!-----------------------------------------------------------------
+         if( uoh_dms_ndx > 0 ) then
+            ko(:) = 1. + 5.0e-30 * exp( 6280.*tinv(:) ) * m(:,k) * 0.21
+            rxt(:,k,uoh_dms_ndx) = 1.0e-39 * exp( 5820.*tinv(:) ) &
+                                 * m(:,k) * 0.21 / ko(:)
+         end if
+
+
          if( n2o5h_ndx > 0 .or. no3h_ndx > 0 .or. nh3h_ndx > 0 ) then
 !-----------------------------------------------------------------
 !         ... n2o5 --> 2*hno3
