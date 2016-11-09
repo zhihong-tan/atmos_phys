@@ -739,7 +739,7 @@ character(len=32) :: tracer_units, tracer_name
                               Time_next, is_in=is, js_in=js)
       endif
       if (id_drybc > 0 .and. nbcphilic > 0 .and. nbcphobic > 0) then  ! same as bc_ddep
-        used  = send_data (id_bc_ddep,  &
+        used  = send_data (id_drybc,  &
            pwt(:,:,kd)*(dsinku(:,:,nbcphilic) + dsinku(:,:,nbcphobic)),  &
                                                Time_next, is_in=is, js_in=js)
       endif
