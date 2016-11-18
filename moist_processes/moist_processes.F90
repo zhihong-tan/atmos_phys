@@ -392,7 +392,7 @@ type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
                            ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
 
 ! globally averaged diagnostics
-integer :: id_pr_g, id_prc_g
+integer :: id_pr_g, id_prc_g, id_prsn_g
 
 real, dimension(:), allocatable    :: conv_wetdep !f1p
 real :: missing_value = -999.
@@ -3009,6 +3009,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
     used = send_data (id_snow_tot, fprec, Time, is, js)
     used = send_data (id_prsn, fprec, Time, is, js)
+    if (id_prsn_g > 0)  call buffer_global_diag (id_prsn_g, fprec, Time, is, js)
 
 !---------------------------------------------------------------------
 !    rainfall rate due to all sources:
@@ -3568,8 +3569,9 @@ logical :: used
       prec_intgl = 0.0
 
 
-      if (id_pr_g  > 0) used = send_global_diag (id_pr_g)
-      if (id_prc_g > 0) used = send_global_diag (id_prc_g)
+      if (id_pr_g   > 0) used = send_global_diag (id_pr_g)
+      if (id_prc_g  > 0) used = send_global_diag (id_prc_g)
+      if (id_prsn_g > 0) used = send_global_diag (id_prsn_g)
 
 
 end subroutine moist_processes_endts
@@ -3974,6 +3976,8 @@ integer            :: k
                      'kg m-2 s-1', standard_name='precipitation_flux', buffer=.true. )
    id_prc_g = register_global_diag_field ('prc', Time, 'Convective Precipitation', &
                      'kg m-2 s-1', standard_name='convective_precipitation_flux', buffer=.true. )
+   id_prsn_g = register_global_diag_field ('prsn', Time, 'Snowfall Flux', 'kg m-2 s-1', &
+                                           standard_name='snowfall_flux', buffer=.true. )
 
 !---------------------------------------------------------------------
 !    define output variables indicating whether certain convection 

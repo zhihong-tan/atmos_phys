@@ -297,6 +297,7 @@ integer, dimension(2)        :: id_swtoa, id_swsfc,               &
 
 ! globally averaged diagnostics
 integer :: id_rlut_g, id_rlutcs_g, id_rsut_g, id_rsutcs_g, id_rsdt_g
+integer :: id_rss_g
 
 real, dimension(:,:), allocatable :: swups_acc, swdns_acc
 real, dimension(:,:), allocatable :: olr_intgl, swabs_intgl
@@ -1189,6 +1190,11 @@ logical,         intent(in) :: do_lwaerosol
         id_rlutcs_g = register_global_diag_field ('rlutcs', Time, &
                    'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
                  standard_name='toa_outgoing_longwave_flux_assumimg_clear_sky', buffer=.true.)
+
+        id_rss_g = register_global_diag_field ('rss', Time, &
+                        'Net downward shortwave radiation at the surface', 'W m-2',   &
+                       standard_name='surface_net_downward_shortwave_flux', buffer=.true.)
+
 
 
 !----------------------------------------------------------------------
@@ -2774,6 +2780,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         if (id_rsdt_g   > 0) call buffer_global_diag (id_rsdt_g,   swin,      Time_diag, is, js)
         if (id_rsut_g   > 0) call buffer_global_diag (id_rsut_g,   swout,     Time_diag, is, js)
         if (id_rsutcs_g > 0) call buffer_global_diag (id_rsutcs_g, swout_clr, Time_diag, is, js)
+        if (id_rss_g    > 0) call buffer_global_diag (id_rss_g,  swdns-swups, Time_diag, is, js)
       endif
 
 !--------------------------------------------------------------------
@@ -3034,6 +3041,7 @@ logical :: used
         if (id_rsdt_g   > 0) used = send_global_diag (id_rsdt_g)
         if (id_rsut_g   > 0) used = send_global_diag (id_rsut_g)
         if (id_rsutcs_g > 0) used = send_global_diag (id_rsutcs_g)
+        if (id_rss_g    > 0) used = send_global_diag (id_rss_g)
       endif
 
 !---------------------------------------------------------------------
