@@ -1192,9 +1192,8 @@ logical,         intent(in) :: do_lwaerosol
                  standard_name='toa_outgoing_longwave_flux_assumimg_clear_sky', buffer=.true.)
 
         id_rss_g = register_global_diag_field ('rss', Time, &
-                        'Net downward shortwave radiation at the surface', 'W m-2',   &
-                       standard_name='surface_net_downward_shortwave_flux', buffer=.true.)
-
+                        'Net shortwave radiation at the surface', 'W m-2',   &
+                       standard_name='surface_net_shortwave_flux', buffer=.true.)
 
 
 !----------------------------------------------------------------------
