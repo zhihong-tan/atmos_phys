@@ -29,17 +29,13 @@ MODULE CONV_UTILITIES_k_MOD
 
  public sounding
  type sounding
-    logical  :: coldT, do_gust_qt, use_hlqtsrc_avg, use_capecin_avg
+    logical  :: coldT, do_gust_qt, use_hlqtsrc_avg, use_capecin_avg, do_mse_budget
     integer  :: kmax, kinv, ktoppbl, ktopconv, ksrc, src_choice, gqt_choice
     real     :: zsrc, psrc, thcsrc, qctsrc, hlsrc, usrc, vsrc, plev_cin, lts, eis, gam, z700
-    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre
-    real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon, p_minmse
-    real     :: dpsum, hmint, hm_vadv0
+    real     :: psfc, pinv, zinv, thvinv, land, pblht, qint, delt, crh, crh_fre, omg0, omg_avg
+    real     :: tke, cgust, cgust0, cgust_max, sigma0, lat, lon, p_minmse, plev_omg
+    real     :: dpsum, hmint, hmint0
     real     :: pblht_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, numx
-    real     :: tdt_rad_int, tdt_dyn_int, tdt_dif_int, qdt_dyn_int, qdt_dif_int
-    real     :: tdt_rad_pbl, tdt_dyn_pbl, tdt_dif_pbl, qdt_dyn_pbl, qdt_dif_pbl
-    real     :: tdt_rad_fre, tdt_dyn_fre, tdt_dif_fre, qdt_dyn_fre, qdt_dif_fre
-    real     :: tdt_tot_fre, tdt_tot_pbl, dgz_dyn_int, ddp_dyn_int
     real, _ALLOCATABLE :: t     (:)_NULL, qv   (:)_NULL, u     (:)_NULL
     real, _ALLOCATABLE :: v     (:)_NULL, ql   (:)_NULL, qi    (:)_NULL
     real, _ALLOCATABLE :: qa    (:)_NULL, thc  (:)_NULL, qct   (:)_NULL
@@ -52,14 +48,15 @@ MODULE CONV_UTILITIES_k_MOD
     real, _ALLOCATABLE :: thvtop(:)_NULL, qn   (:)_NULL, qs    (:)_NULL
     real, _ALLOCATABLE :: am1   (:)_NULL, am2  (:)_NULL, am3   (:)_NULL
     real, _ALLOCATABLE :: am4   (:)_NULL
-    real, _ALLOCATABLE :: tdt_rad(:)_NULL, tdt_dyn(:)_NULL, qdt_dyn(:)_NULL
-    real, _ALLOCATABLE :: tdt_dif(:)_NULL, qdt_dif(:)_NULL
+    real, _ALLOCATABLE :: tdt_rad(:)_NULL
+    real, _ALLOCATABLE :: tdt_dyn(:)_NULL,qvdt_dyn(:)_NULL,qidt_dyn(:)_NULL
+    real, _ALLOCATABLE :: tdt_dif(:)_NULL,qvdt_dif(:)_NULL,qidt_dif(:)_NULL
     real, _ALLOCATABLE :: hl    (:)_NULL, sshl (:)_NULL, hm    (:)_NULL
-    real, _ALLOCATABLE :: hms   (:)_NULL, omg  (:)_NULL, hm_vadv(:)_NULL
-    real, _ALLOCATABLE :: tdt   (:)_NULL, dgz_dyn(:)_NULL, ddp_dyn(:)_NULL
+    real, _ALLOCATABLE :: hms   (:)_NULL, omg  (:)_NULL, hdt_vadv(:)_NULL
+    real, _ALLOCATABLE :: tdt   (:)_NULL, dgz_dyn(:)_NULL, hdt_forc(:)_NULL
     real, _ALLOCATABLE :: qtflx_up(:)_NULL, qtflx_dn(:)_NULL
     real, _ALLOCATABLE :: omega_up(:)_NULL, omega_dn(:)_NULL
-
+    real, _ALLOCATABLE :: hf0   (:)_NULL, ddp_dyn(:)_NULL, hdp_dyn(:)_NULL
 !++++yim     
     real, _ALLOCATABLE :: tr    (:,:)_NULL, sstr(:,:)_NULL
  end type sounding
@@ -164,6 +161,7 @@ contains
     sd%coldT    = .false.
     sd%kmax     = kd
     sd%plev_cin = 0.0
+    sd%plev_omg = 0.0
     sd%src_choice = 0
     sd%gqt_choice = 0
     sd%ksrc     = 1
@@ -183,32 +181,15 @@ contains
     sd%qint     = 0.0
     sd%delt     = 0.0
     sd%crh      = 0.0
+    sd%omg0     = 0.0
+    sd%omg_avg  = 0.0
     sd%tke      = 0.0
     sd%lat      = 0.0
     sd%lon      = 0.0
     sd%cgust    = 0.0
     sd%dpsum    = 0.0
     sd%hmint    = 0.0
-    sd%hm_vadv0 = 0.0
-    sd%tdt_tot_pbl = 0.0
-    sd%tdt_tot_fre = 0.0
-    sd%tdt_rad_int = 0.0
-    sd%tdt_dyn_int = 0.0
-    sd%tdt_dif_int = 0.0
-    sd%qdt_dyn_int = 0.0
-    sd%dgz_dyn_int = 0.0
-    sd%ddp_dyn_int = 0.0
-    sd%qdt_dif_int = 0.0
-    sd%tdt_rad_pbl = 0.0
-    sd%tdt_dyn_pbl = 0.0
-    sd%tdt_dif_pbl = 0.0
-    sd%qdt_dyn_pbl = 0.0
-    sd%qdt_dif_pbl = 0.0
-    sd%tdt_rad_fre = 0.0
-    sd%tdt_dyn_fre = 0.0
-    sd%tdt_dif_fre = 0.0
-    sd%qdt_dyn_fre = 0.0
-    sd%qdt_dif_fre = 0.0
+    sd%hmint0   = 0.0
     allocate ( sd%t     (1:kd)); sd%t     =0.;
     allocate ( sd%qv    (1:kd)); sd%qv    =0.;
     allocate ( sd%u     (1:kd)); sd%u     =0.;
@@ -245,22 +226,27 @@ contains
     allocate ( sd%am4   (1:kd)); sd%am4   =0.;
     allocate ( sd%hl    (1:kd)); sd%hl    =0.;
     allocate ( sd%hm    (1:kd)); sd%hm    =0.;
+    allocate ( sd%hf0   (1:kd)); sd%hf0   =0.;
     allocate ( sd%hms   (1:kd)); sd%hms   =0.;
     allocate ( sd%sshl  (1:kd)); sd%sshl  =0.;
     allocate ( sd%omg   (1:kd)); sd%omg   =0.;
-    allocate ( sd%hm_vadv(1:kd)); sd%hm_vadv=0.;
+    allocate ( sd%hdt_vadv(1:kd)); sd%hdt_vadv=0.;
+    allocate ( sd%hdt_forc(1:kd)); sd%hdt_forc=0.;
     allocate ( sd%qtflx_up(1:kd)); sd%qtflx_up=0.;
     allocate ( sd%qtflx_dn(1:kd)); sd%qtflx_dn=0.;
     allocate ( sd%omega_up(1:kd)); sd%omega_up=0.;
     allocate ( sd%omega_dn(1:kd)); sd%omega_dn=0.;
     allocate ( sd%tdt_rad (1:kd)); sd%tdt_rad =0.;
     allocate ( sd%tdt_dyn (1:kd)); sd%tdt_dyn =0.;
-    allocate ( sd%qdt_dyn (1:kd)); sd%qdt_dyn =0.;
+    allocate ( sd%qvdt_dyn(1:kd)); sd%qvdt_dyn=0.;
+    allocate ( sd%qidt_dyn(1:kd)); sd%qidt_dyn=0.;
     allocate ( sd%dgz_dyn (1:kd)); sd%dgz_dyn =0.;
     allocate ( sd%ddp_dyn (1:kd)); sd%ddp_dyn =0.;
+    allocate ( sd%hdp_dyn (1:kd)); sd%hdp_dyn =0.;
     allocate ( sd%tdt_dif (1:kd)); sd%tdt_dif =0.;
-    allocate ( sd%qdt_dif (1:kd)); sd%qdt_dif =0.;
-!++++yim
+    allocate ( sd%qvdt_dif(1:kd)); sd%qvdt_dif=0.;
+    allocate ( sd%qidt_dif(1:kd)); sd%qidt_dif=0.;
+
     allocate ( sd%tr  (1:kd,1:num_tracers)); sd%tr  =0.;
     allocate ( sd%sstr  (1:kd,1:num_tracers)); sd%sstr  =0.;
     
@@ -276,6 +262,7 @@ contains
     sd1% ktopconv = sd % ktopconv
     sd1% kmax = sd % kmax
     sd1% plev_cin   = sd % plev_cin
+    sd1% plev_omg   = sd % plev_omg
     sd1% src_choice = sd % src_choice
     sd1% gqt_choice = sd % gqt_choice
     sd1% ksrc = sd % ksrc
@@ -300,6 +287,7 @@ contains
     sd1% pblht_avg = sd % pblht_avg
     sd1% cape_avg  = sd % cape_avg
     sd1% cin_avg   = sd % cin_avg
+    sd1% omg_avg   = sd % omg_avg
 
     sd1% do_gust_qt= sd % do_gust_qt
     sd1% cgust= sd % cgust
@@ -317,7 +305,7 @@ contains
     sd1%am3   = sd%am3;  sd1%am4   =sd%am4;
     sd1%hl    = sd%hl;   sd1%sshl  =sd%sshl;
     sd1%hm    = sd%hm;   sd1%hms   =sd%hms;
-    sd1%omg   = sd%omg;
+    sd1%omg   = sd%omg;  sd1%hf0   = sd%hf0;
 !++++yim
     sd1%tr  =sd%tr
   end subroutine sd_copy_k
@@ -331,8 +319,9 @@ contains
          sd%thv, sd%rh, sd%p, sd%z, sd%dp, sd%dz, sd%rho, sd%nu, sd%leff,     &
          sd%exner, sd%ps, sd%exners, sd%zs, sd%ssthc, sd%ssqct, sd%dudp,      &
          sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, sd%am4,&
-         sd%qs, sd%hl, sd%hm, sd%hms, sd%sshl, sd%tr, sd%sstr,                &
-         sd%omg, sd%qtflx_up, sd%qtflx_dn, sd%omega_up, sd%omega_dn, sd%hm_vadv)
+         sd%qs, sd%hl, sd%hm, sd%hf0, sd%hms, sd%sshl, sd%tr, sd%sstr,        &
+         sd%omg, sd%qtflx_up, sd%qtflx_dn, sd%omega_up, sd%omega_dn,          &
+	 sd%hdt_vadv, sd%hdt_forc )
   end subroutine sd_end_k
 
 !#####################################################################
@@ -398,10 +387,10 @@ contains
 !#####################################################################
 !#####################################################################
 
-  subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint, &
-                      u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,&
-             tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif,&
-     src_choice, tracers, sd, Uw_p)
+  subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint,      &
+              u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,     &
+	      tracers, src_choice, tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn,&
+	      dgz_dyn, ddp_dyn, tdt_dif, qvdt_dif, qidt_dif, sd, Uw_p)
 
     real,    intent(in)              :: land
     logical, intent(in)              :: coldT
@@ -411,10 +400,10 @@ contains
     real, intent(in), dimension(:)   :: pint, zint !pressure&height@ interface level
     real, intent(in), dimension(:)   :: u, v, omg  !wind profile (m/s)
     real, intent(in), dimension(:)   :: t, qv      !temperature and specific humidity
-    real, intent(in), dimension(:)   :: ql, qi, qa, qn !cloud tracers
+    real, intent(in), dimension(:)   :: ql, qi, qa, qn      !cloud tracers
     real, intent(in), dimension(:)   :: am1, am2, am3, am4  ! aerosal species
-    real, intent(in), dimension(:)   :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn
-    real, intent(in), dimension(:)   :: tdt_dif, qdt_dif
+    real, intent(in), dimension(:)   :: tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn, dgz_dyn, ddp_dyn
+    real, intent(in), dimension(:)   :: tdt_dif, qvdt_dif, qidt_dif
     real, intent(in), dimension(:,:) :: tracers        !env. tracers    
     type(sounding), intent(inout)    :: sd
     type(uw_params), intent(inout)    :: Uw_p
@@ -456,12 +445,14 @@ contains
        sd % am4  (k) = am4(nk)
        sd % tdt_rad (k) = tdt_rad(nk)
        sd % tdt_dyn (k) = tdt_dyn(nk)
-       sd % qdt_dyn (k) = qdt_dyn(nk)
+       sd % qvdt_dyn(k) = qvdt_dyn(nk)
+       sd % qidt_dyn(k) = qidt_dyn(nk)
        sd % dgz_dyn (k) = dgz_dyn(nk)
        sd % ddp_dyn (k) = ddp_dyn(nk)
-       sd % tdt_dif (k) = tdt_dif(nk)
-       sd % qdt_dif (k) = qdt_dif(nk)
-!++++yim
+       sd % tdt_dif (k) = tdt_dif(nk) !-tdt_rad(nk)
+       sd % qvdt_dif(k) = qvdt_dif(nk)
+       sd % qidt_dif(k) = qidt_dif(nk)
+
        do m=1, size(tracers,2)
           sd % tr (k,m) = tracers (nk,m)
        end do
@@ -483,7 +474,8 @@ contains
     real    :: hl0bot, thc0bot, qct0bot, hl0top, thc0top, qct0top
     real    :: thj, qvj, qlj, qij, qse, qs_sum, qt_sum, dpsum, tmp
     real, dimension(size(sd%tr,2)) :: sstr0a, sstr0b
-    real    :: x1, x2, x3, xx1, xx2, xx3, q1, q2, p700, thc700, t700, p850
+    real, dimension(size(sd%t,1))  :: t0, qv0, ql0, qi0, z0, gz0
+    real    :: x1, x2, x3, xx1, xx2, xx3, q1, q2, p700, thc700, t700, p850, delp
     integer :: kp1, km1, ksrc, k_minmse
   
     sd % exners(0) = exn_k(sd%ps(0),Uw_p);
@@ -519,6 +511,17 @@ contains
     sd % crh  = qt_sum / qs_sum
     sd % hm  (:) = Uw_p%cp_air*sd%t(:)+Uw_p%grav*sd%z(:)+sd%leff(:)*sd%qv(:)
     sd % hms (:) = Uw_p%cp_air*sd%t(:)+Uw_p%grav*sd%z(:)+sd%leff(:)*sd%qs(:)
+
+!   compute t qv qi gz at the beginning of the atmospheric loop i.e. before dyn_core
+!   it recovers exactly the diagnostic output from dynamics for t, q at previous timestep
+!   because the dynamics (fv_diag) output the state variables at the end of the integration
+    t0(:)  = sd%t(:) -(sd%tdt_dyn (:) + sd%tdt_dif (:) +sd%tdt_rad(:))*sd%delt
+    qv0(:) = sd%qv(:)-(sd%qvdt_dyn(:) + sd%qvdt_dif(:))*sd%delt
+    qi0(:) = sd%qi(:)-(sd%qidt_dyn(:) + sd%qidt_dif(:))*sd%delt
+    gz0(:) = Uw_p%grav*sd%z(:) - sd%dgz_dyn(:)*sd%delt
+    sd%hf0(:) = Uw_p%cp_air*t0(:)+gz0(:)+Uw_p%hlv*qv0(:)-Uw_p%hlf*qi0(:)
+
+    sd%hms = t0; !sd%hms = qv0;
 
    !Finite-Volume intepolation
     kl=sd%ktopconv !sd%kmax-1
@@ -604,6 +607,19 @@ contains
     sd % crh_fre  = qt_sum / qs_sum
     sd % crh = sd%crh_fre
 
+    tmp=0.; dpsum=0.;
+    do k=sd%kinv, sd%ktopconv
+      if (sd%p(k) .gt. sd%plev_omg) then
+       	  tmp   = tmp + sd % omg(k) * sd%dp(k)
+       	  dpsum = dpsum + sd%dp(k)
+      end if
+    end do
+    if (dpsum .ne. 0.) then
+      sd%omg0 = tmp/dpsum
+    else
+      sd%omg0 = 0
+    end if
+
 !determine source air property based on max hm within PBL
     if (sd%src_choice.eq.0) then
        ksrc=1
@@ -656,54 +672,44 @@ contains
     sd%p_minmse = sd%p(k_minmse)
 
 !MSE begin-------------------
-    dpsum=0.;
-    sd % tdt_rad_pbl = 0.; 
-    sd % tdt_dyn_pbl = 0.; 
-    sd % tdt_dif_pbl = 0.; 
-    sd % qdt_dyn_pbl = 0.; 
-    sd % qdt_dif_pbl = 0.; 
-    do k=1, sd%kinv-1
-       sd % tdt_rad_pbl = sd%tdt_rad_pbl + sd%tdt_rad(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
-       sd % tdt_dyn_pbl = sd%tdt_dyn_pbl + sd%tdt_dyn(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
-       sd % tdt_dif_pbl = sd%tdt_dif_pbl + sd%tdt_dif(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
-       sd % qdt_dyn_pbl = sd%qdt_dyn_pbl + sd%qdt_dyn(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
-       sd % qdt_dif_pbl = sd%qdt_dif_pbl + sd%qdt_dif(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
-       dpsum = dpsum + sd%dp(k)
-    end do
-
-    do k=1, sd%ktopconv !sd%kmax
-       sd%ddp_dyn(k) = sd%ddp_dyn(k)*sd%hm(k)/sd%dp(k)
+ if (sd%do_mse_budget) then
+    do k=1, sd%kmax !MSE change due to mass change
+       sd%hdp_dyn(k) = sd%ddp_dyn(k)*sd%hf0(k)/Uw_p%grav
     end do
 
     sd % hmint = 0.;       !W/m2
-    sd % tdt_rad_int = 0.; !W/m2
-    sd % tdt_dyn_int = 0.; !W/m2
-    sd % tdt_dif_int = 0.; !W/m2
-    sd % qdt_dyn_int = 0.; !W/m2
-    sd % qdt_dif_int = 0.; !W/m2
-    sd % dgz_dyn_int = 0.; !W/m2
-    sd % ddp_dyn_int = 0.; !Pa
-    do k=1, sd%ktopconv
-       sd % hmint     = sd%hmint + sd%hm(k)*sd%dp(k)/Uw_p%grav
-       sd % tdt_rad_int=sd%tdt_rad_int + sd%tdt_rad(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
-       sd % tdt_dyn_int=sd%tdt_dyn_int + sd%tdt_dyn(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
-       sd % tdt_dif_int=sd%tdt_dif_int + sd%tdt_dif(k)*sd%dp(k)*Uw_p%cp_air/Uw_p%grav
-       sd % qdt_dyn_int=sd%qdt_dyn_int + sd%qdt_dyn(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
-       sd % qdt_dif_int=sd%qdt_dif_int + sd%qdt_dif(k)*sd%dp(k)*Uw_p%HLv   /Uw_p%grav
-       sd % dgz_dyn_int=sd%dgz_dyn_int + sd%dgz_dyn(k)*sd%dp(k)/Uw_p%grav
-       sd % ddp_dyn_int=sd%ddp_dyn_int + sd%ddp_dyn(k)*sd%dp(k)/Uw_p%grav
+    do k=1, sd%kmax
+       delp=sd%dp(k)-sd%ddp_dyn(k)*sd%delt
+       sd % hmint      = sd%hmint + sd%hf0(k)*delp/Uw_p%grav
+       sd % tdt_rad (k)= sd%tdt_rad(k) *delp*Uw_p%cp_air/Uw_p%grav
+       sd % tdt_dyn (k)= sd%tdt_dyn(k) *delp*Uw_p%cp_air/Uw_p%grav
+       sd % tdt_dif (k)= sd%tdt_dif(k) *delp*Uw_p%cp_air/Uw_p%grav
+       sd % qvdt_dyn(k)= sd%qvdt_dyn(k)*delp*Uw_p%HLv   /Uw_p%grav
+       sd % qidt_dyn(k)= sd%qidt_dyn(k)*delp*Uw_p%HLf   /Uw_p%grav
+       sd % qvdt_dif(k)= sd%qvdt_dif(k)*delp*Uw_p%HLv   /Uw_p%grav
+       sd % dgz_dyn (k)= sd%dgz_dyn(k) *delp / Uw_p%grav
+       sd % hdt_forc(k) =sd%tdt_rad (k)+sd%tdt_dyn (k)+ sd%tdt_dif (k)+sd%dgz_dyn(k)+ &
+       	    		 sd%qvdt_dyn(k)+sd%qvdt_dif(k)-(sd%qidt_dyn(k)+sd%qidt_dif(k))
     end do
- 
-    sd % tdt_rad_fre = sd % tdt_rad_int - sd % tdt_rad_pbl
-    sd % tdt_dyn_fre = sd % tdt_dyn_int - sd % tdt_dyn_pbl
-    sd % tdt_dif_fre = sd % tdt_dif_int - sd % tdt_dif_pbl
-    sd % qdt_dyn_fre = sd % qdt_dyn_int - sd % qdt_dyn_pbl
-    sd % qdt_dif_fre = sd % qdt_dif_int - sd % qdt_dif_pbl
+    sd%hmint0 = sd%hmint / sd%dpsum
 
-    sd % tdt_tot_fre = sd % tdt_rad_fre + sd % tdt_dyn_fre + sd % tdt_dif_fre
-    sd % tdt_tot_pbl = sd % tdt_rad_pbl + sd % tdt_dyn_pbl + sd % tdt_dif_pbl
+!vertically integrated from TOA to the current layer, bottom gives column integrated value
+!negative means export MSE; positive means import MSE 
+    do k=sd%kmax-1, 1, -1
+       sd % tdt_rad (k)= sd%tdt_rad (k)+sd%tdt_rad (k+1)
+       sd % tdt_dyn (k)= sd%tdt_dyn (k)+sd%tdt_dyn (k+1) 
+       sd % tdt_dif (k)= sd%tdt_dif (k)+sd%tdt_dif (k+1)
+       sd % qvdt_dyn(k)= sd%qvdt_dyn(k)+sd%qvdt_dyn(k+1)
+       sd % qidt_dyn(k)= sd%qidt_dyn(k)+sd%qidt_dyn(k+1)
+       sd % qvdt_dif(k)= sd%qvdt_dif(k)+sd%qvdt_dif(k+1)
+       sd % dgz_dyn (k)= sd%dgz_dyn (k)+sd%dgz_dyn (k+1)
+       sd % hdp_dyn (k)= sd%hdp_dyn (k)+sd%hdp_dyn (k+1)
+       sd % ddp_dyn (k)= sd%ddp_dyn (k)+sd%ddp_dyn (k+1)
+       sd % hdt_forc(k)= sd%hdt_forc(k)+sd%hdt_forc(k+1)
+    end do
 
-    do k = 2,sd%ktopconv !sd%kmax-1
+    sd%hdt_vadv = 0.;
+    do k = 2,sd%kmax-1
        km1 = k-1
        kp1 = k+1
        x1 =sd%ps(k)  -sd%p (kp1)
@@ -712,23 +718,20 @@ contains
        xx1=sd%ps(km1)-sd%p (k)
        xx2=sd%p (km1)-sd%ps(km1)
        xx3=sd%p (km1)-sd%p (k)
-       q2=(sd%hm(k)   *x1  + sd%hm(kp1)*x2  )/x3
-       q1=(sd%hm(km1) *xx1 + sd%hm(k)  *xx2 )/xx3
-       sd%hm_vadv(k)= -sd%omg(k)/Uw_p%grav*(q1-q2)/(sd%ps(km1)-sd%ps(k))!W/m2/Pa
-       tmp = -sd%omg(k)/Uw_p%grav*sd%qct(k)             !kg/m2/s
+       q2=(sd%hf0(k)   *x1  + sd%hf0(kp1)*x2  )/x3   !J/kg
+       q1=(sd%hf0(km1) *xx1 + sd%hf0(k)  *xx2 )/xx3  !J/kg
+       sd%hdt_vadv(k)= -sd%omg(k)*(q1-q2)/Uw_p%grav  !W/m2 omega at full level
+       tmp = -sd%omg(k)/Uw_p%grav*sd%qct(k)          !kg/m2/s
        sd%qtflx_up(k)= max(tmp,0.0)
        sd%qtflx_dn(k)= min(tmp,0.0)
        sd%omega_up(k)= min(sd%omg(k),0.0)
        sd%omega_dn(k)= max(sd%omg(k),0.0)
     enddo
-    sd % hm_vadv0 = 0.; !W/m2
-    do k=1,sd%ktopconv !sd%kmax
-       sd%hm_vadv0 = sd%hm_vadv0 + sd%hm_vadv(k)*sd%dp(k)
-!       if (sd%hm(k) .gt. 365000 .and. sd%p(k) .lt. 7000) then
-!      	  sd%hm (k)=365000
-!	  sd%hms(k)=365000
-!       end if
-     end do
+
+    do k=sd%kmax-1, 1, -1
+       sd % hdt_vadv(k)= sd%hdt_vadv(k)+sd%hdt_vadv(k+1)
+    enddo
+ endif
 !MSE end---------------------
 
 !LTS and EIS
@@ -821,8 +824,8 @@ contains
     ac % hlsrc  = hlsrc
     ac % thcsrc = thcsrc
     ac % qctsrc = qctsrc
-    ac % usrc   = sd%usrc
-    ac % vsrc   = sd%vsrc
+    ac % usrc   = sd%usrc !sd%u(sd%ktoppbl)
+    ac % vsrc   = sd%vsrc !sd%v(sd%ktoppbl)
  
     hl0lcl  = sd%hl (klcl)+sd%sshl (klcl)*(ac%plcl-sd%p(klcl))
     thc0lcl = sd%thc(klcl)+sd%ssthc(klcl)*(ac%plcl-sd%p(klcl))

@@ -123,7 +123,7 @@ contains
 !#######################################################################
 
  subroutine damping_driver (is, js, lat, Time, delt, area, pfull, phalf, zfull, zhalf, &
-                            u, v, t, q, r, z_pbl, udt, vdt, tdt, qdt, rdt,  &
+                            u, v, t, q, r, u_ref, v_ref, z_pbl, udt, vdt, tdt, qdt, rdt,  &
                              mask, kbot)
  
 !-----------------------------------------------------------------------
@@ -134,11 +134,11 @@ contains
  real,    intent(in),    dimension(:,:,:)   :: pfull, phalf, &
                                                zfull, zhalf, &
                                                u, v, t, q
- real,    intent(in),    dimension(:,:)     :: z_pbl !bqx
+ real,    intent(in),    dimension(:,:)     :: u_ref, v_ref, z_pbl !bqx
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real,    intent(in),    dimension(:,:)     :: area
+ real,    intent(in),    dimension(:,:)     :: area 
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -305,8 +305,9 @@ contains
 !-----------------------------------------------------------------------
    if (do_topo_drag) then
 
-     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, lat, z_pbl, & 
-                     utnd, vtnd, utnd_np, vtnd_np, ttnd, taubx, tauby, taus, kbot )
+     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, & 
+                      lat, u_ref, v_ref, z_pbl,                          & !bqx+
+             utnd, vtnd, utnd_np, vtnd_np, ttnd, taubx, tauby, taus, kbot )
 
      if (use_topo_drag) then  
          if ( kstart > 0 ) then
@@ -320,6 +321,7 @@ contains
 
        udt = udt + utnd
        vdt = vdt + vtnd
+       tdt = tdt + ttnd  
      endif
 
 !----- diagnostics -----

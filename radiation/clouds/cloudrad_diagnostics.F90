@@ -1,4 +1,4 @@
-                 module cloudrad_diagnostics_mod
+module cloudrad_diagnostics_mod
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -887,7 +887,7 @@ type(microphysics_type),        intent(in)   :: Model_microphys
 !     diagnosed from MODIS satellite data. use the isccp simulator 
 !     data to retrieve the drop size.
 !---------------------------------------------------------------------
-      if (max(id_cldtop_reff, id_cldtop_dropnum, &
+      if (max(id_cldtop_reff, id_cldtop_dropnum,  &
               id_dropnum_col, id_reffclwtop, id_cldncl, id_cldnvi) > 0) then
 !---------------------------------------------------------------------
 !     process each model grid column. the variables ending in _n accum-
@@ -6098,5 +6098,4 @@ end subroutine cloud_optical_properties_diag
 
 
 
-                end module cloudrad_diagnostics_mod
-
+end module cloudrad_diagnostics_mod

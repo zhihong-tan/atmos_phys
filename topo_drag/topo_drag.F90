@@ -73,25 +73,23 @@ real :: &
   ,samp=1.0     &      ! correction for coarse sampling of d2v/dz2
   ,max_udt=3.e-3     & ! upper bound on acceleration [m/s2]
   ,no_drag_frac=0.05 & ! fraction of lower atmosphere with no breaking
-  ,max_pbl_frac=0.50 & ! max fraction of lower atmosphere in PBL
-  ,pbl_n2_avg  =500.   ! Averaged N2 over a certain depth (m) from surface
-
+  ,max_pbl_frac=0.50  ! max fraction of lower atmosphere in PBL
 logical :: &
    do_conserve_energy=.true. & ! conserve total energy?
   ,keep_residual_flux=.true. & ! redistribute residual pseudomomentum?
   ,do_pbl_average=.false.    & ! average u,rho,N over PBL for baseflux?
   ,use_mg_scaling=.false.    & ! base flux saturates with value 'usat'?
   ,use_mask_for_pbl=.false.  & ! use bottom no_drag_layer as pbl?
-  ,use_pbl_from_lock=.false. & ! use pbl height from Lock boundary scheme  !bqx
-  ,use_n2avg_4stable=.false.   ! 
+  ,use_pbl_from_lock=.false. &  ! use pbl height from Lock boundary scheme  
+  ,use_uref_4stable=.false.  
 
 NAMELIST /topo_drag_nml/                                               &
   frcrit, alin, anonlin, beta, gamma, epsi,                            &
   h_frac, zref_fac, tboost, pcut, samp, max_udt,                       &
   no_drag_frac, max_pbl_frac,                                          &
   do_conserve_energy, keep_residual_flux, do_pbl_average,              &
-  use_mg_scaling, use_mask_for_pbl, use_pbl_from_lock,                 &                    !stg
-  use_n2avg_4stable, pbl_n2_avg 
+  use_mg_scaling, use_mask_for_pbl, use_pbl_from_lock,                 &    !stg
+  use_uref_4stable
 
 public topo_drag, topo_drag_init, topo_drag_end
 public topo_drag_restart
@@ -102,7 +100,8 @@ contains
 
 subroutine topo_drag (                                                 &
                                        is, js, delt, uwnd, vwnd, atmp, &
-                               pfull, phalf, zfull, zhalf, lat, z_pbl, & 
+                                           pfull, phalf, zfull, zhalf, & 
+                                             lat, u_ref, v_ref, z_pbl, & !bqx+ z_pbl
         dtaux, dtauy, dtaux_np, dtauy_np, dtemp, taux, tauy, taus, kbot )
 
 integer, intent(in) :: is, js
@@ -121,7 +120,7 @@ integer, intent(in), optional, dimension(:,:) :: kbot
 ! ZHALF    Height at half levels (IDIM x JDIM x KDIM+1)
 
 real, intent(in), dimension(:,:,:) :: uwnd, vwnd, atmp
-real, intent(in), dimension(:,:)   :: lat, z_pbl  !bqx+
+real, intent(in), dimension(:,:)   :: lat, u_ref, v_ref, z_pbl  !bqx+
 real, intent(in), dimension(:,:,:) :: pfull, phalf, zfull, zhalf
 
 ! OUTPUT
@@ -168,7 +167,8 @@ real    :: dz
 ! calculate base flux
 
   call base_flux (                                                     &
-                                      is, js, uwnd, vwnd, atmp, z_pbl, &
+                                             is, js, uwnd, vwnd, atmp, &
+                                             lat, u_ref, v_ref, z_pbl, &  !bqx+
                                              taux, tauy, dtaux, dtauy, &
                                                taub, taul, taup, taun, &
                                            frulo, fruhi, frunl, rnorm, &
@@ -209,7 +209,8 @@ end subroutine topo_drag
 !=======================================================================
                                   
 subroutine base_flux (                                                 &
-                                      is, js, uwnd, vwnd, atmp, z_pbl, &
+                                             is, js, uwnd, vwnd, atmp, &
+                                             lat, u_ref, v_ref, z_pbl, & !bqx
                                              taux, tauy, dtaux, dtauy, &
                                                taub, taul, taup, taun, &
                                            frulo, fruhi, frunl, rnorm, &
@@ -217,7 +218,7 @@ subroutine base_flux (                                                 &
 
 integer, intent(in) :: is, js
 real, intent(in),  dimension(:,:,:) :: uwnd, vwnd, atmp
-real, intent(in),  dimension(:,:)   :: z_pbl
+real, intent(in),  dimension(:,:)   :: lat, u_ref, v_ref, z_pbl
 real, intent(in),  dimension(:,:,:) :: zfull, zhalf, pfull, phalf
 real, intent(out), dimension(:,:)   :: taux, tauy
 real, intent(out), dimension(:,:,:) :: dtaux, dtauy
@@ -259,6 +260,13 @@ real :: usum, vsum, n2sum, delp
      enddo
   enddo
 
+  if (use_uref_4stable) then
+   where( z_pbl (:,:) == 0. )
+    ubar(:,:) = u_ref(:,:)
+    vbar(:,:) = v_ref(:,:)
+   endwhere
+  endif
+
   do j=1,jdim
      jd = js+j-1
      do i=1,idim
@@ -272,29 +280,6 @@ real :: usum, vsum, n2sum, delp
         bfreq2 = Grav*((atmp(i,j,kt-1) - atmp(i,j,kbp))/dzfull+lapse)/& 
                   (0.5*(atmp(i,j,kt-1) + atmp(i,j,kbp)))
 !
-       if (use_n2avg_4stable) then
-        if (z_pbl (i,j) == 0.) then
-         km = kdim - 1
-         do k = kdim -1, 2, -1
-          if ( zfull(i,j,k) < zhalf(i,j,kdim+1) + pbl_n2_avg ) then
-           km = k        
-          endif 
-         enddo
-
-         n2sum = 0.
-         do k = kdim, km, -1  ! from lowest model level to the depth of pbl_n2_avg
-          dzfull = zfull(i,j,k-1) - zfull(i,j,k)
-          delp = phalf(i,j,k+1) - phalf(i,j,k)
-          bfreq2 = Grav*                                           &
-                   ((atmp(i,j,k-1) - atmp(i,j,k))/dzfull + lapse)/ &
-                   (0.5*(atmp(i,j,k-1) + atmp(i,j,k)))
-   
-          n2sum = n2sum + bfreq2 * delp
-         enddo
-         bfreq2 = n2sum/(phalf(i,j,kdim+1) - phalf(i,j,km))
-        endif
-       endif
-
         bfreq = sqrt(max(tiny, bfreq2))
 
 !       included 'alin' 4/2015
