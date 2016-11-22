@@ -5330,13 +5330,17 @@ endif
                          'kg/m2/s',  &
                          missing_value=missing_value)
 
-      id_wetdep_NH4NO3 =  &
+      if (nNH4NO3 .ne. NO_TRACER .and. nNH4 .ne. NO_TRACER) then
+        id_wetdep_NH4NO3 =  &
                          register_diag_field ( mod_name, &
                          'totNH4_wet_dep',  &
                          axes(1:2), Time,  &
                          'total NH4 + NH3 wet deposition', &
                          'kg/m2/s',  &
                          missing_value=missing_value)
+      else
+        id_wetdep_NH4NO3 = 0
+      endif
 
       id_wetdep_seasalt   =  &
                          register_diag_field ( mod_name, &
@@ -5382,6 +5386,10 @@ endif
 
      !-------- cmip wet deposition fields  ---------
       do ic = 1, size(cmip_names,1)
+        if (TRIM(cmip_names(ic)) .eq. 'nh4' .and. (nNH4NO3 .eq. NO_TRACER .or. nNH4 .eq. NO_TRACER)) then
+          id_wetnh4_cmip = 0; cycle  ! skip when tracers are not in field table
+        endif
+
         id_wetdep_cmip = register_diag_field ( mod_name, 'wet'//TRIM(cmip_names(ic)), axes(1:2), Time,  &
                      'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
                      standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition', &
