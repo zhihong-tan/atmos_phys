@@ -164,7 +164,6 @@ subroutine atmos_co2_sourcesink(is, ie, js, je, Time, Time_next, dt, pwt, co2, s
 integer   :: i,j,k,id,jd,kd
 logical   :: sent
 logical   :: used
-real      :: restore_co2_dvmr = -1
 
 !-----------------------------------------------------------------------
 
