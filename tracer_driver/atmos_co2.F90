@@ -42,13 +42,14 @@ private
 public  atmos_co2_sourcesink
 public  atmos_co2_emissions
 public  atmos_co2_rad
+public  atmos_co2_time_vary
 public  atmos_co2_gather_data
 public  atmos_co2_flux_init
 public  atmos_co2_init
 public  atmos_co2_end
 
 !-----------------------------------------------------------------------
-!----------- namelist -------------------
+!----------- module data -------------------
 !-----------------------------------------------------------------------
 
 character(len=48), parameter    :: mod_name = 'atmos_co2_mod'
@@ -59,8 +60,14 @@ integer, save   :: ind_sphum = 0
 integer         :: id_co2restore, id_pwt, id_co2_mol_emiss, id_co2_emiss_orig
 real            :: radiation_co2_dvmr = -1
 
+!---- data for data_override ----
+
+real, allocatable :: co2_emis2d(:,:)
+real :: restore_co2_dvmr = -1.0
+
 !---------------------------------------------------------------------
 !-------- namelist  ---------
+!-----------------------------------------------------------------------
 
 real     :: restore_tscale   = -1
 integer  :: restore_klimit   = -1
@@ -94,6 +101,7 @@ integer :: logunit
 !---- version number -----
 character(len=128) :: version = '$$'
 character(len=128) :: tagname = '$$'
+
 !-----------------------------------------------------------------------
 
 contains
@@ -153,15 +161,6 @@ subroutine atmos_co2_sourcesink(is, ie, js, je, Time, Time_next, dt, pwt, co2, s
 !-----------------------------------------------------------------------
 !
 
-character(len=64), parameter    :: sub_name = 'atmos_co2_sourcesink'
-character(len=256), parameter   :: error_header =                               &
-     '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-character(len=256), parameter   :: warn_header =                                &
-     '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-character(len=256), parameter   :: note_header =                                &
-     '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-
-
 integer   :: i,j,k,id,jd,kd
 logical   :: sent
 logical   :: used
@@ -174,15 +173,6 @@ id=size(co2,1); jd=size(co2,2); kd=min(size(co2,3),restore_klimit)
 co2_restore(:,:,:)=0.0
 
 if (ind_co2 > 0 .and. do_co2_restore) then
-
-! input is in dvmr (mol/mol)
-  call data_override('ATM', 'co2_dvmr_restore', restore_co2_dvmr, Time, override=used)
-  if (.not. used) then
-    call error_mesg (trim(error_header), ' data override needed for co2_dvmr_restore ', FATAL)
-  endif
-!  if (mpp_pe() == mpp_root_pe() ) &
-!      write (logunit,*)' atmos_co2_sourcesink: mean restore co2_dvmr   = ', restore_co2_dvmr
-
 
   if (restore_tscale .gt. 0 .and. restore_co2_dvmr .ge. 0.0) then
 ! co2mmr = (wco2/wair) * co2vmr;  wet_mmr is approximated as dry_mmr * (1-Q)
@@ -335,21 +325,8 @@ subroutine atmos_co2_emissions(is, ie, js, je, Time, Time_next, dt, pwt, co2, sp
 !-----------------------------------------------------------------------
 !
 
-character(len=64), parameter    :: sub_name = 'atmos_co2_emissions'
-character(len=256), parameter   :: error_header =                               &
-     '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-character(len=256), parameter   :: warn_header =                                &
-     '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-character(len=256), parameter   :: note_header =                                &
-     '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
-
-
 integer   :: i,j,k,id,jd,kd,kb
 logical   :: sent
-real, dimension(size(co2,1),size(co2,2),size(co2,3)) ::  co2_emis_source
-real, dimension(size(co2,1),size(co2,2)) :: co2_emis2d
-logical   :: used
-
 
 !---------------------------------------------------------------------------------------
 ! Original IPCC AR5 historical CO2 emissions converted to kg C/m2/sec 
@@ -358,30 +335,19 @@ logical   :: used
 
 id=size(co2,1); jd=size(co2,2); kd=size(co2,3)
 
-co2_emis2d(:,:)=0.0
-co2_emis_source(:,:,:)=0.0
 co2_emiss_dt(:,:,:)=0.0
 
 if (ind_co2 > 0 .and. do_co2_emissions) then
 
-
-  call data_override('ATM', 'co2_emiss', co2_emis2d, Time, override=used, &
-                     is_in=is, ie_in=ie, js_in=js, je_in=je)
-  if (.not. used) then
-    call error_mesg (trim(error_header), ' data override needed for co2 emission ', FATAL)
-  endif
-
-  if (id_co2_emiss_orig > 0) sent = send_data (id_co2_emiss_orig, co2_emis2d, Time_next, is_in=is,js_in=js)
+  if (id_co2_emiss_orig > 0) sent = send_data (id_co2_emiss_orig, co2_emis2d(is:ie,js:je), Time_next, is_in=is,js_in=js)
 
 ! lowest model layer
     do j=1,jd
       do i=1,id
-        co2_emis_source(i,j,kd) = co2_emis2d(i,j) * (WTMCO2/WTMC) / pwt(i,j,kd)
+        co2_emiss_dt(i,j,kd) = co2_emis2d(i+is-1,j+js-1) * (WTMCO2/WTMC) / pwt(i,j,kd)
       enddo
     enddo
   
-  co2_emiss_dt = co2_emis_source
-
 ! co2 mol emission diagnostic in moles CO2/m2/sec 
   if (id_co2_mol_emiss > 0) sent = send_data (id_co2_mol_emiss,   &
                  co2_emiss_dt(:,:,kd)*pwt(:,:,kd)/(WTMCO2*1.e-3), Time_next, is_in=is,js_in=js)
@@ -392,6 +358,48 @@ endif
 end subroutine atmos_co2_emissions
 !</SUBROUTINE >
 
+!#######################################################################
+
+subroutine atmos_co2_time_vary (Time)
+type (time_type),      intent(in)   :: Time
+
+!-----------------------------------------------------------------------
+!   local data
+!-----------------------------------------------------------------------
+
+character(len=64), parameter    :: sub_name = 'atmos_co2_time_vary'
+character(len=256), parameter   :: error_header =                               &
+     '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: warn_header =                                &
+     '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+character(len=256), parameter   :: note_header =                                &
+     '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+logical   :: used
+
+!-----------------------------------------------------------------------
+
+if (ind_co2 > 0) then
+  if (do_co2_emissions) then
+    co2_emis2d(:,:) = 0.0
+    call data_override('ATM', 'co2_emiss', co2_emis2d, Time, override=used)
+    if (.not. used) then
+      call error_mesg (trim(error_header), ' data override needed for co2 emission ', FATAL)
+    endif
+  endif
+
+  if (do_co2_restore) then
+    ! input is in dvmr (mol/mol)
+    call data_override('ATM', 'co2_dvmr_restore', restore_co2_dvmr, Time, override=used)
+    if (.not. used) then
+      call error_mesg (trim(error_header), ' data override needed for co2_dvmr_restore ', FATAL)
+    endif
+!   if (mpp_pe() == mpp_root_pe() ) &
+!      write (logunit,*)' atmos_co2_sourcesink: mean restore co2_dvmr   = ', restore_co2_dvmr
+  endif
+endif
+
+end subroutine atmos_co2_time_vary
 
 !#######################################################################
 
@@ -536,7 +544,7 @@ end subroutine atmos_co2_flux_init
 ! Subroutine to initialize the carbon dioxide module.
 !</OVERVIEW>
 
- subroutine atmos_co2_init (Time, axes)
+ subroutine atmos_co2_init (Time, id, jd, axes)
 
 !
 !-----------------------------------------------------------------------
@@ -544,7 +552,8 @@ end subroutine atmos_co2_flux_init
 !-----------------------------------------------------------------------
 !
 
-type(time_type),  intent(in)                        :: Time
+type(time_type),       intent(in)                   :: Time
+integer,               intent(in)                   :: id, jd
 integer, dimension(3), intent(in)                   :: axes
 
 !
@@ -657,6 +666,12 @@ if (.not.(ind_co2 > 0 .and. do_co2_emissions)) then
      write (logunit,*)' not using CO2 emissions: do_co2_emissions= ',do_co2_emissions
 endif
 
+!--- initialize storage for data override array ---
+
+if (ind_co2 > 0 .and. do_co2_emissions) then
+  allocate(co2_emis2d(id,jd))
+endif
+
 call write_version_number (version, tagname)
 module_is_initialized = .TRUE.
 
@@ -666,7 +681,7 @@ module_is_initialized = .TRUE.
 end subroutine atmos_co2_init
 !</SUBROUTINE>
 
-
+!#######################################################################
 !<SUBROUTINE NAME ="atmos_co2_end">
 subroutine atmos_co2_end
 
@@ -684,10 +699,15 @@ character(len=256), parameter   :: warn_header =                                
 character(len=256), parameter   :: note_header =                                &
      '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
+if (ind_co2 > 0 .and. do_co2_emissions) then
+  deallocate(co2_emis2d)
+endif
+
    module_is_initialized = .FALSE.
 
 end subroutine atmos_co2_end
 !</SUBROUTINE>
 
+!#######################################################################
 
 end module atmos_co2_mod
