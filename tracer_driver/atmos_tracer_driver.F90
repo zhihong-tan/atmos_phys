@@ -1474,7 +1474,7 @@ type(time_type), intent(in)                                :: Time
 
 !co2
       if (nco2 > 0) then
-      call atmos_co2_init ( Time, size(lonb,1), size(latb,2), axes(1:3))
+      call atmos_co2_init ( Time, size(r,1), size(r,2), axes(1:3))
         co2_clock = mpp_clock_id( 'Tracer: CO2', &
                     grain=CLOCK_MODULE )
       endif
