@@ -1224,7 +1224,8 @@ end subroutine physics_driver_up_endts
 !                                p_half, p_full, z_half, z_full,       &
 !                                u, v, t, q, r, um, vm, tm, qm, rm,    &
 !                                frac_land, rough_mom,                 &
-!                                albedo,    t_surf_rad, t_ref, q_ref,  &
+!                                albedo,    t_surf_rad, u_ref, v_ref   &
+!                                t_ref, q_ref,                         &
 !                                u_star,    b_star, q_star,            &
 !                                dtau_du,  dtau_dv,  tau_x,  tau_y,    &
 !                                udt, vdt, tdt, qdt, rdt,              &
@@ -1305,6 +1306,12 @@ end subroutine physics_driver_up_endts
 !  </IN>
 !  <IN NAME="t_surf_rad" TYPE="real">
 !   surface radiative temperature
+!  </IN>
+!    <IN NAME="u_ref" TYPE="real">
+!   10m zonal wind
+!  </IN>
+!  <IN NAME="v_ref" TYPE="real">
+!   10m meridional wind
 !  </IN>
 !  <IN NAME="u_star" TYPE="real">
 !   boundary layer wind speed (frictional speed)
