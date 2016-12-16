@@ -379,7 +379,7 @@ end function register_cmip_diag_field_2d
 
 function register_cmip_diag_field_3d (module_name, field_name, &
                         Time_init, long_name, units, standard_name, &
-                        axis, missing_value, interp_method)
+                        axis, missing_value, interp_method, mask_variant)
 
   character(len=*), intent(in) :: module_name, field_name
   type(time_type),  intent(in) :: Time_init
@@ -387,6 +387,7 @@ function register_cmip_diag_field_3d (module_name, field_name, &
   real,             intent(in), optional :: missing_value
   character(len=*), intent(in), optional :: axis  ! 'full' or 'half' levels
   character(len=*), intent(in), optional :: interp_method ! for fregrid
+  logical         , intent(in), optional :: mask_variant
 
   type(cmip_diag_id_type) :: register_cmip_diag_field_3d
   integer :: ind, indx, kount
@@ -415,7 +416,7 @@ function register_cmip_diag_field_3d (module_name, field_name, &
 
       register_cmip_diag_field_3d%field_id(ind) = register_diag_field(module_name_table, field_name,  &
                     cmip_axis_data(:,indx), Time_init, long_name=long_name, units=units, &
-                    standard_name=standard_name, area=area_id,                &
+                    standard_name=standard_name, area=area_id, mask_variant=mask_variant, &
                     missing_value=mvalue, interp_method=interp_method)
 
       if (verbose > 0) call error_mesg('atmos_cmip_diag_mod', &
@@ -469,6 +470,11 @@ logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, p
     if (ks_in .ne. 1) call error_mesg ('atmos_cmip_diag_mod', &
              'subroutine send_cmip_data_3d does not support optional arg "ks_in"', FATAL)
   endif
+
+  if (present(rmask) .and. present(mask)) call error_mesg('atmos_cmip_diag_mod', &
+                                   'rmask and mask can not both be present',FATAL)
+
+  send_cmip_data_3d = .false.
   
   ! loop thru all axes
   do ind = 0, MAXPLEVS
@@ -495,13 +501,23 @@ logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, p
       ! save data on model levels (flip data)
         if (flip_cmip_levels) then
            ke = size(field,3)
-           send_cmip_data_3d = send_data(id, field(:,:,ke:1:-1), Time, &
-                                      is_in=is_in, js_in=js_in, ks_in=ks_in, mask=mask, rmask=rmask)
+           if (.not.present(mask) .and. .not.present(rmask)) then
+             send_cmip_data_3d = send_data(id, field(:,:,ke:1:-1), Time, &
+                                      is_in=is_in, js_in=js_in, ks_in=ks_in)
+           else if (present(mask) .and. .not.present(rmask)) then
+             send_cmip_data_3d = send_data(id, field(:,:,ke:1:-1), Time, &
+                                      is_in=is_in, js_in=js_in, ks_in=ks_in, mask=mask(:,:,ke:1:-1))
+           else if (.not.present(mask) .and. present(rmask)) then
+             send_cmip_data_3d = send_data(id, field(:,:,ke:1:-1), Time, &
+                                      is_in=is_in, js_in=js_in, ks_in=ks_in, rmask=rmask(:,:,ke:1:-1))
+           endif
          else
            send_cmip_data_3d = send_data(id, field(:,:,:), Time, &
                                       is_in=is_in, js_in=js_in, ks_in=ks_in, mask=mask, rmask=rmask)
          endif
       endif
+    else
+      send_cmip_data_3d = .false.
     endif
   enddo
 

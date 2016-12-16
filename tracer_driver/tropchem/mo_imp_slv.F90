@@ -28,13 +28,18 @@
       integer :: oh_ndx, ho2_ndx, ch3o2_ndx, po2_ndx, ch3co3_ndx, &
                  c2h5o2_ndx, isopo2_ndx, macro2_ndx, mco3_ndx, c3h7o2_ndx, &
                  ro2_ndx, xo2_ndx, no_ndx, no2_ndx, no3_ndx, n2o5_ndx, &
-                 c2h4_ndx, c3h6_ndx, isop_ndx, mvk_ndx, c10h16_ndx
+                 c2h4_ndx, c3h6_ndx, isop_ndx, mvk_ndx, c10h16_ndx, &
+                 eo2_ndx, isopnbo2_ndx, iepoxoo_ndx, &
+                 mobaoo_ndx, ino2_ndx, mvko2_ndx,&
+                 macrno2_ndx, mao3_ndx, maopo2_ndx, ato2_ndx,&
+                 isopnb_ndx, macr_ndx, moba_ndx
       integer :: op_ho2_ndx, op_mo2_ndx, op_ch3co3_ndx, op_po2_ndx, op_c2h5o2_ndx, &
                  op_isopo2_ndx, op_macro2_ndx, op_mco3_ndx, op_c3h7o2_ndx, op_ro2_ndx, &
-                 op_xo2_ndx
+                 op_xo2_ndx, op_isopnbo2_ndx, op_iepoxo2_ndx, op_ino2_ndx, op_mvko2_ndx,&
+                 op_macrno2_ndx, op_mao3_ndx, op_maopo2_ndx, op_ato2_ndx, op_eo2_ndx
       integer :: ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ol_c3h6_ndx, ol_isop_ndx, &
-                 ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_terp_ndx, uoh_no2_ndx, &
-                 n2o5h_ndx, no3h_ndx
+                 ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_c10h16_ndx, uoh_no2_ndx, &
+                 n2o5h_ndx, no3h_ndx, no2h_ndx, ol_isopnb_ndx
       logical :: do_ox_pl = .true.
       integer :: verbose
       real    :: r2d
@@ -82,7 +87,7 @@ logical                       :: module_is_initialized = .false.
 !        ... local variables
 !-----------------------------------------------------------------------
       integer :: m, astat
-      integer :: wrk(21)
+      integer :: wrk(32)
       real    :: eps(pcnstm1)
       character(len=128) ::  msg
 
@@ -173,8 +178,106 @@ logical                       :: module_is_initialized = .false.
       do m = 1,max(1,clscnt4)
          epsilon(m) = eps(implicit%clsmap(m))
       end do
+#ifndef AM3_CHEM
+     if( ox_ndx > 0 ) then
+         op_ho2_ndx = get_rxt_ndx( 'op_ho2' )
+         op_mo2_ndx = get_rxt_ndx( 'op_mo2' )
+         op_eo2_ndx = get_rxt_ndx( 'op_eo2' )
+         op_po2_ndx = get_rxt_ndx( 'op_po2' )
+         op_ch3co3_ndx = get_rxt_ndx( 'op_ch3co3' )
+         op_c2h5o2_ndx = get_rxt_ndx( 'op_c2h5o2' )
+         op_c3h7o2_ndx = get_rxt_ndx( 'op_c3h7o2' )
+         op_isopo2_ndx = get_rxt_ndx( 'op_isopo2' )
+         op_isopnbo2_ndx = get_rxt_ndx( 'op_isopnbo2' )
+         op_iepoxo2_ndx = get_rxt_ndx( 'op_iepoxo2' )
+         op_ino2_ndx = get_rxt_ndx( 'op_ino2' )
+         op_mvko2_ndx = get_rxt_ndx( 'op_mvko2' )
+         op_macro2_ndx = get_rxt_ndx( 'op_macro2' )
+         op_macrno2_ndx = get_rxt_ndx( 'op_macrno2' )
+         op_mao3_ndx = get_rxt_ndx( 'op_mao3' )
+         op_maopo2_ndx = get_rxt_ndx( 'op_maopo2' )
+         op_ato2_ndx = get_rxt_ndx( 'op_ato2' )
+         wrk(1:17) = (/ op_ho2_ndx, op_mo2_ndx, op_eo2_ndx, op_po2_ndx, op_ch3co3_ndx, &
+                        op_c2h5o2_ndx, op_c3h7o2_ndx, op_isopo2_ndx, op_isopnbo2_ndx, op_iepoxo2_ndx, &
+                        op_ino2_ndx, op_mvko2_ndx, op_macro2_ndx, &
+                        op_macrno2_ndx, op_mao3_ndx, op_maopo2_ndx, op_ato2_ndx /)
+         if( any( wrk(1:17) < 1 ) ) then
+            do_ox_pl = .false.
+         end if
+         if( do_ox_pl ) then
+            ol_o1d_ndx = get_rxt_ndx( 'ol_o1d' )
+            ol_oh_ndx = get_rxt_ndx( 'ol_oh' )
+            ol_ho2_ndx = get_rxt_ndx( 'ol_ho2' )
+            ol_c2h4_ndx = get_rxt_ndx( 'ol_c2h4' )
+            ol_c3h6_ndx = get_rxt_ndx( 'ol_c3h6' )
+            ol_isop_ndx = get_rxt_ndx( 'ol_isop' )
+            ol_isopnb_ndx = get_rxt_ndx( 'ol_isopnb' )
+            ol_mvk_ndx = get_rxt_ndx( 'ol_mvk' )
+            ol_macr_ndx = get_rxt_ndx( 'ol_macr' )
+            ol_c10h16_ndx = get_rxt_ndx( 'ol_c10h16' )
+            uoh_no2_ndx = get_rxt_ndx( 'uoh_no2' )
+            n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
+            no3h_ndx = get_rxt_ndx( 'no3h' )
+            no2h_ndx = get_rxt_ndx( 'no2h' )
+            wrk(1:13) = (/ ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ol_c2h4_ndx, ol_c3h6_ndx, &
+                           ol_isop_ndx, ol_isopnb_ndx, ol_mvk_ndx, ol_macr_ndx, &
+                           uoh_no2_ndx, n2o5h_ndx, no3h_ndx, &
+                           no2h_ndx /)
+            if( any( wrk(1:13) < 1 ) ) then
+               do_ox_pl = .false.
+            end if
+         end if
 
-      if( ox_ndx > 0 ) then
+         if( do_ox_pl ) then
+            oh_ndx = get_spc_ndx( 'OH' )
+            ho2_ndx = get_spc_ndx( 'HO2' )
+            ch3o2_ndx = get_spc_ndx( 'CH3O2' )
+            eo2_ndx = get_spc_ndx( 'EO2' )
+            po2_ndx = get_spc_ndx( 'PO2' )
+            ch3co3_ndx = get_spc_ndx( 'CH3CO3' )
+            c2h5o2_ndx = get_spc_ndx( 'C2H5O2' )
+            c3h7o2_ndx = get_spc_ndx( 'C3H7O2' )
+            isopo2_ndx = get_spc_ndx( 'ISOPO2' )
+            isopnbo2_ndx = get_spc_ndx( 'ISOPNBO2' )
+            iepoxoo_ndx = get_spc_ndx( 'IEPOXOO' )
+            ino2_ndx = get_spc_ndx( 'INO2' )
+            mvko2_ndx = get_spc_ndx( 'MVKO2' )
+            macro2_ndx = get_spc_ndx( 'MACRO2' )
+            macrno2_ndx = get_spc_ndx( 'MACRNO2' )
+            mao3_ndx = get_spc_ndx( 'MAO3' )
+            maopo2_ndx = get_spc_ndx( 'MAOPO2' )
+            ato2_ndx = get_spc_ndx( 'ATO2' )
+            no_ndx = get_spc_ndx( 'NO' )
+            no2_ndx = get_spc_ndx( 'NO2' )
+            no3_ndx = get_spc_ndx( 'NO3' )
+            n2o5_ndx = get_spc_ndx( 'N2O5' )
+            c2h4_ndx = get_spc_ndx( 'C2H4' )
+            c3h6_ndx = get_spc_ndx( 'C3H6' )
+            isop_ndx = get_spc_ndx( 'ISOP' )
+            isopnb_ndx = get_spc_ndx( 'ISOPNB' )
+            mvk_ndx = get_spc_ndx( 'MVK' )
+            macr_ndx = get_spc_ndx( 'MACR' )
+! Here I removed terpenes to test the code (jmao, 05/29/2013)
+            c10h16_ndx = get_spc_ndx( 'C10H16' )
+            wrk(1:29) = (/ oh_ndx, ho2_ndx, ch3o2_ndx, eo2_ndx, po2_ndx, ch3co3_ndx, &
+                           c2h5o2_ndx, c3h7o2_ndx, isopo2_ndx, isopnbo2_ndx,&
+                           iepoxoo_ndx, &
+                           ino2_ndx, mvko2_ndx, macro2_ndx, macrno2_ndx, mao3_ndx, maopo2_ndx, ato2_ndx,& 
+                           no_ndx, no2_ndx, no3_ndx, n2o5_ndx, &
+                           c2h4_ndx, c3h6_ndx, isop_ndx, isopnb_ndx, mvk_ndx, macr_ndx, &
+                           c10h16_ndx /)
+            if( any( wrk(1:29) < 1 ) ) then
+               do_ox_pl = .false.
+            end if
+         end if
+      else
+         do_ox_pl = .false.
+      end if
+
+
+
+#else
+       if( ox_ndx > 0 ) then
          op_ho2_ndx = get_rxt_ndx( 'op_ho2' )
          op_mo2_ndx = get_rxt_ndx( 'op_mo2' )
          op_po2_ndx = get_rxt_ndx( 'op_po2' )
@@ -192,7 +295,7 @@ logical                       :: module_is_initialized = .false.
             do_ox_pl = .false.
          end if
          if( do_ox_pl ) then
-            ol_o1d_ndx = get_rxt_ndx( 'o1_o1d' )
+            ol_o1d_ndx = get_rxt_ndx( 'ol_o1d' )
             ol_oh_ndx = get_rxt_ndx( 'ol_oh' )
             ol_ho2_ndx = get_rxt_ndx( 'ol_ho2' )
             ol_c3h6_ndx = get_rxt_ndx( 'ol_c3h6' )
@@ -200,12 +303,12 @@ logical                       :: module_is_initialized = .false.
             ol_c2h4_ndx = get_rxt_ndx( 'ol_c2h4' )
             ol_mvk_ndx = get_rxt_ndx( 'ol_mvk' )
             ol_macr_ndx = get_rxt_ndx( 'ol_macr' )
-            ol_terp_ndx = get_rxt_ndx( 'ol_terp' )
+            ol_c10h16_ndx = get_rxt_ndx( 'ol_terp' )
             uoh_no2_ndx = get_rxt_ndx( 'uoh_no2' )
             n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
-            no3_ndx = get_rxt_ndx( 'no3' )
+            no3_ndx = get_rxt_ndx( 'no3h' )
             wrk(1:12) = (/ ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ol_c3h6_ndx, ol_isop_ndx, &
-                           ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_terp_ndx, uoh_no2_ndx, &
+                           ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_c10h16_ndx, uoh_no2_ndx, &
                            n2o5h_ndx, no3_ndx /)
             if( any( wrk(1:12) < 1 ) ) then
                do_ox_pl = .false.
@@ -245,95 +348,7 @@ logical                       :: module_is_initialized = .false.
       else
          do_ox_pl = .false.
       end if
-
-!     if( moz_file_cnt > 0 ) then
-!        allocate( imp_hst_prod(moz_file_cnt),stat=astat )
-!        if( astat /= 0 ) then
-!             write(*,*) 'imp_slv_init: Failed to allocate imp_hst_prod array; error = ',astat
-!            call endrun
-!        end if
-!        if( astat /= 0 ) then
-!            write(*,*) 'imp_slv_init: Failed to allocate imp_hst_prod array; error = ',astat
-!            call endrun
-!        end if
-!         do file = 1,moz_file_cnt
-!            imp_hst_prod(file)%do_hst(:) = .false.
-!            imp_hst_prod(file)%cnt(:)    = 0
-!         end do
-!        allocate( imp_hst_loss(moz_file_cnt),stat=astat )
-!        if( astat /= 0 ) then
-!            write(*,*) 'imp_slv_init: Failed to allocate imp_hst_loss array; error = ',astat
-!            call endrun
-!        end if
-!         do file = 1,moz_file_cnt
-!            imp_hst_loss(file)%do_hst(:) = .false.
-!            imp_hst_loss(file)%cnt(:)    = 0
-!         end do
-!-----------------------------------------------------------------------
-!        ... scan for class production to history file(s)
-!-----------------------------------------------------------------------
-!        do file = 1,moz_file_cnt
-!            do timetype = inst,avrg
-!              if( hfile(file)%histout_cnt(14,timetype) > 0 ) then
-!                  il = hfile(file)%histout_ind(14,timetype)
-!                  iu = il + hfile(file)%histout_cnt(14,timetype) - 1
-!                  if( timetype == inst ) then
-!                     if( any( hfile(file)%inst_map(il:iu)/1000 == 4 ) ) then
-!                        imp_hst_prod(file)%do_hst(timetype) = .true.
-!                        do m = il,iu
-!                           if( hfile(file)%inst_map(m)/1000 == 4 ) then
-!                              imp_hst_prod(file)%cnt(timetype) = imp_hst_prod(file)%cnt(timetype) + 1
-!                           end if
-!                        end do
-!                        cycle
-!                    end if
-!                  else if( timetype == avrg ) then
-!                     if( any( hfile(file)%timav_map(il:iu)/1000 == 4 ) ) then
-!                        imp_hst_prod(file)%do_hst(timetype) = .true.
-!                        do m = il,iu
-!                           if( hfile(file)%timav_map(m)/1000 == 4 ) then
-!                              imp_hst_prod(file)%cnt(timetype) = imp_hst_prod(file)%cnt(timetype) + 1
-!                           end if
-!                        end do
-!                        exit
-!                    end if
-!                 end if
-!              end if
-!           end do
-!        end do
-!-----------------------------------------------------------------------
-!        ... scan for class loss to history file(s)
-!-----------------------------------------------------------------------
-!        do file = 1,moz_file_cnt
-!            do timetype = inst,avrg
-!              if( hfile(file)%histout_cnt(15,timetype) > 0 ) then
-!                  il = hfile(file)%histout_ind(15,timetype)
-!                  iu = il + hfile(file)%histout_cnt(15,timetype) - 1
-!                  if( timetype == inst ) then
-!                     if( any( hfile(file)%inst_map(il:iu)/1000 == 4 ) ) then
-!                        imp_hst_loss(file)%do_hst(timetype) = .true.
-!                        do m = il,iu
-!                           if( hfile(file)%inst_map(m)/1000 == 4 ) then
-!                              imp_hst_loss(file)%cnt(timetype) = imp_hst_loss(file)%cnt(timetype) + 1
-!                           end if
-!                        end do
-!                        cycle
-!                    end if
-!                  else if( timetype == avrg ) then
-!                     if( any( hfile(file)%timav_map(il:iu)/1000 == 4 ) ) then
-!                        imp_hst_loss(file)%do_hst(timetype) = .true.
-!                        do m = il,iu
-!                           if( hfile(file)%timav_map(m)/1000 == 4 ) then
-!                              imp_hst_loss(file)%cnt(timetype) = imp_hst_loss(file)%cnt(timetype) + 1
-!                           end if
-!                        end do
-!                        exit
-!                    end if
-!                 end if
-!              end if
-!           end do
-!        end do
-!     end if
+#endif
 
       small = 1.e6 * tiny( small )
       r2d = 180./PI
@@ -433,47 +448,6 @@ logical                       :: module_is_initialized = .false.
       logical ::   converged(max(1,clscnt4))
       integer :: indx_old
 
-!-----------------------------------------------------------------------
-!        ... allocate history prod, loss buffers
-!-----------------------------------------------------------------------
-!     if( moz_file_cnt > 0 ) then
-!        allocate( prod_buff(moz_file_cnt), stat=astat )
-!         if( astat /= 0 ) then
-!            write(*,*) 'imp_slv_init: Failed to allocate prod_buff; error = ',astat
-!            call endrun
-!         end if
-!         do file = 1,moz_file_cnt
-!            n = SUM( imp_hst_prod(file)%cnt(:) )
-!            if( n > 0 ) then
-!              allocate( prod_buff(file)%buff(plnplv,n), stat=astat )
-!               if( astat /= 0 ) then
-!                  write(*,*) 'imp_slv_init: Failed to allocate prod buff for file = ',file,'; error = ',astat
-!                  call endrun
-!               end if
-!            else
-!               nullify( prod_buff(file)%buff )
-!            end if
-!         end do
-!        allocate( loss_buff(moz_file_cnt), stat=astat )
-!         if( astat /= 0 ) then
-!            write(*,*) 'imp_slv_init: Failed to allocate loss_buff; error = ',astat
-!            call endrun
-!         end if
-!         do file = 1,moz_file_cnt
-!            n = SUM( imp_hst_loss(file)%cnt(:) )
-!            if( n > 0 ) then
-!              allocate( loss_buff(file)%buff(plnplv,n), stat=astat )
-!               if( astat /= 0 ) then
-!                  write(*,*) 'imp_slv_init: Failed to allocate loss buff for file = ',file,'; error = ',astat
-!                  call endrun
-!               end if
-!            else
-!               nullify( loss_buff(file)%buff )
-!            end if
-!         end do
-!     end if
-
-!     if( implicit%indprd_cnt > 0 .or. extcnt > 0 ) then
       if( implicit%indprd_cnt > 0 ) then
 !-----------------------------------------------------------------------
 !        ... class independent forcing
@@ -744,195 +718,91 @@ iter_loop : &
 !--lwh
                end do
             end if
-!-----------------------------------------------------------------------
-!           ... check for history prod, loss
-!-----------------------------------------------------------------------
-! hist_buff_loop : &
-!            do file = 1,moz_file_cnt
-!               do timetype = inst,avrg
-!                  fill_buff = imp_hst_prod(file)%do_hst(timetype)
-!                  if( timetype == inst ) then
-!                     fill_buff = fill_buff .and. hfile(file)%wrhstts
-!                  end if
-!                 if( fill_buff ) then
-!                     hndx = 0
-!                     do n = 1,hfile(file)%histout_cnt(14,timetype)
-!                        if( timetype == inst ) then
-!                           class = hfile(file)%inst_map(hfile(file)%histout_ind(14,inst)+n-1)/1000
-!                        else
-!                           class = hfile(file)%timav_map(hfile(file)%histout_ind(14,avrg)+n-1)/1000
-!                       end if
-!                        if( class == 4 ) then
-!                           if( timetype == inst ) then
-!                              cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(14,inst)+n-1),1000 )
-!                           else
-!                              cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(14,avrg)+n-1),1000 )
-!                          end if
-!                           hndx = hndx + 1
-!                           l = implicit%clsmap(cls_ndx)
-!                           if( l == ox_ndx ) then
-!-----------------------------------------------------------------------
-!         ... ozone production (only valid for the troposphere!)
-!-----------------------------------------------------------------------
-!                          write(*,*)'do_ox_pl is ', do_ox_pl
-			      if( do_ox_pl ) then
-                                   prod_ox(indx) = &
-                                    (reaction_rates(indx,op_ho2_ndx)*base_sol(indx,ho2_ndx) &
-                                    + reaction_rates(indx,op_mo2_ndx) *base_sol(indx,ch3o2_ndx) &
-                                    + reaction_rates(indx,op_po2_ndx) *base_sol(indx,po2_ndx) &
-                                    + reaction_rates(indx,op_ch3co3_ndx) *base_sol(indx,ch3co3_ndx) &
-                                    + reaction_rates(indx,op_c2h5o2_ndx) *base_sol(indx,c2h5o2_ndx) &
-                                    + .88*reaction_rates(indx,op_isopo2_ndx)*base_sol(indx,isopo2_ndx) &
-                                    + .985*reaction_rates(indx,op_macro2_ndx)*base_sol(indx,macro2_ndx) &
-                                    + reaction_rates(indx,op_mco3_ndx)*base_sol(indx,mco3_ndx) &
-                                    + reaction_rates(indx,op_c3h7o2_ndx)*base_sol(indx,c3h7o2_ndx) &
-                                    + reaction_rates(indx,op_ro2_ndx)*base_sol(indx,ro2_ndx) &
-                                    + reaction_rates(indx,op_xo2_ndx)*base_sol(indx,xo2_ndx)) * base_sol(indx,no_ndx)
-!                              end if
-!                          else
-!                              j = implicit%permute(cls_ndx)
-!                             prod_buff(file)%buff(indx,hndx) = prod(j) + ind_prd(indx,j)
-!                           end if
-!                        end if
-!                    end do
-!                 end if
-!                  fill_buff = imp_hst_loss(file)%do_hst(timetype)
-!                  if( timetype == inst ) then
-!                     fill_buff = fill_buff .and. hfile(file)%wrhstts
-!                  end if
-!                 if( fill_buff ) then
-!                     hndx = 0
-!                     do n = 1,hfile(file)%histout_cnt(15,timetype)
-!                        if( timetype == inst ) then
-!                           class = hfile(file)%inst_map(hfile(file)%histout_ind(15,inst)+n-1)/1000
-!                        else
-!                           class = hfile(file)%timav_map(hfile(file)%histout_ind(15,avrg)+n-1)/1000
-!                        end if
-!                        if( class == 4 ) then
-!                           if( timetype == inst ) then
-!                              cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(15,inst)+n-1),1000 )
-!                           else
-!                              cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(15,avrg)+n-1),1000 )
-!                           end if
-!                           hndx = hndx + 1
-!                           l = implicit%clsmap(cls_ndx)
-!                           if( l == ox_ndx ) then
-!                             if( do_ox_pl ) then
-!-----------------------------------------------------------------------
-!         ... ozone destruction (only valid for the troposphere!)
-!             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
-!-----------------------------------------------------------------------
-!	                         k = indx
-                                   loss_ox(indx) = reaction_rates(indx,ol_oh_ndx) *base_sol(indx,oh_ndx) &
-                                   + reaction_rates(indx,ol_ho2_ndx) *base_sol(indx,ho2_ndx) &
-                                   + reaction_rates(indx,ol_c2h4_ndx) *base_sol(indx,c2h4_ndx) &
-                                   + reaction_rates(indx,ol_c3h6_ndx) *base_sol(indx,c3h6_ndx) &
-                                   + .9*reaction_rates(indx,ol_isop_ndx) *base_sol(indx,isop_ndx) &
-                                   + .8*(reaction_rates(indx,ol_mvk_ndx)*base_sol(indx,mvk_ndx) &
-                                         + reaction_rates(indx,ol_macr_ndx)*base_sol(indx,macro2_ndx)) &
-                                   + .235*reaction_rates(indx,ol_terp_ndx)*base_sol(indx,c10h16_ndx) &
-                                   + (reaction_rates(indx,uoh_no2_ndx) * base_sol(indx,no2_ndx) * base_sol(indx,oh_ndx) &
-                                      + 3. * reaction_rates(indx,n2o5h_ndx) * base_sol(indx,n2o5_ndx) &
-                                      + 2. * reaction_rates(indx,no3_ndx) * base_sol(indx,no3_ndx)) &
-                                     /max( base_sol(indx,ox_ndx),1.e-20 )
-! here I sperate the o1d term because we need ozone implicitly from o1d.
-                                     loss_ox(indx)=loss_ox(indx)*base_sol(indx,ox_ndx)&
-                                   +reaction_rates(indx,ol_o1d_ndx)*base_sol(indx,o1d_ndx)*base_sol(indx,h2o_ndx)
-                                   prod_ox(indx)=max(prod_ox(indx),0.0)
-                                   loss_ox(indx)=max(loss_ox(indx),0.0)
-                             end if
-!                             write(*,*)prod_ox(k)
-!                           else
-!                              j = implicit%permute(cls_ndx)
-!                             loss_buff(file)%buff(indx,hndx) = loss(j)
-!                           end if
-!                       end if
-!                    end do
-!                 end if
-!              end do
-!           end do hist_buff_loop
+#ifndef AM3_CHEM
+     if( do_ox_pl ) then
+          prod_ox(indx) = &
+           (reaction_rates(indx,op_ho2_ndx)*base_sol(indx,ho2_ndx) &
+           + reaction_rates(indx,op_mo2_ndx) *base_sol(indx,ch3o2_ndx) &
+           + reaction_rates(indx,op_eo2_ndx) *base_sol(indx,eo2_ndx) &
+           + reaction_rates(indx,op_po2_ndx) *base_sol(indx,po2_ndx) &
+           + reaction_rates(indx,op_ch3co3_ndx) *base_sol(indx,ch3co3_ndx) &
+           + reaction_rates(indx,op_c2h5o2_ndx) *base_sol(indx,c2h5o2_ndx) &
+           + reaction_rates(indx,op_c3h7o2_ndx) *base_sol(indx,c3h7o2_ndx) &
+           + .9*reaction_rates(indx,op_isopo2_ndx) *base_sol(indx,isopo2_ndx) &
+           + 1.6*reaction_rates(indx,op_isopnbo2_ndx) *base_sol(indx,isopnbo2_ndx) &
+           + reaction_rates(indx,op_iepoxo2_ndx) *base_sol(indx,iepoxoo_ndx) &
+           + 1.3*reaction_rates(indx,op_ino2_ndx) *base_sol(indx,ino2_ndx) &
+           + .965*reaction_rates(indx,op_mvko2_ndx) *base_sol(indx,mvko2_ndx) &
+           + .97*reaction_rates(indx,op_macro2_ndx) *base_sol(indx,macro2_ndx) &
+           + 1.85*reaction_rates(indx,op_macrno2_ndx) *base_sol(indx,macrno2_ndx) &
+           + reaction_rates(indx,op_mao3_ndx) *base_sol(indx,mao3_ndx) &
+           + reaction_rates(indx,op_maopo2_ndx) *base_sol(indx,maopo2_ndx) &
+           + .96*reaction_rates(indx,op_ato2_ndx) *base_sol(indx,ato2_ndx) ) * base_sol(indx,no_ndx)
+
+          !-----------------------------------------------------------------------
+          !         ... ozone destruction (only valid for the troposphere!)
+          !             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
+          !-----------------------------------------------------------------------
+          loss_ox(indx) = reaction_rates(indx,ol_oh_ndx) *base_sol(indx,oh_ndx) &
+          + reaction_rates(indx,ol_ho2_ndx) *base_sol(indx,ho2_ndx) &
+          + reaction_rates(indx,ol_c2h4_ndx) *base_sol(indx,c2h4_ndx) &
+          + reaction_rates(indx,ol_c3h6_ndx) *base_sol(indx,c3h6_ndx) &
+          + reaction_rates(indx,ol_isop_ndx) *base_sol(indx,isop_ndx) &
+          + reaction_rates(indx,ol_isopnb_ndx) *base_sol(indx,isopnb_ndx) &
+          + .235*reaction_rates(indx,ol_c10h16_ndx)*base_sol(indx,c10h16_ndx) &
+          + reaction_rates(indx,ol_mvk_ndx)*base_sol(indx,mvk_ndx) &
+          + reaction_rates(indx,ol_macr_ndx)*base_sol(indx,macr_ndx) &
+          + (reaction_rates(indx,uoh_no2_ndx) * base_sol(indx,no2_ndx) * base_sol(indx,oh_ndx) &
+             + 3. * reaction_rates(indx,n2o5h_ndx) * base_sol(indx,n2o5_ndx) &
+             + 2. * reaction_rates(indx,no3h_ndx) * base_sol(indx,no3_ndx)  &
+             + .5* reaction_rates(indx,no2h_ndx) * base_sol(indx,no2_ndx) ) &
+            /max( base_sol(indx,ox_ndx),1.e-20 )
+         ! here I sperate the o1d term because we need ozone implicitly from o1d.
+            loss_ox(indx)=loss_ox(indx)*base_sol(indx,ox_ndx)&
+          +reaction_rates(indx,ol_o1d_ndx)*base_sol(indx,o1d_ndx)*base_sol(indx,h2o_ndx)
+    end if
+#else
+
+     if( do_ox_pl ) then
+             prod_ox(indx) = &
+              (reaction_rates(indx,op_ho2_ndx)*base_sol(indx,ho2_ndx) &
+              + reaction_rates(indx,op_mo2_ndx) *base_sol(indx,ch3o2_ndx) &
+              + reaction_rates(indx,op_po2_ndx) *base_sol(indx,po2_ndx) &
+              + reaction_rates(indx,op_ch3co3_ndx) *base_sol(indx,ch3co3_ndx) &
+              + reaction_rates(indx,op_c2h5o2_ndx) *base_sol(indx,c2h5o2_ndx) &
+              + .88*reaction_rates(indx,op_isopo2_ndx)*base_sol(indx,isopo2_ndx) &
+              + .985*reaction_rates(indx,op_macro2_ndx)*base_sol(indx,macro2_ndx) &
+              + reaction_rates(indx,op_mco3_ndx)*base_sol(indx,mco3_ndx) &
+              + reaction_rates(indx,op_c3h7o2_ndx)*base_sol(indx,c3h7o2_ndx) &
+              + reaction_rates(indx,op_ro2_ndx)*base_sol(indx,ro2_ndx) &
+              + reaction_rates(indx,op_xo2_ndx)*base_sol(indx,xo2_ndx)) * base_sol(indx,no_ndx)
+             !-----------------------------------------------------------------------
+             !         ... ozone destruction (only valid for the troposphere!)
+             !             also include ox loss from no2+oh, n2o5+aerosol, no3+aerosol
+             !-----------------------------------------------------------------------
+             loss_ox(indx) = reaction_rates(indx,ol_oh_ndx) *base_sol(indx,oh_ndx) &
+             + reaction_rates(indx,ol_ho2_ndx) *base_sol(indx,ho2_ndx) &
+             + reaction_rates(indx,ol_c2h4_ndx) *base_sol(indx,c2h4_ndx) &
+             + reaction_rates(indx,ol_c3h6_ndx) *base_sol(indx,c3h6_ndx) &
+             + .9*reaction_rates(indx,ol_isop_ndx) *base_sol(indx,isop_ndx) &
+             + .8*(reaction_rates(indx,ol_mvk_ndx)*base_sol(indx,mvk_ndx) &
+                   + reaction_rates(indx,ol_macr_ndx)*base_sol(indx,macro2_ndx)) &
+             + .235*reaction_rates(indx,ol_c10h16_ndx)*base_sol(indx,c10h16_ndx) &
+             + (reaction_rates(indx,uoh_no2_ndx) * base_sol(indx,no2_ndx) * base_sol(indx,oh_ndx) &
+                + 3. * reaction_rates(indx,n2o5h_ndx) * base_sol(indx,n2o5_ndx) &
+                + 2. * reaction_rates(indx,no3_ndx) * base_sol(indx,no3_ndx)) &
+               /max( base_sol(indx,ox_ndx),1.e-20 )
+             ! here I sperate the o1d term because we need ozone implicitly from o1d.
+               loss_ox(indx)=loss_ox(indx)*base_sol(indx,ox_ndx)&
+             +reaction_rates(indx,ol_o1d_ndx)*base_sol(indx,o1d_ndx)*base_sol(indx,h2o_ndx)
+             prod_ox(indx)=max(prod_ox(indx),0.0)
+             loss_ox(indx)=max(loss_ox(indx),0.0)
+       end if
+
+#endif
          end do lon_tile_loop
       end do level_loop
 
-!-----------------------------------------------------------------------
-!       ... check for implicit species production and loss output
-!           first check production; instantaneous then time averaged
-!           then  check loss; instantaneous then time averaged
-!-----------------------------------------------------------------------
-!     do file = 1,moz_file_cnt
-!         do timetype = inst,avrg
-!           dump_buff = imp_hst_prod(file)%do_hst(timetype)
-!            if( timetype == inst ) then
-!               dump_buff = dump_buff .and. hfile(file)%wrhstts
-!            end if
-!           if( dump_buff ) then
-!               hndx = 0
-!               do n = 1,hfile(file)%histout_cnt(14,timetype)
-!                  if( timetype == inst ) then
-!                     class = hfile(file)%inst_map(hfile(file)%histout_ind(14,timetype)+n-1)/1000
-!                  else
-!                     class = hfile(file)%timav_map(hfile(file)%histout_ind(14,timetype)+n-1)/1000
-!                  end if
-!                  if( class == 4 ) then
-!                     if( timetype == inst ) then
-!                        cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(14,inst)+n-1),1000 )
-!                        fldname = hfile(file)%hist_inst(hfile(file)%histout_ind(14,timetype)+n-1)
-!                     else
-!                        cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(14,avrg)+n-1),1000 )
-!                        fldname = hfile(file)%hist_timav(hfile(file)%histout_ind(14,timetype)+n-1)
-!                     end if
-!                     hndx        = hndx + 1
-!                     wrk_buff(:) = prod_buff(file)%buff(:,hndx) * hnm(:)
-!                     call outfld( fldname, wrk_buff, plonl, ip, lat, file )
-!                 end if
-!              end do
-!           end if
-!           dump_buff = imp_hst_loss(file)%do_hst(timetype)
-!            if( timetype == inst ) then
-!               dump_buff = dump_buff .and. hfile(file)%wrhstts
-!            end if
-!           if( dump_buff ) then
-!               hndx = 0
-!               do n = 1,hfile(file)%histout_cnt(15,timetype)
-!                  if( timetype == inst ) then
-!                     class = hfile(file)%inst_map(hfile(file)%histout_ind(15,timetype)+n-1)/1000
-!                  else
-!                     class = hfile(file)%timav_map(hfile(file)%histout_ind(15,timetype)+n-1)/1000
-!                  end if
-!                  if( class == 4 ) then
-!                     if( timetype == inst ) then
-!                        cls_ndx = mod( hfile(file)%inst_map(hfile(file)%histout_ind(15,inst)+n-1),1000 )
-!                        fldname = hfile(file)%hist_inst(hfile(file)%histout_ind(15,timetype)+n-1)
-!                     else
-!                        cls_ndx = mod( hfile(file)%timav_map(hfile(file)%histout_ind(15,avrg)+n-1),1000 )
-!                        fldname = hfile(file)%hist_timav(hfile(file)%histout_ind(15,timetype)+n-1)
-!                     end if
-!                     hndx        = hndx + 1
-!                     l           = implicit%clsmap(cls_ndx)
-!                    wrk_buff(:) = loss_buff(file)%buff(:,hndx) * hnm(:) * base_sol(:,l)
-!                     call outfld( fldname, wrk_buff, plonl, ip, lat, file )
-!                 end if
-!              end do
-!           end if
-!        end do
-!     end do
-
-!     if( allocated( prod_buff ) ) then
-!         do file = 1,moz_file_cnt
-!            if( associated( prod_buff(file)%buff ) ) then
-!               deallocate( prod_buff(file)%buff )
-!            end if
-!         end do
-!         deallocate( prod_buff )
-!     end if
-!     if( allocated( loss_buff ) ) then
-!         do file = 1,moz_file_cnt
-!            if( associated( loss_buff(file)%buff ) ) then
-!               deallocate( loss_buff(file)%buff )
-!            end if
-!         end do
-!         deallocate( loss_buff )
-!     end if
 
       end subroutine imp_sol
 
