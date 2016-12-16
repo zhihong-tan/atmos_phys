@@ -27,6 +27,11 @@ use   field_manager_mod, only: MODEL_ATMOS
 use  tracer_manager_mod, only: get_number_tracers, get_tracer_names, &
                                NO_TRACER
 
+use atmos_cmip_diag_mod, only: register_cmip_diag_field_3d, &
+                               send_cmip_data_3d, &
+                               cmip_diag_id_type, &
+                               query_cmip_diag_id
+
 !-----------------------------------------------------------------------
 
 implicit none
@@ -70,6 +75,8 @@ real, allocatable, dimension(:,:,:) :: dt_t_save, dt_q_save
 integer :: id_tdt_vdif, id_qdt_vdif, id_udt_vdif, id_vdt_vdif,  &
            id_sens_vdif, id_evap_vdif,                          &
            id_tdt_diss_vdif, id_diss_heat_vdif, id_qtflx_vdif !miz
+
+type(cmip_diag_id_type) :: ID_tntpbl, ID_tnhuspbl
 
 real :: missing_value = -999.
 
@@ -188,13 +195,13 @@ real                                                      :: delp, dpsum !miz
     qtflx_vdif(:,:,:)=0;
     do i=1, size(dt_q,1)
        do j=1, size(dt_q,2)
-	  qtflx_vdif(i,j,1)=0
-	  do k=2, size(dt_q,3)
+          qtflx_vdif(i,j,1)=0
+          do k=2, size(dt_q,3)
              delp=(p_half(i,j,k+1)-p_half(i,j,k))/GRAV
-	     qtflx_vdif(i,j,k)=qtflx_vdif(i,j,k-1)+dt_q(i,j,k)*delp !&
+             qtflx_vdif(i,j,k)=qtflx_vdif(i,j,k-1)+dt_q(i,j,k)*delp !&
 !                           +(dt_trs(i,j,k,2)+dt_trs(i,j,k,3))*delp
-	  enddo
-	enddo
+          enddo
+       enddo
     enddo
     if (id_qtflx_vdif > 0) then
       used = send_data ( id_qtflx_vdif, -2.*qtflx_vdif, Time, is, js, 1, rmask=mask )
@@ -208,6 +215,19 @@ real                                                      :: delp, dpsum !miz
        if( associated(tr_store(tr)%buffer) ) &
             tr_store(tr)%buffer(is:ie,js:je,:) = dt_trs(:,:,:,tr)
     enddo
+
+!------- CMIP diagnostics ----------------
+!------- temp tendency -------
+    if (query_cmip_diag_id(ID_tntpbl)) then
+       used = send_cmip_data_3d ( ID_tntpbl, -2.*dt_t, Time, is, js, 1, &
+                                  rmask=mask )
+    endif
+
+!------- sphum tendency -------
+    if (query_cmip_diag_id(ID_tnhuspbl)) then
+       used = send_cmip_data_3d ( ID_tnhuspbl, -2.*dt_q, Time, is, js, 1, &
+                                  rmask=mask )
+    endif
 
 !-----------------------------------------------------------------------
 !---- local temperature ----
@@ -358,13 +378,13 @@ real                                                      :: delp, dpsum !miz
     qtflx_vdif(:,:,:)=0;
     do i=1, size(dt_q,1)
        do j=1, size(dt_q,2)
-	  qtflx_vdif(i,j,1)=0
-	  do k=2, size(dt_q,3)
+          qtflx_vdif(i,j,1)=0
+          do k=2, size(dt_q,3)
              delp=(p_half(i,j,k+1)-p_half(i,j,k))/GRAV
-	     qtflx_vdif(i,j,k)=qtflx_vdif(i,j,k-1)+dt_q(i,j,k)*delp !&
+             qtflx_vdif(i,j,k)=qtflx_vdif(i,j,k-1)+dt_q(i,j,k)*delp !&
 !                           +(dt_trs(i,j,k,2)+dt_trs(i,j,k,3))*delp
-	  enddo
-	enddo
+          enddo
+       enddo
     enddo
     if (id_qtflx_vdif > 0) then
       used = send_data ( id_qtflx_vdif, 2.*qtflx_vdif, Time, is, js, 1, rmask=mask )
@@ -405,6 +425,21 @@ real                                                      :: delp, dpsum !miz
           used = send_data(tr_store(tr)%id_tr_dt_int, diag2, Time, is, js)
        endif
     enddo
+
+!------- CMIP diagnostics ----------------
+!------- temp tendency -------
+!  (NOTE: this term also includes the dissipative heating)
+    if (query_cmip_diag_id(ID_tntpbl)) then
+       used = send_cmip_data_3d ( ID_tntpbl, 2.*dt_t, Time, is, js, 1, &
+                                  rmask=mask )
+    endif
+
+!------- sphum tendency -------
+    if (query_cmip_diag_id(ID_tnhuspbl)) then
+       used = send_cmip_data_3d ( ID_tnhuspbl, 2.*dt_q, Time, is, js, 1, &
+                                  rmask=mask )
+    endif
+
 
     if(do_mcm_vert_diff_tq) then
       dt_t = dt_t + dt_t_save(is:ie,js:je,:)
@@ -530,6 +565,16 @@ real                                                      :: delp, dpsum !miz
       if(tr_store(tr)%id_tr_dt>0 .or.tr_store(tr)%id_tr_dt_int>0 ) &
            allocate(tr_store(tr)%buffer(idim,jdim,kdim))
    enddo
+
+!----- cmip diagnostics -----
+
+   ID_tntpbl = register_cmip_diag_field_3d (mod_name, 'tntpbl', Time, &
+               'Tendency of Air Temperature Due to Boundary Layer Mixing', 'K s-1', &
+               standard_name='tendency_of_air_temperature_due_to_boundary_layer_mixing')
+
+   ID_tnhuspbl = register_cmip_diag_field_3d (mod_name, 'tnhuspbl', Time, &
+               'Tendency of Specific Humidity Due to Boundary Layer Mixing', 's-1', &
+               standard_name='tendency_of_specific_humidity_due_to_boundary_layer_mixing')
 
 !-----------------------------------------------------------------------
 

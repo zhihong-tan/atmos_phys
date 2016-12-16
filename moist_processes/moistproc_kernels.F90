@@ -819,8 +819,8 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                              ustar, bstar, qstar, shflx, lhflx, land, coldT, Aerosol, &!miz
                              tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint, lat, lon, &!miz
                              cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
-			     pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
-			     cmf, conv_calc_completed,                        &!miz
+                             pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+                             cmf, conv_calc_completed,                        &!miz
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -895,8 +895,8 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                     rain_uw, snow_uw, cmf, liq_precflx, ice_precflx,      &
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
                     shallow_droplet_number, trcr, qtruw, uw_wetdep,       &
-		    cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, &
-		    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev)
+                    cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, &
+                    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev)
 
 !-------------------------------------------------------------------------
 !    currently qnitnd_uw is the tendency due to detrainment proportional
@@ -1238,10 +1238,10 @@ subroutine height_adjust(t, qv, r, tn, qvn, rn, &
 
       zhalf_n(:,:,kx+1)=zhalf(:,:,kx+1);
       do k=kx,1,-1
-      	 dz     (:,:,k)=zhalf(:,:,k)-zhalf(:,:,k+1)
-      	 dz_n   (:,:,k)=dz(:,:,k)*tvn(:,:,k)/tv(:,:,k)
-	 zhalf_n(:,:,k)=zhalf_n(:,:,k+1)+dz_n(:,:,k)
-	 zfull_n(:,:,k)=(zhalf_n(:,:,k)+zhalf_n(:,:,k+1))*0.5
+         dz     (:,:,k)=zhalf(:,:,k)-zhalf(:,:,k+1)
+         dz_n   (:,:,k)=dz(:,:,k)*tvn(:,:,k)/tv(:,:,k)
+         zhalf_n(:,:,k)=zhalf_n(:,:,k+1)+dz_n(:,:,k)
+         zfull_n(:,:,k)=(zhalf_n(:,:,k)+zhalf_n(:,:,k+1))*0.5
       enddo
 
       d_zhalf(:,:,:)=zhalf_n(:,:,:)-zhalf(:,:,:)
@@ -1249,11 +1249,11 @@ subroutine height_adjust(t, qv, r, tn, qvn, rn, &
 
 !      do k=1,kx
 !         dlp (:,:,k)=log(phalf(:,:,k+1))-log(phalf(:,:,k))
-!	 tmp1(:,:,k)=RDGAS/GRAV*tv (:,:,k)*dlp(:,:,k)
-!	 tmp2(:,:,k)=RDGAS/GRAV*tvn(:,:,k)*dlp(:,:,k)
-!      	 tv    (:,:,k)=zhalf_n(:,:,k)-zhalf(:,:,k)
-!      	 tvn   (:,:,k)=zfull_n(:,:,k)-zfull(:,:,k)
-!	 tmp   (:,:,k)=(zhalf(:,:,k+1)+zhalf(:,:,k))*0.5-zfull(:,:,k)
+!        tmp1(:,:,k)=RDGAS/GRAV*tv (:,:,k)*dlp(:,:,k)
+!        tmp2(:,:,k)=RDGAS/GRAV*tvn(:,:,k)*dlp(:,:,k)
+!        tv    (:,:,k)=zhalf_n(:,:,k)-zhalf(:,:,k)
+!        tvn   (:,:,k)=zfull_n(:,:,k)-zfull(:,:,k)
+!        tmp   (:,:,k)=(zhalf(:,:,k+1)+zhalf(:,:,k))*0.5-zfull(:,:,k)
 !      enddo
 
 end subroutine height_adjust

@@ -1,7 +1,7 @@
 #include <fms_platform.h>
 
 MODULE CONV_UTILITIES_k_MOD
-  
+
   use Sat_Vapor_Pres_k_Mod, ONLY: compute_qs_k
 
 !---------------------------------------------------------------------
@@ -57,7 +57,7 @@ MODULE CONV_UTILITIES_k_MOD
     real, _ALLOCATABLE :: qtflx_up(:)_NULL, qtflx_dn(:)_NULL
     real, _ALLOCATABLE :: omega_up(:)_NULL, omega_dn(:)_NULL
     real, _ALLOCATABLE :: hf0   (:)_NULL, ddp_dyn(:)_NULL, hdp_dyn(:)_NULL
-!++++yim     
+!++++yim
     real, _ALLOCATABLE :: tr    (:,:)_NULL, sstr(:,:)_NULL
  end type sounding
 
@@ -95,12 +95,12 @@ MODULE CONV_UTILITIES_k_MOD
     integer, parameter :: np2 = 1000
     real, parameter :: p2min = 100.0e2
     real, parameter :: p2max = 1100.0e2
- 
+
     real dta, dp1, dp2
     real rdta, rdp1, rdp2
     real(kind=4), allocatable :: ta_lookup(:,:,:)
     logical :: ta_lookup_allocated = .false.
- 
+
 ! Lookup table for exn_k function (cjg)
 
     integer, parameter :: npex = 100000
@@ -128,14 +128,14 @@ contains
     Uw_p%hls = hls
     Uw_p%hlf = hlf
     Uw_p%cp_air = cp_air
-    Uw_p%grav   = grav  
-    Uw_p%kappa  = kappa 
-    Uw_p%rdgas  = rdgas 
-    Uw_p%p00    = p00   
+    Uw_p%grav   = grav
+    Uw_p%kappa  = kappa
+    Uw_p%rdgas  = rdgas
+    Uw_p%p00    = p00
     Uw_p%epsilo = epsilo
-    Uw_p%zvir   = zvir  
+    Uw_p%zvir   = zvir
     Uw_p%tkmin  = tkmin
-    Uw_p%tkmax  = tkmax 
+    Uw_p%tkmax  = tkmax
     Uw_p%me     = me
     Uw_p%master = (me == root_pe)
 
@@ -147,7 +147,7 @@ contains
   subroutine sd_init_k(kd, num_tracers, sd)
     integer, intent(in) :: kd, num_tracers
     type(sounding), intent(inout) :: sd
-    
+
     sd%use_capecin_avg = .false.
     sd%use_hlqtsrc_avg = .false.
     sd%hlsrc_avg = 0.
@@ -249,7 +249,7 @@ contains
 
     allocate ( sd%tr  (1:kd,1:num_tracers)); sd%tr  =0.;
     allocate ( sd%sstr  (1:kd,1:num_tracers)); sd%sstr  =0.;
-    
+
   end subroutine sd_init_k
 
 !#####################################################################
@@ -258,7 +258,7 @@ contains
   subroutine sd_copy_k(sd, sd1)
     type(sounding), intent(in)    :: sd
     type(sounding), intent(inout) :: sd1
-    
+
     sd1% ktopconv = sd % ktopconv
     sd1% kmax = sd % kmax
     sd1% plev_cin   = sd % plev_cin
@@ -300,8 +300,8 @@ contains
     sd1%t     = sd%t;    sd1%qv    =sd%qv;
     sd1%u     = sd%u;    sd1%v     =sd%v;
     sd1%ql    = sd%ql;   sd1%qi    =sd%qi;
-    sd1%qa    = sd%qa;   sd1%qn    =sd%qn;    
-    sd1%am1   = sd%am1;  sd1%am2   =sd%am2; 
+    sd1%qa    = sd%qa;   sd1%qn    =sd%qn;
+    sd1%am1   = sd%am1;  sd1%am2   =sd%am2;
     sd1%am3   = sd%am3;  sd1%am4   =sd%am4;
     sd1%hl    = sd%hl;   sd1%sshl  =sd%sshl;
     sd1%hm    = sd%hm;   sd1%hms   =sd%hms;
@@ -321,7 +321,7 @@ contains
          sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, sd%am4,&
          sd%qs, sd%hl, sd%hm, sd%hf0, sd%hms, sd%sshl, sd%tr, sd%sstr,        &
          sd%omg, sd%qtflx_up, sd%qtflx_dn, sd%omega_up, sd%omega_dn,          &
-	 sd%hdt_vadv, sd%hdt_forc )
+         sd%hdt_vadv, sd%hdt_forc )
   end subroutine sd_end_k
 
 !#####################################################################
@@ -330,7 +330,7 @@ contains
   subroutine ac_init_k(kd, ac)
     integer, intent(in) :: kd
     type(adicloud), intent(inout) :: ac
-    
+
     ac%usrc    = 0.0
     ac%vsrc    = 0.0
     ac%hlsrc   = 0.0
@@ -389,8 +389,8 @@ contains
 
   subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint,      &
               u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,     &
-	      tracers, src_choice, tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn,&
-	      dgz_dyn, ddp_dyn, tdt_dif, qvdt_dif, qidt_dif, sd, Uw_p)
+              tracers, src_choice, tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn,&
+              dgz_dyn, ddp_dyn, tdt_dif, qvdt_dif, qidt_dif, sd, Uw_p)
 
     real,    intent(in)              :: land
     logical, intent(in)              :: coldT
@@ -404,7 +404,7 @@ contains
     real, intent(in), dimension(:)   :: am1, am2, am3, am4  ! aerosal species
     real, intent(in), dimension(:)   :: tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn, dgz_dyn, ddp_dyn
     real, intent(in), dimension(:)   :: tdt_dif, qvdt_dif, qidt_dif
-    real, intent(in), dimension(:,:) :: tracers        !env. tracers    
+    real, intent(in), dimension(:,:) :: tracers        !env. tracers
     type(sounding), intent(inout)    :: sd
     type(uw_params), intent(inout)    :: Uw_p
 
@@ -426,11 +426,11 @@ contains
        nk=sd%kmax-k+1
        sd % p     (k) = pmid(nk)
        sd % z     (k) = zmid(nk);
-       sd % ps    (k) = pint(nk); 
-       sd % zs    (k) = zint(nk); 
+       sd % ps    (k) = pint(nk);
+       sd % zs    (k) = zint(nk);
        sd % t     (k) = t   (nk)
        !prevent negative values for qv,ql,qi,qa,qn
-       sd % qv    (k) = max(qv(nk), 4.e-10) 
+       sd % qv    (k) = max(qv(nk), 4.e-10)
        sd % ql    (k) = max(ql(nk), 0.)
        sd % qi    (k) = max(qi(nk), 0.)
        sd % qa    (k) = max(qa(nk), 0.)
@@ -477,7 +477,7 @@ contains
     real, dimension(size(sd%t,1))  :: t0, qv0, ql0, qi0, z0, gz0
     real    :: x1, x2, x3, xx1, xx2, xx3, q1, q2, p700, thc700, t700, p850, delp
     integer :: kp1, km1, ksrc, k_minmse
-  
+
     sd % exners(0) = exn_k(sd%ps(0),Uw_p);
     if (doice) then
        sd%nu(:)= max(min((268. - sd % t(:))/20.,1.0),0.0);
@@ -495,7 +495,7 @@ contains
        sd % dz    (k) = sd%zs(k)  -sd%zs(k-1)
        sd % exner (k) = exn_k(sd%p (k), Uw_p)
        sd % exners(k) = exn_k(sd%ps(k),Uw_p)
-       sd % thc   (k) = sd%t(k) / sd%exner(k) 
+       sd % thc   (k) = sd%t(k) / sd%exner(k)
        sd % qs    (k) = qsat_k(sd%t(k), sd%p(k),Uw_p, qv=sd%qv(k))
        sd % rh    (k) = min(sd%qv(k)/sd%qs(k),1.)
        sd % thv   (k) = sd%t(k)/sd%exner(k) *   &
@@ -588,18 +588,18 @@ contains
           ktoppbl=k; exit;
        endif
     end do
-    !given a layer index k (here k=kinv); !its bottom interface 
+    !given a layer index k (here k=kinv); !its bottom interface
     !level pressure is ps0(k-1) [here ps0(kinv-1)] and its bottom
     !interface level virt. pot. temperature is thv(k) [thv0bot(kinv)]
     sd % ktoppbl = ktoppbl
-    sd % kinv    = ktoppbl+1 
-    sd % pinv    = sd % ps    (sd % kinv-1) 
-    sd % zinv    = sd % zs    (sd % kinv-1) 
+    sd % kinv    = ktoppbl+1
+    sd % pinv    = sd % ps    (sd % kinv-1)
+    sd % zinv    = sd % zs    (sd % kinv-1)
     sd % thvinv  = sd % thvbot(sd % kinv)
     sd % pblht   = pblht
     if (pblht.le.0) sd%pblht=sd%zs(1)-sd%zs(0)
 
-    qs_sum=0.; qt_sum=0.; 
+    qs_sum=0.; qt_sum=0.;
     do k=sd%kinv, sd%ktopconv
        qs_sum = qs_sum + sd % qs(k)  * sd%dp(k)
        qt_sum = qt_sum + sd % qct(k) * sd%dp(k)
@@ -610,8 +610,8 @@ contains
     tmp=0.; dpsum=0.;
     do k=sd%kinv, sd%ktopconv
       if (sd%p(k) .gt. sd%plev_omg) then
-       	  tmp   = tmp + sd % omg(k) * sd%dp(k)
-       	  dpsum = dpsum + sd%dp(k)
+          tmp   = tmp + sd % omg(k) * sd%dp(k)
+          dpsum = dpsum + sd%dp(k)
       end if
     end do
     if (dpsum .ne. 0.) then
@@ -627,19 +627,19 @@ contains
        ksrc=1
        tmp=sd%hm(1)
        do k=1, sd%kinv
-       	  if (sd%hm(k) .gt. tmp) then
-       	     tmp=sd%hm(k)
-       	     ksrc=k
-      	  end if
+          if (sd%hm(k) .gt. tmp) then
+             tmp=sd%hm(k)
+             ksrc=k
+          end if
        end do
     else if (sd%src_choice.eq.2) then
        ksrc=1
        tmp=sd%hm(1)
        do k=1, sd%kmax
-       	  if (sd%hm(k) .gt. tmp .and. sd%p(k) .gt. 60000) then
-       	     tmp=sd%hm(k)
-       	     ksrc=k
-      	  end if
+          if (sd%hm(k) .gt. tmp .and. sd%p(k) .gt. 60000) then
+             tmp=sd%hm(k)
+             ksrc=k
+          end if
        end do
     endif
     sd%ksrc  =ksrc
@@ -665,8 +665,8 @@ contains
     tmp=sd%hm(1)
     do k=1, sd%kmax
        if (sd%hm(k) .lt. tmp) then
-       	  tmp=sd%hm(k)
-       	  k_minmse=k
+          tmp=sd%hm(k)
+          k_minmse=k
        end if
     end do
     sd%p_minmse = sd%p(k_minmse)
@@ -689,15 +689,15 @@ contains
        sd % qvdt_dif(k)= sd%qvdt_dif(k)*delp*Uw_p%HLv   /Uw_p%grav
        sd % dgz_dyn (k)= sd%dgz_dyn(k) *delp / Uw_p%grav
        sd % hdt_forc(k) =sd%tdt_rad (k)+sd%tdt_dyn (k)+ sd%tdt_dif (k)+sd%dgz_dyn(k)+ &
-       	    		 sd%qvdt_dyn(k)+sd%qvdt_dif(k)-(sd%qidt_dyn(k)+sd%qidt_dif(k))
+                         sd%qvdt_dyn(k)+sd%qvdt_dif(k)-(sd%qidt_dyn(k)+sd%qidt_dif(k))
     end do
     sd%hmint0 = sd%hmint / sd%dpsum
 
 !vertically integrated from TOA to the current layer, bottom gives column integrated value
-!negative means export MSE; positive means import MSE 
+!negative means export MSE; positive means import MSE
     do k=sd%kmax-1, 1, -1
        sd % tdt_rad (k)= sd%tdt_rad (k)+sd%tdt_rad (k+1)
-       sd % tdt_dyn (k)= sd%tdt_dyn (k)+sd%tdt_dyn (k+1) 
+       sd % tdt_dyn (k)= sd%tdt_dyn (k)+sd%tdt_dyn (k+1)
        sd % tdt_dif (k)= sd%tdt_dif (k)+sd%tdt_dif (k+1)
        sd % qvdt_dyn(k)= sd%qvdt_dyn(k)+sd%qvdt_dyn(k+1)
        sd % qidt_dyn(k)= sd%qidt_dyn(k)+sd%qidt_dyn(k+1)
@@ -742,15 +742,15 @@ contains
       if (sd%p(k).gt.p700 .and. sd%p(k+1).lt.p700) then
           thc700 =(sd%thc(k)*(p700-sd%p(k+1))+sd%thc(k+1)*(sd%p(k)-p700))/(sd%p(k)-sd%p(k+1))
           sd%z700=(sd%z  (k)*(p700-sd%p(k+1))+sd%z(k+1)  *(sd%p(k)-p700))/(sd%p(k)-sd%p(k+1))
-	  t700  = thc700 * exn_k(p700, Uw_p)
+          t700  = thc700 * exn_k(p700, Uw_p)
           !x1=(t700+sd%t(1))*0.5; q1=qsat_k(x1, p850, Uw_p)
-	  x1=t700; q1=qsat_k(t700, p700, Uw_p)
+          x1=t700; q1=qsat_k(t700, p700, Uw_p)
           xx1=1.+Uw_p%HLv*q1/(Uw_p%rdgas*x1)
           xx2=1.+Uw_p%HLv*Uw_p%HLv*q1/(Uw_p%cp_air*461.*x1*x1)
-	  sd%gam=(Uw_p%grav/Uw_p%cp_air)*(1.-xx1/xx2)
+          sd%gam=(Uw_p%grav/Uw_p%cp_air)*(1.-xx1/xx2)
           sd%lts=thc700-sd%thc(1);
-	  sd%eis=sd%lts
-	  exit;
+          sd%eis=sd%lts
+          exit;
       endif
     end do
 
@@ -761,14 +761,14 @@ contains
 
   subroutine adi_cloud_k (zsrc, psrc, hlsrc, thcsrc, qctsrc, sd,   &
                           Uw_p, dofast, doice, ac, rmuz)
-  
+
     real, intent(inout) :: zsrc, psrc, hlsrc, thcsrc, qctsrc
-    type(sounding), intent(in)    :: sd 
+    type(sounding), intent(in)    :: sd
     type(uw_params), intent(inout)    :: Uw_p
     logical,        intent(in)    :: dofast, doice
     type(adicloud), intent(inout) :: ac
     real, intent(in), optional :: rmuz
-    
+
     integer :: k, kl, klcl
     real    :: qs
     real    :: hl0lcl, thc0lcl, qct0lcl, thv0lcl, rho0lcl
@@ -778,7 +778,7 @@ contains
     real    :: alpha, cin_plev, plev_cin
 
     call ac_clear_k(ac);
-    ac%klcl=0; ac%klfc=0; ac%klnb=0; 
+    ac%klcl=0; ac%klfc=0; ac%klnb=0;
     ac%plcl=0.; ac%zlcl=0.; ac%thvlcl=0.; ac%thv0lcl=0; ac%rho0lcl=0.;
     ac%plfc=0.; ac%plnb=0.; ac%cape=0.; ac%cin=0.;
 
@@ -804,7 +804,7 @@ contains
     klcl=0;  !klcl is the layer containing the LCL, i.e., ps0(klcl)<=plcl(i,j)
     do k=1,sd % ktopconv-1
        if(sd%ps(k).le.ac%plcl) then
-          klcl=k; 
+          klcl=k;
           ac%zlcl=sd%zs(k)-(ac%plcl-sd%ps(k))/sd%dp(k)*sd%dz(k);
           exit
        else
@@ -813,9 +813,9 @@ contains
        end if
     end do
     if (sd%ps(1).le.ac%plcl) then
-       klcl=2; ac%plcl=sd%ps(1); ac%zlcl=sd%zs(1); 
+       klcl=2; ac%plcl=sd%ps(1); ac%zlcl=sd%zs(1);
     end if
-    ac % klcl=klcl; 
+    ac % klcl=klcl;
 
     if (dofast.and.(ac%klcl.eq.0 .or. ac%plcl.gt.sd%ps(1) .or. ac%plcl.lt.20000.)) return;
 
@@ -826,7 +826,7 @@ contains
     ac % qctsrc = qctsrc
     ac % usrc   = sd%usrc !sd%u(sd%ktoppbl)
     ac % vsrc   = sd%vsrc !sd%v(sd%ktoppbl)
- 
+
     hl0lcl  = sd%hl (klcl)+sd%sshl (klcl)*(ac%plcl-sd%p(klcl))
     thc0lcl = sd%thc(klcl)+sd%ssthc(klcl)*(ac%plcl-sd%p(klcl))
     qct0lcl = sd%qct(klcl)+sd%ssqct(klcl)*(ac%plcl-sd%p(klcl))
@@ -876,7 +876,7 @@ contains
     plfc   = 0.
     plev_cin = sd%plev_cin
     cin_plev = 0.
-    !define CIN based on LFC  
+    !define CIN based on LFC
     do k = sd % kinv, kl-1
        if(k.eq.klcl-1) then !klcl-1 < layer < klcl
           thvubot=ac % thv (k); thvutop=ac % thvlcl
@@ -912,7 +912,7 @@ contains
        ac%plnb=0.0;
     else
        ac % klfc=0; !klfc is the layer containing the plfc, i.e., ps0(klfc)<=plfc(i,j)
-       do k=1,kl 
+       do k=1,kl
           if(sd%ps(k).le.ac%plfc) then
              ac % klfc=max(k,2); exit
           end if
@@ -941,7 +941,7 @@ contains
    real, intent(in), optional :: qv
    real :: qsat_k, t
    integer :: ier
- 
+
    t = min(max(temp,Uw_p%tkmin),Uw_p%tkmax)
    if (present(qv)) then
      call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qsat_k, ier, &
@@ -949,7 +949,7 @@ contains
    else
      call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qsat_k, ier)
    endif
- 
+
    return
    end function qsat_k
 
@@ -966,7 +966,7 @@ contains
 
    t = min(max(temp,Uw_p%tkmin),Uw_p%tkmax)
    call compute_qs_k (t, p, Uw_p%epsilo, Uw_p%zvir, qs, ier)
-  
+
    return
    end subroutine qses_k
 
@@ -976,11 +976,11 @@ contains
 
 ! Subroutine to initialize the lookup table used to speed up
 ! the computation of the exner function (cjg)
- 
-  subroutine exn_init_k(Uw_p)       
- 
+
+  subroutine exn_init_k(Uw_p)
+
     type(uw_params), intent(in) :: Uw_p
-    
+
 
     integer k
     real p
@@ -1006,20 +1006,20 @@ contains
 !#####################################################################
 
   subroutine exn_end_k()
- 
+
     if ( allocated(ex_lookup) ) deallocate(ex_lookup)
     ex_lookup_allocated = .false.
- 
+
   end subroutine exn_end_k
- 
+
 !#####################################################################
 !#####################################################################
 
 ! Subroutine to compute the exner function using a lookup
 ! table for better performance (cjg)
 
-  function exn_k(p,Uw_p)      
- 
+  function exn_k(p,Uw_p)
+
     real :: exn_k
     real, intent(in)  :: p
     type(uw_params), intent(inout) :: Uw_p
@@ -1029,7 +1029,7 @@ contains
 
     k = 0
     if ( p-pexmin.gt.0.0 ) k = int( (p-pexmin)*rdpex ) + 1
- 
+
     if ( k.ge.1 .and.  k.lt.npex ) then
       kp1 = k+1
       w = ( p  - (k-1)*dpex  - pexmin  )*rdpex
@@ -1037,7 +1037,7 @@ contains
     else
       exn_k = (p/Uw_p%p00) ** Uw_p%kappa
     end if
- 
+
   end function exn_k
 
 ! Old subroutine that doesn't use a lookup table
@@ -1064,10 +1064,10 @@ contains
     tc = thc * exn
     nu = max(min((268.-tc)/20.,1.0),0.0);
     leff = (1-nu)*Uw_p%HLv + nu*Uw_p%HLs
-  
+
     temps = tc
     qs=qsat_k(temps,p,Uw_p)
-    
+
     if(qs.gt.qt) then
        id_check=0
     else
@@ -1095,8 +1095,8 @@ contains
 !#####################################################################
 ! Subroutine to initialize lookup tables used to speed up findt (cjg)
 
-  subroutine findt_init_k (Uw_p)                               
- 
+  subroutine findt_init_k (Uw_p)
+
     implicit none
 
 !   real, intent(in) :: epsilo, hlv, hls, cp_air, tkmin, tkmax
@@ -1141,12 +1141,12 @@ contains
   endif
 
   end subroutine findt_init_k
- 
+
 !#####################################################################
 !#####################################################################
 
   subroutine findt_end_k()
- 
+
     if ( allocated(ta_lookup) ) deallocate(ta_lookup)
     ta_lookup_allocated = .false.
 
@@ -1157,7 +1157,7 @@ contains
 
   subroutine getcin_k(pbot,thv0bot,ptop,thv0top,thvubot,  &
                       thvutop,plfc,cin,Uw_p)
-    
+
     real,    intent(in)    :: pbot,thv0bot,ptop,thv0top,thvubot,thvutop
     real,    intent(inout) :: plfc,cin
     real                   :: frc, rhom, delp
@@ -1170,7 +1170,7 @@ contains
     if(thvubot.gt.thv0bot.and.thvutop.gt.thv0top)then
        !Both top and bottom positively buoyant
        plfc = pbot
-    elseif(thvubot.le.thv0bot.and.thvutop.le.thv0top)then 
+    elseif(thvubot.le.thv0bot.and.thvutop.le.thv0top)then
        !Both top and bottom negatively buoyant
        cin  = cin  - ((thvubot/thv0bot-1.)+(thvutop/thv0top-1.)) * delp / rhom
     elseif(thvutop.le.thv0top.and.thvubot.gt.thv0bot)then
@@ -1178,7 +1178,7 @@ contains
        frc  = (thvutop/thv0top-1.)/((thvutop/thv0top-1.)-(thvubot/thv0bot-1.))
        delp = (ptop+frc*delp) - ptop
        cin  = cin - (thvutop/thv0top-1.) * delp / rhom
-    else                                                  
+    else
        !Top positively buoyant; Bottom negatively buoyant
        frc = (thvubot/thv0bot-1.)/((thvubot/thv0bot-1.)-(thvutop/thv0top-1.))
        plfc = pbot - frc * (pbot-ptop)
@@ -1192,7 +1192,7 @@ contains
 
   subroutine getcape_k (pbot,thv0bot,ptop,thv0top,thvubot,  &
                         thvutop,plnb,cape,Uw_p)
-   
+
     real,    intent(in)    :: pbot,thv0bot,ptop,thv0top,thvubot,thvutop
     real,    intent(inout) :: plnb,cape
    type(uw_params), intent(inout) :: Uw_p
@@ -1206,7 +1206,7 @@ contains
        !Both top and bottom positively buoyant
        cape = cape + ((thvubot/thv0bot - 1.) + (thvutop/thv0top - 1.))*&
               delp/rhom
-    elseif(thvubot.le.thv0bot.and.thvutop.le.thv0top)then 
+    elseif(thvubot.le.thv0bot.and.thvutop.le.thv0top)then
        !Both top and bottom negatively buoyant
        plnb = pbot
     elseif(thvutop.le.thv0top.and.thvubot.gt.thv0bot)then
@@ -1216,7 +1216,7 @@ contains
        plnb = pbot - frc * (pbot-ptop)
        delp = pbot - plnb
        cape = cape + (thvubot/thv0bot-1.) * delp / rhom
-    else                                                  
+    else
        !Top positively buoyant; Bottom negatively buoyant
        frc  = (thvutop/thv0top-1.)/((thvutop/thv0top-1.)- &
                (thvubot/thv0bot-1.))
@@ -1249,13 +1249,13 @@ subroutine pack_sd_lsm_k (do_lands, land, coldT, dt, pf, ph, zf, zh, &
   kmax=size(t)
   sd % kmax   = kmax
   if (do_lands) then
-    sd % land   = land  
-    sd % coldT  = coldT    
+    sd % land   = land
+    sd % coldT  = coldT
   else
     sd % land   = 0.
     sd % coldT  = .false.
-  endif 
-  sd % delt   = dt   
+  endif
+  sd % delt   = dt
   sd % ps(0)  = ph(kmax+1)
   sd % zs(0)  = zh(kmax+1)
   sd % ktopconv = 1
@@ -1309,8 +1309,8 @@ end subroutine pack_sd_lsm_k
       if (doice) hflag = 2
 
 !     Definitely unsaturated case
-!     The unsaturated temperature (temp_unsat) is always lower or equal 
-!     to the actual temperature (temp). 
+!     The unsaturated temperature (temp_unsat) is always lower or equal
+!     to the actual temperature (temp).
 !     Therefore qs(temp_unsat) <= qs(temp), since qs(T) is monotically
 !     increasing with T.
 
@@ -1337,7 +1337,7 @@ end subroutine pack_sd_lsm_k
       fmax = saturated_k(tempmax,hh,qt,p,hflag,Uw_p)
 
 !     The bounds on temperature are likely to be too large,
-!     so we need to bracket the solution first. 
+!     so we need to bracket the solution first.
 !     We search for the root closest to tempmin.
 
       lbracket = .false.
@@ -1425,7 +1425,7 @@ end subroutine pack_sd_lsm_k
         th = temp/exn_k(p,Uw_p)
         thv=th*(1.+Uw_p%zvir*qv)
         return
-        
+
       endif
 
       end subroutine findt_new_k
@@ -1440,7 +1440,7 @@ end subroutine pack_sd_lsm_k
 
       real, intent(in) :: temp, hh, qt, p
       type(uw_params), intent(inout) :: Uw_p
-  
+
       integer, intent(in) :: hflag
 
       real es, qs, leff, nu
@@ -1491,8 +1491,8 @@ end subroutine pack_sd_lsm_k
     if (doice) hflag = 2
 
 !   Definitely unsaturated case
-!   The unsaturated temperature (temp_unsat) is always lower or equal 
-!   to the actual temperature (temp). 
+!   The unsaturated temperature (temp_unsat) is always lower or equal
+!   to the actual temperature (temp).
 !   Therefore qs(temp_unsat) <= qs(temp), since qs(T) is monotically
 !   increasing with T.
 
@@ -1502,7 +1502,7 @@ end subroutine pack_sd_lsm_k
       ql  = 0.
       qi  = 0.
       qv  = qt
-      th  = tl/exn_k(p,Uw_p)          
+      th  = tl/exn_k(p,Uw_p)
       thv = th*(1.+Uw_p%zvir*qv-ql-qi)
       return
     end if
@@ -1676,17 +1676,17 @@ end subroutine pack_sd_lsm_k
       logical lbracket
 
 !     Definitely unsaturated case
-!     The unsaturated temperature (temp_unsat) is always lower or equal 
-!     to the actual temperature (temp). 
+!     The unsaturated temperature (temp_unsat) is always lower or equal
+!     to the actual temperature (temp).
 !     Therefore qs(temp_unsat) <= qs(temp), since qs(T) is monotically
 !     increasing with T.
 
       temp = (hl-Uw_p%grav*z)/Uw_p%cp_air
-      call qses_k(temp,p,qs,es,Uw_p)        
+      call qses_k(temp,p,qs,es,Uw_p)
       if ( qs.gt.qt ) return
 
 !     Absolute bounds on the temperature. Return immediately
-!     if the bounds are outside the range of the saturation vapor 
+!     if the bounds are outside the range of the saturation vapor
 !     pressure lookup tables.
 
       tempmin = temp - 1.0
@@ -1705,10 +1705,10 @@ end subroutine pack_sd_lsm_k
       temp_unsat = temp
       hh = hl - Uw_p%grav*z
       fmin = sat1_k(tempmin,hh,qt,p,hflag,Uw_p)
-      fmax = sat1_k(tempmax,hh,qt,p,hflag,Uw_p)  
+      fmax = sat1_k(tempmax,hh,qt,p,hflag,Uw_p)
 
 !     The bounds on temperature are likely to be too large,
-!     so we need to bracket the solution first. 
+!     so we need to bracket the solution first.
 !     We search for the root closest to tempmin.
 
       lbracket = .false.
@@ -1731,7 +1731,7 @@ end subroutine pack_sd_lsm_k
       do while (.not.lbracket .and. dtemp.ge.0.2)
       temp1 = tempmin
       temp2 = tempmax
-      f1 = sat1_k(temp1,hh,qt,p,hflag,Uw_p)  
+      f1 = sat1_k(temp1,hh,qt,p,hflag,Uw_p)
       nmax = int( (temp2-temp1)/dtemp ) + 1
       temp = temp1
       do n=1,nmax
@@ -1755,7 +1755,7 @@ end subroutine pack_sd_lsm_k
 !       Yes, now find the root within the bracket
 
         temp_sat = zriddr_k(sat1_k,temp1,temp2,hh,qt,p,hflag,1.e-3, &
-                            Uw_p)   
+                            Uw_p)
 
 !       Choose between one of the two choices (temp_unsat, temp_sat):
 !       the highest value is temp
@@ -1768,7 +1768,7 @@ end subroutine pack_sd_lsm_k
         write(*,'(a,4e20.12)') 'WARNING solve_hl_k: not bracketed',z,p,hl,qt
         endif
         temp = temp_unsat
-        
+
       endif
 
       return
@@ -1796,11 +1796,11 @@ end subroutine pack_sd_lsm_k
 
       tempmin = Uw_p%tkmin
       tempmax = ta + 1.0
-      fmin = sat2_k(tempmin,ta,p,0.0,hflag,Uw_p)  
+      fmin = sat2_k(tempmin,ta,p,0.0,hflag,Uw_p)
       fmax = sat2_k(tempmax,ta,p,0.0,hflag,Uw_p)
 
 !     The bounds on temperature are likely to be too large,
-!     so we need to bracket the solution first. 
+!     so we need to bracket the solution first.
 !     We search for the root closest to tempmin.
 
       lbracket = .false.
@@ -1855,7 +1855,7 @@ end subroutine pack_sd_lsm_k
         write(*,*) 'WARNING solve_ta_k: not bracketed'
         t = -999.0
         return
-        
+
       endif
 
       end subroutine solve_ta_k
@@ -1864,7 +1864,7 @@ end subroutine pack_sd_lsm_k
 !     To diagnose temp from hl and qt, we need to find the zero
 !     of this function
 
-      real function sat1_k(temp,hh,qt,p,hflag,Uw_p)  
+      real function sat1_k(temp,hh,qt,p,hflag,Uw_p)
       implicit none
 
       real, intent(in) :: temp, hh, qt, p
@@ -1946,7 +1946,7 @@ end subroutine pack_sd_lsm_k
       real x1,x2,xacc
       real ya,yb,yc
       integer ld
-      
+
       integer j
       real fh,fl,fm,fnew,s,xh,xl,xm,xnew
 
@@ -2016,9 +2016,9 @@ subroutine check_tracer_realizability(kmax, ntr, dt, &
 !  Dummy arguments
 !---------------------------------------------------------------------
 integer,                 intent(in)     :: kmax, ntr
-real,                    intent(in)     :: dt 
+real,                    intent(in)     :: dt
 real, dimension(kmax,ntr), &
-                         intent(in)     :: tracers        
+                         intent(in)     :: tracers
 real,dimension(kmax,ntr),intent(inout)  :: trten, trwet
 real,dimension(kmax,ntr),intent(inout)  :: rn
 
@@ -2064,7 +2064,7 @@ integer                   , intent(in)     :: tracer_check_type
 !     trtend         column tracer mixing ratio tendencies due to convection [ (tracer units) / s ]
 !     tracer1        column tracer mixing ratios after convection
 !     k, n     do-loop indices
-!     ratio          ratio by which tracer convective tendencies need to 
+!     ratio          ratio by which tracer convective tendencies need to
 !                    be reduced to permit realizability (i.e., to prevent
 !                    negative tracer mixing ratios)
 !
@@ -2079,7 +2079,7 @@ integer                   , intent(in)     :: tracer_check_type
    end if
 
    do n = 1,ntr
-   
+
       tracer0(:)  = tracers(:,n)
       trtend(:)   = trten(:,n)
       trtendw(:)  = trtend(:) + trwet(:,n)
@@ -2100,39 +2100,39 @@ integer                   , intent(in)     :: tracer_check_type
        if ( tracer_check_type .eq. 1 .and. dcol_bef .gt. 0. .and. dcol_aft .gt. 0.) then !fill in
 
           dp(1,:)    = dpi
-          
+
           if ( any( tracer1 .lt. 0. ) ) then
-             
+
              !transport
              temp(1,:,1)  = tracer1(:)
              call sjl_fillz(1,kmax,1,temp,dp)
-             
+
              !recalculate transport tendency
              trten(:,n) = ( temp(1,:,1) - tracer0 ) / dt
-             
+
              !recalculate tracer1w
              trtend(:)   = trten(:,n)
              trtendw(:)  = trtend(:) + trwet(:,n)
              tracer1(:)  = tracer0 + dt * trtend(:)
              tracer1w(:) = tracer0 + dt * trtendw(:)
-             
+
           end if
-          
+
           if ( any( tracer1w .lt. 0. ) ) then
-             
+
              !wet deposition
              temp(1,:,1)  = tracer1w(:)
-             call sjl_fillz(1,kmax,1,temp,dp)                  
-             
+             call sjl_fillz(1,kmax,1,temp,dp)
+
              !recalculate transport tendency
              trwet(:,n) = ( temp(1,:,1) - tracer1 ) / dt
-             
+
           end if
-          
+
           trtendw = trwet(:,n) + trtend(:)
           tracer1w(:) = tracer0 + dt * trtendw(:)
 
-          ! check that there is no negative left 
+          ! check that there is no negative left
           ratio = 1.
           do k = 1,kmax
              if (tracer0(k)>0. .and. tracer1w(k)<0. ) then
@@ -2154,7 +2154,7 @@ integer                   , intent(in)     :: tracer_check_type
                 rn(k,n) = trtendw(k)/trtendw_diag(k)
              end if
           end do
-          
+
        else
 
           tracer_min = 1.e20
@@ -2218,7 +2218,7 @@ subroutine qt_parcel_k (qs, qstar, pblht, tke, land, gama, pblht0, tke0, lofacto
 
     qttmp = qt*(1. + gama * land)
     qt    = max(qt, min(qttmp, qs))
- 
+
   end subroutine qt_parcel_k
 !#####################################################################
 
@@ -2233,12 +2233,12 @@ subroutine qt_parcel_k1 (qt, qs, cgust, cgust0, sigma0, land)
        tmp=cgust/(cgust0+cgust)
        tmp=(tmp-0.5)/sqrt(2.*sigma0*sigma0)
        fact=1-0.5*erfccc(tmp)
-!    	fact = sqrt(cgust/(cgust0+cgust))
+!       fact = sqrt(cgust/(cgust0+cgust))
        dqt  = qtwidth_max*fact*0.5
        qttmp= qt + dqt * land
        qt   = max(0.1*qt, min(qttmp, qs))
     endif
- 
+
   end subroutine qt_parcel_k1
 !#####################################################################
 
@@ -2259,7 +2259,7 @@ subroutine qt_parcel_deep_k (qs, tke, land, gama, tke0, hgt0, qt)
     end if
     qttmp = qt + dqt * land
     qt    = max(0.1*qt, min(qttmp, qs))
- 
+
   end subroutine qt_parcel_deep_k
 !#####################################################################
 
@@ -2297,20 +2297,20 @@ subroutine qt_parcel_cgust (qt, qs, cgust, cgust0, cgust_max, sigma0, land, gqt_
     ! This numerical recipes routine calculates the complementary
     ! error function.
     !--------------------------------------------------------------
-   
+
     real :: erfccc
-    real, intent(in) :: x 
+    real, intent(in) :: x
     real :: t,z
-   
-    z=abs(x)      
+
+    z=abs(x)
     t=1./(1.+0.5*z)
-   
+
     erfccc=t*exp(-z*z-1.26551223+t*(1.00002368+t*(.37409196+t*      &
          (.09678418+t*(-.18628806+t*(.27886807+t*(-1.13520398+t*    &
          (1.48851587+t*(-.82215223+t*.17087277)))))))))
-    
+
     if (x.lt.0.) erfccc=2.-erfccc
-    
+
   end function erfccc
 
 !#####################################################################

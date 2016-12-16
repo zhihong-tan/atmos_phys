@@ -6,6 +6,9 @@ use diag_manager_mod,          only :  register_diag_field, send_data
 use time_manager_mod,          only :  time_type
 use strat_cloud_utilities_mod, only :  strat_cloud_utilities_init, &
                                        diag_id_type, diag_pt_type
+use atmos_cmip_diag_mod,       only :  register_cmip_diag_field_3d, &
+                                       send_cmip_data_3d, &
+                                       query_cmip_diag_id
 
 implicit none
 private
@@ -701,6 +704,15 @@ real, dimension(:,:,:),optional, intent(in) :: mask3d
      used = send_data ( diag_id%cld_ice_imb,     &
                          diag_4d(:,:,:,diag_pt%cld_ice_imb), &
                          Time, is, js, 1, rmask=mask3d )
+
+!-----------------------------------------------------------------------
+!    18) variables associated CMIP diagnostics
+!-----------------------------------------------------------------------
+     if (query_cmip_diag_id(diag_id%cdnc)) then
+       used = send_cmip_data_3d ( diag_id%cdnc, &
+                1.e06*diag_4d(:,:,:,diag_pt%droplets), &
+                Time, is, js, 1, mask=diag_4d(:,:,:,diag_pt%droplets) > 0.0)
+     endif
 
 !-----------------------------------------------------------------------
 !
@@ -1968,6 +1980,13 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'cld_ice_imb',  axes(1:3), Time, &
              'difference between qi fallout rate at sfc and sum of &
              &individ terms', 'kg/kg/sec', missing_value=missing_value)
+
+  !------------------------------------------------------------------------
+  !   18)  variables associated CMIP diagnostics
+  !------------------------------------------------------------------------
+       diag_id%cdnc = register_cmip_diag_field_3d ( mod_name, 'cdnc', Time, &
+                      'Cloud Droplet Number Concentration', 'm-3', mask_variant=.true., &
+                  standard_name='number_concentration_of_cloud_liquid_water_particles_in_air')
 
   !-----------------------------------------------------------------------
   !
