@@ -740,7 +740,7 @@ character(len=32) :: tracer_units, tracer_name
                               Time_next, is_in=is, js_in=js)
       endif
       if (id_drybc > 0 .and. nbcphilic > 0 .and. nbcphobic > 0) then  ! same as bc_ddep
-        used  = send_data (id_bc_ddep,  &
+        used  = send_data (id_drybc,  &
            pwt(:,:,kd)*(dsinku(:,:,nbcphilic) + dsinku(:,:,nbcphobic)),  &
                                                Time_next, is_in=is, js_in=js)
       endif
@@ -1561,10 +1561,6 @@ type(time_type), intent(in)                                :: Time
 
       !---- register cmip named variables ----
 
-      ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
-                   'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
-                   standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
-
       ID_concso2 = register_cmip_diag_field_3d ( mod_name, &
                    'concso2', Time, 'Mole Fraction of SO2', '1.0', &
                    standard_name='mole_fraction_of_sulfur_dioxide_in_air')
@@ -1573,25 +1569,44 @@ type(time_type), intent(in)                                :: Time
                    'concdms', Time, 'Mole Fraction of DMS', '1.0', &
                     standard_name='mole_fraction_of_dimethyl_sulfide_in_air')
 
-      ID_concnh4 = register_cmip_diag_field_3d ( mod_name, &
+      if (nNH4NO3 > 0 .and. nNH4 > 0) then
+        ID_concnh4 = register_cmip_diag_field_3d ( mod_name, &
                    'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
                    standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
 
-      id_sconcno3 = register_cmip_diag_field_2d ( mod_name, &
-                  'sconcno3', Time, 'Surface Concentration of NO3', 'kg m-3', &
-                  standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
-
-      id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, & 
+        id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, & 
                   'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
                   standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
 
-      id_loadno3 = register_cmip_diag_field_2d ( mod_name, &
-                   'loadno3', Time, 'Load of NO3', 'kg m-2', &
-                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol')
-
-      id_loadnh4 = register_cmip_diag_field_2d ( mod_name, &
+        id_loadnh4 = register_cmip_diag_field_2d ( mod_name, &
                    'loadnh4', Time, 'Load of NH4', 'kg m-2', &
                    standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
+
+         id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
+                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_due_to_dry_deposition')
+      else
+        id_sconcnh4 = 0
+        id_loadnh4 = 0
+        id_drynh4 = 0
+      endif
+      
+      if (nNH4NO3 > 0) then
+        ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
+                   'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
+                   standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+
+        id_sconcno3 = register_cmip_diag_field_2d ( mod_name, &
+                  'sconcno3', Time, 'Surface Concentration of NO3', 'kg m-3', &
+                  standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+
+        id_loadno3 = register_cmip_diag_field_2d ( mod_name, &
+                   'loadno3', Time, 'Load of NO3', 'kg m-2', &
+                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol')
+      else
+        id_sconcno3 = 0
+        id_loadno3 = 0
+      endif
 
       id_dryso2 = register_cmip_diag_field_2d ( mod_name, &
                      'dryso2', Time, 'Dry Deposition Rate of SO2', 'kg m-2 s-1', &
@@ -1608,10 +1623,6 @@ type(time_type), intent(in)                                :: Time
       id_drynh3 = register_cmip_diag_field_2d ( mod_name, &
                     'drynh3', Time, 'Dry Deposition Rate of NH3', 'kg m-2 s-1', &
                     standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_dry_deposition')
-
-      id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
-                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_due_to_dry_deposition')
 
       id_drybc = register_cmip_diag_field_2d ( mod_name, &
                   'drybc', Time, 'Dry Deposition Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &

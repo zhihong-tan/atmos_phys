@@ -191,7 +191,7 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
 
 !     all_dust_setl(:,:) = 1.0-frac_land(:,:)  !The exchanged flux of this becomes >1 at some points within ocean near shore!!
      
-     if (id_dust_emis > 0) then
+     if (id_dust_emis > 0 .or. id_emidust > 0) then
         ! accumulate total dust emission flux
         all_dust_emis(:,:) = all_dust_emis(:,:) + dust_emis(:,:) 
      endif
