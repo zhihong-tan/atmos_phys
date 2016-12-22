@@ -77,6 +77,9 @@ use diag_cloud_mod,        only: diag_cloud_init, diag_cloud_end, &
                                  diag_cloud_restart
 use diag_integral_mod,     only: diag_integral_field_init, &
                                  sum_diag_integral_field
+use atmos_global_diag_mod, only: register_global_diag_field, &
+                                 buffer_global_diag, &
+                                 send_global_diag
 use cu_mo_trans_mod,       only: cu_mo_trans_init, cu_mo_trans, cu_mo_trans_end
 use moz_hook_mod,          only: moz_hook
 use aerosol_types_mod,     only: aerosol_type
@@ -86,7 +89,7 @@ use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras, &
                                  moistproc_lscale_cond, moistproc_strat_cloud, &
                                  moistproc_cmt, moistproc_uw_conv, &
                                  moistproc_scale_uw, moistproc_scale_donner, &
-				 height_adjust !miz
+                                 height_adjust !miz
 ! atmos_shared modules
 use atmos_tracer_utilities_mod, only : wet_deposition
 use atmos_dust_mod, only : atmos_dust_init, dust_tracers, n_dust_tracers, do_dust, atmos_dust_wetdep_flux_set
@@ -386,6 +389,9 @@ integer, dimension(:), allocatable :: id_tracerdt_conv,  &
 
 type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
                            ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
+
+! globally averaged diagnostics
+integer :: id_pr_g, id_prc_g, id_prsn_g
 
 real, dimension(:), allocatable    :: conv_wetdep !f1p
 real :: missing_value = -999.
@@ -2219,6 +2225,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
    used = send_data (id_prec_conv, precip, Time, is, js)
    used = send_data (id_prc, precip, Time, is, js)
+   if (id_prc_g > 0) call buffer_global_diag (id_prc_g, precip(:,:), Time, is, js)
 
 !---------------------------------------------------------------------
 !    frozen precipitation (snow) due to convection:
@@ -3003,6 +3010,7 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
     used = send_data (id_snow_tot, fprec, Time, is, js)
     used = send_data (id_prsn, fprec, Time, is, js)
+    if (id_prsn_g > 0)  call buffer_global_diag (id_prsn_g, fprec, Time, is, js)
 
 !---------------------------------------------------------------------
 !    rainfall rate due to all sources:
@@ -3279,6 +3287,8 @@ logical, intent(out), dimension(:,:)     :: convect
 !---------------------------------------------------------------------
     prec_intgl(is:ie,js:je) = precip(:,:)*SECONDS_PER_DAY
 
+    if (id_pr_g > 0)  call buffer_global_diag (id_pr_g,  precip(:,:), Time, is, js)
+
 !----------------------------------------------------------------------
 !    define the precip fluxes needed for input to the COSP simulator 
 !    package.
@@ -3547,7 +3557,9 @@ end subroutine moist_processes_time_vary
 
 subroutine moist_processes_endts (is, js)
  
-integer, intent(in) :: is,js
+integer,          intent(in) :: is,js
+
+logical :: used
 
       if (do_donner_deep) then
         call donner_deep_endts
@@ -3556,6 +3568,11 @@ integer, intent(in) :: is,js
 
       call sum_diag_integral_field ('prec', prec_intgl)
       prec_intgl = 0.0
+
+
+      if (id_pr_g   > 0) used = send_global_diag (id_pr_g)
+      if (id_prc_g  > 0) used = send_global_diag (id_prc_g)
+      if (id_prsn_g > 0) used = send_global_diag (id_prsn_g)
 
 
 end subroutine moist_processes_endts
@@ -3954,6 +3971,14 @@ integer            :: k
    call diag_integral_field_init ('prec', 'f6.3')
    allocate (prec_intgl(id,jd))
    allocate( pmass     (id,jd,kd))
+
+!----- initialize global integrals for netCDF output -----
+   id_pr_g = register_global_diag_field ('pr', Time, 'Precipitation', &
+                     'kg m-2 s-1', standard_name='precipitation_flux', buffer=.true. )
+   id_prc_g = register_global_diag_field ('prc', Time, 'Convective Precipitation', &
+                     'kg m-2 s-1', standard_name='convective_precipitation_flux', buffer=.true. )
+   id_prsn_g = register_global_diag_field ('prsn', Time, 'Snowfall Flux', 'kg m-2 s-1', &
+                                           standard_name='snowfall_flux', buffer=.true. )
 
 !---------------------------------------------------------------------
 !    define output variables indicating whether certain convection 
@@ -5331,13 +5356,17 @@ endif
                          'kg/m2/s',  &
                          missing_value=missing_value)
 
-      id_wetdep_NH4NO3 =  &
+      if (nNH4NO3 .ne. NO_TRACER .and. nNH4 .ne. NO_TRACER) then
+        id_wetdep_NH4NO3 =  &
                          register_diag_field ( mod_name, &
                          'totNH4_wet_dep',  &
                          axes(1:2), Time,  &
                          'total NH4 + NH3 wet deposition', &
                          'kg/m2/s',  &
                          missing_value=missing_value)
+      else
+        id_wetdep_NH4NO3 = 0
+      endif
 
       id_wetdep_seasalt   =  &
                          register_diag_field ( mod_name, &
@@ -5383,6 +5412,10 @@ endif
 
      !-------- cmip wet deposition fields  ---------
       do ic = 1, size(cmip_names,1)
+        if (TRIM(cmip_names(ic)) .eq. 'nh4' .and. (nNH4NO3 .eq. NO_TRACER .or. nNH4 .eq. NO_TRACER)) then
+          id_wetnh4_cmip = 0; cycle  ! skip when tracers are not in field table
+        endif
+
         id_wetdep_cmip = register_diag_field ( mod_name, 'wet'//TRIM(cmip_names(ic)), axes(1:2), Time,  &
                      'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
                      standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition', &

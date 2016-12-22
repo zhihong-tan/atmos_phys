@@ -488,7 +488,10 @@ namelist /radiation_driver_nml/ do_radiation, &
                                 rad_time_step, sw_rad_time_step, use_single_lw_sw_ts, &
                                 nonzero_rad_flux_init, &
                                 cosp_precip_sources, &
-                                do_conserve_energy
+                                do_conserve_energy, AM3_physics  ! h1g 2016-10-05
+
+logical :: AM3_physics = .true.   ! h1g 2016-10-05
+
 !---------------------------------------------------------------------
 !---- public data ----
 
@@ -3411,6 +3414,7 @@ real, dimension(:,:,:,:), intent(out)   ::    &
 !    donner meso clouds may be treated either as large-scale or
 !    convective clouds, dependent on donner_meso_is_largescale.
 !---------------------------------------------------------------------
+      if ( AM3_physics ) then   ! h1g, 2016-10-05
         if (donner_meso_is_largescale) then
           where (stoch_cloud_type(:,:,:,:) == donner_meso_index)  ! == 2)
             stoch_cloud_type(:,:,:,:) = strat_index               ! = 1
@@ -3426,6 +3430,7 @@ real, dimension(:,:,:,:), intent(out)   ::    &
             stoch_cloud_type(:,:,:,:) = donner_meso_index         ! = 2)
           end where
         endif    
+      endif  ! h1g, 2016-10-05
 
 !---------------------------------------------------------------------
 !    save the particle concentrations and sizes seen by the radiation
