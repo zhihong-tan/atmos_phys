@@ -86,6 +86,7 @@ contains
     dpn % do_umf_pbl         = cpn % do_umf_pbl
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_hlflx_zero      = cpn % do_hlflx_zero
+    dpn % do_new_qnact       = cpn % do_new_qnact
     dpn % do_varying_rpen    = cpn % do_varying_rpen
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % do_new_subflx      = cpn % do_new_subflx
