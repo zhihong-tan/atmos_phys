@@ -109,6 +109,7 @@ MODULE UW_CONV_MOD
   logical :: do_umf_pbl = .false.
   logical :: do_qctflx_zero = .false.
   logical :: do_hlflx_zero  = .true.
+  logical :: do_new_qnact   = .false.
   logical :: do_varying_rpen  = .false.
   logical :: do_new_convcld   = .false.
   logical :: do_subcloud_flx = .false.
@@ -151,7 +152,7 @@ MODULE UW_CONV_MOD
 
   NAMELIST / uw_conv_nml / iclosure, rkm_sh1, rkm_sh, cldhgt_max, plev_cin, plev_omg, nbuo_max, do_peff_land, &
        do_deep, idpchoice, do_coldT, do_lands, do_uwcmt, do_varying_rpen, do_new_convcld, do_mse_budget, &
-       do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, &
+       do_fast, do_ice, do_ppen, do_forcedlifting, do_gust_qt, use_new_let, do_hlflx_zero, do_new_qnact, &
        atopevap, apply_tendency, prevent_unreasonable, do_minmse, aerol, tkemin, cldhgt_max_shallow,do_umf_pbl,&
        wmin_ratio, use_online_aerosol, use_sub_seasalt, landfact_m, pblht0, lofactor0, lochoice, &
        do_auto_aero, do_rescale, do_rescale_t, wrel_min, om_to_oc, sea_salt_scale, do_debug, &
@@ -1235,6 +1236,7 @@ contains
     cpn % do_umf_pbl = do_umf_pbl
     cpn % do_qctflx_zero = do_qctflx_zero
     cpn % do_hlflx_zero  = do_hlflx_zero
+    cpn % do_new_qnact   = do_new_qnact
     cpn % do_varying_rpen = do_varying_rpen
     cpn % do_subcloud_flx= do_subcloud_flx
     cpn % do_new_subflx  = do_new_subflx

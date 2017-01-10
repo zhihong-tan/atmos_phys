@@ -45,7 +45,7 @@ MODULE CONV_PLUMES_k_MOD
      logical :: do_ice, do_ppen, do_forcedlifting, do_pevap, do_pdfpcp, use_online_aerosol, do_umf_pbl, do_minmse
      logical :: do_auto_aero, do_pmadjt, do_emmax, do_pnqv, do_tten_max, do_weffect, do_qctflx_zero,do_detran_zero
      logical :: use_new_let, do_subcloud_flx, use_lcl_only, do_new_pevap, do_limit_wmax, stop_at_let,do_hlflx_zero
-     logical :: do_varying_rpen, do_new_pblfac, do_new_subflx
+     logical :: do_varying_rpen, do_new_pblfac, do_new_subflx, do_new_qnact
      character(len=32), dimension(:), _ALLOCATABLE  :: tracername _NULL
      character(len=32), dimension(:), _ALLOCATABLE  :: tracer_units _NULL
      type(cwetdep_type), dimension(:), _ALLOCATABLE :: wetdep _NULL
@@ -427,6 +427,7 @@ contains
     real    :: t_mid, tv_mid, air_density, total_condensate,   &
                total_rain, total_snow, delta_tracer, delta_qn, wrel2, gamma
     real    :: cflim, plnb_tmp, plfc_tmp, ptmp, rkm1
+    real    :: qn_act
     integer :: n, nnn
     logical :: kbelowlet
 
@@ -501,13 +502,17 @@ contains
       if (ier /= 0) then
         return
       endif
-      cp%qnu(krel-1) = drop * 1.0e6 / (prel /    &
-                      (Uw_p%rdgas*cp%thvu(krel-1)*exn_k(prel,Uw_p)))
+      qn_act = drop*1.0e6 /(prel/(Uw_p%rdgas*cp%thvu(krel-1)*exn_k(prel,Uw_p)))
     else
       drop = 0.
-      cp%qnu(krel-1) = 0.0
+      qn_act = 0.0
     endif
 
+    if (cpn%do_new_qnact) then
+      cp%qnu(krel-1) = qn_act + cp%qn(krel-1)
+    else
+      cp%qnu(krel-1) = qn_act
+    endif
 
     !(krel) represents the first partial updraft layer
     cp%z      (krel) = (cp%zs(krel-1) + cp%zs(krel))*0.5
