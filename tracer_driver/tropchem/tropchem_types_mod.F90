@@ -56,6 +56,7 @@ module tropchem_types_mod
      logical               :: limit_no3
      integer               :: het_chem
      character(len=128)    :: sim_data_flsp
+     logical               :: time_varying_solarflux
   end type tropchem_opt
 
   CONTAINS

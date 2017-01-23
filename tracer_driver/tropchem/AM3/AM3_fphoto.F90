@@ -1,4 +1,4 @@
-      module MO_FPHOTO_MOD
+      module AM3_FPHOTO_MOD
 !----------------------------------------------------------------------
 !        ... Read FAST-JX Photolysis rates and pass them to chemdr
 !            June. 1st, 2010
@@ -16,7 +16,7 @@
                                        get_tracer_names,   &
                                        get_tracer_indices
       use field_manager_mod,    only : MODEL_ATMOS       
-      use MO_FASTJX_MOD,        only : JVN_, fastjx_init, fastjx_end, fastjx_photo
+      use AM3_FASTJX_MOD,        only : JVN_, fastjx_init, fastjx_end, fastjx_photo
       use sat_vapor_pres_mod, only : compute_qs      
          
       implicit none
@@ -1118,7 +1118,7 @@ end subroutine rh_calc
 
 
 
-end module MO_FPHOTO_MOD
+end module AM3_FPHOTO_MOD
 
 
 

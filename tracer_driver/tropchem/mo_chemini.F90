@@ -31,7 +31,11 @@ logical                       :: module_is_initialized = .false.
       use MO_RODAS_SOL_mod,  only : rodas_slv_init
 
       use MO_READ_SIM_CHM_mod, only : read_sim_chm
+#ifndef AM3_CHEM
       use mo_fphoto_mod,     only : fprate_init
+#else
+      use AM3_fphoto_mod,     only : fprate_init
+#endif
       use tropchem_types_mod, only : tropchem_opt
 
       implicit none

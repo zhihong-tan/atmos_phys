@@ -19,6 +19,7 @@ use time_interp_mod,            only:  fraction_of_year, &
                                        time_interp_init
 use diag_manager_mod,           only : send_data, register_diag_field, &
                                        diag_manager_init, get_base_time
+use atmos_cmip_diag_mod,        only : register_cmip_diag_field_2d
 use tracer_manager_mod,         only : get_tracer_index, &
                                        set_tracer_atts
 use field_manager_mod,          only : MODEL_ATMOS
@@ -57,6 +58,7 @@ integer :: id_emisbb, id_omemisbb_col
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
 integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisoc
 integer :: id_bc_tau
+integer :: id_emibc, id_emipoa, id_emibb ! cmip
 
 integer :: id_SOA_prod           = 0
 !----------------------------------------------------------------------
@@ -253,7 +255,9 @@ integer, dimension(6) :: soa_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!
 real, save :: coef_omss_emis
 real :: omss_coef=-999.
-logical               :: no_biobur_if_no_pbl = .true.  ! true by default in order to reproduce AM3
+logical               :: no_biobur_if_no_pbl = .true.  ! true by default in order to reproduce AM3 (no BMB if zPBL=0)
+!logical               :: do_biobur_pbl_bug = .false.   ! if T, bug causing double-counting of BMB emissions is present
+logical               :: do_biobur_pbl_bug = .true.    ! TER 08/30/2016 This is set to true to reproduce answers.  Can be changed for a city release
 logical               :: do_dynamic_bc = .false.
 real                  :: bcage = 1.0
 real                  :: bcageslow = 25.
@@ -296,7 +300,7 @@ namelist /carbon_aerosol_nml/ &
  frac_bcbb_philic, frac_bcbb_phobic,&
  soa_source, gas_conc_name,soa_filename, &
  soa_time_dependency_type, soa_dataset_entry, &
- no_biobur_if_no_pbl
+ no_biobur_if_no_pbl, do_biobur_pbl_bug
 
 character(len=6), parameter :: module_name = 'tracer'
 
@@ -640,7 +644,7 @@ real, parameter                            :: yield_soa = 0.1
 ! Calculate fraction of emission at every levels for open fires
 !
         fbb(:,:)=0.
-        if (.not.no_biobur_if_no_pbl) fbb(kd,:)=1.
+        if (.not.no_biobur_if_no_pbl .and. do_biobur_pbl_bug) fbb(kd,:)=1.
 !
 ! In case of multiple levels, which are fixed
 !
@@ -672,6 +676,7 @@ real, parameter                            :: yield_soa = 0.1
 !
 ! --- Inject equally through the boundary layer -------
 !
+          if (.not. no_biobur_if_no_pbl .and. .not. do_biobur_pbl_bug) fbb(kd,1)=1.
           bltop = z_pbl(i,j)
           do l = kd,1,-1
             z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
@@ -849,7 +854,7 @@ real, parameter                            :: yield_soa = 0.1
 !
 ! Send registered results to diag manager
 !
-      if (id_bc_emis_colv2 > 0) then
+      if (id_bc_emis_colv2 > 0 .or. id_emibc > 0) then
 ! column emissions for bc (corrected cmip units)
 
         bc_emis = 0.
@@ -857,11 +862,15 @@ real, parameter                            :: yield_soa = 0.1
           bc_emis(:,:) = bc_emis(:,:) + pwt(:,:,k)*&
                                (bcphob_emis(:,:,k) + bcphil_emis(:,:,k))
         end do
-        used = send_data ( id_bc_emis_colv2, bc_emis, diag_time, &
-              is_in=is,js_in=js)
+        if (id_bc_emis_colv2 > 0) then
+            used = send_data ( id_bc_emis_colv2, bc_emis, diag_time, is_in=is,js_in=js )
+        endif
+        if (id_emibc > 0) then ! cmip field
+            used = send_data ( id_emibc, bc_emis, diag_time, is_in=is,js_in=js )
+        endif
       endif
  
-      if (id_om_emis_colv2 > 0) then
+      if (id_om_emis_colv2 > 0 .or. id_emipoa > 0) then
 ! column emissions for om (corrected cmip units)
 
         om_emis = 0.
@@ -869,10 +878,18 @@ real, parameter                            :: yield_soa = 0.1
           om_emis(:,:) = om_emis(:,:) + pwt(:,:,k)* &
                                (omphob_emis(:,:,k) + omphil_emis(:,:,k))
         end do
-        used = send_data ( id_om_emis_colv2, om_emis, diag_time, &
-              is_in=is,js_in=js)
+        if (id_om_emis_colv2 > 0) then
+          used = send_data ( id_om_emis_colv2, om_emis, diag_time, is_in=is,js_in=js)
+        endif
+        if (id_emipoa > 0) then ! cmip field
+          used = send_data ( id_emipoa, om_emis, diag_time, is_in=is,js_in=js)
+        endif
       endif
 
+      ! cmip field: same as emisbb
+      if (id_emibb > 0) then
+        used = send_data ( id_emibb, emisob, diag_time, is_in=is,js_in=js)
+      endif
 !-----------------------------------------------------------------
 
       if (id_bcphob_emis > 0) then
@@ -1280,6 +1297,19 @@ integer ::  unit, ierr, io, logunit
      id_bc_tau    = register_diag_field ( mod_name,           &
                     'bc_tau', axes(1:3),Time,                 &
                     'bcphob aging lifetime', 'days' )
+
+    ! cmip fields
+     id_emibc = register_cmip_diag_field_2d ( mod_name, 'emibc', Time, &
+                     'Emission Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_due_to_emission')
+
+     id_emipoa = register_cmip_diag_field_2d ( mod_name, 'emipoa', Time, &
+                     'Emission Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
+
+     id_emibb = register_cmip_diag_field_2d ( mod_name, 'emibb', Time, &
+                     'Total Emission of Primary Aerosol from Biomass Burning', 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
 
 !----------------------------------------------------------------------
 

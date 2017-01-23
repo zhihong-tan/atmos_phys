@@ -41,6 +41,7 @@ use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
                                        register_static_field,   &
                                        diag_manager_init, get_base_time
+use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
@@ -53,7 +54,7 @@ use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR, PSTD_MKS
 
 !f1p
 use cloud_chem, only : cloud_so2_chem, CLOUD_CHEM_LEGACY, CLOUD_CHEM_F1P, &
-                       CLOUD_CHEM_F1P_BUG
+                       CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2    ! h1g, 2016-09-07
 
 implicit none
 
@@ -114,7 +115,13 @@ integer ::   id_so2_power           = 0
 integer ::   id_so2_off_road        = 0
 integer ::   id_so2_ff              = 0
 
+! cmip diagnostics
+integer ::   id_emidms              = 0
+integer ::   id_emiso2              = 0
+integer ::   id_emiso4              = 0
+
 logical :: do_MSA=.false.
+integer :: number_SOx_tracers       = 0
 
 type(interpolate_type),save         ::  gas_conc_interp
 type(interpolate_type),save         ::  aerocom_emission_interp
@@ -364,12 +371,14 @@ integer :: n, m, nsulfate
 
 
 !----- set initial value of sulfate ------------
+     number_SOx_tracers = 0
 
      do m=1,size(SOx_tracer)
 
        n = get_tracer_index(MODEL_ATMOS,SOx_tracer(m))
        if (n.gt.0) then
          nsulfate=n
+         number_SOx_tracers = number_SOx_tracers + 1
          call set_tracer_atts(MODEL_ATMOS,SOx_tracer(m),SOx_tracer(m),'vmr')
          if (m .eq. 4) do_MSA=.true.
          if (nsulfate > 0 .and. mpp_pe() == mpp_root_pe()) &
@@ -821,6 +830,9 @@ integer :: n, m, nsulfate
       cloud_chem_type = CLOUD_CHEM_F1P
    elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p_bug" ) then
       cloud_chem_type = CLOUD_CHEM_F1P_BUG
+   elseif ( lowercase(trim(cloud_chem_solver)) .eq. "f1p_bug2" ) then
+      cloud_chem_type = CLOUD_CHEM_F1P_BUG2
+
    else
       call error_mesg ('atmos_sulfate_mod', &
            'unknown cloud chem solver', FATAL)
@@ -841,6 +853,20 @@ integer :: n, m, nsulfate
                    'simpleDMS_emis_cmip', axes(1:2),Time,                                 &
                    'simpleDMS_emis_cmip', 'kgDMS/m2/s',                                     &
                     missing_value=-999.  )
+   id_DMSo       = register_diag_field ( mod_name,                           &
+                   'DMSo',axes(1:2),Time,                                    &
+                   'Dimethylsulfide seawater concentration',                 &
+                   'nM/L')
+   ! cmip field
+   id_emidms = register_cmip_diag_field_2d ( mod_name, 'emidms', Time, &
+                           'Total Emission Rate of DMS', 'kg m-2 s-1', &
+             standard_name='tendency_of_atmosphere_mass_content_of_dimethyl_sulfide_due_to_emission')
+
+
+ ! the routines that save these diagnostics only get called
+ ! when there are SOx tracers
+ if (number_SOx_tracers .gt. 0) then
+
    id_SO2_emis   = register_diag_field ( mod_name,                           &
                    'simpleSO2_emis', axes(1:3),Time,                         &
                    'simpleSO2_emis', 'kgS/m2/s',                             &
@@ -849,10 +875,6 @@ integer :: n, m, nsulfate
                    'simpleSO4_emis', axes(1:3),Time,                         &
                    'simpleSO4_emis', 'kgS/m2/s',                             &
                     missing_value=-999.  )
-   id_DMSo       = register_diag_field ( mod_name,                           &
-                   'DMSo',axes(1:2),Time,                                    &
-                   'Dimethylsulfide seawater concentration',                 &
-                   'nM/L')
    id_ph          = register_diag_field ( mod_name,                          &
                    'pH_simple_sulfate',axes(1:3),Time,                       &
                    'pH in simple-sulfate',                                   &
@@ -953,6 +975,17 @@ integer :: n, m, nsulfate
                    'simpleH2O2_chem',axes(1:3),Time,                         &
                    'simpleH2O2 chemical production',                         &
                    'kgH2O2/m2/s')
+
+   !---- register cmip fields  ----
+   id_emiso2 = register_cmip_diag_field_2d ( mod_name, 'emiso2', Time, &
+                           'Total Emission Rate of SO2', 'kg m-2 s-1', &
+             standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_emission')
+
+   id_emiso4 = register_cmip_diag_field_2d ( mod_name, 'emiso4', Time, &
+                           'Total Emission Rate of SO4', 'kg m-2 s-1', &
+             standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_emission')
+   !----
+ endif
 
    call write_version_number (version, tagname)
 
@@ -1363,6 +1396,9 @@ subroutine atmos_DMS_emission (lon, lat, area, ocn_flx_fraction, t_surf_rad, w10
         used = send_data ( id_DMS_emis_cmip, dms_emis, Time_next, &
               is_in=is,js_in=js )
       endif
+      if (id_emidms > 0) then
+        used = send_data ( id_emidms, dms_emis, Time_next, is_in=is,js_in=js )
+      endif
 
 end subroutine atmos_DMS_emission
 !#######################################################################
@@ -1424,13 +1460,14 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
         so2_emis_power, so2_emis_off_road, so2_emis_ff
 ! Input emission fields
       real, dimension(size(SO2_dt,1),size(SO2_dt,2)) :: &
-             SO2_ff1, SO2_ff2, SO4_ff1, SO4_ff2,&
+             SO2_ff1, SO2_ff2, SO4_ff1, SO4_ff2,        &
              SO2_RoadTransport,                         &
              SO2_Off_road,                              &
              SO2_Domestic,                              &
              SO2_Industry,                              &
              SO2_Ship, SO4_ship,                        &
-             SO2_Powerplants
+             SO2_Powerplants,                           &
+             emis2d
       real, dimension(size(SO2_dt,1),size(SO2_dt,2),num_volc_levels) :: &
              SO2_cont_volc,                             &
              SO2_expl_volc
@@ -1455,7 +1492,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       real, parameter :: fe = 0.025
 
       real :: z1, z2, bltop, fbt, del
-      integer  :: i, j, l, id, jd, kd, il, lf
+      integer  :: i, j, l, id, jd, kd, il, lf, k
       integer :: ivolc_lev
 
       id=size(SO2_dt,1); jd=size(SO2_dt,2); kd=size(SO2_dt,3)
@@ -1792,6 +1829,9 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 !------------------------------------------------------------------
 ! DIAGNOSTICS:      SO2 and SO4 emission in kg/timestep
 !--------------------------------------------------------------------
+      if (number_SOx_tracers == 0) call error_mesg ('atmos_sulfate_mod', &
+           'calling atmos_SO2_emission when number_SOx_tracers=0', FATAL)
+
       if (id_so2_emis > 0) then
         used = send_data ( id_so2_emis, so2_emis*WTM_S/WTM_so2, &
               diag_time, is_in=is,js_in=js,ks_in=1)
@@ -1844,6 +1884,23 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       if (id_so4_emis > 0) then
         used = send_data ( id_so4_emis, so4_emis*WTM_S/WTM_so4, diag_time, &
               is_in=is,js_in=js,ks_in=1)
+      endif
+
+      !---- cmip fields ----
+      ! should vertical integral be pressure-weighted?
+      if (id_emiso2 > 0) then
+        emis2d = 0.0
+        do k = 1, size(so2_emis,3)
+          emis2d(:,:) = emis2d(:,:) + so2_emis(:,:,k)
+        enddo
+        used = send_data ( id_emiso2, emis2d, diag_time, is_in=is,js_in=js)
+      endif
+      if (id_emiso4 > 0) then
+        emis2d = 0.0
+        do k = 1, size(so4_emis,3)
+          emis2d(:,:) = emis2d(:,:) + so4_emis(:,:,k)
+        enddo
+        used = send_data ( id_emiso4, emis2d, diag_time, is_in=is,js_in=js)
       endif
 
 end subroutine atmos_SOx_emission
@@ -2036,7 +2093,8 @@ end subroutine atmos_SOx_emission
        if ( cloud_chem_type .eq. CLOUD_CHEM_LEGACY ) then
           xlwc  = lwc(i,j,k)*rho_air *1.e-3 !L(water)/L(air)
        elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
-                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG .or. &  ! h1g, 2016-09-07
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then ! h1g, 2016-09-07
           xlwc  = lwc(i,j,k)*min(max(fliq(i,j,k),0.),1.)*rho_air *1.e-3 !only liquid water
        end if
        DMS_0 = max(0.,DMS(i,j,k))
@@ -2233,7 +2291,8 @@ end subroutine atmos_SOx_emission
             xso2 = max(xso2 - ccc2, small_value)         ! mozart2
        end if
        elseif ( cloud_chem_type .eq. CLOUD_CHEM_F1P .or. &
-                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG ) then
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG  .or. &
+                cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then   ! h1g, 2016-09-07
 !f1p cloud chem
        !calculate in cloud-production   
           !first calculate in-cloud liquid
@@ -2254,21 +2313,47 @@ end subroutine atmos_SOx_emission
           !production via H2O2
           exp_factor = rso2_h2o2 * (xso2 - xh2o2) * dt
 
-          if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0.) then
-             EF          = exp( exp_factor )
-             pso4_h2o2   = max(xso2 * xh2o2 * ( 1. - EF ) / ( xh2o2 - xso2 * EF ),0.)                    
-          else
-             pso4_h2o2   = min(xso2,xh2o2)
-          end if
+
+          if ( cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then  ! h1g, 2016-09-07
+
+            if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0.) then
+               EF          = exp( exp_factor )
+               pso4_h2o2   = max(xso2 * xh2o2 * ( 1. - EF ) / ( xh2o2 - xso2 * EF ),0.)                    
+            else
+               pso4_h2o2   = min(xso2,xh2o2)
+            end if
+      
+          else !cloud_chem_type .eq. CLOUD_CHEM_F1P  ! h1g, 2016-09-07
+            if ( exp_factor .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
+               EF          = exp( exp_factor )
+               pso4_h2o2   = max(xso2 * xh2o2 * ( 1. - EF ) / ( xh2o2 - xso2 * EF ),0.)                    
+            elseif (abs(exp_factor) .le. small_value ) then
+               pso4_h2o2   = rso2_h2o2 * xso2**2 * dt / (1 + rso2_h2o2*dt*xso2)
+            else
+               pso4_h2o2   = min(xso2,xh2o2)
+            end if
+          endif
+
 
           exp_factor = rso2_o3 * (xso2 - xo3) * dt
+          if ( cloud_chem_type .eq. CLOUD_CHEM_F1P_BUG2 ) then  ! h1g, 2016-09-07
+            if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0. ) then
+               EF          = exp( exp_factor )
+               pso4_o3     = max(xso2 * xo3 * ( 1. - EF ) / ( xo3 -  xso2 * EF ),0.)
+            else
+               pso4_o3 = min(xso2,xo3)
+            end if
+          else  !cloud_chem_type .eq. CLOUD_CHEM_F1P  ! h1g, 2016-09-07
+            if ( exp_factor .lt. 600. .and. abs(exp_factor) .gt. small_value ) then
+               EF          = exp( exp_factor )
+               pso4_o3     = max(xso2 * xo3 * ( 1. - EF ) / ( xo3 -  xso2 * EF ),0.)
+            elseif (abs(exp_factor) .le. small_value ) then
+               pso4_o3     = rso2_o3 * xso2**2 * dt / (1 + rso2_o3*dt*xso2)
+            else
+               pso4_o3 = min(xso2,xo3)
+            end if
+          endif
 
-          if ( abs(exp_factor) .lt. 600. .and. abs(exp_factor) .gt. 0. ) then
-             EF          = exp( exp_factor )
-             pso4_o3     = max(xso2 * xo3 * ( 1. - EF ) / ( xo3 -  xso2 * EF ),0.)
-          else
-             pso4_o3 = min(xso2,xo3)
-          end if
           !>        
 
           if ( (pso4_o3 + pso4_h2o2) .gt. xso2 ) then
@@ -2310,6 +2395,9 @@ end subroutine atmos_SOx_emission
       if (do_tr_sulfate(3)) rt_sulfate(:,:,:,3)=dms_dt(:,:,:)
       if (do_tr_sulfate(4)) rt_sulfate(:,:,:,4)=h2o2_dt(:,:,:)
       if (do_tr_sulfate(5)) rt_sulfate(:,:,:,5)=msa_dt(:,:,:)
+
+      if (number_SOx_tracers == 0) call error_mesg ('atmos_sulfate_mod', &
+           'calling atmos_SOx_chem when number_SOx_tracers=0', FATAL)
 
       if ( id_NO3 > 0) then
         used = send_data ( id_NO3, NO3_diurnal, &
