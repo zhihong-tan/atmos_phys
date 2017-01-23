@@ -37,7 +37,7 @@ implicit none
 private
 public  moistproc_mca, moistproc_ras, moistproc_lscale_cond, &
         moistproc_strat_cloud, moistproc_cmt, moistproc_uw_conv, &
-        moistproc_scale_uw, moistproc_scale_donner
+        moistproc_scale_uw, moistproc_scale_donner, height_adjust !miz
 
 !--------------------- version number ----------------------------------
 character(len=128) :: &
@@ -71,7 +71,7 @@ subroutine moistproc_cmt ( Time, is, js, t, u, v, tracer, pfull, phalf, &
                         qtr, diff_cu_mo  )
 
 !---------------------------------------------------------------------
-!    update the current tracer tendencies with the contributions 
+!    update the current tracer tendencies with the contributions
 !    just obtained from cu_mo_trans.
 !---------------------------------------------------------------------
       do n=1, num_tracers
@@ -79,11 +79,11 @@ subroutine moistproc_cmt ( Time, is, js, t, u, v, tracer, pfull, phalf, &
       end do
 
 !----------------------------------------------------------------------
-!    add the temperature, specific humidity and momentum tendencies 
-!    from ras (ttnd, qtnd, utnd, vtnd) to the arrays accumulating 
+!    add the temperature, specific humidity and momentum tendencies
+!    from ras (ttnd, qtnd, utnd, vtnd) to the arrays accumulating
 !    these tendencies from all physics processes (tdt, qdt, udt, vdt).
 !----------------------------------------------------------------------
-      tdt = tdt + ttnd 
+      tdt = tdt + ttnd
       udt = udt + utnd
       vdt = vdt + vtnd
       ttnd_conv = ttnd_conv + ttnd
@@ -117,20 +117,20 @@ subroutine moistproc_lscale_cond (is, js, t, q, pfull, phalf, tdt, qdt, &
 !-----------------------------------------------------------------------
 !    add the temperature and specific humidity increments to the updated
 !    temperature and specific humidity fields (tin, qin). convert these
-!    increments and the precipitation increments to rates and add to 
+!    increments and the precipitation increments to rates and add to
 !    the arrays accumulating the total rates for all physical processes
 !    (tdt, qdt, lprec, fprec).
 !-----------------------------------------------------------------------
-      t     = t   + ttnd 
+      t     = t   + ttnd
       q     = q   + qtnd
-      tdt   = tdt   + ttnd*dtinv 
+      tdt   = tdt   + ttnd*dtinv
       qdt   = qdt   + qtnd*dtinv
       lprec = lprec + rain*dtinv
       fprec = fprec + snow*dtinv
 
 !--------------------------------------------------------------------
 !    if rh_clouds is active, call rh_calc to determine the grid box
-!    relative humidity. call rh_clouds_sum to pass this field to 
+!    relative humidity. call rh_clouds_sum to pass this field to
 !    rh_clouds_mod so it may be used to determine the grid boxes which
 !    will contain clouds for the radiation package.
 !---------------------------------------------------------------------
@@ -140,10 +140,10 @@ subroutine moistproc_lscale_cond (is, js, t, q, pfull, phalf, tdt, qdt, &
       endif
 
 !--------------------------------------------------------------------
-!    if the gordon diagnostic cloud parameterization is active, set a 
-!    flag to indicate those grid points where drying has resulted from 
-!    convective activity (cnvcntq). call rh_calc to determine the grid 
-!    box relative humidity. call diag_cloud_sum to define the cloud 
+!    if the gordon diagnostic cloud parameterization is active, set a
+!    flag to indicate those grid points where drying has resulted from
+!    convective activity (cnvcntq). call rh_calc to determine the grid
+!    box relative humidity. call diag_cloud_sum to define the cloud
 !    field that will be seen by the radiation package.
 !---------------------------------------------------------------------
       if (do_diag_clouds) then
@@ -172,7 +172,7 @@ subroutine moistproc_mca( Time, is, js, t, q, tracer, pfull, phalf, coldT, dtinv
   logical, intent(in)         :: do_strat
   logical, intent(in), dimension(:)       :: tracers_in_mca
   logical, intent(in), dimension(:,:)     :: coldT
-  real, intent(in),    dimension(:,:,:)   :: pfull, phalf 
+  real, intent(in),    dimension(:,:,:)   :: pfull, phalf
   real, intent(inout), dimension(:,:)     :: lprec, fprec
   real, intent(inout), dimension(:,:,:)   :: t, q, tdt, qdt, ttnd_conv, qtnd_conv
   real, intent(inout), dimension(:,:,:,:) :: rdt, q_tnd
@@ -192,7 +192,7 @@ subroutine moistproc_mca( Time, is, js, t, q, tracer, pfull, phalf, coldT, dtinv
       nqn = get_tracer_index ( MODEL_ATMOS, 'liq_drp' )
 
 !---------------------------------------------------------------------
-!    check each active tracer to find any that are to be transported 
+!    check each active tracer to find any that are to be transported
 !    by moist convective adjustment and fill the mca_tracers array with
 !    these fields.
 !---------------------------------------------------------------------
@@ -226,7 +226,7 @@ subroutine moistproc_mca( Time, is, js, t, q, tracer, pfull, phalf, coldT, dtinv
       endif
 
 !---------------------------------------------------------------------
-!    update the current tracer tendencies with the contributions 
+!    update the current tracer tendencies with the contributions
 !    just obtained from moist convective adjustment. currently there
 !    is no tracer transport by this process.
 !    NOTE : the stratcloud tracers are updated within moist_conv.
@@ -241,16 +241,16 @@ subroutine moistproc_mca( Time, is, js, t, q, tracer, pfull, phalf, coldT, dtinv
 
 !----------------------------------------------------------------------
 !    add the temperature and specific humidity tendencies from moist
-!    convective adjustment (ttnd, qtnd) to the arrays accumulating 
+!    convective adjustment (ttnd, qtnd) to the arrays accumulating
 !    these tendencies from all physics processes (tdt, qdt).
 !----------------------------------------------------------------------
-      tdt = tdt + ttnd 
+      tdt = tdt + ttnd
       qdt = qdt + qtnd
       ttnd_conv = ttnd_conv + ttnd
       qtnd_conv = qtnd_conv + qtnd
 
 !----------------------------------------------------------------------
-!    increment the liquid, solid and total precipitation fields with 
+!    increment the liquid, solid and total precipitation fields with
 !    the contribution from moist convective adjustment.
 !----------------------------------------------------------------------
       lprec  = lprec  + rain
@@ -258,8 +258,8 @@ subroutine moistproc_mca( Time, is, js, t, q, tracer, pfull, phalf, coldT, dtinv
 
 !----------------------------------------------------------------------
 !    if strat_cloud_mod is activated, add the cloud liquid, ice and area
-!    tendencies from moist convective adjustment to the 
-!    arrays accumulating these tendencies from all physics processes 
+!    tendencies from moist convective adjustment to the
+!    arrays accumulating these tendencies from all physics processes
 !    (rdt).
 !----------------------------------------------------------------------
       if (do_strat) then
@@ -278,7 +278,7 @@ subroutine moistproc_ras(Time, is, js, dt, coldT, t, q, u, v, tracer,       &
                          q_tnd, ttnd, qtnd, ttnd_conv, qtnd_conv, mc, det0, &
                          lprec, fprec, rain, snow, rain3d, snow3d,          &
                          Aerosol, do_strat, do_liq_num, num_tracers,        &
-                         tracers_in_ras, num_ras_tracers, kbot, mask, & 
+                         tracers_in_ras, num_ras_tracers, kbot, mask, &
                          do_ice_num, detrain_ice_num)
 
   type(time_type), intent(in)   :: Time
@@ -311,7 +311,7 @@ subroutine moistproc_ras(Time, is, js, dt, coldT, t, q, u, v, tracer,       &
       nqni = get_tracer_index ( MODEL_ATMOS, 'ice_num' )
 !----------------------------------------------------------------------
 !    if any tracers are to be transported by ras convection, check each
-!    active tracer to find those to be transported and fill the 
+!    active tracer to find those to be transported and fill the
 !    ras_tracers array with these fields.
 !---------------------------------------------------------------------
      nn = 1
@@ -324,7 +324,7 @@ subroutine moistproc_ras(Time, is, js, dt, coldT, t, q, u, v, tracer,       &
 
 !----------------------------------------------------------------------
 !    call subroutine ras to obtain the temperature, specific humidity,
-!    velocity, precipitation and tracer tendencies and mass flux 
+!    velocity, precipitation and tracer tendencies and mass flux
 !    associated with the relaxed arakawa-schubert parameterization.
 !----------------------------------------------------------------------
      if (do_strat .and. (.not.do_liq_num)) then
@@ -335,7 +335,7 @@ subroutine moistproc_ras(Time, is, js, dt, coldT, t, q, u, v, tracer,       &
                  trcr, qtr, mask,  kbot, mc, det0,        &
                  tracer(:,:,:,nql), tracer(:,:,:,nqi),    &
                  tracer(:,:,:,nqa), q_tnd(:,:,:,nql),     &
-                 q_tnd(:,:,:,nqi), q_tnd(:,:,:,nqa))       
+                 q_tnd(:,:,:,nqi), q_tnd(:,:,:,nqa))
 
      elseif (do_strat .and. do_liq_num) then
        call ras (is,   js,     Time,     t,   q,          &
@@ -357,9 +357,9 @@ subroutine moistproc_ras(Time, is, js, dt, coldT, t, q, u, v, tracer,       &
      endif
 
 !---------------------------------------------------------------------
-!    update the current tracer tendencies with the contributions 
+!    update the current tracer tendencies with the contributions
 !    just obtained from ras transport.
-!    NOTE : the stratcloud tracers are updated within ras.        
+!    NOTE : the stratcloud tracers are updated within ras.
 !---------------------------------------------------------------------
      nn = 1
      do n=1, num_tracers
@@ -369,27 +369,27 @@ subroutine moistproc_ras(Time, is, js, dt, coldT, t, q, u, v, tracer,       &
        endif
      end do
 !----------------------------------------------------------------------
-!    add the temperature, specific humidity and momentum tendencies 
-!    from ras (ttnd, qtnd, utnd, vtnd) to the arrays accumulating 
+!    add the temperature, specific humidity and momentum tendencies
+!    from ras (ttnd, qtnd, utnd, vtnd) to the arrays accumulating
 !    these tendencies from all physics processes (tdt, qdt, udt, vdt).
 !----------------------------------------------------------------------
-     tdt = tdt + ttnd 
+     tdt = tdt + ttnd
      qdt = qdt + qtnd
      udt = udt + utnd
      vdt = vdt + vtnd
 !---------------------------------------------------------------------
-!    if donner_deep_mod is also active, define the total time tendency 
-!    due to all moist convective processes (donner (including its mca 
+!    if donner_deep_mod is also active, define the total time tendency
+!    due to all moist convective processes (donner (including its mca
 !    part), and ras) of temperature, specific humidity, rain, snow and,
-!    if strat_cloud_mod is activated, the cloud liquid, cloud ice and 
-!    cloud area. 
+!    if strat_cloud_mod is activated, the cloud liquid, cloud ice and
+!    cloud area.
 !---------------------------------------------------------------------
      ttnd_conv = ttnd_conv + ttnd
      qtnd_conv = qtnd_conv + qtnd
 
 !----------------------------------------------------------------------
 !    if strat_cloud_mod is activated, add the cloud liquid, ice and area
-!    tendencies from ras to the arrays accumulating these tendencies 
+!    tendencies from ras to the arrays accumulating these tendencies
 !    from all physics processes (rdt).
 !----------------------------------------------------------------------
      if (do_strat) then
@@ -399,17 +399,17 @@ subroutine moistproc_ras(Time, is, js, dt, coldT, t, q, u, v, tracer,       &
        if (do_liq_num) rdt(:,:,:,nqn) = rdt(:,:,:,nqn) + q_tnd(:,:,:,nqn)
 
 !------------------------------------------------------------------------
-!    currently this is the ice number tendency due to detrainment 
+!    currently this is the ice number tendency due to detrainment
 !    proportional by ice mass
 !------------------------------------------------------------------------
        IF (do_ice_num .AND. detrain_ice_num) THEN
-         CALL detr_ice_num (t, q_tnd(:,:,:,nqi), q_tnd(:,:,:,nqni))   
+         CALL detr_ice_num (t, q_tnd(:,:,:,nqi), q_tnd(:,:,:,nqni))
          rdt(:,:,:,nqni) = rdt(:,:,:,nqni) + q_tnd(:,:,:,nqni)
        END IF
      endif
 
 !----------------------------------------------------------------------
-!    increment the liquid, solid and total precipitation fields with 
+!    increment the liquid, solid and total precipitation fields with
 !    the contribution from ras.
 !----------------------------------------------------------------------
      lprec  = lprec  + rain
@@ -490,19 +490,19 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                                                       convective_humidity_ratio,    &
                                                       aerosols_concen, droplets_concen
 
-      ix=size(t,1) 
-      jx=size(t,2) 
+      ix=size(t,1)
+      jx=size(t,2)
       kx=size(t,3)
       dtinv = 1./dt
 
 !----------------------------------------------------------------------
-!    define the grid box specific humidity and saturation specific 
+!    define the grid box specific humidity and saturation specific
 !    humidity.
 !------------------------------------------------------------------
       call compute_qs (t, pfull, qsat)
- 
+
 !----------------------------------------------------------------------
-!    define the grid box area whose humidity is affected by the 
+!    define the grid box area whose humidity is affected by the
 !    convective clouds and the environmental fraction and environmental
 !    rh.
 !-------------------------------------------------------------------
@@ -532,20 +532,20 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
 !    define the ratio of the grid-box relative humidity to the humidity
 !    in the environment of the convective clouds.
 !----------------------------------------------------------------------
- 
+
 !----------------------------------------------------------------------
 !    grid box has vapor and there is vapor outside of the convective a
 !    clouds available for condensation.
 !----------------------------------------------------------------
           if (qrf /= 0.0 .and. env_qv > 0.0) then
- 
+
 !--------------------------------------------------------------------
 !    there is grid box area not filled with convective clouds
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
             if (env_fraction > 0.0) then
               convective_humidity_ratio(i,j,k) =    &
                       MAX (qrf*env_fraction/env_qv, 1.0)
- 
+
 !---------------------------------------------------------------------
 !    grid box is filled with convective clouds.
 !----------------------------------------------------------------------
@@ -554,7 +554,7 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
             endif
 
 !--------------------------------------------------------------------
-!    either no vapor or all vapor taken up in convective clouds so 
+!    either no vapor or all vapor taken up in convective clouds so
 !    none left for large-scale cd.
 !---------------------------------------------------------------------
           else
@@ -563,9 +563,9 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
         end do
        end do
       end do
-        
+
 !-----------------------------------------------------------------------
-!    call strat_cloud to integrate the prognostic cloud equations. 
+!    call strat_cloud to integrate the prognostic cloud equations.
 !-----------------------------------------------------------------------
       nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
       nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
@@ -582,12 +582,12 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
         enddo
 
 !droplet number concentration in #/cc following Boucher and Lohmann 1995
-!the lin microphysics uses #/cc								
+!the lin microphysics uses #/cc
        do k=1,kx
        do j=1,jx
        do i=1,ix
           depth = (phalf(i,j,k+1) - phalf(i,j,k)) / ( 9.8*0.029*pfull(i,j,k)/(8.314*t(i,j,k)))
-!sulfate concentration in ug/m3	
+!sulfate concentration in ug/m3
           aerosols_concen(i,j,k)=(Aerosol%aerosol(i,j,k,1))/depth*1.e9
           if ( lat(i,j) < -1.0472 ) then    ! South of ~60S are treated as ocean
             droplets_concen(i,j,k)= 10.**2.06*(0.7273*aerosols_concen(i,j,k))**0.48
@@ -648,9 +648,9 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                             lsc_snow_size = lsc_snow_size,   &
                             lsc_rain_size = lsc_rain_size )
 
- 
+
         elseif ( do_legacy_strat_cloud ) then
-          call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,    & 
+          call strat_cloud (Time, is, ie, js, je, dt, pfull, phalf,    &
                             radturbten, t, q, tracer(:,:,:,nql),         &
                             tracer(:,:,:,nqi), tracer(:,:,:,nqa),        &
                             omega, mc_full, diff_t, land, ttnd, qtnd,    &
@@ -658,7 +658,7 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                             q_tnd(:,:,:,nqa),  f_snow_berg,  &
                             rain3d, snow3d, snowclr3d, &
                             rain, snow, convective_humidity_ratio,   &
-                            convective_humidity_area,     &  
+                            convective_humidity_area,     &
                             limit_conv_cloud_frac, mask=mask,            &
                             qn=tracer(:,:,:,nqn), Aerosol=Aerosol,       &
                             SN=q_tnd(:,:,:,nqn))
@@ -675,7 +675,7 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
                                   snowclr3d, rain, snow,       &
                                   convective_humidity_ratio,   &
                                   convective_humidity_area,    &
-                                  limit_conv_cloud_frac, Aerosol, &       
+                                  limit_conv_cloud_frac, Aerosol, &
                                   mask3d=mask, qn_in=tracer(:,:,:,nqn),  &
                                   SN_out = q_tnd(:,:,:,nqn),             &
                                   qni_in=tracer(:,:,:,nqni),   &
@@ -744,7 +744,7 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
 !    upon return from strat_cloud, update the cloud liquid, ice and area.
 !    update the temperature and specific humidity fields.
 !----------------------------------------------------------------------
-      tracer(:,:,:,nql) = tracer(:,:,:,nql) + q_tnd(:,:,:,nql)              
+      tracer(:,:,:,nql) = tracer(:,:,:,nql) + q_tnd(:,:,:,nql)
       tracer(:,:,:,nqi) = tracer(:,:,:,nqi) + q_tnd(:,:,:,nqi)
       tracer(:,:,:,nqa) = tracer(:,:,:,nqa) + q_tnd(:,:,:,nqa)
       if (do_liq_num) tracer(:,:,:,nqn) =    &
@@ -759,9 +759,9 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
       if (do_liq_num) lsc_droplet_number(:,:,:) = tracer(:,:,:,nqn)
       if (do_ice_num) lsc_ice_number(:,:,:) = tracer(:,:,:,nqni)
 
-      t = t + ttnd 
+      t = t + ttnd
       q = q + qtnd
-        
+
       used = send_data (id_qvout, q, Time, is, js, 1, rmask=mask)
       used = send_data (id_qaout, tracer(:,:,:,nqa), Time, is, js, 1, rmask=mask)
       used = send_data (id_qlout, tracer(:,:,:,nql), Time, is, js, 1, rmask=mask)
@@ -774,9 +774,9 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
       endif
 
 !----------------------------------------------------------------------
-!    call strat_cloud_sum to make the cloud variables available for 
+!    call strat_cloud_sum to make the cloud variables available for
 !    access by the radiation package. NOTE: this is no longer necessary,
-!    and can be judiciously removed (provided other affiliated code 
+!    and can be judiciously removed (provided other affiliated code
 !    and options are nullified).
 !----------------------------------------------------------------------
      call strat_cloud_sum (is, js, tracer(:,:,:,nql),  &
@@ -785,22 +785,22 @@ subroutine moistproc_strat_cloud(Time, is, ie, js, je, lon, lat, ktop, dt, tm, t
 !----------------------------------------------------------------------
 !    convert increments to tendencies.
 !----------------------------------------------------------------------
-      ttnd = ttnd*dtinv 
+      ttnd = ttnd*dtinv
       qtnd = qtnd*dtinv
-      rain = rain*dtinv 
+      rain = rain*dtinv
       snow = snow*dtinv
       q_tnd(:,:,:,nql) = q_tnd(:,:,:,nql)*dtinv
       q_tnd(:,:,:,nqi) = q_tnd(:,:,:,nqi)*dtinv
       q_tnd(:,:,:,nqa) = q_tnd(:,:,:,nqa)*dtinv
       if (do_liq_num) q_tnd(:,:,:,nqn) = q_tnd(:,:,:,nqn)*dtinv
       if (do_ice_num) q_tnd(:,:,:,nqni) = q_tnd(:,:,:,nqni)*dtinv
-   
+
 !----------------------------------------------------------------------
-!    update the total tendency terms (temperature, vapor specific 
+!    update the total tendency terms (temperature, vapor specific
 !    humidity, cloud liquid, cloud ice, cloud area, liquid precip,
 !    frozen precip) with the contributions from the strat_cloud scheme.
 !----------------------------------------------------------------------
-      tdt = tdt + ttnd 
+      tdt = tdt + ttnd
       qdt = qdt + qtnd
       rdt(:,:,:,nql) = rdt(:,:,:,nql) + q_tnd(:,:,:,nql)
       rdt(:,:,:,nqi) = rdt(:,:,:,nqi) + q_tnd(:,:,:,nqi)
@@ -819,7 +819,8 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                              ustar, bstar, qstar, shflx, lhflx, land, coldT, Aerosol, &!miz
                              tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint, lat, lon, &!miz
                              cush, cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv,   &
-			     cmf, conv_calc_completed,                        &
+                             pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+                             cmf, conv_calc_completed,                        &!miz
                              available_cf_for_uw, tdt, qdt, udt, vdt, rdt,    &
                              ttnd_conv, qtnd_conv, lprec, fprec, precip,      &
                              liq_precflx, ice_precflx, rain_uw, snow_uw,      &
@@ -845,6 +846,7 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
   real, intent(inout), dimension(:,:)     :: lprec, fprec, precip, cush, cbmf, hmint, cgust
   real, intent(inout), dimension(:,:)     :: tke, pblhto, rkmo, taudpo
   integer, intent(inout), dimension(:,:,:) :: exist_shconv, exist_dpconv
+  real, intent(inout), dimension(:,:,:)   :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev !miz
   real, intent(in),    dimension(:,:,:)   :: tdt_rad, tdt_dyn, qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif !miz
   real, intent(inout), dimension(:,:)     :: rain_uw, snow_uw
   real, intent(inout), dimension(:,:,:)   :: tdt, qdt, udt, vdt,   &
@@ -873,7 +875,7 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
 
 !----------------------------------------------------------------------
 !    if any tracers are to be transported by UW convection, check each
-!    active tracer to find those to be transported and fill the 
+!    active tracer to find those to be transported and fill the
 !    ras_tracers array with these fields.
 !---------------------------------------------------------------------
       nn = 1
@@ -892,12 +894,12 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
                     qitnd_uw, qatnd_uw, qntnd_uw, utnd_uw, vtnd_uw,       &
                     rain_uw, snow_uw, cmf, liq_precflx, ice_precflx,      &
                     shallow_liquid, shallow_ice, shallow_cloud_area,      &
-                    shallow_droplet_number, cbmf, cgust, tke, pblhto,     &
-		    rkmo, taudpo, exist_shconv, exist_dpconv,             &
-                    trcr, qtruw, uw_wetdep)
+                    shallow_droplet_number, trcr, qtruw, uw_wetdep,       &
+                    cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, &
+                    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev)
 
 !-------------------------------------------------------------------------
-!    currently qnitnd_uw is the tendency due to detrainment proportional 
+!    currently qnitnd_uw is the tendency due to detrainment proportional
 !    by ice mass
 !-------------------------------------------------------------------------
       IF ( do_ice_num .AND. detrain_ice_num ) THEN
@@ -926,7 +928,7 @@ subroutine moistproc_uw_conv(Time, is, ie, js, je, dt, t, q, u, v, tracer,      
         endif
 
 !---------------------------------------------------------------------
-!    update the current tracer tendencies with the contributions 
+!    update the current tracer tendencies with the contributions
 !    just obtained from uw transport.
 !---------------------------------------------------------------------
         nn = 1
@@ -1104,7 +1106,7 @@ subroutine moistproc_scale_uw(is,ie,js,je, dt, q, tracer, tdt, qdt, udt, vdt, rd
 
 !      Tendencies coming out of UW shallow are adjusted to prevent
 !      the formation of negative water vapor, liquid or ice.
- 
+
 !      (1) Prevent negative liquid and ice specific humidities after tendencies are applied
        temp = tracer(:,:,:,nql)/dt + qltnd_uw(:,:,:)
        where (temp(:,:,:) .lt. 0.)
@@ -1193,7 +1195,7 @@ subroutine moistproc_scale_uw(is,ie,js,je, dt, q, tracer, tdt, qdt, udt, vdt, rd
        endif
 
 !------------------------------------------------------------------------
-!      update the current tracer tendencies with the contributions 
+!      update the current tracer tendencies with the contributions
 !      obtained from uw transport.
 !------------------------------------------------------------------------
        nn = 1
@@ -1208,6 +1210,53 @@ subroutine moistproc_scale_uw(is,ie,js,je, dt, q, tracer, tdt, qdt, udt, vdt, rd
 
 end subroutine moistproc_scale_uw
 
+!#######################################################################
+subroutine height_adjust(t, qv, r, tn, qvn, rn, &
+                         phalf, pfull, zhalf, zfull, d_zhalf, d_zfull)
+
+!  integer, intent(in)           :: is, ie, js, je
+  real, intent(in),    dimension(:,:,:)   :: t, qv, tn, qvn
+  real, intent(in),    dimension(:,:,:,:) :: r, rn
+  real, intent(in),    dimension(:,:,:)   :: phalf, pfull, zhalf, zfull
+  real, intent(out),   dimension(:,:,:)   :: d_zhalf, d_zfull
+
+
+  integer :: i, j, k, ix, jx, kx, nql, nqi, nqa
+  real, dimension(size(t,1), size(t,2), size(t,3))   :: tv, tvn, dz, dz_n
+  real, dimension(size(t,1), size(t,2), size(t,3))   :: zfull_n
+  real, dimension(size(t,1), size(t,2), size(t,3)+1) :: zhalf_n
+
+      tv=0.; tvn=0.; dz=0.; dz_n=0; zhalf_n=0.; zfull_n=0.;
+      ix = size(t,1)
+      jx = size(t,2)
+      kx = size(t,3)
+      nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
+      nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
+
+      tv  = t(:,:,:) *(1 + 0.608*qv (:,:,:) - r (:,:,:,nql)-r (:,:,:,nqi))
+      tvn = tn(:,:,:)*(1 + 0.608*qvn(:,:,:) - rn(:,:,:,nql)-rn(:,:,:,nqi))
+
+      zhalf_n(:,:,kx+1)=zhalf(:,:,kx+1);
+      do k=kx,1,-1
+         dz     (:,:,k)=zhalf(:,:,k)-zhalf(:,:,k+1)
+         dz_n   (:,:,k)=dz(:,:,k)*tvn(:,:,k)/tv(:,:,k)
+         zhalf_n(:,:,k)=zhalf_n(:,:,k+1)+dz_n(:,:,k)
+         zfull_n(:,:,k)=(zhalf_n(:,:,k)+zhalf_n(:,:,k+1))*0.5
+      enddo
+
+      d_zhalf(:,:,:)=zhalf_n(:,:,:)-zhalf(:,:,:)
+      d_zfull(:,:,:)=zfull_n(:,:,:)-zfull(:,:,:)
+
+!      do k=1,kx
+!         dlp (:,:,k)=log(phalf(:,:,k+1))-log(phalf(:,:,k))
+!        tmp1(:,:,k)=RDGAS/GRAV*tv (:,:,k)*dlp(:,:,k)
+!        tmp2(:,:,k)=RDGAS/GRAV*tvn(:,:,k)*dlp(:,:,k)
+!        tv    (:,:,k)=zhalf_n(:,:,k)-zhalf(:,:,k)
+!        tvn   (:,:,k)=zfull_n(:,:,k)-zfull(:,:,k)
+!        tmp   (:,:,k)=(zhalf(:,:,k+1)+zhalf(:,:,k))*0.5-zfull(:,:,k)
+!      enddo
+
+end subroutine height_adjust
 
 
 !#########################################################################

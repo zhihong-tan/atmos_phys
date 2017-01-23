@@ -22,6 +22,7 @@ use tracer_manager_mod, only: get_number_tracers, get_tracer_index, NO_TRACER
  type radiation_input_control_type
      integer :: sphum                    ! index for specific humidity tracer
      logical :: phys_hydrostatic         ! hydrostratic flag for physics
+     logical :: do_uni_zfull             ! miz
      type (domain2D) :: domain
  end type radiation_input_control_type
 
@@ -76,7 +77,7 @@ contains
     integer :: j, i, k, jb, ib, idx, npz
     logical :: esm2_bugs_local
 
-!---the following is needed in order to allow ESM2 to reproduce a bug that 
+!---the following is needed in order to allow ESM2 to reproduce a bug that
 !---existed in the fv-latlon core (atmos_fv_dynamics::fv_physics.F90)
 !---in which the dry mass mixing ratio was not used resulting in the following:
 !--- qp = qp + q(co2)*(pe(k+1)-pe(k))
@@ -112,7 +113,7 @@ contains
         enddo
       enddo
     enddo
-    if (esm2_bugs_local) then 
+    if (esm2_bugs_local) then
       Radiation%glbl_qty%atm_mass = mpp_global_sum(Radiation%control%domain, psfc_sum, &
                                       flags=BITWISE_EXACT_SUM)
     else
@@ -175,16 +176,17 @@ contains
  end subroutine compute_g_avg
 
 
- subroutine alloc_radiation_type (Radiation, Atm_block, p_hydro)
+ subroutine alloc_radiation_type (Radiation, Atm_block, p_hydro, do_uni_zfull) !miz
   type (radiation_type), intent(inout) :: Radiation
   type (block_control_type), intent(in) :: Atm_block
-  logical,               intent(in)    :: p_hydro
+  logical,               intent(in)    :: p_hydro, do_uni_zfull !miz
 !--- local varialbes
-  integer :: n, ix, jx, npz, nt_prog 
+  integer :: n, ix, jx, npz, nt_prog
 
 !---allocate/set control data
    npz = Atm_block%npz
    Radiation%control%phys_hydrostatic = p_hydro
+   Radiation%control%do_uni_zfull = do_uni_zfull !miz
 
    call get_number_tracers(MODEL_ATMOS, num_prog=nt_prog)
    Radiation%control%sphum = get_tracer_index(MODEL_ATMOS, 'sphum')
@@ -208,15 +210,15 @@ contains
      ix = Atm_block%ibe(n)-Atm_block%ibs(n)+1
      jx = Atm_block%jbe(n)-Atm_block%jbs(n)+1
      allocate (Radiation%block(n)%phis   (ix,jx),           &
-               Radiation%block(n)%t      (ix,jx,npz),       & 
-               Radiation%block(n)%q      (ix,jx,npz,nt_prog), & 
-               Radiation%block(n)%pe     (ix,npz+1,jx),     & 
-               Radiation%block(n)%peln   (ix,npz+1,jx),     & 
-               Radiation%block(n)%delp   (ix,jx,npz),       & 
-               Radiation%block(n)%delz   (ix,jx,npz),       & 
-               Radiation%block(n)%p_full (ix,jx,npz),       & 
-               Radiation%block(n)%p_half (ix,jx,npz+1),     & 
-               Radiation%block(n)%z_full (ix,jx,npz),       & 
+               Radiation%block(n)%t      (ix,jx,npz),       &
+               Radiation%block(n)%q      (ix,jx,npz,nt_prog), &
+               Radiation%block(n)%pe     (ix,npz+1,jx),     &
+               Radiation%block(n)%peln   (ix,npz+1,jx),     &
+               Radiation%block(n)%delp   (ix,jx,npz),       &
+               Radiation%block(n)%delz   (ix,jx,npz),       &
+               Radiation%block(n)%p_full (ix,jx,npz),       &
+               Radiation%block(n)%p_half (ix,jx,npz+1),     &
+               Radiation%block(n)%z_full (ix,jx,npz),       &
                Radiation%block(n)%z_half (ix,jx,npz+1)      )
      Radiation%block(n)%phis   =0.
      Radiation%block(n)%t      =0.

@@ -1,4 +1,4 @@
-                           module physics_driver_mod
+module physics_driver_mod
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -80,6 +80,13 @@ use fms_io_mod,              only: restore_state, &
 use constants_mod,           only: RDGAS
 
 use diag_manager_mod,        only: register_diag_field, send_data
+
+! shared atmospheric package modules:
+
+use atmos_cmip_diag_mod,     only: register_cmip_diag_field_3d, &
+                                   send_cmip_data_3d, &
+                                   cmip_diag_id_type, &
+                                   query_cmip_diag_id
 
 !    shared radiation package modules:
 
@@ -360,6 +367,7 @@ real,    dimension(:,:,:), allocatable :: radturbten
 real,    dimension(:,:)  , allocatable :: pbltop, cush, cbmf, hmint, cgust !miz 
 real,    dimension(:,:)  , allocatable :: tke, pblhto, rkmo, taudpo        !miz
 integer, dimension(:,:,:), allocatable :: exist_shconv, exist_dpconv       !miz
+real,    dimension(:,:,:), allocatable :: pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev !miz
 
 logical, dimension(:,:)  , allocatable :: convect
 
@@ -413,6 +421,7 @@ logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has
 integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
 !integer   :: ncol                     ! number of stochastic columns
+integer   ::  nsphum                  ! index for specific humidity tracer
  
 integer   :: num_uw_tracers
 
@@ -437,6 +446,8 @@ integer, dimension(:), allocatable :: id_tracer_phys,         &
                                       id_tracer_phys_vdif_up, &
                                       id_tracer_phys_turb,    &
                                       id_tracer_phys_moist
+
+type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp
 
 type (clouds_from_moist_block_type) :: Restart
 
@@ -756,6 +767,12 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       allocate ( taudpo     (id, jd) )     ; taudpo=28800.    !miz
       allocate ( exist_shconv(id, jd,48) ) ; exist_shconv = 0 !miz
       allocate ( exist_dpconv(id, jd,48) ) ; exist_dpconv = 0 !miz
+      allocate ( pblht_prev  (id, jd,48) ) ; pblht_prev   = 0.!miz
+      allocate ( hlsrc_prev  (id, jd,48) ) ; hlsrc_prev   = 0.!miz
+      allocate ( qtsrc_prev  (id, jd,48) ) ; qtsrc_prev   = 0.!miz
+      allocate ( cape_prev   (id, jd,48) ) ; cape_prev    = 0.!miz
+      allocate ( cin_prev    (id, jd,48) ) ; cin_prev     = 0.!miz
+      allocate ( tke_prev    (id, jd,48) ) ; tke_prev     = 0.!miz
       allocate ( convect    (id, jd) )     ; convect = .false.
       allocate ( radturbten (id, jd, kd))  ; radturbten = 0.0
       allocate ( r_convect  (id, jd) )     ; r_convect   = 0.0
@@ -857,6 +874,12 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
       write(outunit,100) 'taudpo                 ', mpp_chksum(taudpo                )
       write(outunit,100) 'exist_shconv           ', mpp_chksum(exist_shconv          )
       write(outunit,100) 'exist_dpconv           ', mpp_chksum(exist_dpconv          )
+      write(outunit,100) 'pblht_prev             ', mpp_chksum(pblht_prev            )
+      write(outunit,100) 'hlsrc_prev             ', mpp_chksum(hlsrc_prev            )
+      write(outunit,100) 'qtsrc_prev             ', mpp_chksum(qtsrc_prev            )
+      write(outunit,100) 'cape_prev              ', mpp_chksum(cape_prev             )
+      write(outunit,100) 'cin_prev               ', mpp_chksum(cin_prev              )
+      write(outunit,100) 'tke_prev               ', mpp_chksum(tke_prev              )
       write(outunit,100) 'diff_t                 ', mpp_chksum(diff_t                )
       write(outunit,100) 'diff_m                 ', mpp_chksum(diff_m                )
       write(outunit,100) 'r_convect              ', mpp_chksum(r_convect             )
@@ -986,6 +1009,19 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
          'tdt_phys', axes(1:3), Time,                          &
          'temperature tendency from physics ', &
          'K/s', missing_value=missing_value)
+
+     !-------- CMIP diagnostics (tendencies due to physics) --------
+      ID_tntmp = register_cmip_diag_field_3d ( mod_name, 'tntmp', Time, &
+                  'Tendency of Air Temperature due to Model Physics', 'K s-1', & 
+             standard_name='tendency_of_air_temperature_due_to_model_physics' )
+
+      nsphum = get_tracer_index(MODEL_ATMOS,'sphum')
+      if (nsphum /= NO_TRACER) then
+        ID_tnhusmp = register_cmip_diag_field_3d ( mod_name, 'tnhusmp', Time, &
+                    'Tendency of Specific Humidity due to Model Physics', 's-1', &
+               standard_name='tendency_of_specific_humidity_due_to_model_physics' )
+      endif
+ 
 
       allocate (id_tracer_phys(ntp))
       allocate (id_tracer_phys_vdif_dn(ntp))
@@ -1188,7 +1224,8 @@ end subroutine physics_driver_up_endts
 !                                p_half, p_full, z_half, z_full,       &
 !                                u, v, t, q, r, um, vm, tm, qm, rm,    &
 !                                frac_land, rough_mom,                 &
-!                                albedo,    t_surf_rad, t_ref, q_ref,  &
+!                                albedo,    t_surf_rad, u_ref, v_ref,  &
+!                                t_ref, q_ref,                         &
 !                                u_star,    b_star, q_star,            &
 !                                dtau_du,  dtau_dv,  tau_x,  tau_y,    &
 !                                udt, vdt, tdt, qdt, rdt,              &
@@ -1270,6 +1307,12 @@ end subroutine physics_driver_up_endts
 !  <IN NAME="t_surf_rad" TYPE="real">
 !   surface radiative temperature
 !  </IN>
+!  <IN NAME="u_ref" TYPE="real">
+!   10m zonal wind
+!  </IN>
+!  <IN NAME="v_ref" TYPE="real">
+!   10m meridional wind
+!  </IN>
 !  <IN NAME="u_star" TYPE="real">
 !   boundary layer wind speed (frictional speed)
 !  </IN>
@@ -1330,7 +1373,8 @@ subroutine physics_driver_down (is, ie, js, je, npz,              &
                                 frac_land, rough_mom,             &
                                 frac_open_sea,                    &
                                 albedo,                           &
-                                t_surf_rad, t_ref, q_ref,         &
+                                t_surf_rad, u_ref, v_ref,         & !bqx+ u_ref, v_ref
+                                t_ref, q_ref,                     &
                                 u_star,    b_star, q_star,        &
                                 dtau_du, dtau_dv,  tau_x,  tau_y, &
                                 Physics_tendency_block,           &
@@ -1354,6 +1398,7 @@ type(physics_input_block_type), intent(in)      :: Physics_input_block
 real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    rough_mom, &
                                                    albedo, t_surf_rad, &
+                                                   u_ref, v_ref, & !bqx+
                                                    t_ref, q_ref, &  ! cjg: PBL depth mods
                                                    u_star, b_star,    &
                                                    q_star, dtau_du,   &
@@ -1567,7 +1612,8 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call damping_driver (is, js, lat, Time_next, dt, area,        &
                            p_full, p_half, z_full, z_half,          &
                            um, vm, tm, rm(:,:,:,1), rm(:,:,:,1:ntp),&
-                           udt, vdt, tdt, rdt(:,:,:,1), rdt, z_pbl)
+                           u_ref, v_ref, z_pbl,                     &  !bqx+
+                           udt, vdt, tdt, rdt(:,:,:,1), rdt)
      call mpp_clock_end ( damping_clock )
 
 !---------------------------------------------------------------------
@@ -1997,7 +2043,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       integer :: flag_ls, flag_cc
       integer :: kmax
       logical :: used
-      logical :: hydrostatic, phys_hydrostatic
+      logical :: hydrostatic, phys_hydrostatic, do_uni_zfull  !miz
       integer :: istrat, icell, imeso, ishallow
 
 ! save the temperature and moisture tendencies from sensible and latent heat fluxes
@@ -2050,6 +2096,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       rdiag => Physics_tendency_block%qdiag
       hydrostatic = Physics_control%hydrostatic
       phys_hydrostatic = Physics_control%phys_hydrostatic
+      do_uni_zfull = Physics_control%do_uni_zfull
 
 !---------------------------------------------------------------------
 !    verify that the module is initialized.
@@ -2194,6 +2241,8 @@ real,dimension(:,:),    intent(inout)             :: gust
 	   tke(is:ie,js:je),  pblhto(is:ie,js:je), rkmo(is:ie,js:je), &!miz
 	   taudpo(is:ie,js:je),                                       &!miz
            exist_shconv(is:ie,js:je,:), exist_dpconv(is:ie,js:je,:),  &!miz
+           pblht_prev(is:ie,js:je,:), hlsrc_prev(is:ie,js:je,:),qtsrc_prev(is:ie,js:je,:), &!miz
+           cape_prev (is:ie,js:je,:), cin_prev  (is:ie,js:je,:),tke_prev  (is:ie,js:je,:), &!miz
            pbltop(is:ie,js:je), u_star, b_star, q_star, shflx, lhflx, &!miz
            t,   r(:,:,:,1),   r,    u,  v,  w,             &
            tm,  rm(:,:,:,1),  rm,   um, vm,                &
@@ -2256,8 +2305,14 @@ real,dimension(:,:),    intent(inout)             :: gust
                            taudpo         (is:ie,js:je),             &!miz
                            exist_shconv   (is:ie,js:je,:),           &
                            exist_dpconv   (is:ie,js:je,:),           &
-                            pbltop(is:ie,js:je),         &!miz
-                            u_star, b_star, q_star, shflx, lhflx,    &!miz
+                           pblht_prev     (is:ie,js:je,:),           &!miz
+                           hlsrc_prev     (is:ie,js:je,:),           &!miz
+                           qtsrc_prev     (is:ie,js:je,:),           &!miz
+                           cape_prev      (is:ie,js:je,:),           &!miz
+                           cin_prev       (is:ie,js:je,:),           &!miz
+                           tke_prev       (is:ie,js:je,:),           &!miz
+                           pbltop(is:ie,js:je),                      &!miz
+                           u_star, b_star, q_star, shflx, lhflx,     &!miz
                            t,   r(:,:,:,1),   r,    u,  v,  w,         &
                            tm,  rm(:,:,:,1),  rm,   um, vm,            &
                            tdt, rdt(:,:,:,1), rdt, rdiag, udt, vdt,    &
@@ -2315,7 +2370,13 @@ real,dimension(:,:),    intent(inout)             :: gust
                             taudpo         (is:ie,js:je),             &!miz
                             exist_shconv   (is:ie,js:je,:),           &!
                             exist_dpconv   (is:ie,js:je,:),           &!
-                            pbltop(is:ie,js:je),         &!miz
+                            pblht_prev     (is:ie,js:je,:),           &!miz
+                            hlsrc_prev     (is:ie,js:je,:),           &!miz
+                            qtsrc_prev     (is:ie,js:je,:),           &!miz
+                            cape_prev      (is:ie,js:je,:),           &!miz
+                            cin_prev       (is:ie,js:je,:),           &!miz
+                            tke_prev       (is:ie,js:je,:),           &!miz
+                            pbltop(is:ie,js:je),                      &!miz
                             u_star, b_star, q_star, shflx, lhflx,     &!miz
                             t,   r(:,:,:,1),   r,    u,  v,  w,         &
                             tm,  rm(:,:,:,1),  rm,   um, vm,            &
@@ -2365,7 +2426,13 @@ real,dimension(:,:),    intent(inout)             :: gust
                            taudpo         (is:ie,js:je),             &!miz
                            exist_shconv   (is:ie,js:je,:),           &!
                            exist_dpconv   (is:ie,js:je,:),           &!
-                            pbltop(is:ie,js:je),         &!miz
+                           pblht_prev     (is:ie,js:je,:),           &!miz
+                           hlsrc_prev     (is:ie,js:je,:),           &!miz
+                           qtsrc_prev     (is:ie,js:je,:),           &!miz
+                           cape_prev      (is:ie,js:je,:),           &!miz
+                           cin_prev       (is:ie,js:je,:),           &!miz
+                           tke_prev       (is:ie,js:je,:),           &!miz
+                            pbltop(is:ie,js:je),                     &!miz
                             u_star, b_star, q_star, shflx, lhflx,    &!miz
                             t,   r(:,:,:,1),   r,    u,  v,  w,         &
                             tm,  rm(:,:,:,1),  rm,   um, vm,            &
@@ -2427,6 +2494,15 @@ real,dimension(:,:),    intent(inout)             :: gust
       if (do_moist_processes) then  
         call aerosol_dealloc (Aerosol)
       endif
+      
+      !------ CMIP diagnostics (tendencies due to physics) ------
+      if (query_cmip_diag_id(ID_tntmp)) then
+        used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js, 1)
+      endif
+      if (query_cmip_diag_id(ID_tnhusmp)) then
+        used = send_cmip_data_3d (ID_tnhusmp, rdt(:,:,:,nsphum), Time_next, is, js, 1)
+      endif
+      
       
       if (do_cosp) then
         call mpp_clock_begin ( cosp_clock )
@@ -2862,7 +2938,9 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !    deallocate the module variables.
 !---------------------------------------------------------------------
       deallocate (diff_cu_mo, diff_t, diff_m, pbltop,  hmint, cush, cbmf, cgust, tke, pblhto,&
-                  rkmo, taudpo, exist_shconv, exist_dpconv, convect, radturbten, r_convect)
+                  rkmo, taudpo, exist_shconv, exist_dpconv,         &
+		  pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, &!miz
+		  convect, radturbten, r_convect)
       deallocate (fl_lsrain, fl_lssnow, fl_lsgrpl, fl_ccrain, fl_ccsnow, &
                   fl_donmca_snow, fl_donmca_rain, &
                   temp_last, q_last)
@@ -3123,6 +3201,12 @@ subroutine physics_driver_register_restart (Restart)
   id_restart = register_restart_field(Til_restart, fname, 'taudpo',     taudpo, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'exist_shconv', exist_shconv, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'exist_dpconv', exist_dpconv, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'pblht_prev',   pblht_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'hlsrc_prev',   hlsrc_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'qtsrc_prev',   qtsrc_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'cape_prev',    cape_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'cin_prev',     cin_prev, mandatory = .false.)
+  id_restart = register_restart_field(Til_restart, fname, 'tke_prev',     tke_prev, mandatory = .false.)
   id_restart = register_restart_field(Til_restart, fname, 'diff_t',     diff_t)
   id_restart = register_restart_field(Til_restart, fname, 'diff_m',     diff_m)
   id_restart = register_restart_field(Til_restart, fname, 'convect',    r_convect) 
@@ -3624,4 +3708,4 @@ integer                                 :: ierr
 
 
  
-                end module physics_driver_mod
+end module physics_driver_mod

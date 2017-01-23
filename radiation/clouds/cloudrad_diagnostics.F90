@@ -1,4 +1,4 @@
-                 module cloudrad_diagnostics_mod
+module cloudrad_diagnostics_mod
 ! <CONTACT EMAIL="Fei.Liu@noaa.gov">
 !  fil
 ! </CONTACT>
@@ -25,7 +25,9 @@ use fms_mod,                 only: fms_init, open_namelist_file, &
 use time_manager_mod,        only: time_type, time_manager_init,  &
                                    operator(>)
 use diag_manager_mod,        only: register_diag_field, send_data, &
-                                   diag_manager_init
+                                   diag_manager_init, get_diag_field_id, &
+                                   DIAG_FIELD_NOT_FOUND
+use diag_data_mod,           only: CMOR_MISSING_VALUE
 use constants_mod,           only: diffac, GRAV, RDGAS
 
 ! cloud radiation modules
@@ -317,6 +319,9 @@ integer, dimension(:), allocatable ::    &
            id_drop_size_cols_only_lsc, id_ra_drop_size_cols_only_lsc, &
            id_droplet_number_cols_only_lsc, id_lwp_cols_only_lsc, &
            id_iwp_cols_only_lsc
+
+! cmip diagnostic fields
+integer :: id_reffclwtop, id_cldncl, id_cldnvi
 
 logical :: output_opdepth_diagnostics = .false.
 logical :: module_is_initialized = .false.    ! module  initialized ?
@@ -860,7 +865,8 @@ type(microphysics_type),        intent(in)   :: Model_microphys
       real, dimension(size(press,1),size(press,2)) :: cldtop_reff,  &
                                                       cldtop_dropnum,  &
                                                       cldtop_area, &      
-                                                      dropnum_col
+                                                      dropnum_col, &
+                                                      diag2
       real, dimension(size(press,1),size(press,2),size(press,3)) :: dpog             
                                                   
       integer    :: i, j, k
@@ -882,7 +888,7 @@ type(microphysics_type),        intent(in)   :: Model_microphys
 !     data to retrieve the drop size.
 !---------------------------------------------------------------------
       if (max(id_cldtop_reff, id_cldtop_dropnum,  &
-                                    id_dropnum_col) > 0) then
+              id_dropnum_col, id_reffclwtop, id_cldncl, id_cldnvi) > 0) then
 !---------------------------------------------------------------------
 !     process each model grid column. the variables ending in _n accum-
 !     ulate vertical column data across the stochastic columns for a
@@ -900,7 +906,7 @@ type(microphysics_type),        intent(in)   :: Model_microphys
 !----------------------------------------------------------------------
                 if (Model_microphys%lsc_conc_drop(i,j,k) > 0.0) then
                   cldtop_reff  (i,j) =  0.5*  &
-                                Model_microphys%cldamt(i,j,k)* &
+                                Model_microphys%lsc_cldamt(i,j,k)* &
                                          Model_microphys%lsc_size_drop(i,j,k)
                   cldtop_dropnum(i,j) = (press(i,j,k)/  &
                                    (RDGAS*temp(i,j,k)))* &
@@ -913,13 +919,6 @@ type(microphysics_type),        intent(in)   :: Model_microphys
           end do
           end do
 
-          do k=1, kx
-            dpog(:,:,k) = (pflux(:,:,k+1) - pflux(:,:,k))/GRAV
-          end do
-          dropnum_col(:,:) = SUM  &
-                   (Model_microphys%lsc_droplet_number*dpog* &
-                    Model_microphys%lsc_cldamt, dim=3)
-
 !---------------------------------------------------------------------
 !     send the data to diag_manager. post-processing of these output
 !     fields will be needed.
@@ -928,8 +927,46 @@ type(microphysics_type),        intent(in)   :: Model_microphys
         used = send_data (id_cldtop_area, cldtop_area, Time_diag, is, js)
         used = send_data (id_cldtop_dropnum, cldtop_dropnum,   &
                                                      Time_diag, is, js)
-        used = send_data (id_dropnum_col, dropnum_col, &
-                                                     Time_diag, is, js)
+
+        if (id_dropnum_col > 0 .or. id_cldnvi > 0) then
+          do k=1, kx
+            dpog(:,:,k) = (pflux(:,:,k+1) - pflux(:,:,k))/GRAV
+          end do
+          dropnum_col(:,:) = SUM  &
+                   (Model_microphys%lsc_droplet_number*dpog* &
+                    Model_microphys%lsc_cldamt, dim=3)
+
+          if (id_dropnum_col > 0) used = send_data &
+                     (id_dropnum_col, dropnum_col, Time_diag, is, js)
+          if (id_cldnvi > 0) then
+            where(cldtop_area > 0.0) 
+              diag2 = dropnum_col / cldtop_area
+            elsewhere
+              diag2 = 0.0
+            endwhere
+            used = send_data (id_cldnvi, diag2, Time_diag, is, js)
+          endif
+        endif
+
+        ! cmip diagnostics
+        if (id_reffclwtop > 0) then
+          where(cldtop_area > 0.0)
+            diag2 = 1.0e-06*cldtop_reff / cldtop_area
+          elsewhere
+            diag2 = 0.0
+          endwhere
+          used = send_data (id_reffclwtop, diag2, Time_diag, is, js)
+        endif
+
+        if (id_cldncl > 0) then
+          where(cldtop_area > 0.0)
+            diag2 = cldtop_dropnum / cldtop_area
+          elsewhere
+            diag2 = 0.0
+          endwhere
+          used = send_data (id_cldncl, diag2, Time_diag, is, js)
+        endif
+
       endif  ! (id_cldtop_reff)
 
 !----------------------------------------------------------------------
@@ -3752,6 +3789,16 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
 !---------------------------------------------------------------------
       character(len=8) :: chvers
       integer          :: n
+      integer          :: area_id
+
+!---------------------------------------------------------------------
+!    retrieve the diag_manager id for the area diagnostic, needed for
+!    cmorizing various diagnostics.
+!--------------------------------------------------------------------
+      area_id = get_diag_field_id ('dynamics', 'area')
+      if (area_id .eq. DIAG_FIELD_NOT_FOUND) call error_mesg &
+         ('cloudrad_diagnostics_init', 'diagnostic field "dynamics",'// &
+          ' "area" is not in the diag_table', NOTE)
 
 !---------------------------------------------------------------------
 !    register the MODIS-related diagnostic fields in this module.
@@ -3789,6 +3836,22 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
       id_dropnum_col = register_diag_field    &
                          (mod_name, 'dropnum_col', axes(1:2), Time, &
                     'column integrated liq droplet # * cfrac', 'm-2')
+     
+      ! cmip diag variables
+      id_reffclwtop = register_diag_field (mod_name, 'reffclwtop', axes(1:2), Time, &
+                        'Cloud-top Effective Droplet Radius', 'm', &
+                        standard_name='effective_radius_of_cloud_liquid_water_particle_at_liquid_water_cloud_top', &
+                        area=area_id, missing_value=CMOR_MISSING_VALUE )
+     
+      id_cldncl = register_diag_field (mod_name, 'cldncl', axes(1:2), Time, &
+                        'Cloud Droplet Number Concentration of Cloud Tops', 'm-3', &
+                        standard_name='number_concentration_of_cloud_liquid_water_particles_in_air_at_liquid_water_cloud_top', &
+                        area=area_id, missing_value=CMOR_MISSING_VALUE )
+     
+      id_cldnvi = register_diag_field (mod_name, 'cldnvi', axes(1:2), Time, &
+                        'Column Integrated Cloud Droplet Number', 'm-2', &
+                        standard_name='atmosphere_number_content_of_cloud_droplets', &
+                        area=area_id, missing_value=CMOR_MISSING_VALUE )
      
 !---------------------------------------------------------------------
 !    register various cloud fraction diagnostics.
@@ -6035,5 +6098,4 @@ end subroutine cloud_optical_properties_diag
 
 
 
-                end module cloudrad_diagnostics_mod
-
+end module cloudrad_diagnostics_mod

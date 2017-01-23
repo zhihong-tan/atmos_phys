@@ -66,12 +66,20 @@ use fms_io_mod,            only: restore_state, &
                                  register_restart_field, restart_file_type, &
                                  save_restart
 use diag_manager_mod,      only: register_diag_field, send_data, &
-                                 diag_manager_init, get_base_time, &
-                                 get_diag_field_id, DIAG_FIELD_NOT_FOUND
+                                 diag_manager_init, get_base_time
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 use time_manager_mod,      only: time_manager_init, time_type, operator(>)
 use constants_mod,         only: constants_init, STEFAN, SECONDS_PER_DAY, &
                                  CP_AIR, RADIAN, WTMCO2, WTMAIR, GRAV
+
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+                                 register_cmip_diag_field_2d, &
+                                 send_cmip_data_3d, &
+                                 cmip_diag_id_type, &
+                                 query_cmip_diag_id
+use atmos_global_diag_mod, only: register_global_diag_field, &
+                                 buffer_global_diag, &
+                                 send_global_diag
 
 ! atmos physics modules
 
@@ -90,6 +98,8 @@ use aerosolrad_types_mod,  only: aerosolrad_control_type
 use shortwave_types_mod,   only: sw_output_type
 use longwave_types_mod,    only: lw_output_type
 use radiative_gases_types_mod, only: radiative_gases_type
+
+use shortwave_driver_mod, only: get_solar_constant
 
 !--------------------------------------------------------------------
 
@@ -257,7 +267,7 @@ integer                      :: id_flux_sw_dir, id_flux_sw_dif, &
                                 id_rrvco2, id_rrvf11, id_rrvf12, &
                                 id_rrvf113, id_rrvf22, id_rrvch4, &
                                 id_rrvn2o, id_co2_tf, id_ch4_tf, &
-                                id_n2o_tf, id_sol_con
+                                id_n2o_tf, id_solar_constant
 integer                      :: id_conc_drop, id_conc_ice
 
 integer                      :: id_allradp, id_heat2d, id_heat2d_sw
@@ -271,7 +281,9 @@ integer, dimension(2)        :: id_tdt_sw,   id_tdt_lw,  &
 integer                      :: id_rlds, id_rldscs, id_rlus, id_rsds,   &
                                 id_rsdscs, id_rsus, id_rsuscs, id_rsdt, &
                                 id_rsut, id_rsutcs, id_rlut, id_rlutcs, &
-                                id_rtmt, id_rsdsdiff
+                                id_rtmt, id_rsdsdiff, id_rsdscsdiff
+type(cmip_diag_id_type)      :: ID_tntr, ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs, &
+                                ID_rsu, ID_rsucs, ID_rsd, ID_rsdcs
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
                                         id_netlw_special
@@ -283,6 +295,9 @@ integer, dimension(2)        :: id_swtoa, id_swsfc,               &
                                 id_swup_toa_ad,                   &
                                 id_olr_ad, id_lwsfc_ad
 
+! globally averaged diagnostics
+integer :: id_rlut_g, id_rlutcs_g, id_rsut_g, id_rsutcs_g, id_rsdt_g
+integer :: id_rss_g
 
 real, dimension(:,:), allocatable :: swups_acc, swdns_acc
 real, dimension(:,:), allocatable :: olr_intgl, swabs_intgl
@@ -290,7 +305,6 @@ real, dimension(:,:), allocatable :: olr_intgl, swabs_intgl
 real                         :: missing_value = -999.
 character(len=8)             :: std_digits   = 'f8.3'
 character(len=8)             :: extra_digits = 'f16.11'
-integer                      :: area_id
 
 logical  ::  do_swaerosol_forcing
 logical  ::  do_lwaerosol_forcing
@@ -470,15 +484,6 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !    define characteristics of desired diagnostic integrals. 
 !----------------------------------------------------------------------
       call initialize_diagnostic_integrals (id, jd)
-
-!--------------------------------------------------------------------
-!    retrieve the diag_manager id for the area diagnostic, needed for
-!    cmorizing various diagnostics.
-!--------------------------------------------------------------------
-        area_id = get_diag_field_id ('dynamics', 'area')
-        if (area_id .eq. DIAG_FIELD_NOT_FOUND) call error_mesg &
-         ('radiation_driver_diag_init', 'diagnostic field "dynamics"'// &
-          ', "area" is not in the diag_table', NOTE)
 
 !----------------------------------------------------------------------
 !    register the desired netcdf output variables with the 
@@ -846,6 +851,7 @@ logical,         intent(in) :: do_lwaerosol
       integer           ::   i, k, n
       character(len=16) ::   spec_names(MX_SPEC_LEVS)
       character(len=24) ::   spec_long_names(MX_SPEC_LEVS)
+!BW   integer           ::   id_lev, cmip_axes(4)
 
 !--------------------------------------------------------------------
 !  local variables:
@@ -1053,120 +1059,101 @@ logical,         intent(in) :: do_lwaerosol
  
        end do
 
-        id_rlds = register_diag_field (mod_name,    &
-                'rlds', axes(1:2), Time, &
+        ID_tntr = register_cmip_diag_field_3d ( mod_name, 'tntr', Time, &
+           'Tendency of Air Temperature due to Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_radiative_heating' )
+
+        ID_tntrs = register_cmip_diag_field_3d ( mod_name, 'tntrs', Time, &
+           'Tendency of Air Temperature due to Shortwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_shortwave_heating' )
+
+        ID_tntrscs = register_cmip_diag_field_3d (mod_name, 'tntrscs', Time, & 
+           'Tendency of Air Temperature due to Clear Sky Shortwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_shortwave_heating' )
+
+        ID_rsu = register_cmip_diag_field_3d (mod_name, 'rsu', Time, & 
+                             'Upwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'upwelling_shortwave_flux_in_air', axis='half' )
+
+        ID_rsucs = register_cmip_diag_field_3d (mod_name, 'rsucs', Time, & 
+                             'Upwelling Clear-Sky Shortwave Radiation', 'W m-2', &
+            standard_name = 'upwelling_shortwave_flux_in_air_assuming_clear_sky', axis='half' )
+
+        ID_rsd = register_cmip_diag_field_3d (mod_name, 'rsd', Time, & 
+                             'Downwelling Shortwave Radiation', 'W m-2', &
+            standard_name = 'downwelling_shortwave_flux_in_air', axis='half' )
+
+        ID_rsdcs = register_cmip_diag_field_3d (mod_name, 'rsdcs', Time, & 
+                             'Downwelling Clear-Sky Shortwave Radiation', 'W m-2', &
+            standard_name = 'downwelling_shortwave_flux_in_air_assuming_clear_sky', axis='half' )
+
+        ID_tntrl = register_cmip_diag_field_3d (mod_name, 'tntrl', Time, & 
+           'Tendency of Air Temperature due to Longwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_longwave_heating' )
+
+        ID_tntrlcs = register_cmip_diag_field_3d (mod_name, 'tntrlcs', Time, & 
+           'Tendency of Air Temperature due to Clear Sky Longwave Radiative Heating', 'K s-1', &
+            standard_name = 'tendency_of_air_temperature_due_to_clear_sky_longwave_heating' )
+
+        id_rlds = register_cmip_diag_field_2d (mod_name, 'rlds', Time, &
                 'Surface Downwelling Longwave Radiation', 'W m-2', &
-            standard_name = 'surface_downwelling_longwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            standard_name = 'surface_downwelling_longwave_flux_in_air')
 
-        id_rldscs = register_diag_field (mod_name,    &
-                'rldscs', axes(1:2), Time, &
-                'Surface Downwelling Clear-Sky Longwave Radiation',  &
-                'W m-2', &
-           standard_name = &
-            'surface_downwelling_longwave_flux_in_air_assuming_clear_sky',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+        id_rldscs = register_cmip_diag_field_2d (mod_name, 'rldscs', Time, &
+                'Surface Downwelling Clear-Sky Longwave Radiation',  'W m-2', &
+           standard_name = 'surface_downwelling_longwave_flux_in_air_assuming_clear_sky')
 
-        id_rlus = register_diag_field (mod_name,    &
-                'rlus', axes(1:2), Time, &
+        id_rlus = register_cmip_diag_field_2d (mod_name, 'rlus', Time, &
                 'Surface Upwelling Longwave Radiation', 'W m-2', &
-            standard_name = 'surface_upwelling_longwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            standard_name = 'surface_upwelling_longwave_flux_in_air')
 
-        id_rsds = register_diag_field (mod_name,     &
-                'rsds', axes(1:2), Time, &
+        id_rsds = register_cmip_diag_field_2d (mod_name, 'rsds', Time, &
                 'Surface Downwelling Shortwave Radiation', 'W m-2', &
-            standard_name = 'surface_downwelling_shortwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            standard_name = 'surface_downwelling_shortwave_flux_in_air')
 
-        id_rsdscs = register_diag_field (mod_name,    &
-                'rsdscs', axes(1:2), Time, &
-                'Surface Downwelling Clear-Sky Shortwave Radiation',  &
-                'W m-2', &
-           standard_name = &
-           'surface_downwelling_shortwave_flux_in_air_assuming_clear_sky',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+        id_rsdscs = register_cmip_diag_field_2d (mod_name, 'rsdscs', Time, &
+                'Surface Downwelling Clear-Sky Shortwave Radiation', 'W m-2', &
+           standard_name = 'surface_downwelling_shortwave_flux_in_air_assuming_clear_sky')
 
-        id_rsus = register_diag_field (mod_name,     &
-                'rsus', axes(1:2), Time, &
+        id_rsus = register_cmip_diag_field_2d (mod_name, 'rsus', Time, &
                 'Surface Upwelling Shortwave Radiation', 'W m-2', &
-            standard_name = 'surface_upwelling_shortwave_flux_in_air',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+            standard_name = 'surface_upwelling_shortwave_flux_in_air')
 
-        id_rsuscs = register_diag_field (mod_name,    &
-                'rsuscs', axes(1:2), Time, &
-                'Surface Upwelling Clear-Sky Shortwave Radiation',  &
-                'W m-2', &
-           standard_name = &
-           'surface_upwelling_shortwave_flux_in_air_assuming_clear_sky',&
-            area = area_id, &
-             missing_value = CMOR_MISSING_VALUE)
+        id_rsuscs = register_cmip_diag_field_2d (mod_name, 'rsuscs', Time, &
+                'Surface Upwelling Clear-Sky Shortwave Radiation', 'W m-2', &
+           standard_name = 'surface_upwelling_shortwave_flux_in_air_assuming_clear_sky')
 
-        id_rsdt = register_diag_field (mod_name,   &
-                'rsdt', axes(1:2), Time, &
-                'TOA Incident Shortwave Radiation', &
-                'W m-2',   &
-                 standard_name = 'toa_incoming_shortwave_flux', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+        id_rsdt = register_cmip_diag_field_2d (mod_name, 'rsdt', Time, &
+                        'TOA Incident Shortwave Radiation', 'W m-2',   &
+                         standard_name = 'toa_incoming_shortwave_flux')
 
-        id_rsut = register_diag_field (mod_name,    &
-                'rsut', axes(1:2), Time, &
-                'TOA Outgoing Shortwave Radiation', &
-                'W m-2',    &
-                 standard_name = 'toa_outgoing_shortwave_flux', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+        id_rsut = register_cmip_diag_field_2d (mod_name, 'rsut', Time, &
+                       'TOA Outgoing Shortwave Radiation', 'W m-2',    &
+                        standard_name = 'toa_outgoing_shortwave_flux')
 
-        id_rsutcs = register_diag_field (mod_name,    &
-                'rsutcs', axes(1:2), Time, &
-                'TOA Outgoing Clear-Sky Shortwave Radiation', &
-                'W m-2',    &
-                 standard_name =    &
-                      'toa_outgoing_shortwave_flux_assuming_clear_sky', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+        id_rsutcs = register_cmip_diag_field_2d (mod_name, 'rsutcs', Time, &
+                 'TOA Outgoing Clear-Sky Shortwave Radiation', 'W m-2',    &
+                 standard_name = 'toa_outgoing_shortwave_flux_assuming_clear_sky')
 
-        id_rlut = register_diag_field (mod_name,   &
-                'rlut', axes(1:2), Time, &
-                'TOA Outgoing Longwave Radiation', &
-                'W m-2',    &
-                 standard_name = 'toa_outgoing_longwave_flux', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+        id_rlut = register_cmip_diag_field_2d (mod_name, 'rlut', Time, &
+                        'TOA Outgoing Longwave Radiation', 'W m-2',    &
+                         standard_name = 'toa_outgoing_longwave_flux')
 
-        id_rlutcs = register_diag_field (mod_name,   &
-                'rlutcs', axes(1:2), Time, &
-                'TOA Outgoing Clear-Sky Longwave Radiation', &
-                'W m-2',   &
-                 standard_name =    &
-                        'toa_outgoing_longwave_flux_assumimg_clear_sky', &
-            area = area_id, &
-                 missing_value = CMOR_MISSING_VALUE)
+        id_rlutcs = register_cmip_diag_field_2d (mod_name, 'rlutcs', Time, &
+                   'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
+                 standard_name = 'toa_outgoing_longwave_flux_assumimg_clear_sky')
 
-        id_rtmt = register_diag_field (mod_name,   &
-                'rtmt', axes(1:2), Time, &
-                'Net Downward Flux at Top of Model', &
-                'W m-2',  &
-                standard_name =  &
-                 'net_downward_radiative_flux_at_top_of_atmosphere_model',&
-            area = area_id, &
-                missing_value=CMOR_MISSING_VALUE)
+        id_rtmt = register_cmip_diag_field_2d (mod_name, 'rtmt', Time, &
+                        'Net Downward Flux at Top of Model', 'W m-2',  &
+                standard_name = 'net_downward_radiative_flux_at_top_of_atmosphere_model')
   
-        id_rsdsdiff = register_diag_field (mod_name,  &
-               'rsdsdiff', axes(1:2), Time, &
-               'Surface Diffuse Downwelling Shortwave Radiation', &
-               'W m-2',  &
-               standard_name =  &
-                'surface_diffuse_downwelling_shortwave_flux_in_air', &
-               area = area_id, &
-               missing_value=CMOR_MISSING_VALUE)
+        id_rsdsdiff = register_cmip_diag_field_2d (mod_name, 'rsdsdiff', Time, &
+               'Surface Diffuse Downwelling Shortwave Radiation', 'W m-2',  &
+               standard_name = 'surface_diffuse_downwelling_shortwave_flux_in_air')
+  
+        id_rsdscsdiff = register_cmip_diag_field_2d (mod_name, 'rsdscsdiff', Time, &
+               'Surface Diffuse Downwelling Clear Sky Shortwave Radiation', 'W m-2',  &
+               standard_name = 'surface_diffuse_downwelling_shortwave_flux_in_air_assuming_clear_sky')
 
 
          id_allradp   = register_diag_field (mod_name,   &
@@ -1181,6 +1168,33 @@ logical,         intent(in) :: do_lwaerosol
          id_heat2d_sw = register_diag_field (mod_name,   &
                  'heat2d_sw', axes(1:2), Time, &
                  'integrated shortwave radiative heating', 'watts/m2')
+
+!----- initialize global integrals for netCDF output -----
+
+        id_rsdt_g = register_global_diag_field ('rsdt', Time, &
+                        'TOA Incident Shortwave Radiation', 'W m-2',   &
+                       standard_name='toa_incoming_shortwave_flux', buffer=.true.)
+
+        id_rsut_g = register_global_diag_field ('rsut', Time, &
+                       'TOA Outgoing Shortwave Radiation', 'W m-2',    &
+                      standard_name='toa_outgoing_shortwave_flux', buffer=.true.)
+
+        id_rsutcs_g = register_global_diag_field ('rsutcs', Time, &
+                 'TOA Outgoing Clear-Sky Shortwave Radiation', 'W m-2',    &
+                 standard_name='toa_outgoing_shortwave_flux_assuming_clear_sky', buffer=.true.)
+
+        id_rlut_g = register_global_diag_field ('rlut', Time, &
+                        'TOA Outgoing Longwave Radiation', 'W m-2',    &
+                      standard_name='toa_outgoing_longwave_flux', buffer=.true.)
+
+        id_rlutcs_g = register_global_diag_field ('rlutcs', Time, &
+                   'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
+                 standard_name='toa_outgoing_longwave_flux_assumimg_clear_sky', buffer=.true.)
+
+        id_rss_g = register_global_diag_field ('rss', Time, &
+                        'Net shortwave radiation at the surface', 'W m-2',   &
+                       standard_name='surface_net_shortwave_flux', buffer=.true.)
+
 
 !----------------------------------------------------------------------
 !    register fields that are not clear-sky depedent.
@@ -1276,10 +1290,10 @@ logical,         intent(in) :: do_lwaerosol
                   missing_value=missing_value)
 
 
-!DEL  id_sol_con = register_diag_field (mod_name,    &
-!DEL              'solar_constant', Time, &
-!DEL              'solar constant', 'watts/m2', &
-!DEL              missing_value=missing_value)      
+      id_solar_constant = register_diag_field (mod_name,    &
+                  'solar_constant', Time, &
+                  'solar constant', 'watts/m2', &
+                  missing_value=missing_value)      
                            
       id_co2_tf = register_diag_field (mod_name,    &
                   'co2_tf', Time, &
@@ -1335,49 +1349,42 @@ logical,         intent(in) :: do_lwaerosol
                   'co2mass', Time, &
                   'Total Atmospheric Mass of CO2', 'kg', &
                   standard_name = 'atmosphere_mass_of_carbon_dioxide', &
-                  area = area_id, &
                   missing_value=CMOR_MISSING_VALUE) 
                            
       id_cfc11global = register_diag_field (mod_name,    &
                   'cfc11global', Time, &
                   'Global Mean Mole Fraction of CFC11', '1e-12', &
                   standard_name = 'mole_fraction_of_cfc11_in_air', &
-                   area = area_id, &
                   missing_value=CMOR_MISSING_VALUE) 
         
       id_cfc12global = register_diag_field (mod_name,    &
                   'cfc12global', Time, &
                   'Global Mean Mole Fraction of CFC12', '1e-12', &
                   standard_name = 'mole_fraction_of_cfc12_in_air', &
-                  area = area_id, &
                   missing_value=CMOR_MISSING_VALUE) 
 
       id_cfc113global = register_diag_field (mod_name,    &
                    'cfc113global', Time, &
                   'Global Mean Mole Fraction of CFC113', '1e-12', &
                   standard_name = 'mole_fraction_of_cfc113_in_air', &
-                  area = area_id, &
                   missing_value=CMOR_MISSING_VALUE) 
  
        id_hcfc22global = register_diag_field (mod_name,    &
                    'hcfc22global', Time, &
                   'Global Mean Mole Fraction of HCFC22', '1e-12', &
                   standard_name = 'mole_fraction_of_hcfc22_in_air', &
-                  area = area_id, &
                   missing_value=CMOR_MISSING_VALUE) 
 
        id_ch4global = register_diag_field (mod_name,    &
                    'ch4global', Time, &
-                  'Global Mean Mole Fraction of CH4', '1e-9', &
+                  'Global Mean Mole Fraction of CH4', '1e-09', &
                   standard_name = 'mole_fraction_of_methane_in_air', &
-                  area = area_id, &
                   missing_value=CMOR_MISSING_VALUE) 
 
        id_n2oglobal = register_diag_field (mod_name,    &
                    'n2oglobal', Time, &
-                  'Global Mean Mole Fraction of N2O', '1e-9', &
+                  'Global Mean Mole Fraction of N2O', '1e-09', &
                 standard_name = 'mole_fraction_of_nitrous_oxide_in_air', &
-                  area = area_id, &
                   missing_value=CMOR_MISSING_VALUE)
 
          id_alb_sfc_avg = register_diag_field (mod_name,    &
@@ -1610,6 +1617,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
       logical           :: used
       integer           :: iind, jind
       integer           :: kmax
+      real              :: solar_constant
 
 !      asfc         surface albedo  [ dimensionless ]
 !      asfc_vis_dir surface visible albedo  [ dimensionless ]
@@ -1910,6 +1918,24 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         endif
      endif
 
+!------- sw tendency -----------
+        if (query_cmip_diag_id(ID_tntrs)) then
+          used = send_cmip_data_3d (ID_tntrs, Rad_output%tdtsw(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
+!------- 3d upward sw flux -------
+        if (query_cmip_diag_id(ID_rsu)) then
+          used = send_cmip_data_3d (ID_rsu, Rad_output%ufsw(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
+!------- 3d downward sw flux -------
+        if (query_cmip_diag_id(ID_rsd)) then
+          used = send_cmip_data_3d (ID_rsd, Rad_output%dfsw(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
 !------- downward sw flux surface -------
         if (id_rsds > 0 ) then
           used = send_data (id_rsds, swdns,   &
@@ -2044,6 +2070,24 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
      endif
 
+!------- sw tendency -----------
+          if (query_cmip_diag_id(ID_tntrscs)) then
+            used = send_cmip_data_3d (ID_tntrscs, Rad_output%tdtsw_clr(is:ie,js:je,:),  &
+                              Time_diag, is, js, 1)
+          endif
+
+!------- 3d upward sw flux -------
+        if (query_cmip_diag_id(ID_rsucs)) then
+          used = send_cmip_data_3d (ID_rsucs, Rad_output%ufsw_clr(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
+!------- 3d downward sw flux -------
+        if (query_cmip_diag_id(ID_rsdcs)) then
+          used = send_cmip_data_3d (ID_rsdcs, Rad_output%dfsw_clr(is:ie,js:je,:),  &
+                            Time_diag, is, js, 1)
+        endif
+
 !------- downward sw flux surface -------
           if (id_rsdscs > 0 ) then
             used = send_data (id_rsdscs, swdns_clr,    &
@@ -2072,6 +2116,11 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         if (id_allradp > 0 ) then
           used = send_data (id_allradp    ,    &
                             Rad_output%tdt_rad(is:ie,js:je,:),   &
+                            Time_diag, is, js, 1)
+        endif
+
+        if (query_cmip_diag_id(ID_tntr)) then
+          used = send_cmip_data_3d (ID_tntr, Rad_output%tdt_rad(is:ie,js:je,:),  &
                             Time_diag, is, js, 1)
         endif
 
@@ -2112,10 +2161,10 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
 !------- solar constant  -------------------------
         if (Rad_control%do_sw_rad .or. Rad_control%do_lw_rad) then
-!DEL      if ( id_sol_con > 0 ) then
-!DEL        used = send_data ( id_sol_con, Sw_control%solar_constant,  &
-!DEL                           Time_diag )
-!DEL      endif
+          if ( id_solar_constant > 0 ) then
+            call get_solar_constant (solar_constant)
+            used = send_data ( id_solar_constant, solar_constant, Time_diag )
+          endif
         endif
 
 !------- co2 mixing ratio used for tf calculation  -------------------
@@ -2333,6 +2382,11 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           used = send_data ( id_flux_sw_down_total_dif_clr,  &
                   Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je),  &
                   Time_diag, is, js )
+        endif
+        if ( id_rsdscsdiff > 0 ) then
+         used = send_data ( id_rsdscsdiff,  &
+                    Rad_output%flux_sw_down_total_dif_clr(is:ie,js:je),  &
+                    Time_diag, is, js )
         endif
         if ( id_flux_sw_down_vis_clr > 0 ) then
           used = send_data ( id_flux_sw_down_vis_clr, &
@@ -2575,6 +2629,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !  longwave data for cmip names
 !----------------------------------------
 
+!------- lw tendency -----------
+        if (query_cmip_diag_id(ID_tntrl)) then
+          used = send_cmip_data_3d (ID_tntrl, tdtlw,    &
+                            Time_diag, is, js, 1)
+        endif
+
 !------- downward lw flux surface -------
         if (id_rlds > 0 ) then
           used = send_data (id_rlds, lwdns,    &
@@ -2677,6 +2737,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !  longwave clear-sky data for cmip names
 !------------------------------------------
 
+!------- lw tendency -----------
+        if (query_cmip_diag_id(ID_tntrlcs)) then
+          used = send_cmip_data_3d (ID_tntrlcs, tdtlw_clr,    &
+                            Time_diag, is, js, 1)
+        endif
+
 !------- downward lw flux surface -------
           if (id_rldscs > 0 ) then
             used = send_data (id_rldscs, lwdns_clr,   &
@@ -2701,11 +2767,19 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !--------------------------------------------------------------------
       if (Rad_control%do_lw_rad .or. all_step_diagnostics) then
         olr_intgl(is:ie,js:je) = olr(:,:)
+
+        if (id_rlut_g   > 0) call buffer_global_diag (id_rlut_g,   olr,     Time_diag, is, js)
+        if (id_rlutcs_g > 0) call buffer_global_diag (id_rlutcs_g, olr_clr, Time_diag, is, js)
       endif
 
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
           all_step_diagnostics) then
         swabs_intgl(is:ie,js:je) = swin(:,:) - swout(:,:)
+
+        if (id_rsdt_g   > 0) call buffer_global_diag (id_rsdt_g,   swin,      Time_diag, is, js)
+        if (id_rsut_g   > 0) call buffer_global_diag (id_rsut_g,   swout,     Time_diag, is, js)
+        if (id_rsutcs_g > 0) call buffer_global_diag (id_rsutcs_g, swout_clr, Time_diag, is, js)
+        if (id_rss_g    > 0) call buffer_global_diag (id_rss_g,  swdns-swups, Time_diag, is, js)
       endif
 
 !--------------------------------------------------------------------
@@ -2947,17 +3021,26 @@ subroutine radiation_driver_diag_endts (Rad_control)
 
 type(radiation_control_type),  intent(in) :: Rad_control
 
+logical :: used
 !---------------------------------------------------------------------
 !    compute and write out global integrals
 !---------------------------------------------------------------------
 
       if (Rad_control%do_lw_rad .or. all_step_diagnostics) then
         call sum_diag_integral_field ('olr',    olr_intgl)
+
+        if (id_rlut_g   > 0) used = send_global_diag (id_rlut_g)
+        if (id_rlutcs_g > 0) used = send_global_diag (id_rlutcs_g)
       endif
 
       if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or.    &
           all_step_diagnostics) then
         call sum_diag_integral_field ('abs_sw', swabs_intgl )
+
+        if (id_rsdt_g   > 0) used = send_global_diag (id_rsdt_g)
+        if (id_rsut_g   > 0) used = send_global_diag (id_rsut_g)
+        if (id_rsutcs_g > 0) used = send_global_diag (id_rsutcs_g)
+        if (id_rss_g    > 0) used = send_global_diag (id_rss_g)
       endif
 
 !---------------------------------------------------------------------
