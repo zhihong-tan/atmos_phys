@@ -39,7 +39,7 @@ public capecalcnew, tempavg, column_diag, rh_calc
 
 public mp_input_type, mp_nml_type, mp_tendency_type,   &
        mp_removal_control_type, mp_conv2ls_type, mp_output_type, &
-       mp_removal_type, mp_lsdiag_type
+       mp_removal_type, mp_lsdiag_type, mp_lsdiag_control_type
 
 
 private column_diag_1, column_diag_2, column_diag_3
@@ -178,7 +178,7 @@ type mp_removal_control_type
 end type mp_removal_control_type
 
 type mp_removal_type
-    type  (mp_removal_control_type) :: control
+!    type  (mp_removal_control_type) :: control
     real, dimension(:,:,:), pointer :: ice_precflx=>NULL()
     real, dimension(:,:,:), pointer :: liq_precflx=>NULL()
     real, dimension(:,:,:), pointer :: ice_precflxh=>NULL()
@@ -206,15 +206,22 @@ type mp_removal_type
 end type mp_removal_type
 
 type mp_lsdiag_type 
-    type(diag_pt_type)    :: diag_pt
-    type(diag_id_type)    :: diag_id
-    integer               :: n_diag_4d
-    integer               :: n_diag_4d_kp1
+!   type(diag_pt_type)    :: diag_pt
+!   type(diag_id_type)    :: diag_id
+!   integer               :: n_diag_4d
+!   integer               :: n_diag_4d_kp1
 !  variables allocated to hold all netcdf diagnostic fields:
     real, dimension(:,:,:,:), pointer :: diag_4d=>NULL()
     real, dimension(:,:,:,:), pointer :: diag_4d_kp1=>NULL()
     real, dimension(:,:,:  ), pointer :: diag_3d=>NULL()
 end type mp_lsdiag_type 
+
+type mp_lsdiag_control_type 
+    type(diag_pt_type)    :: diag_pt
+    type(diag_id_type)    :: diag_id
+    integer               :: n_diag_4d
+    integer               :: n_diag_4d_kp1
+end type mp_lsdiag_control_type 
 
 
 

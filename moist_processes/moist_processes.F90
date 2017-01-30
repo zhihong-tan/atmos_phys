@@ -62,6 +62,7 @@ use aerosol_types_mod,    only : aerosol_type
 use moist_proc_utils_mod, only : tempavg, column_diag, rh_calc,  &
                                  MP_input_type, MP_nml_type,  &
                                  mp_tendency_type, mp_removal_type, &
+                                 mp_removal_control_type, &
                                  mp_conv2ls_type, mp_output_type
 
 ! atmos_shared modules
@@ -240,7 +241,8 @@ real, allocatable, dimension(:,:)   :: prec_intgl
 !-----------------------------------------------------------------------
 
 type(MP_nml_type)      :: Nml_mp
-type(MP_removal_type)  :: Removal_mp
+!ype(MP_removal_type)  :: Removal_mp
+type(MP_removal_control_type)  :: Removal_mp_control
 
 logical :: wetdep_diagnostics_desired = .false.
 logical :: module_is_initialized = .false.
@@ -459,25 +461,38 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
 !    the number of tracers being affected by each available convective 
 !    scheme.
 !------------------------------------------------------------------------
-      allocate (Removal_mp%control%tracers_in_donner(num_prog_tracers))
-      allocate (Removal_mp%control%tracers_in_ras(num_prog_tracers))
-      allocate (Removal_mp%control%tracers_in_uw(num_prog_tracers))
-      allocate (Removal_mp%control%tracers_in_mca(num_prog_tracers))
-      Removal_mp%control%tracers_in_donner = .false.
-      Removal_mp%control%tracers_in_ras    = .false.
-      Removal_mp%control%tracers_in_uw     = .false.
-      Removal_mp%control%tracers_in_mca    = .false.
-      Removal_mp%control%num_mca_tracers   = 0       
-      Removal_mp%control%num_ras_tracers   = 0       
-      Removal_mp%control%num_donner_tracers   = 0       
-      Removal_mp%control%num_uw_tracers   = 0       
+!     allocate (Removal_mp%control%tracers_in_donner(num_prog_tracers))
+!     allocate (Removal_mp%control%tracers_in_ras(num_prog_tracers))
+!     allocate (Removal_mp%control%tracers_in_uw(num_prog_tracers))
+!     allocate (Removal_mp%control%tracers_in_mca(num_prog_tracers))
+!     Removal_mp%control%tracers_in_donner = .false.
+!     Removal_mp%control%tracers_in_ras    = .false.
+!     Removal_mp%control%tracers_in_uw     = .false.
+!     Removal_mp%control%tracers_in_mca    = .false.
+!     Removal_mp%control%num_mca_tracers   = 0       
+!     Removal_mp%control%num_ras_tracers   = 0       
+!     Removal_mp%control%num_donner_tracers   = 0       
+!     Removal_mp%control%num_uw_tracers   = 0       
+      allocate (Removal_mp_control%tracers_in_donner(num_prog_tracers))
+      allocate (Removal_mp_control%tracers_in_ras(num_prog_tracers))
+      allocate (Removal_mp_control%tracers_in_uw(num_prog_tracers))
+      allocate (Removal_mp_control%tracers_in_mca(num_prog_tracers))
+      Removal_mp_control%tracers_in_donner = .false.
+      Removal_mp_control%tracers_in_ras    = .false.
+      Removal_mp_control%tracers_in_uw     = .false.
+      Removal_mp_control%tracers_in_mca    = .false.
+      Removal_mp_control%num_mca_tracers   = 0       
+      Removal_mp_control%num_ras_tracers   = 0       
+      Removal_mp_control%num_donner_tracers   = 0       
+      Removal_mp_control%num_uw_tracers   = 0       
 
 !-----------------------------------------------------------------------
 !    call convection_driver_init to initialize the convection scheme(s).
 !-----------------------------------------------------------------------
       call convection_driver_init (id, jd, kd, axes, Time, &
                           Physics_control, Exch_ctrl, Nml_mp,   &
-                          Removal_mp%control, lonb, latb, pref)
+!                         Removal_mp%control, lonb, latb, pref)
+                          Removal_mp_control, lonb, latb, pref)
 
 !-----------------------------------------------------------------------
 !    call lscloud_driver_init to initialize the large-scale cloud scheme.
@@ -531,7 +546,7 @@ subroutine moist_processes ( is, ie, js, je, npz, Time, dt, land, ustar,  &
                              bstar, qstar, area, lon, lat,   &
                              Physics_input_block, Moist_clouds_block,   &
                              Physics_tendency_block, Phys_mp_exch,  &
-                             Surf_diff, shflx, lhflx,  &
+                             Surf_diff, Removal_mp, shflx, lhflx,  &
                              lprec, fprec, gust_cv,  Aerosol)
 
 !-----------------------------------------------------------------------
@@ -598,6 +613,7 @@ type(physics_tendency_block_type),    &
                           intent(inout) :: Physics_tendency_block 
 type(phys_mp_exch_type),  intent(inout) :: Phys_mp_exch
 type(surf_diff_type),     intent(in)    :: Surf_diff
+type(mp_removal_type),    intent(inout) :: Removal_mp
 real, dimension(:,:),     intent(in)    :: shflx, lhflx
 
 real, intent(out), dimension(:,:)       :: lprec, fprec, gust_cv
@@ -648,7 +664,8 @@ type(aerosol_type),intent(in), optional :: Aerosol
 !-------------------------------------------------------------------------
       call MP_alloc (Physics_input_block, Physics_tendency_block, &
                      Phys_mp_exch, dt, area, lon, lat, land, ustar,  &
-                     bstar, qstar, Input_mp, Tend_mp, C2ls_mp, Output_mp)
+                     bstar, qstar, Input_mp, Tend_mp, C2ls_mp, Output_mp,&
+                     Removal_mp)
       
 !----------------------------------------------------------------------
 !    call routines to process the model clouds. If a unified cloud scheme
@@ -662,6 +679,7 @@ type(aerosol_type),intent(in), optional :: Aerosol
         call convection_driver    &
                     (is, ie, js, je,  Time, dt, Input_mp,   &
                      Tend_mp, C2ls_mp, Output_mp, Removal_mp, &
+                     Removal_mp_control,  &
                      Surf_diff, Phys_mp_exch, shflx, lhflx, tdt_dif,  &
                      qdt_dif, Moist_clouds_block, Aerosol=Aerosol)
 
@@ -680,7 +698,7 @@ type(aerosol_type),intent(in), optional :: Aerosol
 !------------------------------------------------------------------------
       call combined_MP_diagnostics   &
               (is, ie, js, je, Time, tdt_init, qdt_init, Input_mp,   &
-               Moist_clouds_block, Output_mp)  
+               Moist_clouds_block, Output_mp, Removal_mp)  
 
 !------------------------------------------------------------------------
 !    define needed output arguments. redefine r to be the value after 
@@ -699,7 +717,7 @@ type(aerosol_type),intent(in), optional :: Aerosol
 !---------------------------------------------------------------------
 !    deallocate the derived type variables resident in moist_processes_mod.
 !---------------------------------------------------------------------
-      call MP_dealloc (Input_mp, Tend_mp, C2ls_mp, Output_mp)
+      call MP_dealloc (Input_mp, Tend_mp, C2ls_mp, Output_mp, Removal_mp)
 
 !-----------------------------------------------------------------------
 
@@ -806,10 +824,11 @@ end subroutine set_cosp_precip_sources
 !#######################################################################
 
 
-subroutine define_cosp_precip_fluxes (is, js, Precip_flux)
+subroutine define_cosp_precip_fluxes (is, js, Precip_flux, Removal_mp)
 
 integer,                   intent(in)    :: is, js
 type(precip_flux_type),    intent(inout) :: Precip_flux
+type(mp_removal_type),     intent(inout) :: Removal_mp
 
       integer :: i, j ,k
       integer :: ii, jj
@@ -918,7 +937,7 @@ end subroutine define_cosp_precip_fluxes
 
 subroutine combined_MP_diagnostics    &
         (is, ie, js, je, Time, tdt_init, qdt_init,    &
-         Input_mp, Moist_clouds_block, Output_mp)
+         Input_mp, Moist_clouds_block, Output_mp, Removal_mp)
                        
 integer,                   intent(in)    :: is, ie, js, je
 type(time_type),           intent(in)    :: Time
@@ -929,6 +948,7 @@ type(mp_input_type),       intent(in)    :: Input_mp
 type(clouds_from_moist_block_type),          &
                            intent(inout) :: Moist_clouds_block
 type(mp_output_type),      intent(inout) :: Output_mp
+type(mp_removal_type),     intent(inout) :: Removal_mp
 
 
 !----------------------------------------------------------------------
@@ -1000,7 +1020,7 @@ type(mp_output_type),      intent(inout) :: Output_mp
         m = 1
         mm = 1
         do n=1,size(Output_mp%rdt,4)
-          if (Removal_mp%control%tracers_in_donner(n) .and.   &
+          if (Removal_mp_control%tracers_in_donner(n) .and.   &
                                                     do_donner_deep) then
             total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
                                             Removal_mp%donner_wetdep(:,:,m)
@@ -1011,7 +1031,7 @@ type(mp_output_type),      intent(inout) :: Output_mp
           else
             total_wetdep_donner(:,:,n) = 0.                               
           endif
-          if (Removal_mp%control%tracers_in_uw(n) .and. do_uw_conv) then
+          if (Removal_mp_control%tracers_in_uw(n) .and. do_uw_conv) then
             total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
                                                Removal_mp%uw_wetdep(:,:,mm)
             total_wetdep_uw    (:,:,n) = Removal_mp%uw_wetdep(:,:,mm)
@@ -1589,7 +1609,8 @@ end subroutine combined_MP_diagnostics
 
 subroutine MP_alloc (Physics_input_block, Physics_tendency_block, &
                      Phys_mp_exch, dt, area, lon, lat, land, ustar, &
-                     bstar, qstar, Input_mp,Tend_mp, C2ls_mp, Output_mp)
+                     bstar, qstar, Input_mp,Tend_mp, C2ls_mp, Output_mp, &
+                     Removal_mp)
 
 type(physics_input_block_type),                          &
                           intent(in)    :: Physics_input_block
@@ -1603,6 +1624,7 @@ type(MP_input_type),      intent(inout) :: Input_mp
 type(MP_output_type),     intent(inout) :: Output_mp
 type(MP_tendency_type),   intent(inout) :: Tend_mp
 type(MP_conv2ls_type),    intent(inout) :: C2ls_mp
+type(MP_removal_type),    intent(inout) :: Removal_mp
 
 
 !------------------------------------------------------------------------
@@ -1885,19 +1907,19 @@ type(MP_conv2ls_type),    intent(inout) :: C2ls_mp
       allocate ( Removal_mp%snowclr3d   (ix,jx,kx+1))  
                                                Removal_mp%snowclr3d   = 0.  
       allocate ( Removal_mp%uw_wetdep (ix,jx,  &
-                                       Removal_mp%control%num_uw_tracers)) 
+                                       Removal_mp_control%num_uw_tracers)) 
                                                Removal_mp%uw_wetdep   = 0. 
       allocate ( Removal_mp%donner_wetdep  &
                                   (ix,jx,    &
-                                   Removal_mp%control%num_donner_tracers)) 
+                                   Removal_mp_control%num_donner_tracers)) 
                                           Removal_mp%donner_wetdep   = 0.  
       allocate ( Removal_mp%donner_wetdepm  &
                                   (ix,jx,    &
-                                   Removal_mp%control%num_donner_tracers)) 
+                                   Removal_mp_control%num_donner_tracers)) 
                                          Removal_mp%donner_wetdepm   = 0.  
       allocate ( Removal_mp%donner_wetdepc  &
                                   (ix,jx,    &
-                                   Removal_mp%control%num_donner_tracers)) 
+                                   Removal_mp_control%num_donner_tracers)) 
                                          Removal_mp%donner_wetdepc   = 0.  
       allocate ( Removal_mp%ls_wetdep   (ix,jx,nt)) 
                                                Removal_mp%ls_wetdep   = 0.
@@ -1909,12 +1931,13 @@ end subroutine MP_alloc
 
 !########################################################################
 
-subroutine MP_dealloc (Input_mp, Tend_mp, C2ls_mp, Output_mp            )
+subroutine MP_dealloc (Input_mp, Tend_mp, C2ls_mp, Output_mp, Removal_mp)
 
 type(MP_input_type),    intent(inout) :: Input_mp
 type(MP_tendency_type), intent(inout) :: Tend_mp
 type(MP_conv2ls_type),  intent(inout) :: C2ls_mp
 type(MP_output_type),   intent(inout) :: Output_mp
+type(MP_removal_type),  intent(inout) :: Removal_mp
 
 !------------------------------------------------------------------------
 !    deallocate the components of the derived type variables defined in

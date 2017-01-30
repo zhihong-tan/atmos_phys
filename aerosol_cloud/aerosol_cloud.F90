@@ -36,7 +36,8 @@ use lscloud_debug_mod,         only :  aerosol_cloud_debug1,   &
                                        aerosol_cloud_debug2, &
                                        lscloud_debug_init
 use moist_proc_utils_mod,      only :  mp_input_type, mp_conv2ls_type, &
-                                       mp_nml_type, mp_lsdiag_type
+                                       mp_nml_type, mp_lsdiag_type, &
+                                       mp_lsdiag_control_type
 use physics_radiation_exch_mod, only : exchange_control_type
 
 implicit none 
@@ -246,11 +247,13 @@ end subroutine aerosol_cloud_init
 !#####################################################################
 
 subroutine determine_available_aerosol (idim, jdim, kdim, Lsdiag_mp,      &
+                                        Lsdiag_mp_control, &
                                         Atmos_state, Particles, Aerosol)
 
 !-------------------------------------------------------------------------
 integer,                    intent(in)     :: idim, jdim, kdim
 type(mp_lsdiag_type),       intent(inout)  :: Lsdiag_mp
+type(mp_lsdiag_control_type), intent(inout):: Lsdiag_mp_control
 type(atmos_state_type),     intent(inout)  :: Atmos_state
 type(particles_type),       intent(inout)  :: Particles  
 TYPE(aerosol_type),         INTENT (in)    :: Aerosol  
@@ -267,12 +270,14 @@ TYPE(aerosol_type),         INTENT (in)    :: Aerosol
 !---------------------------------------------------------------------
       call mpp_clock_begin (aero_effects)
       if (do_liq_num .or. do_dust_berg) then
-        call aerosol_effects (idim, jdim, kdim, Lsdiag_mp%n_diag_4d,  &
+        call aerosol_effects (idim, jdim, kdim,    &
+                              Lsdiag_mp_control%n_diag_4d,  &
                               Atmos_state%pthickness, &
                               Particles%concen_dust_sub,&
                               Particles%totalmass1, Particles%imass1, &
                               Aerosol, Lsdiag_mp%diag_4d,  & 
-                              Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt       )
+                              Lsdiag_mp_control%diag_id,   &
+                              Lsdiag_mp_control%diag_pt       )
       endif
       call mpp_clock_end   (aero_effects)
 

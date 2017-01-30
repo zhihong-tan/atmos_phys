@@ -22,8 +22,8 @@ use lscloud_debug_mod,          only : lscloud_debug_init,  &
 use polysvp_mod,                only : polysvp_init, polysvp_end,  &
                                        compute_qs_x1
 use moist_proc_utils_mod,       only : mp_input_type, mp_conv2ls_type, &
-                                       mp_nml_type,   &
-                                       mp_lsdiag_type
+                                       mp_nml_type, mp_lsdiag_type,   &
+                                       mp_lsdiag_control_type
 use physics_radiation_exch_mod, only : exchange_control_type
 
 implicit none
@@ -248,7 +248,8 @@ end subroutine tiedtke_macro_time_vary
 
 SUBROUTINE tiedtke_macro (     &
              idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,    &
-             Cloud_state, ST, SQ, Cloud_processes, Particles, Lsdiag_mp)
+             Cloud_state, ST, SQ, Cloud_processes, Particles, Lsdiag_mp, &
+                                                       Lsdiag_mp_control)
 
 !------------------------------------------------------------------------
 INTEGER,                         INTENT(IN )   :: idim, jdim, kdim 
@@ -260,6 +261,7 @@ REAL, dimension(idim,jdim,kdim), INTENT(IN )   :: ST, SQ
 type(cloud_processes_type),      intent(inout) :: Cloud_processes
 type(particles_type),            intent(inout) :: Particles
 type(mp_lsdiag_type),            intent(inout) :: Lsdiag_mp    
+type(mp_lsdiag_control_type),    intent(inout) :: Lsdiag_mp_control    
 
 !------------------------------------------------------------------------
 !----local variables----
@@ -313,14 +315,17 @@ type(mp_lsdiag_type),            intent(inout) :: Lsdiag_mp
 !                         Constants, Atmos_state, &
                        Atmos_state, Input_mp, &
                        Cloud_state, ST, SQ, Cloud_processes, &
-                       Particles, Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d, &
+                       Particles, Lsdiag_mp_control%n_diag_4d,   &
+                       Lsdiag_mp%diag_4d, &
 !                      Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt, otun, SA)
-                       Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt,       SA)
+                       Lsdiag_mp_control%diag_id,   &
+                       Lsdiag_mp_control%diag_pt,       SA)
         else
           call tiedtke_macro_pdf (     &
               idim, jdim, kdim, Atmos_state, Input_mp, Cloud_state, ST,  &
-              SQ, Cloud_processes, Particles, Lsdiag_mp%n_diag_4d,  &
-              Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt, SA)
+              SQ, Cloud_processes, Particles, Lsdiag_mp_control%n_diag_4d,&
+              Lsdiag_mp%diag_4d, Lsdiag_mp_control%diag_id,   &
+              Lsdiag_mp_control%diag_pt, SA)
         endif
       else  !(do_pdf_clouds)
 
@@ -463,8 +468,9 @@ type(mp_lsdiag_type),            intent(inout) :: Lsdiag_mp
           call tiedtke_macro_nopdf_nosuper (    &
                idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,   &
                Cloud_state, ST, SQ, Cloud_processes, Particles,   &
-               Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, &
-               Lsdiag_mp%diag_pt, edum, SA, U00p, erosion_scale)
+               Lsdiag_mp_control%n_diag_4d, Lsdiag_mp%diag_4d,   &
+               Lsdiag_mp_control%diag_id, Lsdiag_mp_control%diag_pt,  &
+                                       edum, SA, U00p, erosion_scale)
         else
 
 !------------------------------------------------------------------------
@@ -475,8 +481,9 @@ type(mp_lsdiag_type),            intent(inout) :: Lsdiag_mp
           call tiedtke_macro_nopdf_super  (     &
                idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,   &
                Cloud_state, ST, SQ, Cloud_processes, Particles,   &
-               Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, &
-               Lsdiag_mp%diag_pt, edum, SA, U00p, erosion_scale)
+               Lsdiag_mp_control%n_diag_4d, Lsdiag_mp%diag_4d,   &
+               Lsdiag_mp_control%diag_id, Lsdiag_mp_control%diag_pt,  &
+                                            edum, SA, U00p, erosion_scale)
         endif
       endif  ! (do_pdf_clouds)
 

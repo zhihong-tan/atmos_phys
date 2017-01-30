@@ -111,6 +111,8 @@ use physics_types_mod,       only: alloc_physics_tendency_type, &
                                    physics_control_type, & 
                                    physics_input_block_type, &
                                    dealloc_physics_tendency_type
+
+use moist_proc_utils_mod, only:    mp_removal_type
   
 use aerosol_mod,             only: aerosol_init, aerosol_driver, &
                                    aerosol_time_vary, &
@@ -2278,6 +2280,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       integer :: imax, jmax, kmax
       logical :: used
 
+      type(MP_removal_type) :: Removal_mp
    
 !---------------------------------------------------------------------
 !   local variables:
@@ -2511,7 +2514,7 @@ real,dimension(:,:),    intent(inout)             :: gust
               is, ie, js, je, npz, Time_next, dt, frac_land, u_star,  &
               b_star, q_star, area, lon, lat, Physics_input_block,   &
               Moist_clouds_block, Physics_tendency_block, Phys_mp_exch, &
-              Surf_diff, shflx, lhflx,  &
+              Surf_diff, Removal_mp, shflx, lhflx,  &
               lprec, fprec, gust_cv, Aerosol=Aerosol)
         call mpp_clock_end ( moist_processes_clock )
 
@@ -2585,7 +2588,8 @@ real,dimension(:,:),    intent(inout)             :: gust
 !    t, q and precip flux.
 !---------------------------------------------------------------------
           if (alphb == 0.) then
-            call define_cosp_precip_fluxes (is, js, Precip_flux)
+            call define_cosp_precip_fluxes (is, js, Precip_flux,   &
+                                                               Removal_mp)
             if (step_to_call_cosp) then
               Phys2cosp%temp_last(:,:,:) = t(:,:,:) + dt*tdt(:,:,:)
               Phys2cosp%q_last(:,:,:) = r(:,:,:,1) + dt*rdt(:,:,:,1)
@@ -2630,7 +2634,8 @@ real,dimension(:,:),    intent(inout)             :: gust
               Phys2cosp%temp_last(:,:,:) = temp_last(is:ie,js:je,:)
               Phys2cosp%q_last(:,:,:)    = q_last(is:ie,js:je,:)
             endif
-            call define_cosp_precip_fluxes (is, js, Precip_flux)
+            call define_cosp_precip_fluxes (is, js, Precip_flux,   &
+                                                               Removal_mp)
           endif
 
           if (step_to_call_cosp) then

@@ -80,7 +80,7 @@ use moist_proc_utils_mod,  only: column_diag, rh_calc, &
                                  mp_nml_type, mp_input_type, &
                                  mp_removal_type, mp_tendency_type,  &
                                  mp_conv2ls_type, mp_output_type,   &
-                                 mp_lsdiag_type
+                                 mp_lsdiag_type, mp_lsdiag_control_type
 
 ! atmos_shared modules
 use aerosol_types_mod,     only: aerosol_type
@@ -257,7 +257,8 @@ character(len=5), private :: mod_name = 'moist'
 integer, parameter :: n_totmass  = 4
 integer, parameter :: n_imass = 12
 
-type(mp_lsdiag_type)       :: Lsdiag_mp
+!type(mp_lsdiag_type)       :: Lsdiag_mp
+type(mp_lsdiag_control_type) :: Lsdiag_mp_control
 type(lsc_constants_type)   :: Constants_lsc
 type(lscloud_nml_type)     :: Nml_lsc
 
@@ -764,9 +765,10 @@ real, dimension(:),      intent(in)     :: pref
 !    requested via the diag_table. 
 !-----------------------------------------------------------------------
       call mpp_clock_begin ( lscloud_netcdf_init_clock)
-      call lscloud_netcdf_init (axes, Time, Lsdiag_mp%diag_id,  &
-                                Lsdiag_mp%diag_pt, Lsdiag_mp%n_diag_4d, &
-                                                   Lsdiag_mp%n_diag_4d_kp1)
+      call lscloud_netcdf_init (axes, Time, Lsdiag_mp_control%diag_id,  &
+                                          Lsdiag_mp_control%diag_pt,   &
+                                          Lsdiag_mp_control%n_diag_4d, &
+                                          Lsdiag_mp_control%n_diag_4d_kp1)
       call mpp_clock_end ( lscloud_netcdf_init_clock)
 
 !------------------------------------------------------------------------
@@ -891,6 +893,7 @@ type(aerosol_type),          intent(in), optional :: Aerosol
       type(particles_type)       :: Particles 
       type(precip_state_type)    :: Precip_state
       type(cloud_processes_type) :: Cloud_processes
+      type(mp_lsdiag_type)       :: Lsdiag_mp
   
 !------------------------------------------------------------------------
 !   local variables:
@@ -921,10 +924,11 @@ type(aerosol_type),          intent(in), optional :: Aerosol
 !------------------------------------------------------------------------
 !    allocate and initialize arrays to hold the diagnostic variables.
 !------------------------------------------------------------------------
-      allocate (Lsdiag_mp%diag_3d(ix, jx, 0:Lsdiag_mp%n_diag_4d))
-      allocate (Lsdiag_mp%diag_4d(ix, jx, kx, 0:Lsdiag_mp%n_diag_4d))
+      allocate (Lsdiag_mp%diag_3d(ix, jx, 0:Lsdiag_mp_control%n_diag_4d))
+      allocate    &
+            (Lsdiag_mp%diag_4d(ix, jx, kx, 0:Lsdiag_mp_control%n_diag_4d))
       allocate (Lsdiag_mp%diag_4d_kp1  &
-                                (ix, jx, kx+1, 0:Lsdiag_mp%n_diag_4d_kp1))
+                        (ix, jx, kx+1, 0:Lsdiag_mp_control%n_diag_4d_kp1))
       Lsdiag_mp%diag_3d(:,:,0:) = 0.
       Lsdiag_mp%diag_4d(:,:,:,0:) = 0.
       Lsdiag_mp%diag_4d_kp1(:,:,:,0:) = 0.
@@ -967,8 +971,8 @@ type(aerosol_type),          intent(in), optional :: Aerosol
 !---------------------------------------------------------------------
           call mpp_clock_begin (stratcloud_clock)
           call strat_cloud    &
-                (Lsdiag_mp, Time, is, ie, js, je, dt, C2ls_mp,    &
-                 Atmos_state, Cloud_state, Input_mp, Tend_mp,   &
+                (Lsdiag_mp, Lsdiag_mp_control, Time, is, ie, js, je, dt,  &
+                 C2ls_mp, Atmos_state, Cloud_state, Input_mp, Tend_mp,   &
                  Cloud_processes, Removal_mp, Particles, Precip_state,   &
                  Aerosol = Aerosol)
 
@@ -1024,7 +1028,8 @@ type(aerosol_type),          intent(in), optional :: Aerosol
             call mpp_clock_begin (realiz_clock)
             call impose_realizability (    &
                    Atmos_state, Cloud_state, Tend_mp%qtnd, Tend_mp%ttnd, &
-                   Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt)
+                   Lsdiag_mp%diag_4d, Lsdiag_mp_control%diag_id,   &
+                                               Lsdiag_mp_control%diag_pt)
             call mpp_clock_end (realiz_clock)
 
 !------------------------------------------------------------------------
@@ -1046,7 +1051,8 @@ type(aerosol_type),          intent(in), optional :: Aerosol
           if (Constants_lsc%tiedtke_macrophysics .or. do_clubb == 2) then
             call mpp_clock_begin (aerosol_cloud_clock)
             call determine_available_aerosol (    &
-                   ix, jx, kx, Lsdiag_mp, Atmos_state, Particles, Aerosol)
+                   ix, jx, kx, Lsdiag_mp, Lsdiag_mp_control,  &
+                   Atmos_state, Particles, Aerosol)
             call mpp_clock_end (aerosol_cloud_clock)
           endif
 
@@ -1060,7 +1066,8 @@ type(aerosol_type),          intent(in), optional :: Aerosol
           call mpp_clock_begin (ls_macrophysics_clock)
           call ls_cloud_macrophysics (    &
                    is, ie, js, je, Time, dt, rdiag, Input_mp, Output_mp, &
-                   Tend_mp, C2ls_mp, Lsdiag_mp, Atmos_state, Cloud_state, &
+                   Tend_mp, C2ls_mp, Lsdiag_mp_control, Lsdiag_mp, &
+                   Atmos_state, Cloud_state, &
                    Particles, Precip_state, Cloud_processes, Aerosol)    
 
 !---------------------------------------------------------------------
@@ -1092,7 +1099,8 @@ type(aerosol_type),          intent(in), optional :: Aerosol
             call mpp_clock_begin (realiz_clubb_clock)
             call impose_realizability_clubb (   &
                  Input_mp, Tend_mp, Cloud_state,   &
-                 C2ls_mp%convective_humidity_area, dtcloud, Lsdiag_mp)
+                 C2ls_mp%convective_humidity_area, dtcloud, Lsdiag_mp, &
+                                                       Lsdiag_mp_control)
             call mpp_clock_end (realiz_clubb_clock)
 
 !------------------------------------------------------------------------
@@ -1124,6 +1132,7 @@ type(aerosol_type),          intent(in), optional :: Aerosol
             call ls_cloud_microphysics    &
                 (is, ie, js, je, Time, dt,  &
                  Input_mp, Output_mp, C2ls_mp, Tend_mp, Lsdiag_mp, &
+                 Lsdiag_mp_control, &
                  Atmos_state, Cloud_state, Particles, Precip_state,  &
                                      Cloud_processes, Removal_mp, Aerosol)
 
@@ -1142,9 +1151,10 @@ type(aerosol_type),          intent(in), optional :: Aerosol
           if (Constants_lsc%tiedtke_macrophysics .or. do_clubb > 0) then
             call mpp_clock_begin (detail_diag_clock)
             call detailed_diagnostics (      &
-                is, ie, js, je, Time, Lsdiag_mp%n_diag_4d,           &
+                is, ie, js, je, Time, Lsdiag_mp_control%n_diag_4d,      &
                 Lsdiag_mp%diag_4d, Lsdiag_mp%diag_4d_kp1,&
-                Lsdiag_mp%diag_3d, Lsdiag_mp%diag_pt, Lsdiag_mp%diag_id, &
+                Lsdiag_mp%diag_3d, Lsdiag_mp_control%diag_pt,   &
+                Lsdiag_mp_control%diag_id, &
                 C2ls_mp, Input_mp, Atmos_state, Cloud_state, Particles, &
                 Precip_state, Cloud_processes, Tend_mp, Removal_mp) 
             call mpp_clock_end (detail_diag_clock)
@@ -2145,13 +2155,14 @@ end subroutine impose_realizability
 !########################################################################
 
 subroutine impose_realizability_clubb   &
-                                (Input_mp, Tend_mp, Cloud_state,  &
-                                              ahuco3d, dtcloud, Lsdiag_mp)
+                            (Input_mp, Tend_mp, Cloud_state, ahuco3d,    &
+                                    dtcloud, Lsdiag_mp, Lsdiag_mp_control)
 
 real,                          intent(in)    :: dtcloud
 type(mp_tendency_type),        intent(inout) :: Tend_mp
 type(mp_input_type),           intent(in   ) :: Input_mp
 type(mp_lsdiag_type),          intent(inout) :: Lsdiag_mp
+type(mp_lsdiag_control_type),  intent(inout) :: Lsdiag_mp_control
 type(cloud_state_type),        intent(inout) :: Cloud_state
 real, dimension(:,:,:),        intent(in   ) :: ahuco3d            
 
@@ -2238,16 +2249,16 @@ real, dimension(:,:,:),        intent(in   ) :: ahuco3d
         do j = 1,jdim
           do i = 1,idim
             if (ql_too_small(i,j,k)) then
-              if (Lsdiag_mp%diag_id%qdt_liquid_init > 0)  &
+              if (Lsdiag_mp_control%diag_id%qdt_liquid_init > 0)  &
                    Lsdiag_mp%diag_4d(i,j,k,  &
-                            Lsdiag_mp%diag_pt%qdt_liquid_init)  =  &
+                           Lsdiag_mp_control%diag_pt%qdt_liquid_init)  =  &
                                        Input_mp%tracer(i,j,k,nql)/dtcloud
-              if (Lsdiag_mp%diag_id%qndt_fill  +   &
-                  Lsdiag_mp%diag_id%qn_fill_col + &
-                  Lsdiag_mp%diag_id%qldt_fill +   &
-                  Lsdiag_mp%diag_id%ql_fill_col > 0 )    &
+              if (Lsdiag_mp_control%diag_id%qndt_fill  +   &
+                  Lsdiag_mp_control%diag_id%qn_fill_col + &
+                  Lsdiag_mp_control%diag_id%qldt_fill +   &
+                  Lsdiag_mp_control%diag_id%ql_fill_col > 0 )    &
                     Lsdiag_mp%diag_4d(i,j,k,  &
-                             Lsdiag_mp%diag_pt%qndt_fill) = &
+                             Lsdiag_mp_control%diag_pt%qndt_fill) = &
                                       -Input_mp%tracer(i,j,k,nqn)/dtcloud 
 
             endif
@@ -2269,9 +2280,9 @@ real, dimension(:,:,:),        intent(in   ) :: ahuco3d
         do j = 1,jdim
           do i = 1,idim
             if (qi_too_small(i,j,k)) then
-              if (Lsdiag_mp%diag_id%qdt_ice_init > 0)   &
+              if (Lsdiag_mp_control%diag_id%qdt_ice_init > 0)   &
                      Lsdiag_mp%diag_4d(i,j,k,  &
-                              Lsdiag_mp%diag_pt%qdt_ice_init )   =   &
+                            Lsdiag_mp_control%diag_pt%qdt_ice_init ) =   &
                                         Input_mp%tracer(i,j,k,nqi)/dtcloud
             endif
           end do
@@ -2295,10 +2306,10 @@ real, dimension(:,:,:),        intent(in   ) :: ahuco3d
 !    save a diagnostic defining the ice crystal number filling amount. 
 !------------------------------------------------------------------------
 
-                if (Lsdiag_mp%diag_id%qnidt_fill  +    &
-                    Lsdiag_mp%diag_id%qni_fill_col > 0 )   &
+                if (Lsdiag_mp_control%diag_id%qnidt_fill  +    &
+                    Lsdiag_mp_control%diag_id%qni_fill_col > 0 )   &
                    Lsdiag_mp%diag_4d(i,j,k,   &
-                             Lsdiag_mp%diag_pt%qnidt_fill) =   &
+                             Lsdiag_mp_control%diag_pt%qnidt_fill) =   &
                                       -Input_mp%tracer(i,j,k,nqni)/dtcloud
                endif
              end do

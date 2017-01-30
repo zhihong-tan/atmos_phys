@@ -710,7 +710,8 @@ end subroutine convection_driver_init
 
 subroutine convection_driver   &
                    (is, ie, js, je, Time, dt, Input_mp, Tend_mp, C2ls_mp, &
-                    Output_mp, Removal_mp, Surf_diff, Phys_mp_exch, &
+                    Output_mp, Removal_mp,  Removal_mp_control,   &
+                    Surf_diff, Phys_mp_exch, &
                     shflx, lhflx, tdt_dif, qdt_dif, Moist_clouds_block,  &
                     Aerosol, mask, kbot)
 
@@ -739,6 +740,7 @@ type(mp_input_type),    intent(inout) :: Input_mp
 type(mp_output_type),   intent(inout) :: Output_mp
 type(mp_tendency_type), intent(inout) :: Tend_mp
 type(mp_removal_type),  intent(inout) :: Removal_mp
+type(mp_removal_control_type),  intent(inout) :: Removal_mp_control
 type(surf_diff_type),   intent(in)    :: Surf_diff
 type(phys_mp_exch_type),intent(inout) :: Phys_mp_exch
 real, dimension(:,:),   intent(in)    :: shflx, lhflx
@@ -812,16 +814,16 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
    real, dimension(size(Input_mp%t,1),size(Input_mp%t,2),    &
                                          size(Input_mp%t,3),    &
-                               Removal_mp%control%num_donner_tracers) ::  &
+                               Removal_mp_control%num_donner_tracers) ::  &
                                 qtr, donner_tracer
 
    real, dimension(size(Input_mp%t,1),size(Input_mp%t,2),   &
-                               Removal_mp%control%num_donner_tracers) ::  &
+                               Removal_mp_control%num_donner_tracers) ::  &
                                 tr_flux  
 
    real, dimension(size(Input_mp%t,1),size(Input_mp%t,2),    &
                                          size(Input_mp%t,3),   &
-                               Removal_mp%control%num_uw_tracers) ::  &
+                               Removal_mp_control%num_uw_tracers) ::  &
                                 qtruw
 
    real, dimension(size(Input_mp%t,1),size(Input_mp%t,2),   &
@@ -1058,8 +1060,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
                qtnd_uw, utnd_uw, vtnd_uw, qtruw, qltnd_uw, qitnd_uw,   &
                qatnd_uw, qntnd_uw, qnitnd_uw, doing_prog_clouds,   &
                do_limit_uw, do_liq_num, num_prog_tracers,  &
-               Removal_mp%control%tracers_in_uw,    &
-               Removal_mp%control%num_uw_tracers,   &
+               Removal_mp_control%tracers_in_uw,    &
+               Removal_mp_control%num_uw_tracers,   &
                Moist_clouds_block%cloud_data(i_shallow),  &
                Removal_mp%uw_wetdep, do_ice_num, detrain_ice_num)      
         endif  !(       do_uw_conv)
@@ -1122,10 +1124,10 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    check each active tracer to find those to be transported and fill 
 !    the donner_tracer array with these fields.
 !---------------------------------------------------------------------
-        if (Removal_mp%control%num_donner_tracers > 0) then
+        if (Removal_mp_control%num_donner_tracers > 0) then
           nn = 1
           do n=1,num_prog_tracers
-            if (Removal_mp%control%tracers_in_donner(n)) then
+            if (Removal_mp_control%tracers_in_donner(n)) then
               donner_tracer(:,:,:,nn) = Input_mp%tracer(:,:,:,n)
               nn = nn + 1
             endif
@@ -1144,10 +1146,10 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !---------------------------------------------------------------------
         sfc_sh_flux    = 0.0
         sfc_vapor_flux = 0.0
-        if (Removal_mp%control%num_donner_tracers > 0) then
+        if (Removal_mp_control%num_donner_tracers > 0) then
           nn = 1
           do n=1, num_prog_tracers
-            if (Removal_mp%control%tracers_in_donner(n)) then
+            if (Removal_mp_control%tracers_in_donner(n)) then
               tr_flux(:,:,nn) = 0.0                                 
               nn = nn + 1
             endif
@@ -1246,10 +1248,10 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    update the current timestep tracer changes with the contributions 
 !    just obtained from donner transport.
 !---------------------------------------------------------------------
-        if (Removal_mp%control%num_donner_tracers > 0) then
+        if (Removal_mp_control%num_donner_tracers > 0) then
           nn = 1
           do n=1, num_prog_tracers
-            if (Removal_mp%control%tracers_in_donner(n)) then
+            if (Removal_mp_control%tracers_in_donner(n)) then
               Output_mp%rdt(:,:,:,n) = Output_mp%rdt(:,:,:,n) +   &
                                                              qtr(:,:,:,nn)
               nn = nn + 1
@@ -1351,7 +1353,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                 precip_returned, total_precip, lheat_precip,    &
                 liquid_precip, frozen_precip, Input_mp%pmass,   &
                 num_prog_tracers,   &
-                Removal_mp%control%tracers_in_donner, delta_ql, delta_qi, &
+                Removal_mp_control%tracers_in_donner, delta_ql, delta_qi, &
                 delta_qa, qlin, qiin, qtr, scale_donner)
         else
           scale_donner = 1.0
@@ -1707,7 +1709,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !---------------------------------------------------------------------
           nn = 1
           do n=1, num_prog_tracers
-            if (Removal_mp%control%tracers_in_donner(n)) then
+            if (Removal_mp_control%tracers_in_donner(n)) then
               Output_mp%rdt(:,:,:,n) = Output_mp%rdt(:,:,:,n) +   &
                                                            qtr(:,:,:,nn)
               nn = nn + 1
@@ -1766,7 +1768,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    parameterization. currently moist convective adjustment does not
 !    affect the tracer fields, so these fields are always 0.0.
 !--------------------------------------------------------------------
-          do n = 1, Removal_mp%control%num_donner_tracers
+          do n = 1, Removal_mp_control%num_donner_tracers
             if ( id_tracerdt_mcadon(n) > 0 ) &
               used = send_data(id_tracerdt_mcadon(n), qtr(:,:,:,n),   &
                                                          Time, is, js, 1 )
@@ -1931,8 +1933,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
                     qtnd_uw, utnd_uw, vtnd_uw, qtruw, qltnd_uw, qitnd_uw, &
                     qatnd_uw, qntnd_uw, qnitnd_uw, doing_prog_clouds,  &
                     do_limit_uw, do_liq_num, num_prog_tracers,  &
-                    Removal_mp%control%tracers_in_uw,   &
-                    Removal_mp%control%num_uw_tracers,   &
+                    Removal_mp_control%tracers_in_uw,   &
+                    Removal_mp_control%num_uw_tracers,   &
                     Moist_clouds_block%cloud_data(i_shallow),  &
                     Removal_mp%uw_wetdep, do_ice_num, detrain_ice_num)
 
@@ -1968,8 +1970,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
                     qtnd_uw, utnd_uw, vtnd_uw, qtruw, qltnd_uw, qitnd_uw, &
                     qatnd_uw, qntnd_uw, qnitnd_uw, doing_prog_clouds,   &
                     do_limit_uw, do_liq_num, num_prog_tracers,  &
-                    Removal_mp%control%tracers_in_uw,    &
-                    Removal_mp%control%num_uw_tracers,   &
+                    Removal_mp_control%tracers_in_uw,    &
+                    Removal_mp_control%num_uw_tracers,   &
                     Moist_clouds_block%cloud_data(i_shallow),  &
                     Removal_mp%uw_wetdep, do_ice_num, detrain_ice_num)
           endif ! (use_updated_profiles_for_uw)
@@ -1995,8 +1997,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
               Output_mp%tdt, Output_mp%rdt(:,:,:,1), Output_mp%rdt,  &
               Tend_mp%q_tnd, Tend_mp%ttnd_conv, Tend_mp%qtnd_conv,      &
               Output_mp%lprec, Output_mp%fprec, doing_prog_clouds,  &
-              num_prog_tracers, Removal_mp%control%tracers_in_mca,   &
-              Removal_mp%control%num_mca_tracers )
+              num_prog_tracers, Removal_mp_control%tracers_in_mca,   &
+              Removal_mp_control%num_mca_tracers )
         call mpp_clock_end (mca_clock)
       endif 
 
@@ -2109,8 +2111,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
              Tend_mp%ttnd_conv, Tend_mp%qtnd_conv, mc, det0,  &
              Output_mp%lprec, Output_mp%fprec, rain_ras, snow_ras,  &
              rain3d, snow3d, Aerosol, doing_prog_clouds, do_liq_num,  &
-             num_prog_tracers, Removal_mp%control%tracers_in_ras,   &
-             Removal_mp%control%num_ras_tracers,             &
+             num_prog_tracers, Removal_mp_control%tracers_in_ras,   &
+             Removal_mp_control%num_ras_tracers,             &
              do_ice_num, detrain_ice_num)
         call mpp_clock_end (ras_clock)
       else
@@ -2406,7 +2408,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                precip, qtruw, rain_uw, snow_uw, ttnd_uw, qtnd_uw,   &
                utnd_uw, vtnd_uw, qltnd_uw, qitnd_uw, qatnd_uw, qntnd_uw, &
                qnitnd_uw, doing_prog_clouds, do_liq_num, num_prog_tracers,&
-               Removal_mp%control%tracers_in_uw, scale, do_ice_num)
+               Removal_mp_control%tracers_in_uw, scale, do_ice_num)
         else  
           scale = 1.0
         endif 
@@ -2728,10 +2730,10 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !---------------------------------------------------------------------
 !      do n=1,size(Output_mp%rdt,4)
       do n=1,nt
-        if (Removal_mp%control%tracers_in_donner(n) .or.   &
-            Removal_mp%control%tracers_in_ras(n) .or.  &
-            Removal_mp%control%tracers_in_mca(n) .or.   &
-            Removal_mp%control%tracers_in_uw(n))    then
+        if (Removal_mp_control%tracers_in_donner(n) .or.   &
+            Removal_mp_control%tracers_in_ras(n) .or.  &
+            Removal_mp_control%tracers_in_mca(n) .or.   &
+            Removal_mp_control%tracers_in_uw(n))    then
  
 !---------------------------------------------------------------------
 !    output diagnostics for tracer tendency and column integrated 

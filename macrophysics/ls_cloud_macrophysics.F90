@@ -42,6 +42,7 @@ use clubb_driver_mod,      only: clubb_init, clubb, clubb_end
 use aerosol_types_mod,     only: aerosol_type
 use moist_proc_utils_mod,  only: mp_input_type, mp_output_type, &
                                  mp_lsdiag_type, mp_nml_type,   &
+                                 mp_lsdiag_control_type, &
                                  mp_conv2ls_type, mp_tendency_type
 use physics_radiation_exch_mod,            &
                           only : exchange_control_type
@@ -263,8 +264,8 @@ end subroutine ls_cloud_macrophysics_time_vary
 
 subroutine ls_cloud_macrophysics (   &
              is, ie, js, je, Time, dt, rdiag, Input_mp, Output_mp, Tend_mp,&
-             C2ls_mp, Lsdiag_mp, Atmos_state, Cloud_state, Particles, &
-             Precip_state, Cloud_processes, Aerosol)
+             C2ls_mp, Lsdiag_mp_control, Lsdiag_mp, Atmos_state,   &
+             Cloud_state, Particles, Precip_state, Cloud_processes, Aerosol)
 
 !-------------------------------------------------------------------------
 
@@ -276,6 +277,7 @@ type(mp_output_type),       intent(inout)        :: Output_mp
 type(mp_tendency_type),     intent(inout)        :: Tend_mp
 type(mp_conv2ls_type),      intent(inout)        :: C2ls_mp
 type(mp_lsdiag_type),       intent(inout)        :: Lsdiag_mp
+type(mp_lsdiag_control_type),intent(inout)       :: Lsdiag_mp_control
 type(atmos_state_type),     intent(inout)        :: Atmos_state
 type(cloud_state_type),     intent(inout)        :: Cloud_state
 type(particles_type),       intent(inout)        :: Particles 
@@ -406,23 +408,25 @@ real, dimension(:,:,:,size(Output_mp%rdt,4)+1:),     &
 !--------------------------------------------------------------------------
         call mpp_clock_begin (active_clock)
         call determine_activated_aerosol (   &
-             idim, jdim, kdim, Lsdiag_mp%n_diag_4d, C2ls_mp, Input_mp,   &
-             Atmos_state, Particles, Cloud_state%qa_upd,   &
-                  Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt )
+             idim, jdim, kdim, Lsdiag_mp_control%n_diag_4d, C2ls_mp,   &
+             Input_mp, Atmos_state, Particles, Cloud_state%qa_upd,   &
+             Lsdiag_mp%diag_4d, Lsdiag_mp_control%diag_id,    &
+                                                 Lsdiag_mp_control%diag_pt )
         call mpp_clock_end (active_clock)
 
         call mpp_clock_begin (main_clock)
         CALL tiedtke_macro (   &
              idim, jdim, kdim, C2ls_mp, Input_mp, Atmos_state,   &
              Cloud_state, Tend_mp%ttnd, Tend_mp%qtnd, Cloud_processes,  &
-                                                     Particles, Lsdiag_mp )
+                                  Particles, Lsdiag_mp, Lsdiag_mp_control )
         call mpp_clock_end (main_clock)
 
         call mpp_clock_begin (diag_clock)
         call tiedtke_macro_diagnostics (    &
-             idim, jdim, kdim, Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_id,  &
-             Lsdiag_mp%diag_4d, Lsdiag_mp%diag_pt, Cloud_processes,   &
-                                                                Cloud_state)
+             idim, jdim, kdim, Lsdiag_mp_control%n_diag_4d,   &
+             Lsdiag_mp_control%diag_id,  &
+             Lsdiag_mp%diag_4d, Lsdiag_mp_control%diag_pt,    &
+             Cloud_processes, Cloud_state)
         call mpp_clock_end (diag_clock)
 
         call mpp_clock_end (tiedtke_clock)

@@ -49,6 +49,7 @@ use physics_radiation_exch_mod,      &
                            only: exchange_control_type
 use moist_proc_utils_mod,  only: mp_input_type, mp_output_type,  &
                                  mp_lsdiag_type, mp_nml_type,  &
+                                 mp_lsdiag_control_type,  &
                                  mp_conv2ls_type, mp_tendency_type,  &
                                  mp_removal_type
 
@@ -458,8 +459,9 @@ end subroutine ls_cloud_microphysics_time_vary
 
 subroutine ls_cloud_microphysics (    &
                  is, ie, js, je, Time, dt, Input_mp, Output_mp, C2ls_mp,&
-                 Tend_mp, Lsdiag_mp, Atmos_state, Cloud_state, Particles, &
-                 Precip_state, Cloud_processes, Removal_mp, Aerosol)
+                 Tend_mp, Lsdiag_mp, Lsdiag_mp_control, Atmos_state,   &
+                 Cloud_state, Particles, Precip_state, Cloud_processes, &
+                                                      Removal_mp, Aerosol)
 
 !-----------------------------------------------------------------------
 
@@ -469,6 +471,7 @@ type(mp_removal_type),      intent(inout)        :: Removal_mp
 type(mp_conv2ls_type),      intent(inout)        :: C2ls_mp
 type(mp_tendency_type),     intent(inout)        :: Tend_mp
 type(mp_lsdiag_type),       intent(inout)        :: Lsdiag_mp
+type(mp_lsdiag_control_type), intent(inout)      :: Lsdiag_mp_control
 type(atmos_state_type),     intent(inout)        :: Atmos_state
 type(cloud_state_type),     intent(inout)        :: Cloud_state
 type(particles_type),       intent(inout)        :: Particles
@@ -549,9 +552,11 @@ type(aerosol_type),         intent(in), optional :: Aerosol
                       Cloud_state%qi_upd, Cloud_state%qn_upd,       & 
                       Cloud_state%qi_mean, Cloud_state%qa_upd,   &
                       C2ls_mp%convective_humidity_area,   &
-                      Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d,   &
-                      Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt,  &
-                      Lsdiag_mp%n_diag_4d_kp1, Lsdiag_mp%diag_4d_kp1,  &
+                      Lsdiag_mp_control%n_diag_4d, Lsdiag_mp%diag_4d,   &
+                      Lsdiag_mp_control%diag_id,     &
+                      Lsdiag_mp_control%diag_pt,  &
+                      Lsdiag_mp_control%n_diag_4d_kp1,   &
+                      Lsdiag_mp%diag_4d_kp1,  &
                       limit_conv_cloud_frac, &
                       Cloud_state%SA_out, Cloud_state%SN_out,        & 
                       Tend_mp%ttnd, Tend_mp%qtnd, Cloud_state%SL_out,  &
@@ -810,8 +815,8 @@ type(aerosol_type),         intent(in), optional :: Aerosol
                    Precip_state%lsc_rain_size(:,j,:),   &
                    Precip_state%lsc_snow_size(:,j,:), &
                    Cloud_processes%f_snow_berg(:,j,:), &
-                   Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d,   &
-                   Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt)    
+                   Lsdiag_mp_control%n_diag_4d, Lsdiag_mp%diag_4d,   &
+                   Lsdiag_mp_control%diag_id, Lsdiag_mp_control%diag_pt)    
 
 !------------------------------------------------------------------------
 !    if debugging is activated, output the temp tendency after 
@@ -988,9 +993,9 @@ type(aerosol_type),         intent(in), optional :: Aerosol
                      Cloud_processes%f_snow_berg(:,j,:), &
                      Cloud_state%qa_in(:,j,:), Atmos_state%gamma(:,j,:),&
                      Cloud_state%SA_0(:,j,:), Cloud_state%SA_out(:,j,:),  &
-                     ssat_disposal (:,j,:), Lsdiag_mp%n_diag_4d,  &
-                     Lsdiag_mp%diag_4d, Lsdiag_mp%diag_id,    &
-                     Lsdiag_mp%diag_pt)
+                     ssat_disposal (:,j,:), Lsdiag_mp_control%n_diag_4d,  &
+                     Lsdiag_mp%diag_4d, Lsdiag_mp_control%diag_id,    &
+                     Lsdiag_mp_control%diag_pt)
               end do
 
 !------------------------------------------------------------------------
@@ -1077,8 +1082,9 @@ type(aerosol_type),         intent(in), optional :: Aerosol
                        re_icen(:,j,:), errstring,    &
                        Cloud_processes%f_snow_berg(:,j,:), &
                        ssat_disposal(:,j,:), &
-                       Lsdiag_mp%n_diag_4d, Lsdiag_mp%diag_4d,  &
-                       Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt)
+                       Lsdiag_mp_control%n_diag_4d, Lsdiag_mp%diag_4d,  &
+                       Lsdiag_mp_control%diag_id,    &
+                                                 Lsdiag_mp_control%diag_pt)
 
 !------------------------------------------------------------------------
 !   convert from effective radius to diameter for use in radiation.
@@ -1147,7 +1153,8 @@ type(aerosol_type),         intent(in), optional :: Aerosol
 !------------------------------------------------------------------------
           call adjust_precip_fields (   &
                               ix, jx, kx, SQ_micro, SL_micro, SI_micro,  &
-                                  Atmos_state, Precip_state, Lsdiag_mp) 
+                                  Atmos_state, Precip_state, Lsdiag_mp, &
+                                                       Lsdiag_mp_control ) 
 
 !-----------------------------------------------------------------------
 !    update prognostic tendencies due to microphysics terms.
@@ -1175,7 +1182,8 @@ type(aerosol_type),         intent(in), optional :: Aerosol
           if (do_clubb <= 0 ) then
             call adjust_for_supersaturation_removal (  &
                     ix, jx, kx, C2ls_mp, Input_mp, Atmos_state,  &
-                         ssat_disposal, Particles, Cloud_state, Lsdiag_mp) 
+                         ssat_disposal, Particles, Cloud_state, Lsdiag_mp,&
+                                                    Lsdiag_mp_control ) 
           endif
 
 !------------------------------------------------------------------------
@@ -1190,7 +1198,7 @@ type(aerosol_type),         intent(in), optional :: Aerosol
 !-------------------------------------------------------------------------
             call destroy_tiny_clouds_clubb (   &
                   ix, jx, kx, Cloud_state, Tend_mp, Lsdiag_mp, &
-                                         C2ls_mp, Input_mp, Atmos_state)
+                        Lsdiag_mp_control, C2ls_mp, Input_mp, Atmos_state)
 
 
 !-------------------------------------------------------------------------
@@ -1226,7 +1234,7 @@ type(aerosol_type),         intent(in), optional :: Aerosol
 !-------------------------------------------------------------------------
             call destroy_tiny_clouds (    &
                    ix, jx, kx, Cloud_state, Tend_mp, Lsdiag_mp, &
-                                         C2ls_mp, Input_mp, Atmos_state)
+                      Lsdiag_mp_control, C2ls_mp, Input_mp, Atmos_state)
 
 !-----------------------------------------------------------------------
 !    define output fields.
@@ -1337,7 +1345,8 @@ end subroutine ls_cloud_microphysics_end
 
 subroutine adjust_precip_fields (    &
               ix, jx, kx, SQ_micro, SL_micro, SI_micro,     &
-                                   Atmos_state, Precip_state, Lsdiag_mp)
+                                   Atmos_state, Precip_state, Lsdiag_mp, &
+                                                 Lsdiag_mp_control )
 
 !------------------------------------------------------------------------
 !    subroutine adjust_precip_fields modifies the surface precipitation to
@@ -1348,6 +1357,7 @@ subroutine adjust_precip_fields (    &
 
 integer,                    intent(in)    :: ix, jx, kx
 type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
+type(mp_lsdiag_control_type), intent(inout) :: Lsdiag_mp_control
 type(atmos_state_type),     intent(inout) :: Atmos_state
 type(precip_state_type),    intent(inout) :: Precip_state
 real, dimension (:,:,:),    intent(in)    :: SL_micro, SI_micro, SQ_micro
@@ -1388,12 +1398,14 @@ real, dimension (:,:,:),    intent(in)    :: SL_micro, SI_micro, SQ_micro
 !   define diagnostics capturing the rate (kg/m2/s) that the precip
 !   field is adjusted to balance the loss of atmospheric water mass.
 !-----------------------------------------------------------------------
-              if (Lsdiag_mp%diag_id%rain_mass_conv > 0   ) &
-              Lsdiag_mp%diag_4d(i,j,1,Lsdiag_mp%diag_pt%rain_mass_conv) = &
+              if (Lsdiag_mp_control%diag_id%rain_mass_conv > 0   ) &
+              Lsdiag_mp%diag_4d(i,j,1,   &
+                            Lsdiag_mp_control%diag_pt%rain_mass_conv) = &
                            (scalef(i,j)*Precip_state%surfrain(i,j) -    &
                                         Precip_state%surfrain(i,j))*1.0e3
-              if (Lsdiag_mp%diag_id%snow_mass_conv > 0   ) &
-              Lsdiag_mp%diag_4d(i,j,1,Lsdiag_mp%diag_pt%snow_mass_conv) = &
+              if (Lsdiag_mp_control%diag_id%snow_mass_conv > 0   ) &
+              Lsdiag_mp%diag_4d(i,j,1,   &
+                           Lsdiag_mp_control%diag_pt%snow_mass_conv) = &
                               (scalef(i,j)*Precip_state%surfsnow(i,j) -  &
                                          Precip_state%surfsnow(i,j))*1.0e3
  
@@ -1413,12 +1425,14 @@ real, dimension (:,:,:),    intent(in)    :: SL_micro, SI_micro, SQ_micro
 !    save the rain and snow precipitation fields before any lower limit
 !    is imposed (usually 0.0).
 !------------------------------------------------------------------------
-      if (Lsdiag_mp%diag_id%neg_rain > 0) &
-        Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp%diag_pt%neg_rain) = 1.0e3*    &
+      if (Lsdiag_mp_control%diag_id%neg_rain > 0) &
+        Lsdiag_mp%diag_4d(:,:,1,    &
+                      Lsdiag_mp_control%diag_pt%neg_rain) = 1.0e3*    &
           (Precip_state%surfrain(:,:) - Precip_state%surfsnow(:,:))* &
                                                                    dtcloud
-      if (Lsdiag_mp%diag_id%neg_snow > 0) &
-        Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp%diag_pt%neg_snow) = 1.0e3*    &
+      if (Lsdiag_mp_control%diag_id%neg_snow > 0) &
+        Lsdiag_mp%diag_4d(:,:,1,    &
+                        Lsdiag_mp_control%diag_pt%neg_snow) = 1.0e3*    &
           (Precip_state%surfsnow(:,:))*dtcloud 
 
 !-----------------------------------------------------------------------
@@ -1435,16 +1449,16 @@ real, dimension (:,:,:),    intent(in)    :: SL_micro, SI_micro, SQ_micro
 !    compute amount of precip which has been eliminated by this
 !    adjustment.
 !-----------------------------------------------------------------------
-      if (Lsdiag_mp%diag_id%neg_rain > 0) &
-          Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp%diag_pt%neg_rain) =   &
+      if (Lsdiag_mp_control%diag_id%neg_rain > 0) &
+          Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp_control%diag_pt%neg_rain) =   &
           -1.0*( (Precip_state%surfrain(:,:))  -   &
-                  Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp%diag_pt%neg_rain))/   &
-                                                                dtcloud 
-      if (Lsdiag_mp%diag_id%neg_snow > 0) &
-          Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp%diag_pt%neg_snow) =   &
+                  Lsdiag_mp%diag_4d(:,:,1,   &
+                              Lsdiag_mp_control%diag_pt%neg_rain))/dtcloud 
+      if (Lsdiag_mp_control%diag_id%neg_snow > 0) &
+          Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp_control%diag_pt%neg_snow) =   &
           -1.0*( (Precip_state%surfsnow(:,:))  -   &
-                  Lsdiag_mp%diag_4d(:,:,1,Lsdiag_mp%diag_pt%neg_snow))/ &
-                                                                dtcloud
+                  Lsdiag_mp%diag_4d(:,:,1,    &
+                             Lsdiag_mp_control%diag_pt%neg_snow))/dtcloud
 
 !-------------------------------------------------------------------------
 
@@ -1456,7 +1470,8 @@ end subroutine adjust_precip_fields
 
 subroutine adjust_for_supersaturation_removal (  &
                       ix, jx, kx, C2ls_mp, Input_mp, Atmos_state, &
-                          ssat_disposal, Particles, Cloud_state, Lsdiag_mp) 
+                       ssat_disposal, Particles, Cloud_state, Lsdiag_mp, &
+                                                       lsdiag_mp_control ) 
 
 !-----------------------------------------------------------------------
 !    with tiedtke macrophysics, supersaturation removal results in an 
@@ -1467,6 +1482,7 @@ subroutine adjust_for_supersaturation_removal (  &
 
 integer,                    intent(in)    :: ix, jx, kx
 type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
+type(mp_lsdiag_control_type), intent(inout) :: Lsdiag_mp_control
 type(atmos_state_type),     intent(inout) :: Atmos_state
 type(mp_input_type),        intent(inout) :: Input_mp    
 type(mp_conv2ls_type),      intent(inout) :: C2ls_mp     
@@ -1525,10 +1541,10 @@ real, dimension(:,:,:),     intent(in)    :: ssat_disposal
                           (Particles%crystal1(i,j,k)/rho(i,j,k)*  &
                                (1. - Cloud_state%qa_upd(i,j,k) -  &
                                    tmp2s(i,j,k))/dtcloud)*dtcloud
-                    if (Lsdiag_mp%diag_id%qnidt_super +   &
-                              Lsdiag_mp%diag_id%qni_super_col > 0 ) &
+                    if (Lsdiag_mp_control%diag_id%qnidt_super +   &
+                            Lsdiag_mp_control%diag_id%qni_super_col > 0 ) &
                         Lsdiag_mp%diag_4d(i,j,k,  &
-                                     Lsdiag_mp%diag_pt%qnidt_super) =    &
+                              Lsdiag_mp_control%diag_pt%qnidt_super) =    &
                         Particles%crystal1(i,j,k)/rho(i,j,k)*  &
                      (1. - Cloud_state%qa_upd(i,j,k) - tmp2s(i,j,k))/  &
                                                                   dtcloud  
@@ -1539,19 +1555,19 @@ real, dimension(:,:,:),     intent(in)    :: ssat_disposal
                           (Particles%drop2(i,j,k)*    &
                                (1. - Cloud_state%qa_upd(i,j,k) -   &
                                   tmp2s(i,j,k))/dtcloud)*dtcloud
-                    if (Lsdiag_mp%diag_id%qndt_super +   &
-                                  Lsdiag_mp%diag_id%qn_super_col > 0 ) &
+                    if (Lsdiag_mp_control%diag_id%qndt_super +   &
+                            Lsdiag_mp_control%diag_id%qn_super_col > 0 ) &
                          Lsdiag_mp%diag_4d(i,j,k,   &
-                                    Lsdiag_mp%diag_pt%qndt_super ) =    &
+                             Lsdiag_mp_control%diag_pt%qndt_super ) =    &
                            Particles%drop2(i,j,k)*               &
                      (1. - Cloud_state%qa_upd(i,j,k) - tmp2s(i,j,k))/  &
                                                                   dtcloud  
                   endif
                 end if ! dqa_activation
-                if (max(Lsdiag_mp%diag_id%qadt_super,  &
-                            Lsdiag_mp%diag_id%qa_super_col) > 0) then
+                if (max(Lsdiag_mp_control%diag_id%qadt_super,  &
+                            Lsdiag_mp_control%diag_id%qa_super_col) > 0) then
                   Lsdiag_mp%diag_4d(i,j,k,  &
-                        Lsdiag_mp%diag_pt%qadt_super ) = &              
+                        Lsdiag_mp_control%diag_pt%qadt_super ) = &              
                      (1. - Cloud_state%qa_upd(i,j,k) - tmp2s(i,j,k))/  &
                                                                   dtcloud  
                 endif
@@ -1581,7 +1597,7 @@ end subroutine adjust_for_supersaturation_removal
 
 subroutine destroy_tiny_clouds (   &
                   ix, jx, kx, Cloud_state, Tend_mp, Lsdiag_mp,   &
-                                           C2ls_mp, Input_mp, Atmos_state)
+                        Lsdiag_mp_control, C2ls_mp, Input_mp, Atmos_state)
 
 !-----------------------------------------------------------------------
 !    routine to conservatively remove unacceptably small clouds.
@@ -1589,6 +1605,7 @@ subroutine destroy_tiny_clouds (   &
 
 integer,                    intent(in)    :: ix, jx, kx
 type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
+type(mp_lsdiag_control_type), intent(inout) :: Lsdiag_mp_control
 type(mp_tendency_type),     intent(inout) :: Tend_mp
 type(atmos_state_type),     intent(inout) :: Atmos_state
 type(mp_input_type),        intent(inout) :: Input_mp    
@@ -1642,29 +1659,35 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
 !    save diagnostics defining the adjustments made here to destroy the
 !    clouds.
 !------------------------------------------------------------------------
-              if (Lsdiag_mp%diag_id%qldt_destr > 0 .or.   &
-                               Lsdiag_mp%diag_id%ql_destr_col > 0) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qldt_destr) =  &
+              if (Lsdiag_mp_control%diag_id%qldt_destr > 0 .or.   &
+                             Lsdiag_mp_control%diag_id%ql_destr_col > 0) &
+                  Lsdiag_mp%diag_4d(i,j,k,  &
+                             Lsdiag_mp_control%diag_pt%qldt_destr) =  &
                                       - ql_new(i,j,k)/dtcloud
-              if (Lsdiag_mp%diag_id%qidt_destr > 0 .or.   &
-                               Lsdiag_mp%diag_id%qi_destr_col > 0) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qidt_destr) =  &
+              if (Lsdiag_mp_control%diag_id%qidt_destr > 0 .or.   &
+                             Lsdiag_mp_control%diag_id%qi_destr_col > 0) &
+                Lsdiag_mp%diag_4d(i,j,k,     &
+                                Lsdiag_mp_control%diag_pt%qidt_destr) =  &
                                       - qi_new(i,j,k)/dtcloud
-              if (Lsdiag_mp%diag_id%qadt_destr > 0 .or.   &
-                               Lsdiag_mp%diag_id%qa_destr_col > 0) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qadt_destr) =  &
+              if (Lsdiag_mp_control%diag_id%qadt_destr > 0 .or.   &
+                             Lsdiag_mp_control%diag_id%qa_destr_col > 0) &
+                   Lsdiag_mp%diag_4d(i,j,k,    &
+                                Lsdiag_mp_control%diag_pt%qadt_destr) =  &
                           - Cloud_state%qa_upd(i,j,k)/dtcloud
-              if (Lsdiag_mp%diag_id%qndt_destr > 0 .or.   &
-                                     Lsdiag_mp%diag_id%qn_destr_col > 0) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qndt_destr) =  &
+              if (Lsdiag_mp_control%diag_id%qndt_destr > 0 .or.   &
+                             Lsdiag_mp_control%diag_id%qn_destr_col > 0) &
+                Lsdiag_mp%diag_4d(i,j,k,   &
+                              Lsdiag_mp_control%diag_pt%qndt_destr) =  &
                                       - qn_new(i,j,k)/dtcloud
-              if (Lsdiag_mp%diag_id%qnidt_destr +    &
-                                    Lsdiag_mp%diag_id%qni_destr_col > 0) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qnidt_destr) = &
+              if (Lsdiag_mp_control%diag_id%qnidt_destr +    &
+                            Lsdiag_mp_control%diag_id%qni_destr_col > 0) &
+                Lsdiag_mp%diag_4d(i,j,k,   &
+                            Lsdiag_mp_control%diag_pt%qnidt_destr) = &
                                     - qni_new(i,j,k)/dtcloud
-              if (Lsdiag_mp%diag_id%qdt_destr +    &
-                                    Lsdiag_mp%diag_id%q_destr_col > 0) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qdt_destr) =   &
+              if (Lsdiag_mp_control%diag_id%qdt_destr +    &
+                              Lsdiag_mp_control%diag_id%q_destr_col > 0) &
+                Lsdiag_mp%diag_4d(i,j,k,    &
+                           Lsdiag_mp_control%diag_pt%qdt_destr) =   &
                       (ql_new(i,j,k) + qi_new(i,j,k))/dtcloud
             endif
           end do
@@ -1699,10 +1722,10 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
 !------------------------------------------------------------------------
 !    compute diagnostic for this liquid loss due to this cleanup.
 !------------------------------------------------------------------------
-              if (Lsdiag_mp%diag_id%qdt_cleanup_liquid +    &
-                    Lsdiag_mp%diag_id%q_cleanup_liquid_col > 0) &
+              if (Lsdiag_mp_control%diag_id%qdt_cleanup_liquid +    &
+                    Lsdiag_mp_control%diag_id%q_cleanup_liquid_col > 0) &
                  Lsdiag_mp%diag_4d(i,j,k,   &
-                              Lsdiag_mp%diag_pt%qdt_cleanup_liquid) =   &
+                       Lsdiag_mp_control%diag_pt%qdt_cleanup_liquid) =   &
                                                    ql_new(i,j,k)/dtcloud
 
 !------------------------------------------------------------------------
@@ -1711,9 +1734,10 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
 !------------------------------------------------------------------------
               Cloud_state%SN_out(i,j,k) = Cloud_state%SN_out(i,j,k) -   &
                                                            qn_new(i,j,k) 
-              if (Lsdiag_mp%diag_id%qndt_cleanup +   &
-                               Lsdiag_mp%diag_id%qn_cleanup_col > 0) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qndt_cleanup) = &
+              if (Lsdiag_mp_control%diag_id%qndt_cleanup +   &
+                          Lsdiag_mp_control%diag_id%qn_cleanup_col > 0) &
+                Lsdiag_mp%diag_4d(i,j,k,   &
+                         Lsdiag_mp_control%diag_pt%qndt_cleanup) = &
                                               - qn_new(i,j,k)/dtcloud
             endif
           end do
@@ -1740,10 +1764,10 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
 !------------------------------------------------------------------------
 !    compute diagnostic for this liquid loss due to this cleanup.
 !------------------------------------------------------------------------
-              if (Lsdiag_mp%diag_id%qdt_cleanup_ice +    &
-                        Lsdiag_mp%diag_id%q_cleanup_ice_col > 0) &
+              if (Lsdiag_mp_control%diag_id%qdt_cleanup_ice +    &
+                        Lsdiag_mp_control%diag_id%q_cleanup_ice_col > 0) &
                 Lsdiag_mp%diag_4d(i,j,k,   &
-                         Lsdiag_mp%diag_pt%qdt_cleanup_ice) =   &
+                         Lsdiag_mp_control%diag_pt%qdt_cleanup_ice) =   &
                                        qi_new(i,j,k)/dtcloud
 
 !------------------------------------------------------------------------
@@ -1752,9 +1776,10 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
 !------------------------------------------------------------------------
               Cloud_state%SNI_out(i,j,k) = Cloud_state%SNI_out(i,j,k) -  &
                                                              qni_new(i,j,k) 
-              if (Lsdiag_mp%diag_id%qnidt_cleanup +    &
-                          Lsdiag_mp%diag_id%qni_cleanup_col > 0) &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qnidt_cleanup) = &
+              if (Lsdiag_mp_control%diag_id%qnidt_cleanup +    &
+                    Lsdiag_mp_control%diag_id%qni_cleanup_col > 0) &
+               Lsdiag_mp%diag_4d(i,j,k,     &
+                         Lsdiag_mp_control%diag_pt%qnidt_cleanup) = &
                                   - qni_new(i,j,k)/dtcloud
             endif
           end do
@@ -1769,19 +1794,20 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
       do k=1,kx
         do j=1,jx
           do i=1,ix
-            if (Lsdiag_mp%diag_id%qnidt_cleanup2 +    &
-                   Lsdiag_mp%diag_id%qni_cleanup2_col > 0) &
+            if (Lsdiag_mp_control%diag_id%qnidt_cleanup2 +    &
+                   Lsdiag_mp_control%diag_id%qni_cleanup2_col > 0) &
               Lsdiag_mp%diag_4d(i,j,k,    &
-                                   Lsdiag_mp%diag_pt%qnidt_cleanup2) = &
+                              Lsdiag_mp_control%diag_pt%qnidt_cleanup2) = &
                                            Cloud_state%SNi_out(i,j,k)
 
             Cloud_state%SNi_out(i,j,k) = MAX(Cloud_state%SNi_out(i,j,k), &
                                             - Cloud_state%qni_in(i,j,k))
-            if (Lsdiag_mp%diag_id%qnidt_cleanup2 +    &
-                        Lsdiag_mp%diag_id%qni_cleanup2_col > 0) &
+            if (Lsdiag_mp_control%diag_id%qnidt_cleanup2 +    &
+                        Lsdiag_mp_control%diag_id%qni_cleanup2_col > 0) &
                   Lsdiag_mp%diag_4d(i,j,k,   &
-                                Lsdiag_mp%diag_pt%qnidt_cleanup2) =    &
-            (Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qnidt_cleanup2) - &
+                          Lsdiag_mp_control%diag_pt%qnidt_cleanup2) =    &
+            (Lsdiag_mp%diag_4d(i,j,k,    &
+                    Lsdiag_mp_control%diag_pt%qnidt_cleanup2) - &
                      Cloud_state%SNi_out(i,j,k))*inv_dtcloud
           end do
         end do
@@ -1796,17 +1822,19 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
       do k=1,kx
         do j=1,jx
           do i=1,ix
-            if (Lsdiag_mp%diag_id%qndt_cleanup2 +     &
-                     Lsdiag_mp%diag_id%qn_cleanup2_col > 0) &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qndt_cleanup2) = &
+            if (Lsdiag_mp_control%diag_id%qndt_cleanup2 +     &
+                     Lsdiag_mp_control%diag_id%qn_cleanup2_col > 0) &
+                   Lsdiag_mp%diag_4d(i,j,k,    &
+                          Lsdiag_mp_control%diag_pt%qndt_cleanup2) = &
                                             Cloud_state%SN_out(i,j,k)
             Cloud_state%SN_out(i,j,k) = MAX(Cloud_state%SN_out(i,j,k),  &
                                               - Cloud_state%qn_in(i,j,k))
-            if (Lsdiag_mp%diag_id%qndt_cleanup2 +    &
-                                 Lsdiag_mp%diag_id%qn_cleanup2_col > 0) &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qndt_cleanup2) = &
+            if (Lsdiag_mp_control%diag_id%qndt_cleanup2 +    &
+                          Lsdiag_mp_control%diag_id%qn_cleanup2_col > 0) &
+               Lsdiag_mp%diag_4d(i,j,k,    &
+                           Lsdiag_mp_control%diag_pt%qndt_cleanup2) = &
                  (Lsdiag_mp%diag_4d(i,j,k,   &
-                                    Lsdiag_mp%diag_pt%qndt_cleanup2) -   &
+                            Lsdiag_mp_control%diag_pt%qndt_cleanup2) -   &
                      Cloud_state%SN_out(i,j,k))*inv_dtcloud
           end do
         end do
@@ -1817,10 +1845,10 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
 !    allowable. if not set the tendency so that cloud area is reduced to 
 !    zero after the step. save a diagnostic if desired.
 !----------------------------------------------------------------------
-      if (Lsdiag_mp%diag_id%qadt_destr +    &
-                                  Lsdiag_mp%diag_id%qa_destr_col > 0)    &
-        Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp%diag_pt%qadt_destr) =    &
-                 Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp%diag_pt%qadt_destr) +  &
+      if (Lsdiag_mp_control%diag_id%qadt_destr +    &
+                          Lsdiag_mp_control%diag_id%qa_destr_col > 0)    &
+      Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp_control%diag_pt%qadt_destr) =    &
+         Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp_control%diag_pt%qadt_destr) +  &
                               Cloud_state%SA_out*inv_dtcloud
 
       qa_new = Cloud_state%qa_in + Cloud_state%SA_out
@@ -1829,10 +1857,10 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
         Cloud_state%SA_out  = -Cloud_state%qa_in
       endwhere
 
-      if (Lsdiag_mp%diag_id%qadt_destr +   &
-                                Lsdiag_mp%diag_id%qa_destr_col > 0)    &
-         Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp%diag_pt%qadt_destr) =    &
-             Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp%diag_pt%qadt_destr) -     &
+      if (Lsdiag_mp_control%diag_id%qadt_destr +   &
+                          Lsdiag_mp_control%diag_id%qa_destr_col > 0)    &
+      Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp_control%diag_pt%qadt_destr) =    &
+      Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp_control%diag_pt%qadt_destr) -     &
                               Cloud_state%SA_out*inv_dtcloud
 
 !------------------------------------------------------------------------
@@ -1846,20 +1874,20 @@ type(cloud_state_type),     intent(inout) :: Cloud_state
 !------------------------------------------------------------------------
       if (do_mg_ncar_microphys .or. do_ncar_microphys .or. &
                                                   do_mg_microphys) then
-        if (Lsdiag_mp%diag_id%qadt_limits +    &
-                              Lsdiag_mp%diag_id%qa_limits_col > 0)    &
-            Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp%diag_pt%qadt_limits) =   &
+        if (Lsdiag_mp_control%diag_id%qadt_limits +    &
+                         Lsdiag_mp_control%diag_id%qa_limits_col > 0)    &
+       Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp_control%diag_pt%qadt_limits) =   &
                                   Cloud_state%SA_out(:,:,:)
 
         Cloud_state%SA_out = MAX(Cloud_state%SA_out,-Cloud_state%qa_in)
         Cloud_state%SA_out = MIN(Cloud_state%SA_out,   &
                              1. - C2ls_mp%convective_humidity_area - &
                                                        Cloud_state%qa_in)
-        if (Lsdiag_mp%diag_id%qadt_limits +   &
-                            Lsdiag_mp%diag_id%qa_limits_col      > 0)    &
-             Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp%diag_pt%qadt_limits) = &
+        if (Lsdiag_mp_control%diag_id%qadt_limits +   &
+                    Lsdiag_mp_control%diag_id%qa_limits_col      > 0)    &
+         Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp_control%diag_pt%qadt_limits) = &
                       (Cloud_state%SA_out(:,:,:) - &
-              Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp%diag_pt%qadt_limits))* &
+        Lsdiag_mp%diag_4d(:,:,:,Lsdiag_mp_control%diag_pt%qadt_limits))* &
                                                                inv_dtcloud
       endif
 
@@ -1874,7 +1902,7 @@ end subroutine destroy_tiny_clouds
 
 subroutine destroy_tiny_clouds_clubb (    &
                    ix, jx, kx, Cloud_state, Tend_mp, Lsdiag_mp, &
-                                           C2ls_mp, Input_mp, Atmos_state)
+                        Lsdiag_mp_control, C2ls_mp, Input_mp, Atmos_state)
 
 integer,                    intent(in)    :: ix,jx,kx
 type(atmos_state_type),     intent(inout) :: Atmos_state
@@ -1883,6 +1911,7 @@ type(mp_tendency_type),     intent(inout) :: Tend_mp
 type(mp_conv2ls_type),      intent(inout) :: C2ls_mp
 type(mp_input_type),        intent(in   ) :: Input_mp
 type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
+type(mp_lsdiag_control_type), intent(inout) :: Lsdiag_mp_control
 
 !----------------------------------------------------------------------
 !   local variables:
@@ -1930,27 +1959,33 @@ type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
 !    save diagnostics defining the adjustments made here to destroy the
 !    clouds.
 !------------------------------------------------------------------------
-             if ( Lsdiag_mp%diag_id%qldt_destr > 0  .or.   &
-                                Lsdiag_mp%diag_id%ql_destr_col > 0 )  &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qldt_destr) =   &
+             if ( Lsdiag_mp_control%diag_id%qldt_destr > 0  .or.   &
+                           Lsdiag_mp_control%diag_id%ql_destr_col > 0 )  &
+                Lsdiag_mp%diag_4d(i,j,k,   &
+                        Lsdiag_mp_control%diag_pt%qldt_destr) =   &
                                   - (ql_new(i,j,k) )/dtcloud
-             if ( Lsdiag_mp%diag_id%qidt_destr > 0  .or.   &
-                                 Lsdiag_mp%diag_id%qi_destr_col > 0   ) &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qidt_destr) =   &
+             if ( Lsdiag_mp_control%diag_id%qidt_destr > 0  .or.   &
+                          Lsdiag_mp_control%diag_id%qi_destr_col > 0   ) &
+               Lsdiag_mp%diag_4d(i,j,k,  &
+                             Lsdiag_mp_control%diag_pt%qidt_destr) =   &
                                    - (qi_new(i,j,k) )/dtcloud
-             if ( Lsdiag_mp%diag_id%qadt_destr > 0  .or.   &
-                                  Lsdiag_mp%diag_id%qa_destr_col > 0   ) &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qadt_destr) =   &
+             if ( Lsdiag_mp_control%diag_id%qadt_destr > 0  .or.   &
+                          Lsdiag_mp_control%diag_id%qa_destr_col > 0   ) &
+               Lsdiag_mp%diag_4d(i,j,k,   &
+                              Lsdiag_mp_control%diag_pt%qadt_destr) =   &
                                      - qa_new(i,j,k)/dtcloud
-             if ( Lsdiag_mp%diag_id%qndt_destr > 0  .or.   &
-                                  Lsdiag_mp%diag_id%qn_destr_col > 0  ) &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qndt_destr) =  &
+             if ( Lsdiag_mp_control%diag_id%qndt_destr > 0  .or.   &
+                           Lsdiag_mp_control%diag_id%qn_destr_col > 0  ) &
+               Lsdiag_mp%diag_4d(i,j,k,    &
+                               Lsdiag_mp_control%diag_pt%qndt_destr) =  &
                                    - (qn_new(i,j,k) )/dtcloud
-             if ( Lsdiag_mp%diag_id%qnidt_destr > 0   )               &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qnidt_destr) =  &
+             if ( Lsdiag_mp_control%diag_id%qnidt_destr > 0   )          &
+               Lsdiag_mp%diag_4d(i,j,k,    &
+                              Lsdiag_mp_control%diag_pt%qnidt_destr) =  &
                                   - (qni_new(i,j,k) )/dtcloud
-             if ( Lsdiag_mp%diag_id%qdt_destr > 0 )                   &
-               Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qdt_destr) =  &
+             if ( Lsdiag_mp_control%diag_id%qdt_destr > 0 )             &
+              Lsdiag_mp%diag_4d(i,j,k,   &
+                            Lsdiag_mp_control%diag_pt%qdt_destr) =  &
                       (ql_new(i,j,k) + qi_new(i,j,k))/dtcloud
 
            endif
@@ -1984,9 +2019,9 @@ type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
 !------------------------------------------------------------------------
 !    compute diagnostic for this liquid loss due to this cleanup.
 !------------------------------------------------------------------------
-              if ( Lsdiag_mp%diag_id%qdt_cleanup_liquid > 0 ) &
+              if ( Lsdiag_mp_control%diag_id%qdt_cleanup_liquid > 0 ) &
                 Lsdiag_mp%diag_4d(i,j,k,    &
-                            Lsdiag_mp%diag_pt%qdt_cleanup_liquid) =   &
+                      Lsdiag_mp_control%diag_pt%qdt_cleanup_liquid) =   &
                                       (ql_new(i,j,k))/dtcloud
 
 !------------------------------------------------------------------------
@@ -1995,8 +2030,9 @@ type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
 !------------------------------------------------------------------------
               Tend_mp%q_tnd(i,j,k,nqn) = Tend_mp%q_tnd(i,j,k,nqn) -   &
                                                           (qn_new(i,j,k))
-              IF ( Lsdiag_mp%diag_id%qndt_cleanup > 0 ) &
-                Lsdiag_mp%diag_4d(i,j,k,Lsdiag_mp%diag_pt%qndt_cleanup) = &
+              IF ( Lsdiag_mp_control%diag_id%qndt_cleanup > 0 ) &
+                Lsdiag_mp%diag_4d(i,j,k,    &
+                           Lsdiag_mp_control%diag_pt%qndt_cleanup) = &
                                      -(qn_new(i,j,k))/dtcloud
             endif
           end do
@@ -2021,9 +2057,9 @@ type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
 !------------------------------------------------------------------------
 !    compute diagnostic for this ice loss due to this cleanup.
 !------------------------------------------------------------------------
-              if ( Lsdiag_mp%diag_id%qdt_cleanup_ice > 0 ) &
+              if ( Lsdiag_mp_control%diag_id%qdt_cleanup_ice > 0 ) &
                 Lsdiag_mp%diag_4d(i,j,k,   &
-                                Lsdiag_mp%diag_pt%qdt_cleanup_ice) =  &
+                           Lsdiag_mp_control%diag_pt%qdt_cleanup_ice) =  &
                                       (qi_new(i,j,k))/dtcloud
 
 !------------------------------------------------------------------------
@@ -2032,9 +2068,9 @@ type(mp_lsdiag_type),       intent(inout) :: Lsdiag_mp
 !------------------------------------------------------------------------
               Tend_mp%q_tnd(i,j,k,nqni) = Tend_mp%q_tnd(i,j,k,nqni) -  &
                                                          (qni_new(i,j,k))
-              if ( Lsdiag_mp%diag_id%qnidt_cleanup > 0 ) &
+              if ( Lsdiag_mp_control%diag_id%qnidt_cleanup > 0 ) &
                  Lsdiag_mp%diag_4d(i,j,k,   &
-                             Lsdiag_mp%diag_pt%qnidt_cleanup) =   &
+                             Lsdiag_mp_control%diag_pt%qnidt_cleanup) =   &
                                    - (qni_new(i,j,k))/dtcloud
             endif
           end do

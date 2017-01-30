@@ -113,6 +113,7 @@ use lscloud_types_mod,         only : lscloud_types_init, &
                                       precip_state_type
 use moist_proc_utils_mod,      only : mp_input_type, mp_tendency_type, &
                                       mp_conv2ls_type, mp_lsdiag_type, &
+                                      mp_lsdiag_control_type,   &
                                       mp_removal_type, mp_nml_type
 use physics_types_mod,        only  : physics_control_type
 use physics_radiation_exch_mod, only : exchange_control_type
@@ -677,12 +678,13 @@ end subroutine strat_cloud_init
 !-----------------------------------------------------------------------
 
  subroutine strat_cloud    &
-         (Lsdiag_mp, Time, is, ie, js, je, dtcloud, C2ls_mp, Atmos_state, &
-          Cloud_state, Input_mp, Tend_mp, Cloud_processes, Removal_mp,  &
-                                         Particles, Precip_state, Aerosol)
+         (Lsdiag_mp,  Lsdiag_mp_control, Time, is, ie, js, je, dtcloud,  &
+          C2ls_mp, Atmos_state, Cloud_state, Input_mp, Tend_mp,   &
+          Cloud_processes, Removal_mp, Particles, Precip_state, Aerosol)
 
 !-------------------------------------------------------------------------
 type(mp_lsdiag_type),       intent(inout)          :: Lsdiag_mp
+type(mp_lsdiag_control_type), intent(inout)        :: Lsdiag_mp_control
 type(time_type),            intent (in)            :: Time
 integer,                    intent (in)            :: is, ie, js, je
 real,                       intent (in)            :: dtcloud
@@ -716,8 +718,9 @@ type(aerosol_type),         intent (in),  optional :: Aerosol
         call strat_cloud_legacy  (     &
            Particles%concen_dust_sub, Particles%totalmass1, &
            Atmos_state%pthickness, cloud_generator_on, &
-           Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt, Lsdiag_mp%n_diag_4d, &
-           Lsdiag_mp%n_diag_4d_kp1, Lsdiag_mp%diag_4d,   &
+           Lsdiag_mp_control%diag_id, Lsdiag_mp_control%diag_pt,  &
+           Lsdiag_mp_control%n_diag_4d, &
+           Lsdiag_mp_control%n_diag_4d_kp1, Lsdiag_mp%diag_4d,   &
            Lsdiag_mp%diag_4d_kp1, Lsdiag_mp%diag_3d, Time, is, ie, js,   &
            je, dtcloud, Input_mp%pfull, Input_mp%phalf,   &
            Input_mp%radturbten, Input_mp%tin, Input_mp%qin, &
@@ -736,8 +739,9 @@ type(aerosol_type),         intent (in),  optional :: Aerosol
         call strat_cloud_legacy  (     &
            Particles%concen_dust_sub, Particles%totalmass1, &
            Atmos_state%pthickness, cloud_generator_on, &
-           Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt, Lsdiag_mp%n_diag_4d, &
-           Lsdiag_mp%n_diag_4d_kp1, Lsdiag_mp%diag_4d,  &
+           Lsdiag_mp_control%diag_id, Lsdiag_mp_control%diag_pt,   &
+           Lsdiag_mp_control%n_diag_4d, &
+           Lsdiag_mp_control%n_diag_4d_kp1, Lsdiag_mp%diag_4d,  &
            Lsdiag_mp%diag_4d_kp1, Lsdiag_mp%diag_3d, Time, is, ie, js,  &
            je, dtcloud, Input_mp%pfull, Input_mp%phalf,  &
            Input_mp%radturbten, Input_mp%tin, Input_mp%qin, &
@@ -758,8 +762,9 @@ type(aerosol_type),         intent (in),  optional :: Aerosol
 !    call lscloud_netcdf to process diagnostics.
 !-----------------------------------------------------------------------
       call lscloud_netcdf (    &
-              Lsdiag_mp%diag_id, Lsdiag_mp%diag_pt, Lsdiag_mp%diag_4d,   &
-              Lsdiag_mp%diag_4d_kp1, Lsdiag_mp%diag_3d, Time, is, js, kdim)
+              Lsdiag_mp_control%diag_id, Lsdiag_mp_control%diag_pt,  &
+              Lsdiag_mp%diag_4d, Lsdiag_mp%diag_4d_kp1,    &
+                                   Lsdiag_mp%diag_3d, Time, is, js, kdim)
  
 !---------------------------------------------------------------------
 
