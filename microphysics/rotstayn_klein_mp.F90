@@ -1243,6 +1243,11 @@ real, dimension(idim, jdim, kdim  ), INTENT(OUT)  :: f_snow_berg
         if  (diag_id%qldt_rime  + diag_id%ql_rime_col > 0)   &
                             diag_4d(:,:,k,diag_pt%qldt_rime) = -tmp1(:,:,k)
 
+! ---> h1g, add drop number, 2014-07-24
+        if  (diag_id%qndt_rime  + diag_id%qn_rime_col > 0)   &
+                            diag_4d(:,:,k,diag_pt%qndt_rime) = -tmp1(:,:,k)
+! <--- h1g, 2014-07-24
+
 !------------------------------------------------------------------------
 !       Freezing of cloud liquid to cloud ice occurs when
 !       the temperature is less than -40C. At these very cold temper-
@@ -1278,6 +1283,17 @@ real, dimension(idim, jdim, kdim  ), INTENT(OUT)  :: f_snow_berg
               if (diag_id%qldt_berg  + diag_id%ql_berg_col > 0) then
                 diag_4d(i,j,k,diag_pt%qldt_berg) = 0. 
               endif
+! ---> h1g, add drop number, 2014-07-24
+              if (diag_id%qndt_freez + diag_id%qn_freez_col > 0)  then
+                diag_4d(i,j,k,diag_pt%qndt_freez) = -D2_dt(i,j,k)
+              endif
+              if  (diag_id%qndt_rime  + diag_id%qn_rime_col > 0) then
+                diag_4d(i,j,k,diag_pt%qndt_rime) = 0.
+              endif
+              if (diag_id%qndt_berg  + diag_id%qn_berg_col > 0) then
+                diag_4d(i,j,k,diag_pt%qndt_berg) = 0.
+              endif
+! <--- h1g, 2014-07-24
             endif      
           end do
         end do
@@ -1628,6 +1644,20 @@ real, dimension(idim, jdim, kdim  ), INTENT(OUT)  :: f_snow_berg
                      num_mass_ratio2*diag_4d(:,:,k,diag_pt%qndt_berg)*   &
                                                    tmp8(:,:,k) *inv_dtcloud
           end if
+
+! ---> h1g, add riming and freezing diagnostics for qn budget, 2014-07-24
+          if (diag_id%qndt_rime  + diag_id%qn_rime_col > 0) then
+            diag_4d(:,:,k,diag_pt%qndt_rime) =  &
+                 num_mass_ratio2*diag_4d(:,:,k,diag_pt%qndt_rime)*   &
+                                                   tmp8(:,:,k) *inv_dtcloud
+          end if
+          if (diag_id%qndt_freez  + diag_id%qn_freez_col > 0) then
+            diag_4d(:,:,k,diag_pt%qndt_freez) =  &
+                 num_mass_ratio2*diag_4d(:,:,k,diag_pt%qndt_freez)*   &
+                                                   tmp8(:,:,k) *inv_dtcloud
+          end if
+! <--- h1g, 2014-07-24
+
           if (diag_id%qndt_eros  + diag_id%qn_eros_col > 0) then
             diag_4d(:,:,k,diag_pt%qndt_eros) = -D_eros(:,:,k)*  &
                                                    tmp8(:,:,k)*inv_dtcloud

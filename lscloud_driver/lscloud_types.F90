@@ -1,6 +1,7 @@
                     module lscloud_types_mod
 
 use  fms_mod,        only : write_version_number
+use  atmos_cmip_diag_mod, only : cmip_diag_id_type
 
 implicit none
 private
@@ -64,12 +65,12 @@ TYPE diag_id_type
 
   integer :: droplets_col250, gb_droplets_col, potential_droplets, &
              droplets, droplets_wtd, ql_wt, droplets_col, rvolume
-  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg, &
+  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg,  qndt_rime, &  !h1g, 2014-07-24
              qndt_destr, qndt_super, qndt_freez, qndt_sacws, qndt_sacws_o, &
              qndt_eros, qndt_pra, qndt_auto, qndt_nucclim, qndt_sedi, &
              qndt_melt, qndt_ihom, qndt_size_adj, qndt_fill2,   &
              qndt_contact_frz, qndt_cleanup, qndt_cleanup2, SN_imb
-  integer :: SN2d, qn_cond_col, qn_evap_col, qn_fill_col, qn_berg_col,  &
+  integer :: SN2d, qn_cond_col, qn_evap_col, qn_fill_col, qn_berg_col, qn_rime_col, & !h1g, 2014-07-24
              qn_destr_col, qn_super_col, qn_freez_col, qn_sacws_col,  &
              qn_sacws_o_col, qn_eros_col, qn_pra_col, qn_auto_col,    &
              qn_nucclim_col, qn_sedi_col, qn_melt_col, qn_ihom_col,  &
@@ -145,6 +146,8 @@ TYPE diag_id_type
              lsf_strat, lcf_strat, mfls_strat, &
              dcond, vfall
 
+!   CMIP diagnostics (3d)
+  type(cmip_diag_id_type) :: cdnc
 
 END TYPE diag_id_type
 
@@ -177,7 +180,7 @@ TYPE diag_pt_type
 
   integer :: droplets_col250, gb_droplets_col, potential_droplets, &
              droplets, droplets_wtd, ql_wt, droplets_col, rvolume
-  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg, &
+  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg, qndt_rime, &  !h1g, 2014-07-24
              qndt_destr, qndt_super, qndt_freez, qndt_sacws, qndt_sacws_o, &
              qndt_eros, qndt_pra, qndt_auto, qndt_nucclim, qndt_sedi, &
              qndt_melt, qndt_ihom, qndt_size_adj, qndt_fill2,   &

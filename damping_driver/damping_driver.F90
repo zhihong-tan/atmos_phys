@@ -1,4 +1,3 @@
-
 module damping_driver_mod
 
 !-----------------------------------------------------------------------
@@ -31,6 +30,9 @@ module damping_driver_mod
                               FATAL, close_file
  use diag_manager_mod, only:  register_diag_field,  &
                               register_static_field, send_data
+ use atmos_cmip_diag_mod, only: register_cmip_diag_field_3d, &
+                                send_cmip_data_3d, cmip_diag_id_type, &
+                                query_cmip_diag_id
  use time_manager_mod, only:  time_type
  use    constants_mod, only:  cp_air, grav
 
@@ -89,6 +91,9 @@ integer :: id_udt_topo,   id_vdt_topo,    &
            id_taubx_topo, id_tauby_topo,  &
            id_taus_topo
 
+type(cmip_diag_id_type) :: ID_utendogw, ID_utendnogw, &
+                           ID_vtendogw, ID_vtendnogw
+
 !----- missing value for all fields ------
 
 real :: missing_value = -999.
@@ -117,7 +122,7 @@ contains
 !#######################################################################
 
  subroutine damping_driver (is, js, lat, Time, delt, area, pfull, phalf, zfull, zhalf, &
-                            u, v, t, q, r, z_pbl, udt, vdt, tdt, qdt, rdt,  &
+                            u, v, t, q, r, u_ref, v_ref, z_pbl, udt, vdt, tdt, qdt, rdt,  &
                              mask, kbot)
  
 !-----------------------------------------------------------------------
@@ -128,11 +133,11 @@ contains
  real,    intent(in),    dimension(:,:,:)   :: pfull, phalf, &
                                                zfull, zhalf, &
                                                u, v, t, q
- real,    intent(in),    dimension(:,:)     :: z_pbl !bqx
+ real,    intent(in),    dimension(:,:)     :: u_ref, v_ref !bqx
  real,    intent(in),    dimension(:,:,:,:) :: r
  real,    intent(inout), dimension(:,:,:)   :: udt,vdt,tdt,qdt
  real,    intent(inout), dimension(:,:,:,:) :: rdt
- real,    intent(in),    dimension(:,:)     :: area
+ real,    intent(in),    dimension(:,:)     :: z_pbl, area 
  real,    intent(in),    dimension(:,:,:), optional :: mask
  integer, intent(in),    dimension(:,:),   optional :: kbot
 
@@ -240,6 +245,16 @@ contains
             used = send_data ( id_diss_heat_gwd, diag2, Time, is, js )
        endif
 
+       !--- cmip fields (could pre-compute log(phalf) ---
+       if (query_cmip_diag_id(ID_utendogw)) then
+          used = send_cmip_data_3d (ID_utendogw, utnd, Time, is, js, 1, &
+                                    phalf=log(phalf), rmask=mask )
+       endif
+       if (query_cmip_diag_id(ID_vtendogw)) then
+          used = send_cmip_data_3d (ID_vtendogw, vtnd, Time, is, js, 1, &
+                                    phalf=log(phalf), rmask=mask )
+       endif
+
    endif
 
 !   Alexander-Dunkerton gravity wave drag
@@ -272,6 +287,16 @@ contains
            used = send_data ( id_diss_heat_cgwd, diag2, Time, is, js )
        endif
 
+       !--- cmip fields (could pre-compute log(phalf) ---
+       if (query_cmip_diag_id(ID_utendnogw)) then
+          used = send_cmip_data_3d (ID_utendnogw, utnd, Time, is, js, 1, &
+                                    phalf=log(phalf), rmask=mask )
+       endif
+       if (query_cmip_diag_id(ID_vtendnogw)) then
+          used = send_cmip_data_3d (ID_vtendnogw, vtnd, Time, is, js, 1, &
+                                    phalf=log(phalf), rmask=mask )
+       endif
+
    endif
 
 !-----------------------------------------------------------------------
@@ -279,8 +304,9 @@ contains
 !-----------------------------------------------------------------------
    if (do_topo_drag) then
 
-     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, lat, z_pbl, & 
-                     utnd, vtnd, utnd_np, vtnd_np, ttnd, taubx, tauby, taus, kbot )
+     call topo_drag ( is, js, delt, u, v, t, pfull, phalf, zfull, zhalf, & 
+                      lat, u_ref, v_ref, z_pbl,                          & !bqx+
+             utnd, vtnd, utnd_np, vtnd_np, ttnd, taubx, tauby, taus, kbot )
 
      if (use_topo_drag) then  
          if ( kstart > 0 ) then
@@ -294,6 +320,7 @@ contains
 
        udt = udt + utnd
        vdt = vdt + vtnd
+       tdt = tdt + ttnd  
      endif
 
 !----- diagnostics -----
@@ -343,6 +370,16 @@ contains
           enddo
           diag2 = cp_air/grav * sum(ttnd*pmass,3)
           used = send_data ( id_diss_heat_topo, diag2, Time, is, js )
+     endif
+
+     !--- cmip fields (could pre-compute log(phalf) ---
+     if (query_cmip_diag_id(ID_utendogw)) then
+        used = send_cmip_data_3d (ID_utendogw, utnd, Time, is, js, 1, &
+                                  phalf=log(phalf), rmask=mask )
+     endif
+     if (query_cmip_diag_id(ID_vtendogw)) then
+        used = send_cmip_data_3d (ID_vtendogw, vtnd, Time, is, js, 1, &
+                                  phalf=log(phalf), rmask=mask )
      endif
 
  endif
@@ -406,6 +443,12 @@ contains
    if(mpp_pe() == mpp_root_pe() ) then
         write (logunit,nml=damping_driver_nml)
    endif
+
+!-----------------------------------------------------------------------
+!--------- both mg_drag and topo_drag can not be active ------
+
+   if (do_mg_drag .and. do_topo_drag) call error_mesg ('damping_driver',  &
+                 'do_mg_drag and do_topo_drag can not both be true', FATAL)
 
 !-----------------------------------------------------------------------
 !--------- rayleigh friction ----------
@@ -524,6 +567,14 @@ endif
                 'Integrated dissipative heating from convective gravity wave drag',  &
                                  'W/m2' )
 
+     !----- cmip diagnostics for non-orographic drag -----
+     ID_utendnogw = register_cmip_diag_field_3d ( mod_name, 'utendnogw', Time, &
+                           'U-tendency Nonorographic Gravity Wave Drag', 'm s-2', &
+              standard_name='tendency_of_eastward_wind_due_to_nonorographic_gravity_wave_drag')
+
+     ID_vtendnogw = register_cmip_diag_field_3d ( mod_name, 'vtendnogw', Time, &
+                           'V-tendency Nonorographic Gravity Wave Drag', 'm s-2', &
+              standard_name='tendency_of_northward_wind_due_to_nonorographic_gravity_wave_drag')
    endif
 
 !-----------------------------------------------------------------------
@@ -593,7 +644,19 @@ endif
                 'Integrated meridional flux of zonal momentum from topo wave drag',     &
                   'J/m2' )
 
+!-----------------------------------------------------------------------
+!----- cmip diagnostics for orographic drag -----
 
+  if (do_mg_drag .or. do_topo_drag) then
+
+     ID_utendogw = register_cmip_diag_field_3d ( mod_name, 'utendogw', Time, &
+                           'U-tendency Orographic Gravity Wave Drag', 'm s-2', &
+              standard_name='tendency_of_eastward_wind_due_to_orographic_gravity_wave_drag')
+
+     ID_vtendogw = register_cmip_diag_field_3d ( mod_name, 'vtendogw', Time, &
+                           'V-tendency Orographic Gravity Wave Drag', 'm s-2', &
+              standard_name='tendency_of_northward_wind_due_to_orographic_gravity_wave_drag')
+   endif
 
 !-----------------------------------------------------------------------
 
@@ -711,4 +774,3 @@ end subroutine damping_driver_restart
 !#######################################################################
 
 end module damping_driver_mod
-

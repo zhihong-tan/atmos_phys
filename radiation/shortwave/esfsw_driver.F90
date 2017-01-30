@@ -125,7 +125,7 @@ logical      ::  do_rayleigh     = .true.       ! is rayleigh scattering
 logical      ::  reproduce_ulm   = .true.       ! reproduce ulm code
 logical      ::  do_four_stream  = .false.      !
                              
-logical      ::  remain_hu_bug   = .true.
+logical      ::  remain_rayleigh_bug   = .true.
  
 namelist / esfsw_driver_nml /    &
                                do_rayleigh_all_bands, &
@@ -133,7 +133,7 @@ namelist / esfsw_driver_nml /    &
                                do_h2o_sw_effects, do_o3_sw_effects, &
                                do_ch4_sw_effects, do_n2o_sw_effects, &
                                do_co2_sw_effects, do_o2_sw_effects, &
-                               do_sw_continuum, do_rayleigh, reproduce_ulm, do_four_stream, remain_hu_bug
+                               do_sw_continuum, do_rayleigh, reproduce_ulm, do_four_stream, remain_rayleigh_bug
 
 !---------------------------------------------------------------------
 !------- public data ------
@@ -891,7 +891,7 @@ subroutine esfsw_driver_init
 !           2.79E-02 is the depolorization factor.              
 !-----------------------------------------------------------------
       refquanray = densmolref * temprefray / pressrefray 
-      if ( remain_hu_bug ) then
+      if ( remain_rayleigh_bug ) then
         corrfac = ( 6.0E+00 + 3.0E+00 * 1.39E-02 )/( 6.0E+00 - 7.0E+00 * &
                     1.39E-02 )
         gamma = 1.39E-02 / ( 2.0E+00 - 1.39E-02 )

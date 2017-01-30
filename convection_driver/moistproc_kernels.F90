@@ -457,10 +457,9 @@ real, dimension(:,:,:,:),     intent(inout) :: qtruw
                     utnd_uw, vtnd_uw, rain_uw, snow_uw, cmf, liq_precflx, &
                     ice_precflx, Cld_props%liquid_amt, Cld_props%ice_amt, &
                     Cld_props%cloud_area, Cld_props%droplet_number,   &
-                    cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, &
-                    exist_dpconv, pblht_prev, hlsrc_prev, qtsrc_prev,  &
-                    cape_prev, cin_prev, tke_prev, &!miz
-                    trcr, qtruw, uw_wetdep)
+                    trcr, qtruw, uw_wetdep,       &
+                    cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, &
+                    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev)
 
 !-------------------------------------------------------------------------
 !    call detr_ice_num to calculate the ice number tendency due to 
@@ -498,7 +497,7 @@ real, dimension(:,:,:,:),     intent(inout) :: qtruw
         endif
 
 !---------------------------------------------------------------------
-!    update the current tracer tendencies with the contributions 
+!    update the current tracer tendencies with the contributions
 !    just obtained from uw transport.
 !---------------------------------------------------------------------
         nn = 1

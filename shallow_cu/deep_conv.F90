@@ -1,4 +1,3 @@
-
 MODULE DEEP_CONV_MOD
 
   use      fms_mod,         only : write_version_number
@@ -10,7 +9,7 @@ MODULE DEEP_CONV_MOD
                                    exn_init_k, exn_end_k, findt_init_k,&
                                    findt_end_k, qt_parcel_deep_k, &
                                    adicloud, sounding, uw_params, findt_k, &
-				   exn_k, qsat_k, erfccc
+                                   exn_k, qsat_k, erfccc
 
   use  conv_plumes_k_mod,   only : cp_init_k, cp_end_k, cp_clear_k, &
                                    ct_init_k, ct_end_k, ct_clear_k, &
@@ -45,9 +44,9 @@ MODULE DEEP_CONV_MOD
      real    :: rkm_dp2
      real    :: crh_th_land
      real    :: crh_th_ocean
-     real    :: cape_th 
-     real    :: cin_th 
-     real    :: tau_dp 
+     real    :: cape_th
+     real    :: cin_th
+     real    :: tau_dp
      real    :: rpen_d
      integer :: mixing_assumption_d
      logical :: do_ppen_d
@@ -86,27 +85,35 @@ contains
     dpn % do_umf_pbl         = cpn % do_umf_pbl
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_hlflx_zero      = cpn % do_hlflx_zero
+    dpn % do_new_qnact       = cpn % do_new_qnact
+    dpn % do_downdraft       = cpn % do_downdraft
+    dpn % do_conv_micro_N    = cpn % do_conv_micro_N
+
     dpn % do_varying_rpen    = cpn % do_varying_rpen
+    dpn % rpen_choice        = cpn % rpen_choice
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % do_new_subflx      = cpn % do_new_subflx
     dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_new_pevap       = cpn % do_new_pevap
     dpn % stop_at_let        = cpn % stop_at_let
     dpn % do_limit_wmax      = cpn % do_limit_wmax
+    dpn % do_limit_fdr       = cpn % do_limit_fdr
     dpn % plev_for           = cpn % plev_for
     dpn % plev_umf           = cpn % plev_umf
     dpn % do_detran_zero     = cpn % do_detran_zero
+    dpn % N0                 = cpn % N0
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
-    dpn % nbuo_max           = cpn % nbuo_max
+    dpn % eis_max            = cpn % eis_max
+    dpn % eis_min            = cpn % eis_min
     dpn % rmaxfrac           = cpn % rmaxfrac
     dpn % wmin               = cpn % wmin
     dpn % wmax               = cpn % wmax
     dpn % rbuoy              = cpn % rbuoy
-    dpn % rdrag              = cpn % rdrag  
+    dpn % rdrag              = cpn % rdrag
     dpn % frac_drs           = cpn % frac_drs
     dpn % frac_dr0           = cpn % frac_dr0
-    dpn % bigc               = cpn % bigc    
+    dpn % bigc               = cpn % bigc
     dpn % auto_th0           = cpn % auto_th0
     dpn % deltaqc0           = cpn % deltaqc0
     dpn % do_pdfpcp          = cpn % do_pdfpcp
@@ -115,7 +122,7 @@ contains
     dpn % do_pnqv            = cpn % do_pnqv
     dpn % emfrac_max         = cpn % emfrac_max
     dpn % auto_rate          = cpn % auto_rate
-    dpn % tcrit              = cpn % tcrit  
+    dpn % tcrit              = cpn % tcrit
     dpn % cldhgt_max         = cpn % cldhgt_max
     dpn % cldhgt_max_shallow = cpn % cldhgt_max_shallow
     dpn % do_ice             = cpn % do_ice
@@ -149,8 +156,10 @@ contains
     dpn % do_tten_max        = cpn % do_tten_max
     dpn % tten_max           = cpn % tten_max
     dpn % rkm_max            = cpn % rkm_max
+    dpn % rkm_min            = cpn % rkm_min
     dpn % scaleh0            = cpn % scaleh0
     dpn % beta               = cpn % beta
+    dpn % nom_ratio          = cpn % nom_ratio
 
   end subroutine cpn_copy
 
@@ -195,7 +204,7 @@ contains
     else
        call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
     end if
- 
+
   end subroutine dpconv0
 
 
@@ -238,7 +247,7 @@ contains
    if (dpc%do_cgust_dp) then
        !if ((ac%cape.gt.ac%cin) .and. (sd%land.gt.0.5)) then
        if ((ac%cape.gt.0) .and. (sd%land.gt.0.5)) then
-       	  dpn%do_forcedlifting = .true.
+          dpn%do_forcedlifting = .true.
           dpn%do_ppen = .false.
        endif
    endif
@@ -287,7 +296,7 @@ contains
     dcapedm=(ac%cape-ac1%cape)/cbmf0
 
     if (dcapedm .lt. dpc%dcapedm_th) then
-       cbmf_deep=0.; ocode=9; 
+       cbmf_deep=0.; ocode=9;
        call ct_clear_k(ct1);
        return
     else
@@ -296,9 +305,9 @@ contains
 
     cbmf_max  = (sd%ps(0) - sd%ps(cp1%krel))*(dpc%frac_limit_d/sd%delt)/Grav
     cbmf_deep = max(min(cbmf_deep, cbmf_max), 0.)
- 
-    if(cbmf_deep.lt.1.e-10) then 
-       cbmf_deep=0.; ocode=10; 
+
+    if(cbmf_deep.lt.1.e-10) then
+       cbmf_deep=0.; ocode=10;
        call ct_clear_k(ct1);
        return
     end if
@@ -311,7 +320,7 @@ contains
     else
        call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
     end if
-    
+
   end subroutine dpconv1
 
 !#####################################################################
@@ -360,69 +369,74 @@ contains
     cwfn_th = dpc%cwfn_th;
     if (dpc%do_cgust_dp) then
        if (dpc%cgust_choice==0) then
-       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
-	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-       	      dpn%do_forcedlifting = .true.
+          if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+              ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+              dpn%do_forcedlifting = .true.
               dpn%do_ppen  = .false.;
               lofactor     = dpc%lofactor_d
               rkm_dp       = rkm_dp        * lofactor
               dpn % peff_l = dpn % peff_l  / lofactor
               dpn % peff_i = dpn % peff_i  / lofactor
- 	  endif
+          endif
        else if (dpc%cgust_choice==1 .and. sd%land.gt.0.5) then
-       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
-	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-       	      dpn%do_forcedlifting = .true.
+          if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+              ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+              dpn%do_forcedlifting = .true.
               dpn%do_ppen  = .false.;
               lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
               rkm_dp       = rkm_dp        * lofactor
               !dpn % peff_l = dpn % peff_l  / lofactor
               !dpn % peff_i = dpn % peff_i  / lofactor
- 	  endif
+          endif
        else if (dpc%cgust_choice==2 .and. sd%land.gt.0.5) then
-       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
-	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-       	      dpn%do_forcedlifting = .true.
+          if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+              ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+              dpn%do_forcedlifting = .true.
               dpn%do_ppen  = .false.;
               lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
               rkm_dp       = rkm_dp        * lofactor
               dpn % peff_l = dpn % peff_l  * lofactor
               dpn % peff_i = dpn % peff_i  * lofactor
- 	  endif
+          endif
        else if (dpc%cgust_choice==3 .and. sd%land.gt.0.5) then
-       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
-	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-       	      dpn%do_forcedlifting = .true.
+          if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+              ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+              dpn%do_forcedlifting = .true.
               dpn%do_ppen  = .false.;
               lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
               rkm_dp       = rkm_dp        * lofactor
               dpn % peff_l = dpn % peff_l  / lofactor
               dpn % peff_i = dpn % peff_i  / lofactor
- 	  endif
+          endif
        else if (dpc%cgust_choice==5) then !saved only for testing purpose
-	  lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
-	  lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
-      	  latx=lat*180/3.1415926; lonx=lon*180/3.1415926
-      	  if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
+          lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
+          lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
+          latx=lat*180/3.1415926; lonx=lon*180/3.1415926
+          if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
              tmp=1
-      	  elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
+          elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
              tmp=2
-      	  endif
+          endif
           sd%do_gust_qt = .true.
           sd%gqt_choice = 0
-    	  call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
-   	  ksrc  =sd%ksrc
-	  zsrc  =sd%zsrc
-	  psrc  =sd%psrc
-	  thcsrc=sd%thcsrc
-	  qctsrc=sd%qctsrc
-	  hlsrc =sd%hlsrc
-    	  call ac_clear_k(ac);
-    	  call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
+          call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
+          ksrc  =sd%ksrc
+          zsrc  =sd%zsrc
+          psrc  =sd%psrc
+          thcsrc=sd%thcsrc
+          qctsrc=sd%qctsrc
+          hlsrc =sd%hlsrc
+          call ac_clear_k(ac);
+          call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
        endif
     end if
 
-    zcldtop = sd%z(cp%ltop)
+    if (cp%ltop == 0) then
+       zcldtop = 1000.
+    else
+        zcldtop = sd%z(cp%ltop)
+    endif
+
     wrel  = max(cc%wrel, wrel0)
     cbmf0 = dpc%cbmf0
     call cp_clear_k(cp);  cp %maxcldfrac=1.;
@@ -483,14 +497,16 @@ contains
     end if
 
     tmp = sd%ps(0)-sd%ps(krel)
-!    if (krel.gt.sd%kinv) then !elevated convection
-!       tmp = sd%dp(krel)*0.1
+
+!    if (sd%ksrc .gt. sd%kinv) then !elevated convection
+!       tmp = sd%dp(krel)
 !    end if
+
     cbmf_max = tmp*dpc%frac_limit_d/sd%delt/Grav
 
     cbmf_deep = max(min(cbmf_deep, cbmf_max), 0.)
- 
-    if(cbmf_deep.lt.1.e-10) then 
+
+    if(cbmf_deep.lt.1.e-10) then
        cbmf_deep=0.; ocode=10; return
     end if
 
@@ -500,7 +516,7 @@ contains
     else
        call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
     end if
-    
+
   end subroutine dpconv2
 !#####################################################################
 !#####################################################################
@@ -549,35 +565,35 @@ contains
     cwfn_th = dpc%cwfn_th;
     if (dpc%do_cgust_dp) then
        if (dpc%cgust_choice==1 .and. sd%land.gt.0.5) then
-       	  if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
-	      ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
-       	      dpn%do_forcedlifting = .true.
+          if (ac%cape.gt.dpc%cape_th .and. cc%wrel.le.0. .and.     &
+              ac%cape.gt.dpc%cin_fact*ac%cin .and. sd%cgust.gt.sd%cgust0) then
+              dpn%do_forcedlifting = .true.
               dpn%do_ppen  = .false.;
               lofactor     = 1.- sd%land*(1.- dpc%lofactor_d)
               rkm_dp       = rkm_dp        * lofactor
               !dpn % peff_l = dpn % peff_l  / lofactor
               !dpn % peff_i = dpn % peff_i  / lofactor
- 	  endif
+          endif
        else if (dpc%cgust_choice==5) then !saved only for testing purpose
-	  lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
-	  lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
-      	  latx=lat*180/3.1415926; lonx=lon*180/3.1415926
-      	  if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
+          lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
+          lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
+          latx=lat*180/3.1415926; lonx=lon*180/3.1415926
+          if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
              tmp=1
-      	  elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
+          elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
              tmp=2
-      	  endif
+          endif
           sd%do_gust_qt = .true.
           sd%gqt_choice = 0
-    	  call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
-   	  ksrc  =sd%ksrc
-	  zsrc  =sd%zsrc
-	  psrc  =sd%psrc
-	  thcsrc=sd%thcsrc
-	  qctsrc=sd%qctsrc
-	  hlsrc =sd%hlsrc
-    	  call ac_clear_k(ac);
-    	  call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
+          call extend_sd_k(sd,sd%pblht, do_ice, Uw_p)
+          ksrc  =sd%ksrc
+          zsrc  =sd%zsrc
+          psrc  =sd%psrc
+          thcsrc=sd%thcsrc
+          qctsrc=sd%qctsrc
+          hlsrc =sd%hlsrc
+          call ac_clear_k(ac);
+          call adi_cloud_k(zsrc, psrc, hlsrc, thcsrc, qctsrc, sd, Uw_p, .false., do_ice, ac)
        endif
     end if
 
@@ -635,9 +651,9 @@ contains
     tmp = sd%ps(0)-sd%ps(krel)
     cbmf_max = tmp*dpc%frac_limit_d/sd%delt/Grav
     cbmf_deep = max(min(cbmf_deep, cbmf_max), 0.)
- 
-    if(cbmf_deep.lt.1.e-10) then 
-       cbmf_deep=0.; ocode=10; 
+
+    if(cbmf_deep.lt.1.e-10) then
+       cbmf_deep=0.; ocode=10;
        return
     end if
 
@@ -648,7 +664,7 @@ contains
     else
        call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
     end if
-    
+
   end subroutine dpconv3
 !#####################################################################
 !#####################################################################
@@ -708,17 +724,17 @@ contains
         call compute_cwfn3d(dpc,dpn,Uw_p,sd,ac1,cp1,do_coldT,do_ice,rkm_dp,cwfn3d,cape3d,ier,ermesg)
       elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
         call compute_cwfn3d(dpc,dpn,Uw_p,sd,ac1,cp1,do_coldT,do_ice,rkm_dp,cwfn3d,cape3d,ier,ermesg)
-	if (sd%tke.lt.0.5) then
-	   tmp=1
-	elseif(sd%tke.lt.1.) then	
-	   tmp=2
-	elseif(sd%tke.lt.1.5) then	
-	   tmp=3
-        elseif(sd%tke.lt.2.0) then	
-	   tmp=4
-	elseif(sd%tke.lt.2.5) then	
-	   tmp=5
-	endif
+        if (sd%tke.lt.0.5) then
+           tmp=1
+        elseif(sd%tke.lt.1.) then       
+           tmp=2
+        elseif(sd%tke.lt.1.5) then      
+           tmp=3
+        elseif(sd%tke.lt.2.0) then      
+           tmp=4
+        elseif(sd%tke.lt.2.5) then      
+           tmp=5
+        endif
       endif
     endif
    endif
@@ -727,7 +743,7 @@ contains
     call sd_copy_k(sd, sd1)
     do k=1,sd%kmax
        sd1%t (k)=sd1%t (k)-(sd%tdt_rad(k)+sd%tdt_dyn(k)+sd%tdt_dif(k)) * sd%delt
-       sd1%qv(k)=sd1%qv(k)-(sd%qdt_dyn(k)+sd%qdt_dif(k)) * sd%delt
+       sd1%qv(k)=sd1%qv(k)-(sd%qvdt_dyn(k)+sd%qvdt_dif(k)) * sd%delt
        sd1%qv(k)=max(sd1%qv(k),0.)
     end do
     call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
@@ -742,7 +758,7 @@ contains
 
 !make base mass flux cbmf0 dependent on cape so that first guess is closer to the actual cbmf_deep
 !restrict cbmf0 to be between 0.001 to 0.01, this cbmf0 is used before true cbmf_deep is diagnosed
-    cbmf0 = 0.001+(0.01-0.001)*cape0*0.001 
+    cbmf0 = 0.001+(0.01-0.001)*cape0*0.001
     cbmf0 = min(cbmf0,0.01)
     call cumulus_plume_k(dpn, sd1, ac1, cp1, rkm_dp, cbmf0, wrel, zcldtop, Uw_p, ier, ermesg)
     cwfn0=0.
@@ -750,7 +766,7 @@ contains
        cwfn0 = cwfn0 + cp1%buo(k)/cp1%thvtop(k)*cp1%dp(k)
     end do
 
-!compute free troposphere generation of dcwfndt due to other processes; 
+!compute free troposphere generation of dcwfndt due to other processes;
 !sd1 contain previous sounding, sd contain updated sounding;
 !ct contain shallow_cu tendencies; deep convective depth has been diagnosed in cp1
     dcwfndt_fre1= 0.;
@@ -767,7 +783,7 @@ contains
     end do
     dcwfndt_fre=dcwfndt_fre1
 
-! additional plumes using the updated sounding (sd) to compute wfn and cape 
+! additional plumes using the updated sounding (sd) to compute wfn and cape
 ! differences wfn-wfn0 and cape-cape0 give total cape tendencies over the timestep
 ! adiabatic plume ac which contains source air properties were already computed outside the routine
 ! convective tendencies are not needed at this time
@@ -791,10 +807,10 @@ contains
 !make taudp depend on pbl and free troposphere processes
     if (sd%land.ge.1) then
       if (dcwfndt_fre.gt.0 .and. dcwfndt_pbl.gt.0) then
-    	taudp=(dcwfndt_fre*dpc%tau_dp+dcwfndt_pbl*dpc%tau_dp*dpc%tau_dp_fact) &
+        taudp=(dcwfndt_fre*dpc%tau_dp+dcwfndt_pbl*dpc%tau_dp*dpc%tau_dp_fact) &
                  /(dcwfndt_fre+dcwfndt_pbl)
       elseif (dcwfndt_fre.gt.0 .and. dcwfndt_pbl.lt.0) then
-	taudp=dpc%tau_dp
+        taudp=dpc%tau_dp
       elseif (dcwfndt_fre.lt.0 .and. dcwfndt_pbl.gt.0) then
         taudp=dpc%tau_dp*dpc%tau_dp_fact
       endif
@@ -865,11 +881,11 @@ contains
 !rescale convective tendencies generated in ct1 due to cbmf0 based on cbmf_deep/cbmf0
 !if no precip reevaporation, the system should be very linear and rescaling nearly exactly
 !reproduce the actual tendencies if one lauch the plume with cbmf_deep
-    scale_fact = cbmf_deep/cbmf0 
+    scale_fact = cbmf_deep/cbmf0
     if (scale_fact.lt.1.e-10) scale_fact = 0.
     call scale_ct (ct1, sd, Uw_p, scale_fact)
 
-!compute convective destruction of cape and cwfn over this time-step, rescaling may not be 
+!compute convective destruction of cape and cwfn over this time-step, rescaling may not be
 !linear, so an additional computation of the actual change would be necessary
     dcapedt_dpc = dcapedt_dpc_dm * cbmf_deep
     dcwfndt_dpc = dcwfndt_dpc_dm * cbmf_deep
@@ -981,11 +997,11 @@ contains
 
     if (dpc%do_cgust_dp .and. (sd%land.gt.0.5)) then
        if (sd%cgust.gt.sd%cgust0 .and. ac%cape.gt.ac%cin) then
-       	  dpn%do_forcedlifting = .true.
+          dpn%do_forcedlifting = .true.
           dpn%do_ppen = .false.
-	  rkm_dp = dpc%rkm_dp2
+          rkm_dp = dpc%rkm_dp2
           tmp = sd%cgust/(sd%cgust0+sd%cgust)
-	  tmp = (1.-sqrt(tmp))
+          tmp = (1.-sqrt(tmp))
           rkm_dp = rkm_dp * tmp
        endif
     end if
@@ -994,7 +1010,7 @@ contains
     call sd_copy_k(sd, sd1)
     do k=1,sd%kmax
        sd1%t (k)=sd1%t (k)-(sd%tdt_rad(k)+sd%tdt_dyn(k)+sd%tdt_dif(k)) * sd%delt
-       sd1%qv(k)=sd1%qv(k)-(sd%qdt_dyn(k)+sd%qdt_dif(k)) * sd%delt
+       sd1%qv(k)=sd1%qv(k)-(sd%qvdt_dyn(k)+sd%qvdt_dif(k)) * sd%delt
        sd1%qv(k)=max(sd1%qv(k),0.)
     end do
     call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
@@ -1009,7 +1025,7 @@ contains
 
 !make base mass flux cbmf0 dependent on cape so that first guess is closer to the actual cbmf_deep
 !restrict cbmf0 to be between 0.001 to 0.01, this cbmf0 is used before true cbmf_deep is diagnosed
-    cbmf0 = 0.001+(0.01-0.001)*cape0*0.001 
+    cbmf0 = 0.001+(0.01-0.001)*cape0*0.001
     cbmf0 = min(cbmf0,0.01)
     call cumulus_plume_k(dpn, sd1, ac1, cp1, rkm_dp, cbmf0, wrel, zcldtop, Uw_p, ier, ermesg)
     cwfn0=0.
@@ -1017,7 +1033,7 @@ contains
        cwfn0 = cwfn0 + cp1%buo(k)/cp1%thvtop(k)*cp1%dp(k)
     end do
 
-!compute free troposphere generation of dcwfndt due to other processes; 
+!compute free troposphere generation of dcwfndt due to other processes;
 !sd1 contain previous sounding, sd contain updated sounding;
 !ct contain shallow_cu tendencies; deep convective depth has been diagnosed in cp1
     dcwfndt_fre = 0.; !unit:W/m2,dcwfndt from processes other than deep convection;
@@ -1026,7 +1042,7 @@ contains
        dcwfndt_fre=dcwfndt_fre-tmp/sd%t(k)*sd%dp(k)
     end do
 
-! additional plumes using the updated sounding (sd) to compute wfn and cape 
+! additional plumes using the updated sounding (sd) to compute wfn and cape
 ! differences wfn-wfn0 and cape-cape0 give total cape tendencies over the timestep
 ! adiabatic plume ac which contains source air properties were already computed outside the routine
 ! convective tendencies are not needed at this time
@@ -1050,10 +1066,10 @@ contains
 !make taudp depend on pbl and free troposphere processes
     if (sd%land.ge.0.5) then
       if (dcwfndt_fre.gt.0 .and. dcwfndt_pbl.gt.0) then
-    	taudp=(dcwfndt_fre*dpc%tau_dp+dcwfndt_pbl*dpc%tau_dp*dpc%tau_dp_fact) &
+        taudp=(dcwfndt_fre*dpc%tau_dp+dcwfndt_pbl*dpc%tau_dp*dpc%tau_dp_fact) &
                  /(dcwfndt_fre+dcwfndt_pbl)
       elseif (dcwfndt_fre.gt.0 .and. dcwfndt_pbl.le.0) then
-	taudp=dpc%tau_dp
+        taudp=dpc%tau_dp
       elseif (dcwfndt_fre.le.0 .and. dcwfndt_pbl.gt.0) then
         taudp=dpc%tau_dp*dpc%tau_dp_fact
       endif
@@ -1117,7 +1133,7 @@ contains
 !rescale convective tendencies generated in ct1 due to cbmf0 based on cbmf_deep/cbmf0
 !if no precip reevaporation, the system should be very linear and rescaling nearly exactly
 !reproduce the actual tendencies if one lauch the plume with cbmf_deep
-    scale_fact = cbmf_deep/cbmf0 
+    scale_fact = cbmf_deep/cbmf0
     if (scale_fact.lt.1.e-10) scale_fact = 0.
     call scale_ct (ct1, sd, Uw_p, scale_fact)
 
@@ -1165,7 +1181,7 @@ contains
     ct%pflx   =ct%pflx  *scale;
     ct%tevap  =ct%tevap *scale;
     ct%qevap  =ct%qevap *scale;
-    ct%trflx  =ct%trflx *scale; 
+    ct%trflx  =ct%trflx *scale;
     ct%trten  =ct%trten *scale;
     ct%trwet  =ct%trwet *scale;
     ct%trevp  =ct%trevp *scale;
@@ -1177,7 +1193,7 @@ contains
     ct%dqtmp  =ct%dqtmp *scale;
 
     ct%dting=0.;
-    ct%denth=0.; ct%dqtmp=0.; ct%uav=0.;ct%vav=0.; 
+    ct%denth=0.; ct%dqtmp=0.; ct%uav=0.;ct%vav=0.;
     do k = 1,sd%kmax
        ct%denth = ct%denth + (Uw_p%cp_air*ct%tten(k)-Uw_p%HLv*ct%qlten(k)-Uw_p%HLs*ct%qiten(k))*sd%dp(k)/Uw_p%grav
        ct%dqtmp = ct%dqtmp + (ct%qvten(k) + ct%qlten(k) + ct%qiten(k))*sd%dp(k)/Uw_p%grav
@@ -1187,7 +1203,7 @@ contains
     end do
     ct%denth = ct%denth - Uw_p%HLv*ct%rain - Uw_p%HLs*ct%snow
     ct%dqtmp = ct%dqtmp + ct%rain + ct%snow
- 
+
     do i = 1,size(sd%tr,2)
        ct%dtring(i)=0.;
        do k = 1,sd%kmax
@@ -1240,10 +1256,10 @@ contains
     call sd_copy_k(sd, sd1)
     k=sd%kinv-1;
     sd1%t (1:k)=sd1%t (1:k)+(sd%tdt_rad(1:k)+sd%tdt_dyn(1:k)+sd%tdt_dif(1:k)+ct%tten(1:k)) * sd%delt
-    sd1%qv(1:k)=sd1%qv(1:k)+(sd%qdt_dyn(1:k)+sd%qdt_dif(1:k)+ct%qvten(1:k)) * sd%delt
+    sd1%qv(1:k)=sd1%qv(1:k)+(sd%qvdt_dyn(1:k)+sd%qvdt_dif(1:k)+ct%qvten(1:k)) * sd%delt
     call extend_sd_k(sd1,sd%pblht, do_ice, Uw_p)
 
-!lauch both adiabatic and entraining plumes to compute cape and cwfn 
+!lauch both adiabatic and entraining plumes to compute cape and cwfn
 !will need addtional adiabatic and entraining plumes to evaluate dcwfn and dcape due to PBL tendencies
     call ac_clear_k(ac1);
     call cp_clear_k(cp1); cp1%maxcldfrac=1.;
@@ -1254,7 +1270,7 @@ contains
 
 !make base mass flux cbmf0 dependent on cape so that first guess is closer to the actual cbmf_deep
 !restrict cbmf0 to be between 0.001 to 0.01, this cbmf0 is used before true cbmf_deep is diagnosed
-    cbmf0 = 0.001+(0.01-0.001)*ac%cape*0.001 
+    cbmf0 = 0.001+(0.01-0.001)*ac%cape*0.001
     cbmf0 = min(cbmf0,0.01)
     call cumulus_plume_k(dpn, sd1, ac1, cp1, rkm_dp, cbmf0, wrel, zcldtop, Uw_p, ier, ermesg)
     cwfn_pbl=0.
@@ -1262,7 +1278,7 @@ contains
        cwfn_pbl = cwfn_pbl + cp1%buo(k)/cp1%thvtop(k)*cp1%dp(k)
     end do
 
-! additional plumes using non-updated sd to compute wfn and cape 
+! additional plumes using non-updated sd to compute wfn and cape
 ! differences wfn_pbl-wfn and cape_pbl-cape are changes due to PBL tendencies over the timestep
 ! note adiabatic plume ac which contain source air properties were already computed outside the routine
 ! convective tendencies are not needed for this evaluation
@@ -1288,7 +1304,7 @@ contains
        dcwfn_ndp1=dcwfn_ndp1-tmp/sd%t(k)*sd%dp(k)
 
        hltmp=sd%hl (k)+(sd%tdt_dyn(k)+sd%tdt_dif(k)+ct%tten(k)+sd%tdt_rad(k))*sd%delt*Uw_p%cp_air
-       qttmp=sd%qct(k)+(sd%qdt_dyn(k)+sd%qdt_dif(k)+ct%qvten(k))*sd%delt
+       qttmp=sd%qct(k)+(sd%qvdt_dyn(k)+sd%qvdt_dif(k)+ct%qvten(k))*sd%delt
        call findt_k (sd%z(k),sd%p(k),hltmp,qttmp,thj,qvj,qlj,qij,qse,thvj,dpn%do_ice,Uw_p)
        temp=thj*exn_k(sd%p(k),Uw_p)
        temp=(temp-sd%t(k))/sd%delt
@@ -1297,7 +1313,7 @@ contains
 
 !prognose pwfn due to processes other than deep convection
 !integration should not exit before this point in any case (whether or not deep convection exist)
-!if no deep convection supported and no positive tendency for cwfn reset pwfn 
+!if no deep convection supported and no positive tendency for cwfn reset pwfn
     pwfn_new = pwfn + (dcwfn_ndp + dcwfn_pbl)*sd%delt
     if ((cwfn .le. 0.) .and. (dcwfn_ndp + dcwfn_pbl).le.0) then
        pwfn_new=0.0
@@ -1391,11 +1407,11 @@ contains
 !rescale convective tendencies generated in ct1 due to cbmf0 based on cbmf_deep/cbmf0
 !if no precip reevaporation, the system should be very linear and rescaling nearly exactly
 !reproduce the actual tendencies if one lauch the plume with cbmf_deep
-    scale_fact = cbmf_deep/cbmf0 
+    scale_fact = cbmf_deep/cbmf0
     if (scale_fact.lt.1.e-10) scale_fact = 0.
     call scale_ct (ct1, sd, Uw_p, scale_fact)
 
-!compute convective destruction of cape and cwfn over this time-step, rescaling may not be 
+!compute convective destruction of cape and cwfn over this time-step, rescaling may not be
 !linear, so an additional computation of the actual change would be necessary
     dcape_con = dcape_con_dm * cbmf_deep
     dcwfn_con = dcwfn_con_dm * cbmf_deep
@@ -1493,7 +1509,7 @@ contains
 
     ier = 0
     ermesg = ' '
-    zcldtop = 2000 
+    zcldtop = 2000
     wrel = 0.1
     cbmf0=0.001
     km=15
@@ -1512,7 +1528,7 @@ contains
        call cumulus_plume_k(dpn, sd, ac1, cp1, rkm_dp, cbmf0, wrel, zcldtop, Uw_p, ier, ermesg)
        cwfn3d(k)=0.
        do i = cp1%krel,cp1%let
-       	  cwfn3d(k) = cwfn3d(k) + cp1%buo(i)/cp1%thvtop(i)*cp1%dp(i)
+          cwfn3d(k) = cwfn3d(k) + cp1%buo(i)/cp1%thvtop(i)*cp1%dp(i)
        end do
     end do
 
@@ -1558,33 +1574,33 @@ contains
 
     if (sd%land.gt.0.5) then
       if (ac%cape.gt.dpc%cape_th .and. sd%cgust.gt.sd%cgust0) then
-	 lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
-      	 lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
-      	 latx=lat*180/3.1415926; lonx=lon*180/3.1415926
-      	 if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
+         lat1b= 30.; lat1e=40.; lon1b=260.; lon1e=270.
+         lat2b=-20.; lat2e=10.; lon2b=285.; lon2e=305.
+         latx=lat*180/3.1415926; lonx=lon*180/3.1415926
+         if (latx.gt.lat1b .and. latx.lt.lat1e .and. lonx.gt.lon1b .and. lonx.lt.lon1e) then
             tmp=1
-      	 elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
+         elseif (latx.gt.lat2b .and. latx.lt.lat2e .and. lonx.gt.lon2b .and. lonx.lt.lon2e) then
             tmp=2
-      	 endif
-       	 dpn%do_forcedlifting = .true.
+         endif
+         dpn%do_forcedlifting = .true.
          dpn%do_ppen = .false. !dpn%do_pevap = .false.
          call cclosure_gust(sd%cgust, sd, Uw_p, ac, dpc%wcrit_min_gust, cbmf_deep, wrel, ufrc)
-	 if(cbmf_deep.lt.1.e-10) then 
-	    cbmf_deep=0.;
-       	    call cp_clear_k(cp1); cp1%maxcldfrac=1.; cp1%cush=-1;
-       	    call ct_clear_k(ct1);
-       	    return
-    	 end if
-    	 call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, wrel, zcldtop, Uw_p, ier, ermesg)
-    	 if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
-     	    cbmf_deep = 0.; 
-       	    call cp_clear_k(cp1); cp1%maxcldfrac=1.; cp1%cush=-1;
-       	    call ct_clear_k(ct1);
-       	    return
-    	 else
-	    call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
+         if(cbmf_deep.lt.1.e-10) then 
+            cbmf_deep=0.;
+            call cp_clear_k(cp1); cp1%maxcldfrac=1.; cp1%cush=-1;
+            call ct_clear_k(ct1);
             return
-    	 end if
+         end if
+         call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, wrel, zcldtop, Uw_p, ier, ermesg)
+         if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
+            cbmf_deep = 0.; 
+            call cp_clear_k(cp1); cp1%maxcldfrac=1.; cp1%cush=-1;
+            call ct_clear_k(ct1);
+            return
+         else
+            call cumulus_tend_k(dpn, sd, Uw_p, cp1, ct1, do_coldT)
+            return
+         end if
       endif
     endif
   end subroutine conv_forced
@@ -1595,7 +1611,7 @@ contains
 !#####################################################################
 !#####################################################################
   subroutine cclosure_gust(cgust, sd, Uw_p, ac, wcrit_min, cbmf, wrel, ufrc)
-  
+
     implicit none
     real,            intent(in)    :: cgust
     type(sounding),  intent(in)    :: sd
@@ -1603,7 +1619,7 @@ contains
     type(adicloud),  intent(in)    :: ac
     real,            intent(in)    :: wcrit_min !wcrit_min=0.2
     real,            intent(out)   :: cbmf, wrel, ufrc
-    
+
     integer :: kkk
     real    :: sigmaw, wcrit, erfarg, wexp, wtw, cbmf0, tmp
 
@@ -1628,9 +1644,9 @@ contains
        cbmf = 0.
     endif
 
-    wtw = wexp * wexp - 2 * ac % cin 
+    wtw = wexp * wexp - 2 * ac % cin
     if(wtw.le.0.) then
-       wrel=0.; 
+       wrel=0.;
     else
        wrel=sqrt(wtw)
     end if
@@ -1638,7 +1654,7 @@ contains
 
     cbmf0 = sd%dp(sd%ksrc) / sd%delt / Uw_p%GRAV
     kkk = max(max(ac%klcl, sd%kinv),1)
-    tmp = (sd%ps(0) - sd%ps(kkk)) * 0.25 
+    tmp = (sd%ps(0) - sd%ps(kkk)) * 0.25
     cbmf0 = tmp / sd%delt / Uw_p%GRAV
 
     cbmf = min (cbmf, cbmf0)

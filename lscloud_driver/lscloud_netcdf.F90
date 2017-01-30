@@ -6,6 +6,9 @@ use diag_manager_mod,          only :  register_diag_field, send_data
 use time_manager_mod,          only :  time_type
 use lscloud_types_mod,         only :  lscloud_types_init, &
                                        diag_id_type, diag_pt_type
+use atmos_cmip_diag_mod,       only :  register_cmip_diag_field_3d, &
+                                       send_cmip_data_3d, &
+                                       query_cmip_diag_id
 
 implicit none
 private
@@ -46,10 +49,8 @@ type(diag_id_type),  intent(inout) :: diag_id
 type(diag_pt_type),  intent(inout) :: diag_pt
 integer,             intent(out)   :: n_diag_4d, n_diag_4d_kp1
 
-
 !------------------------------------------------------------------------
       if (module_is_initialized) return
-
 
 !-----------------------------------------------------------------------
 !    write version info to standard log.
@@ -322,6 +323,9 @@ integer,                         intent(in) :: is, js, kdim
                Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_berg, diag_4d(:,:,:,diag_pt%qndt_berg), &
+               Time, is, js, 1)
+      used = send_data   &
+              (diag_id%qndt_rime, diag_4d(:,:,:,diag_pt%qndt_rime), &
                Time, is, js, 1)
       used = send_data   &
               (diag_id%qndt_freez, diag_4d(:,:,:,diag_pt%qndt_freez), &
@@ -689,6 +693,15 @@ integer,                         intent(in) :: is, js, kdim
                          Time, is, js, 1)
 
 !-----------------------------------------------------------------------
+!    18) variables associated CMIP diagnostics
+!-----------------------------------------------------------------------
+     if (query_cmip_diag_id(diag_id%cdnc)) then
+       used = send_cmip_data_3d ( diag_id%cdnc, &
+                1.e06*diag_4d(:,:,:,diag_pt%droplets), &
+                Time, is, js, 1, mask=diag_4d(:,:,:,diag_pt%droplets) > 0.0)
+     endif
+
+!-----------------------------------------------------------------------
 !
 !                    COLUMN-INTEGRATED DIAGNOSTICS
 !
@@ -814,6 +827,9 @@ integer,                         intent(in) :: is, js, kdim
                Time, is, js)
       used = send_data   &
               (diag_id%qn_berg_col, diag_3d(:,:, diag_pt%qndt_berg), &
+               Time, is, js)
+     used = send_data   &
+              (diag_id%qn_rime_col, diag_3d(:,:, diag_pt%qndt_rime), &
                Time, is, js)
       used = send_data   &
               (diag_id%qn_destr_col, diag_3d(:,:, diag_pt%qndt_destr), &
@@ -1466,6 +1482,14 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'qndt_berg', axes(1:3), Time, &
              'Cloud droplet number tendency from Bergeron', '#/kg/sec',   &
              missing_value=missing_value)
+
+! ---> h1g, add riming diagnostics for qn budget, 2014-07-24
+      diag_id%qndt_rime = register_diag_field (mod_name, &
+             'qndt_rime', axes(1:3), Time, &
+             'Cloud droplet number tendency from riming in Rotstayn-Klein microphysics', '#/kg/sec',   &
+             missing_value=missing_value)
+! <--- h1g, 2014-07-24
+
       diag_id%qndt_freez = register_diag_field (mod_name, &
              'qndt_freez', axes(1:3), Time, &
              'Cloud droplet number tendency from heterogeneous freezing', &
@@ -1947,6 +1971,13 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'difference between qi fallout rate at sfc and sum of &
              &individ terms', 'kg/kg/sec', missing_value=missing_value)
 
+  !------------------------------------------------------------------------
+  !   18)  variables associated CMIP diagnostics
+  !------------------------------------------------------------------------
+       diag_id%cdnc = register_cmip_diag_field_3d ( mod_name, 'cdnc', Time, &
+                      'Cloud Droplet Number Concentration', 'm-3', mask_variant=.true., &
+                  standard_name='number_concentration_of_cloud_liquid_water_particles_in_air')
+
   !-----------------------------------------------------------------------
   !
   !                    COLUMN-INTEGRATED DIAGNOSTICS
@@ -2089,6 +2120,12 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
              'qn_berg_col', axes(1:2), Time, &
              'Column integrated drop number bergeron tendency',   &
              '#/m2/sec', missing_value=missing_value)
+! ---> h1g, add riming diagnostics for qn budget, 2014-07-24
+      diag_id%qn_rime_col = register_diag_field (mod_name, &
+             'qn_rime_col', axes(1:2), Time, &
+             'Column integrated drop number riming tendency in Rotstayn-Klein',   &
+             '#/m2/sec', missing_value=missing_value)
+! <--- h1g, 2014-07-24
       diag_id%qn_fill_col = register_diag_field (mod_name, &
              'qn_fill_col', axes(1:2), Time, &
              'Column integrated drop number filler', '#/m2/sec',   &
@@ -2868,6 +2905,14 @@ integer,            intent(out)   :: n_diag_4d, n_diag_4d_kp1
         diag_pt%qndt_berg = n_diag_4d
         n_diag_4d = n_diag_4d + 1 
       end if
+! ---> h1g, add riming, for qn budget, 2014-07-24
+      if (diag_id%qndt_rime + diag_id%qn_rime_col +    &
+                              diag_id%qldt_rime > 0) then
+        diag_pt%qndt_rime = n_diag_4d
+        n_diag_4d = n_diag_4d + 1
+      end if
+! <--- h1g, 2014-07-24
+
       if (diag_id%qndt_freez + diag_id%qn_freez_col > 0) then
         diag_pt%qndt_freez = n_diag_4d
         n_diag_4d = n_diag_4d + 1 

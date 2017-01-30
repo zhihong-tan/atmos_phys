@@ -80,7 +80,14 @@ use fms_io_mod,              only: restore_state, &
 
 use diag_manager_mod,        only: register_diag_field, send_data
 
-!    shared utility modules:
+! shared atmospheric package modules:
+
+use atmos_cmip_diag_mod,     only: register_cmip_diag_field_3d, &
+                                   send_cmip_data_3d, &
+                                   cmip_diag_id_type, &
+                                   query_cmip_diag_id
+
+!    shared radiation package modules:
 
 use aerosol_types_mod,       only: aerosol_type, aerosol_time_vary_type
 
@@ -506,6 +513,7 @@ logical   :: doing_liq_num = .false.  ! Prognostic cloud droplet number has
 integer   :: nt                       ! total no. of tracers
 integer   :: ntp                      ! total no. of prognostic tracers
 !integer   :: ncol                     ! number of stochastic columns
+integer   ::  nsphum                  ! index for specific humidity tracer
  
 
 logical   :: step_to_call_cosp
@@ -531,6 +539,8 @@ integer, dimension(:), allocatable :: id_tracer_phys,         &
                                       id_tracer_phys_vdif_up, &
                                       id_tracer_phys_turb,    &
                                       id_tracer_phys_moist
+
+type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp
 
 type (clouds_from_moist_block_type) :: Restart
 
@@ -1232,6 +1242,18 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
          'temperature tendency from physics ', &
          'K/s', missing_value=missing_value)
 
+     !-------- CMIP diagnostics (tendencies due to physics) --------
+      ID_tntmp = register_cmip_diag_field_3d ( mod_name, 'tntmp', Time, &
+                  'Tendency of Air Temperature due to Model Physics', 'K s-1', & 
+             standard_name='tendency_of_air_temperature_due_to_model_physics' )
+
+      nsphum = get_tracer_index(MODEL_ATMOS,'sphum')
+      if (nsphum /= NO_TRACER) then
+        ID_tnhusmp = register_cmip_diag_field_3d ( mod_name, 'tnhusmp', Time, &
+                    'Tendency of Specific Humidity due to Model Physics', 's-1', &
+               standard_name='tendency_of_specific_humidity_due_to_model_physics' )
+      endif
+
       allocate (id_tracer_phys(ntp))
       allocate (id_tracer_phys_vdif_dn(ntp))
       allocate (id_tracer_phys_vdif_up(ntp))
@@ -1470,7 +1492,8 @@ end subroutine physics_driver_up_endts
 !                                p_half, p_full, z_half, z_full,       &
 !                                u, v, t, q, r, um, vm, tm, qm, rm,    &
 !                                frac_land, rough_mom,                 &
-!                                albedo,    t_surf_rad, t_ref, q_ref,  &
+!                                albedo,    t_surf_rad, u_ref, v_ref,  &
+!                                t_ref, q_ref,                         &
 !                                u_star,    b_star, q_star,            &
 !                                dtau_du,  dtau_dv,  tau_x,  tau_y,    &
 !                                udt, vdt, tdt, qdt, rdt,              &
@@ -1552,6 +1575,12 @@ end subroutine physics_driver_up_endts
 !  <IN NAME="t_surf_rad" TYPE="real">
 !   surface radiative temperature
 !  </IN>
+!  <IN NAME="u_ref" TYPE="real">
+!   10m zonal wind
+!  </IN>
+!  <IN NAME="v_ref" TYPE="real">
+!   10m meridional wind
+!  </IN>
 !  <IN NAME="u_star" TYPE="real">
 !   boundary layer wind speed (frictional speed)
 !  </IN>
@@ -1612,7 +1641,8 @@ subroutine physics_driver_down (is, ie, js, je, npz,              &
                                 frac_land, rough_mom,             &
                                 frac_open_sea,                    &
                                 albedo,                           &
-                                t_surf_rad, t_ref, q_ref,         &
+                                t_surf_rad, u_ref, v_ref,         & !bqx+ u_ref, v_ref
+                                t_ref, q_ref,                     &
                                 u_star,    b_star, q_star,        &
                                 dtau_du, dtau_dv,  tau_x,  tau_y, &
                                 Physics_tendency_block,           &
@@ -1636,6 +1666,7 @@ type(physics_input_block_type), intent(in)      :: Physics_input_block
 real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    rough_mom, &
                                                    albedo, t_surf_rad, &
+                                                   u_ref, v_ref, & !bqx+
                                                    t_ref, q_ref, &  ! cjg: PBL depth mods
                                                    u_star, b_star,    &
                                                    q_star, dtau_du,   &
@@ -1836,7 +1867,8 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call damping_driver (is, js, lat, Time_next, dt, area,        &
                            p_full, p_half, z_full, z_half,          &
                            um, vm, tm, rm(:,:,:,1), rm(:,:,:,1:ntp),&
-                           z_pbl, udt, vdt, tdt, rdt(:,:,:,1), rdt)
+                           u_ref, v_ref, z_pbl,                     &  !bqx+
+                           udt, vdt, tdt, rdt(:,:,:,1), rdt)
      call mpp_clock_end ( damping_clock )
 
 !---------------------------------------------------------------------
@@ -1860,7 +1892,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
       call vert_turb_driver (is, js, Time, Time_next, dt,            &
                              Rad_flux_block%tdt_lw, frac_land,  &
                              p_half, p_full, z_half, z_full,         &
-                             t_ref, q_ref,       &  ! cjg: PBL depth mods
+                             t_ref, q_ref,                           &  ! cjg: PBL depth mods
                              u_star, b_star, q_star, rough_mom,      &
                              lat, convect(is:ie,js:je),              &
                              u, v, t, r(:,:,:,1), r, um, vm,                  &
@@ -2529,6 +2561,15 @@ real,dimension(:,:),    intent(inout)             :: gust
 !    call aerosol_dealloc to deallocate them.
 !----------------------------------------------------------------------
         if (.not. do_grey_radiation) call aerosol_dealloc (Aerosol)
+
+      !------ CMIP diagnostics (tendencies due to physics) ------
+      if (query_cmip_diag_id(ID_tntmp)) then
+        used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js, 1)
+      endif
+      if (query_cmip_diag_id(ID_tnhusmp)) then
+        used = send_cmip_data_3d (ID_tnhusmp, rdt(:,:,:,nsphum), Time_next, is, js, 1)
+      endif
+
 
 !-----------------------------------------------------------------------
 !    code needed to execute COSP
