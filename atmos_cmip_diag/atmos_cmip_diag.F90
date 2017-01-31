@@ -78,9 +78,17 @@ logical :: use_extra_levels = .true.  ! use more than the standard
 logical :: flip_cmip_levels = .true.  ! flip vertical model level output
                                       ! from bottom(surface) to top.
 
+logical :: output_modeling_realm  = .false. ! add modeling_realm attribute
+                                            ! to all variables
+
+character(len=64) :: modeling_realm_default = 'atmos' ! default modeling_realm attribute
+                                                      ! can be overriden in
+                                                      ! register_cmip_diag
+
 integer :: verbose = 1                ! verbose level = 0,1,2
 
 namelist /atmos_cmip_diag_nml/ use_extra_levels, flip_cmip_levels, &
+                               output_modeling_realm, modeling_realm_default, &
                                verbose
 
 !-----------------------------------------------------------------------
@@ -354,22 +362,35 @@ end function query_cmip_diag_id
 
 integer function register_cmip_diag_field_2d (module_name, field_name, &
                            Time_init, long_name, units, standard_name, &
-                           missing_value, interp_method)
+                           missing_value, interp_method, mask_variant, realm)
 
   character(len=*), intent(in) :: module_name, field_name
   type(time_type),  intent(in) :: Time_init
   character(len=*), intent(in), optional :: long_name, units, standard_name
   real,             intent(in), optional :: missing_value
-  character(len=*), intent(in), optional :: interp_method
+  character(len=*), intent(in), optional :: interp_method, realm
+  logical         , intent(in), optional :: mask_variant
 
-  real    :: mvalue
+  real              :: mvalue
+  character(len=64) :: modeling_realm
 !-----------------------------------------------------------------------
   mvalue = CMOR_MISSING_VALUE; if (present(missing_value)) mvalue = missing_value
+  modeling_realm = modeling_realm_default
+  if (present(realm)) modeling_realm = realm
 
-  register_cmip_diag_field_2d = register_diag_field (module_name, field_name, &
+  if (output_modeling_realm) then
+    register_cmip_diag_field_2d = register_diag_field (module_name, field_name, &
                            cmip_axis_data(1:2,0), Time_init, long_name=long_name, &
                            units=units, standard_name=standard_name, area=area_id, &
-                           missing_value=mvalue, interp_method=interp_method )
+                           mask_variant=mask_variant, missing_value=mvalue, &
+                           interp_method=interp_method, realm=modeling_realm )
+  else
+    register_cmip_diag_field_2d = register_diag_field (module_name, field_name, &
+                           cmip_axis_data(1:2,0), Time_init, long_name=long_name, &
+                           units=units, standard_name=standard_name, area=area_id, &
+                           mask_variant=mask_variant, missing_value=mvalue, &
+                           interp_method=interp_method)
+  endif
 
 !-----------------------------------------------------------------------
 
@@ -379,7 +400,8 @@ end function register_cmip_diag_field_2d
 
 function register_cmip_diag_field_3d (module_name, field_name, &
                         Time_init, long_name, units, standard_name, &
-                        axis, missing_value, interp_method, mask_variant)
+                        axis, missing_value, interp_method, mask_variant, &
+                        realm)
 
   character(len=*), intent(in) :: module_name, field_name
   type(time_type),  intent(in) :: Time_init
@@ -388,16 +410,21 @@ function register_cmip_diag_field_3d (module_name, field_name, &
   character(len=*), intent(in), optional :: axis  ! 'full' or 'half' levels
   character(len=*), intent(in), optional :: interp_method ! for fregrid
   logical         , intent(in), optional :: mask_variant
+  character(len=*), intent(in), optional :: realm   ! modeling realm
 
   type(cmip_diag_id_type) :: register_cmip_diag_field_3d
   integer :: ind, indx, kount
   real    :: mvalue
   character(len=128) :: module_name_table
   character(len=4)   :: vert_axis
+  character(len=64)  :: modeling_realm
 !-----------------------------------------------------------------------
 
   mvalue = CMOR_MISSING_VALUE; if (present(missing_value)) mvalue = missing_value
   vert_axis = 'full';          if (present(axis)) vert_axis = lowercase(trim(axis))
+
+  modeling_realm = modeling_realm_default
+  if (present(realm)) modeling_realm = realm
 
   register_cmip_diag_field_3d%field_id = 0
 
@@ -414,10 +441,17 @@ function register_cmip_diag_field_3d (module_name, field_name, &
     ! only register fields that are in the diag_table
     if ( get_diag_field_id(module_name_table, field_name) .ne. DIAG_FIELD_NOT_FOUND ) then
 
-      register_cmip_diag_field_3d%field_id(ind) = register_diag_field(module_name_table, field_name,  &
+      if (output_modeling_realm) then
+        register_cmip_diag_field_3d%field_id(ind) = register_diag_field(module_name_table, field_name,  &
+                    cmip_axis_data(:,indx), Time_init, long_name=long_name, units=units, &
+                    standard_name=standard_name, area=area_id, mask_variant=mask_variant, &
+                    missing_value=mvalue, interp_method=interp_method, realm=modeling_realm)
+      else
+        register_cmip_diag_field_3d%field_id(ind) = register_diag_field(module_name_table, field_name,  &
                     cmip_axis_data(:,indx), Time_init, long_name=long_name, units=units, &
                     standard_name=standard_name, area=area_id, mask_variant=mask_variant, &
                     missing_value=mvalue, interp_method=interp_method)
+      endif
 
       if (verbose > 0) call error_mesg('atmos_cmip_diag_mod', &
          'register cmip diag: module='//trim(module_name_table)//', field='//trim(field_name)// &
