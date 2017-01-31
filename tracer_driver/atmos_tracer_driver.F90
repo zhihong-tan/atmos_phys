@@ -324,6 +324,8 @@ integer :: id_so2_cmip, id_dms_cmip
 integer :: id_so2_cmipv2, id_dms_cmipv2
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
+ type(cmip_diag_id_type) :: ID_airmass
+
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
             id_drynh4, id_drybc, id_drypoa, id_drysoa
@@ -835,6 +837,11 @@ character(len=32) :: tracer_units, tracer_name
      endif
 
      !---- cmip named variables ----
+     if (query_cmip_diag_id(ID_airmass)) then
+         used = send_cmip_data_3d (ID_airmass,  &
+                 pwt, Time_next, is_in=is, js_in=js, ks_in=1)        
+     endif
+
 
      if (nNH4NO3 > 0 .and. nNH4 > 0) then
        ! concentration
@@ -1591,6 +1598,11 @@ type(time_type), intent(in)                                :: Time
         id_drynh4 = 0
       endif
       
+      ID_airmass = register_cmip_diag_field_3d ( mod_name, &
+           'airmass', Time, 'Vertically integrated mass content of air in layer', 'kg m-2', &
+           standard_name='atmosphere_mass_of_air_per_unit_area')
+      
+
       if (nNH4NO3 > 0) then
         ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
                    'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
