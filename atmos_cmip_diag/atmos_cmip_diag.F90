@@ -40,17 +40,23 @@ public :: atmos_cmip_diag_init, atmos_cmip_diag_end, &
 !----------------------------------------------------------------------
 
 ! vertical pressure grids
-!    plev  = Table Amon = standard 17 levels + 6 ext
-!    plev8 = Table day
-!    plev3 = Table 6hrPlev
-!    plev7 = Table 6hrPlev (not implemented)
-!    plev7 = Table cfMon,cfDay (not implemented)
+!    plev   = same as plev17, unless use_extra_levels = .true.
+!    plev19 = Table Amon = standard 17 levels + 5, 1 hPa
+!    plev8  = daily data
+!    plev7h = HighResMIP (6hr time mean, 3hr synoptic)
+!    plev3  = used in CMIP5 for 6hrPlev
+!    plev23 = plev19 + (7,3,2,0.4 hPa)
 
-real, dimension(23) :: plev = &
+real, dimension(23) :: plev23 = &
               (/ 100000., 92500., 85000., 70000., 60000., 50000., &
                   40000., 30000., 25000., 20000., 15000., 10000., &
                    7000.,  5000.,  3000.,  2000.,  1000.,   700., &
                     500.,   300.,   200.,   100.,    40. /)
+real, dimension(19) :: plev19 = &
+              (/ 100000., 92500., 85000., 70000., 60000., 50000., &
+                  40000., 30000., 25000., 20000., 15000., 10000., &
+                   7000.,  5000.,  3000.,  2000.,  1000.,   500., &
+                    100. /)
 real, dimension(8) :: plev8 = &
               (/ 100000., 85000., 70000., 50000., &
                   25000., 10000.,  5000.,  1000. /)
@@ -58,16 +64,6 @@ real, dimension(7) :: plev7h = &
               (/  92500., 85000., 70000., 60000., 50000., 25000., 5000. /)
 real, dimension(3) :: plev3 = &
               (/  85000., 50000., 25000. /)
-
-! this set of levels has not been implemented
-! MAY NOT BE NEEDED - ONLY USED FOR PHYSICS VARIABLES (cloud amounts)
-! (needs conservative pressure-weighted interp)
-real, dimension(7) :: plev7 = &
-              (/  90000., 74000., 62000., 50000., 37500., 24500., 9000. /)
-real, dimension(2,7) :: plev7_bnds = &
-              reshape((/ 100000., 80000., 80000., 68000., 68000., 56000., &
-                  56000., 44000., 44000., 31000., 31000., 18000., &
-                  18000.,     0. /),shape(plev7_bnds))
 
 !-----------------------------------------------------------------------
 !--- namelist ---
@@ -93,7 +89,7 @@ namelist /atmos_cmip_diag_nml/ use_extra_levels, flip_cmip_levels, &
 
 !-----------------------------------------------------------------------
 
-integer, parameter :: MAXPLEVS = 3  ! max plev sets
+integer, parameter :: MAXPLEVS = 6  ! max plev sets
 integer, dimension(MAXPLEVS) :: num_pres_levs
 real,    dimension(MAXPLEVS,50) :: pressure_levels  ! max 50 levels per set
 
@@ -199,13 +195,13 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
 
   if (use_extra_levels) then
     do k = 23, 1, -1
-      if (plev(k) .gt. ptop) then
+      if (plev23(k) .gt. ptop) then
         num_std_plevs = k
         exit
       endif
     enddo
   else
-    num_std_plevs = 17
+    num_std_plevs = 17  ! standard ncep 17 levels
   endif
 
 !-----------------------------------------------------------------------
@@ -304,16 +300,28 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
   do ind = 1, MAXPLEVS
     if (ind .eq. 1) then
       np = num_std_plevs
-      pressure_levels(ind,1:np) = plev(1:np)
+      pressure_levels(ind,1:np) = plev23(1:np)
       axis_name = 'plev'
     else if (ind .eq. 2) then
+      np = size(plev19,1)
+      pressure_levels(ind,1:np) = plev19
+      axis_name = 'plev19'
+    else if (ind .eq. 3) then
       np = size(plev8,1)
       pressure_levels(ind,1:np) = plev8
       axis_name = 'plev8'
-    else if (ind .eq. 3) then
+    else if (ind .eq. 4) then
       np = size(plev3,1)
       pressure_levels(ind,1:np) = plev3
       axis_name = 'plev3'
+    else if (ind .eq. 5) then
+      np = size(plev7h,1)
+      pressure_levels(ind,1:np) = plev7h
+      axis_name = 'plev7h'
+    else if (ind .eq. 6) then
+      np = size(plev23,1)
+      pressure_levels(ind,1:np) = plev23
+      axis_name = 'plev23'
     endif
 
     num_pres_levs(ind) = np
