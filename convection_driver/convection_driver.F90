@@ -2809,29 +2809,94 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    active, then a second call is made using slightly different inputs. 
 !-----------------------------------------------------------------------
       if (do_clubb == 2) then
-        call compute_convective_area     &
-               (Input_mp%t, Input_mp%pfull, Input_mp%q, do_uw_conv,  &
-                do_donner_deep, C2ls_mp%donner_humidity_area,   &
-                C2ls_mp%donner_humidity_factor, conv_frac_max,   &
-                C2ls_mp%convective_humidity_ratio_clubb, &
-                C2ls_mp%conv_frac_clubb,   &
-                shallow_cloud_area=  &
-                     Moist_clouds_block%cloud_data(i_shallow)%cloud_area, &
-                cell_cld_frac =    &
-                     Moist_clouds_block%cloud_data(i_cell)%cloud_area)
+
+!---> h1g, 2017-01-31
+        if( do_uw_conv .and. do_donner_deep ) then
+          call compute_convective_area     &
+                 (Input_mp%t, Input_mp%pfull, Input_mp%q, do_uw_conv,  &
+                  do_donner_deep, C2ls_mp%donner_humidity_area,   &
+                  C2ls_mp%donner_humidity_factor, conv_frac_max,   &
+                  C2ls_mp%convective_humidity_ratio_clubb, &
+                  C2ls_mp%conv_frac_clubb,   &
+                  shallow_cloud_area=  &
+                       Moist_clouds_block%cloud_data(i_shallow)%cloud_area, &
+                  cell_cld_frac =    &
+                       Moist_clouds_block%cloud_data(i_cell)%cloud_area)
+        else if (do_donner_deep) then
+          call compute_convective_area     &
+                 (Input_mp%t, Input_mp%pfull, Input_mp%q, do_uw_conv,  &
+                  do_donner_deep, C2ls_mp%donner_humidity_area,   &
+                  C2ls_mp%donner_humidity_factor, conv_frac_max,   &
+                  C2ls_mp%convective_humidity_ratio_clubb, &
+                  C2ls_mp%conv_frac_clubb,   &
+                  cell_cld_frac =    &
+                       Moist_clouds_block%cloud_data(i_cell)%cloud_area)
+
+        else if (do_uw_conv) then
+          call compute_convective_area     &
+                 (Input_mp%t, Input_mp%pfull, Input_mp%q, do_uw_conv,  &
+                  do_donner_deep, C2ls_mp%donner_humidity_area,   &
+                  C2ls_mp%donner_humidity_factor, conv_frac_max,   &
+                  C2ls_mp%convective_humidity_ratio_clubb, &
+                  C2ls_mp%conv_frac_clubb,   &
+                  shallow_cloud_area=  &
+                       Moist_clouds_block%cloud_data(i_shallow)%cloud_area )
+
+        else
+           call compute_convective_area     &
+                 (Input_mp%t, Input_mp%pfull, Input_mp%q, do_uw_conv,  &
+                  do_donner_deep, C2ls_mp%donner_humidity_area,   &
+                  C2ls_mp%donner_humidity_factor, conv_frac_max,   &
+                  C2ls_mp%convective_humidity_ratio_clubb, &
+                  C2ls_mp%conv_frac_clubb)
+
+        endif
+!<--- h1g, 2017-01-31
+
       endif
  
       if (.not. do_lsc) then
-        call compute_convective_area     &
-                (Input_mp%tin, Input_mp%pfull, Input_mp%qin, do_uw_conv, &
-                 do_donner_deep, C2ls_mp%donner_humidity_area,          &
-                 C2ls_mp%donner_humidity_factor, 1.0,    &
-                 C2ls_mp%convective_humidity_ratio, &
-                 C2ls_mp%convective_humidity_area,   &
-                 shallow_cloud_area=   &
-                    Moist_clouds_block%cloud_data(i_shallow)%cloud_area, &
-                 cell_cld_frac=    &
-                    Moist_clouds_block%cloud_data(i_cell)%cloud_area)
+
+!---> h1g, 2017-01-31
+        if( do_uw_conv .and. do_donner_deep ) then
+          call compute_convective_area     &
+                  (Input_mp%tin, Input_mp%pfull, Input_mp%qin, do_uw_conv, &
+                   do_donner_deep, C2ls_mp%donner_humidity_area,          &
+                   C2ls_mp%donner_humidity_factor, 1.0,    &
+                   C2ls_mp%convective_humidity_ratio, &
+                   C2ls_mp%convective_humidity_area,   &
+                   shallow_cloud_area=   &
+                      Moist_clouds_block%cloud_data(i_shallow)%cloud_area, &
+                   cell_cld_frac=    &
+                      Moist_clouds_block%cloud_data(i_cell)%cloud_area)
+        else if (do_donner_deep) then
+          call compute_convective_area     &
+                  (Input_mp%tin, Input_mp%pfull, Input_mp%qin, do_uw_conv, &
+                   do_donner_deep, C2ls_mp%donner_humidity_area,          &
+                   C2ls_mp%donner_humidity_factor, 1.0,    &
+                   C2ls_mp%convective_humidity_ratio, &
+                   C2ls_mp%convective_humidity_area,   &
+                   cell_cld_frac=    &
+                      Moist_clouds_block%cloud_data(i_cell)%cloud_area)
+        else if (do_uw_conv) then
+          call compute_convective_area     &
+                  (Input_mp%tin, Input_mp%pfull, Input_mp%qin, do_uw_conv, &
+                   do_donner_deep, C2ls_mp%donner_humidity_area,          &
+                   C2ls_mp%donner_humidity_factor, 1.0,    &
+                   C2ls_mp%convective_humidity_ratio, &
+                   C2ls_mp%convective_humidity_area,   &
+                   shallow_cloud_area=   &
+                      Moist_clouds_block%cloud_data(i_shallow)%cloud_area)
+        else
+          call compute_convective_area     &
+                  (Input_mp%tin, Input_mp%pfull, Input_mp%qin, do_uw_conv, &
+                   do_donner_deep, C2ls_mp%donner_humidity_area,          &
+                   C2ls_mp%donner_humidity_factor, 1.0,    &
+                   C2ls_mp%convective_humidity_ratio, &
+                   C2ls_mp%convective_humidity_area)
+        endif
+!<--- h1g, 2017-01-31
+
       endif
               
 !---------------------------------------------------------------------

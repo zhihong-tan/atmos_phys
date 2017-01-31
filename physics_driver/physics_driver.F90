@@ -2894,8 +2894,10 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 !    deallocate the module variables.
 !---------------------------------------------------------------------
       deallocate (diff_cu_mo, diff_t, diff_m, pbltop, cush, cbmf,  &
-                  hmint, cgust, tke, pblhto, exist_shconv, &
-                  exist_dpconv, convect, radturbten, r_convect)
+                  hmint, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, &  ! h1g, 2017-01-31
+                  exist_dpconv, & 
+                  pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev, & !h1g, 2017-01-31
+                  convect, radturbten, r_convect)
 
       if (do_cosp) then
         deallocate ( temp_last, q_last)

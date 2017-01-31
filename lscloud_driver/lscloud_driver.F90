@@ -3429,6 +3429,7 @@ type(cloud_processes_type), intent(inout) :: Cloud_processes
       deallocate (Atmos_state%U_ca        )
       deallocate (Atmos_state%delp        )
       deallocate (Atmos_state%U01         )
+      deallocate (Atmos_state%pthickness  )
  
 !-----------------------------------------------------------------------
 !    deallocate the components of the particles_type variable Particles.
