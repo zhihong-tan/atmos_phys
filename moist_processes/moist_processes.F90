@@ -18,6 +18,7 @@ use sat_vapor_pres_mod,    only: compute_qs
 use time_manager_mod,      only: time_type
 use diag_manager_mod,      only: register_diag_field, send_data, &
                                  get_diag_field_id, DIAG_FIELD_NOT_FOUND
+use diag_axis_mod,         only: get_axis_num
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 
 use mpp_mod,               only: input_nml_file
@@ -57,6 +58,9 @@ use convection_driver_mod,only : convection_driver_init, &
                                  convection_driver_end
 use diag_integral_mod,    only : diag_integral_field_init, &
                                  sum_diag_integral_field
+use atmos_global_diag_mod, only: register_global_diag_field, &
+                                 buffer_global_diag, &
+                                 send_global_diag
 use vert_diff_driver_mod, only : surf_diff_type
 use aerosol_types_mod,    only : aerosol_type
 use moist_proc_utils_mod, only : tempavg, column_diag, rh_calc,  &
@@ -71,6 +75,10 @@ use atmos_dust_mod,       only : atmos_dust_init, dust_tracers,   &
                                  atmos_dust_wetdep_flux_set
 use atmos_sea_salt_mod,   only : atmos_sea_salt_init, seasalt_tracers,  &
                                  n_seasalt_tracers,do_seasalt
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+                                 send_cmip_data_3d, &
+                                 cmip_diag_id_type, &
+                                 query_cmip_diag_id
 
 
 implicit none
@@ -92,9 +100,12 @@ private combined_MP_diagnostics, MP_alloc, MP_dealloc, create_Nml_mp, &
 
 !--------------------- version number ----------------------------------
 
-character(len=128) ::  version = '$Id$'
-character(len=128) :: tagname = '$Name$'
-
+   character(len=128) ::  version = '$Id$'
+   character(len=128) :: tagname = '$Name$'
+   character(len=5), private :: mod_name = 'moist'
+   character(len=7), private :: mod_name_tr = 'tracers'
+   logical            :: moist_allocated = .false.
+   logical            :: module_is_initialized = .false.
 !-------------------- namelist data (private) --------------------------
 
 !---------------- namelist variable definitions ------------------------
@@ -171,12 +182,14 @@ real    :: sea_salt_scale = 0.1
 real    :: om_to_oc = 1.67
 logical :: do_height_adjust = .false.
 
-namelist /moist_processes_nml/    &
-                  do_unified_clouds, do_lsc, do_mca, do_ras,   &
-                  do_uw_conv, do_donner_deep, do_dryadj, do_bm,  &
-                  do_bmmass, do_bmomp, do_simple, do_rh_clouds,      &
-                  pdepth, limit_conv_cloud_frac, include_donmca_in_cosp,  &
-                  use_online_aerosol, use_sub_seasalt, sea_salt_scale, &
+   logical :: use_cf_metadata = .false.
+
+namelist /moist_processes_nml/ do_unified_clouds, do_lsc, do_mca, do_ras,   &
+                  do_uw_conv, do_donner_deep, do_dryadj, do_bm,             &
+                  do_bmmass, do_bmomp, do_simple, do_rh_clouds,             &
+                  use_cf_metadata,                                          &
+                  pdepth, limit_conv_cloud_frac, include_donmca_in_cosp,    &
+                  use_online_aerosol, use_sub_seasalt, sea_salt_scale,      &
                   om_to_oc, do_height_adjust
 
 
@@ -192,14 +205,21 @@ integer ::   &
            id_rh,  id_qs, id_mc, id_rh_cmip, id_enth_moist_col,   &
            id_wat_moist_col
 
-integer :: id_prsn, id_pr, id_prw, id_clt, id_cl, id_clw, id_cli, &
-           id_clwvi, id_clivi, id_hur
+integer :: id_prsn, id_pr, id_prw, id_prrc, id_prsn, id_prra, id_prsnc, &
+      id_clt,  id_clwvi, id_clivi
+
 integer :: area_id
 
 integer :: id_max_enthalpy_imbal, id_max_water_imbal
 integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
            id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust
+
+type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
+                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
+
+! globally averaged diagnostics
+integer :: id_pr_g, id_prc_g, id_prsn_g
 
 character(len=5), private :: mod_name = 'moist'
 integer, dimension(:), allocatable ::  id_wetdep
@@ -208,6 +228,22 @@ integer, dimension(:), allocatable :: id_wetdep_uw, id_wetdep_donner, &
 real, dimension(:), allocatable    :: conv_wetdep
 
 real :: missing_value = -999.
+
+! cmip names, long_names, standard names for wetdep diag fields
+integer :: id_wetpoa_cmip, id_wetsoa_cmip, id_wetbc_cmip, id_wetdust_cmip, &
+           id_wetss_cmip, id_wetso4_cmip, id_wetso2_cmip, id_wetdms_cmip, id_wetnh4_cmip
+character(len=8), dimension(9) :: cmip_names = (/"poa","soa","bc","dust","ss","so4","so2","dms","nh4"/)
+character(len=64), dimension(9) :: cmip_longnames = &
+                                  (/"Dry Aerosol Primary Organic Matter", &
+                                    "Dry Aerosol Secondary Organic Matter", &
+                                    "Black Carbon Aerosol Mass", &
+                                    "Dust", "Seasalt", "SO4", "SO2", "DMS", "NH4+NH3"/)
+character(len=64), dimension(9) :: cmip_stdnames = &
+                                  (/"primary_particulate_organic_matter_dry_aerosol", &
+                                    "secondary_particulate_organic_matter_dry_aerosol", &
+                                    "black_carbon_dry_aerosol", "dust_dry_aerosol", &
+                                    "seasalt_dry_aerosol", "sulfate_dry_aerosol", &
+                                    "sulfur_dioxide", "dimethyl_sulfide", "ammonium_dry_aerosol"/)
 
 !-------------------- individual scheme tracers ------------------------
 
