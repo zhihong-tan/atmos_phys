@@ -18,6 +18,7 @@ use sat_vapor_pres_mod,    only: compute_qs
 use time_manager_mod,      only: time_type
 use diag_manager_mod,      only: register_diag_field, send_data, &
                                  get_diag_field_id, DIAG_FIELD_NOT_FOUND
+use diag_axis_mod,         only: get_axis_num
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 
 use mpp_mod,               only: input_nml_file
@@ -54,9 +55,13 @@ use convection_driver_mod,only : convection_driver_init, &
                                  cape_cin_diagnostics, &
                                  convection_driver_endts, &
                                  convection_driver_restart, &
-                                 convection_driver_end
+                                 convection_driver_end, &
+                                 id_pr_g, id_prc_g, id_prsn_g
 use diag_integral_mod,    only : diag_integral_field_init, &
                                  sum_diag_integral_field
+use atmos_global_diag_mod, only: register_global_diag_field, &
+                                 buffer_global_diag, &
+                                 send_global_diag
 use vert_diff_driver_mod, only : surf_diff_type
 use aerosol_types_mod,    only : aerosol_type
 use moist_proc_utils_mod, only : tempavg, column_diag, rh_calc,  &
@@ -71,6 +76,10 @@ use atmos_dust_mod,       only : atmos_dust_init, dust_tracers,   &
                                  atmos_dust_wetdep_flux_set
 use atmos_sea_salt_mod,   only : atmos_sea_salt_init, seasalt_tracers,  &
                                  n_seasalt_tracers,do_seasalt
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+                                 send_cmip_data_3d, &
+                                 cmip_diag_id_type, &
+                                 query_cmip_diag_id
 
 
 implicit none
@@ -92,9 +101,12 @@ private combined_MP_diagnostics, MP_alloc, MP_dealloc, create_Nml_mp, &
 
 !--------------------- version number ----------------------------------
 
-character(len=128) ::  version = '$Id$'
-character(len=128) :: tagname = '$Name$'
-
+   character(len=128) ::  version = '$Id$'
+   character(len=128) :: tagname = '$Name$'
+   character(len=5), private :: mod_name = 'moist'
+   character(len=7), private :: mod_name_tr = 'tracers'
+   logical            :: moist_allocated = .false.
+   logical            :: module_is_initialized = .false.
 !-------------------- namelist data (private) --------------------------
 
 !---------------- namelist variable definitions ------------------------
@@ -170,13 +182,15 @@ logical :: use_sub_seasalt = .false.
 real    :: sea_salt_scale = 0.1
 real    :: om_to_oc = 1.67
 logical :: do_height_adjust = .false.
+   logical :: do_diag_clouds=.false.
+   logical :: use_cf_metadata = .false.
 
-namelist /moist_processes_nml/    &
-                  do_unified_clouds, do_lsc, do_mca, do_ras,   &
-                  do_uw_conv, do_donner_deep, do_dryadj, do_bm,  &
-                  do_bmmass, do_bmomp, do_simple, do_rh_clouds,      &
-                  pdepth, limit_conv_cloud_frac, include_donmca_in_cosp,  &
-                  use_online_aerosol, use_sub_seasalt, sea_salt_scale, &
+namelist /moist_processes_nml/ do_unified_clouds, do_lsc, do_mca, do_ras,   &
+                  do_uw_conv, do_donner_deep, do_dryadj, do_bm,             &
+                  do_bmmass, do_bmomp, do_simple, do_rh_clouds,             &
+                  use_cf_metadata,  do_diag_clouds,                         &
+                  pdepth, limit_conv_cloud_frac, include_donmca_in_cosp,    &
+                  use_online_aerosol, use_sub_seasalt, sea_salt_scale,      &
                   om_to_oc, do_height_adjust
 
 
@@ -189,11 +203,12 @@ integer ::   &
            id_lsc_cloud_area,  id_lsc_liq_amt,  id_lsc_ice_amt,  &
            id_conv_cloud_area, id_conv_liq_amt, id_conv_ice_amt, &
            id_LWP_all_clouds,  id_IWP_all_clouds, id_WP_all_clouds, &
-           id_rh,  id_qs, id_mc, id_rh_cmip, id_enth_moist_col,   &
+           id_rh,  id_qs, id_rh_cmip, id_enth_moist_col,   &
            id_wat_moist_col
 
-integer :: id_prsn, id_pr, id_prw, id_clt, id_cl, id_clw, id_cli, &
-           id_clwvi, id_clivi, id_hur
+integer :: id_prsn, id_pr, id_prw, id_prrc, id_prra, id_prsnc, &
+      id_clt,  id_clwvi, id_clivi
+
 integer :: area_id
 
 integer :: id_max_enthalpy_imbal, id_max_water_imbal
@@ -201,13 +216,31 @@ integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
            id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust
 
-character(len=5), private :: mod_name = 'moist'
+type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
+                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
+
 integer, dimension(:), allocatable ::  id_wetdep
 integer, dimension(:), allocatable :: id_wetdep_uw, id_wetdep_donner, &
                                 id_wetdepc_donner, id_wetdepm_donner  !f1p
 real, dimension(:), allocatable    :: conv_wetdep
 
 real :: missing_value = -999.
+
+! cmip names, long_names, standard names for wetdep diag fields
+integer :: id_wetpoa_cmip, id_wetsoa_cmip, id_wetbc_cmip, id_wetdust_cmip, &
+           id_wetss_cmip, id_wetso4_cmip, id_wetso2_cmip, id_wetdms_cmip, id_wetnh4_cmip
+character(len=8), dimension(9) :: cmip_names = (/"poa","soa","bc","dust","ss","so4","so2","dms","nh4"/)
+character(len=64), dimension(9) :: cmip_longnames = &
+                                  (/"Dry Aerosol Primary Organic Matter", &
+                                    "Dry Aerosol Secondary Organic Matter", &
+                                    "Black Carbon Aerosol Mass", &
+                                    "Dust", "Seasalt", "SO4", "SO2", "DMS", "NH4+NH3"/)
+character(len=64), dimension(9) :: cmip_stdnames = &
+                                  (/"primary_particulate_organic_matter_dry_aerosol", &
+                                    "secondary_particulate_organic_matter_dry_aerosol", &
+                                    "black_carbon_dry_aerosol", "dust_dry_aerosol", &
+                                    "seasalt_dry_aerosol", "sulfate_dry_aerosol", &
+                                    "sulfur_dioxide", "dimethyl_sulfide", "ammonium_dry_aerosol"/)
 
 !-------------------- individual scheme tracers ------------------------
 
@@ -245,7 +278,6 @@ type(MP_nml_type)      :: Nml_mp
 type(MP_removal_control_type)  :: Removal_mp_control
 
 logical :: wetdep_diagnostics_desired = .false.
-logical :: module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
 !   variables extracted from control variables during _init
@@ -408,6 +440,7 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
 !-------------------------------------------------------------------------
       call diag_integral_field_init ('prec', 'f6.3')
       allocate (prec_intgl(id,jd))
+
 
 !----------------------------------------------------------------------
 !    define indices for the various potentially-available tracers.
@@ -728,6 +761,7 @@ end subroutine moist_processes
 
 subroutine moist_processes_endts 
  
+logical :: used
 
 !----------------------------------------------------------------------
 !    call convection_driver_endts to complete calcs on this timestep.
@@ -745,7 +779,9 @@ subroutine moist_processes_endts
 !----------------------------------------------------------------------
       call sum_diag_integral_field ('prec', prec_intgl)
       prec_intgl = 0.0
-
+      if (id_pr_g   > 0) used = send_global_diag (id_pr_g)
+      if (id_prc_g  > 0) used = send_global_diag (id_prc_g)
+      if (id_prsn_g > 0) used = send_global_diag (id_prsn_g)
 
 end subroutine moist_processes_endts
 
@@ -1099,81 +1135,85 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
                total_wetdep       (:,:,nomphobic) , &
                                                 Time, is,js)
         endif
-        if (id_wetdep_SOA > 0) then
-          used = send_data (id_wetdep_SOA,  &
-               total_wetdep(:,:,nSOA) , Time, is,js)
-        endif
-        if (id_wetdep_bc > 0) then
-          used = send_data (id_wetdep_bc,  &
+     if (id_wetpoa_cmip > 0) then
+       used = send_data (id_wetpoa_cmip,  &
+               total_wetdep(:,:,nomphilic) + total_wetdep(:,:,nomphobic), Time, is,js)
+     endif
+
+     if (id_wetdep_SOA > 0) then
+       used = send_data (id_wetdep_SOA, total_wetdep(:,:,nSOA) , Time, is,js)
+     endif
+     if (id_wetsoa_cmip > 0) then
+       used = send_data (id_wetsoa_cmip, total_wetdep(:,:,nSOA) , Time, is,js)
+     endif
+
+     if (id_wetdep_bc > 0) then
+       used = send_data (id_wetdep_bc,  &
                total_wetdep       (:,:,nbcphilic) + &
                total_wetdep       (:,:,nbcphobic) , &
                                                 Time, is,js)
-        endif
-        if (id_wetdep_so4 > 0) then
-          temp_2d = 0.0
-          if( do_donner_deep ) temp_2d = temp_2d +   &
-                               (96.0/WTMAIR)*total_wetdep_donner(:,:,nso4)
-          if( do_uw_conv  )    temp_2d = temp_2d +   &
-                               (96.0/WTMAIR)*total_wetdep_uw(:,:,nso4)
-          if( doing_prog_clouds )      temp_2d = temp_2d +   &
-                                  0.096*Removal_mp%ls_wetdep(:,:,nso4)
-          used = send_data (id_wetdep_so4, temp_2d, Time, is,js)
-        endif
-        if (id_wetdep_so2 > 0) then
-          temp_2d = 0.0
-        if( do_donner_deep ) temp_2d = temp_2d +    &
-                              (64.0/WTMAIR)*total_wetdep_donner(:,:,nso2)
-        if( do_uw_conv  )    temp_2d = temp_2d +    &
-                              (64.0/WTMAIR)*total_wetdep_uw    (:,:,nso2)
-        if( doing_prog_clouds )       temp_2d = temp_2d +   &
-                               0.064*Removal_mp%ls_wetdep(:,:,nso2)
-        used = send_data (id_wetdep_so2, temp_2d, Time, is,js)
-        endif
-        if (id_wetdep_DMS > 0) then
-         temp_2d = 0.0
-       if( do_donner_deep ) temp_2d = temp_2d +   &
-                                (62.0/WTMAIR)*total_wetdep_donner(:,:,nDMS)
-       if( do_uw_conv  )    temp_2d = temp_2d +   &
-                                (62.0/WTMAIR)*total_wetdep_uw    (:,:,nDMS)
-       if( doing_prog_clouds)    temp_2d = temp_2d +   &
-                                     0.062*Removal_mp%ls_wetdep(:,:,nDMS)
-       used = send_data (id_wetdep_DMS, temp_2d, Time, is,js)
-        endif
-        if (id_wetdep_NH4NO3 > 0) then
-          temp_2d = 0.0
-       if( do_donner_deep ) temp_2d = temp_2d +   &
-                    (18.0/WTMAIR)*(total_wetdep_donner(:,:,nnH4NO3) + &
-                                           total_wetdep_donner(:,:,nNH4) )
-       if( do_uw_conv  )    temp_2d = temp_2d +   &
-                          (18.0/WTMAIR)*(total_wetdep_uw(:,:,nNH4NO3) + &
-                                                total_wetdep_uw(:,:,nNH4) )
-       if( doing_prog_clouds )       temp_2d = temp_2d +   &
-                           0.018*(Removal_mp%ls_wetdep(:,:,nNH4NO3) +  &
-                                           Removal_mp%ls_wetdep(:,:,nNH4))
-       used = send_data (id_wetdep_NH4NO3, temp_2d, Time, is,js)
-        endif
-        if (id_wetdep_seasalt   > 0) then
-          do n=1, n_seasalt_tracers
-            nbin_seasalt=seasalt_tracers(n)%tr
-            total_wetdep_seasalt(:,:) = total_wetdep_seasalt(:,:) +  &
-                                         total_wetdep(:,:,nbin_seasalt)
-          enddo
-          used = send_data (id_wetdep_seasalt, total_wetdep_seasalt,   &
-                                                             Time, is,js)
-        endif
+     endif
+     if (id_wetbc_cmip > 0) then
+       used = send_data (id_wetbc_cmip,  &
+               total_wetdep(:,:,nbcphilic) + total_wetdep(:,:,nbcphobic), Time, is,js)
+     endif
 
-        do n=1, n_dust_tracers
-          nbin_dust=dust_tracers(n)%tr
-          total_wetdep_dust(:,:) = total_wetdep_dust(:,:) +     &
-                                             total_wetdep(:,:,nbin_dust)
-        enddo
-        call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
- 
-        if (id_wetdep_dust   > 0) then
-          used = send_data (id_wetdep_dust, total_wetdep_dust,    &
-                                                             Time, is, js) 
-        endif
+     if (id_wetdep_so4 > 0 .or. id_wetso4_cmip > 0) then
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_donner(:,:,nso4) 
+       if( do_uw_conv  )    temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_uw    (:,:,nso4)
+       if( doing_prog_clouds )       temp_2d = temp_2d + 0.096*Removal_mp%ls_wetdep(:,:,nso4)
+       if (id_wetdep_so4  > 0) used = send_data (id_wetdep_so4,  temp_2d, Time, is,js)
+       if (id_wetso4_cmip > 0) used = send_data (id_wetso4_cmip, temp_2d, Time, is,js)
+     endif
 
+     if (id_wetdep_so2 > 0 .or. id_wetso2_cmip > 0) then
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_donner(:,:,nso2) 
+       if( do_uw_conv  )    temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_uw    (:,:,nso2)
+       if( doing_prog_clouds )       temp_2d = temp_2d + 0.064*Removal_mp%ls_wetdep(:,:,nso2)
+       if (id_wetdep_so2  > 0) used = send_data (id_wetdep_so2,  temp_2d, Time, is,js)
+       if (id_wetso2_cmip > 0) used = send_data (id_wetso2_cmip, temp_2d, Time, is,js)
+     endif
+
+     if (id_wetdep_DMS > 0 .or. id_wetdms_cmip > 0) then
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_donner(:,:,nDMS) 
+       if( do_uw_conv  )    temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_uw    (:,:,nDMS)
+       if( doing_prog_clouds )       temp_2d = temp_2d + 0.062*Removal_mp%ls_wetdep(:,:,nDMS)
+       if (id_wetdep_DMS  > 0) used = send_data (id_wetdep_DMS,  temp_2d, Time, is,js)
+       if (id_wetdms_cmip > 0) used = send_data (id_wetdms_cmip, temp_2d, Time, is,js)
+     endif
+
+     if (id_wetdep_NH4NO3 > 0 .or. id_wetnh4_cmip > 0) then
+       temp_2d = 0.0
+       if( do_donner_deep ) temp_2d = temp_2d + (18.0/WTMAIR)*(total_wetdep_donner(:,:,nnH4NO3) + &
+                                                               total_wetdep_donner(:,:,nNH4) )
+       if( do_uw_conv  )    temp_2d = temp_2d + (18.0/WTMAIR)*(total_wetdep_uw(:,:,nNH4NO3) + &
+                                                               total_wetdep_uw(:,:,nNH4) )
+       if( doing_prog_clouds )       temp_2d = temp_2d + 0.018*(Removal_mp%ls_wetdep(:,:,nNH4NO3) + Removal_mp%ls_wetdep(:,:,nNH4))
+       if (id_wetdep_NH4NO3 > 0) used = send_data (id_wetdep_NH4NO3, temp_2d, Time, is,js)
+       if (id_wetnh4_cmip   > 0) used = send_data (id_wetnh4_cmip,   temp_2d, Time, is,js)
+     endif
+
+     if (id_wetdep_seasalt > 0 .or. id_wetss_cmip > 0) then
+       do n=1, n_seasalt_tracers
+         nbin_seasalt=seasalt_tracers(n)%tr
+         total_wetdep_seasalt(:,:)=total_wetdep_seasalt(:,:)+total_wetdep(:,:,nbin_seasalt)
+       enddo
+       if (id_wetdep_seasalt > 0) used = send_data (id_wetdep_seasalt, total_wetdep_seasalt, Time, is,js) 
+       if (id_wetss_cmip     > 0) used = send_data (id_wetss_cmip,     total_wetdep_seasalt, Time, is,js) 
+     endif
+
+     if (id_wetdep_dust > 0 .or. id_wetdust_cmip > 0) then
+     do n=1, n_dust_tracers
+        nbin_dust=dust_tracers(n)%tr
+        total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
+     enddo
+     call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
+       if (id_wetdep_dust  > 0) used = send_data (id_wetdep_dust,  total_wetdep_dust, Time, is,js) 
+       if (id_wetdust_cmip > 0) used = send_data (id_wetdust_cmip, total_wetdep_dust, Time, is,js) 
+     endif
 
       endif ! (wetdep_diagnostics_desired)
 
@@ -1193,7 +1233,12 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
 !---------------------------------------------------------------------
       used = send_data (id_snow_tot, Output_mp%fprec, Time, is, js)
       used = send_data (id_prsn, Output_mp%fprec, Time, is, js)
+   if (id_prsn_g > 0)  call buffer_global_diag (id_prsn_g, Output_mp%fprec, Time, is, js)
 
+!---------------------------------------------------------------------
+!    rainfall rate due to all sources:
+!---------------------------------------------------------------------
+    used = send_data (id_prra, Output_mp%lprec, Time, is, js)
 !---------------------------------------------------------------------
 !    column integrated enthalpy and total water tendencies due to 
 !    moist processes and their imbalances:
@@ -1352,12 +1397,18 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
 !-------------------------------------------------------------------------
 !   generate the 3d total and convective cloud fraction diagnostics.
 !-------------------------------------------------------------------------
+    if ( id_tot_cloud_area > 0 ) &
       used = send_data (id_tot_cloud_area, 100.*total_cloud_area,  &
                                                          Time, is, js, 1)
-      used = send_data (id_cl, 100.*total_cloud_area,  Time, is, js, 1)
 
-      used = send_data (id_conv_cloud_area, 100.*conv_cld_frac, &
-                                                         Time, is, js, 1)
+    if (query_cmip_diag_id(ID_cl)) then
+      used = send_cmip_data_3d (ID_cl, 100.*total_cloud_area,  &
+                                          Time, is, js, 1)!, rmask=mask)
+    endif
+
+    if ( id_conv_cloud_area > 0 ) &
+    used = send_data (id_conv_cloud_area, 100.*conv_cld_frac, &
+                                           Time, is, js, 1)!, rmask=mask)
 
 !---------------------------------------------------------------------
 !    define the total 2D cloud area. 
@@ -1376,7 +1427,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         do k=1,kx
           tca2(:,:) = tca2(:,:)*(1.0 - total_cloud_area(:,:,k))
         end do
-        tca2 = 100.*(1. - tca2)
+        tca2 = (1. - tca2) ! cmip6 = Cloud Area Fraction
         used = send_data (id_clt, tca2, Time, is, js)
       endif
 
@@ -1389,12 +1440,12 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
           (Moist_clouds_block%cloud_data(i_lsc)%liquid_amt + tot_conv_liq)/ &
                                                 (1.0 + total_conv_cloud), &
                                                            Time, is, js, 1)
-        if (id_clw > 0 ) &
-          used = send_data (id_clw, &
-         (Moist_clouds_block%cloud_data(i_lsc)%liquid_amt + tot_conv_liq + &
-          Moist_clouds_block%cloud_data(i_lsc)%rain)/ &
-                                                (1.0 + total_conv_cloud), &
-                                           Time, is, js, 1)
+        if (query_cmip_diag_id(ID_clw)) then
+          used = send_cmip_data_3d (ID_clw, &
+    !                (lsc_liquid + tot_conv_liq )/(1.0 + total_conv_cloud), &
+                 (Moist_clouds_block%cloud_data(i_lsc)%liquid_amt + tot_conv_liq + Moist_clouds_block%cloud_data(i_lsc)%rain)/(1.0 + total_conv_cloud), &
+                                           Time, is, js, 1)!, rmask=mask)
+        endif
 
         if (id_conv_liq_amt > 0 ) &
           used = send_data (id_conv_liq_amt, &
@@ -1416,12 +1467,12 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
                               (1.0 + total_conv_cloud), &
                                                          Time, is, js, 1)
 
-        if (id_cli > 0 ) &
-          used = send_data (id_cli, &
-          (Moist_clouds_block%cloud_data(i_lsc)%ice_amt + tot_conv_liq + &
-          Moist_clouds_block%cloud_data(i_lsc)%snow)/ &
-                                                (1.0 + total_conv_cloud), &
-                                           Time, is, js, 1)
+        if (query_cmip_diag_id(ID_cli)) then
+           used = send_cmip_data_3d (ID_cli, &
+!                    (lsc_ice + tot_conv_ice)/(1.0 + total_conv_cloud), &
+         (Moist_clouds_block%cloud_data(i_lsc)%ice_amt + tot_conv_ice+ Moist_clouds_block%cloud_data(i_lsc)%snow)/(1.0 + total_conv_cloud), &
+                                            Time, is, js, 1)!, rmask=mask)
+        endif
 
         if (id_conv_ice_amt > 0 ) &
           used = send_data (id_conv_ice_amt, &
@@ -1477,9 +1528,12 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
           used = send_data (id_tot_liq_amt, &
             tot_conv_liq/(1.0 + total_conv_cloud), Time, is, js, 1)
 
-        if (id_clw > 0 ) &
-          used = send_data (id_clw, &
-              tot_conv_liq/(1.0 + total_conv_cloud), Time, is, js, 1)
+        if (query_cmip_diag_id(ID_clw)) then
+          used = send_cmip_data_3d (ID_clw, &
+!          (lsc_liquid + tot_conv_liq )/(1.0 + total_conv_cloud), &
+           (Moist_clouds_block%cloud_data(i_lsc)%liquid_amt + tot_conv_liq + Moist_clouds_block%cloud_data(i_lsc)%rain)/(1.0 + total_conv_cloud), &
+                                           Time, is, js, 1)!, rmask=mask)
+    endif
 
         if (id_conv_liq_amt > 0 ) &
           used = send_data (id_conv_liq_amt, &
@@ -1496,9 +1550,12 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
           used = send_data (id_tot_ice_amt, &
             tot_conv_ice/(1.0 + total_conv_cloud), Time, is, js, 1)
 
-        if (id_cli > 0 ) &
-          used = send_data (id_cli, &
-            tot_conv_liq/(1.0 + total_conv_cloud), Time, is, js, 1)
+    if (query_cmip_diag_id(ID_cli)) then
+       used = send_cmip_data_3d (ID_cli, &
+!                (lsc_ice + tot_conv_ice)/(1.0 + total_conv_cloud), &
+     (Moist_clouds_block%cloud_data(i_lsc)%ice_amt + tot_conv_ice+ Moist_clouds_block%cloud_data(i_lsc)%snow)/(1.0 + total_conv_cloud), &
+                                            Time, is, js, 1)!, rmask=mask)
+    endif
 
         if (id_conv_ice_amt > 0 ) &
           used = send_data (id_conv_ice_amt, &
@@ -1552,7 +1609,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
 !    output the global integral of precipitation in units of mm/day.
 !---------------------------------------------------------------------
       prec_intgl(is:ie,js:je) = precip(:,:)*SECONDS_PER_DAY
-
+      if (id_pr_g > 0)  call buffer_global_diag (id_pr_g,  precip(:,:), Time, is, js)
 !---------------------------------------------------------------------
 !    relative humidity:         
 !---------------------------------------------------------------------
@@ -1575,13 +1632,13 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         endif
       endif
 
-      if (id_hur > 0) then
-        if (.not. (       do_rh_clouds                           )) then
-          call rh_calc (Input_mp%pfull, input_mp%tin, Input_mp%qin, RH, &
+    if (query_cmip_diag_id(ID_hur)) then
+      if (.not. (do_rh_clouds .or. do_diag_clouds)) then
+        call rh_calc (Input_mp%pfull, input_mp%tin, Input_mp%qin, RH, &
                                         .false., do_cmip=.true.)
-          used = send_data (id_rh_cmip, rh*100., Time, is, js, 1)
-        endif
       endif
+      used = send_cmip_data_3d (ID_hur, rh*100., Time, is, js, 1)!, rmask=mask)
+    endif
 
 !---------------------------------------------------------------------
 !    saturation specific humidity:         
@@ -2081,6 +2138,8 @@ subroutine diag_field_init ( axes, Time )
 
 integer,         intent(in) :: axes(4)
 type(time_type), intent(in) :: Time
+integer                     :: id, ic
+integer                     :: id_wetdep_cmip
 
 !-----------------------------------------------------------------------
 !   local variables:
@@ -2097,6 +2156,12 @@ type(time_type), intent(in) :: Time
         'Frozen precip rate from all sources',       'kg(h2o)/m2/s', &
                               interp_method = "conserve_order1" )
 
+      id_prra  = register_diag_field ( mod_name, 'prra', axes(1:2), Time, &
+        'Rainfall Rate', 'kg m-2 s-1', &
+        standard_name = 'rainfall_flux', &
+        area=area_id, missing_value = CMOR_MISSING_VALUE, &
+        interp_method = "conserve_order1" )
+
       id_prsn  = register_diag_field ( mod_name, &
         'prsn', axes(1:2), Time, &
         'Snowfall Flux',       'kg m-2 s-1', &
@@ -2104,6 +2169,8 @@ type(time_type), intent(in) :: Time
         area=area_id, &
         missing_value = CMOR_MISSING_VALUE, &
         interp_method = "conserve_order1" )
+
+
 
       id_max_enthalpy_imbal    = register_diag_field    &
         (mod_name, 'max_enth_imbal', axes(1:2), Time,  &
@@ -2162,8 +2229,8 @@ type(time_type), intent(in) :: Time
 
         id_clt = register_diag_field    &
           (mod_name, 'clt', axes(1:2), Time, &
-          'Total Cloud Fraction', '%',  &
-          standard_name= 'cloud_area_fraction', &
+          'Cloud Area Fraction', '%',  &
+          standard_name= 'cloud_area_fraction_in_atmosphere_layer', &
           area=area_id, &
           missing_value = CMOR_MISSING_VALUE)
 
@@ -2172,12 +2239,9 @@ type(time_type), intent(in) :: Time
           'Cloud area -- all clouds', 'percent',    &
                                            missing_value=missing_value )
 
-        id_cl = register_diag_field ( mod_name, &
-          'cl', axes(1:3), Time, &
+        ID_cl = register_cmip_diag_field_3d ( mod_name, 'cl', Time, &
           'Cloud Area Fraction', '%',    &
-          standard_name='cloud_area_fraction_in_atmosphere_layer', &
-          area=area_id, &
-          missing_value=CMOR_MISSING_VALUE)
+          standard_name='cloud_area_fraction_in_atmosphere_layer' )
 
         id_tot_h2o     = register_diag_field ( mod_name, &
           'tot_h2o', axes(1:3), Time, &
@@ -2192,24 +2256,18 @@ type(time_type), intent(in) :: Time
           'Liquid amount -- all clouds', 'kg/kg',    &
                                               missing_value=missing_value)
 
-        id_clw = register_diag_field ( mod_name, &
-          'clw', axes(1:3), Time, &
-          'Mass Fraction of Cloud Liquid Water', '1',   &
-          standard_name='mass_fraction_of_cloud_liquid_water_in_air', &
-          area=area_id, &
-          missing_value=CMOR_MISSING_VALUE)
+        ID_clw = register_cmip_diag_field_3d ( mod_name, 'clw', Time, &
+          'Mass Fraction of Cloud Liquid Water', 'kg kg-1',   &
+          standard_name='mass_fraction_of_cloud_liquid_water_in_air' )
 
         id_tot_ice_amt = register_diag_field ( mod_name, &
           'tot_ice_amt', axes(1:3), Time, &
           'Ice amount -- all clouds', 'kg/kg',  &
                                             missing_value=missing_value )
 
-        id_cli = register_diag_field ( mod_name, &
-          'cli', axes(1:3), Time, &
-          'Mass Fraction of Cloud Ice', '1',   &
-          standard_name='mass_fraction_of_cloud_ice_in_air', &
-          area=area_id, &
-          missing_value=CMOR_MISSING_VALUE)
+        ID_cli = register_cmip_diag_field_3d ( mod_name, 'cli', Time, &
+          'Mass Fraction of Cloud Ice', 'kg kg-1',   &
+          standard_name='mass_fraction_of_cloud_ice_in_air' )
 
         id_lsc_cloud_area = register_diag_field ( mod_name, &
           'lsc_cloud_area', axes(1:3), Time, &
@@ -2248,8 +2306,7 @@ type(time_type), intent(in) :: Time
           'clwvi', axes(1:2), Time, &
           'Condensed Water Path',        'kg m-2', &
           standard_name = 'atmosphere_cloud_condensed_water_content', &
-          area=area_id, &
-          missing_value=CMOR_MISSING_VALUE   )
+          area=area_id, missing_value=CMOR_MISSING_VALUE   )
 
         id_LWP_all_clouds = register_diag_field ( mod_name, &
           'LWP_all_clouds', axes(1:2), Time, &
@@ -2263,8 +2320,7 @@ type(time_type), intent(in) :: Time
           'clivi', axes(1:2), Time, &
           'Ice Water Path',              'kg m-2', &
           standard_name='atmosphere_cloud_ice_content', &
-          area=area_id, &
-          missing_value=CMOR_MISSING_VALUE   )
+          area=area_id, missing_value=CMOR_MISSING_VALUE   )
 
       endif
 
@@ -2278,12 +2334,9 @@ type(time_type), intent(in) :: Time
         'relative humidity',                            'percent',  &
                              missing_value=missing_value               )
 
-      id_hur = register_diag_field ( mod_name, &
-        'hur', axes(1:3), Time, &
+      ID_hur = register_cmip_diag_field_3d ( mod_name, 'hur', Time, &
         'Relative Humidity',                            '%',  &
-        standard_name='relative_humidity', &
-        area=area_id, &
-        missing_value=CMOR_MISSING_VALUE          )
+         standard_name='relative_humidity' )
 
       id_qs = register_diag_field ( mod_name, &
         'qs', axes(1:3), Time, &
@@ -2324,10 +2377,14 @@ type(time_type), intent(in) :: Time
         'total DMS wet deposition', 'kg/m2/s', missing_value=missing_value)
       if (id_wetdep_DMS > 0) wetdep_diagnostics_desired = .true.
 
-      id_wetdep_NH4NO3 =  register_diag_field ( mod_name, &
-        'totNH4_wet_dep',  axes(1:2), Time,  &
-        'total NH4 + NH3 wet deposition', 'kg/m2/s',  &
+      if (nNH4NO3 .ne. NO_TRACER .and. nNH4 .ne. NO_TRACER) then
+        id_wetdep_NH4NO3 =  register_diag_field ( mod_name, &
+          'totNH4_wet_dep',  axes(1:2), Time,  &
+          'total NH4 + NH3 wet deposition', 'kg/m2/s',  &
                                                missing_value=missing_value)
+      else
+        id_wetdep_NH4NO3 = 0
+      endif
       if (id_wetdep_NH4NO3 > 0) wetdep_diagnostics_desired = .true.
 
       id_wetdep_seasalt   =  register_diag_field ( mod_name, &
@@ -2342,6 +2399,28 @@ type(time_type), intent(in) :: Time
                                               missing_value=missing_value)
       if (id_wetdep_dust > 0) wetdep_diagnostics_desired = .true.
 
+
+     !-------- cmip wet deposition fields  ---------
+      do ic = 1, size(cmip_names,1)
+        if (TRIM(cmip_names(ic)) .eq. 'nh4' .and. (nNH4NO3 .eq. NO_TRACER .or. nNH4 .eq. NO_TRACER)) then
+          id_wetnh4_cmip = 0; cycle  ! skip when tracers are not in field table
+        endif
+
+        id_wetdep_cmip = register_diag_field ( mod_name, 'wet'//TRIM(cmip_names(ic)), axes(1:2), Time,  &
+                     'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition', &
+                     area=area_id, missing_value=CMOR_MISSING_VALUE)
+        if (TRIM(cmip_names(ic)) .eq. 'poa'  ) id_wetpoa_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'soa'  ) id_wetsoa_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'bc'   ) id_wetbc_cmip   = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'dust' ) id_wetdust_cmip = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'ss'   ) id_wetss_cmip   = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'so4'  ) id_wetso4_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'so2'  ) id_wetso2_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'dms'  ) id_wetdms_cmip  = id_wetdep_cmip
+        if (TRIM(cmip_names(ic)) .eq. 'nh4'  ) id_wetnh4_cmip  = id_wetdep_cmip
+      enddo
+     !-----------------------------------------------
 
 !------------------------------------------------------------------------
 !    define wet dep diagnostic for each tracer. units and conversion factor
@@ -2479,7 +2558,7 @@ end subroutine diag_field_init
 subroutine moist_processes_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
  
-! if (do_strat)       call strat_cloud_restart(timestamp)
+! if (doing_prog_clouds)       call strat_cloud_restart(timestamp)
 ! if (do_diag_clouds) call diag_cloud_restart(timestamp)
 !  if (do_donner_deep) call donner_deep_restart(timestamp)
   call convection_driver_restart (timestamp)

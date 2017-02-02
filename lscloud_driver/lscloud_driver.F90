@@ -86,7 +86,15 @@ use moist_proc_utils_mod,  only: column_diag, rh_calc, &
 use aerosol_types_mod,     only: aerosol_type
 use atmos_tracer_utilities_mod,       &
                            only: wet_deposition
-
+use diag_axis_mod,         only: get_axis_num
+use atmos_global_diag_mod, only: register_global_diag_field, &
+                                 buffer_global_diag, &
+                                 send_global_diag
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+                                 send_cmip_data_3d, &
+                                 cmip_diag_id_type, &
+                                 query_cmip_diag_id
+use diag_data_mod,         only: CMOR_MISSING_VALUE
 implicit none
 private
 
@@ -202,6 +210,8 @@ integer            :: nsublevels = 1
 integer            :: kmap = 1
 integer            :: kord = 7
 logical            :: pdf_org = .true.
+logical :: use_cf_metadata = .false.
+
 
 namelist / lscloud_driver_nml / do_legacy_strat_cloud, Dmin, cfact, &
                                 microphys_scheme, macrophys_scheme, &
@@ -209,7 +219,8 @@ namelist / lscloud_driver_nml / do_legacy_strat_cloud, Dmin, cfact, &
                                 do_dust_berg, &
                                 super_ice_opt, do_ice_nucl_wpdf, &
                                 do_pdf_clouds, betaP, qthalfwidth, &
-                                nsublevels, kmap, kord, pdf_org
+                                nsublevels, kmap, kord, pdf_org, &
+                                use_cf_metadata
 
 
 
@@ -281,6 +292,9 @@ integer  :: nso2, nso4
 integer  :: num_prog_tracers
 logical  :: debug
 
+type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
+                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
+integer :: area_id
                              contains
 
 
@@ -1439,6 +1453,17 @@ type(time_type),         intent(in) :: Time
       endif
 
       if (doing_prog_clouds ) then
+       if (use_cf_metadata) then
+         id_LWP = register_diag_field ( mod_name, 'lwp', axes(1:2), Time, &
+                     'Liquid Water Path', 'kg m-2', &
+                     standard_name='atmosphere_cloud_liquid_water_content', &
+                     area=area_id, missing_value=CMOR_MISSING_VALUE )
+
+        id_IWP = register_diag_field ( mod_name, 'iwp', axes(1:2), Time, &
+                     'Ice Water Path', 'kg m-2', &
+                     standard_name='atmosphere_cloud_ice_content', &
+                     area=area_id, missing_value=CMOR_MISSING_VALUE )
+       else
         id_LWP = register_diag_field ( mod_name, &
           'LWP', axes(1:2), Time, &
           'Liquid water path',                            'kg/m2'   )
@@ -1446,7 +1471,7 @@ type(time_type),         intent(in) :: Time
         id_IWP = register_diag_field ( mod_name, &
           'IWP', axes(1:2), Time, &
           'Ice water path',                               'kg/m2'   )
-   
+       endif
         id_tdt_ls = register_diag_field ( mod_name, &
           'tdt_ls', axes(1:3), Time, &
           'Temperature tendency from strat cloud',        'deg_K/s',  &
@@ -3258,6 +3283,7 @@ type(mp_removal_type),   intent(inout) :: Removal_mp
 !    temperature change due to large-scale clouds:
 !---------------------------------------------------------------------
       used = send_data (id_tdt_ls, Tend_mp%ttnd(:,:,:), Time, is, js, 1)
+      used = send_cmip_data_3d (ID_tntscp, Tend_mp%ttnd, Time, is, js, 1)!, rmask=mask)
 
 !---------------------------------------------------------------------
 !    dry static energy tendency due to large-scale clouds:
@@ -3277,7 +3303,7 @@ type(mp_removal_type),   intent(inout) :: Removal_mp
 !    specific humidity change due to large-scale clouds:
 !---------------------------------------------------------------------
       used = send_data (id_qdt_ls, Tend_mp%qtnd(:,:,:), Time, is, js, 1)
-
+      used = send_cmip_data_3d (ID_tnhusscp, Tend_mp%qtnd, Time, is, js, 1)!, rmask=mask)
 !---------------------------------------------------------------------
 !    surface precip due to large-scale clouds:
 !---------------------------------------------------------------------
