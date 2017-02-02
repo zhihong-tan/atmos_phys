@@ -75,7 +75,14 @@ use moistproc_kernels_mod, only: moistproc_mca, moistproc_ras,        &
 ! atmos_shared modules
 use atmos_tracer_utilities_mod,         &
                            only: wet_deposition
-
+use diag_axis_mod,         only: get_axis_num
+use atmos_global_diag_mod, only: register_global_diag_field, &
+                                 buffer_global_diag, &
+                                 send_global_diag
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+                                 send_cmip_data_3d, &
+                                 cmip_diag_id_type, &
+                                 query_cmip_diag_id
 implicit none
 private
 
@@ -96,7 +103,7 @@ private
 !--------------------- version number ----------------------------------
 character(len=128) ::  version = '$Id: $'
 character(len=128) :: tagname = '$Name: $'
-
+character(len=7), private :: mod_name_tr = 'tracers'
 !-------------------- namelist data (private) --------------------------
 
 !---------------- namelist variable definitions -----------------------
@@ -131,7 +138,7 @@ character(len=128) :: tagname = '$Name: $'
 !   gustconst  = precip rate which defines precip rate which begins to
 !                matter for convective gustiness (kg/m2/sec)
 !                default = 1 cm/day = 10 mm/da
-
+integer, public    :: id_pr_g, id_prc_g, id_prsn_g, id_prsnc, id_prrc
 logical            :: do_limit_donner =.true. 
 logical            :: do_limit_uw = .true.    
 logical            :: do_unified_convective_closure = .false.
@@ -154,6 +161,7 @@ real               :: conv_frac_max = 0.99
 logical            :: remain_detrain_bug = .false.
 logical            :: keep_icenum_detrain_bug = .false.
 
+logical :: use_cf_metadata = .false.
 
 namelist /convection_driver_nml/    &
               do_limit_donner, do_limit_uw, &
@@ -164,7 +172,8 @@ namelist /convection_driver_nml/    &
               only_one_conv_scheme_per_column,  do_cmt, &
               force_donner_moist_conserv, do_donner_conservation_checks, &
               do_donner_mca, using_fms, detrain_liq_num, detrain_ice_num, &
-              conv_frac_max, remain_detrain_bug, keep_icenum_detrain_bug
+              conv_frac_max, remain_detrain_bug, keep_icenum_detrain_bug, &
+              use_cf_metadata
 
 
 !-------------------- clock definitions --------------------------------
@@ -216,7 +225,7 @@ integer :: id_vertmotion
 integer :: id_max_enthalpy_imbal_don, id_max_water_imbal_don
 integer :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
  
-integer :: id_prc, id_ci, id_ccb, id_cct, id_mc
+integer :: id_prc, id_ci, id_ccb, id_cct
 integer :: area_id
 
 integer, dimension(:), allocatable ::    &
@@ -263,7 +272,8 @@ logical, dimension(:), allocatable :: cloud_tracer
 logical :: cmt_uses_donner, cmt_uses_ras, cmt_uses_uw
 logical :: module_is_initialized = .false.
 
-
+type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
+                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
 
                              contains
 
@@ -2276,7 +2286,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !---------------------------------------------------------------------
       used = send_data (id_mc_full, C2ls_mp%mc_full, Time, is, js, 1)
       used = send_data (id_mc_half, C2ls_mp%mc_half, Time, is, js, 1)
-      used = send_data (id_mc     , C2ls_mp%mc_half, Time, is, js, 1)
+      used = send_cmip_data_3d (ID_mc, C2ls_mp%mc_half, Time, is, js, 1)!, rmask=mask)
+!      used = send_data (id_mc     , C2ls_mp%mc_half, Time, is, js, 1)
 
 !---------------------------------------------------------------------
 !    total convective updraft mass flux (uw + donner cell up + 
@@ -2556,22 +2567,30 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    temperature change due to dry and moist convection:
 !---------------------------------------------------------------------
       used = send_data (id_tdt_conv, Tend_mp%ttnd_conv, Time, is, js, 1)
+      used = send_cmip_data_3d (ID_tntc, Tend_mp%ttnd_conv, Time, is, js, 1)!, rmask=mask)
 
 !---------------------------------------------------------------------
 !    vapor specific humidity change due to convection:
 !---------------------------------------------------------------------
       used = send_data (id_qdt_conv, Tend_mp%qtnd_conv, Time, is, js, 1)
+      used = send_cmip_data_3d (ID_tnhusc, Tend_mp%qtnd_conv, Time, is, js, 1)!, rmask=mask)
 
 !---------------------------------------------------------------------
 !    total precipitation due to convection (both FMS and CMOR standards):
 !---------------------------------------------------------------------
       used = send_data (id_prec_conv, precip, Time, is, js)
       used = send_data (id_prc, precip, Time, is, js)
+      if (id_prc_g > 0) call buffer_global_diag (id_prc_g, precip(:,:), Time, is, js)
 
 !---------------------------------------------------------------------
 !    frozen precipitation (snow) due to convection:
 !---------------------------------------------------------------------
       used = send_data (id_snow_conv, Output_mp%fprec, Time, is, js)
+      used = send_data (id_prsnc, Output_mp%fprec, Time, is, js)
+!---------------------------------------------------------------------
+!    liquid precipitation (rain) due to convection:
+!---------------------------------------------------------------------
+      used = send_data (id_prrc, Output_mp%lprec, Time, is, js)
 
 !---------------------------------------------------------------------
 !    convective frequency (both FMS and CMOR standards).
@@ -3006,7 +3025,13 @@ type(mp_removal_control_type), intent(in) :: Control
          ('convection_driver/diag_field_init',   &
            'diagnostic field "dynamics", "area" is not in the diag_table',&
                                                                     NOTE)
-
+!----- initialize global integrals for netCDF output -----
+   id_pr_g = register_global_diag_field ('pr', Time, 'Precipitation', &
+                     'kg m-2 s-1', standard_name='precipitation_flux', buffer=.true. )
+   id_prc_g = register_global_diag_field ('prc', Time, 'Convective Precipitation', &
+                     'kg m-2 s-1', standard_name='convective_precipitation_flux', buffer=.true. )
+   id_prsn_g = register_global_diag_field ('prsn', Time, 'Snowfall Flux', 'kg m-2 s-1', &
+                                           standard_name='snowfall_flux', buffer=.true. )
 !-------------------------------------------------------------------------
 !    diagnostics related to total convective tendencies of temperature,
 !    vapor and precipitation.
@@ -3016,10 +3041,20 @@ type(mp_removal_control_type), intent(in) :: Control
                    'Temperature tendency from convection ',  'deg_K/s',  &
                    missing_value=missing_value               )
 
+
+
+      ID_tntc = register_cmip_diag_field_3d ( mod_name, 'tntc', Time, &
+                  'Tendency of Air Temperature Due to Convection ', 'K s-1', &
+                  standard_name='tendency_of_air_temperature_due_to_convection' )
+
       id_qdt_conv = register_diag_field ( mod_name, &
-                    'qdt_conv', axes(1:3), Time, &
-                    'Spec humidity tendency from convection ', 'kg/kg/s', &
-                    missing_value=missing_value               )
+                  'qdt_conv', axes(1:3), Time, &
+                  'Spec humidity tendency from convection ',  'kg/kg/s',  &
+                  missing_value=missing_value               )
+
+      ID_tnhusc = register_cmip_diag_field_3d ( mod_name, 'tnhusc', Time, &
+                  'Tendency of Specific Humidity Due to Convection ', 's-1', &
+                  standard_name='tendency_of_specific_humidity_due_to_convection' )
 
       id_q_conv_col = register_diag_field ( mod_name, &
                       'q_conv_col', axes(1:2), Time, &
@@ -3054,6 +3089,12 @@ type(mp_removal_control_type), intent(in) :: Control
                missing_value = CMOR_MISSING_VALUE, &
                interp_method = "conserve_order1" ) 
 
+      id_prrc = register_diag_field ( mod_name, 'prrc', axes(1:2), Time, &
+               'Convective Rainfall Rate', 'kg m-2 s-1', &
+               standard_name='convective_rainfall_flux', &
+               area=area_id, missing_value=CMOR_MISSING_VALUE, &
+               interp_method="conserve_order1" )
+
       id_snow_conv = register_diag_field ( mod_name, &
                      'snow_conv', axes(1:2), Time, &
                      'Frozen precip rate from convection ',  &
@@ -3064,9 +3105,15 @@ type(mp_removal_control_type), intent(in) :: Control
                      'frequency of convection ',       '1', &
                      missing_value = missing_value                       )
 
+      id_prsnc = register_diag_field ( mod_name, 'prsnc', axes(1:2), Time, &
+                     'Convective Snowfall Flux', 'kg m-2 s-1', &
+                     standard_name='convective_snowfall_flux', &
+                     area=area_id, missing_value=CMOR_MISSING_VALUE, &
+                     interp_method="conserve_order1" )
+
       id_ci = register_diag_field ( mod_name, &
               'ci', axes(1:2), Time, &
-              'Fraction of Time Convection Occurs',  '1', &
+              'Fraction of Time Convection Occurs',  '1.0', &
               standard_name='convection_time_fraction', &
               area=area_id, &
               missing_value = CMOR_MISSING_VALUE  )
@@ -3176,7 +3223,16 @@ type(mp_removal_control_type), intent(in) :: Control
                area=area_id, &
                mask_variant = .true., &
                missing_value=CMOR_MISSING_VALUE)
+! register cmip diagnostics for large-scale clouds/precip
+            if ( do_lsc .or. doing_prog_clouds ) then
+                  ID_tntscp = register_cmip_diag_field_3d ( mod_name, 'tntscp', Time, &
+                  'Tendency of Air Temperature Due to Stratiform Clouds and Precipitation', 'K s-1', &
+                  standard_name='tendency_of_air_temperature_due_to_stratiform_clouds_and_precipitation' )
 
+                  ID_tnhusscp = register_cmip_diag_field_3d ( mod_name, 'tnhusscp', Time, &
+                  'Tendency of Specific Humidity Due to Stratiform Clouds and Precipitation', 's-1', &               
+                  standard_name='tendency_of_specific_humidity_due_to_stratiform_clouds_and_precipitation' )
+endif
 !-----------------------------------------------------------------------
 !    convective mass flux diagnostics.
 !-----------------------------------------------------------------------
@@ -3190,12 +3246,10 @@ type(mp_removal_control_type), intent(in) :: Control
                    'Net Mass Flux from convection on half levs',   &
                    'kg/m2/s', missing_value=missing_value               )
 
-      id_mc = register_diag_field ( mod_name, &
-              'mc', axes(half), Time, &
-              'Convective Mass Flux',   'kg m-2 s-1', &
-              standard_name='atmosphere_net_upward_convective_mass_flux', &
-              area=area_id, &
-              missing_value=CMOR_MISSING_VALUE  )
+      ID_mc = register_cmip_diag_field_3d ( mod_name, 'mc', Time, &
+            'Convective Mass Flux',   'kg m-2 s-1', &
+            standard_name='atmosphere_net_upward_convective_mass_flux', &
+            axis="half" )
    
       id_mc_conv_up = register_diag_field ( mod_name, &
                       'mc_conv_up', axes(1:3), Time, &
@@ -3687,7 +3741,7 @@ type(mp_removal_control_type), intent(in) :: Control
 !----------------------------------------------------------------------
         diaglname = trim(tracer_name)
         id_conv_tracer(n) =    &
-                        register_diag_field ( mod_name, &
+                        register_diag_field ( mod_name_tr, &
                         TRIM(tracer_name),  &
                         axes(1:3), Time, trim(diaglname), &
                         TRIM(tracer_units)      ,  &
