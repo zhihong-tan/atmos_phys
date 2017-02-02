@@ -2679,6 +2679,37 @@ real,dimension(:,:),    intent(inout)             :: gust
           temp_last(is:ie,js:je,:) = t(:,:,:) + tdt(:,:,:)*dt
           q_last   (is:ie,js:je,:) = r(:,:,:,1) + rdt(:,:,:,1)*dt
           call mpp_clock_end ( cosp_clock )
+        else
+            if (allocated(Removal_mp%ice_precflxh)) then
+                deallocate(Removal_mp%ice_precflxh)
+            endif
+            if (allocated(Removal_mp%liq_precflxh)) then
+                deallocate(Removal_mp%liq_precflxh)
+            endif
+            if (allocated(Removal_mp%frz_mesoh)) then
+                deallocate(Removal_mp%frz_mesoh)
+            endif
+            if (allocated(Removal_mp%liq_mesoh)) then
+                deallocate(Removal_mp%liq_mesoh)
+            endif
+            if (allocated(Removal_mp%frz_cellh)) then
+                deallocate(Removal_mp%frz_cellh)
+            endif
+            if (allocated(Removal_mp%liq_cellh)) then
+                deallocate(Removal_mp%liq_cellh)
+            endif
+            if (allocated(Removal_mp%mca_frzh)) then
+                deallocate(Removal_mp%mca_frzh)
+            endif
+            if (allocated(Removal_mp%mca_liqh)) then
+                deallocate(Removal_mp%mca_liqh)
+            endif
+            if (allocated(Removal_mp%rain3d)) then
+                deallocate(Removal_mp%rain3d)
+            endif
+            if (allocated(Removal_mp%snowclr3d)) then
+                deallocate(Removal_mp%snowclr3d)
+            endif
         endif ! (do_cosp)
       endif ! do_moist_processes
        

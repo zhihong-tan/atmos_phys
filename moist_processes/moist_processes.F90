@@ -809,6 +809,12 @@ subroutine moist_processes_end ( )
       deallocate (max_water_imbal)
       deallocate (max_enthalpy_imbal)
 
+
+      deallocate (Removal_mp_control%tracers_in_donner)
+      deallocate (Removal_mp_control%tracers_in_ras)
+      deallocate (Removal_mp_control%tracers_in_uw)
+      deallocate (Removal_mp_control%tracers_in_mca)
+
 !--------------------------------------------------------------------
 
       module_is_initialized = .false.
