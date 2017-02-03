@@ -527,12 +527,6 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
 !                         Removal_mp%control, lonb, latb, pref)
                           Removal_mp_control, lonb, latb, pref)
 
-!-----------------------------------------------------------------------
-!    call lscloud_driver_init to initialize the large-scale cloud scheme.
-!-----------------------------------------------------------------------
-      call lscloud_driver_init (id,jd,kd, axes, Time, Exch_ctrl, Nml_mp, &
-                                 Physics_control, lon, lat, phalf, pref)
-
 !--------------------------------------------------------------------
 !    retrieve the diag_manager id for the area diagnostic, needed for
 !    cmorizing various diagnostics.
@@ -542,6 +536,11 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
          ('moist_processes_init',   &
            'diagnostic field "dynamics", "area" is not in the diag_table',&
                                                                     NOTE)
+!-----------------------------------------------------------------------
+!    call lscloud_driver_init to initialize the large-scale cloud scheme.
+!-----------------------------------------------------------------------
+      call lscloud_driver_init (id,jd,kd, axes, Time, Exch_ctrl, Nml_mp, &
+                                 Physics_control, lon, lat, phalf, pref,area_id)
  
 !-----------------------------------------------------------------------
 !   initialize quantities for diagnostics output 

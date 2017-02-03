@@ -294,7 +294,6 @@ logical  :: debug
 
 type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
                            ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
-integer :: area_id
                              contains
 
 
@@ -303,7 +302,7 @@ integer :: area_id
 
 subroutine lscloud_driver_init (id, jd, kd, axes, Time, &
                                 Exch_ctrl, Nml_mp, Physics_control, &
-                                lon, lat, phalf, pref)
+                                lon, lat, phalf, pref, area_id)
 
 integer,                 intent(in)     :: id, jd, kd
 integer,                 intent(in)     :: axes(4)
@@ -314,6 +313,7 @@ type(physics_control_type), intent(in)  :: Physics_control
 real,dimension(:,:),     intent(in)     :: lon,  lat    ! h1g
 real,dimension(:,:,:),   intent(in)     :: phalf        ! h1g
 real, dimension(:),      intent(in)     :: pref
+integer,                 intent(in)     :: area_id !< The area ID from moist_processes
 
 
 ! --- internal variables ---
@@ -796,7 +796,7 @@ real, dimension(:),      intent(in)     :: pref
 !-------------------------------------------------------------------------
 !    call diag_field_init to register desired diagnostics.
 !-------------------------------------------------------------------------
-      call diag_field_init (axes, Time)
+      call diag_field_init (axes, Time, area_id)
       call mpp_clock_end (diag_field_init_clock)
 
 !-----------------------------------------------------------------------
@@ -1383,10 +1383,11 @@ end subroutine lscloud_driver_end
 
 !#######################################################################
 
-subroutine diag_field_init (axes, Time)
+subroutine diag_field_init (axes, Time, area_id)
 
 integer,                 intent(in) :: axes(4)
 type(time_type),         intent(in) :: Time
+integer,                 intent(in) :: area_id !< The area_id from moist_processes
 
 !------------------------------------------------------------------------
 !   local variables:
@@ -1458,11 +1459,15 @@ type(time_type),         intent(in) :: Time
                      'Liquid Water Path', 'kg m-2', &
                      standard_name='atmosphere_cloud_liquid_water_content', &
                      area=area_id, missing_value=CMOR_MISSING_VALUE )
+!                                   missing_value=CMOR_MISSING_VALUE )
+
 
         id_IWP = register_diag_field ( mod_name, 'iwp', axes(1:2), Time, &
                      'Ice Water Path', 'kg m-2', &
                      standard_name='atmosphere_cloud_ice_content', &
                      area=area_id, missing_value=CMOR_MISSING_VALUE )
+!                                   missing_value=CMOR_MISSING_VALUE )
+
        else
         id_LWP = register_diag_field ( mod_name, &
           'LWP', axes(1:2), Time, &
