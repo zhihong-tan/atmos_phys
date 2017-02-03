@@ -2078,29 +2078,13 @@ type(MP_removal_type),  intent(inout) :: Removal_mp
       deallocate (Removal_mp%ice_precflx)
       deallocate (Removal_mp%liq_precflx)
 
-      deallocate ( Removal_mp%ice_precflxh )  ! ---> h1g, 2017-02-02    
-      deallocate ( Removal_mp%liq_precflxh )  ! ---> h1g, 2017-02-02
-
       deallocate (Removal_mp%frz_meso    )
       deallocate (Removal_mp%liq_meso    )
       deallocate (Removal_mp%frz_cell    )
       deallocate (Removal_mp%liq_cell    )
 
-      deallocate (Removal_mp%frz_mesoh   )  ! ---> h1g, 2017-02-02
-      deallocate (Removal_mp%liq_mesoh   )  ! ---> h1g, 2017-02-02
-      deallocate (Removal_mp%frz_cellh   )  ! ---> h1g, 2017-02-02
-      deallocate (Removal_mp%liq_cellh   )  ! ---> h1g, 2017-02-02
-
       deallocate (Removal_mp%mca_frz     )
       deallocate (Removal_mp%mca_liq     )
-
-      deallocate (Removal_mp%mca_frzh     )   ! ---> h1g, 2017-02-02
-      deallocate (Removal_mp%mca_liqh     )   ! ---> h1g, 2017-02-02
-
-      deallocate (Removal_mp%rain3d      )    ! ---> h1g, 2017-02-02
-
-      deallocate (Removal_mp%snow3d      )
-      deallocate (Removal_mp%snowclr3d      ) ! ---> h1g, 2017-02-02 
 
       deallocate (Removal_mp%uw_wetdep      )
       deallocate (Removal_mp%donner_wetdep      )
