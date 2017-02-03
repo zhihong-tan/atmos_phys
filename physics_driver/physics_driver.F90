@@ -2917,6 +2917,8 @@ integer :: moist_processes_term_clock, damping_term_clock, turb_term_clock, &
 
       call dealloc_physics_tendency_type (Physics_tendency)
 
+      deallocate ( Restart%Cloud_data           )   ! h1g, 2017-02-02
+
 !---------------------------------------------------------------------
 !    mark the module as uninitialized.
 !---------------------------------------------------------------------

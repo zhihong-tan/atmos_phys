@@ -3855,6 +3855,16 @@ subroutine convection_driver_end
 
       deallocate (cloud_tracer)
 
+      deallocate(id_tracerdt_conv)        ! h1g, 2017-02-02
+      deallocate (id_tracerdt_conv_col)   ! h1g, 2017-02-02
+      deallocate (id_conv_tracer)         ! h1g, 2017-02-02
+      deallocate (id_conv_tracer_col)     ! h1g, 2017-02-02
+      if (do_donner_deep) then            ! h1g, 2017-02-02
+        deallocate ( id_tracerdt_mcadon )        ! h1g, 2017-02-02
+        deallocate ( id_tracerdt_mcadon_col )    ! h1g, 2017-02-02
+      endif
+
+
 !--------------------------------------------------------------------
 
    

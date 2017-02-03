@@ -4442,6 +4442,9 @@ endif !ActNew
 
   call unpack_array(qcsinksum_rate1ord, mgcols, top_lev, 0._r8, rate1ord_cw2pr_st)
 
+  if(allocated(rndst))  deallocate(rndst)    !--->h1g, 2017-02-02
+  if(allocated(nacon))  deallocate(nacon)    !--->h1g, 2017-02-02
+
 #ifdef GFDL_COMPATIBLE_MICROP
   call unpack_array(tlat, mgcols, top_lev, 0._r8, tlato)
   call unpack_array(qvlat, mgcols, top_lev, 0._r8, qvlato)
