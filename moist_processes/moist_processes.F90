@@ -2220,7 +2220,7 @@ integer                     :: id_wetdep_cmip
 
       id_pr = register_diag_field ( mod_name, &
         'pr', axes(1:2), Time, &
-        'Precipitation (liquid and solid)',  'kg m-2 s-1', &
+        'Precipitation',  'kg m-2 s-1', &
         standard_name='precipitation_flux', &
         area=area_id, &
         missing_value = CMOR_MISSING_VALUE, &
