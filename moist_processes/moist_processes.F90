@@ -527,12 +527,6 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
 !                         Removal_mp%control, lonb, latb, pref)
                           Removal_mp_control, lonb, latb, pref)
 
-!-----------------------------------------------------------------------
-!    call lscloud_driver_init to initialize the large-scale cloud scheme.
-!-----------------------------------------------------------------------
-      call lscloud_driver_init (id,jd,kd, axes, Time, Exch_ctrl, Nml_mp, &
-                                 Physics_control, lon, lat, phalf, pref)
-
 !--------------------------------------------------------------------
 !    retrieve the diag_manager id for the area diagnostic, needed for
 !    cmorizing various diagnostics.
@@ -542,6 +536,11 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
          ('moist_processes_init',   &
            'diagnostic field "dynamics", "area" is not in the diag_table',&
                                                                     NOTE)
+!-----------------------------------------------------------------------
+!    call lscloud_driver_init to initialize the large-scale cloud scheme.
+!-----------------------------------------------------------------------
+      call lscloud_driver_init (id,jd,kd, axes, Time, Exch_ctrl, Nml_mp, &
+                                 Physics_control, lon, lat, phalf, pref,area_id)
  
 !-----------------------------------------------------------------------
 !   initialize quantities for diagnostics output 
@@ -2205,7 +2204,7 @@ integer                     :: id_wetdep_cmip
 
       id_pr = register_diag_field ( mod_name, &
         'pr', axes(1:2), Time, &
-        'Precipitation (liquid and solid)',  'kg m-2 s-1', &
+        'Precipitation',  'kg m-2 s-1', &
         standard_name='precipitation_flux', &
         area=area_id, &
         missing_value = CMOR_MISSING_VALUE, &
