@@ -809,7 +809,6 @@ subroutine moist_processes_end ( )
       deallocate (max_water_imbal)
       deallocate (max_enthalpy_imbal)
 
-      
       deallocate (Removal_mp_control%tracers_in_donner )   !---> h1g, 2017-02-02
       deallocate (Removal_mp_control%tracers_in_ras )      !---> h1g, 2017-02-02
       deallocate (Removal_mp_control%tracers_in_uw  )      !---> h1g, 2017-02-02

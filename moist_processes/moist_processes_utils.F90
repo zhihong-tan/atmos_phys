@@ -57,74 +57,74 @@ character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
 
 type mp_input_type
-    real, dimension(:,:),          pointer  :: land=>NULL()
-    real, dimension(:,:),          pointer  :: cush=>NULL()
-    real, dimension(:,:),          pointer  :: cbmf=>NULL()
-    real, dimension(:,:),          pointer  :: pblht=>NULL()
-    real, dimension(:,:),          pointer  :: ustar=>NULL()
-    real, dimension(:,:),          pointer  :: bstar=>NULL()
-    real, dimension(:,:),          pointer  :: qstar=>NULL()
-    real, dimension(:,:),          pointer  :: area=>NULL()
-    real, dimension(:,:),          pointer  :: lon=>NULL()
-    real, dimension(:,:),          pointer  :: lat=>NULL()
-    real, dimension(:,:),          pointer  :: tdt_shf=>NULL()
-    real, dimension(:,:),          pointer  :: qdt_lhf=>NULL()
-    logical, dimension(:,:),       pointer  :: coldT=>NULL()
-    real, dimension(:,:,:),        pointer  :: phalf=>NULL()
-    real, dimension(:,:,:),        pointer  :: pfull=>NULL()
-    real, dimension(:,:,:),        pointer  :: zhalf=>NULL()
-    real, dimension(:,:,:),        pointer  :: zfull=>NULL()
-    real, dimension(:,:,:),        pointer  :: tin=>NULL()
-    real, dimension(:,:,:),        pointer  :: qin=>NULL()
-    real, dimension(:,:,:),        pointer  :: uin=>NULL()
-    real, dimension(:,:,:),        pointer  :: vin=>NULL()
-    real, dimension(:,:,:),        pointer  :: w  =>NULL()
-    real, dimension(:,:,:),        pointer  :: omega=>NULL()
-    real, dimension(:,:,:),        pointer  :: radturbten=>NULL()
-    real, dimension(:,:,:),        pointer  :: diff_t=>NULL()
-    real, dimension(:,:,:,:),      pointer  :: tracer=>NULL()
-    real, dimension(:,:,:),        pointer  :: t=>NULL()
-    real, dimension(:,:,:),        pointer  :: q=>NULL()
-    real, dimension(:,:,:),        pointer  :: u=>NULL()
-    real, dimension(:,:,:),        pointer  :: v=>NULL()
-    real, dimension(:,:,:,:),      pointer  :: r=>NULL()
-    real, dimension(:,:,:),        pointer  :: tm=>NULL()
-    real, dimension(:,:,:),        pointer  :: qm=>NULL()
-    real, dimension(:,:,:),        pointer  :: um=>NULL()
-    real, dimension(:,:,:),        pointer  :: vm=>NULL()
-    real, dimension(:,:,:,:),      pointer  :: rm=>NULL()
-    real, dimension(:,:,:),        pointer  :: pmass=>NULL()
+    real, dimension(:,:),          allocatable  :: land
+    real, dimension(:,:),          pointer      :: cush => NULL()
+    real, dimension(:,:),          pointer      :: cbmf => NULL()
+    real, dimension(:,:),          pointer      :: pblht => NULL()
+    real, dimension(:,:),          allocatable  :: ustar
+    real, dimension(:,:),          allocatable  :: bstar
+    real, dimension(:,:),          allocatable  :: qstar
+    real, dimension(:,:),          allocatable  :: area
+    real, dimension(:,:),          allocatable  :: lon
+    real, dimension(:,:),          allocatable  :: lat
+    real, dimension(:,:),          pointer      :: tdt_shf => NULL()
+    real, dimension(:,:),          pointer      :: qdt_lhf => NULL()
+    logical, dimension(:,:),       allocatable  :: coldT
+    real, dimension(:,:,:),        pointer      :: phalf => NULL()
+    real, dimension(:,:,:),        pointer      :: pfull => NULL()
+    real, dimension(:,:,:),        pointer      :: zhalf => NULL()
+    real, dimension(:,:,:),        pointer      :: zfull => NULL()
+    real, dimension(:,:,:),        allocatable  :: tin
+    real, dimension(:,:,:),        allocatable  :: qin
+    real, dimension(:,:,:),        allocatable  :: uin
+    real, dimension(:,:,:),        allocatable  :: vin
+    real, dimension(:,:,:),        pointer      :: w => NULL()
+    real, dimension(:,:,:),        pointer      :: omega => NULL()
+    real, dimension(:,:,:),        pointer      :: radturbten => NULL()
+    real, dimension(:,:,:),        pointer      :: diff_t => NULL()
+    real, dimension(:,:,:,:),      allocatable  :: tracer
+    real, dimension(:,:,:),        pointer      :: t => NULL()
+    real, dimension(:,:,:),        pointer      :: q => NULL()
+    real, dimension(:,:,:),        pointer      :: u => NULL()
+    real, dimension(:,:,:),        pointer      :: v => NULL()
+    real, dimension(:,:,:,:),      pointer      :: r => NULL()
+    real, dimension(:,:,:),        pointer      :: tm => NULL()
+    real, dimension(:,:,:),        pointer      :: qm => NULL()
+    real, dimension(:,:,:),        pointer      :: um => NULL()
+    real, dimension(:,:,:),        pointer      :: vm => NULL()
+    real, dimension(:,:,:,:),      pointer      :: rm => NULL()
+    real, dimension(:,:,:),        allocatable  :: pmass
 end type mp_input_type
 
 type mp_output_type
-    real, dimension(:,:,:),        pointer  ::  tdt=>NULL()
-    real, dimension(:,:,:),        pointer  ::  udt=>NULL()
-    real, dimension(:,:,:),        pointer  ::  vdt=>NULL()
-    real, dimension(:,:,:,:),      pointer  ::  rdt=>NULL()
-    logical, dimension(:,:),       pointer  ::  convect=>NULL()
-    real, dimension(:,:),          pointer  ::  lprec=>NULL()
-    real, dimension(:,:),          pointer  ::  fprec=>NULL()   
-    real, dimension(:,:),          pointer  ::  gust_cv=>NULL() 
-    real, dimension(:,:,:),        pointer  ::  diff_t_clubb=>NULL()
-    real, dimension(:,:,:),        pointer  ::  diff_cu_mo=>NULL()
+    real, dimension(:,:,:),        pointer      ::  tdt => NULL()
+    real, dimension(:,:,:),        pointer      ::  udt => NULL()
+    real, dimension(:,:,:),        pointer      ::  vdt => NULL()
+    real, dimension(:,:,:,:),      pointer      ::  rdt => NULL()
+    logical, dimension(:,:),       pointer      ::  convect => NULL()
+    real, dimension(:,:),          allocatable  ::  lprec
+    real, dimension(:,:),          allocatable  ::  fprec
+    real, dimension(:,:),          allocatable  ::  gust_cv
+    real, dimension(:,:,:),        pointer      ::  diff_t_clubb => NULL()
+    real, dimension(:,:,:),        pointer      ::  diff_cu_mo => NULL()
 end type mp_output_type
 
 
 
 type mp_conv2ls_type
-    real, dimension(:,:,:),   pointer   :: donner_humidity_area=>NULL()
-    real, dimension(:,:,:),   pointer   :: donner_humidity_factor=>NULL()
-    real, dimension(:,:,:),   pointer   :: convective_humidity_area=>NULL()
-    real, dimension(:,:,:),   pointer   ::    &
-                            convective_humidity_ratio=>NULL()
-    real, dimension(:,:,:),   pointer   :: conv_frac_clubb=>NULL()
-    real, dimension(:,:,:,:), pointer   :: wet_data=>NULL()
-    real, dimension(:,:,:),   pointer   :: cloud_wet=>NULL()
-    real, dimension(:,:,:),   pointer   :: cloud_frac=>NULL()
-    real, dimension(:,:,:),   pointer   :: mc_full=>NULL()
-    real, dimension(:,:,:),   pointer   :: mc_half=>NULL()
-    real, dimension(:,:,:),   pointer   ::    &
-                            convective_humidity_ratio_clubb=>NULL()
+    real, dimension(:,:,:),   allocatable   :: donner_humidity_area
+    real, dimension(:,:,:),   allocatable   :: donner_humidity_factor
+    real, dimension(:,:,:),   allocatable   :: convective_humidity_area
+    real, dimension(:,:,:),   allocatable   ::    &
+                            convective_humidity_ratio
+    real, dimension(:,:,:),   allocatable   :: conv_frac_clubb
+    real, dimension(:,:,:,:), allocatable   :: wet_data
+    real, dimension(:,:,:),   allocatable   :: cloud_wet
+    real, dimension(:,:,:),   allocatable   :: cloud_frac
+    real, dimension(:,:,:),   allocatable   :: mc_full
+    real, dimension(:,:,:),   allocatable   :: mc_half
+    real, dimension(:,:,:),   allocatable   ::    &
+                            convective_humidity_ratio_clubb
 end type mp_conv2ls_type
 
 type mp_nml_type
@@ -152,25 +152,25 @@ end type mp_nml_type
 
 
 type mp_tendency_type
-     real, dimension(:,:,:), pointer     :: ttnd=>NULL()
-     real, dimension(:,:,:), pointer     :: qtnd=>NULL()
-     real, dimension(:,:,:), pointer     :: ttnd_conv=>NULL()
-     real, dimension(:,:,:), pointer     :: qtnd_conv=>NULL()
-     real, dimension(:,:,:), pointer     :: qtnd_wet=>NULL()
-     real, dimension(:,:,:), pointer     :: wetdeptnd=>NULL()
-     real, dimension(:,:,:), pointer     :: qldt_conv=>NULL()
-     real, dimension(:,:,:), pointer     :: qidt_conv=>NULL()
-     real, dimension(:,:,:), pointer     :: qadt_conv=>NULL()
-     real, dimension(:,:,:), pointer     :: qndt_conv=>NULL()
-     real, dimension(:,:,:), pointer     :: qnidt_conv=>NULL()
-     real, dimension(:,:,:,:), pointer   :: q_tnd=>NULL()
+     real, dimension(:,:,:), allocatable     :: ttnd
+     real, dimension(:,:,:), allocatable     :: qtnd
+     real, dimension(:,:,:), allocatable     :: ttnd_conv
+     real, dimension(:,:,:), allocatable     :: qtnd_conv
+     real, dimension(:,:,:), allocatable     :: qtnd_wet
+     real, dimension(:,:,:), allocatable     :: wetdeptnd
+     real, dimension(:,:,:), allocatable     :: qldt_conv
+     real, dimension(:,:,:), allocatable     :: qidt_conv
+     real, dimension(:,:,:), allocatable     :: qadt_conv
+     real, dimension(:,:,:), allocatable     :: qndt_conv
+     real, dimension(:,:,:), allocatable     :: qnidt_conv
+     real, dimension(:,:,:,:), allocatable   :: q_tnd
 end type mp_tendency_type
 
 type mp_removal_control_type
-    logical, dimension(:),  pointer :: tracers_in_donner=>NULL()
-    logical, dimension(:),  pointer :: tracers_in_uw=>NULL()
-    logical, dimension(:),  pointer :: tracers_in_mca=>NULL()
-    logical, dimension(:),  pointer :: tracers_in_ras=>NULL()
+    logical, dimension(:),  allocatable :: tracers_in_donner
+    logical, dimension(:),  allocatable :: tracers_in_uw
+    logical, dimension(:),  allocatable :: tracers_in_mca
+    logical, dimension(:),  allocatable :: tracers_in_ras
     integer  :: num_donner_tracers
     integer  :: num_uw_tracers
     integer  :: num_mca_tracers
@@ -179,30 +179,30 @@ end type mp_removal_control_type
 
 type mp_removal_type
 !    type  (mp_removal_control_type) :: control
-    real, dimension(:,:,:), pointer :: ice_precflx=>NULL()
-    real, dimension(:,:,:), pointer :: liq_precflx=>NULL()
-    real, dimension(:,:,:), pointer :: ice_precflxh=>NULL()
-    real, dimension(:,:,:), pointer :: liq_precflxh=>NULL()
-    real, dimension(:,:,:), pointer :: frz_meso=>NULL()
-    real, dimension(:,:,:), pointer :: liq_meso=>NULL()
-    real, dimension(:,:,:), pointer :: frz_mesoh=>NULL()
-    real, dimension(:,:,:), pointer :: liq_mesoh=>NULL()
-    real, dimension(:,:,:), pointer :: frz_cell=>NULL()
-    real, dimension(:,:,:), pointer :: liq_cell=>NULL()
-    real, dimension(:,:,:), pointer :: frz_cellh=>NULL()
-    real, dimension(:,:,:), pointer :: liq_cellh=>NULL()
-    real, dimension(:,:,:), pointer :: mca_frz=>NULL()
-    real, dimension(:,:,:), pointer :: mca_liq=>NULL()
-    real, dimension(:,:,:), pointer :: mca_frzh=>NULL()
-    real, dimension(:,:,:), pointer :: mca_liqh=>NULL()
-    real, dimension(:,:,:), pointer :: rain3d=>NULL()
-    real, dimension(:,:,:), pointer :: snow3d=>NULL()
-    real, dimension(:,:,:), pointer :: snowclr3d=>NULL()
-    real, dimension(:,:,:), pointer :: uw_wetdep=>NULL()
-    real, dimension(:,:,:), pointer :: donner_wetdep=>NULL()
-    real, dimension(:,:,:), pointer :: donner_wetdepm=>NULL()
-    real, dimension(:,:,:), pointer :: donner_wetdepc=>NULL()
-    real, dimension(:,:,:), pointer :: ls_wetdep=>NULL()
+    real, dimension(:,:,:), allocatable :: ice_precflx
+    real, dimension(:,:,:), allocatable :: liq_precflx
+    real, dimension(:,:,:), allocatable :: ice_precflxh
+    real, dimension(:,:,:), allocatable :: liq_precflxh
+    real, dimension(:,:,:), allocatable :: frz_meso
+    real, dimension(:,:,:), allocatable :: liq_meso
+    real, dimension(:,:,:), allocatable :: frz_mesoh
+    real, dimension(:,:,:), allocatable :: liq_mesoh
+    real, dimension(:,:,:), allocatable :: frz_cell
+    real, dimension(:,:,:), allocatable :: liq_cell
+    real, dimension(:,:,:), allocatable :: frz_cellh
+    real, dimension(:,:,:), allocatable :: liq_cellh
+    real, dimension(:,:,:), allocatable :: mca_frz
+    real, dimension(:,:,:), allocatable :: mca_liq
+    real, dimension(:,:,:), allocatable :: mca_frzh
+    real, dimension(:,:,:), allocatable :: mca_liqh
+    real, dimension(:,:,:), allocatable :: rain3d
+    real, dimension(:,:,:), allocatable :: snow3d
+    real, dimension(:,:,:), allocatable :: snowclr3d
+    real, dimension(:,:,:), allocatable :: uw_wetdep
+    real, dimension(:,:,:), allocatable :: donner_wetdep
+    real, dimension(:,:,:), allocatable :: donner_wetdepm
+    real, dimension(:,:,:), allocatable :: donner_wetdepc
+    real, dimension(:,:,:), allocatable :: ls_wetdep
 end type mp_removal_type
 
 type mp_lsdiag_type 
@@ -211,9 +211,9 @@ type mp_lsdiag_type
 !   integer               :: n_diag_4d
 !   integer               :: n_diag_4d_kp1
 !  variables allocated to hold all netcdf diagnostic fields:
-    real, dimension(:,:,:,:), pointer :: diag_4d=>NULL()
-    real, dimension(:,:,:,:), pointer :: diag_4d_kp1=>NULL()
-    real, dimension(:,:,:  ), pointer :: diag_3d=>NULL()
+    real, dimension(:,:,:,:), allocatable :: diag_4d
+    real, dimension(:,:,:,:), allocatable :: diag_4d_kp1
+    real, dimension(:,:,:  ), allocatable :: diag_3d
 end type mp_lsdiag_type 
 
 type mp_lsdiag_control_type 
