@@ -322,7 +322,7 @@ integer, dimension(:), allocatable ::    &
 
 ! cmip diagnostic fields
 integer :: id_reffclwtop, id_cldncl, id_cldnvi
-
+ 
 logical :: output_opdepth_diagnostics = .false.
 logical :: module_is_initialized = .false.    ! module  initialized ?
 
@@ -939,7 +939,7 @@ type(microphysics_type),        intent(in)   :: Model_microphys
           if (id_dropnum_col > 0) used = send_data &
                      (id_dropnum_col, dropnum_col, Time_diag, is, js)
           if (id_cldnvi > 0) then
-            where(cldtop_area > 0.0) 
+            where(cldtop_area > 0.0)
               diag2 = dropnum_col / cldtop_area
             elsewhere
               diag2 = 0.0
@@ -951,7 +951,7 @@ type(microphysics_type),        intent(in)   :: Model_microphys
         ! cmip diagnostics
         if (id_reffclwtop > 0) then
           where(cldtop_area > 0.0)
-            diag2 = 1.0e-06*cldtop_reff / cldtop_area
+           diag2 = 1.0e-06*cldtop_reff / cldtop_area
           elsewhere
             diag2 = 0.0
           endwhere
@@ -3435,17 +3435,23 @@ if (Time_diag > Time) then
 !    content and path, liquid water content and path, ice particle size,
 !    droplet size, droplet number. 
 !--------------------------------------------------------------------
-          used = send_data (id_cldfrac_cols_only_lsc(n),   &
+          if (id_cldfrac_cols_only_lsc(n) > 0) then
+            used = send_data (id_cldfrac_cols_only_lsc(n),   &
                             Lsc_microphys%stoch_cldamt(:,:,:,n), &
                             Time_diag, is, js, 1)
+          endif
 
-          used = send_data (id_ice_conc_cols_only_lsc(n),    &
+          if (id_ice_conc_cols_only_lsc(n) > 0) then
+            used = send_data (id_ice_conc_cols_only_lsc(n),    &
                             Lsc_microphys%stoch_conc_ice(:,:,:,n), &
                             Time_diag, is, js, 1)
+          endif
 
-          used = send_data (id_drop_conc_cols_only_lsc(n),   &
+          if (id_drop_conc_cols_only_lsc(n) > 0) then
+            used = send_data (id_drop_conc_cols_only_lsc(n),   &
                             Lsc_microphys%stoch_conc_drop(:,:,:,n), &
                             Time_diag, is, js, 1)
+          endif
 
           if (id_iwp_cols_only_lsc(n) > 0) then
             cloud2d(:,:) =   &
@@ -3842,17 +3848,17 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
                         'Cloud-top Effective Droplet Radius', 'm', &
                         standard_name='effective_radius_of_cloud_liquid_water_particle_at_liquid_water_cloud_top', &
                         area=area_id, missing_value=CMOR_MISSING_VALUE )
-     
+
       id_cldncl = register_diag_field (mod_name, 'cldncl', axes(1:2), Time, &
                         'Cloud Droplet Number Concentration of Cloud Tops', 'm-3', &
                         standard_name='number_concentration_of_cloud_liquid_water_particles_in_air_at_liquid_water_cloud_top', &
                         area=area_id, missing_value=CMOR_MISSING_VALUE )
-     
+
       id_cldnvi = register_diag_field (mod_name, 'cldnvi', axes(1:2), Time, &
                         'Column Integrated Cloud Droplet Number', 'm-2', &
                         standard_name='atmosphere_number_content_of_cloud_droplets', &
                         area=area_id, missing_value=CMOR_MISSING_VALUE )
-     
+
 !---------------------------------------------------------------------
 !    register various cloud fraction diagnostics.
 !---------------------------------------------------------------------

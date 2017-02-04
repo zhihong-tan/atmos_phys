@@ -1,4 +1,4 @@
-MODULE mg_const_mod
+                   MODULE lscloud_constants_mod
 
 use  fms_mod,            only :  write_version_number
 use  constants_mod,      only :  pi
@@ -9,7 +9,7 @@ private
 !-------------------------------------------------------------------------
 !----interfaces-----------------------------------------------------------
 
-public mg_const_init
+public lscloud_constants_init
 
 !------------------------------------------------------------------------
 !       DECLARE VERSION NUMBER
@@ -51,7 +51,7 @@ CONTAINS
 
 !#########################################################################
 
-subroutine mg_const_init
+subroutine lscloud_constants_init
 
       if (module_is_initialized) return
 
@@ -68,9 +68,9 @@ subroutine mg_const_init
 !-------------------------------------------------------------------------
 
 
-end subroutine mg_const_init
+end subroutine lscloud_constants_init
 
 !#########################################################################
 
 
-END MODULE mg_const_mod
+                  END MODULE lscloud_constants_mod

@@ -25,7 +25,8 @@ use    diffusivity_mod, only: diffusivity, molecular_diff
 
 use            edt_mod, only: edt_init, edt, edt_end
 
-use    strat_cloud_mod, only: strat_cloud_on
+use physics_radiation_exch_mod, only: exchange_control_type
+use  physics_types_mod, only: physics_control_type
 
 use   shallow_conv_mod, only: shallow_conv_init, shallow_conv
 
@@ -87,6 +88,9 @@ logical            :: module_is_initialized = .false.
 
  integer         :: outunit
 
+ logical :: doing_prog_clouds
+ logical :: use_tau
+
 !-----------------------------------------------------------------------
 !-------------------- namelist -----------------------------------------
 
@@ -97,7 +101,6 @@ logical            :: module_is_initialized = .false.
  logical :: do_molecular_diffusion = .false.
  logical :: do_edt                 = .false.
  logical :: do_stable_bl     = .false.
- logical :: use_tau          = .true.
  logical :: do_entrain    = .false.
  logical :: do_simple = .false. 
 
@@ -126,7 +129,7 @@ logical            :: module_is_initialized = .false.
  
  namelist /vert_turb_driver_nml/ do_shallow_conv, do_mellor_yamada, &
                                  do_tke_turb, &
-                                 gust_scheme, constant_gust, use_tau, &
+                                 gust_scheme, constant_gust,          &
                                  do_molecular_diffusion, do_stable_bl, &
                                  do_diffusivity, do_edt, do_entrain, &
                                  gust_factor, do_simple, wp2_min, &
@@ -246,7 +249,7 @@ real   , dimension(size(diff_t,1),size(diff_t,2), &
       endif
 
       !------ setup cloud variables: ql & qi & qa -----
-      if (strat_cloud_on) then
+      if (doing_prog_clouds) then
            nt=size(r,4)
            if (nt == 0 .or. nt < max(nql,nqi,nqa))                    &
         call error_mesg ('vert_turb_driver',                  & 
@@ -732,16 +735,19 @@ end subroutine vert_turb_driver
 !#######################################################################
 
 subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
+                                  Exch_ctrl, Physics_control, &
                                   doing_edt, doing_entrain, do_clubb_in)
 
 !-----------------------------------------------------------------------
    real, dimension(:,:), intent(in) :: lonb, latb
    integer,         intent(in) :: id, jd, kd, axes(4)
+   type(exchange_control_type), intent(in) :: Exch_ctrl
+   type(physics_control_type), intent(in) :: Physics_control
    type(time_type), intent(in) :: Time
    logical,         intent(out) :: doing_edt, doing_entrain
 
 !-->h1g
- integer, optional,    intent(in)    :: do_clubb_in
+   integer, optional,    intent(in)    :: do_clubb_in
 !<--h1g
 !-----------------------------------------------------------------------
    integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
@@ -776,6 +782,8 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
            call write_version_number(version, tagname)
            write (logunit,nml=vert_turb_driver_nml)
       endif
+
+      use_tau = Physics_control%use_tau
 
 !     --- check namelist option ---
       if ( trim(gust_scheme) /= 'constant' .and. &
@@ -814,6 +822,8 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
          do_clubb = 0
     endif
     
+    doing_prog_clouds = Exch_ctrl%doing_prog_clouds
+
     if( do_entrain .and. do_clubb>0 ) &
          call error_mesg ( 'vert_turb_driver_mod', 'cannot activate '//&
            'both do_entrain and CLUBB', FATAL)
@@ -825,11 +835,11 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
     endif
 !<--h1g, 2012-07-16
 
-       if (strat_cloud_on) then
 ! get tracer indices for stratiform cloud variables
           nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
           nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
           nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
+       if (doing_prog_clouds) then
           if (mpp_pe() == mpp_root_pe()) &
                  write (logunit,'(a,3i4)') 'Stratiform cloud tracer indices: nql,nqi,nqa =',nql,nqi,nqa
           if (min(nql,nqi,nqa) <= 0) call error_mesg ('moist_processes', &

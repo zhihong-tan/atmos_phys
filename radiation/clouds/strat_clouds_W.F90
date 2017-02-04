@@ -28,6 +28,7 @@ use fms_mod,                only: open_namelist_file, mpp_pe, &
 !   atmos shared modules:
 
 use aerosol_types_mod,      only: aerosol_type
+use physics_radiation_exch_mod, only : exchange_control_type
 
 !   atmos param module
 
@@ -125,9 +126,12 @@ integer          :: num_sw_bands, num_lw_bands
 !  </TEMPLATE>
 ! </SUBROUTINE>
 !  
-subroutine strat_clouds_W_init(latb, lonb, Cldrad_control)
+subroutine strat_clouds_W_init(latb, lonb, Cldrad_control, Exch_ctrl)
+
   real, dimension(:,:),        intent(in) :: latb, lonb
   type(cloudrad_control_type), intent(in) :: Cldrad_control
+  type(exchange_control_type), intent(in), optional :: Exch_ctrl
+
 !---------------------------------------------------------------------
 !    strat_clouds_W_init is the constructor for strat_clouds_W_mod.
 !---------------------------------------------------------------------
@@ -166,7 +170,11 @@ subroutine strat_clouds_W_init(latb, lonb, Cldrad_control)
       call fms_init
       call time_manager_init
 !BW   call radiation_clouds_util_init
-      call cloud_rad_init
+      if (present(Exch_ctrl)) then
+        call cloud_rad_init (Exch_ctrl)
+      else
+        call cloud_rad_init 
+      endif
 
 !---------------------------------------------------------------------
 !    read namelist.         

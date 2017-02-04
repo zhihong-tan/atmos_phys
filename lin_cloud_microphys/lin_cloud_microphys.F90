@@ -219,6 +219,8 @@ module lin_cld_microphys_mod
  character(len=128) :: version = '$Id$'
  character(len=128) :: tagname = '$Name$'
 
+ logical  :: hydrostatic, phys_hydrostatic
+
  contains
 
 
@@ -226,11 +228,9 @@ module lin_cld_microphys_mod
                                qv_dt, ql_dt, qr_dt, qi_dt, qs_dt, qg_dt, qa_dt,      &
                                pt_dt, pt, w, uin, vin, udt, vdt, dz, delp, area, dt_in, &
                                land,  rain, snow, ice, graupel,                      &
-                               hydrostatic, phys_hydrostatic,                        &
                                iis,iie, jjs,jje, kks,kke, ktop, kbot, time)
 ! kks == 1; kke == kbot == npz
   type(time_type), intent(in):: time
-  logical,         intent(in):: hydrostatic, phys_hydrostatic
   integer,         intent(in):: iis,iie, jjs,jje  ! physics window
   integer,         intent(in):: kks,kke           ! vertical dimension
   integer,         intent(in):: ktop, kbot        ! vertical compute domain
@@ -3206,17 +3206,22 @@ endif
  end subroutine setupm
 
 
- subroutine lin_cld_microphys_init(id, jd, kd, axes, time)
+ subroutine lin_cld_microphys_init(id, jd, kd, axes, time, hydrostatic_in,&
+                  phys_hydrostatic_in)
 
     integer,         intent(in) :: id, jd, kd
     integer,         intent(in) :: axes(4)
     type(time_type), intent(in) :: time
+    logical,         intent(in) :: hydrostatic_in, phys_hydrostatic_in
 
     integer   :: unit, io, ierr, k, logunit
     logical   :: flag
     real :: tmp, q1, q2
 
     master = (mpp_pe().eq.mpp_root_pe())
+
+    hydrostatic = hydrostatic_in
+    phys_hydrostatic = phys_hydrostatic_in
 
 #ifdef INTERNAL_FILE_NML
     read( input_nml_file, nml = lin_cld_microphys_nml, iostat = io )

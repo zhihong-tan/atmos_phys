@@ -674,6 +674,9 @@ real, dimension(:,:,:,:,:),   intent(out)              :: cldsct, cldext, cldasy
            Microrad_props(n)%scheme_name = trim(Cloud_microphys(n)%scheme_name)
         enddo
 
+!RSH : the if loop is needed in case radiation is being run without seeing
+!      strat_clouds
+if (Cldrad_control%do_strat_clouds) then
 
         if (Cldrad_control%do_lw_micro) then
           if (Cldrad_control%do_ica_calcs) then
@@ -703,6 +706,8 @@ real, dimension(:,:,:,:,:),   intent(out)              :: cldsct, cldext, cldasy
 !BW                                Cldrad_control, Cld_spec, Cldrad_props)
 !BW     endif
 
+!RSH adds:
+endif
 !--------------------------------------------------------------------
 !    if donner_deep_clouds is active, obtain the cloud radiative prop-
 !    erties associated with the mesoscale and cell-scale convective
@@ -758,7 +763,7 @@ real, dimension(:,:,:,:,:),   intent(out)              :: cldsct, cldext, cldasy
                                    Micro_rad_props=Microrad_props(shallow_index), &
                                    donner_flag=donner_flag_uw)
         endif
-      endif ! ( .not. do_no_clouds)
+!RSH  endif ! ( .not. do_no_clouds)
 
 !---------------------------------------------------------------------
 !    call combine_cloud_properties to define a set of total-cloud cloud
@@ -779,6 +784,8 @@ real, dimension(:,:,:,:,:),   intent(out)              :: cldsct, cldext, cldasy
                                          Cldrad_props)
         endif  
       endif  
+
+   endif ! ( .not. do_no_clouds)
 
 !----------------------------------------------------------------------
 !    call lwemiss_calc to compute lw emissivity from the absorption 
@@ -1042,11 +1049,6 @@ type(cldrad_properties_type),   intent(inout) :: Cldrad_props
           Cldrad_props%abscoeff(:,:,:,:,1) = Microrad_props(1)%abscoeff(:,:,:,:)
         endif
 
-      else
-
-         call error_mesg( 'cloudrad_package_mod',  &
-           'no cloud schemes is not allowed in &
-           &combine_cloud_properties', FATAL)
       
       endif
 

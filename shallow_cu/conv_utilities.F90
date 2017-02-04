@@ -37,6 +37,7 @@ use conv_utilities_k_mod, only: uw_params_init_k, uw_params
   real, parameter :: zvir  = rvgas/rdgas - 1. !rh2o/rair - 1
   real, parameter :: tkmin = -160 + tfreeze   ! tcmin from sat_vapor_pres.f90
   real, parameter :: tkmax =  100 + tfreeze   ! tcmax from sat_vapor_pres.f90
+  real, parameter :: tice0 =  20.             ! below tice0 all condensate is ice
 
   character(len=7) :: mod_name = 'conv_utilities'
 
