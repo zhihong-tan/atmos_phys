@@ -302,7 +302,7 @@ type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
 
 subroutine lscloud_driver_init (id, jd, kd, axes, Time, &
                                 Exch_ctrl, Nml_mp, Physics_control, &
-                                lon, lat, phalf, pref, area_id)
+                                lon, lat, phalf, pref)
 
 integer,                 intent(in)     :: id, jd, kd
 integer,                 intent(in)     :: axes(4)
@@ -313,7 +313,6 @@ type(physics_control_type), intent(in)  :: Physics_control
 real,dimension(:,:),     intent(in)     :: lon,  lat    ! h1g
 real,dimension(:,:,:),   intent(in)     :: phalf        ! h1g
 real, dimension(:),      intent(in)     :: pref
-integer,                 intent(in)     :: area_id !< The area ID from moist_processes
 
 
 ! --- internal variables ---
@@ -796,7 +795,7 @@ integer,                 intent(in)     :: area_id !< The area ID from moist_pro
 !-------------------------------------------------------------------------
 !    call diag_field_init to register desired diagnostics.
 !-------------------------------------------------------------------------
-      call diag_field_init (axes, Time, area_id)
+      call diag_field_init (axes, Time)
       call mpp_clock_end (diag_field_init_clock)
 
 !-----------------------------------------------------------------------
@@ -1383,11 +1382,10 @@ end subroutine lscloud_driver_end
 
 !#######################################################################
 
-subroutine diag_field_init (axes, Time, area_id)
+subroutine diag_field_init (axes, Time)
 
 integer,                 intent(in) :: axes(4)
 type(time_type),         intent(in) :: Time
-integer,                 intent(in) :: area_id !< The area_id from moist_processes
 
 !------------------------------------------------------------------------
 !   local variables:
@@ -1455,18 +1453,13 @@ integer,                 intent(in) :: area_id !< The area_id from moist_process
 
       if (doing_prog_clouds ) then
        if (use_cf_metadata) then
-         id_LWP = register_diag_field ( mod_name, 'lwp', axes(1:2), Time, &
-                     'Liquid Water Path', 'kg m-2', &
-                     standard_name='atmosphere_cloud_liquid_water_content', &
-                     area=area_id, missing_value=CMOR_MISSING_VALUE )
-!                                   missing_value=CMOR_MISSING_VALUE )
+         id_LWP = register_cmip_diag_field_2d ( mod_name, 'lwp', Time, &
+                                        'Liquid Water Path', 'kg m-2', &
+                 standard_name='atmosphere_cloud_liquid_water_content' )
 
-
-        id_IWP = register_diag_field ( mod_name, 'iwp', axes(1:2), Time, &
-                     'Ice Water Path', 'kg m-2', &
-                     standard_name='atmosphere_cloud_ice_content', &
-                     area=area_id, missing_value=CMOR_MISSING_VALUE )
-!                                   missing_value=CMOR_MISSING_VALUE )
+        id_IWP = register_cmip_diag_field_2d ( mod_name, 'iwp', Time, &
+                                          'Ice Water Path', 'kg m-2', &
+                         standard_name='atmosphere_cloud_ice_content' )
 
        else
         id_LWP = register_diag_field ( mod_name, &

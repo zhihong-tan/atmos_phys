@@ -79,7 +79,8 @@ use diag_axis_mod,         only: get_axis_num
 use atmos_global_diag_mod, only: register_global_diag_field, &
                                  buffer_global_diag, &
                                  send_global_diag
-use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_2d, &
+                                 register_cmip_diag_field_3d, &
                                  send_cmip_data_3d, &
                                  cmip_diag_id_type, &
                                  query_cmip_diag_id
@@ -226,7 +227,6 @@ integer :: id_max_enthalpy_imbal_don, id_max_water_imbal_don
 integer :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
  
 integer :: id_prc, id_ci, id_ccb, id_cct
-integer :: area_id
 
 integer, dimension(:), allocatable ::    &
                                       id_tracerdt_conv,  &
@@ -3016,15 +3016,6 @@ type(mp_removal_control_type), intent(in) :: Control
 
 !------------ initialize diagnostic fields in this module -------------
 
-!--------------------------------------------------------------------
-!    retrieve the diag_manager id for the area diagnostic, needed for
-!    cmorizing various diagnostics.
-!--------------------------------------------------------------------
-      area_id = get_diag_field_id ('dynamics', 'area')
-      if (area_id .eq. DIAG_FIELD_NOT_FOUND) call error_mesg &
-         ('convection_driver/diag_field_init',   &
-           'diagnostic field "dynamics", "area" is not in the diag_table',&
-                                                                    NOTE)
 !----- initialize global integrals for netCDF output -----
    id_pr_g = register_global_diag_field ('pr', Time, 'Precipitation', &
                      'kg m-2 s-1', standard_name='precipitation_flux', buffer=.true. )
@@ -3081,19 +3072,15 @@ type(mp_removal_control_type), intent(in) :: Control
                      'Precipitation rate from convection ',    &
                      'kg(h2o)/m2/s', interp_method = "conserve_order1" )
 
-      id_prc = register_diag_field ( mod_name, &
-               'prc', axes(1:2), Time, &
-               'Convective Precipitation',   'kg m-2 s-1', &
-               standard_name = 'convective_precipitation_flux', &
-               area=area_id, &
-               missing_value = CMOR_MISSING_VALUE, &
-               interp_method = "conserve_order1" ) 
+      id_prc = register_cmip_diag_field_2d ( mod_name, 'prc', Time, &
+                        'Convective Precipitation',   'kg m-2 s-1', &
+                   standard_name = 'convective_precipitation_flux', &
+                                  interp_method = "conserve_order1" ) 
 
-      id_prrc = register_diag_field ( mod_name, 'prrc', axes(1:2), Time, &
-               'Convective Rainfall Rate', 'kg m-2 s-1', &
-               standard_name='convective_rainfall_flux', &
-               area=area_id, missing_value=CMOR_MISSING_VALUE, &
-               interp_method="conserve_order1" )
+      id_prrc = register_cmip_diag_field_2d ( mod_name, 'prrc', Time, &
+                            'Convective Rainfall Rate', 'kg m-2 s-1', &
+                            standard_name='convective_rainfall_flux', &
+                                      interp_method="conserve_order1" )
 
       id_snow_conv = register_diag_field ( mod_name, &
                      'snow_conv', axes(1:2), Time, &
@@ -3105,18 +3092,14 @@ type(mp_removal_control_type), intent(in) :: Control
                      'frequency of convection ',       '1', &
                      missing_value = missing_value                       )
 
-      id_prsnc = register_diag_field ( mod_name, 'prsnc', axes(1:2), Time, &
-                     'Convective Snowfall Flux', 'kg m-2 s-1', &
-                     standard_name='convective_snowfall_flux', &
-                     area=area_id, missing_value=CMOR_MISSING_VALUE, &
-                     interp_method="conserve_order1" )
+      id_prsnc = register_cmip_diag_field_2d ( mod_name, 'prsnc', Time, &
+                              'Convective Snowfall Flux', 'kg m-2 s-1', &
+                              standard_name='convective_snowfall_flux', &
+                                        interp_method="conserve_order1" )
 
-      id_ci = register_diag_field ( mod_name, &
-              'ci', axes(1:2), Time, &
-              'Fraction of Time Convection Occurs',  '1.0', &
-              standard_name='convection_time_fraction', &
-              area=area_id, &
-              missing_value = CMOR_MISSING_VALUE  )
+      id_ci = register_cmip_diag_field_2d ( mod_name, 'ci', Time, &
+                    'Fraction of Time Convection Occurs',  '1.0', &
+                         standard_name='convection_time_fraction' )
 
       id_gust_conv = register_diag_field ( mod_name, &
                      'gust_conv', axes(1:2), Time, &
@@ -3202,13 +3185,10 @@ type(mp_removal_control_type), intent(in) :: Control
                          mask_variant = .true., &
                          missing_value=missing_value               )
 
-      id_ccb = register_diag_field ( mod_name, &
-               'ccb', axes(1:2), Time, &
-               'Air Pressure at Convective Cloud Base',   'Pa', &
-               standard_name = 'air_pressure_at_convective_cloud_base',  &
-               area=area_id, &
-               mask_variant = .true., &
-               missing_value=CMOR_MISSING_VALUE  )
+      id_ccb = register_cmip_diag_field_2d ( mod_name, 'ccb', Time, &
+                     'Air Pressure at Convective Cloud Base', 'Pa', &
+                     standard_name = 'air_pressure_at_convective_cloud_base', &
+                     mask_variant = .true. )
 
       id_conv_cld_top = register_diag_field ( mod_name, &
                         'conv_cld_top', axes(1:2), Time, &
@@ -3216,13 +3196,11 @@ type(mp_removal_control_type), intent(in) :: Control
                         mask_variant = .true., &
                         missing_value=missing_value               )
 
-      id_cct = register_diag_field ( mod_name, &
-               'cct', axes(1:2), Time, &
-               'Air Pressure at Convective Cloud Top',   'Pa', &
-               standard_name = 'air_pressure_at_convective_cloud_top',  &
-               area=area_id, &
-               mask_variant = .true., &
-               missing_value=CMOR_MISSING_VALUE)
+      id_cct = register_cmip_diag_field_2d ( mod_name, 'cct', Time, &
+                      'Air Pressure at Convective Cloud Top', 'Pa', &
+                      standard_name = 'air_pressure_at_convective_cloud_top', &
+                      mask_variant = .true. )
+
 ! register cmip diagnostics for large-scale clouds/precip
             if ( do_lsc .or. doing_prog_clouds ) then
                   ID_tntscp = register_cmip_diag_field_3d ( mod_name, 'tntscp', Time, &
