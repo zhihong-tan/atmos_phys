@@ -101,7 +101,7 @@ logical :: ignore_donner_cells = .false.
                   ! when set to .true., the effects of donner cell clouds 
                   ! in the radiation code are ignored
 
-logical       ::  remain_hu_bug = .true.
+logical       ::  remain_hu_bug = .false.
 
 namelist /microphys_rad_nml /     &
                                lwem_form, &

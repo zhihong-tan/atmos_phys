@@ -280,6 +280,8 @@ real,                       &
              ::  R_CONV_OCEAN = 16.0
                         ! assumed convective cloud droplet radius over 
                         ! ocean [ microns ]   
+!RSH: Should N_LAND,  N_OCEAN be made compatible with large-scale cloud 
+!     values  obtained from physics_driver_nml via Exch_ctrl?
 real,                       &
   parameter                 &
              ::  N_LAND = 600.0e6
@@ -1165,7 +1167,9 @@ real, dimension(:,:,:),       intent(inout) :: cell_cld_frac,  &
                                                meso_liq_size, &
                                                meso_ice_amt,   &
                                                meso_ice_size, &
-                                           meso_droplet_number
+                                           meso_droplet_number, &
+                                               frz_meso, liq_meso, &
+                                               frz_cell, liq_cell
 integer, dimension(:,:),      intent(inout) :: nsum, maxTe_launch_level
 real, dimension(:,:),         intent(out)   :: precip, &
                                                lheat_precip, &
@@ -1178,8 +1182,7 @@ real, dimension(:,:,:),       intent(out)   :: delta_temp, delta_vapor,&
                                                donner_humidity_area,&
                                                donner_humidity_factor, &
                                                liquid_precip, &
-                                               frozen_precip, frz_meso,&
-                                            liq_meso, frz_cell, liq_cell
+                                               frozen_precip             
 real, dimension(:,:,:,:),     intent(out)   :: qtrtnd 
 real, dimension(:,:,:),       intent(out)   :: donner_wetdep
 real, dimension(:,:,:),       intent(in),                &

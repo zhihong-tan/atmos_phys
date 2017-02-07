@@ -47,7 +47,8 @@ use aerosol_types_mod,        only: aerosol_type
 
 ! atmos param modules:
 
-use physics_radiation_exch_mod, only: clouds_from_moist_block_type
+use physics_radiation_exch_mod, only: clouds_from_moist_block_type, &
+                                      exchange_control_type
 
 ! cloud radiation modules
 
@@ -213,6 +214,8 @@ integer :: id, jd, kmax
 
 type(time_type) :: Radiation_time_step  ! saved for data override
 
+logical :: doing_prog_clouds
+
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -257,20 +260,20 @@ type(time_type) :: Radiation_time_step  ! saved for data override
 !  </IN>
 ! </SUBROUTINE>
 ! 
-subroutine cloud_spec_init (pref, lonb, latb, axes, Time, rad_time_step, &
-                            Cldrad_control, cloud_type_form_out)
+subroutine cloud_spec_init (Exch_ctrl, pref, lonb, latb, axes, Time,   &
+                            rad_time_step, Cldrad_control)
 
 !---------------------------------------------------------------------
 !    cloud_spec_init is the constructor for cloud_spec_mod.
 !---------------------------------------------------------------------
 
+type(exchange_control_type), intent(inout) :: Exch_ctrl
 real, dimension(:,:),        intent(in)    ::  pref        
 real, dimension(:,:),        intent(in)    ::  lonb, latb
 integer, dimension(4),       intent(in)    ::  axes
 type(time_type),             intent(in)    ::  Time
 integer,                     intent(in)    ::  rad_time_step
 type(cloudrad_control_type), intent(inout) ::  Cldrad_control
-character(len=16),           intent(out)   ::  cloud_type_form_out
 
 !-------------------------------------------------------------------
 !    intent(in) variables:
@@ -348,7 +351,7 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
 !-----------------------------------------------------------------------
 !    define output field.
 !-----------------------------------------------------------------------
-      cloud_type_form_out = cloud_type_form
+      Exch_ctrl%cloud_type_form = cloud_type_form
 
 !--------------------------------------------------------------------
 !    verify a valid type of cloud overlap. set logical variables
@@ -362,6 +365,8 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
         call error_mesg ('cloud_spec_mod',  &
          ' invalid specification of overlap_type', FATAL)
       endif
+
+      doing_prog_clouds = Exch_ctrl%doing_prog_clouds
 
 !-------------------------------------------------------------------
 !    set the variables indicating that the above control variables have
@@ -475,13 +480,13 @@ character(len=16),           intent(out)   ::  cloud_type_form_out
 !    initialize cloud schemes that are used
 !--------------------------------------------------------------------
       if (Cldrad_control%do_strat_clouds) then
-         call strat_clouds_W_init(latb, lonb, Cldrad_control)
+         call strat_clouds_W_init(latb, lonb, Cldrad_control, Exch_ctrl)
       endif
       if (Cldrad_control%do_donner_deep_clouds) then
          call donner_deep_clouds_W_init (pref, lonb, latb, axes, Time)
       endif
       if (Cldrad_control%do_uw_clouds) then
-         call uw_clouds_W_init (pref, lonb, latb, axes, Time)
+         call uw_clouds_W_init (Exch_ctrl)
       endif
 
 !--------------------------------------------------------------------
@@ -1114,7 +1119,6 @@ integer :: istrat, icell, imeso, ishallow
           endif
 !BW     endif
 
-      endif  !  (.not. do_no_clouds)
 
 !--------------------------------------------------------------------
 !    if microphysics is active and strat_clouds is not, define the water
@@ -1143,6 +1147,7 @@ integer :: istrat, icell, imeso, ishallow
           Cld_spec%reff_ice_micro = Cloud_microphys(istrat)%size_ice
         endif
 
+      endif  !  (.not. do_no_clouds)
 !---------------------------------------------------------------------
 
 

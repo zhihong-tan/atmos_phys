@@ -29,13 +29,19 @@ module cosp_driver_mod
 
 use mpp_mod,                  only: input_nml_file
 use fms_mod,                  only: open_namelist_file, open_file,  &
-                                    close_file, error_mesg, FATAL, &
+                                    close_file, error_mesg, FATAL, NOTE, &
                                     file_exist, mpp_pe, mpp_root_pe,   &
-                                    check_nml_error, write_version_number, &
+                                    check_nml_error, write_version_number,&
                                     mpp_clock_id, CLOCK_MODULE, &
                                     mpp_clock_begin, mpp_clock_end, &
                                     stdlog
 use sat_vapor_pres_mod,       only: compute_qs
+use constants_mod,            only: RDGAS
+use physics_radiation_exch_mod,                         &
+                              only: cosp_from_rad_block_type, &
+                                    exchange_control_type
+use physics_types_mod, &
+                              only: precip_flux_type, Phys2cosp_type
 use time_manager_mod,         only: set_date, time_type, operator (+), &
                                     operator(-), operator(<),    &
                                     operator(>), operator(<=), &
@@ -171,6 +177,9 @@ logical :: use_input_file = .false.
 logical :: produce_cmor_output_fields = .false.
 real    :: emsfc_lw_nml=0.94
 logical :: use_rh_wrt_liq = .true.
+logical :: allow_cosp_precip_wo_clouds = .true.
+                                ! COSP will see {ls, cv} precip in grid-
+                                ! boxes w/o {ls, cv} clouds ?
 !-------------------------------------------------------------------------
 !-------------- RTTOV inputs
 !-------------------------------------------------------------------------
@@ -189,6 +198,22 @@ integer,dimension(RTTOV_MAX_CHANNELS) :: Channels = 0
 real,dimension(RTTOV_MAX_CHANNELS) :: Surfem = 0.0 
                            ! Surface emissivity (please be sure that 
                            ! you supply Nchannels)
+ character(len=16) :: cosp_precip_sources = '    '
+                               ! sources of the precip fields to be sent to
+                               ! COSP. Default = '  ' implies precip from
+                               ! the radiatively-active clouds defined by
+                               ! variable cloud_type_form in cloud_spec_nml
+                               ! will be sent. Other available choices:
+                               ! 'strat', 'deep', 'uw', 'stratdeep',
+                               ! 'stratuw', deepuw', 'stratdeepuw',
+                               ! 'noprecip'.
+                               ! CURRENTLY NOT AVAILABLE: precip from ras,
+                               ! lsc and mca. For completeness, these could
+                               ! be made available, but since no cloud
+                               ! fields are saved for these schemes to be
+                               ! made available to COSP, they are also
+                               ! currently not considered as precip
+                               ! sources.
 
 namelist/COSP_INPUT/cmor_nl,overlap,isccp_topheight, &
                     isccp_topheight_direction, &
@@ -197,11 +222,13 @@ namelist/COSP_INPUT/cmor_nl,overlap,isccp_topheight, &
                     radar_freq,surface_radar,use_mie_tables, &
                     use_input_file, produce_cmor_output_fields, &
                     emsfc_lw_nml, use_rh_wrt_liq, &
+                    allow_cosp_precip_wo_clouds, &
                     use_gas_abs,do_ray,melt_lay,k2,Nprmts_max_hydro,  &
                     Naero,Nprmts_max_aero,lidar_ice_type, &
                     use_precipitation_fluxes,use_reff, &
                     platform,satellite,Instrument,Nchannels, &
-                    Channels,Surfem,ZenAng,co2,ch4,n2o,co
+                    Channels,Surfem,ZenAng,co2,ch4,n2o,co, &
+                    cosp_precip_sources
 
 ! Local variables
 
@@ -220,81 +247,112 @@ double precision   :: time_bnds(2)= (0.5D0, 1.5D0)
 
 contains
 
+
 !######################################################################
 
-subroutine cosp_driver_init (lonb, latb, Time_diag, axes, kd_in, ncol_in)
+subroutine cosp_driver_init (lonb, latb, Time_diag, axes, kd_in, Exch_ctrl)
 
-real, dimension(:,:),  intent(in) :: lonb, latb
-type(time_type),       intent(in) :: Time_diag
-integer, dimension(4), intent(in) :: axes
-integer,               intent(in) :: kd_in, ncol_in
+!-------------------------------------------------------------------------
+real, dimension(:,:),        intent(in)    :: lonb, latb
+type(time_type),             intent(in)    :: Time_diag
+integer, dimension(4),       intent(in)    :: axes
+integer,                     intent(in)    :: kd_in
+type(exchange_control_type), intent(inout) :: Exch_ctrl
 
-   integer :: io, unit, ierr, logunit
-   integer :: imax, jmax
+!-----------------------------------------------------------------------
+      integer :: io, unit, ierr, logunit
+      integer :: imax, jmax
 
+!-----------------------------------------------------------------------
 #ifdef INTERNAL_FILE_NML
-    read (input_nml_file, nml=cosp_input, iostat=io)
-    ierr = check_nml_error(io,"cosp_input")
+      read (input_nml_file, nml=cosp_input, iostat=io)
+      ierr = check_nml_error(io,"cosp_input")
 #else
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-    if ( file_exist('input.nml')) then
-       unit =  open_namelist_file ()
-      ierr=1; do while (ierr /= 0)
-      read  (unit, nml=cosp_input, iostat=io, end=10)
-      ierr = check_nml_error(io,'cosp_input')
-      enddo
-10    call close_file (unit)
-    endif
+      if ( file_exist('input.nml')) then
+        unit =  open_namelist_file ()
+        ierr=1; do while (ierr /= 0)
+        read  (unit, nml=cosp_input, iostat=io, end=10)
+        ierr = check_nml_error(io,'cosp_input')
+        enddo
+10      call close_file (unit)
+      endif
 #endif
         
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------
-    call write_version_number (version, tagname)
-    logunit = stdlog()
-    if (mpp_pe() == mpp_root_pe() )    &
+      call write_version_number (version, tagname)
+      logunit = stdlog()
+      if (mpp_pe() == mpp_root_pe() )    &
                         write (logunit, nml=cosp_input)
 
-    if (use_mie_tables /= 0) then
-      call error_mesg ('cosp_driver', &
+      if (use_mie_tables /= 0) then
+        call error_mesg ('cosp_driver', &
             'use_mie_tables must be set to 0 currently', FATAL)
-    endif
+      endif
 
-    nlevels = kd_in
-    ncolumns = ncol_in 
-    imax = size(lonb,1) - 1
-    jmax = size(lonb,2) - 1
+      nlevels = kd_in
+      ncolumns = Exch_ctrl%ncol 
 
-    call read_cosp_output_nl(cosp_output_nl,cfg)
+      imax = size(lonb,1) - 1
+      jmax = size(lonb,2) - 1
 
-    call cosp_diagnostics_init      &
+      call read_cosp_output_nl(cosp_output_nl,cfg)
+
+      call cosp_diagnostics_init      &
             (imax, jmax, Time_diag, axes, nlevels, ncolumns, cfg, &
-             use_vgrid, csat_vgrid, nlr, nchannels, channels(1:nchannels) )     
+             use_vgrid, csat_vgrid, nlr, nchannels, channels(1:nchannels) )
 
 !---------------------------------------------------------------------
-!   COSP takes a single, spacially independent value for surface
-!   emissivity. it may be supplied via namelist.
+!    COSP takes a single, spacially independent value for surface
+!    emissivity. it may be supplied via namelist.
 !---------------------------------------------------------------------
-    emsfc_lw = emsfc_lw_nml
+      emsfc_lw = emsfc_lw_nml
  
 !--------------------------------------------------------------------
-!   variable geomode indicates that the grid (i,j) => (lon,lat)
+!    variable geomode indicates that the grid (i,j) => (lon,lat)
 !--------------------------------------------------------------------
-    geomode = 2
+      geomode = 2
  
+!--------------------------------------------------------------------
+!    define cosp_precip sources.
+!--------------------------------------------------------------------
+
+!-------------------------------------------------------------------------
+!    if cosp_precip_sources was not set in the runscript nml, set it to be 
+!    the precip from the cloud types that are to be seen by the radiation 
+!    package. 
+!    if it was set in the nml, check if the precip sources match the cloud 
+!    forms that are to be seen by the radiation package, and if they don't,
+!    issue a note to the output file.  this may be intended, or it may be 
+!    an inconsistency error.
+!-------------------------------------------------------------------------
+      if (trim(cosp_precip_sources) == '  ') then
+        Exch_ctrl%cosp_precip_sources = Exch_ctrl%cloud_type_form
+      else
+        Exch_ctrl%cosp_precip_sources = cosp_precip_sources
+        if (trim(Exch_ctrl%cloud_type_form) /= trim(cosp_precip_sources)) &
+               call error_mesg ('cosp_driver_init',  &
+               'cloud_type_form does not match cosp_precip_sources', NOTE)
+      endif
+
+
 !---------------------------------------------------------------------
-!   initialize clocks to time different simulators / processes.
+!    initialize clocks to time different simulators / processes.
 !---------------------------------------------------------------------
-    radar_clock = mpp_clock_id ('COSP:radar', grain = CLOCK_MODULE)
-    lidar_clock = mpp_clock_id ('COSP:lidar', grain = CLOCK_MODULE)
-    isccp_clock = mpp_clock_id ('COSP:isccp', grain = CLOCK_MODULE)
-    misr_clock  = mpp_clock_id ('COSP:misr' , grain = CLOCK_MODULE)
-    modis_clock = mpp_clock_id ('COSP:modis', grain = CLOCK_MODULE)
-    rttov_clock = mpp_clock_id ('COSP:rttov', grain = CLOCK_MODULE)
-    stats_clock = mpp_clock_id ('COSP:stats', grain = CLOCK_MODULE)
-    diags_clock = mpp_clock_id ('COSP:diags', grain = CLOCK_MODULE)
+      radar_clock = mpp_clock_id ('COSP:radar', grain = CLOCK_MODULE)
+      lidar_clock = mpp_clock_id ('COSP:lidar', grain = CLOCK_MODULE)
+      isccp_clock = mpp_clock_id ('COSP:isccp', grain = CLOCK_MODULE)
+      misr_clock  = mpp_clock_id ('COSP:misr' , grain = CLOCK_MODULE)
+      modis_clock = mpp_clock_id ('COSP:modis', grain = CLOCK_MODULE)
+      rttov_clock = mpp_clock_id ('COSP:rttov', grain = CLOCK_MODULE)
+      stats_clock = mpp_clock_id ('COSP:stats', grain = CLOCK_MODULE)
+      diags_clock = mpp_clock_id ('COSP:diags', grain = CLOCK_MODULE)
+
+!-----------------------------------------------------------------------
 
 end subroutine cosp_driver_init
 
@@ -305,7 +363,7 @@ subroutine cosp_driver_time_vary (Time_diag)
 
 type(time_type), intent(in)  :: Time_diag
 
-    call cosp_diagnostics_time_vary (Time_diag)
+      call cosp_diagnostics_time_vary (Time_diag)
 
 end subroutine cosp_driver_time_vary
 
@@ -314,14 +372,273 @@ end subroutine cosp_driver_time_vary
 
 subroutine cosp_driver_endts
 
-    call cosp_diagnostics_endts
+      call cosp_diagnostics_endts
 
 end subroutine cosp_driver_endts
+
+!#######################################################################
+
+subroutine cosp_driver (is, ie, js, je, Time_next, MP2cosp,    &
+                                             Phys2cosp, Cosp_rad_block) 
+
+!------------------------------------------------------------------------
+integer,                         intent(in)    :: is, ie, js, je
+type(time_type),                 intent(in)    :: Time_next
+type(precip_flux_type),          intent(inout) :: MP2cosp
+type(Phys2cosp_type),            intent(inout) :: Phys2cosp
+type(cosp_from_rad_block_type),  intent(inout) :: Cosp_rad_block
+
+!------------------------------------------------------------------------
+      real, dimension(size(Phys2cosp%u,1),              &
+                      size(Phys2cosp%u,2))    :: land_mask
+      real, dimension(size(Phys2cosp%u,1),              &
+                      size(Phys2cosp%u,2))    :: u_sfc, v_sfc
+      real, dimension(size(Phys2cosp%u,1),              &
+                      size(Phys2cosp%u,2),              &
+                      size(Phys2cosp%u,3))    ::  &
+                             tca, cca, rhoi, lsliq, lsice, ccliq,  &
+                             ccice, reff_lsclliq, reff_lsclice, &
+                             reff_ccclliq, reff_ccclice, &
+                             reff_lsprliq, reff_lsprice, &
+                             reff_ccprliq, reff_ccprice
+      real, dimension(size(Phys2cosp%u,1),               &
+                      size(Phys2cosp%u,2),               &
+                      size(Phys2cosp%u,3), ncolumns) ::  &
+                                          stoch_mr_liq, stoch_mr_ice, &
+                                          stoch_size_liq, stoch_size_frz
+      integer :: i, j , k, n
+      integer :: nls, ncc
+      integer :: flag_ls, flag_cc
+      integer :: kmax
+!-----------------------------------------------------------------------
+
+      kmax = size(Phys2cosp%u,3)
+
+!----------------------------------------------------------------------
+!    define the total and convective cloud fractions in each grid box as
+!    the average over the stochastic columns.
+!----------------------------------------------------------------------
+      tca = 0.
+      cca = 0.
+      do n=1,ncolumns                      
+        where (Cosp_rad_block%stoch_cloud_type(:,:,:,n) > 0) 
+          tca(:,:,:)  = tca(:,:,:) +  1.0
+        end where
+        where (Cosp_rad_block%stoch_cloud_type(:,:,:,n) == 2) 
+          cca(:,:,:)  = cca(:,:,:) +  1.0
+        end where
+      end do
+      tca = tca/ float(ncolumns)                
+      cca = cca/ float(ncolumns)
+
+!--------------------------------------------------------------------
+!    define the atmospheric density to use in converting concentrations
+!    to mixing ratios.
+!--------------------------------------------------------------------
+      do k=1, size(Cosp_rad_block%stoch_cloud_type,3)
+        do j=1, size(Phys2cosp%u,2)
+          do i=1, size(Phys2cosp%u,1)
+            rhoi(i,j,k) =  RDGAS*Phys2cosp%temp_last(i,j,k)/ &
+                                                   Phys2cosp%p_full(i,j,k) 
+          end do
+        end do
+      end do
+
+!--------------------------------------------------------------------
+!    convert the condensate concentrations in each stochastic column to 
+!    mixing ratios. 
+!--------------------------------------------------------------------
+      do n=1,ncolumns                       
+        do k=1, size(Cosp_rad_block%stoch_cloud_type,3)
+          do j=1, size(Phys2cosp%u,2)
+            do i=1, size(Phys2cosp%u,1)
+              stoch_mr_liq(i,j,k,n) = 1.0e-03*  &
+                   Cosp_rad_block%stoch_conc_drop(i,j,k,n)*rhoi(i,j,k)
+              stoch_mr_ice(i,j,k,n) = 1.0e-03*  &
+                   Cosp_rad_block%stoch_conc_ice (i,j,k,n)*rhoi(i,j,k)
+              stoch_size_liq(i,j,k,n) = 1.0e-06*  &
+                   Cosp_rad_block%stoch_size_drop(i,j,k,n)
+              stoch_size_frz(i,j,k,n) = 1.0e-06*  &
+                   Cosp_rad_block%stoch_size_ice (i,j,k,n)
+            end do
+          end do
+        end do
+      end do
+      stoch_mr_liq = stoch_mr_liq/(1.0-stoch_mr_liq)
+      stoch_mr_ice = stoch_mr_ice/(1.0-stoch_mr_ice)
+
+!---------------------------------------------------------------------
+!    define the grid box mean largescale and convective condensate 
+!    mixing ratios and sizes.
+!---------------------------------------------------------------------
+      lsliq = 0.
+      lsice = 0.
+      ccliq = 0.
+      ccice = 0.
+      reff_lsclliq = 0.
+      reff_lsclice = 0.
+      reff_ccclliq = 0.
+      reff_ccclice = 0.
+      reff_lsprliq = 0.
+      reff_lsprice = 0.
+      reff_ccprliq = 0.
+      reff_ccprice = 0.
+      do k=1, size(Cosp_rad_block%stoch_cloud_type,3)
+        do j=1, size(Phys2cosp%u,2)
+          do i=1, size(Phys2cosp%u,1)
+            nls = 0
+            ncc = 0
+            do n=1,ncolumns                       
+              if (Cosp_rad_block%stoch_cloud_type(i,j,k,n) == 1) then
+                nls = nls + 1
+                lsliq(i,j,k) = lsliq(i,j,k) +  &
+                        Cosp_rad_block%stoch_conc_drop(i,j,k,n)
+                lsice(i,j,k) = lsice(i,j,k) +   &
+                        Cosp_rad_block%stoch_conc_ice (i,j,k,n)
+                reff_lsclliq(i,j,k) = reff_lsclliq(i,j,k) +  &
+                       Cosp_rad_block%stoch_size_drop(i,j,k,n)
+                reff_lsclice(i,j,k) = reff_lsclice(i,j,k) +  &
+                          Cosp_rad_block%stoch_size_ice (i,j,k,n)
+              else if    &
+                   (Cosp_rad_block%stoch_cloud_type(i,j,k,n) == 2)then
+                ncc = ncc + 1
+                ccliq(i,j,k) = ccliq(i,j,k) +  &
+                       Cosp_rad_block%stoch_conc_drop(i,j,k,n)
+                ccice(i,j,k) = ccice(i,j,k) +  &
+                       Cosp_rad_block%stoch_conc_ice (i,j,k,n)
+                reff_ccclliq(i,j,k) = reff_ccclliq(i,j,k) +  &
+                         Cosp_rad_block%stoch_size_drop(i,j,k,n)
+                reff_ccclice(i,j,k) = reff_ccclice(i,j,k) +  &
+                         Cosp_rad_block%stoch_size_ice (i,j,k,n)
+              endif
+            end do
+            if (nls > 0) then
+              lsliq(i,j,k) = 1.0e-03*lsliq(i,j,k)/float(nls)
+              lsice(i,j,k) = 1.0e-03*lsice(i,j,k)/float(nls)
+              reff_lsclliq(i,j,k) = 1.0e-06*  &
+                                       reff_lsclliq (i,j,k)/float(nls)
+              reff_lsclice(i,j,k) = 1.0e-06*  &
+                                      reff_lsclice (i,j,k)/float(nls)
+            endif
+            if (ncc > 0) then
+              ccliq(i,j,k) = 1.0e-03*ccliq(i,j,k)/float(ncc)
+              ccice(i,j,k) = 1.0e-03*ccice(i,j,k)/float(ncc)
+              reff_ccclliq(i,j,k) = 1.0e-06*  &
+                                    reff_ccclliq (i,j,k) /float(ncc)
+              reff_ccclice(i,j,k) = 1.0e-06*  &
+                                    reff_ccclice (i,j,k) /float(ncc)
+            endif
+            ccliq(i,j,k) = ccliq(i,j,k)*rhoi(i,j,k)/ &
+                                                 (1.0-ccliq(i,j,k))
+            ccice(i,j,k) = ccice(i,j,k)*rhoi(i,j,k)/  &
+                                                  (1.0-ccice(i,j,k))
+            lsliq(i,j,k) = lsliq(i,j,k)*rhoi(i,j,k)/  &
+                                                  (1.0-lsliq(i,j,k))
+            lsice(i,j,k) = lsice(i,j,k)*rhoi(i,j,k)/  &
+                                                  (1.0-lsice(i,j,k))
+          end do
+        end do
+      end do
+     
+!---------------------------------------------------------------------
+!    define land_mask array. set it to 1 over land, 0 over ocean; define
+!    based on frac_land > 0.5 being land.
+!---------------------------------------------------------------------
+      where (Phys2cosp%frac_land > 0.50)
+        land_mask(:,:) =  1.0
+      elsewhere
+        land_mask(:,:) =  0.0
+      end where
+
+      if (allow_cosp_precip_wo_clouds) then
+      else
+!--------------------------------------------------------------------
+!    allow ls precip only in columns containing ls cloud. allow 
+!    convective precip only in columns with convective cloud,
+!----------------------------------------------------------------
+        do j=1, size(Phys2cosp%u,2)
+          do i=1, size(Phys2cosp%u,1)
+            flag_ls = 0
+            flag_cc = 0
+            do k=1, size(Cosp_rad_block%stoch_cloud_type,3)
+              do n=1,ncolumns                        
+                if (Cosp_rad_block%stoch_cloud_type(i,j,k,n) == 1) then
+                  flag_ls = 1
+                  exit
+                else if    &
+                   (Cosp_rad_block%stoch_cloud_type(i,j,k,n) == 2) then
+                  flag_cc = 1
+                  exit
+                endif
+              end do
+              if (flag_ls == 1 .and. flag_cc == 1) exit
+            end do
+            if (flag_ls == 0) then
+              MP2cosp%fl_lsrain(i,j,:) = 0.
+              MP2cosp%fl_lssnow(i,j,:) = 0.
+              MP2cosp%fl_lsgrpl(i,j,:) = 0.
+            endif 
+            if (flag_cc == 0) then
+              MP2cosp%fl_ccrain(i,j,:) = 0.
+              MP2cosp%fl_ccsnow(i,j,:) = 0.
+            endif 
+          end do
+        end do
+      endif
+
+!----------------------------------------------------------------------
+!    add in donner mca precip. if it is desired to not pass this to COSP,
+!    the fields will have been set to 0.0 previously.
+!----------------------------------------------------------------------
+      MP2cosp%fl_ccrain = Mp2cosp%fl_ccrain + MP2cosp%fl_donmca_rain
+      MP2cosp%fl_ccsnow = MP2cosp%fl_ccsnow + MP2cosp%fl_donmca_snow
+
+!---------------------------------------------------------------------
+!    pass in the large-scale graupel flux, lowest-level u and v wind
+!    components.
+!--------------------------------------------------------------------
+      u_sfc = Phys2cosp%u(:,:,kmax)
+      v_sfc = Phys2cosp%v(:,:,kmax)
+
+!---------------------------------------------------------------------
+!    call the cosp simulator to produce the desired outputs.
+!---------------------------------------------------------------------
+      call cosp_driver2 (Phys2cosp%lat, Phys2cosp%lon,  &
+                         Cosp_rad_block%daytime, &
+                         Phys2cosp%p_half, &
+                         Phys2cosp%p_full, Phys2cosp%z_half,  &
+                         Phys2cosp%z_full, u_sfc, v_sfc,   &
+                         Cosp_rad_block%mr_ozone,&
+                         Phys2cosp%temp_last(:,:,:),  &
+                         Phys2cosp%q_last(:,:,:), tca, cca, lsliq,  &
+                         lsice, ccliq, ccice,  &
+                         MP2cosp%fl_lsrain, MP2cosp%fl_lssnow,   &
+                         MP2cosp%fl_lsgrpl,&
+                         MP2cosp%fl_ccrain, MP2cosp%fl_ccsnow,&
+                         0.5*reff_lsclliq, 0.5*reff_lsclice,  &
+                         reff_lsprliq, reff_lsprice,  &
+                         0.5*reff_ccclliq, 0.5*reff_ccclice, &
+                         reff_ccprliq, reff_ccprice, &
+                         Cosp_rad_block%tsurf_save, land_mask, &
+                         Time_next, is, js, &
+                         stoch_mr_liq_in =stoch_mr_liq,  &
+                         stoch_mr_ice_in =stoch_mr_ice,  &
+                         stoch_size_liq_in =0.5*stoch_size_liq, &
+                         stoch_size_frz_in = 0.5*stoch_size_frz,  &
+                         tau_stoch_in = Cosp_rad_block%tau_stoch,&
+                         lwem_stoch_in = Cosp_rad_block%lwem_stoch, &
+                         stoch_cloud_type_in =     &
+                                         Cosp_rad_block%stoch_cloud_type)
+
+!------------------------------------------------------------------------
+
+ end subroutine cosp_driver
+
 
 
 !####################################################################
 
-subroutine cosp_driver   &
+subroutine cosp_driver2  &
         (lat_in, lon_in, daytime_in, phalf_plus, p_full_in, zhalf_plus,&
          z_full_in, u_wind_in, v_wind_in, mr_ozone_in, &
          T_in, sh_in, tca_in, cca_in, lsliq_in, lsice_in, ccliq_in, &
@@ -333,14 +650,17 @@ subroutine cosp_driver   &
          skt_in, land_in, Time_diag, is, js, stoch_mr_liq_in, &
          stoch_mr_ice_in, stoch_size_liq_in, stoch_size_frz_in, &
          tau_stoch_in, lwem_stoch_in, stoch_cloud_type_in)
+
 !--------------------------------------------------------------------
-!    subroutine cosp_driver is the interface between the cosp simulator 
+!    subroutine cosp_driver2 is the interface between the cosp simulator 
 !    code and the AM model.
 !--------------------------------------------------------------------
-real, dimension(:,:),   intent(in) :: lat_in, lon_in, skt_in, land_in, &
-                                      u_wind_in, v_wind_in
-real, dimension(:,:), intent(in) :: daytime_in
-real, dimension(:,:,:), intent(in) :: phalf_plus, p_full_in, &
+
+real, dimension(:,:),     intent(in) :: lat_in, lon_in, skt_in, land_in, &
+                                        u_wind_in, v_wind_in
+real, dimension(:,:),     intent(in) :: daytime_in
+real, dimension(:,:,:),   intent(in) ::   &
+        phalf_plus, p_full_in, &
         zhalf_plus, z_full_in, T_in, sh_in, &
         tca_in, cca_in, lsliq_in, lsice_in, ccliq_in, ccice_in, &
         fl_lsrain_in, fl_lssnow_in, fl_lsgrpl_in, fl_ccrain_in, &
@@ -352,37 +672,40 @@ real, dimension(:,:,:,:), intent(in), optional ::  &
                tau_stoch_in, lwem_stoch_in, stoch_cloud_type_in, &
                stoch_mr_liq_in, stoch_mr_ice_in, stoch_size_liq_in, &
                stoch_size_frz_in
-type(time_type), intent(in) :: Time_diag
+type(time_type),          intent(in) :: Time_diag
 
+!---------------------------------------------------------------------
 !local variables:
 
-  integer, intent(in) :: is, js
-  real, dimension(size(T_in,1)*size(T_in,2), size(T_in,3), &
-                              ncolumns)  :: y3, y3a, y4, y5, y6, y7, y8
-  integer :: i, j, n, l
-  integer :: k
+      integer, intent(in) :: is, js
+      real, dimension(size(T_in,1)*size(T_in,2), size(T_in,3), &
+                                ncolumns)  :: y3, y3a, y4, y5, y6, y7, y8
+      integer :: i, j, n, l
+      integer :: k
 
-  type(cosp_gridbox) :: gbx ! Gridbox information. Input for COSP
-  type(cosp_subgrid) :: sgx     ! Subgrid outputs
-  type(cosp_sghydro) :: sghydro ! Subgrid condensate
-  type(cosp_sgradar) :: sgradar ! Output from radar simulator
-  type(cosp_sglidar) :: sglidar ! Output from lidar simulator
-  type(cosp_isccp)   :: isccp   ! Output from ISCCP simulator
-  type(cosp_modis)   :: modis   ! Output from MODIS simulator
-  type(cosp_misr)    :: misr    ! Output from MISR simulator
-  type(cosp_rttov)   :: rttov   ! Output from RTTOV 
-  type(cosp_vgrid)   :: vgrid   ! Information on vertical grid of stats
-  type(cosp_radarstats) :: stradar ! Summary statistics from radar simulator
-  type(cosp_lidarstats) :: stlidar ! Summary statistics from lidar simulator
-  real, dimension ( size(T_in,1)*size(T_in,2), size(T_in,3)) :: &
-                    fl_lsrain, &
-                    fl_lssnow, fl_lsgrpl, fl_ccrain, fl_ccsnow
-  real, dimension ( size(T_in,1)*size(T_in,2),    &
+      type(cosp_gridbox) :: gbx ! Gridbox information. Input for COSP
+      type(cosp_subgrid) :: sgx     ! Subgrid outputs
+      type(cosp_sghydro) :: sghydro ! Subgrid condensate
+      type(cosp_sgradar) :: sgradar ! Output from radar simulator
+      type(cosp_sglidar) :: sglidar ! Output from lidar simulator
+      type(cosp_isccp)   :: isccp   ! Output from ISCCP simulator
+      type(cosp_modis)   :: modis   ! Output from MODIS simulator
+      type(cosp_misr)    :: misr    ! Output from MISR simulator
+      type(cosp_rttov)   :: rttov   ! Output from RTTOV 
+      type(cosp_vgrid)   :: vgrid   ! Information on vertical grid of stats
+      type(cosp_radarstats) :: stradar ! Summary statistics from 
+                                       ! radar simulator
+      type(cosp_lidarstats) :: stlidar ! Summary statistics from 
+                                       ! lidar simulator
+      real, dimension ( size(T_in,1)*size(T_in,2), size(T_in,3)) :: &
+                                     fl_lsrain, fl_lssnow, fl_lsgrpl,    &
+                                                     fl_ccrain, fl_ccsnow
+      real, dimension ( size(T_in,1)*size(T_in,2),    &
                                   Ncolumns, size(T_in,3)) :: &
                                                           cloud_type
-  real, dimension ( size(T_in,1),size(T_in,2), size(T_in,3)) :: &
+      real, dimension ( size(T_in,1),size(T_in,2), size(T_in,3)) :: &
                                                 p_half_in, z_half_in
-  integer :: nlon,nlat,npoints
+      integer :: nlon,nlat,npoints
 
   !---------------- End of declaration of variables --------------
    
@@ -414,13 +737,13 @@ type(time_type), intent(in) :: Time_diag
              isccp_topheight_direction,overlap, emsfc_lw,  &
              use_precipitation_fluxes, use_reff, &
              Platform, Satellite, Instrument, Nchannels, ZenAng, &
-             channels(1:Nchannels), surfem(1:Nchannels), co2, ch4, n2o, co,&
-             gbx)
+             channels(1:Nchannels), surfem(1:Nchannels),   &
+             co2, ch4, n2o, co, gbx)
   
       call produce_cosp_input_fields ( Npoints, Nlevels, N_hydro,  &
-              lon_in, lat_in, daytime_in, p_half_in, p_full_in, z_half_in, &
-              z_full_in, u_wind_in, v_wind_in, mr_ozone_in, T_in, &
-              sh_in, tca_in, &
+              lon_in, lat_in, daytime_in, p_half_in, p_full_in,    &
+              z_half_in, z_full_in, u_wind_in, v_wind_in, mr_ozone_in,   &
+              T_in, sh_in, tca_in, &
               cca_in, lsliq_in, lsice_in, ccliq_in, ccice_in,  &
               fl_lsrain_in,  &
               fl_lssnow_in, fl_lsgrpl_in, fl_ccrain_in, fl_ccsnow_in, &
@@ -510,8 +833,8 @@ type(time_type), intent(in) :: Time_diag
         end do
 
 !------------------------------------------------------------------------
-!    define values of particle numbers (units of # / kg) from input fields. 
-!    At this time, these fields are declared in COSP, but code is not 
+!    define values of particle numbers (units of # / kg) from input fields.
+!    At this time, these fields are declared in COSP, but code is not
 !    present to use them (default values will be used), so  they can be
 !    left with the default initialization they were provided.
 !------------------------------------------------------------------------
@@ -526,21 +849,24 @@ type(time_type), intent(in) :: Time_diag
 !       sghydro%Np(:,:,:,I_CVSNOW) = 0.
       endif
       call construct_cosp_sgradar  &
-                              (cfg,Npoints,Ncolumns,Nlevels,N_HYDRO,sgradar)
+                      (cfg,Npoints,Ncolumns,Nlevels,N_HYDRO,sgradar)
       call construct_cosp_radarstats   &
-                        (cfg,Npoints,Ncolumns,vgrid%Nlvgrid,N_HYDRO,stradar)
+                      (cfg,Npoints,Ncolumns,vgrid%Nlvgrid,N_HYDRO,stradar)
       call construct_cosp_sglidar   &
-                (cfg,Npoints,Ncolumns,Nlevels,N_HYDRO,PARASOL_NREFL,sglidar)
+                      (cfg,Npoints,Ncolumns,Nlevels,N_HYDRO,  &
+                                                    PARASOL_NREFL,sglidar)
       call construct_cosp_lidarstats  &
-          (cfg,Npoints,Ncolumns,vgrid%Nlvgrid,N_HYDRO,PARASOL_NREFL,stlidar)
+                      (cfg,Npoints,Ncolumns,vgrid%Nlvgrid,   &
+                                            N_HYDRO,PARASOL_NREFL,stlidar)
       call construct_cosp_isccp  &
-                               (cfg,Npoints,Ncolumns,Nlevels,isccp)
+                      (cfg,Npoints,Ncolumns,Nlevels,isccp)
       call construct_cosp_modis    &
-                                          (cfg,Npoints,Ncolumns,modis)
+                      (cfg,Npoints,Ncolumns,modis)
       call construct_cosp_misr   &
-                               (cfg,Npoints,misr)
+                      (cfg,Npoints,misr)
       call construct_cosp_rttov   &
-                                 ( cfg, Npoints,Nchannels,rttov) 
+                      ( cfg, Npoints,Nchannels,rttov) 
+
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ! Call simulator
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -569,10 +895,10 @@ type(time_type), intent(in) :: Time_diag
       fl_ccsnow = gbx%snow_cv
 #ifdef RTTOV 
       call cosp(overlap,Ncolumns,cfg,vgrid,gbx,sgx,sgradar,sglidar,  &
-                isccp,misr,modis,rttov,stradar,stlidar, sghydro, cloud_type)
+              isccp,misr,modis,rttov,stradar,stlidar, sghydro, cloud_type)
 #else
       call cosp(overlap,Ncolumns,cfg,vgrid,gbx,sgx,sgradar,sglidar,  &
-                      isccp,misr,modis,stradar,stlidar, sghydro, cloud_type)
+                    isccp,misr,modis,stradar,stlidar, sghydro, cloud_type)
 #endif
 
 !-------------------------------------------------------------------------
@@ -594,7 +920,7 @@ type(time_type), intent(in) :: Time_diag
         gbx%Reff(:,:,I_CVRAIN) =    &
                   Max(sghydro%reff(:,l,:,I_CVRAIN), gbx%Reff(:,:,I_CVRAIN))
         gbx%Reff(:,:,I_CVSNOW) =    &
-                   Max(sghydro%reff(:,l,:,I_CVSNOW), gbx%Reff(:,:,I_CVSNOW))
+                  Max(sghydro%reff(:,l,:,I_CVSNOW), gbx%Reff(:,:,I_CVSNOW))
       end do
 
 !-------------------------------------------------------------------------
@@ -612,9 +938,9 @@ type(time_type), intent(in) :: Time_diag
 !-------------------------------------------------------------------------
       call mpp_clock_begin (diags_clock)
       call output_cosp_fields (nlon, nlat, npoints, geomode, stlidar, &
-                               stradar, isccp, modis, misr, sgradar, &
-                               rttov, sglidar, sgx, Time_diag, is, js, &
-                               cloud_type, gbx, cfg, phalf_plus, zhalf_plus)
+                             stradar, isccp, modis, misr, sgradar, &
+                             rttov, sglidar, sgx, Time_diag, is, js, &
+                             cloud_type, gbx, cfg, phalf_plus, zhalf_plus)
       call mpp_clock_end   (diags_clock)
 
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -634,7 +960,7 @@ type(time_type), intent(in) :: Time_diag
       call free_cosp_vgrid(vgrid)  
 
  
-end subroutine cosp_driver
+end subroutine cosp_driver2
 
 !#####################################################################
 

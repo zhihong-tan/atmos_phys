@@ -1,25 +1,26 @@
-module strat_cloud_utilities_mod
+                    module lscloud_types_mod
 
-use  fms_mod,             only : write_version_number
+use  fms_mod,        only : write_version_number
 use  atmos_cmip_diag_mod, only : cmip_diag_id_type
 
-IMPLICIT NONE
-PRIVATE
+implicit none
+private
 
 !-------------------------------------------------------------------------
 !--interfaces-------------------------------------------------------------
 
-public strat_cloud_utilities_init
+public lscloud_types_init
 
-PUBLIC diag_id_type, diag_pt_type, strat_nml_type,  &
-       atmos_state_type, particles_type, cloud_state_type, &
-       precip_state_type, cloud_processes_type, strat_constants_type
+public diag_id_type, diag_pt_type, lscloud_debug_type, &
+       lscloud_nml_type, atmos_state_type, particles_type,   &
+       cloud_state_type, precip_state_type, cloud_processes_type,    & 
+       lsc_constants_type
 
 !----------------------------------------------------------------------
 !----version number----------------------------------------------------
 
-Character(len=128) :: Version = '$Id$'
-Character(len=128) :: Tagname = '$Name$'
+Character(len=128) :: Version = '$Id:  $'
+Character(len=128) :: Tagname = '$Name: $'
 
 logical  :: module_is_initialized = .false.
 
@@ -64,12 +65,12 @@ TYPE diag_id_type
 
   integer :: droplets_col250, gb_droplets_col, potential_droplets, &
              droplets, droplets_wtd, ql_wt, droplets_col, rvolume
-  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg, &
+  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg,  qndt_rime, &  !h1g, 2014-07-24
              qndt_destr, qndt_super, qndt_freez, qndt_sacws, qndt_sacws_o, &
              qndt_eros, qndt_pra, qndt_auto, qndt_nucclim, qndt_sedi, &
              qndt_melt, qndt_ihom, qndt_size_adj, qndt_fill2,   &
              qndt_contact_frz, qndt_cleanup, qndt_cleanup2, SN_imb
-  integer :: SN2d, qn_cond_col, qn_evap_col, qn_fill_col, qn_berg_col,  &
+  integer :: SN2d, qn_cond_col, qn_evap_col, qn_fill_col, qn_berg_col, qn_rime_col, & !h1g, 2014-07-24
              qn_destr_col, qn_super_col, qn_freez_col, qn_sacws_col,  &
              qn_sacws_o_col, qn_eros_col, qn_pra_col, qn_auto_col,    &
              qn_nucclim_col, qn_sedi_col, qn_melt_col, qn_ihom_col,  &
@@ -106,14 +107,14 @@ TYPE diag_id_type
              rain_evap, rain_freeze, srfrain_accrs, srfrain_freez,  &
              srfrain_evap, rain_evap_col, rain_freeze_col,  &
              srfrain_accrs_col, srfrain_freez_col, srfrain_evap_col, &
-             rain_mass_conv, rain_imb, rain_imb_col, cld_liq_imb,  &
+             rain_mass_conv, rain_imb,               cld_liq_imb,  &
              cld_liq_imb_col, neg_rain, qrout_col
 
 !  snow diagnostics
 
   integer :: snow3d, qsout, snow_clr, snow_cld, a_snow_clr, a_snow_cld, &
              snow_melt, snow_melt_col, snow_mass_conv, sedi_ice, snow_imb, &
-             snow_imb_col, cld_ice_imb, cld_ice_imb_col, neg_snow, qsout_col
+                           cld_ice_imb, cld_ice_imb_col, neg_snow, qsout_col
              
 
 !  total precip diagnostics
@@ -179,7 +180,7 @@ TYPE diag_pt_type
 
   integer :: droplets_col250, gb_droplets_col, potential_droplets, &
              droplets, droplets_wtd, ql_wt, droplets_col, rvolume
-  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg, &
+  integer :: SN3d, qndt_cond , qndt_evap, qndt_fill, qndt_berg, qndt_rime, &  !h1g, 2014-07-24
              qndt_destr, qndt_super, qndt_freez, qndt_sacws, qndt_sacws_o, &
              qndt_eros, qndt_pra, qndt_auto, qndt_nucclim, qndt_sedi, &
              qndt_melt, qndt_ihom, qndt_size_adj, qndt_fill2,   &
@@ -241,42 +242,56 @@ END TYPE diag_pt_type
 
 !#########################################################################
 
-type strat_nml_type
+type lscloud_debug_type
 
-!-------------------------------------------------------------------------
-!    see strat_nml.h for a description of these variables.
-!-------------------------------------------------------------------------
+!-----------------------------------------------------------------------
+!    variables related to debugging options.
+!-----------------------------------------------------------------------
+! otun               ! file where debug output is written
+! debugo  
+! debugo0 = .false.  ! small output
+! debugo4 = .false.  ! when true, nrefuse will be output
+! ncall   = 1        ! timestep counter of calls to strat_cloud
+! nrefuse
+! isamp
+! jsamp
+! ksamp
+!-----------------------------------------------------------------------
 
-  real    :: U00, rthresh, var_limit, sea_salt_scale,         &
-             om_to_oc,  N_land, N_ocean, U_evap, U_evap_snow, eros_scale,  &!miz
-             eros_scale_c, eros_scale_t, mc_thresh,           &
-             diff_thresh, qmin, Dmin, efact, vfact, cfact,    &
-             iwc_crit,  vfall_const2, vfall_exp2,             &
-             qthalfwidth, N_min, num_mass_ratio1,             &
-             num_mass_ratio2, qcvar
 
-  logical :: do_netcdf_restart, u00_profile, use_kk_auto,     &
-             use_online_aerosol, use_sub_seasalt, include_neg_mc, & !miz
-             eros_choice, super_choice, tracer_advec,         &
-             do_old_snowmelt, retain_cm3_bug, do_pdf_clouds,  &
-             Single_Gaussion_pdf,  do_liq_num,                &
-             do_dust_berg, pdf_org, do_ice_nucl_wpdf, debugo, &
-             mass_cons, do_hallet_mossop, activate_all_ice_always
+ integer :: otun
+ integer :: ncall
+ integer :: isamp
+ integer :: jsamp
+ integer :: ksamp
+ integer :: nrefuse
+ logical :: debugo
+ logical :: debugo0
+ logical :: debugo4
+ integer :: num_strat_pts
+ integer, dimension(:,:), pointer :: strat_pts=>NULL()
 
-  integer :: num_strat_pts, betaP, nsublevels, kmap, kord,    &
-             super_ice_opt, isamp, jsamp, ksamp
+end type lscloud_debug_type
 
-!-->cjg
-  integer :: var_limit_opt, up_strat_opt
-!<--cjg
+!#########################################################################
 
-  character(len=64)                :: microphys_scheme, &
-                                      macrophys_scheme, &
-                                      aerosol_activation_scheme
+type lscloud_nml_type
 
-  integer, dimension(:,:), pointer :: strat_pts=>NULL()
+  logical :: do_legacy_strat_cloud
+  real    :: Dmin
+  real    :: cfact
+  integer :: super_ice_opt
+  logical :: do_ice_nucl_wpdf
+  logical :: do_dust_berg
+  logical :: do_pdf_clouds
+  logical :: pdf_org
+  integer :: betaP 
+  real :: qthalfwidth 
+  integer :: nsublevels 
+  integer :: kmap
+  integer :: kord
 
-end type strat_nml_type
+end type lscloud_nml_type
 
 
 !#########################################################################
@@ -292,17 +307,6 @@ type atmos_state_type
 !       U_ca           grid box relative humidity      fraction
 
   real, dimension(:,:,:), pointer ::  &
-                                        pfull          =>NULL(), &
-                                        phalf          =>NULL(), &
-                                        zhalf          =>NULL(), &
-                                        zfull          =>NULL(), &
-                                        radturbten2    =>NULL(), &
-                                        T_in           =>NULL(), &
-                                        qv_in          =>NULL(), &
-                                        omega          =>NULL(), &
-                                        Mc             =>NULL(), &
-                                        diff_t         =>NULL(), &
-                                        qrat           =>NULL(), &
                                         airdens        =>NULL(), &
                                         tn             =>NULL(), & 
                                         qvn            =>NULL(), &
@@ -315,10 +319,9 @@ type atmos_state_type
                                         gamma          =>NULL(), &
                                         esat0          =>NULL(), &
                                         U_ca           =>NULL(), &
-                                        ahuco          =>NULL(), &
                                         delp           =>NULL(), &
                                         U01            =>NULL(), &
-                                        deltpg         =>NULL()
+                                        pthickness     =>NULL()
 
 end type atmos_state_type
 
@@ -329,14 +332,22 @@ type  particles_type
 
 ! drop1           number conc                     [1/cm^3]
 ! drop2           mass concentration              [1/kg]
+
   real, dimension(:,:,:), pointer ::  &
                                         concen_dust_sub=>NULL(), &
                                         drop1          =>NULL(), &
                                         drop2          =>NULL(), &
                                         crystal1       =>NULL(), &
+                                        N3D            =>NULL(), &
+                                        N3Di           =>NULL(), &
+                                        Ndrop_act_CLUBB =>NULL(), &
+                                        icedrop_act_CLUBB =>NULL(), &
                                         rbar_dust      =>NULL(), &
                                         ndust          =>NULL(), &
                                         hom            =>NULL()
+  real, dimension(:,:,:,:), pointer ::  &
+                                        imass1         => NULL(), &
+                                        totalmass1     => NULL()
 
 end type particles_type 
 
@@ -384,7 +395,9 @@ type cloud_state_type
                                         SN_out         =>NULL(), &
                                         SNi_out        =>NULL(), &
                                         SA_0           =>NULL(), &
-                                        qa_upd_0       =>NULL()
+                                        qa_upd_0       =>NULL(), &
+                                        relvarn        =>NULL(), &
+                                        qcvar_clubb    =>NULL()
 
 end type cloud_state_type
  
@@ -400,12 +413,11 @@ type precip_state_type
                                         lsc_rain_size  =>NULL(), &
 !rain and snow mixing ratios from the Morrison scheme (kg/kg) :
                                         qrout3d_mg     =>NULL(), &
-                                        qsout3d_mg     =>NULL(), &
-                                        rain3d         =>NULL(), &
-                                        snow3d         =>NULL(), &
-                                        snowclr3d      =>NULL()
+                                        qsout3d_mg     =>NULL()
 
   real, dimension(:,:), pointer   ::   &
+       
+                                        precip         =>NULL(), &
                                         surfrain       =>NULL(), &
                                         surfsnow       =>NULL()
              
@@ -442,6 +454,7 @@ type cloud_processes_type
                                         qvg            =>NULL(), &
                                         dcond_ls       =>NULL(), &
                                         dcond_ls_ice   =>NULL(), &
+                                        dcond_ls_liquid   =>NULL(), &
                                         dcond_ls_tot   =>NULL(), &
                                         delta_cf       =>NULL(), &
                                         f_snow_berg    =>NULL()
@@ -449,34 +462,35 @@ type cloud_processes_type
 end type cloud_processes_type
 
 
+
 !##########################################################################
 
-type strat_constants_type
+type lsc_constants_type
 
-!       inv_dtcloud   inverse of model timestep [ sec (-1) ]
-  real, dimension(:,:,:), pointer :: mask=>NULL()
-  real                            :: dtcloud, inv_dtcloud
-  integer                         :: overlap
-  logical                         :: limit_conv_cloud_frac,      &
-                                     mask_present,               &
+  logical                         ::                             &
                                      do_rk_microphys,            &
                                      do_mg_microphys,            &       
                                      do_mg_ncar_microphys,       &
                                      do_ncar_microphys,          &
+                                     do_lin_cld_microphys,       &
                                      tiedtke_macrophysics,       &
                                      dqa_activation,             &
-                                     total_activation,           &
-                                     do_predicted_ice_number
+                                     total_activation               
 
-end type strat_constants_type
-
-
-!#########################################################################
+end type lsc_constants_type
 
 
-CONTAINS
 
-subroutine strat_cloud_utilities_init
+                             CONTAINS
+
+
+
+
+!########################################################################
+
+subroutine lscloud_types_init
+
+!------------------------------------------------------------------------
 
       if (module_is_initialized) return
 
@@ -492,11 +506,12 @@ subroutine strat_cloud_utilities_init
 
 !------------------------------------------------------------------------
 
-end subroutine strat_cloud_utilities_init
+end subroutine lscloud_types_init
 
 
 
 !########################################################################
 
 
-end module strat_cloud_utilities_mod
+
+                    end module lscloud_types_mod

@@ -391,6 +391,7 @@ contains
     else
        fdrsat  = 0.
     end if
+
     fdrsat  = max(fdrsat, cpn%frac_drs)
     fdrsat  = fdrsat*cpn%frac_dr0
 

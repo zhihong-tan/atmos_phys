@@ -25,6 +25,8 @@ use            fms_mod, only: open_namelist_file, file_exist,   &
                               WARNING, mpp_pe, mpp_root_pe, &
                               write_version_number, stdlog
 use      constants_mod, only: DENS_H2O, RDGAS, TFREEZE, pi
+use physics_radiation_exch_mod, only:    &
+                              exchange_control_type
 
 use cloudrad_types_mod, only: cld_specification_type, &
                               microphysics_type,  &
@@ -61,11 +63,11 @@ public          &
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-logical   :: dummy = .true.
+logical   :: preserve_inconsistency = .false.
 
 
 namelist /uw_clouds_W_nml /     &
-                                     dummy                          
+                            preserve_inconsistency
 
 
 !----------------------------------------------------------------------
@@ -77,13 +79,20 @@ namelist /uw_clouds_W_nml /     &
 
 real, parameter :: K_LAND  = 1.143
 real, parameter :: K_OCEAN = 1.077
-real, parameter :: N_LAND  = 250.E+06
-real, parameter :: N_OCEAN = 100.E+06
-real, parameter :: N_MIN   = 1.0e06
-real, parameter :: QMIN    = 1.0e-10
 real, parameter :: QAMIN   = 1.0e-2
 
-  logical :: module_is_initialized = .false.
+real, parameter :: N_LAND_ORIG  = 250.E+06
+real, parameter :: N_OCEAN_ORIG = 100.E+06
+real, parameter :: N_MIN_ORIG   = 1.0e06
+real, parameter :: QMIN_ORIG    = 1.0e-10
+
+
+real :: N_LAND, N_ocean, N_min, qmin
+
+logical :: module_is_initialized = .false.
+
+
+
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 
@@ -124,16 +133,14 @@ contains
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine uw_clouds_W_init  (pref, lonb, latb, axes, Time)
+subroutine uw_clouds_W_init  (Exch_ctrl)
 
-real, dimension(:,:),  intent(in) :: pref
-real, dimension(:,:),  intent(in) :: lonb, latb
-integer, dimension(4), intent(in) :: axes
-type(time_type),       intent(in) :: Time
+type(exchange_control_type), intent(in) :: Exch_ctrl
 
       integer            :: unit, ierr, io, logunit
 
-     if (module_is_initialized) return
+      if (module_is_initialized) return
+
 !---------------------------------------------------------------------
 !-----  read namelist  ------
 !---------------------------------------------------------------------
@@ -157,9 +164,21 @@ type(time_type),       intent(in) :: Time
          write (logunit,nml=uw_clouds_W_nml)
       endif
 
+      if (preserve_inconsistency) then
+        N_land = N_LAND_ORIG
+        N_ocean = N_OCEAN_ORIG
+        N_min = N_MIN_ORIG
+        qmin = QMIN_ORIG
+      else
+        N_land = Exch_ctrl%N_land
+        N_ocean = Exch_ctrl%N_ocean
+        N_min = Exch_ctrl%N_min
+        qmin = Exch_ctrl%qmin
+      endif
+
 !---------------------------------------------------------------------
 
-       module_is_initialized = .true.
+      module_is_initialized = .true.
 
 
 end subroutine uw_clouds_W_init
@@ -328,43 +347,44 @@ type(microphysics_type),     intent(inout) :: Shallow_microphys
 !    use formula as in cloud_rad_mod.
 !----------------------------------------------------------------------
       if (Cldrad_control%do_liq_num) then
-      do k=1,kx
-        do j=1,jx
-          do i=1,ix
-            if (liq_local(i,j,k) > QMIN) then
-              Shallow_microphys%size_drop(i,j,k)  =  2.0* &
+        do k=1,kx
+          do j=1,jx
+            do i=1,ix
+              if (liq_local(i,j,k) > QMIN) then
+                Shallow_microphys%size_drop(i,j,k)  =  2.0* &
                        (k_ratio(i,j)*620350.49*(liq_local(i,j,k)/DENS_H2O/ &
                        MAX(shallow_droplet_number(i,j,k), N_MIN*   &
                                max(area_local(i,j,k), QAMIN)/ &
                        (pfull(i,j,k)/RDGAS/tkel(i,j,k))))**(1./3.) )
-            else
-              Shallow_microphys%size_drop(i,j,k)  =  0.0 
-            endif
+              else
+                Shallow_microphys%size_drop(i,j,k)  =  0.0 
+              endif
+            end do
           end do
         end do
-      end do
-      Shallow_microphys%droplet_number = shallow_droplet_number
+        Shallow_microphys%droplet_number = shallow_droplet_number
       else
+
 !----------------------------------------------------------------------
 !  case of non-prognostic droplet number
 !----------------------------------------------------------------------
-      do k=1,kx
-        do j=1,jx
-          do i=1,ix
-            if (liq_local(i,j,k) > QMIN) then
-              Shallow_microphys%size_drop(i,j,k)  =    &
+        do k=1,kx
+          do j=1,jx
+            do i=1,ix
+              if (liq_local(i,j,k) > QMIN) then
+                Shallow_microphys%size_drop(i,j,k)  =    &
                  2.0* k_ratio(i,j)*620350.49*(pfull(i,j,k)*  &
                  shallow_liquid(i,j,k)/area_local(i,j,k)/RDGAS/  &
                  tkel(i,j,k)/DENS_H2O/ndrops(i,j))**(1./3.)
-            else
-              Shallow_microphys%size_drop(i,j,k)  =  0.0 
-            endif
+              else
+                Shallow_microphys%size_drop(i,j,k)  =  0.0 
+              endif
               Shallow_microphys%droplet_number(i,j,k) =   &
                                         ndrops(i,j)/(pfull(i,j,k)/  &
                                                     (RDGAS*tkel(i,j,k)))
+            end do
           end do
         end do
-      end do
       endif
 
 !--------------------------------------------------------------------
