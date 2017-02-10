@@ -989,7 +989,7 @@ logical,                         intent(in), optional :: &
       call uw_params_init_k (Param%hlv, Param%hls, Param%hlf, &
           Param%cp_air, Param%grav, Param%kappa, Param%rdgas,  &
           Param%ref_press, Param%d622,Param%d608, Param%kelvin -160., & 
-          Param%kelvin + 100. , me, root_pe, Uw_p)
+          Param%kelvin + 100. , 20., me, root_pe, Uw_p)
 
 
       call exn_init_k (Uw_p)
