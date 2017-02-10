@@ -542,7 +542,8 @@ integer, dimension(:), allocatable :: id_tracer_phys,         &
                                       id_tracer_phys_turb,    &
                                       id_tracer_phys_moist
 
-type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp
+type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp, &
+                           ID_pfull, ID_phalf
 
 type (clouds_from_moist_block_type) :: Restart
 
@@ -1244,6 +1245,15 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
          'temperature tendency from physics ', &
          'K/s', missing_value=missing_value)
 
+     !-------- CMIP diagnostics --------
+      ID_pfull = register_cmip_diag_field_3d ( mod_name, 'pfull', Time, &
+                                     'Pressure on Model Levels', 'Pa', &
+                                      standard_name = 'air_pressure')
+
+      ID_phalf = register_cmip_diag_field_3d ( mod_name, 'phalf', Time, &
+                                'Pressure on Model Half-Levels', 'Pa', &
+                              standard_name='air_pressure', axis='half')
+
      !-------- CMIP diagnostics (tendencies due to physics) --------
       ID_tntmp = register_cmip_diag_field_3d ( mod_name, 'tntmp', Time, &
                   'Tendency of Air Temperature due to Model Physics', 'K s-1', & 
@@ -1834,6 +1844,19 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !---------------------------------------------------------------------
       call get_time (Time_next - Time_prev, sec, day)
       dt = real(sec + day*86400)
+
+!---------------------------------------------------------------------
+!     save cmip diagnostics
+!---------------------------------------------------------------------
+      if (query_cmip_diag_id(ID_pfull)) then
+         used = send_cmip_data_3d (ID_pfull, p_full, Time_next, is, js, 1)
+      endif
+
+      if (query_cmip_diag_id(ID_phalf)) then
+         used = send_cmip_data_3d (ID_phalf, p_half, Time_next, is, js, 1)
+      endif
+
+!---------------------------------------------------------------------
 
 !rab      if(do_grey_radiation) then !rif:(09/10/09) 
 !rab        call grey_radiation(is, js, Time, Time_next, lat, lon, phalfgrey, albedo, t_surf_rad, t, tdt, flux_sw, flux_lw)

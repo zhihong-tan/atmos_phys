@@ -75,7 +75,8 @@ use atmos_dust_mod,       only : atmos_dust_init, dust_tracers,   &
                                  atmos_dust_wetdep_flux_set
 use atmos_sea_salt_mod,   only : atmos_sea_salt_init, seasalt_tracers,  &
                                  n_seasalt_tracers,do_seasalt
-use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_2d, &
+                                 register_cmip_diag_field_3d, &
                                  send_cmip_data_3d, &
                                  cmip_diag_id_type, &
                                  query_cmip_diag_id
@@ -207,8 +208,6 @@ integer ::   &
 
 integer :: id_prsn, id_pr, id_prw, id_prrc, id_prra, id_prsnc, &
       id_clt,  id_clwvi, id_clivi
-
-integer :: area_id
 
 integer :: id_max_enthalpy_imbal, id_max_water_imbal
 integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
@@ -526,20 +525,11 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
 !                         Removal_mp%control, lonb, latb, pref)
                           Removal_mp_control, lonb, latb, pref)
 
-!--------------------------------------------------------------------
-!    retrieve the diag_manager id for the area diagnostic, needed for
-!    cmorizing various diagnostics.
-!--------------------------------------------------------------------
-      area_id = get_diag_field_id ('dynamics', 'area')
-      if (area_id .eq. DIAG_FIELD_NOT_FOUND) call error_mesg &
-         ('moist_processes_init',   &
-           'diagnostic field "dynamics", "area" is not in the diag_table',&
-                                                                    NOTE)
 !-----------------------------------------------------------------------
 !    call lscloud_driver_init to initialize the large-scale cloud scheme.
 !-----------------------------------------------------------------------
       call lscloud_driver_init (id,jd,kd, axes, Time, Exch_ctrl, Nml_mp, &
-                                 Physics_control, lon, lat, phalf, pref,area_id)
+                                 Physics_control, lon, lat, phalf, pref)
  
 !-----------------------------------------------------------------------
 !   initialize quantities for diagnostics output 
@@ -2162,20 +2152,15 @@ integer                     :: id_wetdep_cmip
         'Frozen precip rate from all sources',       'kg(h2o)/m2/s', &
                               interp_method = "conserve_order1" )
 
-      id_prra  = register_diag_field ( mod_name, 'prra', axes(1:2), Time, &
-        'Rainfall Rate', 'kg m-2 s-1', &
-        standard_name = 'rainfall_flux', &
-        area=area_id, missing_value = CMOR_MISSING_VALUE, &
-        interp_method = "conserve_order1" )
+      id_prra  = register_cmip_diag_field_2d ( mod_name, 'prra', Time, &
+                                        'Rainfall Rate', 'kg m-2 s-1', &
+                                      standard_name = 'rainfall_flux', &
+                                     interp_method = "conserve_order1" )
 
-      id_prsn  = register_diag_field ( mod_name, &
-        'prsn', axes(1:2), Time, &
-        'Snowfall Flux',       'kg m-2 s-1', &
-        standard_name = 'snowfall_flux', &
-        area=area_id, &
-        missing_value = CMOR_MISSING_VALUE, &
-        interp_method = "conserve_order1" )
-
+      id_prsn  = register_cmip_diag_field_2d ( mod_name, 'prsn', Time, &
+                                        'Snowfall Flux', 'kg m-2 s-1', &
+                                      standard_name = 'snowfall_flux', &
+                                     interp_method = "conserve_order1" )
 
 
       id_max_enthalpy_imbal    = register_diag_field    &
@@ -2201,24 +2186,18 @@ integer                     :: id_wetdep_cmip
         'Total precipitation rate',                     'kg/m2/s', &
                                       interp_method = "conserve_order1" )
 
-      id_pr = register_diag_field ( mod_name, &
-        'pr', axes(1:2), Time, &
-        'Precipitation',  'kg m-2 s-1', &
-        standard_name='precipitation_flux', &
-        area=area_id, &
-        missing_value = CMOR_MISSING_VALUE, &
-        interp_method = "conserve_order1" )
+      id_pr = register_cmip_diag_field_2d ( mod_name, 'pr', Time, &
+                                  'Precipitation',  'kg m-2 s-1', &
+                              standard_name='precipitation_flux', &
+                                interp_method = "conserve_order1" )
 
       id_WVP = register_diag_field ( mod_name, &
         'WVP', axes(1:2), Time, &
         'Column integrated water vapor',                'kg/m2'  )
 
-      id_prw = register_diag_field ( mod_name, &
-        'prw', axes(1:2), Time, &
-        'Water Vapor Path',                'kg m-2', &
-        standard_name = 'atmosphere_water_vapor_content', &
-        area=area_id, &
-        missing_value = CMOR_MISSING_VALUE)
+      id_prw = register_cmip_diag_field_2d ( mod_name, 'prw', Time, &
+                                      'Water Vapor Path', 'kg m-2', &
+                   standard_name = 'atmosphere_water_vapor_content' )
 
 !-----------------------------------------------------------------------
 !    the following diagnostics only available with prognostic large-scale
@@ -2233,12 +2212,9 @@ integer                     :: id_wetdep_cmip
               (mod_name, 'cld_amt_2d', axes(1:2), Time, &
                 'total cloud amount', 'percent')
 
-        id_clt = register_diag_field    &
-          (mod_name, 'clt', axes(1:2), Time, &
-          'Cloud Area Fraction', '%',  &
-          standard_name= 'cloud_area_fraction_in_atmosphere_layer', &
-          area=area_id, &
-          missing_value = CMOR_MISSING_VALUE)
+        id_clt = register_cmip_diag_field_2d (mod_name, 'clt', Time, &
+                                         'Cloud Area Fraction', '%', &
+            standard_name= 'cloud_area_fraction_in_atmosphere_layer' )
 
         id_tot_cloud_area = register_diag_field ( mod_name, &
           'tot_cloud_area', axes(1:3), Time, &
@@ -2308,11 +2284,9 @@ integer                     :: id_wetdep_cmip
           'WP_all_clouds', axes(1:2), Time, &
           'Total  water path -- all clouds + ls precip',        'kg/m2'   )
 
-        id_clwvi = register_diag_field ( mod_name, &
-          'clwvi', axes(1:2), Time, &
-          'Condensed Water Path',        'kg m-2', &
-          standard_name = 'atmosphere_cloud_condensed_water_content', &
-          area=area_id, missing_value=CMOR_MISSING_VALUE   )
+        id_clwvi = register_diag_field ( mod_name, 'clwvi', Time, &
+                                'Condensed Water Path', 'kg m-2', &
+         standard_name='atmosphere_cloud_condensed_water_content' )
 
         id_LWP_all_clouds = register_diag_field ( mod_name, &
           'LWP_all_clouds', axes(1:2), Time, &
@@ -2322,11 +2296,9 @@ integer                     :: id_wetdep_cmip
           'IWP_all_clouds', axes(1:2), Time, &
           'Ice water path -- all clouds + ls snow',           'kg/m2'   )
 
-        id_clivi = register_diag_field ( mod_name, &
-          'clivi', axes(1:2), Time, &
-          'Ice Water Path',              'kg m-2', &
-          standard_name='atmosphere_cloud_ice_content', &
-          area=area_id, missing_value=CMOR_MISSING_VALUE   )
+        id_clivi = register_diag_field ( mod_name, 'clivi', Time, &
+                                      'Ice Water Path', 'kg m-2', &
+                     standard_name='atmosphere_cloud_ice_content' )
 
       endif
 
@@ -2412,10 +2384,9 @@ integer                     :: id_wetdep_cmip
           id_wetnh4_cmip = 0; cycle  ! skip when tracers are not in field table
         endif
 
-        id_wetdep_cmip = register_diag_field ( mod_name, 'wet'//TRIM(cmip_names(ic)), axes(1:2), Time,  &
-                     'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition', &
-                     area=area_id, missing_value=CMOR_MISSING_VALUE)
+        id_wetdep_cmip = register_cmip_diag_field_2d ( mod_name, 'wet'//TRIM(cmip_names(ic)), Time,  &
+                                  'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
+                    standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition' )
         if (TRIM(cmip_names(ic)) .eq. 'poa'  ) id_wetpoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'soa'  ) id_wetsoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'bc'   ) id_wetbc_cmip   = id_wetdep_cmip

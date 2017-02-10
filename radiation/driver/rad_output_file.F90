@@ -173,10 +173,9 @@ integer                            :: id_radswp, id_radp, id_temp, &
                                       id_dphalf, id_dpflux, &
                                       id_ptop
 
-type(cmip_diag_id_type)  :: ID_tro3, ID_ec550aer, ID_concso4, ID_concsoa
+type(cmip_diag_id_type)  :: ID_o3, ID_ec550aer, ID_concso4, ID_concsoa
 integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, &
                             id_od550aer, id_od550lt1aer, id_abs550aer, id_od870aer
-type(cmip_diag_id_type)  :: ID_pfull, ID_phalf
 
 ! cmip names for select tracer families
 ! also partial long_names and standard_names
@@ -989,16 +988,6 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
           used = send_data (id_phalfm, phalf, Time_diag, is, js, 1)
         endif
 
-       !---- cmip named diagnostics ----
-        if (query_cmip_diag_id(ID_pfull)) then
-          used = send_cmip_data_3d (ID_pfull, press, Time_diag, is, js, 1)
-        endif
-
-        if (query_cmip_diag_id(ID_phalf)) then
-          used = send_cmip_data_3d (ID_phalf, phalf, Time_diag, is, js, 1)
-        endif
-       !----
- 
         if (id_pfluxm > 0 ) then
           used = send_data (id_pfluxm, pflux, Time_diag, is, js, 1)
         endif
@@ -1033,8 +1022,8 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
         !--- save 3D cmip fields
         !--- need log(phalf) for pressure interpolation (what if ptop=0)
         !--- if more fields are added then compute log(phalf) once in the code
-        if (query_cmip_diag_id(ID_tro3)) then
-          used = send_cmip_data_3d (ID_tro3, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1, phalf=log(phalf))
+        if (query_cmip_diag_id(ID_o3)) then
+          used = send_cmip_data_3d (ID_o3, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1, phalf=log(phalf))
         endif
         !---
 
@@ -1564,16 +1553,6 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                            'model interface level pressure', &
                            'Pa', missing_value=missing_value)
 
-     !---- cmip named diagnostics ----
-      ID_pfull = register_cmip_diag_field_3d (mod_name, 'pfull', Time, &
-                                     'Pressure on Model Levels', 'Pa', &
-                                      standard_name = 'air_pressure')
-
-      ID_phalf = register_cmip_diag_field_3d (mod_name, 'phalf', Time, &
-                                'Pressure on Model Half-Levels', 'Pa', &
-                              standard_name='air_pressure', axis="half")
-     !----
-
       id_pfluxm  = &
           register_diag_field (mod_name, 'pfluxm', bxes(1:3), Time, &
                            'radiation flux level pressures', &
@@ -1625,7 +1604,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                           'ozone mole fraction', &
                           '1.e-9', missing_value=missing_value)
 
-      ID_tro3    = register_cmip_diag_field_3d (mod_name, 'tro3', Time, &
+      ID_o3    = register_cmip_diag_field_3d (mod_name, 'o3', Time, &
                           'Mole Fraction of O3', '1e-09', &
                         standard_name = 'mole_fraction_of_ozone_in_air')
               
