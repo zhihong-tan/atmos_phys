@@ -90,7 +90,8 @@ use diag_axis_mod,         only: get_axis_num
 use atmos_global_diag_mod, only: register_global_diag_field, &
                                  buffer_global_diag, &
                                  send_global_diag
-use atmos_cmip_diag_mod,   only: register_cmip_diag_field_3d, &
+use atmos_cmip_diag_mod,   only: register_cmip_diag_field_2d, &
+                                 register_cmip_diag_field_3d, &
                                  send_cmip_data_3d, &
                                  cmip_diag_id_type, &
                                  query_cmip_diag_id
