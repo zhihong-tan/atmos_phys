@@ -542,7 +542,7 @@ integer, dimension(:), allocatable :: id_tracer_phys,         &
                                       id_tracer_phys_turb,    &
                                       id_tracer_phys_moist
 
-type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp &
+type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp, &
                            ID_pfull, ID_phalf
 
 type (clouds_from_moist_block_type) :: Restart

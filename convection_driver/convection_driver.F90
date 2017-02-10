@@ -162,8 +162,6 @@ real               :: conv_frac_max = 0.99
 logical            :: remain_detrain_bug = .false.
 logical            :: keep_icenum_detrain_bug = .false.
 
-logical :: use_cf_metadata = .false.
-
 namelist /convection_driver_nml/    &
               do_limit_donner, do_limit_uw, &
               do_unified_convective_closure, &
@@ -173,8 +171,7 @@ namelist /convection_driver_nml/    &
               only_one_conv_scheme_per_column,  do_cmt, &
               force_donner_moist_conserv, do_donner_conservation_checks, &
               do_donner_mca, using_fms, detrain_liq_num, detrain_ice_num, &
-              conv_frac_max, remain_detrain_bug, keep_icenum_detrain_bug, &
-              use_cf_metadata
+              conv_frac_max, remain_detrain_bug, keep_icenum_detrain_bug
 
 
 !-------------------- clock definitions --------------------------------
