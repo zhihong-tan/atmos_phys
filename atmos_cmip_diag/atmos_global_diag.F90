@@ -156,10 +156,10 @@ end subroutine atmos_global_diag_init
 !#######################################################################
 
 function register_global_diag_field (field_name, Time_init, long_name, &
-                                     units, standard_name, buffer, use_masking )
+                                     units, standard_name, realm, buffer, use_masking )
 character(len=*), intent(in) :: field_name
 type(time_type),  intent(in) :: Time_init
-character(len=*), intent(in), optional :: long_name, units, standard_name
+character(len=*), intent(in), optional :: long_name, units, standard_name, realm
 logical,          intent(in), optional :: buffer, use_masking
 
 !-----------------------------------------------------------------------
@@ -181,7 +181,8 @@ integer :: field_index, field_id
 
   ! register field with diag_manager
   field_id = register_diag_field (mod_name, field_name, Time_init, &
-                                  long_name, units, standard_name=standard_name)
+                                  long_name, units, standard_name=standard_name, &
+                                  realm=realm)
   if (field_id == DIAG_FIELD_NOT_FOUND) return
 
   ! register field with this module
