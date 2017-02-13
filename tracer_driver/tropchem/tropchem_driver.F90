@@ -115,6 +115,13 @@ use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
                       CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
+
+use atmos_cmip_diag_mod,   only : register_cmip_diag_field_3d, &
+                                  register_cmip_diag_field_2d, &
+                                  send_cmip_data_3d, &
+                                  cmip_diag_id_type, &
+                                  query_cmip_diag_id
+
 implicit none
 
 private
@@ -305,6 +312,10 @@ character(len=7), parameter :: module_name = 'tracers'
 real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
                    m2_to_cm2  = 1.e4,     & !conversion factor (cm2/m2)
                    twopi      = 2.*PI
+
+real, parameter :: mw_so4     = 96e-3 !kg/mol
+integer         :: nso4
+
 real, parameter :: emis_cons = WTMAIR * g_to_kg * m2_to_cm2 / AVOGNO
 logical, dimension(pcnstm1) :: has_emis = .false., &      ! does tracer have surface emissions?
                                has_emis3d = .false., &    ! does tracer have 3-D emissions?
@@ -354,6 +365,10 @@ integer :: inqa, inql, inqi !index of the three water species(nqa, nql, nqi)
 integer :: age_ndx ! index of age tracer
 logical :: module_is_initialized=.false.
 logical :: use_lsc_in_fastjx
+
+!cmip6 diagnostics
+type(cmip_diag_id_type) :: ID_pso4_aq_kg_m2_s, ID_pso4_gas_kg_m2_s
+
 
 integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_emis, id_emis3d, id_xactive_emis, &
@@ -1229,6 +1244,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       used = send_data(id_pso4_o3,trop_diag_array(:,:,:,trop_diag%ind_pso4_o3)*pwt(:,:,:)/(WTMAIR*1e-3), &
            Time_next,is_in=is,js_in=js)
    end if  
+
+   if (query_cmip_diag_id(ID_pso4_gas_kg_m2_s)) then
+      used = send_cmip_data_3d (ID_pso4_gas_kg_m2_s,  &
+           mw_so4 * prod(:,:,:,nso4)*pwt(:,:,:)/(WTMAIR*1e-3), &
+           Time_next, is_in=is, js_in=js, ks_in=1)         
+   end if
+   if (query_cmip_diag_id(ID_pso4_aq_kg_m2_s)) then
+      used = send_cmip_data_3d (ID_pso4_aq_kg_m2_s,  &
+           mw_so4 * (trop_diag_array(:,:,:,trop_diag%ind_pso4_o3)+ trop_diag_array(:,:,:,trop_diag%ind_pso4_h2o2))*pwt(:,:,:)/(WTMAIR*1e-3), &
+           Time_next, is_in=is, js_in=js, ks_in=1)      
+   end if
    if (id_cH>0 .and. trop_diag%ind_cH>0) then
       used = send_data(id_cH,trop_diag_array(:,:,:,trop_diag%ind_cH),Time_next,is_in=is,js_in=js)
    end if
@@ -2250,6 +2276,12 @@ end if
    id_pso4_h2o2   = register_diag_field( module_name, 'PSO4_H2O2',axes(1:3), Time, 'PSO4_H2O2','mole/m2/s')
    id_pso4_o3     = register_diag_field( module_name, 'PSO4_O3',axes(1:3), Time, 'PSO4_O3','mole/m2/s')
 
+!for cmip6
+   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, 'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
+   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (  module_name,'pso4_gas_kg_m2_s', Time,'Gas-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
+
+   nso4 = get_spc_ndx('SO4')
+
    do i=1,pcnstm1
       id_chem_tend(i) = register_diag_field( module_name, trim(tracnam(i))//'_chem_dt', axes(1:3), &
                                              Time, trim(tracnam(i))//'_chem_dt','VMR/s' )
@@ -2352,11 +2384,11 @@ end if
    end if
 
    call tropchem_types_init(trop_diag,small_value)
-   if ( id_pso4_h2o2 > 0 ) then
+   if ( query_cmip_diag_id(ID_pso4_aq_kg_m2_s) .or. id_pso4_h2o2 > 0 ) then
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_pso4_h2o2 = trop_diag%nb_diag
    end if
-   if ( id_pso4_o3 > 0 ) then
+   if ( query_cmip_diag_id(ID_pso4_aq_kg_m2_s) .or. id_pso4_o3 > 0 ) then
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_pso4_o3   = trop_diag%nb_diag
    end if

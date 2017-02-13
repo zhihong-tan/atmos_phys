@@ -453,6 +453,8 @@ real, parameter                            :: yield_soa = 0.1
           trim(bcff_emission_name(1)), is, js)
    endif
 
+   nlevel_fire=0
+
    if ( trim(bcbb_source).ne.' ') then
     nlevel_fire = 1
     alt_fire_min(:) = 0.0

@@ -103,7 +103,8 @@ use fms_mod,               only : file_exist, close_file,&
                                   mpp_clock_id, &
                                   mpp_clock_begin, &
                                   mpp_clock_end, &
-                                  CLOCK_MODULE
+                                  CLOCK_MODULE, &
+                                  uppercase
 use time_manager_mod,      only : time_type, &
                                   get_date, get_date_julian, &
                                   real_to_time_type
@@ -119,7 +120,8 @@ use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_number_tracers, &
                                   get_tracer_names,   &
                                   get_tracer_indices, &
-                                  adjust_positive_def
+                                  adjust_positive_def, &
+                                  query_method
 use field_manager_mod,     only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only :                      &
                                   dry_deposition,           &
@@ -128,7 +130,8 @@ use atmos_tracer_utilities_mod, only :                      &
                                   dry_deposition_endts,     &
                                   atmos_tracer_utilities_init, &
                                   get_rh, get_w10m, get_cldf, &
-                                  sjl_fillz
+                                  sjl_fillz, &
+                                  get_cmip_param, get_chem_param
 use constants_mod,         only : grav, WTMAIR
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
@@ -306,6 +309,7 @@ logical :: module_is_initialized = .FALSE.
 
 type(interpolate_type), allocatable :: drydep_data(:)
 
+
 integer, allocatable :: local_indices(:) 
 ! This is the array of indices for the local model. 
 ! local_indices(1) = 5 implies that the first local tracer is the fifth
@@ -322,6 +326,7 @@ integer :: id_nh4no3_cmip, id_nh4_cmip
 integer :: id_nh4no3_cmipv2, id_nh4_cmipv2
 integer :: id_so2_cmip, id_dms_cmip
 integer :: id_so2_cmipv2, id_dms_cmipv2
+integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
  type(cmip_diag_id_type) :: ID_airmass
@@ -329,6 +334,15 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
             id_drynh4, id_drybc, id_drypoa, id_drysoa
+
+!for cmip6 (f1p)
+ type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
+ integer, allocatable :: id_tracer_surf_mol_mol(:),id_tracer_surf_kg_kg(:)
+ integer, allocatable :: id_tracer_col_kg_m2(:)
+ real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:)
+ integer, allocatable :: id_tracer_ddep_kg_m2_s(:)
+
+
 !-----------------------------------------------------------------------
 type(time_type) :: Time
 
@@ -487,7 +501,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
 real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl         
-real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction
+real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 
 integer :: isulf, j, k, id, jd, kd, ntcheck
@@ -666,6 +680,11 @@ character(len=32) :: tracer_units, tracer_name
 ! liquid water calculate flux at surface due to dry deposition
 !------------------------------------------------------------------------
 !++lwh
+
+     sum_n_ddep(:,:) = 0.
+     sum_n_ox_ddep(:,:) = 0.
+     sum_n_red_ddep(:,:) = 0.
+
       do n=1,ntp
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
@@ -681,6 +700,14 @@ character(len=32) :: tracer_units, tracer_name
             if ( step_update_tracer ) then 
                tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
             end if
+            if (id_n_ddep>0) sum_n_ddep = sum_n_ddep + pwt(:,:,kd)*dsinku(:,:,n)*14./wtmair*nb_n(n)
+            if (id_n_ox_ddep>0) sum_n_ox_ddep = sum_n_ox_ddep + pwt(:,:,kd)*dsinku(:,:,n)*14./wtmair*nb_n_ox(n)
+            if (id_n_red_ddep>0) sum_n_red_ddep = sum_n_red_ddep + pwt(:,:,kd)*dsinku(:,:,n)*14./wtmair*nb_n_red(n)
+
+            if (id_tracer_ddep_kg_m2_s(n)>0) then
+               used = send_data ( id_tracer_ddep_kg_m2_s(n), dsinku(:,:,n)*pwt(:,:,kd)*conv_vmr_mmr(n), Time_next, is_in=is,js_in=js)       
+            end if
+            
          end if
       enddo
 
@@ -699,6 +726,7 @@ character(len=32) :: tracer_units, tracer_name
         0.018*1.0e03*pwt(:,:,kd)*(dsinku(:,:,nNH4NO3) + dsinku(:,:,nNH4))/WTMAIR,  &
                                               Time_next, is_in=is, js_in=js)
       endif
+
 
       !---- cmip variables ----
       if (id_dryso2 > 0) then
@@ -755,6 +783,18 @@ character(len=32) :: tracer_units, tracer_name
 !----------------------------------------------------------------------
 !   output the nh4no3 and nh4 loads.
 !----------------------------------------------------------------------
+      do n=1,ntp
+         if (id_tracer_col_kg_m2(n).gt.0) then
+            suma = 0.
+            do k=1,kd
+               suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,n) 
+            end do
+            suma(:,:) = conv_vmr_mmr(n)*suma(:,:)
+            used      = send_data (id_tracer_col_kg_m2(n), suma, Time_next, is_in=is, js_in=js)
+         end if
+      end do
+
+
       if (nNH4NO3 > 0 .and. nNH4 > 0) then
         if (id_nh4_col > 0 .or. id_loadnh4 > 0) then
           suma = 0.
@@ -843,6 +883,8 @@ character(len=32) :: tracer_units, tracer_name
      endif
 
 
+
+
      if (nNH4NO3 > 0 .and. nNH4 > 0) then
        ! concentration
        if (query_cmip_diag_id(ID_concnh4)) then
@@ -850,7 +892,7 @@ character(len=32) :: tracer_units, tracer_name
                  0.018*1.0e03*rho(:,:,:)*(tracer(:,:,:,nNH4NO3) + tracer(:,:,:,nNH4)) /WTMAIR,  &
                                    Time_next, is_in=is, js_in=js, ks_in=1)
        endif
-       ! surface concentration (lowest level)
+       ! surfatace concentration (lowest level)
        if (id_sconcnh4 > 0) then
          used = send_data (id_sconcnh4, &
              0.018*1.0e03*rho(:,:,kd)*(tracer(:,:,kd,nNH4NO3) + tracer(:,:,kd,nNH4)) /WTMAIR,  &
@@ -890,6 +932,28 @@ character(len=32) :: tracer_units, tracer_name
                                 Time_next, is_in=is, js_in=js, ks_in=1)
        endif
      endif
+
+
+     do n=1,nt
+        if ( query_cmip_diag_id(ID_tracer_mol_mol(n)) ) then
+           used = send_cmip_data_3d ( ID_tracer_mol_mol(n), tracer(:,:,:,n), &
+                Time_next, is_in=is, js_in=js, ks_in=1)           
+        end if
+        if ( id_tracer_surf_mol_mol(n) .gt. 0 ) then
+           used = send_data ( id_tracer_surf_mol_mol(n), tracer(:,:,kd,n), &
+                Time_next, is_in=is, js_in=js)           
+        end if
+        if ( query_cmip_diag_id(ID_tracer_kg_kg(n)) ) then
+           used = send_cmip_data_3d ( ID_tracer_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,:,n), &
+                Time_next, is_in=is, js_in=js, ks_in=1)           
+        end if
+        if ( id_tracer_surf_kg_kg(n) .gt. 0 ) then
+           used = send_data ( id_tracer_surf_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,kd,n), &
+                Time_next, is_in=is, js_in=js)           
+        end if
+
+     end do
+
 
 
 !------------------------------------------------------------------------
@@ -1277,6 +1341,9 @@ type(time_type), intent(in)                                :: Time
       integer :: unit, ierr, io, logunit, n
 !<f1p
       character(len=32) :: tracer_units, tracer_name
+      character(len=256) :: cmip_name,cmip_longname, cmip_longname2
+      logical :: cmip_is_aerosol
+      real    :: tracer_mw
 !>
   
 !-----------------------------------------------------------------------
@@ -1653,6 +1720,29 @@ type(time_type), intent(in)                                :: Time
       allocate( id_tracer_diag(nt) )
       id_tracer_diag(:) = 0
 
+      allocate( ID_tracer_mol_mol(nt) )
+      allocate( ID_tracer_kg_kg(nt) )
+      allocate( id_tracer_col_kg_m2(nt) )
+      allocate( id_tracer_ddep_kg_m2_s(nt) )
+      allocate( id_tracer_surf_mol_mol(nt) )
+      allocate( id_tracer_surf_kg_kg(nt) )
+
+      allocate(conv_vmr_mmr(nt))
+      conv_vmr_mmr = 1.
+      allocate(nb_N(nt))
+      allocate(nb_N_ox(nt))
+      allocate(nb_N_red(nt))
+
+      id_n_ox_ddep =  register_cmip_diag_field_2d ( mod_name,&
+              'fam_noy_ddep_kg_m2_s', &
+              Time,&
+              'Dry Deposition Rate of all Nitrogen Oxides (NOY)', &
+              'kg m-2 s-1', &
+              standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_dry_deposition')
+
+              id_n_ddep =0
+              id_n_red_ddep=0
+
       do n = 1,nt
          call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
               units = tracer_units)
@@ -1667,6 +1757,62 @@ type(time_type), intent(in)                                :: Time
                  tracer_name, 'kg/m3')
          end if
 
+         call  get_cmip_param(n,cmip_name=cmip_name,cmip_longname=cmip_longname,cmip_longname2=cmip_longname2)
+         call  get_chem_param(n,conv_vmr_mmr=conv_vmr_mmr(n),is_aerosol=cmip_is_aerosol,nb_N=nb_N(n),nb_N_Ox=nb_N_Ox(n),nb_N_red=nb_N_red(n))
+
+         if (mpp_pe() .eq. mpp_root_pe()) then
+            write(*,*) 'n=',n
+            write(*,*) 'tracer_name=',tracer_name,' cmip_name=',cmip_name,' cmip_longname=',cmip_longname
+            write(*,*) 'conv_vmr_mmr=',conv_vmr_mmr(n),' nb_N=',nb_N(n),' nb_N_ox=',nb_N_ox(n),' nb_N_red=',nb_N_red(n)
+         end if
+
+         ID_tracer_mol_mol(n) = register_cmip_diag_field_3d ( mod_name,&
+              trim(tracer_name)//'_mol_mol', &
+              Time,&
+              trim(cmip_longname)//' volume mixing ratio', &
+              '1.0', &
+              standard_name='mole_fraction_of_'//trim(cmip_name)//'_in_air')
+         
+         ID_tracer_kg_kg(n)   = register_cmip_diag_field_3d ( mod_name,&
+              trim(tracer_name)//'_kg_kg', &
+              Time,&
+              'Aerosol '//trim(cmip_longname)//' mass mixing ratio', &
+              '1.0', &
+              standard_name='mass_fraction_of_'//trim(cmip_name)//'_dry_aerosol_particles_in_air')
+         
+         id_tracer_surf_mol_mol(n) = register_cmip_diag_field_2d ( mod_name,&
+              trim(tracer_name)//'_surf_mol_mol', &
+              Time,&
+              trim(cmip_longname)//' volume mixing ratio in lowest model layer', &
+              '1.0', &
+              standard_name='mole_fraction_of_'//trim(cmip_name)//'_in_air')
+         
+         id_tracer_col_kg_m2(n) = register_cmip_diag_field_2d ( mod_name,&
+              trim(tracer_name)//'_col_kg_m2', &
+              Time,&
+              "Load of "//trim(cmip_longname2), &
+              'kg m-2', &
+              standard_name='atmosphere_mass_content_of_'//trim(cmip_name)//'_dry_aerosol')
+         
+         
+         id_tracer_surf_kg_kg(n) = register_cmip_diag_field_2d ( mod_name,&
+              trim(tracer_name)//'_surf_kg_kg', &
+              Time,&
+              trim(cmip_longname)//' mass mixing ratio in lowest model layer', &
+              '1.0', &
+              standard_name='mass_fraction_of_'//trim(cmip_name)//'_in_air')
+         
+            
+         if (cmip_is_aerosol) then
+            id_tracer_ddep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
+                 trim(tracer_name)//'_ddep_kg_m2_s', Time, 'Dry Deposition Rate of '//trim(cmip_longname), 'kg m-2 s-1', &
+                 standard_name='tendency_of_atmosphere_mass_content_of_'//trim(cmip_name)//'_dry_aerosol_due_to_dry_deposition')
+         else
+            id_tracer_ddep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
+                 trim(tracer_name)//'_ddep_kg_m2_s', Time, 'Dry Deposition Rate of '//trim(cmip_longname), 'kg m-2 s-1', &
+                 standard_name='tendency_of_atmosphere_mass_content_of_'//trim(cmip_name)//'_due_to_dry_deposition')
+         end if
+         
       end do
 !>
 
@@ -1790,7 +1936,16 @@ integer :: logunit
       endif
       call atmos_age_tracer_end      
       call atmos_co2_end
-      deallocate( id_tracer_diag ) !f1p
+
+!for cmip6 (f1p)
+      deallocate( id_tracer_diag )    
+      deallocate( ID_tracer_mol_mol ) 
+      deallocate( ID_tracer_kg_kg )   
+      deallocate( id_tracer_surf_mol_mol )   
+      deallocate( id_tracer_col_kg_m2 )   
+      deallocate( id_tracer_surf_kg_kg )
+      deallocate( conv_vmr_mmr )
+      deallocate( id_tracer_ddep_kg_m2_s )
 
       module_is_initialized = .FALSE.
 
