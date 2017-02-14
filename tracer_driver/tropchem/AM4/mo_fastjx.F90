@@ -5,6 +5,8 @@ module MO_FASTJX_MOD
 !       
 !       Aug 12, 2015
 !       Jingyi.Li@noaa.gov
+!
+!       December 2016 -- removed hard-coding for number of vertical levels (LWH)
 !----------------------------------------------------------------------
 !         Below is the original information from FASTJX code
 ! ---------- JX71_notes.f90
@@ -511,16 +513,16 @@ module MO_FASTJX_MOD
       integer, parameter                ::      JXL2_   =2*JXL_+2       ! JXL2_: 2*JXL_ + 2 = mx no. levels in the basic Fast-JX grid (mid-level)
       real*8,  parameter                ::      SZAMAX  =98.0d0         !Solar zenith angle cut-off, above which to skip calculation
       integer, parameter                ::      WX_     =18             !dim = no. of wavelengths in input file
-!      integer, parameter                ::      X_      =72            !dim = no. of X-section data sets (input data)
+!     integer, parameter                ::      X_      =72            !dim = no. of X-section data sets (input data)
       integer, parameter                ::      X_      =69             ! ++j2l modified to match AM3
       integer, parameter                ::      A_      =40             !dim = no. of Aerosol/cloud Mie sets (input data)
       integer, parameter                ::      C_      =16             ! C_   = dim = no. of cld-data sets (input data)
       integer, parameter                ::      W_      =18             !dim = no. of Wavelength bins:  =18 std, =12 trop only
 
-!      integer, parameter                ::      JVN_    =101           ! max no. of J-values
+!     integer, parameter                ::      JVN_    =101           ! max no. of J-values
       integer, parameter                ::      JVN_    =69             ! max no. of J-values
       integer, parameter                ::      AN_     =25             ! no of separate aerosols per layer (needs NDX for each)
-!      integer, parameter                ::      NJX_    =100
+!     integer, parameter                ::      NJX_    =100
       integer, parameter                ::      NJX_    =69             ! ++j2l modified to match AM3 
       integer, parameter                ::      N_      =601            !no. of levels in Mie scattering arrays
                                                                         !     = 2*NC+1 = 4*(L_+1) + 1`+ 2*sum(JADDLV)
