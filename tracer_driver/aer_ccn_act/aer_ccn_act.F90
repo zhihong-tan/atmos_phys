@@ -52,12 +52,13 @@ real ::  lowmass5=0.01 !ug m-3
 real ::  highmass5=100.
 real :: lowT2=243.15 !K
 real :: highT2=308.15
+logical :: use_full_wpdf_weight = .false. ! normalize droplet number by full wpdf weight
 
 namelist /aer_ccn_act_nml/ nooc, sul_concen, low_concen, high_concen, &
                            lowup, highup, lowup2, highup2, lowmass2, &
                            highmass2, lowmass3, highmass3,  &
                            lowmass4, highmass4, lowmass5, highmass5, &
-                           lowT2, highT2
+                           lowT2, highT2, use_full_wpdf_weight
 
 
 logical :: module_is_initialized  = .false.
@@ -215,7 +216,7 @@ subroutine aer_ccn_act_init ()
                        lowup, highup, lowup2, highup2, lowmass2, &
                        highmass2, lowmass3, highmass3,  &
                        lowmass4, highmass4, lowmass5, highmass5, &
-                      lowT2, highT2  )
+                      lowT2, highT2, use_full_wpdf_weight  )
        module_is_initialized  = .true.
 
 end subroutine aer_ccn_act_init
