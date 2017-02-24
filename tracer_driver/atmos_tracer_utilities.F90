@@ -2025,7 +2025,7 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr)
     if (present(conv_vmr_mmr)) then
        if (trim(tracer_units).eq."vmr") then
           flag=parse(chem_data,'mw',mwt)
-          if (.not. flag) mwt=0.
+          if (.not. flag) mwt=-999.
           conv_vmr_mmr = mwt/wtmair
        else
           conv_vmr_mmr = 1.

@@ -711,6 +711,7 @@ character(len=32) :: tracer_units, tracer_name
          end if
       enddo
 
+
       if (id_om_ddep > 0 .and. nomphilic > 0 .and. nomphobic > 0) then
         used  = send_data (id_om_ddep,  &
          pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic)),  &
@@ -729,6 +730,8 @@ character(len=32) :: tracer_units, tracer_name
 
 
       !---- cmip variables ----
+      if (id_n_ox_ddep>0) used = send_data(id_n_ox_ddep,sum_n_ox_ddep,Time_next,is_in=is,js_in=js)
+
       if (id_dryso2 > 0) then
         if (nSO2_cmip > 0) then
           used = send_data (id_dryso2, 0.064*1.e3*pwt(:,:,kd)*dsinku(:,:,nSO2_cmip)/WTMAIR, &
@@ -780,9 +783,6 @@ character(len=32) :: tracer_units, tracer_name
                                      Time_next, is_in=is, js_in=js)
       endif
 
-!----------------------------------------------------------------------
-!   output the nh4no3 and nh4 loads.
-!----------------------------------------------------------------------
       do n=1,ntp
          if (id_tracer_col_kg_m2(n).gt.0) then
             suma = 0.
@@ -794,7 +794,10 @@ character(len=32) :: tracer_units, tracer_name
          end if
       end do
 
-
+!----------------------------------------------------------------------
+!   output the nh4no3 and nh4 loads.
+!----------------------------------------------------------------------
+!THIS IS WRRONG IN AM4
       if (nNH4NO3 > 0 .and. nNH4 > 0) then
         if (id_nh4_col > 0 .or. id_loadnh4 > 0) then
           suma = 0.
@@ -1811,6 +1814,14 @@ type(time_type), intent(in)                                :: Time
             id_tracer_ddep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                  trim(tracer_name)//'_ddep_kg_m2_s', Time, 'Dry Deposition Rate of '//trim(cmip_longname), 'kg m-2 s-1', &
                  standard_name='tendency_of_atmosphere_mass_content_of_'//trim(cmip_name)//'_due_to_dry_deposition')
+         end if
+
+         !sanity check 
+         if (id_tracer_ddep_kg_m2_s(n).gt.0 .or. id_tracer_surf_kg_kg(n).gt.0 .or. query_cmip_diag_id(ID_tracer_kg_kg(n))) then
+            if (conv_vmr_mmr(n).lt.0.) then
+               call error_mesg ('Tracer_driver', &
+                    'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
+            end if
          end if
          
       end do
