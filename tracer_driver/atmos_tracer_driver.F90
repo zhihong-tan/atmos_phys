@@ -329,7 +329,7 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
- type(cmip_diag_id_type) :: ID_airmass
+ type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
@@ -339,7 +339,8 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
  type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
  integer, allocatable :: id_tracer_surf_mol_mol(:),id_tracer_surf_kg_kg(:)
  integer, allocatable :: id_tracer_col_kg_m2(:)
- real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:)
+ integer              :: id_pm25_surf
+ real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:), frac_pm1(:), frac_pm10(:), frac_pm25(:)
  integer, allocatable :: id_tracer_ddep_kg_m2_s(:)
 
 
@@ -503,6 +504,8 @@ real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl         
 real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
+
+real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 
 integer :: isulf, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
@@ -936,15 +939,23 @@ character(len=32) :: tracer_units, tracer_name
        endif
      endif
 
+     PM25 = 0.
+     PM1  = 0.
+     PM10 = 0.
+
 
      do n=1,nt
+
+        PM25 = PM25+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm25(n)
+        PM1  = PM1+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm1(n)
+        PM10 = PM10+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm10(n)
+
+
         if ( query_cmip_diag_id(ID_tracer_mol_mol(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_mol_mol(n), tracer(:,:,:,n), &
                 Time_next, is_in=is, js_in=js, ks_in=1)           
         end if
         if ( id_tracer_surf_mol_mol(n) .gt. 0 ) then
-           used = send_data ( id_tracer_surf_mol_mol(n), tracer(:,:,kd,n), &
-                Time_next, is_in=is, js_in=js)           
         end if
         if ( query_cmip_diag_id(ID_tracer_kg_kg(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,:,n), &
@@ -957,6 +968,25 @@ character(len=32) :: tracer_units, tracer_name
 
      end do
 
+     if (id_pm25_surf .gt. 0) then
+        used = send_data ( id_pm25_surf, PM25(:,:,kd), &
+             Time_next, is_in=is, js_in=js)           
+     end if
+
+     if ( query_cmip_diag_id(ID_pm25 )) then
+        used = send_cmip_data_3d ( ID_pm25, pm25, &
+             Time_next, is_in=is, js_in=js, ks_in=1)           
+     end if
+
+     if ( query_cmip_diag_id(ID_pm1 )) then
+        used = send_cmip_data_3d ( ID_pm1, pm1, &
+             Time_next, is_in=is, js_in=js, ks_in=1)           
+     end if
+
+     if ( query_cmip_diag_id(ID_pm10 )) then
+        used = send_cmip_data_3d ( ID_pm10, pm10, &
+             Time_next, is_in=is, js_in=js, ks_in=1)           
+     end if
 
 
 !------------------------------------------------------------------------
@@ -1736,6 +1766,10 @@ type(time_type), intent(in)                                :: Time
       allocate(nb_N_ox(nt))
       allocate(nb_N_red(nt))
 
+      allocate(frac_pm1(nt))
+      allocate(frac_pm10(nt))
+      allocate(frac_pm25(nt))
+
       id_n_ox_ddep =  register_cmip_diag_field_2d ( mod_name,&
               'fam_noy_ddep_kg_m2_s', &
               Time,&
@@ -1743,8 +1777,37 @@ type(time_type), intent(in)                                :: Time
               'kg m-2 s-1', &
               standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_dry_deposition')
 
-              id_n_ddep =0
-              id_n_red_ddep=0
+      id_n_ddep = 0
+      id_n_red_ddep=0
+
+       ID_pm10 = register_cmip_diag_field_3d ( mod_name,&
+              'pm10_kg_kg', &
+              Time,&
+              'PM10 mass mixing ratio', &
+              '1.0', &
+              standard_name='mass_fraction_of_pm10_ambient_aerosol_particles_in_air')
+
+       ID_pm25 = register_cmip_diag_field_3d ( mod_name,&
+              'pm25_kg_kg', &
+              Time,&
+              'PM25 mass mixing ratio', &
+              '1.0', &
+              standard_name='mass_fraction_of_pm25_ambient_aerosol_particles_in_air')
+
+       ID_pm1  = register_cmip_diag_field_3d ( mod_name,&
+              'pm1_kg_kg', &
+              Time,&
+              'PM1 mass mixing ratio', &
+              '1.0', &
+              standard_name='mass_fraction_of_pm1_ambient_aerosol_particles_in_air')
+         
+       id_pm25_surf = register_cmip_diag_field_2d ( mod_name,&
+              'pm25_surf_kg_kg', &
+              Time,&
+              'PM2.5 mass mixing ratio in lowest model layer', &
+              '1.0', &
+              standard_name='mass_fraction_of_pm2p5_ambient_aerosol_particles_in_air')
+
 
       do n = 1,nt
          call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
@@ -1761,12 +1824,14 @@ type(time_type), intent(in)                                :: Time
          end if
 
          call  get_cmip_param(n,cmip_name=cmip_name,cmip_longname=cmip_longname,cmip_longname2=cmip_longname2)
-         call  get_chem_param(n,conv_vmr_mmr=conv_vmr_mmr(n),is_aerosol=cmip_is_aerosol,nb_N=nb_N(n),nb_N_Ox=nb_N_Ox(n),nb_N_red=nb_N_red(n))
+         call  get_chem_param(n,conv_vmr_mmr=conv_vmr_mmr(n),is_aerosol=cmip_is_aerosol,nb_N=nb_N(n),nb_N_Ox=nb_N_Ox(n),nb_N_red=nb_N_red(n), &
+              frac_pm1=frac_pm1(n),frac_pm25=frac_pm25(n),frac_pm10=frac_pm10(n))
 
          if (mpp_pe() .eq. mpp_root_pe()) then
             write(*,*) 'n=',n
             write(*,*) 'tracer_name=',tracer_name,' cmip_name=',cmip_name,' cmip_longname=',cmip_longname
             write(*,*) 'conv_vmr_mmr=',conv_vmr_mmr(n),' nb_N=',nb_N(n),' nb_N_ox=',nb_N_ox(n),' nb_N_red=',nb_N_red(n)
+            write(*,*) 'frac_pm1=',frac_pm1(n),' frac_pm25',frac_pm25(n),' frac_pm10=',frac_pm10(n)
          end if
 
          ID_tracer_mol_mol(n) = register_cmip_diag_field_3d ( mod_name,&
@@ -1817,7 +1882,8 @@ type(time_type), intent(in)                                :: Time
          end if
 
          !sanity check 
-         if (id_tracer_ddep_kg_m2_s(n).gt.0 .or. id_tracer_surf_kg_kg(n).gt.0 .or. query_cmip_diag_id(ID_tracer_kg_kg(n))) then
+         if (id_tracer_ddep_kg_m2_s(n).gt.0 .or. id_tracer_surf_kg_kg(n).gt.0 .or. query_cmip_diag_id(ID_tracer_kg_kg(n)) &
+              .or. query_cmip_diag_id(ID_pm1) .or. query_cmip_diag_id(ID_pm10) .or. query_cmip_diag_id(ID_pm25) .or. id_pm25_surf .gt. 0) then
             if (conv_vmr_mmr(n).lt.0.) then
                call error_mesg ('Tracer_driver', &
                     'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
@@ -1957,6 +2023,13 @@ integer :: logunit
       deallocate( id_tracer_surf_kg_kg )
       deallocate( conv_vmr_mmr )
       deallocate( id_tracer_ddep_kg_m2_s )
+
+      deallocate(nb_N_red)
+      deallocate(nb_N_ox)
+      deallocate(nb_N)
+      deallocate(frac_pm1)
+      deallocate(frac_pm25)
+      deallocate(frac_pm10)
 
       module_is_initialized = .FALSE.
 

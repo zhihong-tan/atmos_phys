@@ -1989,13 +1989,14 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
 
 end subroutine get_cmip_param
 
-subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr)
+subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr,frac_pm1,frac_pm25,frac_pm10)
 
  integer, intent(in) :: n
  real, intent(out), optional :: mw,nb_N,nb_N_ox,nb_N_red,conv_vmr_mmr
+ real, intent(out), optional :: frac_pm1,frac_pm10,frac_pm25
  logical, intent(out), optional :: is_aerosol
  character(len=100) :: chem_data, scheme, chem_type, tracer_name, tracer_units, name
-
+ logical :: is_aerosol_local
  real :: mwt,nbt_N_red,nbt_N_ox
  logical flag
 
@@ -2015,11 +2016,33 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr)
     If (present(nb_N_ox)) nb_N_ox=nbt_N_ox
     If (present(nb_N_red)) nb_N_ox=nbt_N_red
     if (present(nb_N)) nb_N=nb_N_ox+nb_N_red
-    if (present(is_aerosol)) then
+
        if (trim(scheme).eq."aerosol") then
-          is_aerosol=.true.
+          is_aerosol_local=.true.
        else
-          is_aerosol=.false.
+          is_aerosol_local=.false.
+       end if
+
+    if (present(is_aerosol)) is_aerosol=is_aerosol_local
+
+    if (present(frac_pm1).or.present(frac_pm10).or.present(frac_pm25)) then
+       if (is_aerosol_local) then
+          if (present(frac_pm1)) then
+             flag=parse(chem_data,'frac_pm1',frac_pm1)
+             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm1 not defined for '//trim(tracer_name), FATAL )
+          end if
+          if (present(frac_pm25)) then
+             flag=parse(chem_data,'frac_pm25',frac_pm25)
+             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm25 not defined for '//trim(tracer_name), FATAL )
+          end if
+          if (present(frac_pm10)) then
+             flag=parse(chem_data,'frac_pm10',frac_pm10)
+             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm10 not defined for '//trim(tracer_name), FATAL )
+          end if
+       else
+          if (present(frac_pm1)) frac_pm1=0.
+          if (present(frac_pm25)) frac_pm25=0.
+          if (present(frac_pm10)) frac_pm10=0.
        end if
     end if
     if (present(conv_vmr_mmr)) then
