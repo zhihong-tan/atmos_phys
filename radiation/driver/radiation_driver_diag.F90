@@ -1141,7 +1141,7 @@ logical,         intent(in) :: do_lwaerosol
 
         id_rlutcs = register_cmip_diag_field_2d (mod_name, 'rlutcs', Time, &
                    'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
-                 standard_name = 'toa_outgoing_longwave_flux_assumimg_clear_sky')
+                 standard_name = 'toa_outgoing_longwave_flux_assuming_clear_sky')
 
         id_rtmt = register_cmip_diag_field_2d (mod_name, 'rtmt', Time, &
                         'Net Downward Flux at Top of Model', 'W m-2',  &
@@ -1189,7 +1189,7 @@ logical,         intent(in) :: do_lwaerosol
 
         id_rlutcs_g = register_global_diag_field ('rlutcs', Time, &
                    'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
-                 standard_name='toa_outgoing_longwave_flux_assumimg_clear_sky', buffer=.true.)
+                 standard_name='toa_outgoing_longwave_flux_assuming_clear_sky', buffer=.true.)
 
         id_rss_g = register_global_diag_field ('rss', Time, &
                         'Net shortwave radiation at the surface', 'W m-2',   &

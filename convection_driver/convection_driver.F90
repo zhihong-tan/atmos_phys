@@ -3095,7 +3095,7 @@ type(mp_removal_control_type), intent(in) :: Control
                                         interp_method="conserve_order1" )
 
       id_ci = register_cmip_diag_field_2d ( mod_name, 'ci', Time, &
-                    'Fraction of Time Convection Occurs',  '1.0', &
+                    'Fraction of Time Convection Occurs in Cell',  '1.0', &
                          standard_name='convection_time_fraction' )
 
       id_gust_conv = register_diag_field ( mod_name, &

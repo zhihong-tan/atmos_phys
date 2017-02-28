@@ -1872,7 +1872,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         if (naero > 0 .and. nvis > 0) then
           id_od550aer = register_cmip_diag_field_2d (mod_name, 'od550aer', Time, &
                             'Ambient Aerosol Optical Thickness at 550 nm', '1.0', &
-                            standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol')
+                            standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
           id_abs550aer = register_cmip_diag_field_2d (mod_name, 'abs550aer', Time, &
                             'Ambient Aerosol Absorption Optical Thickness at 550 nm', '1.0', &
                             standard_name='atmosphere_absorption_optical_thickness_due_to_ambient_aerosol')
@@ -1888,7 +1888,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         if (naero > 0 .and. n870 > 0) then
           id_od870aer = register_cmip_diag_field_2d (mod_name, 'od870aer', Time, &
                             'Ambient Aerosol Optical Thickness at 870 nm', '1.0', &
-                            standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol')
+                            standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
         endif
         !----
 

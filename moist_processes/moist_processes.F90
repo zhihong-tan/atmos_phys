@@ -238,7 +238,7 @@ character(len=64), dimension(9) :: cmip_longnames = &
 character(len=64), dimension(9) :: cmip_stdnames = &
                                   (/"primary_particulate_organic_matter_dry_aerosol", &
                                     "secondary_particulate_organic_matter_dry_aerosol", &
-                                    "black_carbon_dry_aerosol", "dust_dry_aerosol", &
+                                    "elemental_carbon_dry_aerosol", "dust_dry_aerosol", &
                                     "seasalt_dry_aerosol", "sulfate_dry_aerosol", &
                                     "sulfur_dioxide", "dimethyl_sulfide", "ammonium_dry_aerosol"/)
 
@@ -2228,8 +2228,8 @@ integer                     :: id_wetdep_cmip
                 'total cloud amount', 'percent')
 
         id_clt = register_cmip_diag_field_2d (mod_name, 'clt', Time, &
-                                         'Cloud Area Fraction', '%', &
-            standard_name= 'cloud_area_fraction_in_atmosphere_layer' )
+                                      'Total Cloud Fraction', '1.0', &
+                                standard_name= 'cloud_area_fraction' )
 
         id_tot_cloud_area = register_diag_field ( mod_name, &
           'tot_cloud_area', axes(1:3), Time, &
@@ -2237,8 +2237,8 @@ integer                     :: id_wetdep_cmip
                                            missing_value=missing_value )
 
         ID_cl = register_cmip_diag_field_3d ( mod_name, 'cl', Time, &
-          'Cloud Area Fraction', '%',    &
-          standard_name='cloud_area_fraction_in_atmosphere_layer' )
+                                  'Percentage Cloud Cover', '%',    &
+            standard_name='cloud_area_fraction_in_atmosphere_layer' )
 
         id_tot_h2o     = register_diag_field ( mod_name, &
           'tot_h2o', axes(1:3), Time, &
@@ -2313,7 +2313,7 @@ integer                     :: id_wetdep_cmip
 
         id_clivi = register_cmip_diag_field_2d ( mod_name, 'clivi', Time, &
                                       'Ice Water Path', 'kg m-2', &
-                     standard_name='atmosphere_cloud_ice_content' )
+                     standard_name='atmosphere_mass_content_of_cloud_ice' )
 
       endif
 
@@ -2401,7 +2401,7 @@ integer                     :: id_wetdep_cmip
 
         id_wetdep_cmip = register_cmip_diag_field_2d ( mod_name, 'wet'//TRIM(cmip_names(ic)), Time,  &
                                   'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
-                    standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition' )
+                    standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_particles_due_to_wet_deposition' )
         if (TRIM(cmip_names(ic)) .eq. 'poa'  ) id_wetpoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'soa'  ) id_wetsoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'bc'   ) id_wetbc_cmip   = id_wetdep_cmip

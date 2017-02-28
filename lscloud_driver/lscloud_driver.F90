@@ -1456,11 +1456,11 @@ type(time_type),         intent(in) :: Time
        if (use_cf_metadata) then
          id_LWP = register_cmip_diag_field_2d ( mod_name, 'lwp', Time, &
                                         'Liquid Water Path', 'kg m-2', &
-                 standard_name='atmosphere_cloud_liquid_water_content' )
+                 standard_name='atmosphere_mass_content_of_cloud_liquid_water' )
 
         id_IWP = register_cmip_diag_field_2d ( mod_name, 'iwp', Time, &
                                           'Ice Water Path', 'kg m-2', &
-                         standard_name='atmosphere_cloud_ice_content' )
+                         standard_name='atmosphere_mass_content_of_cloud_ice' )
 
        else
         id_LWP = register_diag_field ( mod_name, &
