@@ -2284,7 +2284,7 @@ integer                     :: id_wetdep_cmip
           'WP_all_clouds', axes(1:2), Time, &
           'Total  water path -- all clouds + ls precip',        'kg/m2'   )
 
-        id_clwvi = register_diag_field ( mod_name, 'clwvi', Time, &
+        id_clwvi = register_cmip_diag_field_2d ( mod_name, 'clwvi', Time, &
                                 'Condensed Water Path', 'kg m-2', &
          standard_name='atmosphere_cloud_condensed_water_content' )
 
@@ -2296,7 +2296,7 @@ integer                     :: id_wetdep_cmip
           'IWP_all_clouds', axes(1:2), Time, &
           'Ice water path -- all clouds + ls snow',           'kg/m2'   )
 
-        id_clivi = register_diag_field ( mod_name, 'clivi', Time, &
+        id_clivi = register_cmip_diag_field_2d ( mod_name, 'clivi', Time, &
                                       'Ice Water Path', 'kg m-2', &
                      standard_name='atmosphere_cloud_ice_content' )
 

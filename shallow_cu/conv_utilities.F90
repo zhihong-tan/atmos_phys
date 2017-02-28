@@ -55,7 +55,7 @@ contains
     me = mpp_pe()
     root_pe = mpp_root_pe()
     call uw_params_init_k (hlv, hls, hlf, cp_air, grav, kappa, rdgas, &
-                           p00, epsilo, zvir, tkmin, tkmax, me,  &
+                           p00, epsilo, zvir, tkmin, tkmax, tice0, me,  &
                                                            root_pe,Uw_p)
     
   end subroutine uw_params_init

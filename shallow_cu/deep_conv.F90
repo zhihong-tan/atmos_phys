@@ -86,19 +86,26 @@ contains
     dpn % do_qctflx_zero     = cpn % do_qctflx_zero
     dpn % do_hlflx_zero      = cpn % do_hlflx_zero
     dpn % do_new_qnact       = cpn % do_new_qnact
+    dpn % do_2nd_act         = cpn % do_2nd_act
+    dpn % do_downdraft       = cpn % do_downdraft
+    dpn % do_conv_micro_N    = cpn % do_conv_micro_N
     dpn % do_varying_rpen    = cpn % do_varying_rpen
+    dpn % rpen_choice        = cpn % rpen_choice
     dpn % do_subcloud_flx    = cpn % do_subcloud_flx
     dpn % do_new_subflx      = cpn % do_new_subflx
     dpn % use_lcl_only       = cpn % use_lcl_only
     dpn % do_new_pevap       = cpn % do_new_pevap
     dpn % stop_at_let        = cpn % stop_at_let
     dpn % do_limit_wmax      = cpn % do_limit_wmax
+    dpn % do_limit_fdr       = cpn % do_limit_fdr
     dpn % plev_for           = cpn % plev_for
     dpn % plev_umf           = cpn % plev_umf
     dpn % do_detran_zero     = cpn % do_detran_zero
+    dpn % N0                 = cpn % N0
     dpn % rle                = cpn % rle
     dpn % rpen               = cpn % rpen
-    dpn % nbuo_max           = cpn % nbuo_max
+    dpn % eis_max            = cpn % eis_max
+    dpn % eis_min            = cpn % eis_min
     dpn % rmaxfrac           = cpn % rmaxfrac
     dpn % wmin               = cpn % wmin
     dpn % wmax               = cpn % wmax
@@ -152,6 +159,7 @@ contains
     dpn % rkm_min            = cpn % rkm_min
     dpn % scaleh0            = cpn % scaleh0
     dpn % beta               = cpn % beta
+    dpn % nom_ratio          = cpn % nom_ratio
 
   end subroutine cpn_copy
 
@@ -489,9 +497,11 @@ contains
     end if
 
     tmp = sd%ps(0)-sd%ps(krel)
-!    if (krel.gt.sd%kinv) then !elevated convection
-!       tmp = sd%dp(krel)*0.1
+
+!    if (sd%ksrc .gt. sd%kinv) then !elevated convection
+!       tmp = sd%dp(krel)
 !    end if
+
     cbmf_max = tmp*dpc%frac_limit_d/sd%delt/Grav
 
     cbmf_deep = max(min(cbmf_deep, cbmf_max), 0.)
@@ -716,13 +726,13 @@ contains
         call compute_cwfn3d(dpc,dpn,Uw_p,sd,ac1,cp1,do_coldT,do_ice,rkm_dp,cwfn3d,cape3d,ier,ermesg)
         if (sd%tke.lt.0.5) then
            tmp=1
-        elseif(sd%tke.lt.1.) then
+        elseif(sd%tke.lt.1.) then       
            tmp=2
-        elseif(sd%tke.lt.1.5) then
+        elseif(sd%tke.lt.1.5) then      
            tmp=3
-        elseif(sd%tke.lt.2.0) then
+        elseif(sd%tke.lt.2.0) then      
            tmp=4
-        elseif(sd%tke.lt.2.5) then
+        elseif(sd%tke.lt.2.5) then      
            tmp=5
         endif
       endif
@@ -1575,7 +1585,7 @@ contains
          dpn%do_forcedlifting = .true.
          dpn%do_ppen = .false. !dpn%do_pevap = .false.
          call cclosure_gust(sd%cgust, sd, Uw_p, ac, dpc%wcrit_min_gust, cbmf_deep, wrel, ufrc)
-         if(cbmf_deep.lt.1.e-10) then
+         if(cbmf_deep.lt.1.e-10) then 
             cbmf_deep=0.;
             call cp_clear_k(cp1); cp1%maxcldfrac=1.; cp1%cush=-1;
             call ct_clear_k(ct1);
@@ -1583,7 +1593,7 @@ contains
          end if
          call cumulus_plume_k(dpn, sd, ac, cp1, rkm_dp, cbmf_deep, wrel, zcldtop, Uw_p, ier, ermesg)
          if(cp1%ltop.lt.cp1%krel+2 .or. cp1%let.le.cp1%krel+1) then
-            cbmf_deep = 0.;
+            cbmf_deep = 0.; 
             call cp_clear_k(cp1); cp1%maxcldfrac=1.; cp1%cush=-1;
             call ct_clear_k(ct1);
             return
