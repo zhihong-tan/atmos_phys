@@ -217,22 +217,21 @@
 
 !   shared modules:
 
-use  mpp_mod,             only:  input_nml_file
-use  fms_mod,             only:  file_exist, fms_init,       &
-                                 stdlog, mpp_pe, mpp_root_pe, &
-                                 open_namelist_file, &
-                                 write_version_number,  &
-                                 error_mesg, FATAL,     &
-                                 close_file,  &
-                                 check_nml_error
-use  constants_mod,       only:  RDGAS, GRAV, TFREEZE, DENS_H2O, &
-                                 constants_init, pi
-use  gamma_mg_mod,        ONLY : gamma_mg,  gamma_mg_init,  gamma_mg_end
-use mg_const_mod,         ONLY : mg_const_init, rhow, di_mg, ci_mg
-use  diag_manager_mod,    only:  diag_manager_init,    &
-                                 register_diag_field, send_data
-use  time_manager_mod,    only:  time_type, time_manager_init
-use  aerosol_types_mod,   only:  aerosol_type
+use mpp_mod,                    only: input_nml_file
+use fms_mod,                    only: file_exist, fms_init,       &
+                                      stdlog, mpp_pe, mpp_root_pe, &
+                                      open_namelist_file, &
+                                      write_version_number,  &
+                                      error_mesg, FATAL, close_file,  &
+                                      check_nml_error
+use constants_mod,              only: RDGAS, GRAV, TFREEZE, DENS_H2O, &
+                                      constants_init, pi
+use gamma_mg_mod,               ONLY: gamma_mg, gamma_mg_init, gamma_mg_end
+use lscloud_constants_mod,      ONLY: lscloud_constants_init, rhow, &
+                                      di_mg, ci_mg
+use time_manager_mod,           only: time_type, time_manager_init
+use aerosol_types_mod,          only: aerosol_type
+use physics_radiation_exch_mod, only: exchange_control_type
 
 implicit none
 private
@@ -264,15 +263,13 @@ character(len=128) :: tagname = '$Name$'
 !--------- interfaces --------
 
 public     &
-         cloud_rad_init, &
-         cloud_rad_end, &
-         cloud_summary, &
-         lw_emissivity, &
-         sw_optical_properties, &
-         cloud_summary3, &
-         cloud_rad_k_diag,  &
-         cloud_rad, &
-         snow_and_rain
+         cloud_rad_init, cloud_rad_end, cloud_summary3, snow_and_rain, &
+!!!!!!!!!!  OUTDATED INTERFACES !!!!!!!!!!!!!
+!
+         cloud_summary, lw_emissivity, sw_optical_properties, &
+         cloud_optical_properties, cloud_rad_k_diag, cloud_rad
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 !---------------------------------------------------------------------
 !    public subroutines:
@@ -284,6 +281,9 @@ public     &
 !                        In addition, it registed diagnostic fields
 !                        if needed, and returns the value of the
 !                        cloud overlap to strat_cloud.
+
+!!!!!!!!!!  OUTDATED INTERFACES !!!!!!!!!!!!!
+!
 !      cloud_summary
 !                        This is the main driver program of the module
 !      cloud_rad   
@@ -299,95 +299,52 @@ public     &
 !                        (tau, w0,and g) for the visible and near infra-
 !                        red bands.  It also computes the longwave 
 !                        emissivity of each cloud.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 !----------------------------------------------------------------------
 
 private     &
-         max_rnd_overlap, rnd_overlap, cloud_rad_k
+         max_rnd_overlap, rnd_overlap,  &
+
+!!!!!!!!!!  OUTDATED INTERFACES !!!!!!!!!!!!!
+!
+         cloud_rad_k, cloud_organize
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      
 !---------------------------------------------------------------------
 !    private subroutines:
 !
 !       max_rnd_overlap
 !       rnd_overlap
+!!!!!!!!!!  OUTDATED INTERFACES !!!!!!!!!!!!!
+!
 !       cloud_rad_k
 !      cloud_organize
 !                        for each cloud this computes the cloud amount,
 !                        the liquid and ice water paths, the effective
 !                        particle sizes, the tops and bottoms of clouds.
 !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
 
-integer      :: overlap = 1
 logical      :: l2strem = .false.
 real         :: taucrit = 1.
 logical      :: adjust_top = .true.
 real         :: scale_factor = 0.85
 real         :: qamin = 1.E-2
 logical      :: do_brenguier = .true.
-real         :: N_min = 1.e6
-
+real         :: Ni_min = 10.
 logical      :: snow_in_cloudrad = .false.
 logical      :: rain_in_cloudrad = .false.
-real         :: min_diam_ice_mg = 10.e-6
-real         :: min_diam_drop_mg = 2.e-6
-real         :: max_diam_drop_mg = 50.e-6
-real         :: dcs_mg =  200.e-6
-real         :: Ni_min = 10.
+logical      :: clubb_error = .false.
 logical      :: prog_ccn = .false.
 
-!--------------------------------------------------------------------
-!    namelist variables:
-!
-!      overlap        integer variable indicating which overlap 
-!                     assumption to use:
-!                     overlap = 1. means condensate in adjacent levels 
-!                                  is treated as part of the same cloud
-!                                  i.e. maximum-random overlap
-!                     overlap = 2. means condensate in adjacent levels 
-!                                  is treated as different clouds
-!                                  i.e. random overlap
-!      l2strem        logical variable indicating which solution for 
-!                     cloud radiative properties is being used.
-!                     l2strem = T  2 stream solution
-!                     l2strem = F  Delta-Eddington solution
-!                     Note that IF l2strem = T then the solution does 
-!                     not depend on solar zenith angle
-!      taucrit        critical optical depth for switching direct beam 
-!                     to diffuse beam for use in Delta-Eddington 
-!                     solution [ dimensionless] 
-!      adjust_top     logical variable indicating whether or not to use 
-!                     the code which places the top and bottom of the 
-!                     cloud at the faces which are most in view from
-!                     the top and bottom of the cloud block. this is 
-!                     done to avoid undue influence of very small cloud
-!                     fractions. if true this adjustment of tops is 
-!                     performed; if false this is not performed.
-!      scale_factor   factor which multiplies actual cloud optical 
-!                     depths to account for the plane-parallel homo-
-!                     genous cloud bias  (e.g. Cahalan effect).
-!                     [ dimensionless] 
-!      qamin          minimum permissible cloud fraction 
-!                     [ dimensionless] 
-!      do_brenguier   should drops at top of stratocumulus clouds be
-!                     scaled?
-!
-!----------------------------------------------------------------------
-
 ! <NAMELIST NAME="cloud_rad_nml">
-!  <DATA NAME="overlap" UNITS="" TYPE="" DIM="" DEFAULT="">
-!integer variable indicating which overlap 
-!                     assumption to use:
-!                     overlap = 1. means condensate in adjacent levels 
-!                                  is treated as part of the same cloud
-!                                  i.e. maximum-random overlap
-!                     overlap = 2. means condensate in adjacent levels 
-!                                  is treated as different clouds
-!                                  i.e. random overlap
-!  </DATA>
 !  <DATA NAME="l2strem" UNITS="" TYPE="" DIM="" DEFAULT="">
 !logical variable indicating which solution for 
 !                     cloud radiative properties is being used.
@@ -425,14 +382,12 @@ logical      :: prog_ccn = .false.
 !                     scaled?
 !  </DATA>
 ! </NAMELIST>
-!
+
 
 namelist /cloud_rad_nml/                                       &
-                         overlap, l2strem, taucrit,     &
-                         adjust_top, scale_factor, qamin, &
-                         do_brenguier, N_min, Ni_min, snow_in_cloudrad, &
-                         rain_in_cloudrad, min_diam_ice_mg, &
-                         dcs_mg, min_diam_drop_mg, max_diam_drop_mg, prog_ccn
+                         l2strem, taucrit, adjust_top, scale_factor,   &
+                         qamin, do_brenguier, Ni_min, snow_in_cloudrad, &
+                         rain_in_cloudrad, clubb_error, prog_ccn
 
 
 !------------------------------------------------------------------
@@ -442,30 +397,49 @@ namelist /cloud_rad_nml/                                       &
 !-------------------------------------------------------------------
 !---- private data ------
 
+!----------------------------------------------------------------------
+!   module variables obtained form other modules during initialization
+!----------------------------------------------------------------------
+integer :: overlap      !integer variable indicating which overlap 
+                        !assumption to use:
+                        !overlap = 1. means condensate in adjacent levels 
+                        !          is treated as part of the same cloud
+                        !          i.e. maximum-random overlap
+                        !overlap = 2. means condensate in adjacent levels 
+                        !          is treated as different clouds
+                        !          i.e. random overlap
+
+real    :: N_land       ! number of cloud droplets in liquid
+                        ! clouds over land  [ m**(-3) ]
+real    :: N_ocean      ! number of cloud droplets in liquid
+                        ! clouds over ocean [ m**(-3) ]
+real    :: N_min
+real    :: qmin         ! minimum permissible cloud 
+                        ! condensate [ kg condensate / kg air ]       
+real    :: qcvar
+real    :: dcs
+real    :: min_diam_ice
+real    :: min_diam_drop
+real    :: max_diam_drop
+logical :: do_liq_num   ! use prog. droplet number ?
+logical :: do_ice_num   ! use prog ice crystal number?
+
 !-------------------------------------------------------------------
-!   various physical parameters:
+!   needed physical parameters:
 !-------------------------------------------------------------------
 real, parameter :: taumin = 1.E-06  ! minimum permissible tau  
                                     ! [ dimensionless ]
-real            :: qmin = 1.E-10    ! minimum permissible cloud 
-                                    ! condensate [ kg condensate / 
-                                    ! kg air ]                 
-real            :: N_land = 3.E+08  ! number of cloud droplets in liquid
-                                    ! clouds over land  [ m**(-3) ]
-real            :: N_ocean = 1.E+08 ! number of cloud droplets in liquid
-                                    ! clouds over ocean [ m**(-3) ]
 real, parameter :: k_land = 1.143   ! ratio of effective radius to 
                                     ! volume radius for continental
                                     ! air masses  [ dimensionless ]
 real, parameter :: k_ocean = 1.077  ! ratio of effective radius to 
                                     ! volume radius for continental
                                     ! air masses  [ dimensionless ]
-!       IMPORTANT NOTE qmin, N_land, N_ocean are initialized with a 
-!       call from strat_cloud_init to cloud_rad_init.  This guarantees
-!       that both strat_cloud and cloud_rad have the exact same values
-!       for these parameters.
- 
-real            :: qcvar
+real, parameter :: dcs_mg = 200.e-6 ! value originally used in this 
+                                    ! module that was inconsistent with
+                                    ! the value used in the microphysics
+                                    ! (for ncar microphysics, including
+                                    ! CLUBB)
 
 !----------------------------------------------------------------------
 !    diagnostics variables.        
@@ -473,22 +447,11 @@ real            :: qcvar
 character(len=8)    :: mod_name = 'cloud_rad'
 real                :: missing_value = -999.
 
-integer ::            id_aice, id_reffice, id_aliq, id_reffliq, &
-           id_alow, id_tauicelow, id_tauliqlow, id_tlaylow, id_tcldlow
-
-
-!---------------------------------------------------------------------
-!   logical variables:
-!--------------------------------------------------------------------
+!----------------------------------------------------------------------
+!    misc. variables.        
+!----------------------------------------------------------------------
 logical   :: module_is_initialized = .false.  ! is module initialized ?
-logical   :: do_liq_num          = .false.  ! use prog. droplet number ?
-logical   :: do_ice_num          = .false. ! use prog ice crystal number?
 
-
-
-
-
-!---------------------------------------------------------------------
 !---------------------------------------------------------------------
 
 
@@ -511,47 +474,16 @@ logical   :: do_ice_num          = .false. ! use prog ice crystal number?
 !  <OVERVIEW>
 !
 !   Called once to initialize cloud_rad module.   This routine reads the
-!   namelist, registers any requested diagnostic fields, and (when
-!   called from strat_cloud_init [standard practice]) returns the
-!   overlap assumption to strat_cloud for use in determining cloud and
-!   large-scale precipitation overlap. 
+!   namelist and obtains module variables this module needs that are 
+!   defined in other modules. 
 !
 !  </OVERVIEW>
 !  <DESCRIPTION>
 !
-!   Initializes values of qmin, N_land, and  N_ocean using values from
-!   strat_cloud namelist as well as reads its own namelist variables. In
-!   addition, it registers diagnostic fields if needed, and returns the 
-!   value of the cloud overlap to strat_cloud.
-!   
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call cloud_rad_init (axes, Time, qmin_in, N_land_in, N_ocean_in, &
-!                        overlap_out)
 !
 !  </TEMPLATE>
-!  <IN NAME="axes" TYPE="integer, optional">
-!    Axis integers for diagnostics
-!  </IN>
-!  <IN NAME="Time" TYPE="time_type, optional">
-!     Time type variable for diagnostics
-!  </IN>
-!  <IN NAME="qmin_in" TYPE="real, kg condensate/kg air, optional">
-!      Input value of minimum permissible cloud liquid, ice,
-!      or fraction                
-!  </IN>
-!  <IN NAME="N_land_in" TYPE="real, #/(m*m*m), optional">
-!    Input value of number of cloud drop per cubic meter
-!    over land
-!  </IN>
-!  <IN NAME="N_ocean_in" TYPE="real, #/(m*m*m), optional">
-!    Input value of number of cloud drop per cubic meter
-!    over ocean
-!  </IN>
-!  <OUT NAME="overlap_out" TYPE="integer, optional">
-!    Integer indicating the overlap assumption being used 
-!                       (1 = maximum-random, 2 = random)
-!  </OUT>
 !  <ERROR MSG="" STATUS="FATAL">
 !   Fatal crashes occur in initialization of the module if:
 !
@@ -565,90 +497,19 @@ logical   :: do_ice_num          = .false. ! use prog ice crystal number?
 !  </ERROR>
 ! </SUBROUTINE>
 !
-subroutine cloud_rad_init (axes, Time, qmin_in, N_land_in, N_ocean_in, &
-                           prog_droplet_in, prog_ice_num_in,  qcvar_in, &
-                           overlap_out)
+subroutine cloud_rad_init (Exch_ctrl)
                                
 !--------------------------------------------------------------------
 !    cloud_rad_init is the constructor for cloud_rad_mod.
 !--------------------------------------------------------------------
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!       This subroutine initializes values of qmin, N_land, and 
-!       N_ocean using values from the strat_cloud_module, 
-!        
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!
-!
-!VARIABLES
-!
-!
-!       --------------
-!       OPTIONAL INPUT
-!       --------------
-!
-!
-!         variable              definition                  unit
-!       ------------   -----------------------------   ---------------
-!
-!       axes           axis integers for diagnostics
-!
-!       Time           time type variable for 
-!                      diagnostics
-!     
-!       qmin_in        input value of minimum per-     kg condensate/ 
-!                      missible cloud liquid, ice,     kg air
-!                      or fraction                     or fraction
-!
-!       N_land_in      input value of number of        #/(m*m*m)
-!                      of cloud drop per cubic meter
-!                      over land
-!
-!       N_ocean_in     input value of number of        #/(m*m*m)
-!                      of cloud drop per cubic meter
-!                      over ocean
-!
-!       ---------------
-!       OPTIONAL OUTPUT
-!       ---------------
-!
-!       overlap_out    value of the namelist variable overlap
-!
-!
-!       -------------------
-!INTERNAL VARIABLES:
-!       -------------------
-!
-!       unit,io        namelist integers
-!
-!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-!  User Interface variables
-!  ------------------------
+type(exchange_control_type), intent(in), optional :: Exch_ctrl     
 
-integer,         intent(in), optional     :: axes(4)
-type(time_type), intent(in), optional     :: Time
-REAL,     INTENT (IN),  OPTIONAL          :: qmin_in,N_land_in,&
-                                             N_ocean_in
-LOGICAL,  INTENT (IN), OPTIONAL           :: prog_droplet_in
-LOGICAL,  INTENT (IN), OPTIONAL           :: prog_ice_num_in
-REAL   ,  INTENT (IN), OPTIONAL           :: qcvar_in
-INTEGER,  INTENT (OUT), OPTIONAL          :: overlap_out
-
+!----------------------------------------------------------------------
 !  Internal variables
-!  ------------------
 
+      integer  :: unit, io, ierr, logunit
 
-INTEGER                                  :: unit,io,ierr, logunit
-
-!-----------------------------------------------------------------------
-!       
-!       Code
-!
-    
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
 !---------------------------------------------------------------------
@@ -661,7 +522,8 @@ INTEGER                                  :: unit,io,ierr, logunit
       call fms_init
       call time_manager_init
       call constants_init
-      call diag_manager_init
+      call lscloud_constants_init
+      call gamma_mg_init
 
 !--------------------------------------------------------------------
 !    read namelist.
@@ -689,196 +551,65 @@ INTEGER                                  :: unit,io,ierr, logunit
                         write (logunit, nml=cloud_rad_nml)
 
 !-----------------------------------------------------------------------
-!
-!       Prevent unreasonable values
-
-        if (overlap.ne.1 .and. overlap.ne.2) &
-                call error_mesg  ('cloud_rad_init in cloud_rad module',&
-                                'overlap must be either 1 or 2 ', FATAL)
-        if (taucrit .lt. 0.) &
+!    prevent unreasonable values.
+!-----------------------------------------------------------------------
+      if (taucrit .lt. 0.) &
                 call error_mesg  ('cloud_rad_init in cloud_rad module',&
                   'taucrit must be greater than or equal to 0. ', FATAL)
-        if (scale_factor .lt. 0.) &
+      if (scale_factor .lt. 0.) &
                 call error_mesg  ('cloud_rad_init in cloud_rad module',&
                          'scale_factor must be greater than 0. ', FATAL)
-        if (qamin .le. 0. .or. qamin .ge. 1.) &
+      if (qamin .le. 0. .or. qamin .ge. 1.) &
                 call error_mesg  ('cloud_rad_init in cloud_rad module',&
                                'qamin must be between 0. and 1.', FATAL)
         
 !-----------------------------------------------------------------------
-!
-!       Assign values
+!    define needed module variables obtained from other modules.
+!-----------------------------------------------------------------------
+      if (present (Exch_ctrl)) then
+        qmin = Exch_ctrl%qmin
+        N_min = Exch_ctrl%N_min
+        N_land = Exch_ctrl%N_land
+        N_ocean = Exch_ctrl%N_ocean
+        qcvar = Exch_ctrl%qcvar
+        overlap = Exch_ctrl%overlap
+        do_liq_num = Exch_ctrl%do_liq_num
 
-        if (present(qmin_in)) then
-              qmin = qmin_in
-        end if
-        if (present(N_land_in)) then
-              N_land = N_land_in
-        end if
-        if (present(N_ocean_in)) then
-              N_ocean = N_ocean_in
-        end if
-        if (present(overlap_out)) then
-              overlap_out = overlap
-        end if
-        if (present(prog_droplet_in)) then
-              do_liq_num = prog_droplet_in
-        end if
-        if (present(prog_ice_num_in)) then
-              do_ice_num = prog_ice_num_in
-        end if
-        if (present(qcvar_in)) then
-              qcvar = qcvar_in
-        end if
+!-----------------------------------------------------------------------
+!RSH:to preserve previous behavior with clubb ( in which do_ice_num was
+!    always false) the requirement that do_clubb be F for ice num to be 
+!    true is included. For a fresh start (assuming clubb can now handle 
+!    prognostic ice crystals), the clubb condition on this definition
+!    should be removed.
+!----------------------------------------------------------------------
+        do_ice_num = Exch_ctrl%do_ice_num .and.   &
+                                      Exch_ctrl%do_clubb <= 0
+        min_diam_ice = Exch_ctrl%min_diam_ice
+        min_diam_drop = Exch_ctrl%min_diam_drop
+        max_diam_drop = Exch_ctrl%max_diam_drop
+
+!------------------------------------------------------------------------
+!    retain ability to override standard dcs value with the old value
+!    which was originally used by error with clubb
+!------------------------------------------------------------------------
+        dcs = Exch_ctrl%dcs
+        if (clubb_error) dcs = dcs_mg
+      else
+        call error_mesg ('cloud_rad_init', ' first call to &
+                   &cloud_rad_init does not have Exch_ctrl as arg',&
+                                                                    FATAL)
+      endif
  
-        call mg_const_init
-        call gamma_mg_init
-        
-       module_is_initialized = .true.
+!-----------------------------------------------------------------------
+!    mark this module as initialized.
+!-----------------------------------------------------------------------
+      module_is_initialized = .true.
+
+
+!-----------------------------------------------------------------------
+
 
 end subroutine cloud_rad_init
-
-!###################################################################
-
-! <SUBROUTINE NAME="cloud_rad_end">
-!  <OVERVIEW>
-!
-!    A destructor routine for the cloud_rad module.
-!
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!
-!    A destructor routine for the cloud_rad module.
-!
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call cloud_rad_end
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine cloud_rad_end
-
-       call gamma_mg_end
-
-       module_is_initialized = .false.
-
-end subroutine cloud_rad_end
-
-!#####################################################################
-
-! <SUBROUTINE NAME="lw_emissivity">
-!  <OVERVIEW>
-!   
-!    Subroutine lw_emissivity computes the longwave cloud emissivity 
-!    using the cloud mass absorption coefficient and the water path.
-!
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call lw_emissivity (is, js, lwp, iwp, reff_liq, reff_ice,   &
-!                       nclds, em_lw)
-!
-!  </TEMPLATE>
-!  <IN NAME="is" TYPE="integer">
-!     Starting subdomain i index of data 
-!     in the physics_window being integrated
-!  </IN>
-!  <IN NAME="js" TYPE="integer">
-!     Starting subdomain j index of data 
-!     in the physics_window being integrated
-!  </IN>
-!  <IN NAME="lwp" TYPE="real">
-!     Liquid water path [ kg / m**2 ]
-!  </IN>
-!  <IN NAME="iwp" TYPE="real">
-!     Ice water path [ kg / m**2 ]
-!  </IN>
-!  <IN NAME="reff_liq" TYPE="real">
-!     Effective cloud drop radius used with
-!     bulk cloud physics scheme [ microns ]
-!  </IN>
-!  <IN NAME="reff_ice" TYPE="real">
-!     Effective ice crystal radius used with
-!     bulk cloud physics scheme [ microns ]
-!  </IN>
-!  <IN NAME="nclds" TYPE="integer">
-!     Number of random overlapping clouds in column
-!  </IN>
-!  <OUT NAME="em_lw" TYPE="real">
-!     longwave cloud emmissivity [ dimensionless ]
-!  </OUT>
-! </SUBROUTINE>
-!
-subroutine lw_emissivity (is, js, lwp, iwp, reff_liq, reff_ice,   &
-                          nclds, em_lw)
-
-!---------------------------------------------------------------------
-!    subroutine lw_emissivity computes the longwave cloud emissivity 
-!    using the cloud mass absorption coefficient and the water path.
-!---------------------------------------------------------------------
-
-integer,                 intent(in)   ::  is,js
-real, dimension(:,:,:),  intent(in)   ::  lwp, iwp, reff_liq, reff_ice
-integer, dimension(:,:), intent(in)   ::  nclds
-real, dimension(:,:,:),  intent(out)  ::  em_lw
-
-
-!--------------------------------------------------------------------
-!   intent(in) variables:
-!
-!        is,js           starting subdomain i,j indices of data 
-!                        in the physics_window being integrated     
-!        lwp             liquid water path [ kg / m**2 ]
-!        iwp             ice water path [ kg / m**2 ]
-!        reff_liq        effective cloud drop radius  used with
-!                        bulk cloud physics scheme [ microns ]
-!        reff_ice        effective ice crystal radius used with
-!                        bulk cloud physics scheme [ microns ]
-!        nclds           number of random overlapping clouds in column
-!
-!    intent(out) variables:
-!
-!        em_lw           longwave cloud emmissivity [ dimensionless ]
-!
-!---------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!   local variables:
-
-      real, dimension (size(em_lw,1), size(em_lw,2),                 &
-                                      size(em_lw,3)) ::  k_liq, k_ice
-
-!---------------------------------------------------------------------
-!   local variables:
-!     
-!     k_liq             liquid cloud mass absorption coefficient for 
-!                       longwave portion of spectrum 
-!                       [ m**2 / kg condensate ]
-!     k_ice             ice cloud mass absorption coefficient for 
-!                       longwave portion of spectrum 
-!                       [ m**2 / kg condensate ]
-!     i,j,k             do-loop indices
-!
-!---------------------------------------------------------------------
-              
-!----------------------------------------------------------------------
-!    compute longwave emissivity, including contributions from both the
-!    ice and liquid cloud particles present.
-!----------------------------------------------------------------------
-      k_liq = 140.
-      k_ice = 4.83591 + 1758.511/reff_ice       
- 
-      em_lw = 1. - exp(-1.*( k_liq*lwp +  k_ice*iwp))
-
-!----------------------------------------------------------------------
-
-
-    
-end subroutine lw_emissivity                   
-
-
 
 
 !######################################################################
@@ -886,21 +617,18 @@ end subroutine lw_emissivity
 ! <SUBROUTINE NAME="cloud_summary3">
 !  <OVERVIEW>
 !
-!   cloud_summary3 returns the specification properties of the clouds
-!    present in the strat_cloud_mod.
+!   cloud_summary3 returns the cloud properties that are needed by the
+!   radiation package. If microphysically-based properties are desired,
+!   concentrations (g/m**3) and particle size (microns) are returned for
+!   liquid and ice cloud particles. If bulk physics are being used, then
+!   cloud thickness and the number and area of random and max-overlapped 
+!   clouds are returned.
 !
 !  </OVERVIEW>
 !  <DESCRIPTION>
 !
-!   cloud_summary3 returns the specification properties of the clouds
-!    present in the strat_cloud_mod.
-!
 !  </DESCRIPTION>
 !  <TEMPLATE>
-!   call cloud_summary3 (is, js, land, ql, qi, qa, qn, pfull, phalf, &
-!                        tkel, nclds, cldamt, lwp, iwp, reff_liq,  &
-!                        reff_ice, ktop, kbot, conc_drop, conc_ice, &
-!                        size_drop, size_ice)
 !
 !  </TEMPLATE>
 !  <IN NAME="is,js" TYPE="integer">
@@ -981,11 +709,10 @@ end subroutine lw_emissivity
 ! </SUBROUTINE>
 !
 subroutine cloud_summary3 (is, js, land,  use_fu2007, ql, qi, qa, qn, &
-                           qni, pfull, phalf, &
-                           tkel, Aerosol, nclds, cldamt, lwp, iwp, reff_liq,  &
-                           reff_ice, ktop, kbot, conc_drop, conc_ice, &
-                           size_drop, size_ice, droplet_number,  &
-                           ice_number)
+                           qni, pfull, phalf, tkel, Aerosol, nclds,   &
+                           cldamt, lwp, iwp, reff_liq, reff_ice, &
+                           ktop, kbot, conc_drop, conc_ice, size_drop,  &
+                           size_ice, droplet_number, ice_number)
    
 !---------------------------------------------------------------------
 !    cloud_summary3 returns the specification properties of the clouds
@@ -994,10 +721,10 @@ subroutine cloud_summary3 (is, js, land,  use_fu2007, ql, qi, qa, qn, &
  
 integer,                   intent(in)            :: is,js
 real, dimension(:,:),      intent(in)            :: land
-logical,                   intent(in)             :: use_fu2007
+logical,                   intent(in)            :: use_fu2007
 real, dimension(:,:,:),    intent(in)            :: ql, qi, qa, qn, pfull,&
                                                     phalf, tkel, qni
-type(aerosol_type),        intent(in)	         :: Aerosol
+type(aerosol_type),        intent(in)            :: Aerosol
 integer, dimension(:,:),   intent(out)           :: nclds          
 real, dimension(:,:,:),    intent(out)           :: cldamt, lwp, iwp, &
                                                     reff_liq, reff_ice
@@ -1017,10 +744,12 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !       qi           Cloud ice condensate [ kg condensate/kg air ]
 !       qa           Cloud volume fraction [ fraction ]
 !       qn           Cloud droplet number [ #/kg air]
+!       qni          Ice particle number [ #/kg air]
 !       pfull        Pressure at full levels [ Pascals ]
 !       phalf        Pressure at half levels [ Pascals ]
 !                    NOTE: it is assumed that phalf(j+1) > phalf(j)
 !       tkel         Temperature [ deg. Kelvin ] 
+!       Aerosol
 !
 !    intent(out) variables:
 !
@@ -1051,6 +780,8 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !                    properties are desired
 !       droplet_number
 !                    number of cloud droplets [ # / kg(air) ]
+!       ice_number
+!                    number of cloud ice particles [ # / kg(air) ]
 !
 !--------------------------------------------------------------------
  
@@ -1059,8 +790,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 
       real,dimension (size(ql,1),size(ql,2),   &
                                  size(ql,3)) :: qa_local, ql_local, &
-                                                qi_local, N_drop3D, &
-                                                N_ice3D, N_drop2D
+                                                qi_local, N_drop
 
       real,dimension (size(ql,1),size(ql,2)) :: k_ratio
       integer  :: i, j, k
@@ -1072,8 +802,12 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 !       qa_local     local value of qa (fraction)
 !       ql_local     local value of ql (kg condensate / kg air)
 !       qi_local     local value of qi (kg condensate / kg air)
-!       N_drop[23]D  number of cloud droplets per cubic meter
+!       N_drop       number of cloud droplets per cubic meter (or per kg)
 !       k_ratio      ratio of effective radius to mean volume radius
+!       depth        depth of model layer
+!       aerosols_concen
+!                    aerosol concentration used to determine activated
+!                    cloud droplet number (lin microphysics)
 !
 !---------------------------------------------------------------------
 
@@ -1104,54 +838,71 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
       end do
 
 !--------------------------------------------------------------------
-!    define the cloud droplet concentration and the ratio of the 
-!    effective drop radius to the mean volume radius.
+!    define the cloud droplet concentration. for lin microphysics
+!    (prog_ccn = T), droplet number concentration  is in #/cc, following 
+!    Boucher and Lohmann 1995. lin microphysics uses #/cc. use sulfate 
+!    concentration in ug/m3. the 10e6 factor converts expression to
+!    #/m**3.	
 !--------------------------------------------------------------------
       if (prog_ccn) then
-!droplet number concentration in #/cc following Boucher and Lohmann 1995
-!the lin microphysics uses #/cc								
-      do k=1, size(ql,3)
-        do j=1, size(ql,2)
-          do i=1, size(ql,1)
-!sulfate concentration in ug/m3	
-         depth=(phalf(i,j,k+1) - phalf(i,j,k))/(9.8*0.029*pfull(i,j,k)/(8.314*tkel(i,j,k)))
-         aerosols_concen = (Aerosol%aerosol(i,j,k,1)) /depth*1.e9
-         N_drop2D(i,j,k) = (land(i,j)*(10.**2.24* &
-                           (0.7273*aerosols_concen)**0.257)+ &
-                           (1.-land(i,j))*(10.**2.06* &
-                           (0.7273*aerosols_concen)**0.48))*1.e6
-! Treating Antartica as "ocean"? lat < -60
-	enddo
-	enddo
-	enddo
-      else
-        do k=1, size(ql,3)
-	      N_drop2D(:,:,k)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
-        end do
-      endif
-      k_ratio(:,:) = k_land*land(:,:) + k_ocean*(1. - land(:,:))
-!yim prognostic droplet number
-      if (do_liq_num) then
-        N_drop3D=qn
-        droplet_number = qn
-      else 
         do k=1, size(ql,3)
           do j=1, size(ql,2)
             do i=1, size(ql,1)
-              droplet_number(i,j,k) = N_drop2D(i,j,k)/(pfull(i,j,k)/  &
-                                      (RDGAS*tkel(i,j,k)))
+              depth = (phalf(i,j,k+1) - phalf(i,j,k))/(9.8*0.029*   &
+                                          pfull(i,j,k)/(8.314*tkel(i,j,k)))
+              aerosols_concen = (Aerosol%aerosol(i,j,k,1)) /depth*1.e9
+! Treating Antartica as "ocean"? lat < -60
+              N_drop(i,j,k) = (land(i,j)*(10.**2.24* &
+                                 (0.7273*aerosols_concen)**0.257) + &
+                                 (1.-land(i,j))*(10.**2.06* &
+                                  (0.7273*aerosols_concen)**0.48))*1.e6
+            enddo
+          enddo
+        enddo
+      else
+        if (do_liq_num) then
+          N_drop = qn    
+        else
+          do k=1, size(ql,3)
+            N_drop(:,:,k)  = N_land*land(:,:) + N_ocean*(1. - land(:,:))
+          end do
+        endif
+      endif ! prog_ccn
+
+!--------------------------------------------------------------------
+!    define the ratio of the effective drop radius to the mean volume 
+!    radius (k_ratio). 
+!--------------------------------------------------------------------
+      k_ratio(:,:) = k_land*land(:,:) + k_ocean*(1. - land(:,:))
+
+!----------------------------------------------------------------------
+!    define optional output argument droplet_number (in units of #/kg). 
+!----------------------------------------------------------------------
+      if (present(droplet_number)) then
+        if (do_liq_num) then
+          droplet_number = qn
+        else 
+          do k=1, size(ql,3)
+            do j=1, size(ql,2)
+              do i=1, size(ql,1)
+                droplet_number(i,j,k) = N_drop(i,j,k)/(pfull(i,j,k)/  &
+                                           (RDGAS*tkel(i,j,k)))
+              end do
             end do
           end do
-        end do
-      endif    
+        endif    
+      endif
 
-      if ( do_ice_num ) then
-        ice_number = qni
-        N_ice3D=qni
-      else
-        ice_number=-999.
-        N_ice3D=-999.
-      end if
+!----------------------------------------------------------------------
+!    define optional output argument ice_number (in units of #/kg).
+!----------------------------------------------------------------------
+      if (present(ice_number)) then
+        if ( do_ice_num ) then
+          ice_number = qni   ! #/kg
+        else
+          ice_number = -999.
+        end if
+      endif
 
 !--------------------------------------------------------------------
 !    execute the following when  the max-random overlap assumption 
@@ -1169,7 +920,7 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
         if (present (conc_drop) .and.  present (conc_ice ) .and. &
             present (size_ice ) .and.  present (size_drop)) then      
           call error_mesg ( 'cloud_rad_mod', &
-       ' max-random overlap not currently available for radiation '//&
+           ' max-random overlap not currently available for radiation '//&
               'scheme requiring microphysically-based outputs', FATAL)
      
 !----------------------------------------------------------------------
@@ -1184,14 +935,14 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 
         else
           call  max_rnd_overlap (ql_local, qi_local, qa_local, pfull,  &
-                                 phalf, tkel, N_drop3D, N_drop2D, k_ratio, nclds,  &
+                                 phalf, tkel, N_drop, k_ratio, nclds,  &
                                  ktop, kbot, cldamt, lwp, iwp,   &
-                                 reff_liq, reff_ice, N_ice3D)
+                                 reff_liq, reff_ice, qni  )
         endif
      
 !---------------------------------------------------------------------
-!    if only ktop or kbot is present, stop execution; both are needed
-!    for max-random overlap and neither are prrmitted when the 
+!    if only one of ktop and kbot is present, stop execution; both are 
+!    needed for max-random overlap and neither are permitted when the 
 !    random overlap assumption is made.
 !---------------------------------------------------------------------
       else if (present(ktop) .or. present(kbot)) then ! error
@@ -1213,12 +964,13 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
             present (size_ice ) .and.  present (size_drop)) then      
           call rnd_overlap (ql_local, qi_local, qa_local,  &
                             use_fu2007, pfull, phalf, tkel,  &
-                            N_drop3D, N_drop2D, N_ice3D, k_ratio, nclds, &
-                            cldamt, lwp, iwp, reff_liq, reff_ice,   &
+                            N_drop, qni,   k_ratio, nclds, &
+                            lwp, iwp, reff_liq, reff_ice,   &
                             conc_drop_org=conc_drop,&
                             conc_ice_org =conc_ice,&
                             size_drop_org=size_drop,&
                             size_ice_org =size_ice)
+          cldamt = qa_local
 
 !--------------------------------------------------------------------
 !    account for the plane-parallel homogeneous cloud bias.
@@ -1238,14 +990,14 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 
 !----------------------------------------------------------------------
 !    if microphysics terms are not required, call rnd_overlap to obtain
-!    the cloud specification variables.
+!    the cloud specification variables from a bulk physics formulation.
 !----------------------------------------------------------------------
         else
            call  rnd_overlap (ql_local, qi_local, qa_local,  &
                               use_fu2007, pfull, phalf, tkel,  &
-                              N_drop3D, N_drop2D, N_ice3D, &
-                              k_ratio, nclds,  &
-                              cldamt, lwp, iwp, reff_liq, reff_ice)
+                              N_drop, qni, k_ratio, nclds,  &
+                              lwp, iwp, reff_liq, reff_ice)
+           cldamt = qa_local
         endif
       endif ! (present(ktop and kbot))
 
@@ -1254,6 +1006,43 @@ real,    dimension(:,:,:), intent(out), optional :: conc_drop,conc_ice,&
 
 
 end subroutine cloud_summary3
+
+
+
+!###################################################################
+
+! <SUBROUTINE NAME="cloud_rad_end">
+!  <OVERVIEW>
+!
+!    A destructor routine for the cloud_rad module.
+!
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!
+!    A destructor routine for the cloud_rad module.
+!
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call cloud_rad_end
+!  </TEMPLATE>
+! </SUBROUTINE>
+!
+!------------------------------------------------------------------------
+
+subroutine cloud_rad_end
+
+!------------------------------------------------------------------------
+!    mark the module as uninitialized.
+!------------------------------------------------------------------------
+      call gamma_mg_end
+
+      module_is_initialized = .false.
+
+!------------------------------------------------------------------------
+
+
+end subroutine cloud_rad_end
+
 
 
 
@@ -1329,9 +1118,9 @@ end subroutine cloud_summary3
 !  </OUT>
 ! </SUBROUTINE>
 !
-subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D,  &
+subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop,  &
                            k_ratio, nclds, ktop, kbot, cldamt, lwp,  &
-                           iwp, reff_liq, reff_ice, N_ice3D)
+                           iwp, reff_liq, reff_ice, qni)
 
 !----------------------------------------------------------------------
 !    max_rnd_overlap returns various cloud specification properties
@@ -1340,7 +1129,7 @@ subroutine max_rnd_overlap (ql, qi, qa, pfull, phalf, tkel, N_drop3D, N_drop2D, 
  
 real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
                                                      pfull, phalf, tkel, &
-                                                     N_drop3D, N_ice3D, N_drop2D
+                                                     N_drop, qni  
 real,    dimension(:,:),   intent(in)             :: k_ratio
 integer, dimension(:,:),   intent(out)            :: nclds
 integer, dimension(:,:,:), intent(out)            :: ktop, kbot
@@ -1358,6 +1147,7 @@ real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
 !                    [ Pascals ]
 !       tkel         Temperature [ deg Kelvin ]
 !       N_drop       Number of cloud droplets per cubic meter
+!       qni          Number of ice particles per kg
 !       k_ratio      Ratio of effective radius to mean volume radius
 !
 !   intent(out) variables:
@@ -1491,251 +1281,19 @@ real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
                 sum_reff_ice     = 0.        
               endif
 
-!--------------------------------------------------------------------
-!    if liquid is present in the layer, compute the effective drop
-!    radius. the following formula, recommended by (Martin et al., 
-!    J. Atmos. Sci, vol 51, pp. 1823-1842) is used for liquid droplets:
-!    reff (in microns) =  k * 1.E+06 *
-!                    (3*airdens*(ql/qa)/(4*pi*Dens_h2o*N_liq))**(1/3)
-!
-!    where airdens = density of air in kg air/m3
-!               ql = liquid condensate in kg cond/kg air
-!               qa = cloud fraction
-!               pi = 3.14159
-!         Dens_h2o = density of pure liquid water (kg liq/m3) 
-!            N_liq = density of cloud droplets (number per cubic meter)
-!                k = factor to account for difference between 
-!                    mean volume radius and effective radius
-!--------------------------------------------------------------------
-do_liq_num_if: if(.not. do_liq_num) then
-               if (ql(i,j,k) > qmin) then
-                  reff_liq_local = k_ratio(i,j)*620350.49*    &
-                                   (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/  &
-                                   RDGAS/tkel(i,j,k)/DENS_H2O/  &
-                                   N_drop2D(i,j,k))**(1./3.)
-               else
-                 reff_liq_local = 0.
-               endif
-             else ! do_liq_num_if
-!cms++
-! BETTER SPLIT LOOP AND MOVE MOVE IFs OUTSIDE  and BETTER USE ONE SUBROUTINE
-!    INTEAD OF DUPLICATING CODE!!
+              if (ql(i,j,k) .gt. qmin) then
+                call define_liquid_particle_size   & 
+                          (k, ql(i,j,k), pfull(i,j,k), k_ratio(i,j),    &
+                               qa(i,j,:), tkel(i,j,k), N_drop(i,j,k),    &
+                                                        reff_liq(i,j,k))
+              endif
 
- mg_if: IF ( .NOT. do_ice_num ) THEN
-!cms--
+              if (qi(i,j,k) .gt. qmin) then
+                call define_ice_particle_size    &
+                          (.FALSE., .FALSE., qi(i,j,k), qa(i,j,k),    &
+                                qni(i,j,k), tkel(i,j,k), reff_ice(i,j,k))
+              endif
 
-!--------------------------------------------------------------------
-! yim: a variant for prognostic droplet number
-!    reff (in microns) =  k * 1.E+06 *
-!                    (3*(ql/qa)/(4*pi*Dens_h2o*N_liq))**(1/3)
-!
-!    where airdens = density of air in kg air/m3
-!               ql = liquid condensate in kg cond/kg air
-!               qa = cloud fraction
-!               pi = 3.14159
-!         Dens_h2o = density of pure liquid water (kg liq/m3) 
-!            N_liq = mixing ratio of cloud droplets (number/kg air)
-!                k = factor to account for difference between 
-!                    mean volume radius and effective radius
-!--------------------------------------------------------------------
-               if (ql(i,j,k) > qmin) then
-                 reff_liq_local = k_ratio(i,j)*620350.49*    &
-                                  (ql(i,j,k)/DENS_H2O/  &
-                                  max(N_drop3D(i,j,k),   &
-                                      N_min*max(qa(i,j,k),qmin)/  &
-                             (pfull(i,j,k)/RDGAS/tkel(i,j,k))))**(1./3.)
-               else
-                 reff_liq_local = 0.
-               endif
-
-!cms++
-ELSE !mg_if
-
-!-----------------------------------------------------------
-!
-! cloud droplet effective radius
-!
-
-! in-cloud mixing ratio and number conc
-         dumc = ql(i,j,k)/qa(i,j,k)
-         dumnc = N_drop3D(i,j,k)/qa(i,j,k)
-
-! limit in-cloud mixing ratio to reasonable value of 5 g kg-1
-
-         dumc =min(dumc,5.e-3)
-
-!cms++2008-11-26
-
-         dumnc =  max(dumnc, N_min)
-
-!cms--
-         if ( dumc > qmin ) then
-
-
-! add upper limit to in-cloud number concentration to prevent numerical error
-         dumnc = min(dumnc,dumc*1.e20)
-
-         rho=pfull(i,j,k)/(RDGAS*tkel(i,j,k))
-
-         pgam=0.0005714*(dumnc/1.e6/rho)+0.2714
-         pgam=1./(pgam**2)-1.
-         pgam=max(pgam,2.)
-         pgam=min(pgam,15.)
-
-         lamc = (pi/6.*rhow*dumnc*gamma_mg(pgam+4.)/ &
-                 (dumc*gamma_mg(pgam+1.)))**(1./3.)
-         lammin = (pgam+1.)/max_diam_drop_mg
-         lammax = (pgam+1.)/min_diam_drop_mg
-        if (lamc.lt.lammin) then
-         lamc = lammin
-        else if (lamc.gt.lammax) then
-         lamc = lammax
-        end if
-        reff_liq_local = gamma_mg(qcvar+1./3.)/(gamma_mg(qcvar)*  &
-                             qcvar**(1./3.))*gamma_mg(pgam+4.)/ & 
-                                          gamma_mg(pgam+3.)/lamc/2.*1.e6
-        else
-        reff_liq_local = 10.
-        end if
-        
-!ELSE!! qamin_if1
-!  reff_ice_local = 0.
-!  reff_liq_local = 0.
-!      
-!END IF   qamin_if1      
-END IF mg_if
- endif    do_liq_num_if
-
-!cms--
-
-!----------------------------------------------------------------------
-!    for single layer liquid or mixed phase clouds it is assumed that
-!    cloud liquid is vertically stratified within the cloud.  under
-!    such situations for observed stratocumulus clouds it is found
-!    that the cloud mean effective radius is between 80 and 100% of
-!    the cloud top effective radius. (Brenguier et al., Journal of
-!    Atmospheric Sciences, vol. 57, pp. 803-821 (2000))  for linearly 
-!    stratified cloud in liquid specific humidity, the cloud top 
-!    effective radius is greater than the effective radius of the 
-!    cloud mean specific humidity by a factor of 2**(1./3.).
-!    this correction, 0.9*(2**(1./3.)) = 1.134, is applied only to 
-!    single layer liquid or mixed phase clouds.
-!
-!---------------------------------------------------------------------- 
-              if (do_brenguier) then
-              if ( k == 1 ) then
-                 if (qa(i,j,2) < qamin) then
-                   reff_liq_local = 1.134*reff_liq_local
-                 endif
-              else if (k == kdim ) then
-                 if ( qa(i,j,kdim-1) < qamin) then
-                   reff_liq_local = 1.134*reff_liq_local
-                 endif
-              else if (qa(i,j,k-1) .lt. qamin .and. & 
-                       qa(i,j,k+1) .lt. qamin)  then
-                reff_liq_local = 1.134*reff_liq_local
-              end if
-              end if
-
-!cms++
-
- IF ( do_ice_num ) THEN
-
-! calc. based on Morrison Gettelman code
-!  
-
-!qamin_if1: IF ( qa(i,j,k) .GT. qamin ) THEN 
-
-! in-cloud mixing ratio and number conc
-         dumi = qi(i,j,k)/qa(i,j,k)
-         dumni = N_ice3D(i,j,k)/qa(i,j,k)
-
-! limit in-cloud mixing ratio to reasonable value of 5 g kg-1
-         dumi =min(dumi ,5.e-3)
-
-!cms++2009-02-19
-
- dumni =  max(dumni, Ni_min)
-
-!cms--
-!...................
-! cloud ice effective radius
-       if ( dumi > qmin ) then
-
-! add upper limit to in-cloud number concentration to prevent numerical error
-       dumni=min(dumni,dumi*1.e20)
-       lami = (gamma_mg(1.+di_mg)*ci_mg* &
-              dumni/dumi)**(1./di_mg)
-!2008-11-18   lammax = 1./10.e-6
-        lammax = 1./min_diam_ice_mg
-        lammin = 1./(2.*dcs_mg)
-
-        if (lami.lt.lammin) then
-        lami = lammin
-        else if (lami.gt.lammax) then
-        lami = lammax
-        end if
-        reff_ice_local = 1.5/lami*1.e6
-        else
-          reff_ice_local = 25.
-        end if
-
-!cms++2008-10-31 
-
-       reff_ice_local = 2. *  reff_ice_local !3rd moment/2nd moment as in Fu and Liou paper
-!cms--
-
-ELSE
-!--------------------------------------------------------------------
-!    if ice crystals are present, define their effective size, which
-!    is a function of temperature. for ice clouds the effective radius
-!    is taken from the formulation in Donner (1997, J. Geophys. Res., 
-!    102, pp. 21745-21768) which is based on Heymsfield and Platt (1984)
-!    with enhancement for particles smaller than 20 microns.  
-!
-!              T Range (K)               Reff (microns) 
-!     -------------------------------    --------------
-!
-!     tfreeze-25. < T                       92.46298       
-!     tfreeze-30. < T <= Tfreeze-25.        72.35392     
-!     tfreeze-35. < T <= Tfreeze-30.        85.19071         
-!     tfreeze-40. < T <= Tfreeze-35.        55.65818        
-!     tfreeze-45. < T <= Tfreeze-40.        35.29989       
-!     tfreeze-50. < T <= Tfreeze-45.        32.89967     
-!     Tfreeze-55  < T <= Tfreeze-50         16.60895      
-!                   T <= Tfreeze-55.        15.41627    
-!
-!--------------------------------------------------------------------
-              if (qi(i,j,k) > qmin) then
-                if (tkel(i,j,k) > TFREEZE - 25. ) then
-                  reff_ice_local = 92.46298
-                else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
-                         tkel(i,j,k) <= TFREEZE - 25.) then
-                  reff_ice_local = 72.35392
-                else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
-                         tkel(i,j,k) <= TFREEZE - 30.) then
-                  reff_ice_local = 85.19071 
-                else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
-                         tkel(i,j,k) <= TFREEZE - 35.) then
-                  reff_ice_local = 55.65818
-                else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
-                         tkel(i,j,k) <= TFREEZE - 40.) then
-                  reff_ice_local = 35.29989
-                else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
-                         tkel(i,j,k) <= TFREEZE - 45.) then
-                  reff_ice_local = 32.89967
-                else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
-                         tkel(i,j,k) <= TFREEZE - 50.) then
-                  reff_ice_local = 16.60895
-                else
-                  reff_ice_local = 15.41627
-                end if
-
-              else
-                reff_ice_local = 0.
-              end if  
-
-END IF
 !---------------------------------------------------------------------
 !    add this layer's contributions to the current cloud. total liquid
 !    content, ice content, largest cloud fraction and condensate-
@@ -1747,10 +1305,10 @@ END IF
               sum_ice = sum_ice + qi(i,j,k)* &
                         (phalf(i,j,k+1) - phalf(i,j,k))/GRAV
               maxcldfrac = MAX(maxcldfrac,qa(i,j,k))
-              sum_reff_liq  = sum_reff_liq + (reff_liq_local*ql(i,j,k)*&
+              sum_reff_liq  = sum_reff_liq + (reff_liq(i,j,k)*ql(i,j,k)*&
                               (phalf(i,j,k+1) - phalf(i,j,k))/GRAV)
               sum_reff_ice  = sum_reff_ice + &
-                              (reff_ice_local * qi(i,j,k) * &
+                              (reff_ice(i,j,k) * qi(i,j,k) * &
                               (phalf(i,j,k+1) - phalf(i,j,k))/GRAV)
             endif ! (ql > qmin or qi > qmin)
 
@@ -1981,10 +1539,9 @@ end subroutine max_rnd_overlap
 ! </SUBROUTINE>
 !
 subroutine rnd_overlap    (ql, qi, qa, use_fu2007, pfull, phalf,   &
-                           tkel, N_drop3D, N_drop2D, N_ice3D, &
-                           k_ratio, nclds, cldamt, lwp, iwp, reff_liq, &
-                           reff_ice, conc_drop_org, conc_ice_org,  &
-                           size_drop_org, size_ice_org)
+                           tkel, N_drop, qni, k_ratio, nclds, lwp, iwp,  &
+                           reff_liq, reff_ice, conc_drop_org,  &
+                           conc_ice_org, size_drop_org, size_ice_org)
 
 !----------------------------------------------------------------------
 !    rnd_overlap returns various cloud specification properties, 
@@ -1996,11 +1553,11 @@ subroutine rnd_overlap    (ql, qi, qa, use_fu2007, pfull, phalf,   &
  
 real,    dimension(:,:,:), intent(in)             :: ql, qi, qa,  &
                                                      pfull, phalf, tkel, &
-                                                     N_drop3D, N_ice3d, N_drop2D
+                                                     N_drop, qni  
 logical,                   intent(in)             :: use_fu2007
 real,    dimension(:,:),   intent(in)             :: k_ratio
 integer, dimension(:,:),   intent(out)            :: nclds
-real,    dimension(:,:,:), intent(out)            :: cldamt, lwp, iwp, &
+real,    dimension(:,:,:), intent(out)            :: lwp, iwp, &
                                                      reff_liq, reff_ice
 real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
                                                      conc_ice_org,  &
@@ -2018,12 +1575,12 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !                    [ Pascals ]
 !       tkel         Temperature [ deg Kelvin ]
 !       N_drop       Number of cloud droplets per cubic meter
+!       qni          Number of ice particles per kg
 !       k_ratio      Ratio of effective radius to mean volume radius
 !
 !   intent(out) variables:
 !
 !       nclds        Number of (random overlapping) clouds in column 
-!       cldamt       Cloud amount of condensed cloud [ dimensionless ]
 !       lwp          Cloud liquid water path [ kg condensate / m **2 ]
 !       iwp          Cloud ice path [ kg condensate / m **2 ]
 !       reff_liq     Effective radius for liquid clouds [ microns ]
@@ -2044,48 +1601,23 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !   local variables:
 
       logical    ::  want_microphysics
-      real       ::  reff_liq_local, reff_ice_local
-      integer    ::  kdim
       integer    ::  i, j, k
-      REAL       ::  dumc, dumnc, rho, pgam, lamc, lammax, lammin, &
-                     dumi, dumni, lami
 
 !--------------------------------------------------------------------
 !   local variables:
 !
 !       want_microphysics   logical indicating if microphysical 
 !                           parameters are to be calculated
-!       reff_liq_local      reff of liquid clouds used locally
-!                           [ microns ]
-!       reff_ice_local      reff of ice clouds used locally 
-!                           [ microns ]
-!       kdim                number of vertical layers
 !       i,j,k               do-loop indices
 !
 !----------------------------------------------------------------------
 
-!---------------------------------------------------------------------
-!    define the number of vertical layers in the model. initialize the
-!    output fields to correspond to the absence of clouds.
-!---------------------------------------------------------------------
-      kdim     = size(ql,3)
-      nclds    = 0
-      cldamt   = 0.
-      lwp      = 0.
-      iwp      = 0.
-      reff_liq = 10.
-      reff_ice = 30.
-
 !--------------------------------------------------------------------
-!    initialize the optional output arguments, if present. define a
-!    logical, indicating their presence.
+!    define a logical, indicating the presence (or not) of the optional
+!    microphysics arguments.
 !--------------------------------------------------------------------
       if (present(conc_drop_org) .and. present(conc_ice_org ) .and. &
           present(size_ice_org ) .and. present(size_drop_org)) then  
-        conc_drop_org = 0.
-        conc_ice_org  = 0.
-        size_drop_org = 20.
-        size_ice_org  = 60.
         want_microphysics = .true.
 
 !----------------------------------------------------------------------
@@ -2107,40 +1639,310 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
       end if
 
 !--------------------------------------------------------------------
-!    find the layers with cloud in each column, starting at model top. 
+!    count the layers with cloud in each column, starting at model top. 
 !--------------------------------------------------------------------
+      nclds = 0
       do k=1,size(ql,3)
         do j=1,size(ql,2)
           do i=1,size(ql,1)
-            if (ql(i,j,k) > qmin .or. qi(i,j,k) > qmin) then
+            if (qa(i,j,k) > qmin ) then
                
 !---------------------------------------------------------------------
 !    when cloud is found, increment the cloud column counter.
 !---------------------------------------------------------------------
               nclds(i,j) = nclds(i,j) + 1
+            endif
+          end do
+        end do
+      end do
 
 !---------------------------------------------------------------------
-!    if liquid water is present, compute the liquid water path. 
+!    if cloud water is present (> qmin) compute cloud water path and 
+!    if a microphysics-based scheme is active, the droplet concentration.
+!    if cloud ice is present (> qmin) compute cloud ice path and 
+!    if a microphysics-based scheme is active, the ice concentration.
 !---------------------------------------------------------------------
-              if (ql(i,j,k) > qmin) then
-                lwp(i,j,k) = ql(i,j,k)*    &
-                                      (phalf(i,j,k+1) - phalf(i,j,k))/ &
-                                      GRAV/qa(i,j,k)
+      do k=1,size(ql,3)
+        do j=1,size(ql,2)
+          do i=1,size(ql,1)
+            if (ql(i,j,k) > qmin) then
+
+!---------------------------------------------------------------------
+!    compute the liquid water path. 
+!---------------------------------------------------------------------
+              lwp(i,j,k) = ql(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                            GRAV/qa(i,j,k)
 
 !----------------------------------------------------------------------
-!    if microphysical properties are desired, calculate the droplet
-!    concentrations. units of concentration are in g / m**3.
+!    calculate the droplet concentration. units of concentration are 
+!    g / m**3.
 !----------------------------------------------------------------------
-                if (want_microphysics) then
-                  conc_drop_org(i,j,k) =     &
+              if (want_microphysics) then
+                conc_drop_org(i,j,k) =     &
                       1000.*ql(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/&
                       RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/  &
                       MAX(phalf(i,j,k), pfull(i,j,1)))/qa(i,j,k)
-                endif  
+              endif  
+            else
+              lwp(i,j,k) = 0.
+              if (want_microphysics) conc_drop_org(i,j,k) = 0.
+            endif
 
 !---------------------------------------------------------------------
-!    compute the effective cloud droplet radius. for liquid clouds the 
-!    following formula is used, as recommended by 
+!    if ice is present, compute the ice water path.
+!---------------------------------------------------------------------
+            if (qi(i,j,k) .gt. qmin) then
+              iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                           GRAV/qa(i,j,k)
+                          
+!----------------------------------------------------------------------
+!    if microphysical properties are desired, calculate the ice con-
+!    centration. units of concentration are in g / m**3.
+!----------------------------------------------------------------------
+              if (want_microphysics) then
+                conc_ice_org (i,j,k) =     &
+                      1000.*qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                      RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
+                      MAX(phalf(i,j,k), pfull(i,j,1)))/ qa(i,j,k)
+              end if  
+            else
+              iwp(i,j,k) = 0.
+              if (want_microphysics)  conc_ice_org(i,j,k) = 0.
+            endif            
+          end do
+        end do
+      end do
+
+!------------------------------------------------------------------------
+!    call define_liquid_particle_size to compute the effective radius 
+!    and /or the effective drop size diameter to be used by the radiation 
+!    code.
+!------------------------------------------------------------------------
+      do k=1,size(ql,3)
+        do j=1,size(ql,2)
+          do i=1,size(ql,1)
+            if (ql(i,j,k) > qmin) then
+              call define_liquid_particle_size (k,  ql(i,j,k),   &
+                   pfull(i,j,k), k_ratio(i,j), qa(i,j,:), tkel(i,j,k), &
+                                          N_drop(i,j,k),  reff_liq(i,j,k))
+!             if (want_microphysics)  size_drop_org(i,j,k) =    &
+!                                            2.*reff_liq(i,j,k)
+
+!-------------------------------------------------------------------------
+!    if ql is not present (or below qmin), set the output fields to
+!    appropriate values.
+!-------------------------------------------------------------------------
+            else
+              reff_liq(i,j,k) = 10.
+!             if(want_microphysics) size_drop_org(i,j,k) = 20.
+            endif  ! (ql > qmin)
+          end do
+        end do
+      end do
+
+!------------------------------------------------------------------------
+!    convert to drop diameter.
+!------------------------------------------------------------------------
+      if (want_microphysics)  size_drop_org = 2.*reff_liq
+
+
+#ifdef SKIP
+!---------------------------------------------------------------------
+!    if cloud ice is present (above qmin) compute cloud ice path and 
+!    crystal size, and, if a microphysics-based scheme is active, the 
+!    ice concentration and mean crystal size.
+!---------------------------------------------------------------------
+      do k=1,size(ql,3)
+        do j=1,size(ql,2)
+          do i=1,size(ql,1)
+            if (qi(i,j,k) .gt. qmin) then
+
+!---------------------------------------------------------------------
+!    if ice is present, compute the ice water path.
+!---------------------------------------------------------------------
+              iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                           GRAV/qa(i,j,k)
+                          
+!----------------------------------------------------------------------
+!    if microphysical properties are desired, calculate the ice con-
+!    centration. units of concentration are in g / m**3.
+!----------------------------------------------------------------------
+              if (want_microphysics) then
+                conc_ice_org (i,j,k) =     &
+                      1000.*qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                      RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
+                      MAX(phalf(i,j,k), pfull(i,j,1)))/ qa(i,j,k)
+              end if  
+            else
+              iwp(i,j,k) = 0.
+              if (want_microphysics)  conc_ice_org(i,j,k) = 0.
+            endif            
+          end do
+        end do
+      end do
+#endif
+
+!------------------------------------------------------------------------
+!    call define_ice_particle_size to compute the effective radius 
+!    and /or the effective crystal size to be used by the radiation 
+!    code.
+!------------------------------------------------------------------------
+      do k=1,size(ql,3)
+        do j=1,size(ql,2)
+          do i=1,size(ql,1)
+            if (qi(i,j,k) .gt. qmin) then
+              call define_ice_particle_size (want_microphysics,   &
+                  use_fu2007, qi(i,j,k), qa(i,j,k), qni(i,j,k),   &
+                  tkel(i,j,k), reff_ice(i,j,k), size_ice_org(i,j,k))
+
+!-----------------------------------------------------------------------
+!    if insufficient ice is present, set output fields to appropriate
+!    values.
+!-----------------------------------------------------------------------
+            else  ! (qi > qmin)
+              reff_ice(i,j,k) = 30.
+              if(want_microphysics) size_ice_org(i,j,k) = 60.
+            end if ! (qi > qmin)                    
+          end do
+        end do
+      end do
+
+
+!-------------------------------------------------------------------
+    
+end subroutine rnd_overlap   
+
+
+
+!########################################################################
+
+SUBROUTINE snow_and_rain (qa, pfull, phalf, tkel, cldamt, snow, rain,  &
+                          size_snow_in, size_rain_in, conc_rain,  &
+                          conc_snow,  size_rain, size_snow )
+
+!----------------------------------------------------------------------
+real, dimension(:,:,:), intent(in)     :: qa, pfull, phalf, tkel
+real, dimension(:,:,:), intent(in)     :: snow, rain, size_snow_in,  &
+                                          size_rain_in
+real, dimension(:,:,:), intent(inout)  :: cldamt
+real, dimension(:,:,:), intent(out)    :: conc_rain, conc_snow, &
+                                          size_rain, size_snow
+
+! NOTE: size_snow currently not used 
+!--------------------------------------------------------------------
+
+
+      REAL, DIMENSION( size(qa,1), size(qa,2), size(qa,3))  :: cldmax_loc
+
+      REAL    :: dum
+      integer :: i,j,k
+
+
+      conc_snow = 0.
+      conc_rain = 0.
+      size_snow = 1.e-20
+      size_rain = 1.e-20
+
+ 
+
+      IF (snow_in_cloudrad .OR. rain_in_cloudrad ) THEN
+
+!--------------------------------------------------------------------
+!    define the locally seen cloud max above each level.
+!--------------------------------------------------------------------
+        cldmax_loc = 0.
+        do k=1,size(qa,3)
+          do j=1,size(qa,2)
+            do i=1,size(qa,1)
+! this might be o.k. as long as stochastic clouds are used  
+              if (k.eq.1) then
+                cldmax_loc(i,j,k)  = qa(i,j,k) !max overlap for precip
+              else
+                cldmax_loc(i,j,k) = max(cldmax_loc(i,j,k-1), qa(i,j,k))
+              end if
+            end do
+          end do
+        end do
+
+!-----------------------------------------------------------------------
+!    define the snow field to be seen by the radiation code.
+!-----------------------------------------------------------------------
+        IF (snow_in_cloudrad) THEN
+          do k=1,size(qa,3) 
+            do j=1,size(qa,2)
+              do i=1,size(qa,1)
+                IF (cldmax_loc(i,j,k) .GE. qamin) THEN
+                  dum =  snow(i,j,k)/cldmax_loc(i,j,k)
+                  dum = MIN(dum, 60.e-3)
+                  IF (dum .GE. qmin) THEN
+                    conc_snow (i,j,k) =     &
+                       1000.*dum*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                        RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
+                        MAX(phalf(i,j,k), pfull(i,j,1)))
+!size_snow currently not used
+!!                  size_snow (i,j,k) =  MAX( 1.e-20, size_snow_in( i,j,k))
+!!                  cldamt(i,j,k) = cldmax_loc(i,j,k)
+                  END IF
+                END IF 
+              end do
+            end do
+          end do
+        END IF  
+
+!-----------------------------------------------------------------------
+!    define the rain field to be seen by the radiation code.
+!-----------------------------------------------------------------------
+        IF (rain_in_cloudrad) THEN
+          do k=1,size(qa,3)
+            do j=1,size(qa,2)
+              do i=1,size(qa,1)
+                IF (cldmax_loc(i,j,k) .GE. qamin) THEN
+                  dum = rain(i,j,k)/cldmax_loc(i,j,k)
+                  dum = MIN(dum, 60.e-3)
+                  IF (dum .GE. qmin) THEN
+                    conc_rain (i,j,k) =     &
+                       1000.*dum*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                       RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
+                       MAX(phalf(i,j,k), pfull(i,j,1)))
+                    size_rain (i,j,k) = MAX( 1.e-20, size_rain_in(i,j,k))
+!!                  cldamt(i,j,k) = cldmax_loc(i,j,k)
+                  END IF
+                END IF 
+              end do
+            end do
+          end do
+        END IF 
+      END IF !(snow_in_cloudrad .OR. rain_in_cloudrad ) 
+
+!-----------------------------------------------------------------------
+
+END SUBROUTINE snow_and_rain
+
+
+!########################################################################
+
+subroutine define_liquid_particle_size (k, ql, pfull, k_ratio, qa, tkel, &
+                                                  N_drop,  reff_liq_local)
+
+!------------------------------------------------------------------------
+integer,            intent(in)  :: k
+real,               intent(in)  :: ql, pfull, tkel, N_drop
+real, dimension(:), intent(in)  :: qa
+real,               intent(in)  :: k_ratio
+real,               intent(out) :: reff_liq_local
+!------------------------------------------------------------------------
+
+      integer :: kdim
+      real :: dumc, dumnc, rho, pgam, lamc, lammax, lammin
+
+!-----------------------------------------------------------------------
+
+      kdim = size(qa,1)
+
+!---------------------------------------------------------------------
+!    compute the effective cloud droplet radius. 
+!    when cloud droplets are not being predicted, the following formula
+!    for liquid clouds is used, as recommended by 
 !    Martin et al., J. Atmos. Sci, vol 51, pp. 1823-1842:
 !
 !    reff (in microns) =  k * 1.E+06 *
@@ -2155,21 +1957,18 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !                k = factor to account for difference between 
 !                    mean volume radius and effective radius
 !---------------------------------------------------------------------
-!       if (.not. do_liq_num) then
-     do_liq_num_if2:  if (.not. do_liq_num) then
-                reff_liq_local = k_ratio(i,j)* 620350.49 *    &
-                                 (pfull(i,j,k)*ql(i,j,k)/qa(i,j,k)/   & 
-                                 RDGAS/tkel(i,j,k)/DENS_H2O/    &
-                                 N_drop2D(i,j,k))**(1./3.)
-        else ! do_liq_num_if2
+      if (ql > qmin) then
+        if (.not. do_liq_num) then
+          reff_liq_local = k_ratio* 620350.49 *  &
+                  (pfull*ql/qa(k)/RDGAS/tkel/DENS_H2O/N_drop  )**(1./3.)
+        else 
+          IF ( .NOT. do_ice_num ) THEN
 
-!cms++
-! BETTER SPLIT LOOP AND MOVE MOVE IFs OUTSIDE and BETTER USE ONE SUBROUTINE
-!    INTEAD OF DUPLICATING CODE!!
- 
- mgp_if: IF ( .NOT. do_ice_num ) THEN
-!cms--
 !--------------------------------------------------------------------
+!    use the following formula for  cloud drop effective radius for the 
+!    case when cloud droplet number is being predicted, but ice particle 
+!    number is not being predicted.
+!
 ! yim: a variant for prognostic droplet number
 !    reff (in microns) =  k * 1.E+06 *
 !                    (3*ql/(4*pi*Dens_h2o*N_liq))**(1/3)
@@ -2183,80 +1982,65 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !                k = factor to account for difference between 
 !                    mean volume radius and effective radius
 !--------------------------------------------------------------------
-              if (ql(i,j,k) > qmin) then
-                reff_liq_local = k_ratio(i,j)*620350.49*    &
-                                 (ql(i,j,k)/DENS_H2O/  &
-                                 max(N_drop3D(i,j,k),  &
-                                      N_min*max(qa(i,j,k),qmin)/  &
-                             (pfull(i,j,k)/RDGAS/tkel(i,j,k))))**(1./3.)
-              else
-                reff_liq_local = 0.0
-              endif
-                       
+            if (ql > qmin) then
+              reff_liq_local = k_ratio*620350.49*    &
+                         (ql/DENS_H2O/max(N_drop,N_min*max(qa(k),qmin)/  &
+                                            (pfull/RDGAS/tkel)))**(1./3.)
+            else
+              reff_liq_local = 0.0
+            endif
+!--------------------------------------------------------------------
+!    use the following formula for cloud droplet effective radius in the 
+!    case when both cloud droplet number and ice particle number are 
+!    being predicted.
+!-----------------------------------------------------------------------
+          ELSE 
 
-!cms++
-ELSE !mg_if
+!-----------------------------------------------------------------------
+!    calculate in-cloud mixing ratio and number concentration.
+!    limit the in-cloud mixing ratio to reasonable value of 5 g kg-1.
+!    put a lower limit on the droplet number concentration.
+!-----------------------------------------------------------------------
+            dumc = ql/qa(k)
+            dumnc = N_drop/qa(k)
+            dumc = min(dumc, 5.e-3)
+            dumnc = max(dumnc, N_min)
 
-!-----------------------------------------------------------
-!
-! cloud droplet effective radius
-!
+!-----------------------------------------------------------------------
+!    if sufficient liquid is present, compute the effective droplet
+!    radius using the gamma function formulation.
+!-----------------------------------------------------------------------
+            if ( dumc > qmin ) then
 
-! in-cloud mixing ratio and number conc
-         dumc = ql(i,j,k)/qa(i,j,k)
-         dumnc = N_drop3D(i,j,k)/qa(i,j,k)
+!-----------------------------------------------------------------------
+!    add upper limit to in-cloud number concentration to prevent 
+!    numerical error.
+!-----------------------------------------------------------------------
+              dumnc = min(dumnc,dumc*1.e20)
+              rho = pfull/(RDGAS*tkel)
+              pgam = 0.0005714*(dumnc/1.e6/rho) + 0.2714
+              pgam = 1./(pgam**2) - 1.
+              pgam = max(pgam,2.)
+              pgam = min(pgam,15.)
 
-! limit in-cloud mixing ratio to reasonable value of 5 g kg-1
-
-         dumc =min(dumc,5.e-3)
-
-!cms++2008-11-26
-
- dumnc =  max(dumnc, N_min)
-
-!cms--
-
-        if ( dumc > qmin ) then
-
-
-! add upper limit to in-cloud number concentration to prevent numerical error
-          dumnc = min(dumnc,dumc*1.e20)
-
-         rho=pfull(i,j,k)/(RDGAS*tkel(i,j,k))
-
-         pgam=0.0005714*(dumnc/1.e6/rho)+0.2714
-         pgam=1./(pgam**2)-1.
-         pgam=max(pgam,2.)
-         pgam=min(pgam,15.)
-
-         lamc = (pi/6.*rhow*dumnc*gamma_mg(pgam+4.)/ &
-                 (dumc*gamma_mg(pgam+1.)))**(1./3.)
-         lammin = (pgam+1.)/max_diam_drop_mg
-         lammax = (pgam+1.)/min_diam_drop_mg
-         if (lamc.lt.lammin) then
-         lamc = lammin
-         else if (lamc.gt.lammax) then
-         lamc = lammax
-          end if
-         reff_liq_local = gamma_mg(qcvar+1./3.)/(gamma_mg(qcvar)*qcvar**(1./3.))* &
-             gamma_mg(pgam+4.)/ &
-             gamma_mg(pgam+3.)/lamc/2.*1.e6
-        else
-        reff_liq_local = 10.
-        end if
-        
-
-
-!ELSE!! qamin_if
-!  reff_ice_local = 0.
-!  reff_liq_local = 0.
-!      
-!END IF   qamin_if      
-END IF mgp_if
-
-end if do_liq_num_if2
-
-!cms--
+              lamc = (pi/6.*rhow*dumnc*gamma_mg(pgam + 4.)/ &
+                              (dumc*gamma_mg(pgam + 1.)))**(1./3.)
+              lammin = (pgam + 1.)/max_diam_drop
+              lammax = (pgam + 1.)/min_diam_drop
+              if (lamc.lt.lammin) then
+                lamc = lammin
+              else if (lamc.gt.lammax) then
+                lamc = lammax
+              end if
+              reff_liq_local = gamma_mg(qcvar+1./3.)/   &
+                                (gamma_mg(qcvar)*qcvar**(1./3.))* &
+                                    gamma_mg(pgam + 4.)/ &
+                                        gamma_mg(pgam + 3.)/lamc/2.*1.e6
+            else
+              reff_liq_local = 10.
+            end if ! (dumc > qmin)
+          END IF  ! (.not. do_ice_num)
+        end if  ! (.not. do_liq_num) 
 
 !----------------------------------------------------------------------
 !    for single layer liquid or mixed phase clouds it is assumed that
@@ -2270,62 +2054,68 @@ end if do_liq_num_if2
 !    cloud mean specific humidity by a factor of 2**(1./3.).
 !    this correction, 0.9*(2**(1./3.)) = 1.134, is applied only to 
 !    single layer liquid or mixed phase clouds.
+!    (as coded this effect is not applied if there is any chance of
+!    cloud overlap in adjacent layers. Only if there is no cloud in
+!    both adjacent layers is the effect applied.)
 !----------------------------------------------------------------------
-                if (do_brenguier) then
-! should this be applied to all clouds ? 
-! random overlap ==> all clouds are of 1 layer
-                if ( k == 1 ) then
-                  if (qa(i,j,2) < qamin) then
-                    reff_liq_local = 1.134*reff_liq_local
-                  endif
-                else if (k == kdim ) then
-                  if ( qa(i,j,kdim-1) < qamin) then
-                    reff_liq_local = 1.134*reff_liq_local
-                  endif
-                else if (qa(i,j,k-1) .lt. qamin .and. & 
-                         qa(i,j,k+1) .lt. qamin)  then
-                  reff_liq_local = 1.134*reff_liq_local
-!! ADD for random overlap -- all clouds are 1 layer thick
-!!! WAIT FOR SAK REPLY
-!               else
-!                 reff_liq_local = 1.134*reff_liq_local
-                end if
-                end if
+        if (do_brenguier) then
+          if ( k == 1 ) then
+            if (qa(2) < qamin) then
+              reff_liq_local = 1.134*reff_liq_local
+            endif
+          else if (k == kdim ) then
+            if ( qa(kdim-1) < qamin) then
+              reff_liq_local = 1.134*reff_liq_local
+            endif
+          else if (qa(k-1) .lt. qamin .and. & 
+                   qa(k+1) .lt. qamin)  then
+            reff_liq_local = 1.134*reff_liq_local
+          end if
+        end if
+
+!-------------------------------------------------------------------------
+!    if ql is not present (or below qmin), set the output fields to
+!    appropriate values.
+!-------------------------------------------------------------------------
+      else
+        reff_liq_local = 0.
+      endif  ! (ql > qmin)
+
+!----------------------------------------------------------------------
 
 
-                reff_liq(i,j,k) =  reff_liq_local
-                if (want_microphysics)      &
-                   size_drop_org(i,j,k) = 2.*reff_liq_local
-              endif  ! (ql > qmin)
+end subroutine define_liquid_particle_size
+
+
+
+!########################################################################
+
+subroutine define_ice_particle_size ( want_microphysics, use_fu2007,   &
+                          qi, qa, qni, tkel, reff_ice_local, size_ice_org)
+
+!------------------------------------------------------------------------
+logical, intent(in)            :: use_fu2007, want_microphysics
+real,    intent(in)            :: qi, qa, qni, tkel
+real,    intent(out)           :: reff_ice_local
+real,    intent(out), optional :: size_ice_org
+!-----------------------------------------------------------------------
+
+      real :: dumi, dumni, lami, lammax, lammin
+
 
 !---------------------------------------------------------------------
-!    if ice is present, compute the ice water path.
-!---------------------------------------------------------------------
-              if (qi(i,j,k) .gt. qmin) then
-                iwp(i,j,k) = qi(i,j,k)*    &
-                                      (phalf(i,j,k+1) - phalf(i,j,k))/ &
-                                      GRAV/qa(i,j,k)
-                          
-!----------------------------------------------------------------------
-!    if microphysical properties are desired, calculate the ice con-
-!    centration. units of concentration are in g / m**3.
-!----------------------------------------------------------------------
-                if (want_microphysics) then
-                  conc_ice_org (i,j,k) =     &
-                      1000.*qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
-                      RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
-                      MAX(phalf(i,j,k), pfull(i,j,1)))/ qa(i,j,k)
-                end if  
-                       
-!---------------------------------------------------------------------
-!    compute the effective ice crystal size. for bulk physics cases, the
-!    effective radius is taken from the formulation in Donner 
-!    (1997, J. Geophys. Res., 102, pp. 21745-21768) which is based on 
-!    Heymsfield and Platt (1984) with enhancement for particles smaller
-!    than 20 microns.  
-!    if microphysical properties are requested, then the size of the
-!    ice crystals comes from the Deff column [ reference ?? ].     
-!
+!    compute the effective ice crystal size. 
+!    1) for bulk physics cases, the effective radius is taken from the 
+!       formulation in Donner (1997, J. Geophys. Res., 102, 
+!       pp. 21745-21768) which is based on Heymsfield and Platt (1984) 
+!       with enhancement for particles smaller than 20 microns.  
+!    2) if microphysical properties are requested, then the size of the
+!       ice crystals comes from the Deff column [ reference ?? ].     
+!    3) alternatively, if use_fu2007 is .true, Fu's parameterization of 
+!       dge is used --yim
+!    4) if  the ice particle number is being predicted the appropriate 
+!       gamma function expression is used.
+
 !              T Range (K)               Reff (microns)   Deff (microns)
 !     -------------------------------    --------------   --------------
 !
@@ -2340,144 +2130,152 @@ end if do_liq_num_if2
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-!    calculate the effective ice crystal size using the data approp-
-!    riate for the microphysics case.
+!    calculate the effective ice crystal size using the appropriate data.
+!    if microphysics being used, define size_ice_org.
 !---------------------------------------------------------------------
-!cms++
-    do_ice_num_3: IF (  do_ice_num ) THEN
+      if (qi .gt. qmin) then
+        IF ( .not. do_ice_num ) THEN
 
-! calc. based on Morrison Gettelman code
-!     
-!qamin_if: IF ( qa(i,j,k) .GT. qamin ) THEN 
+          if (use_fu2007) then
+            reff_ice_local = 47.05 +   &
+                                0.6624*(tkel - TFREEZE) +&
+                                0.001741*(tkel-TFREEZE)**2
+            size_ice_org = reff_ice_local
+          else ! (use_fu2007)
+            if (want_microphysics) then
+              if (tkel > TFREEZE - 25.) then
+                reff_ice_local = 100.6      
+              else if (tkel >  TFREEZE - 30. .and. &
+                       tkel <= TFREEZE - 25.) then
+                reff_ice_local = 80.8        
+              else if (tkel >  TFREEZE - 35. .and. &
+                       tkel <= TFREEZE - 30.) then
+                reff_ice_local = 93.5       
+              else if (tkel >  TFREEZE - 40. .and. &
+                       tkel <= TFREEZE - 35.) then
+                reff_ice_local = 63.9         
+              else if (tkel >  TFREEZE - 45. .and. &
+                       tkel <= TFREEZE - 40.) then
+                reff_ice_local = 42.5       
+              else if (tkel >  TFREEZE - 50. .and. &
+                       tkel <= TFREEZE - 45.) then
+                reff_ice_local = 39.9           
+              else if (tkel >  TFREEZE - 55. .and. &
+                       tkel <= TFREEZE - 50.) then
+                reff_ice_local = 21.6         
+              else
+                reff_ice_local = 20.2             
+              endif
 
-! in-cloud mixing ratio and number conc
-         dumi = qi(i,j,k)/qa(i,j,k)
-         dumni = N_ice3D(i,j,k)/qa(i,j,k)
-
-! limit in-cloud mixing ratio to reasonable value of 5 g kg-1
-          dumi =min(dumi ,5.e-3)
-
-
-!...................
-! cloud ice effective radius
-         if ( dumi > qmin ) then
-
-! add upper limit to in-cloud number concentration to prevent numerical error
-         dumni=min(dumni,dumi*1.e20)
-         lami = (gamma_mg(1.+di_mg)*ci_mg* &
-              dumni/dumi)**(1./di_mg)
-         lammax = 1./ min_diam_ice_mg
-         lammin = 1./(2.*dcs_mg)
-
-         if (lami.lt.lammin) then
-         lami = lammin
-         else if (lami.gt.lammax) then
-         lami = lammax
-         end if
-          reff_ice_local = 1.5/lami*1.e6
-        else
-         reff_ice_local = 25.
-        end if
-
-
-!cms++2008-10-31 
-
-       reff_ice_local = 2. *  reff_ice_local !3rd moment/2nd moment as in Fu and Liou paper
-!cms--
-
-
-
-   ! ... assumes spherical ice particles ...
-    reff_ice(i,j,k) = reff_ice_local
-
-    size_ice_org(i,j,k) = reff_ice_local
-
-ELSE
-!cms--
-
-            if (use_fu2007) then
-!+yim Fu's parameterization of dge
-              reff_ice_local = 47.05 +   &
-                                0.6624*(tkel(i,j,k) - TFREEZE) +&
-                               0.001741*(tkel(i,j,k)-TFREEZE)**2
-              size_ice_org(i,j,k) = reff_ice_local
-            else ! (use_fu2007)
-                if (want_microphysics) then
-                  if (tkel(i,j,k) > TFREEZE - 25.) then
-                    reff_ice_local = 100.6      
-                  else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
-                           tkel(i,j,k) <= TFREEZE - 25.) then
-                    reff_ice_local = 80.8        
-                  else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
-                           tkel(i,j,k) <= TFREEZE - 30.) then
-                    reff_ice_local = 93.5       
-                  else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
-                           tkel(i,j,k) <= TFREEZE - 35.) then
-                    reff_ice_local = 63.9         
-                  else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
-                           tkel(i,j,k) <= TFREEZE - 40.) then
-                    reff_ice_local = 42.5       
-                  else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
-                           tkel(i,j,k) <= TFREEZE - 45.) then
-                    reff_ice_local = 39.9           
-                  else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
-                           tkel(i,j,k) <= TFREEZE - 50.) then
-                    reff_ice_local = 21.6         
-                  else
-                    reff_ice_local = 20.2             
-                  endif
-
-                  size_ice_org(i,j,k) = reff_ice_local
-                endif
-           endif ! (use_fu2007)
+              size_ice_org = reff_ice_local
+            endif
+          endif ! (use_fu2007)
 
 !---------------------------------------------------------------------
-!    calculate reff_ice using the bulk physics data.
+!    calculate reff_ice using the bulk physics data when bulk physics
+!    is being used.
 !---------------------------------------------------------------------
-                if (tkel(i,j,k) > TFREEZE - 25.) then
-                  reff_ice_local = 92.46298
-                else if (tkel(i,j,k) >  TFREEZE - 30. .and. &
-                         tkel(i,j,k) <= TFREEZE - 25.) then
-                  reff_ice_local = 72.35392
-                else if (tkel(i,j,k) >  TFREEZE - 35. .and. &
-                         tkel(i,j,k) <= TFREEZE - 30.) then
-                  reff_ice_local = 85.19071 
-                else if (tkel(i,j,k) >  TFREEZE - 40. .and. &
-                         tkel(i,j,k) <= TFREEZE - 35.) then
-                  reff_ice_local = 55.65818
-                else if (tkel(i,j,k) >  TFREEZE - 45. .and. &
-                         tkel(i,j,k) <= TFREEZE - 40.) then
-                  reff_ice_local = 35.29989
-                else if (tkel(i,j,k) >  TFREEZE - 50. .and. &
-                         tkel(i,j,k) <= TFREEZE - 45.) then
-                  reff_ice_local = 32.89967
-                else if (tkel(i,j,k) >  TFREEZE - 55. .and. &
-                         tkel(i,j,k) <= TFREEZE - 50.) then
-                  reff_ice_local = 16.60895
-                else
-                  reff_ice_local = 15.41627
-                endif
-
-                reff_ice(i,j,k) = reff_ice_local
-
-  END IF  do_ice_num_3
-
-              end if ! (qi > qmin)                    
-                          
-!---------------------------------------------------------------------
-!    define the cloud fraction.
-!---------------------------------------------------------------------
-              cldamt(i,j,k) = qa(i,j,k)
-            endif   !( ql > 0 or qi > 0)
-          end do
-        end do
-      end do
-
-!-------------------------------------------------------------------
-    
-end subroutine rnd_overlap   
+          if (tkel > TFREEZE - 25.) then
+            reff_ice_local = 92.46298
+          else if (tkel >  TFREEZE - 30. .and. &
+                   tkel <= TFREEZE - 25.) then
+            reff_ice_local = 72.35392
+          else if (tkel >  TFREEZE - 35. .and. &
+                   tkel <= TFREEZE - 30.) then
+            reff_ice_local = 85.19071 
+          else if (tkel >  TFREEZE - 40. .and. &
+                   tkel <= TFREEZE - 35.) then
+            reff_ice_local = 55.65818
+          else if (tkel >  TFREEZE - 45. .and. &
+                   tkel <= TFREEZE - 40.) then
+            reff_ice_local = 35.29989
+          else if (tkel >  TFREEZE - 50. .and. &
+                   tkel <= TFREEZE - 45.) then
+            reff_ice_local = 32.89967
+          else if (tkel >  TFREEZE - 55. .and. &
+                   tkel <= TFREEZE - 50.) then
+            reff_ice_local = 16.60895
+          else
+            reff_ice_local = 15.41627
+          endif
 
 
+!----------------------------------------------------------------------
+!    when ice particle number is predicted use the gamma function 
+!    expression from the Morrison Gettelman code.
+!----------------------------------------------------------------------
+        ELSE   ! (.not. do_ice_num)
+
+!-----------------------------------------------------------------------
+!    calculate in-cloud mixing ratio and number concentration.
+!    limit the in-cloud mixing ratio to reasonable value of 5 g kg-1.
+!    put a lower limit on the droplet number concentration.
+!-----------------------------------------------------------------------
+          dumi = qi/qa
+          dumni = qni/qa
+          dumi = min(dumi ,5.e-3)
+
+!-----------------------------------------------------------------------
+!    if sufficient ice is present, compute the cloud ice effective
+!    radius using the gamma function formulation.
+!-----------------------------------------------------------------------
+          if (dumi > qmin) then
+
+!-----------------------------------------------------------------------
+!    add upper limit to in-cloud number concentration to prevent 
+!    numerical error.
+!-----------------------------------------------------------------------
+            dumni = min(dumni, dumi*1.e20)
+
+!-----------------------------------------------------------------------
+!    define the effective radius as 3rd moment/2nd moment as in Fu 
+!    and Liou paper.  This assumes spherical ice particles.
+!-----------------------------------------------------------------------
+            lami = (gamma_mg(1. + di_mg)*ci_mg*dumni/dumi)**(1./di_mg)
+            lammax = 1./ min_diam_ice
+            lammin = 1./(2.*dcs)
+            if (lami.lt.lammin) then
+              lami = lammin
+            else if (lami.gt.lammax) then
+              lami = lammax
+            end if
+            reff_ice_local = 1.5/lami*1.e6
+          else
+            reff_ice_local = 25.
+          end if
+
+          reff_ice_local = 2.*reff_ice_local 
+          size_ice_org = reff_ice_local
+        END IF  
+
+!-----------------------------------------------------------------------
+!    if insufficient ice is present, set output fields to appropriate
+!    values.
+!-----------------------------------------------------------------------
+      else  ! (qi > qmin)
+        reff_ice_local = 30.
+        if (present(size_ice_org)) size_ice_org = 60.
+      end if ! (qi > qmin)                    
+
+!----------------------------------------------------------------------
+
+
+end subroutine define_ice_particle_size
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!!!END OF CURRENTLY VALID ROUTINES  --- THOSE WHICH FOLLOW ARE 
+!!!           CURRENTLY NOT USABLE IN FMS.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 !#####################################################################
@@ -4039,6 +3837,125 @@ real,    dimension(:,:,:), intent(inout)   :: r_uv, r_nir, ab_nir
 
 
 end subroutine sw_optical_properties
+ 
+
+!#####################################################################
+
+! <SUBROUTINE NAME="lw_emissivity">
+!  <OVERVIEW>
+!   
+!    Subroutine lw_emissivity computes the longwave cloud emissivity 
+!    using the cloud mass absorption coefficient and the water path.
+!
+!  </OVERVIEW>
+!  <DESCRIPTION>
+!   
+!  </DESCRIPTION>
+!  <TEMPLATE>
+!   call lw_emissivity (is, js, lwp, iwp, reff_liq, reff_ice,   &
+!                       nclds, em_lw)
+!
+!  </TEMPLATE>
+!  <IN NAME="is" TYPE="integer">
+!     Starting subdomain i index of data 
+!     in the physics_window being integrated
+!  </IN>
+!  <IN NAME="js" TYPE="integer">
+!     Starting subdomain j index of data 
+!     in the physics_window being integrated
+!  </IN>
+!  <IN NAME="lwp" TYPE="real">
+!     Liquid water path [ kg / m**2 ]
+!  </IN>
+!  <IN NAME="iwp" TYPE="real">
+!     Ice water path [ kg / m**2 ]
+!  </IN>
+!  <IN NAME="reff_liq" TYPE="real">
+!     Effective cloud drop radius used with
+!     bulk cloud physics scheme [ microns ]
+!  </IN>
+!  <IN NAME="reff_ice" TYPE="real">
+!     Effective ice crystal radius used with
+!     bulk cloud physics scheme [ microns ]
+!  </IN>
+!  <IN NAME="nclds" TYPE="integer">
+!     Number of random overlapping clouds in column
+!  </IN>
+!  <OUT NAME="em_lw" TYPE="real">
+!     longwave cloud emmissivity [ dimensionless ]
+!  </OUT>
+! </SUBROUTINE>
+!
+subroutine lw_emissivity (is, js, lwp, iwp, reff_liq, reff_ice,   &
+                          nclds, em_lw)
+
+!---------------------------------------------------------------------
+!    subroutine lw_emissivity computes the longwave cloud emissivity 
+!    using the cloud mass absorption coefficient and the water path.
+!---------------------------------------------------------------------
+
+integer,                 intent(in)   ::  is,js
+real, dimension(:,:,:),  intent(in)   ::  lwp, iwp, reff_liq, reff_ice
+integer, dimension(:,:), intent(in)   ::  nclds
+real, dimension(:,:,:),  intent(out)  ::  em_lw
+
+
+!--------------------------------------------------------------------
+!   intent(in) variables:
+!
+!        is,js           starting subdomain i,j indices of data 
+!                        in the physics_window being integrated     
+!        lwp             liquid water path [ kg / m**2 ]
+!        iwp             ice water path [ kg / m**2 ]
+!        reff_liq        effective cloud drop radius  used with
+!                        bulk cloud physics scheme [ microns ]
+!        reff_ice        effective ice crystal radius used with
+!                        bulk cloud physics scheme [ microns ]
+!        nclds           number of random overlapping clouds in column
+!
+!    intent(out) variables:
+!
+!        em_lw           longwave cloud emmissivity [ dimensionless ]
+!
+!---------------------------------------------------------------------
+
+!---------------------------------------------------------------------
+!   local variables:
+
+      real, dimension (size(em_lw,1), size(em_lw,2),                 &
+                                      size(em_lw,3)) ::  k_liq, k_ice
+
+!---------------------------------------------------------------------
+!   local variables:
+!     
+!     k_liq             liquid cloud mass absorption coefficient for 
+!                       longwave portion of spectrum 
+!                       [ m**2 / kg condensate ]
+!     k_ice             ice cloud mass absorption coefficient for 
+!                       longwave portion of spectrum 
+!                       [ m**2 / kg condensate ]
+!     i,j,k             do-loop indices
+!
+!---------------------------------------------------------------------
+              
+!----------------------------------------------------------------------
+!    compute longwave emissivity, including contributions from both the
+!    ice and liquid cloud particles present.
+!----------------------------------------------------------------------
+      k_liq = 140.
+      k_ice = 4.83591 + 1758.511/reff_ice       
+ 
+      em_lw = 1. - exp(-1.*( k_liq*lwp +  k_ice*iwp))
+
+!----------------------------------------------------------------------
+
+
+    
+end subroutine lw_emissivity                   
+
+
+
+
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -5202,110 +5119,6 @@ REAL, DIMENSION(SIZE(LWP,1),SIZE(LWP,2),SIZE(LWP,3))   :: k_liq,k_ice
 
 END SUBROUTINE CLOUD_OPTICAL_PROPERTIES
 
-
-!########################################################################
-
-SUBROUTINE snow_and_rain (qa, pfull, phalf, tkel, cldamt, snow, rain,  &
-                          size_snow_in, size_rain_in, conc_rain,  &
-                          conc_snow,  size_rain, size_snow )
-
-!----------------------------------------------------------------------
-! size_snow currently not used -- 2/10
-real, dimension(:,:,:), intent(in)     :: qa, pfull, phalf, tkel
-real, dimension(:,:,:), intent(in)     :: snow, rain, size_snow_in,  &
-                                          size_rain_in
-real, dimension(:,:,:), intent(inout)  :: cldamt
-real, dimension(:,:,:), intent(out)    :: conc_rain, conc_snow, &
-                                          size_rain, size_snow
-
-      REAL, DIMENSION( size(qa,1), size(qa,2), size(qa,3))  :: cldmax_loc
-      REAL :: dum
-      integer :: i,j,k
-
-
-      conc_snow = 0.
-      conc_rain = 0.
-      size_snow = 1.e-20
-      size_rain = 1.e-20
-
- 
-
-      IF (snow_in_cloudrad .OR. rain_in_cloudrad ) THEN
-
-!--------------------------------------------------------------------
-!    define the locally seen cloud max above each level.
-!--------------------------------------------------------------------
-        cldmax_loc = 0.
-        do k=1,size(qa,3)
-          do j=1,size(qa,2)
-            do i=1,size(qa,1)
-! this might be o.k. as long as stochastic clouds are used  
-              if (k.eq.1) then
-                cldmax_loc(i,j,k)  = qa(i,j,k) !max overlap for precip
-              else
-                cldmax_loc(i,j,k) = max(cldmax_loc(i,j,k-1), qa(i,j,k))
-              end if
-            end do
-          end do
-        end do
-
-!-----------------------------------------------------------------------
-!    define the snow field to be seen by the radiation code.
-!-----------------------------------------------------------------------
-        IF (snow_in_cloudrad) THEN
-          do k=1,size(qa,3) 
-            do j=1,size(qa,2)
-              do i=1,size(qa,1)
-                IF (cldmax_loc(i,j,k) .GE. qamin) THEN
-                  dum =  snow(i,j,k)/cldmax_loc(i,j,k)
-                  dum = MIN(dum, 60.e-3)
-                  IF (dum .GE. qmin) THEN
-                    conc_snow (i,j,k) =     &
-                       1000.*dum*(phalf(i,j,k+1) - phalf(i,j,k))/ &
-                        RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
-                        MAX(phalf(i,j,k), pfull(i,j,1)))
-!size_snow currently not used
-!!                  size_snow (i,j,k) =  MAX( 1.e-20, size_snow_in( i,j,k))
-!!                  cldamt(i,j,k) = cldmax_loc(i,j,k)
-                  END IF
-                END IF 
-              end do
-            end do
-          end do
-        END IF  
-
-!-----------------------------------------------------------------------
-!    define the rain field to be seen by the radiation code.
-!-----------------------------------------------------------------------
-        IF (rain_in_cloudrad) THEN
-          do k=1,size(qa,3)
-            do j=1,size(qa,2)
-              do i=1,size(qa,1)
-                IF (cldmax_loc(i,j,k) .GE. qamin) THEN
-                  dum = rain(i,j,k)/cldmax_loc(i,j,k)
-                  dum = MIN(dum, 60.e-3)
-                  IF (dum .GE. qmin) THEN
-                    conc_rain (i,j,k) =     &
-                       1000.*dum*(phalf(i,j,k+1) - phalf(i,j,k))/ &
-                       RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
-                       MAX(phalf(i,j,k), pfull(i,j,1)))
-                    size_rain (i,j,k) = MAX( 1.e-20, size_rain_in(i,j,k))
-!!                  cldamt(i,j,k) = cldmax_loc(i,j,k)
-                  END IF
-                END IF 
-              end do
-            end do
-          end do
-        END IF 
-      END IF !(snow_in_cloudrad .OR. rain_in_cloudrad ) 
-
-!-----------------------------------------------------------------------
-
-END SUBROUTINE snow_and_rain
-
-
-!########################################################################
-      
                   end module cloud_rad_mod
 
       

@@ -34,8 +34,8 @@ module cldwat2m_micro
 
 #ifdef GFDL_COMPATIBLE_MICROP
   use gamma_mg_mod,              only: gamma =>gamma_mg
-  use strat_cloud_utilities_mod, only: diag_id_type, diag_pt_type,   &
-                                       strat_nml_type
+  use lscloud_types_mod,         only: diag_id_type, diag_pt_type,   &
+                                       lscloud_nml_type
   use mpp_mod,                   only: input_nml_file
   use fms_mod,                   only: mpp_pe, file_exist, error_mesg,  &
                                        open_namelist_file, FATAL, &
@@ -44,6 +44,7 @@ module cldwat2m_micro
                                        mpp_root_pe
   use simple_pdf_mod,            only: simple_pdf
   use sat_vapor_pres_mod,        only: lookup_es2, lookup_es3, compute_qs
+  use physics_radiation_exch_mod, only: exchange_control_type
 #else
   use shr_kind_mod,   only: r8=>shr_kind_r8
   use spmd_utils,     only: masterproc
@@ -75,17 +76,6 @@ INTEGER, PARAMETER :: sp = SELECTED_REAL_KIND(6,30)
 INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(14,300)
 INTEGER, PARAMETER :: r8 = dp
 #endif
-!#else
-
-! logical, public :: liu_in = .true.   ! True = Liu et al 2007 Ice nucleation 
-!                                      ! False = cooper fixed ice nucleation (MG2008)
-
-
-!#ifdef GFDL_COMPATIBLE_MICROP
-!INTEGER, PARAMETER :: sp = SELECTED_REAL_KIND(6,30)
-!INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(14,300)
-!INTEGER, PARAMETER :: r8 = dp
-!#endif
 
 !constants remapped
 real(r8), private::  g              !gravity
@@ -160,8 +150,8 @@ real(r8) :: rainfrze ! what temp to freeze all rain: currently -5 degrees C
 
 #ifdef GFDL_COMPATIBLE_MICROP
 
-real       :: dcs = 400.e-6_r8    !autoconversion size threshold
-real       :: min_diam_ice = 10.e-6_r8    
+real       :: dcs                 !autoconversion size threshold
+real       :: min_diam_ice 
 logical    :: allow_all_cldtop_collection = .false.
 logical    :: rho_factor_in_max_vt = .true.
 real       :: max_rho_factor_in_vt = 1.0
@@ -192,6 +182,17 @@ real(r8), private :: qcvar_min4accr         = 0.1
 real(r8), private :: qcvar_max4accr         = 0.5
 real(r8), private :: accretion_scale_max    = 2.0
 real(r8), private :: accr_scale
+real     ::  rhmini=0.80              ! minimum rh for ice cld fraction > 0
+logical :: activate_all_ice_always = .false.
+logical :: do_hallet_mossop = .false.
+!  <DATA NAME="activate_all_ice_always" TYPE="logical" DEFAULT=".true.">
+!   should all potentially available ice particles be activated under all
+!   conditions ? (or only when dqa is increasing)
+!  </DATA>
+!  <DATA NAME="do_hallet_mossop" TYPE="logical" DEFAULT=".false.">
+!   the hallet-mossop process should be included in the NCAR microphysics?
+!  </DATA>
+
 
 ! <---h1g, 2012-06-12
 logical           :: liu_in = .false. 
@@ -199,7 +200,7 @@ logical           :: liu_in = .false.
                              ! False = cooper fixed ice nucleation (MG2008)
 
 namelist / cldwat2m_micro_nml /   &
-                 dcs, min_diam_ice,  &
+                 rhmini, activate_all_ice_always, do_hallet_mossop, &
                  allow_all_cldtop_collection, &
                  max_rho_factor_in_vt, &
                  rho_factor_in_max_vt, lowest_temp_for_sublimation, &
@@ -217,7 +218,15 @@ namelist / cldwat2m_micro_nml /   &
 
 
 real(r8), private :: tmelt 
-real(r8), private::             rhmini  ! minimum rh for ice cloud fraction
+
+real(r8) :: qmin
+logical :: do_ice_nucl_wpdf        
+integer :: super_ice_opt
+logical :: do_pdf_clouds
+logical :: pdf_org    
+integer :: betaP
+real :: qthalfwidth
+logical :: lflag ! do_clubb > 0 ?
 #else
 logical, public :: liu_in = .true. ! True = Liu et al 2007 Ice nucleation 
                                    ! False = cooper fixed ice nucleation 
@@ -230,10 +239,12 @@ contains
 
 #ifdef GFDL_COMPATIBLE_MICROP
 subroutine ini_micro ( g_in,r_in,rv_in,cpp_in,tmelt_in, xxlv_in,&
-                       xlf_in,rhmini_in)
+                       xlf_in, Nml_lsc, Exch_ctrl)
 
-real,  intent(in) ::  g_in,r_in,rv_in,cpp_in,xxlv_in,xlf_in, &
-                                tmelt_in, rhmini_in
+real,                        intent(in) :: g_in, r_in, rv_in, cpp_in, &
+                                           xxlv_in, xlf_in, tmelt_in
+type(lscloud_nml_type),      intent(in) :: Nml_lsc
+type(exchange_control_type), intent(in) :: Exch_ctrl
 
 #else
 subroutine ini_micro
@@ -351,6 +362,7 @@ subroutine ini_micro
 #ifdef GFDL_COMPATIBLE_MICROP
 
 
+!  save needed module variables for use within this module
    g = g_in
    r = r_in
    rv = rv_in
@@ -364,7 +376,19 @@ subroutine ini_micro
    xlf = xlf_in
    xxls = xxlv + xlf !latent heat of sublimation
    
-   rhmini = rhmini_in
+
+   qmin = Exch_ctrl%qmin
+   lflag    = Exch_ctrl%do_clubb > 0
+   super_ice_opt = Nml_lsc%super_ice_opt
+   do_ice_nucl_wpdf = Nml_lsc%do_ice_nucl_wpdf
+   do_pdf_clouds = Nml_lsc%do_pdf_clouds
+   betaP = Nml_lsc%betaP
+   qthalfwidth = Nml_lsc%qthalfwidth
+   pdf_org = Nml_lsc%pdf_org
+   if (do_pdf_clouds .or. pdf_org) then
+     call error_mesg ('cldwat2m_micro', &
+         'pdf clouds not yet tested with mgncar microphysics', FATAL)
+   endif
 
 !---------------------------------------------------------------
 !     process namelist
@@ -390,6 +414,9 @@ subroutine ini_micro
       logunit = stdlog()
       if (mpp_pe() == mpp_root_pe()) &
                       write (logunit, nml=cldwat2m_micro_nml)
+
+       dcs = Exch_ctrl%dcs
+       min_diam_ice = Exch_ctrl%min_diam_ice
 #else
    g= gravit         !gravity
    r= rair           !Dry air Gas constant: 
@@ -496,11 +523,6 @@ subroutine ini_micro
 
 ! typical air density at 850 mb
    rhosu = 85000._r8/(r * tmelt)
-!#ifdef GFDL_COMPATIBLE_MICROP
-!        rhosu = 85000._r8/(rdgas * tmelt)
-!#else
-!        rhosu = 85000._r8/(rair * tmelt)
-!#endif
 
 ! Maximum temperature at which snow is allowed to exist
   snowmelt = tmelt + 2._r8
@@ -574,17 +596,17 @@ end subroutine ini_micro
 subroutine mmicro_pcond (dqa_activation, total_activation,    &
                          tiedtke_macrophysics, sub_column,&
                          j, jdim, pver, pcols, ncol, deltatin, &
-                         relvar, tn, &
-                         qn, qc_in, qi_in, nc_in, ni_in, p, pdel, pint, cldn,   &
+                         relvar, tn, qn, qc_in, qi_in, nc_in, ni_in,   &
+                         p, pdel, pint, cldn,   &
                          liqcldf, icecldf, delta_cf,                   &
                          D_eros_l4, nerosc4, D_eros_i4, nerosi4, dqcdt, &
                          dqidt, naai, npccnin, rndst, nacon,       &
                          tlat, qvlat, qctend, qitend, nctend, nitend,&
                          prect, preci, rflx, sflx,        &
                          qrout,qsout, lsc_rain_size, lsc_snow_size,   &
-                         f_snow_berg, Nml, qa0, gamma_in, SA_0, SA, &
+                         f_snow_berg, qa0, gamma_in, SA_0, SA, &
                          ssat_disposal, n_diag_4d, diag_4d, diag_id, &
-                         diag_pt, do_clubb, qcvar_clubb)
+                         diag_pt, qcvar_clubb)
 
 logical,  intent(in) :: dqa_activation
 logical,  intent(in) :: total_activation
@@ -659,7 +681,6 @@ real(r8), intent(out) :: f_snow_berg  (pcols,pver) ! ratio of bergeron
                                                    ! production of qi to 
                                                    ! sum of bergeron, 
                                                    ! riming and freezing
-type(strat_nml_type), intent(in) :: Nml
 real(r8), intent(in) :: qa0(pcols,pver)       ! 
 real(r8), intent(in) :: gamma_in(pcols,pver)       ! 
 real(r8), intent(in) :: SA_0 (pcols,pver)       ! 
@@ -673,7 +694,6 @@ TYPE(diag_id_type),INTENT(IN) :: diag_id
 TYPE(diag_pt_type),INTENT(INout) :: diag_pt
 
 ! --> h1g, 2012-10-05
-integer,  intent(in), optional :: do_clubb
 real(r8), intent(in), optional :: qcvar_clubb(:,:)
 ! <-- h1g, 2012-10-05
 
@@ -969,7 +989,6 @@ subroutine mmicro_pcond ( sub_column,       &
    real(r8) :: qs2d(pcols,pver)
    real(r8) :: qtot(pcols,pver)
 
-   logical  :: lflag = .false.
 
 #endif
 
@@ -1493,7 +1512,6 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
         qi(1:ncol,1:pver) = qi_in(1:ncol,1:pver)
         nc(1:ncol,1:pver) = nc_in(1:ncol,1:pver)
         ni(1:ncol,1:pver) = ni_in(1:ncol,1:pver)
-        if (PRESENT(do_clubb)) lflag=(do_clubb>0)
 #endif
 
 ! initialize time-varying parameters
@@ -1667,9 +1685,9 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
             if ( liu_in ) then
               dum2=naai(i,k)
               dumnnuc = (dum2 - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
-            elseif ( Nml%do_ice_nucl_wpdf ) THEN
+            elseif (do_ice_nucl_wpdf ) THEN
               if (total_activation) then
-                if (Nml%activate_all_ice_always) then
+                if (activate_all_ice_always) then
                   dum2 = naai(i,k)
                 else
                   if (delta_cf(i,k) .gt. 0._r8) then
@@ -1727,7 +1745,6 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
 ! or is this incorrect and qi SHOULD increase here (and so also below where
 ! mnuccd is defined)
 #ifdef GFDL_COMPATIBLE_MICROP
-!           if ( tiedtke_macrophysics .or. dqa_activation) then
             if ( tiedtke_macrophysics ) then
               qinew = qi(i,k)
             else
@@ -1942,7 +1959,7 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
 
 #ifdef GFDL_COMPATIBLE_MICROP
 ! if Tiedtke scheme, this already supplied in input args -- calculated 
-! in nc_cond.F90 for Tiedtke scheme
+! in tiedtke_macro.F90 for Tiedtke scheme
 
           if (.not. tiedtke_macrophysics) then
 #endif
@@ -2001,7 +2018,7 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
 
             if ( liu_in) then
               dum2i(i,k) = naai(i,k)
-            elseif ( Nml%do_ice_nucl_wpdf ) THEN
+            elseif (     do_ice_nucl_wpdf ) THEN
 
 ! using Liu et al. (2007) ice nucleation with hooks into simulated aerosol
 ! ice nucleation rate (dum2) has already been calculated and read in (naai)
@@ -2054,18 +2071,19 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
 
 #ifdef GFDL_COMPATIBLE_MICROP
 ! code for pdf cloud option -- THIS HAS NOT BEEN TESTED AT ALL !!
+         
 
 !  re-calculate cloud fraction
-       IF (Nml%do_pdf_clouds .AND.   &
-            (Nml%super_ice_opt .EQ. 1 .OR. Nml%super_ice_opt .EQ. 2)) THEN
-         IF (Nml%super_ice_opt .EQ. 1 ) THEN
+       IF (do_pdf_clouds .AND.   &
+            (super_ice_opt .EQ. 1 .OR. super_ice_opt .EQ. 2)) THEN
+         IF (super_ice_opt .EQ. 1 ) THEN
 
            DO k=1,pver
              DO i= 1,ncol
                ttmp = t(i,k) 
                IF (ttmp .LT. tmelt - 40._r8 .OR.  (ttmp .LE. tmelt .AND. &
                      qc(i,k) + (cmel(i,k) - berg(i,k))/deltat .LT.  &
-                                                     3._r8*Nml%qmin)) THEN 
+                                                     3._r8*qmin)) THEN 
                  call compute_qs (ttmp, p(i,k), qs2d(i,k), q = q(i,k), &
                           esat = eslt, es_over_liq_and_ice = .true.)    
                ELSE
@@ -2076,13 +2094,13 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
            END DO
          END IF
 
-         IF  ( Nml%super_ice_opt .EQ. 2 ) THEN
+         IF  (super_ice_opt .EQ. 2 ) THEN
            DO k=1,pver
              DO i= 1,ncol
                ttmp = t(i,k) 
                IF (ttmp .LT. tmelt - 40._r8 .OR. (ttmp .LE. tmelt .AND. &
                       qc(i,k) + ( cmel(i,k) - berg(i,k))/deltat .LT.    &
-                                                    3._r8*Nml%qmin) ) THEN 
+                                                    3._r8*qmin) ) THEN 
                  call compute_qs (ttmp, p(i,k), qs2d(i,k), q = q(i,k), &
                           esat = eslt, es_over_liq_and_ice = .true.)    
                  tc=ttmp-tmelt   
@@ -2099,10 +2117,10 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
          END IF
          qtot = qn+qc_in+qi_in 
 
-         IF ( Nml%pdf_org )   call error_mesg ( 'cldwat2m_micro', &
+         IF (pdf_org )   call error_mesg ( 'cldwat2m_micro', &
                                          'ERROR 1 simple_pdf ', FATAL)
-         CALL  simple_pdf(j, ncol, jdim, pver, Nml%qmin, qa0, qtot,    &
-                          qs2d,  gamma_in, Nml%qthalfwidth, Nml%betaP,  &
+         CALL  simple_pdf(j, ncol, jdim, pver, qmin, qa0, qtot,    &
+                          qs2d,  gamma_in,                      &
                           1._r8/deltat, SA_0, n_diag_4d, diag_4d,  &
                           diag_id, diag_pt, SA, cldn)
 
@@ -2591,7 +2609,7 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
             if ( tiedtke_macrophysics) then
               if (qiic(i,k).ge.qsmall .and. t(i,k).lt. icenuct     ) then
                 if (total_activation) then
-                if (Nml%activate_all_ice_always) then
+                if (activate_all_ice_always) then
                    nnuccd(i,k) = (dum2i(i,k) - ni(i,k)/icldm(i,k))/deltat*icldm(i,k)
                 else
                   if (delta_cf(i,k) .gt. 0._r8) then
@@ -3171,7 +3189,7 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
             end if
 
 #ifdef GFDL_COMPATIBLE_MICROP
-            if (Nml%do_hallet_mossop .or. lflag ) then
+            if (do_hallet_mossop .or. lflag ) then
 
 #endif
 ! add secondary ice production due to accretion of droplets by snow 
@@ -3628,12 +3646,12 @@ real(r8) :: int_to_mid(pcols,pver  ) ! Coefficients for linear   !
             dum = (nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) + &
                     npsacws(i,k) - nsubc(i,k) - nerosc(i,k))*lcldm(i,k)*deltat
            else
-            dum = (nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) + &
-                    npsacws(i,k) - nsubc(i,k) )*lcldm(i,k)*deltat
+           dum   = (nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) + &
+                     npsacws(i,k) - nsubc(i,k))*lcldm(i,k)*deltat
           endif
 #else
             dum = (nprc1(i,k) + npra(i,k) + nnuccc(i,k) + nnucct(i,k) + &
-                                npsacws(i,k) - nsubc(i,k))*lcldm(i,k)*deltat
+                           npsacws(i,k) - nsubc(i,k))*lcldm(i,k)*deltat
 #endif 
 
             if (dum .gt. nce) then

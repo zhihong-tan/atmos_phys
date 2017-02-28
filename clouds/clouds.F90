@@ -1,5 +1,6 @@
 
                       module clouds_mod
+#ifdef SKIP
 
 !=======================================================================
 !
@@ -18,10 +19,11 @@ use          fms_mod, only:  error_mesg, FATAL, file_exist,   &
                              mpp_pe, mpp_root_pe, close_file, &
                              write_version_number, stdlog
 use    rh_clouds_mod, only:  do_rh_clouds, rh_clouds, rh_clouds_avg
-use  strat_cloud_mod, only:  do_strat_cloud, strat_cloud_avg
 use   diag_cloud_mod, only:  do_diag_cloud, diag_cloud_driver, &
                              diag_cloud_avg
 use diag_manager_mod, only:  register_diag_field, send_data
+use tracer_manager_mod, only: get_tracer_index, NO_TRACER
+use  field_manager_mod, only: MODEL_ATMOS
 
 implicit none
 private
@@ -50,6 +52,8 @@ public   clouds, clouds_init, clouds_end
       real, dimension(3) :: cah2sw = (/ 0.210, 0.450, 0.590 /)
       real, dimension(3) :: cbsw   = (/ 0.005, 0.020, 0.035 /)
 
+     logical :: do_strat_cloud
+     integer :: nql, nqi, nqa
 
 !-----------------------------------------------------------------------
 
@@ -198,10 +202,11 @@ real, dimension(size(t,1),size(t,2)) :: convprc,psfc
 
 !-----------------------------------------------------------------------
 !--------------- determine prognostic cloud properties -----------------
- if ( do_strat_cloud() ) then
+ if ( do_strat_cloud   ) then
 !-----------------------------------------------------------------------
       
-     call strat_cloud_avg (is, js, ql, qi, cf, ierr)
+     call error_mesg ('clouds in clouds_mod', &
+                  'original_fms_rad option no longer viable -- must use sea_esf_rad or newer.',FATAL)
 
      if (ierr == 0) then
          call cloud_summary (is,js,land,ql,qi,cf,q,pfull, &
@@ -282,7 +287,7 @@ real, dimension(size(t,1),size(t,2)) :: convprc,psfc
 
 !----- store longwave and shortwave indices -----
 
-   if ( (do_rh_clouds() .or. do_strat_cloud() .or. do_diag_cloud()) &
+   if ( (do_rh_clouds() .or. do_strat_cloud .or. do_diag_cloud()) &
         .and. ierr == 0 ) then
 
          do j=1,size(ktoplw,2)
@@ -735,8 +740,20 @@ type(time_type), intent(in)               :: Time
 
       call diag_field_init ( Time, axes )
 
+   ! get tracer indices for stratiform cloud variables
+     nql = get_tracer_index ( MODEL_ATMOS, 'liq_wat' )
+        nqi = get_tracer_index ( MODEL_ATMOS, 'ice_wat' )
+        nqa = get_tracer_index ( MODEL_ATMOS, 'cld_amt' )
+
+     if (nql == NO_TRACER .or. nqi == NO_TRACER .or. &
+               nqa == NO_TRACER) then
+           do_strat_cloud = .false.
+         else
+           do_strat_cloud = .true.
+         endif
+
 !-----------------------------------------------------------------------
-       if (do_strat_cloud() ) then
+       if (do_strat_cloud   ) then
          call cloud_rad_init
        endif
 
@@ -820,5 +837,6 @@ type(time_type), intent(in)               :: Time
 
 !#######################################################################
 
+#endif
 end module clouds_mod
 

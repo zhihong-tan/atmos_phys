@@ -34,6 +34,7 @@
                                NO_TRACER
  use  aerosol_types_mod,  only : aerosol_type
  use  aer_ccn_act_mod,    only : aer_ccn_act, aer_ccn_act2
+ use moist_proc_utils_mod, only : mp_nml_type
 !---------------------------------------------------------------------
  implicit none
  private
@@ -128,7 +129,6 @@
 !          for clouds detraining at level ph
 !---------------------------------------------------------------------
 
- logical :: use_online_aerosol = .false.
  real    :: fracs        = 0.25
  real    :: rasal0       = 0.25
  real    :: puplim       = 20.0E2
@@ -160,9 +160,6 @@
  real    :: cfrac   = 0.05
  real    :: hcevap  = 0.80    
 
- real    :: sea_salt_scale = 0.1
- real    :: om_to_oc = 1.67
-
  integer :: nqn   ! tracer indices for stratiform clouds
 
     NAMELIST / ras_nml /                          &
@@ -171,7 +168,7 @@
       rn_ptop, rn_pbot, rn_frac_top, rn_frac_bot, &
       evap_on, cfrac,   hcevap, rh_trig, alm_min, &
       Tokioka_on, Tokioka_con, Tokioka_plim, modify_pbl, prevent_unreasonable, &
-      ph, a, sea_salt_scale, om_to_oc, use_online_aerosol
+      ph, a
 
 !---------------------------------------------------------------------
 ! DIAGNOSTICS FIELDS 
@@ -194,6 +191,11 @@ real :: missing_value = -999.
 integer  :: num_ras_tracers = 0
 logical  :: do_ras_tracer = .false.
 
+! put here after removed from nml.
+  logical :: use_online_aerosol 
+  real :: om_to_oc
+  real :: sea_salt_scale
+
 !---------------------------------------------------------------------
 
  contains
@@ -201,7 +203,8 @@ logical  :: do_ras_tracer = .false.
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE RAS_INIT( do_strat, do_liq_num, axes, Time, tracers_in_ras )
+  SUBROUTINE RAS_INIT( do_strat, do_liq_num, axes, Time, &
+                        Nml_mp, tracers_in_ras)
 
 !=======================================================================
 ! ***** INITIALIZE RAS
@@ -213,6 +216,7 @@ logical  :: do_ras_tracer = .false.
  logical,         intent(in) :: do_strat, do_liq_num
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
+ type(mp_nml_type), intent(in) :: Nml_mp
  logical, dimension(:), intent(in), optional :: tracers_in_ras
 
 !---------------------------------------------------------------------
@@ -255,6 +259,10 @@ logical  :: do_ras_tracer = .false.
        logunit = stdlog()
        WRITE( logunit, nml = ras_nml ) 
 
+
+    use_online_aerosol = Nml_mp%use_online_aerosol
+    sea_salt_scale = Nml_mp%sea_salt_scale
+    om_to_oc = Nml_mp%om_to_oc
 
 !---------------------------------------------------------------------
 ! --- Find the tracer indices 

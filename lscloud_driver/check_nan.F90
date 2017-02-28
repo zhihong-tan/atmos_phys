@@ -1,4 +1,4 @@
-MODULE check_nan_mod
+                       MODULE check_nan_mod
 
 use fms_mod, only :  error_mesg, FATAL, stdout, write_version_number
 
@@ -53,6 +53,11 @@ character(len=*),       intent(in)  :: name
 
       integer :: i,j,k, outunit
 
+      if (.not. module_is_initialized) then
+        call error_mesg ('strat_cloud/check_nan_mod', &
+          'check_nan_init has not been called', FATAL)
+      endif
+
 !-----------------------------------------------------------------------
       outunit = stdout()
       do k=1,size(inarr,3)
@@ -80,6 +85,11 @@ real, dimension(:,:),   intent(in)  :: inarr
 character(len=*),       intent(in)  :: name
 
       integer :: i,j, outunit
+
+      if (.not. module_is_initialized) then
+        call error_mesg ('strat_cloud/check_nan_mod', &
+          'check_nan_init has not been called', FATAL)
+      endif
 
 !------------------------------------------------------------------------
       outunit = stdout()
@@ -110,6 +120,11 @@ character(len=*),       intent(in)  :: name
 
       integer :: i, outunit
 
+      if (.not. module_is_initialized) then
+        call error_mesg ('strat_cloud/check_nan_mod', &
+          'check_nan_init has not been called', FATAL)
+      endif
+
 !------------------------------------------------------------------------
       outunit = stdout()
       do i=1,size(inarr,1)
@@ -137,6 +152,11 @@ character(len=*), intent(in)     :: name
 
 integer :: outunit
 
+      if (.not. module_is_initialized) then
+        call error_mesg ('strat_cloud/check_nan_mod', &
+          'check_nan_init has not been called', FATAL)
+      endif
+
 !------------------------------------------------------------------------
       outunit = stdout()
       if (inv .ne. inv) then
@@ -154,4 +174,4 @@ end subroutine check_nan_0d
 !##########################################################################
 
 
-END MODULE check_nan_mod
+                     END MODULE check_nan_mod

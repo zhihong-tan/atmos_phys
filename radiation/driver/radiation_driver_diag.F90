@@ -1345,8 +1345,7 @@ logical,         intent(in) :: do_lwaerosol
                    'n2o mixing ratio', 'ppbv', &
                    missing_value=missing_value)
 
-      id_co2mass = register_diag_field (mod_name,    &
-                  'co2mass', Time, &
+      id_co2mass = register_diag_field (mod_name, 'co2mass', Time, &
                   'Total Atmospheric Mass of CO2', 'kg', &
                   standard_name = 'atmosphere_mass_of_carbon_dioxide', &
                   missing_value=CMOR_MISSING_VALUE) 
