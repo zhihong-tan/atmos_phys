@@ -1658,7 +1658,7 @@ type(time_type), intent(in)                                :: Time
 
          id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
                   'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_due_to_dry_deposition')
+                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_particles_due_to_dry_deposition')
       else
         id_sconcnh4 = 0
         id_loadnh4 = 0
@@ -1705,15 +1705,15 @@ type(time_type), intent(in)                                :: Time
 
       id_drybc = register_cmip_diag_field_2d ( mod_name, &
                   'drybc', Time, 'Dry Deposition Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_due_to_dry_deposition')
+                  standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_particles_due_to_dry_deposition')
 
       id_drypoa = register_cmip_diag_field_2d ( mod_name, &
                   'drypoa', Time, 'Dry Deposition Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_dry_deposition')
+                  standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
 
       id_drysoa = register_cmip_diag_field_2d ( mod_name, &
                   'drysoa', Time, 'Dry Deposition Rate of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_due_to_dry_deposition')
+                  standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
       !----
 
 !<f1p: tracer diagnostics
@@ -1762,29 +1762,29 @@ type(time_type), intent(in)                                :: Time
 
          if (mpp_pe() .eq. mpp_root_pe()) then
             write(*,*) 'n=',n
-            write(*,*) 'tracer_name=',tracer_name,' cmip_name=',cmip_name,' cmip_longname=',cmip_longname
-            write(*,*) 'conv_vmr_mmr=',conv_vmr_mmr(n),' nb_N=',nb_N(n),' nb_N_ox=',nb_N_ox(n),' nb_N_red=',nb_N_red(n)
+            write(*,*) 'tracer_name="',trim(tracer_name),'", cmip_name=',trim(cmip_name),'", cmip_longname=',trim(cmip_longname)
+            write(*,'(4(a,g14.6))') 'conv_vmr_mmr=',conv_vmr_mmr(n),', nb_N=',nb_N(n),', nb_N_ox=',nb_N_ox(n),', nb_N_red=',nb_N_red(n)
          end if
 
          ID_tracer_mol_mol(n) = register_cmip_diag_field_3d ( mod_name,&
               trim(tracer_name)//'_mol_mol', &
               Time,&
               trim(cmip_longname)//' volume mixing ratio', &
-              '1.0', &
+              'mol mol-1', &
               standard_name='mole_fraction_of_'//trim(cmip_name)//'_in_air')
          
          ID_tracer_kg_kg(n)   = register_cmip_diag_field_3d ( mod_name,&
               trim(tracer_name)//'_kg_kg', &
               Time,&
               'Aerosol '//trim(cmip_longname)//' mass mixing ratio', &
-              '1.0', &
+              'kg kg-1', &
               standard_name='mass_fraction_of_'//trim(cmip_name)//'_dry_aerosol_particles_in_air')
          
          id_tracer_surf_mol_mol(n) = register_cmip_diag_field_2d ( mod_name,&
               trim(tracer_name)//'_surf_mol_mol', &
               Time,&
               trim(cmip_longname)//' volume mixing ratio in lowest model layer', &
-              '1.0', &
+              'mol mol-1', &
               standard_name='mole_fraction_of_'//trim(cmip_name)//'_in_air')
          
          id_tracer_col_kg_m2(n) = register_cmip_diag_field_2d ( mod_name,&
@@ -1799,14 +1799,14 @@ type(time_type), intent(in)                                :: Time
               trim(tracer_name)//'_surf_kg_kg', &
               Time,&
               trim(cmip_longname)//' mass mixing ratio in lowest model layer', &
-              '1.0', &
+              'kg kg-1', &
               standard_name='mass_fraction_of_'//trim(cmip_name)//'_in_air')
          
             
          if (cmip_is_aerosol) then
             id_tracer_ddep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                  trim(tracer_name)//'_ddep_kg_m2_s', Time, 'Dry Deposition Rate of '//trim(cmip_longname), 'kg m-2 s-1', &
-                 standard_name='tendency_of_atmosphere_mass_content_of_'//trim(cmip_name)//'_dry_aerosol_due_to_dry_deposition')
+                 standard_name='tendency_of_atmosphere_mass_content_of_'//trim(cmip_name)//'_dry_aerosol_particles_due_to_dry_deposition')
          else
             id_tracer_ddep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                  trim(tracer_name)//'_ddep_kg_m2_s', Time, 'Dry Deposition Rate of '//trim(cmip_longname), 'kg m-2 s-1', &

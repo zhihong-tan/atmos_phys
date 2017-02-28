@@ -2013,8 +2013,8 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr)
     flag=parse(chem_data,'nb_N_red',nbt_N_red)
     if (.not. flag) nbt_N_red=0
     If (present(nb_N_ox)) nb_N_ox=nbt_N_ox
-    If (present(nb_N_red)) nb_N_ox=nbt_N_red
-    if (present(nb_N)) nb_N=nb_N_ox+nb_N_red
+    If (present(nb_N_red)) nb_N_red=nbt_N_red
+    if (present(nb_N)) nb_N=nbt_N_ox+nbt_N_red
     if (present(is_aerosol)) then
        if (trim(scheme).eq."aerosol") then
           is_aerosol=.true.

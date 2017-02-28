@@ -1303,15 +1303,15 @@ integer ::  unit, ierr, io, logunit
     ! cmip fields
      id_emibc = register_cmip_diag_field_2d ( mod_name, 'emibc', Time, &
                      'Emission Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_due_to_emission')
+                     standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_particles_due_to_emission')
 
      id_emipoa = register_cmip_diag_field_2d ( mod_name, 'emipoa', Time, &
                      'Emission Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles_due_to_emission')
 
      id_emibb = register_cmip_diag_field_2d ( mod_name, 'emibb', Time, &
                      'Total Emission of Primary Aerosol from Biomass Burning', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles_due_to_emission')
 
 !----------------------------------------------------------------------
 
