@@ -301,7 +301,7 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
     if (ind .eq. 1) then
       np = num_std_plevs
       pressure_levels(ind,1:np) = plev23(1:np)
-      axis_name = 'plev'
+      axis_name = 'plev_std'
     else if (ind .eq. 2) then
       np = size(plev19,1)
       pressure_levels(ind,1:np) = plev19
