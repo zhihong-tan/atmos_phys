@@ -215,8 +215,7 @@ integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
            id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust
 
-type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
-                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
+type(cmip_diag_id_type) :: ID_cl, ID_clw, ID_cli, ID_hur
 
 integer, dimension(:), allocatable :: id_wetdep
 integer, dimension(:), allocatable :: id_wetdep_uw, id_wetdep_donner, &

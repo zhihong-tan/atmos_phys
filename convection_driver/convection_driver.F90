@@ -269,11 +269,10 @@ logical, dimension(:), allocatable :: cloud_tracer
 logical :: cmt_uses_donner, cmt_uses_ras, cmt_uses_uw
 logical :: module_is_initialized = .false.
 
-type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
-                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
+type(cmip_diag_id_type) :: ID_tntc, ID_tnhusc, ID_mc
+
 
                              contains
-
 
 
 !#######################################################################
@@ -3198,16 +3197,6 @@ type(mp_removal_control_type), intent(in) :: Control
                       standard_name = 'air_pressure_at_convective_cloud_top', &
                       mask_variant = .true. )
 
-! register cmip diagnostics for large-scale clouds/precip
-            if ( do_lsc .or. doing_prog_clouds ) then
-                  ID_tntscp = register_cmip_diag_field_3d ( mod_name, 'tntscp', Time, &
-                  'Tendency of Air Temperature Due to Stratiform Clouds and Precipitation', 'K s-1', &
-                  standard_name='tendency_of_air_temperature_due_to_stratiform_clouds_and_precipitation' )
-
-                  ID_tnhusscp = register_cmip_diag_field_3d ( mod_name, 'tnhusscp', Time, &
-                  'Tendency of Specific Humidity Due to Stratiform Clouds and Precipitation', 's-1', &               
-                  standard_name='tendency_of_specific_humidity_due_to_stratiform_clouds_and_precipitation' )
-endif
 !-----------------------------------------------------------------------
 !    convective mass flux diagnostics.
 !-----------------------------------------------------------------------

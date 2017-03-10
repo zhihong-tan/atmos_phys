@@ -293,10 +293,10 @@ integer  :: nso2, nso4
 integer  :: num_prog_tracers
 logical  :: debug
 
-type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
-                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
-                             contains
+type(cmip_diag_id_type) :: ID_tntscp, ID_tnhusscp
 
+
+                             contains
 
 
 !#######################################################################
@@ -1450,6 +1450,17 @@ type(time_type),         intent(in) :: Time
         id_t_ls_col = register_diag_field ( mod_name, &
           't_ls_col', axes(1:2), Time, &
           'Column static energy tendency from large-scale cond','W/m2' )
+      endif
+
+      ! register cmip diagnostics for large-scale clouds/precip
+      if ( do_lsc .or. doing_prog_clouds ) then
+        ID_tntscp = register_cmip_diag_field_3d ( mod_name, 'tntscp', Time, &
+           'Tendency of Air Temperature Due to Stratiform Clouds and Precipitation', 'K s-1', &
+           standard_name='tendency_of_air_temperature_due_to_stratiform_clouds_and_precipitation' )
+
+        ID_tnhusscp = register_cmip_diag_field_3d ( mod_name, 'tnhusscp', Time, &
+           'Tendency of Specific Humidity Due to Stratiform Clouds and Precipitation', 's-1', &
+           standard_name='tendency_of_specific_humidity_due_to_stratiform_clouds_and_precipitation' )
       endif
 
       if (doing_prog_clouds ) then
