@@ -1023,7 +1023,7 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
         !--- need log(phalf) for pressure interpolation (what if ptop=0)
         !--- if more fields are added then compute log(phalf) once in the code
         if (query_cmip_diag_id(ID_o3)) then
-          used = send_cmip_data_3d (ID_o3, 1.0e09*qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1, phalf=log(phalf))
+          used = send_cmip_data_3d (ID_o3, qo3*WTMAIR/WTMOZONE, Time_diag, is, js, 1, phalf=log(phalf))
         endif
         !---
 
@@ -1605,7 +1605,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                           '1.e-9', missing_value=missing_value)
 
       ID_o3    = register_cmip_diag_field_3d (mod_name, 'o3', Time, &
-                          'Mole Fraction of O3', '1e-09', &
+                          'Ozone Volume Mixing Ratio', 'mol mol-1', &
                         standard_name = 'mole_fraction_of_ozone_in_air')
               
       id_qo3_col = &
