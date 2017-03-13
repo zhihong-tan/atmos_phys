@@ -946,10 +946,9 @@ character(len=32) :: tracer_units, tracer_name
 
      do n=1,nt
 
-        PM25 = PM25+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm25(n)
-        PM1  = PM1+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm1(n)
-        PM10 = PM10+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm10(n)
-
+        if (frac_pm25(n).gt.0.)  PM25 = PM25+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm25(n)
+        if (frac_pm1(n).gt.0.)   PM1  = PM1+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm1(n)
+        if (frac_pm10(n).gt.0.)  PM10 = PM10+conv_vmr_mmr(n)*tracer(:,:,:,n)*frac_pm10(n)
 
         if ( query_cmip_diag_id(ID_tracer_mol_mol(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_mol_mol(n), tracer(:,:,:,n), &
@@ -1890,6 +1889,32 @@ type(time_type), intent(in)                                :: Time
             end if
          end if
          
+      end do
+      write(*,*) 'fam_N is comprised of :'
+      do n = 1,nt
+         if ( nb_N_ox(n) .gt. 0.) then
+            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+                 units = tracer_units)
+            write(*,*) tracer_name,'nb_N_ox=',nb_N_ox(n)
+         end if            
+      end do
+
+      write(*,*) 'fam_NHx is comprised of :'
+      do n = 1,nt
+         if ( nb_N_red(n) .gt. 0.) then
+            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+                 units = tracer_units)
+            write(*,*) tracer_name,'nb_N_red=',nb_N_red(n)
+         end if            
+      end do
+
+      write(*,*) 'fam_NOy is comprised of :'
+      do n = 1,nt
+         if ( nb_N(n) .gt. 0.) then
+            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+                 units = tracer_units)
+            write(*,*) tracer_name,'nb_N=',nb_N(n)
+         end if            
       end do
 !>
 
