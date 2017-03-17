@@ -2013,15 +2013,15 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr,fra
     if (.not. flag) nbt_N_ox=0
     flag=parse(chem_data,'nb_N_red',nbt_N_red)
     if (.not. flag) nbt_N_red=0
-    If (present(nb_N_ox)) nb_N_ox=nbt_N_ox
-    If (present(nb_N_red)) nb_N_red=nbt_N_red
-    if (present(nb_N)) nb_N=nbt_N_ox+nbt_N_red
+    If (present(nb_N_ox))  nb_N_ox  = nbt_N_ox
+    If (present(nb_N_red)) nb_N_red = nbt_N_red
+    if (present(nb_N))     nb_N = nbt_N_ox+nbt_N_red
 
-       if (trim(scheme).eq."aerosol") then
-          is_aerosol_local=.true.
-       else
-          is_aerosol_local=.false.
-       end if
+    if (trim(scheme).eq."aerosol") then
+       is_aerosol_local=.true.
+    else
+       is_aerosol_local=.false.
+    end if
 
     if (present(is_aerosol)) is_aerosol=is_aerosol_local
 
@@ -2040,7 +2040,7 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr,fra
              if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm10 not defined for '//trim(tracer_name), FATAL )
           end if
        else
-          if (present(frac_pm1)) frac_pm1=0.
+          if (present(frac_pm1))  frac_pm1=0.
           if (present(frac_pm25)) frac_pm25=0.
           if (present(frac_pm10)) frac_pm10=0.
        end if
@@ -2056,11 +2056,15 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr,fra
     end if
 
  else
-    if (present(mw))    mw=0
-    if (present(is_aerosol)) is_aerosol=.false.
-    if (present(nb_N_red)) nb_N_red=0.
-    if (present(nb_N_ox)) nb_N_ox=0.
-    if (present(nb_N)) nb_N=0.
+    if (present(is_aerosol))   is_aerosol=.false.
+    if (present(mw))           mw=0.
+    if (present(nb_N_red))     nb_N_red=0.
+    if (present(nb_N_ox))      nb_N_ox=0.
+    if (present(nb_N))         nb_N=0.
+    if (present(conv_vmr_mmr)) conv_vmr_mmr = 1.0
+    if (present(frac_pm1))     frac_pm1=0.
+    if (present(frac_pm10))    frac_pm10=0.
+    if (present(frac_pm25))    frac_pm25=0.
  end if
 
 

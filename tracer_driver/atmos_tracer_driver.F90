@@ -99,7 +99,7 @@ use fms_mod,               only : file_exist, close_file,&
                                   FATAL, &
                                   mpp_pe, &
                                   mpp_root_pe, &
-                                  stdlog, &
+                                  stdlog, stdout, &
                                   mpp_clock_id, &
                                   mpp_clock_begin, &
                                   mpp_clock_end, &
@@ -1372,11 +1372,11 @@ type(time_type), intent(in)                                :: Time
 ! Local variables
 !-----------------------------------------------------------------------
       integer :: nbr_layers
-      integer :: unit, ierr, io, logunit, n
+      integer :: unit, ierr, io, logunit, n, outunit
 !<f1p
       character(len=32) :: tracer_units, tracer_name
       character(len=256) :: cmip_name,cmip_longname, cmip_longname2
-      logical :: cmip_is_aerosol
+      logical :: cmip_is_aerosol, do_pm, do_check
       real    :: tracer_mw
 !>
   
@@ -1771,32 +1771,35 @@ type(time_type), intent(in)                                :: Time
       allocate(frac_pm10(nt))
       allocate(frac_pm25(nt))
 
-      id_n_ox_ddep =  register_cmip_diag_field_2d ( mod_name,&
-              'fam_noy_ddep_kg_m2_s', &
-              Time,&
-              'Dry Deposition Rate of all Nitrogen Oxides (NOY)', &
-              'kg m-2 s-1', &
+      id_n_ox_ddep =  register_cmip_diag_field_2d ( mod_name, &
+              'fam_noy_ddep_kg_m2_s', Time, &
+              'Dry Deposition Rate of all Nitrogen Oxides (NOY)', 'kg m-2 s-1', &
               standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_dry_deposition')
 
       id_n_ddep = 0
       id_n_red_ddep=0
 
-       ID_pm10 = register_cmip_diag_field_3d ( mod_name, 'pm10_kg_kg', Time,&
-              'PM10 mass mixing ratio',  '1.0', &
+      ID_pm10 = register_cmip_diag_field_3d ( mod_name, 'pm10_kg_kg', Time, &
+              'PM10 mass mixing ratio',  'kg kg-1', &
               standard_name='mass_fraction_of_pm10_ambient_aerosol_particles_in_air')
 
-       ID_pm25 = register_cmip_diag_field_3d ( mod_name, 'pm25_kg_kg', Time,&
-              'PM25 mass mixing ratio', '1.0', &
-              standard_name='mass_fraction_of_pm25_ambient_aerosol_particles_in_air')
+      ID_pm25 = register_cmip_diag_field_3d ( mod_name, 'pm25_kg_kg', Time, &
+              'PM2.5 mass mixing ratio', 'kg kg-1', &
+              standard_name='mass_fraction_of_pm2p5_dry_aerosol_particles_in_air')
 
-       ID_pm1  = register_cmip_diag_field_3d ( mod_name, 'pm1_kg_kg', Time,&
-              'PM1 mass mixing ratio', '1.0', &
-              standard_name='mass_fraction_of_pm1_ambient_aerosol_particles_in_air')
+      ID_pm1  = register_cmip_diag_field_3d ( mod_name, 'pm1_kg_kg', Time, &
+              'PM1.0 mass mixing ratio', 'kg kg-1', &
+              standard_name='mass_fraction_of_pm1_dry_aerosol_particles_in_air')
          
-       id_pm25_surf = register_cmip_diag_field_2d ( mod_name, 'pm25_surf_kg_kg', Time,&
-              'PM2.5 mass mixing ratio in lowest model layer', '1.0', &
+      id_pm25_surf = register_cmip_diag_field_2d ( mod_name, 'pm25_surf_kg_kg', Time, &
+              'PM2.5 mass mixing ratio in lowest model layer', 'kg kg-1', &
               standard_name='mass_fraction_of_pm2p5_ambient_aerosol_particles_in_air')
 
+      do_pm = .false.
+      if (query_cmip_diag_id(ID_pm10) .or. query_cmip_diag_id(ID_pm1) .or. &
+          query_cmip_diag_id(ID_pm25) .or. id_pm25_surf > 0) do_pm = .true.
+
+      outunit = stdout()
 
       do n = 1,nt
          call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
@@ -1816,47 +1819,35 @@ type(time_type), intent(in)                                :: Time
          call  get_chem_param(n,conv_vmr_mmr=conv_vmr_mmr(n),is_aerosol=cmip_is_aerosol,nb_N=nb_N(n),nb_N_Ox=nb_N_Ox(n),nb_N_red=nb_N_red(n), &
               frac_pm1=frac_pm1(n),frac_pm25=frac_pm25(n),frac_pm10=frac_pm10(n))
 
-         if (mpp_pe() .eq. mpp_root_pe()) then
-            write(*,*) 'n=',n
-            write(*,*) 'tracer_name="',trim(tracer_name),'", cmip_name=',trim(cmip_name),'", cmip_longname=',trim(cmip_longname)
-            write(*,'(4(a,g14.6))') 'conv_vmr_mmr=',conv_vmr_mmr(n),', nb_N=',nb_N(n),', nb_N_ox=',nb_N_ox(n),', nb_N_red=',nb_N_red(n)
-            write(*,*) 'frac_pm1=',frac_pm1(n),' frac_pm25',frac_pm25(n),' frac_pm10=',frac_pm10(n)
-         end if
+         write(outunit,*) 'n=',n
+         write(outunit,*) 'tracer_name="',trim(tracer_name),'", cmip_name="',trim(cmip_name),'", cmip_longname="',trim(cmip_longname),'"'
+         write(outunit,'(4(a,g14.6))') 'conv_vmr_mmr=',conv_vmr_mmr(n),', nb_N=',nb_N(n),', nb_N_ox=',nb_N_ox(n),', nb_N_red=',nb_N_red(n)
+         write(outunit,'(3(a,g14.6))') 'frac_pm1=',frac_pm1(n),', frac_pm25=',frac_pm25(n),', frac_pm10=',frac_pm10(n)
 
-         ID_tracer_mol_mol(n) = register_cmip_diag_field_3d ( mod_name,&
-              trim(tracer_name)//'_mol_mol', &
-              Time,&
-              trim(cmip_longname)//' volume mixing ratio', &
-              'mol mol-1', &
+         ID_tracer_mol_mol(n) = register_cmip_diag_field_3d ( mod_name, &
+              trim(tracer_name)//'_mol_mol', Time, &
+              trim(cmip_longname)//' volume mixing ratio', 'mol mol-1', &
               standard_name='mole_fraction_of_'//trim(cmip_name)//'_in_air')
          
-         ID_tracer_kg_kg(n)   = register_cmip_diag_field_3d ( mod_name,&
-              trim(tracer_name)//'_kg_kg', &
-              Time,&
-              'Aerosol '//trim(cmip_longname)//' mass mixing ratio', &
-              'kg kg-1', &
+         ID_tracer_kg_kg(n)   = register_cmip_diag_field_3d ( mod_name, &
+              trim(tracer_name)//'_kg_kg', Time, &
+              'Aerosol '//trim(cmip_longname)//' mass mixing ratio', 'kg kg-1', &
               standard_name='mass_fraction_of_'//trim(cmip_name)//'_dry_aerosol_particles_in_air')
          
-         id_tracer_surf_mol_mol(n) = register_cmip_diag_field_2d ( mod_name,&
-              trim(tracer_name)//'_surf_mol_mol', &
-              Time,&
-              trim(cmip_longname)//' volume mixing ratio in lowest model layer', &
-              'mol mol-1', &
+         id_tracer_surf_mol_mol(n) = register_cmip_diag_field_2d ( mod_name, &
+              trim(tracer_name)//'_surf_mol_mol', Time, &
+              trim(cmip_longname)//' volume mixing ratio in lowest model layer', 'mol mol-1', &
               standard_name='mole_fraction_of_'//trim(cmip_name)//'_in_air')
          
-         id_tracer_col_kg_m2(n) = register_cmip_diag_field_2d ( mod_name,&
-              trim(tracer_name)//'_col_kg_m2', &
-              Time,&
-              "Load of "//trim(cmip_longname2), &
-              'kg m-2', &
+         id_tracer_col_kg_m2(n) = register_cmip_diag_field_2d ( mod_name, &
+              trim(tracer_name)//'_col_kg_m2', Time, &
+              "Load of "//trim(cmip_longname2), 'kg m-2', &
               standard_name='atmosphere_mass_content_of_'//trim(cmip_name)//'_dry_aerosol')
          
          
-         id_tracer_surf_kg_kg(n) = register_cmip_diag_field_2d ( mod_name,&
-              trim(tracer_name)//'_surf_kg_kg', &
-              Time,&
-              trim(cmip_longname)//' mass mixing ratio in lowest model layer', &
-              'kg kg-1', &
+         id_tracer_surf_kg_kg(n) = register_cmip_diag_field_2d ( mod_name, &
+              trim(tracer_name)//'_surf_kg_kg', Time, &
+              trim(cmip_longname)//' mass mixing ratio in lowest model layer', 'kg kg-1', &
               standard_name='mass_fraction_of_'//trim(cmip_name)//'_in_air')
          
             
@@ -1870,40 +1861,37 @@ type(time_type), intent(in)                                :: Time
                  standard_name='tendency_of_atmosphere_mass_content_of_'//trim(cmip_name)//'_due_to_dry_deposition')
          end if
 
-         !sanity check 
-         if (id_tracer_ddep_kg_m2_s(n).gt.0 .or. id_tracer_surf_kg_kg(n).gt.0 .or. query_cmip_diag_id(ID_tracer_kg_kg(n)) &
-              .or. query_cmip_diag_id(ID_pm1) .or. query_cmip_diag_id(ID_pm10) .or. query_cmip_diag_id(ID_pm25) .or. id_pm25_surf .gt. 0) then
-            if (conv_vmr_mmr(n).lt.0.) then
-               call error_mesg ('Tracer_driver', &
-                    'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
-            end if
+         ! sanity check 
+         do_check = .false.
+         if (id_tracer_ddep_kg_m2_s(n) > 0 .or. id_tracer_surf_kg_kg(n) > 0 .or. id_tracer_col_kg_m2(n) > 0 .or. &
+             id_tracer_surf_mol_mol(n) > 0 .or. query_cmip_diag_id(ID_tracer_kg_kg(n)) .or. query_cmip_diag_id(ID_tracer_mol_mol(n))) do_check = .true.
+         if (do_pm .and. (frac_pm1(n) > 0.0 .or. frac_pm10(n) > 0.0 .or. frac_pm25(n) > 0.0)) do_check = .true.
+         if (do_check .and. conv_vmr_mmr(n) < 0.0) then
+            call error_mesg ('Tracer_driver', 'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
          end if
          
       end do
-      write(*,*) 'fam_N is comprised of :'
+      write (outunit,*) 'fam_N is comprised of :'
       do n = 1,nt
          if ( nb_N_ox(n) .gt. 0.) then
-            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
-                 units = tracer_units)
-            write(*,*) tracer_name,'nb_N_ox=',nb_N_ox(n)
+            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name, units = tracer_units)
+            write (outunit,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
          end if            
       end do
 
-      write(*,*) 'fam_NHx is comprised of :'
+      write (outunit,*) 'fam_NHx is comprised of :'
       do n = 1,nt
          if ( nb_N_red(n) .gt. 0.) then
-            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
-                 units = tracer_units)
-            write(*,*) tracer_name,'nb_N_red=',nb_N_red(n)
+            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name, units = tracer_units)
+            write (outunit,'(2a,g14.6)') trim(tracer_name),', nb_N_red=',nb_N_red(n)
          end if            
       end do
 
-      write(*,*) 'fam_NOy is comprised of :'
+      write (outunit,*) 'fam_NOy is comprised of :'
       do n = 1,nt
          if ( nb_N(n) .gt. 0.) then
-            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
-                 units = tracer_units)
-            write(*,*) tracer_name,'nb_N=',nb_N(n)
+            call get_tracer_names (MODEL_ATMOS, n, name = tracer_name, units = tracer_units)
+            write (outunit,'(2a,g14.6)') trim(tracer_name),', nb_N=',nb_N(n)
          end if            
       end do
 !>
