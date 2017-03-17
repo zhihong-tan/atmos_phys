@@ -1815,14 +1815,16 @@ type(time_type), intent(in)                                :: Time
                  tracer_name, 'kg/m3')
          end if
 
-         call  get_cmip_param(n,cmip_name=cmip_name,cmip_longname=cmip_longname,cmip_longname2=cmip_longname2)
-         call  get_chem_param(n,conv_vmr_mmr=conv_vmr_mmr(n),is_aerosol=cmip_is_aerosol,nb_N=nb_N(n),nb_N_Ox=nb_N_Ox(n),nb_N_red=nb_N_red(n), &
-              frac_pm1=frac_pm1(n),frac_pm25=frac_pm25(n),frac_pm10=frac_pm10(n))
+         call  get_cmip_param (n, cmip_name=cmip_name, cmip_longname=cmip_longname, cmip_longname2=cmip_longname2)
+         call  get_chem_param (n, mw=tracer_mw, conv_vmr_mmr=conv_vmr_mmr(n), is_aerosol=cmip_is_aerosol, &
+                               nb_N=nb_N(n), nb_N_Ox=nb_N_Ox(n), nb_N_red=nb_N_red(n), &
+                               frac_pm1=frac_pm1(n), frac_pm25=frac_pm25(n), frac_pm10=frac_pm10(n))
 
-         write(outunit,*) 'n=',n
-         write(outunit,*) 'tracer_name="',trim(tracer_name),'", cmip_name="',trim(cmip_name),'", cmip_longname="',trim(cmip_longname),'"'
-         write(outunit,'(4(a,g14.6))') 'conv_vmr_mmr=',conv_vmr_mmr(n),', nb_N=',nb_N(n),', nb_N_ox=',nb_N_ox(n),', nb_N_red=',nb_N_red(n)
-         write(outunit,'(3(a,g14.6))') 'frac_pm1=',frac_pm1(n),', frac_pm25=',frac_pm25(n),', frac_pm10=',frac_pm10(n)
+         write(outunit,'(a,i3)') 'n=',n
+         write(outunit,'(7a)') 'tracer_name="',trim(tracer_name),'", cmip_name="',trim(cmip_name),'", cmip_longname="',trim(cmip_longname),'"'
+         write(outunit,'(5(a,g14.6))') 'mwt=',tracer_mw, ', conv_vmr_mmr=',conv_vmr_mmr(n), &
+                                       ', nb_N=',nb_N(n),', nb_N_ox=',nb_N_ox(n),', nb_N_red=',nb_N_red(n)
+         write(outunit,'(3(a,f7.4))') 'frac_pm1=',frac_pm1(n), ', frac_pm25=',frac_pm25(n), ', frac_pm10=',frac_pm10(n)
 
          ID_tracer_mol_mol(n) = register_cmip_diag_field_3d ( mod_name, &
               trim(tracer_name)//'_mol_mol', Time, &
@@ -1863,14 +1865,14 @@ type(time_type), intent(in)                                :: Time
 
          ! sanity check 
          do_check = .false.
-         if (id_tracer_ddep_kg_m2_s(n) > 0 .or. id_tracer_surf_kg_kg(n) > 0 .or. id_tracer_col_kg_m2(n) > 0 .or. &
-             id_tracer_surf_mol_mol(n) > 0 .or. query_cmip_diag_id(ID_tracer_kg_kg(n)) .or. query_cmip_diag_id(ID_tracer_mol_mol(n))) do_check = .true.
+         if (id_tracer_ddep_kg_m2_s(n) > 0 .or. id_tracer_surf_kg_kg(n) > 0 .or. &
+             id_tracer_col_kg_m2(n) > 0 .or.  query_cmip_diag_id(ID_tracer_kg_kg(n))) do_check = .true.
          if (do_pm .and. (frac_pm1(n) > 0.0 .or. frac_pm10(n) > 0.0 .or. frac_pm25(n) > 0.0)) do_check = .true.
          if (do_check .and. conv_vmr_mmr(n) < 0.0) then
             call error_mesg ('Tracer_driver', 'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
          end if
-         
       end do
+         
       write (outunit,*) 'fam_N is comprised of :'
       do n = 1,nt
          if ( nb_N_ox(n) .gt. 0.) then

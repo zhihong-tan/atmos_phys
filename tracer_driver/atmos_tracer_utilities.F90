@@ -1965,7 +1965,7 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
  if (flag) then
     if (present(cmip_name))     then
        flag=parse(cmip_data,'cmip_name',cmip_name)
-       if (.not. flag) cmip_name='not found'
+       if (.not. flag) cmip_name='NULL'
     end if
     if (present(cmip_longname)) then
        flag=parse(cmip_data,'cmip_longname',cmip_longname)
@@ -1982,14 +1982,17 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
        end if
     end if
  else
-    cmip_name      = 'not found'
-    cmip_longname  = 'not found'
-    cmip_longname2 = 'not found'
+    cmip_name      = 'NULL'
+    cmip_longname  = 'NULL'
+    cmip_longname2 = 'NULL'
  end if
 
 end subroutine get_cmip_param
 
-subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr,frac_pm1,frac_pm25,frac_pm10)
+!#######################################################################
+
+subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_mmr, &
+                           frac_pm1, frac_pm25, frac_pm10)
 
  integer, intent(in) :: n
  real, intent(out), optional :: mw,nb_N,nb_N_ox,nb_N_red,conv_vmr_mmr
@@ -2007,7 +2010,7 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr,fra
  if (flag) then
     if (present(mw))     then 
        flag=parse(chem_data,'mw',mw)
-       if (.not. flag) mw=0.
+       if (.not. flag) mw=-999.
     end if
     flag=parse(chem_data,'nb_N_ox',nbt_N_ox)
     if (.not. flag) nbt_N_ox=0
@@ -2057,18 +2060,18 @@ subroutine get_chem_param(n,mw,nb_N,nb_N_ox,nb_N_red,is_aerosol,conv_vmr_mmr,fra
 
  else
     if (present(is_aerosol))   is_aerosol=.false.
-    if (present(mw))           mw=0.
+    if (present(mw))           mw=-999.
     if (present(nb_N_red))     nb_N_red=0.
     if (present(nb_N_ox))      nb_N_ox=0.
     if (present(nb_N))         nb_N=0.
-    if (present(conv_vmr_mmr)) conv_vmr_mmr = 1.0
+    if (present(conv_vmr_mmr)) conv_vmr_mmr = -1.0
     if (present(frac_pm1))     frac_pm1=0.
     if (present(frac_pm10))    frac_pm10=0.
     if (present(frac_pm25))    frac_pm25=0.
  end if
 
-
 end subroutine get_chem_param
+
 
 !<SUBROUTINE NAME="interp_emiss">
 subroutine interp_emiss(global_source, start_lon, start_lat, &
