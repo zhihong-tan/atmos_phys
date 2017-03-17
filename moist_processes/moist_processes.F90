@@ -24,7 +24,7 @@ use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
                                  file_exist, check_nml_error,    &
                                  open_namelist_file, close_file, &
-                                 write_version_number,           &
+                                 write_version_number, stdout,   &
                                  mpp_pe, mpp_root_pe, stdlog,    &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &
@@ -2153,7 +2153,7 @@ integer                     :: id_wetdep_cmip
       character(len=32)     :: tracer_units, tracer_name
       character(len=128)    :: diaglname, diaglname_uw, diaglname_donner
       integer, dimension(3) :: half = (/1,2,4/)
-      integer               :: n, nn
+      integer               :: n, nn, outunit
 
       character(len=256) :: cmip_name, cmip_longname, cmip_longname2
       logical :: cmip_is_aerosol
@@ -2435,10 +2435,13 @@ integer                     :: id_wetdep_cmip
       id_wetdepm_donner = -1
       id_wetdep_kg_m2_s = -1
       
+      outunit = stdout()
       do n = 1, num_prog_tracers
         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name, units=tracer_units)
         call  get_cmip_param (n, cmip_name=cmip_name, cmip_longname=cmip_longname, cmip_longname2=cmip_longname2)        
         call  get_chem_param (n, mw=tracer_mw, is_aerosol=cmip_is_aerosol, nb_N=nb_N(n), nb_N_Ox=nb_N_Ox(n), nb_N_red=nb_N_red(n))
+
+        write(outunit,'(a,g14.6)') trim(tracer_name)//', tracer_mw=',tracer_mw
        
         if (cmip_is_aerosol) then
             id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
@@ -2452,8 +2455,12 @@ integer                     :: id_wetdep_cmip
                            standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_due_to_wet_deposition')              
         end if
 
-        if (id_wetdep_kg_m2_s(n) .gt. 0 .and. tracer_mw.lt.0.) then
+        if (id_wetdep_kg_m2_s(n) > 0) then
+          if (tracer_mw < 0.0) then
             call error_mesg ('moist_processes', 'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
+         !else
+         !  write(outunit,'(a,g14.6)') trim(tracer_name)//', tracer_mw=',tracer_mw
+          end if
         end if
 
         diaglname = trim(tracer_name)//  &
@@ -2543,9 +2550,7 @@ integer                     :: id_wetdep_cmip
         conv_wetdep_kg_m2_s(n) = 1. ! no conversion needed
 
         else  
-          if ( mpp_pe() == mpp_root_pe() ) then
-            print*,   "unsupported tracer",tracer_name,tracer_units
-          end if
+          write(outunit,'(a)') 'unsupported tracer: '//trim(tracer_name)//', units='//trim(tracer_units)
           conv_wetdep(n) = 0.
           conv_wetdep_kg_m2_s(n) = 0.
         end if 
