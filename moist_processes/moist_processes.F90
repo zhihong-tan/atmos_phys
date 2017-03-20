@@ -24,7 +24,7 @@ use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
                                  file_exist, check_nml_error,    &
                                  open_namelist_file, close_file, &
-                                 write_version_number,           &
+                                 write_version_number, stdout,   &
                                  mpp_pe, mpp_root_pe, stdlog,    &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &
@@ -70,6 +70,7 @@ use moist_proc_utils_mod, only : tempavg, column_diag, rh_calc,  &
                                  mp_conv2ls_type, mp_output_type
 
 ! atmos_shared modules
+use atmos_tracer_utilities_mod, only : get_cmip_param, get_chem_param
 use atmos_dust_mod,       only : atmos_dust_init, dust_tracers,   &
                                  n_dust_tracers, do_dust,   &
                                  atmos_dust_wetdep_flux_set
@@ -214,13 +215,13 @@ integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
            id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust
 
-type(cmip_diag_id_type) :: ID_tntc, ID_tntscp, ID_tnhusc, ID_tnhusscp, &
-                           ID_mc, ID_cl, ID_clw, ID_cli, ID_hur
+type(cmip_diag_id_type) :: ID_cl, ID_clw, ID_cli, ID_hur
 
-integer, dimension(:), allocatable ::  id_wetdep
+integer, dimension(:), allocatable :: id_wetdep
 integer, dimension(:), allocatable :: id_wetdep_uw, id_wetdep_donner, &
-                                id_wetdepc_donner, id_wetdepm_donner  !f1p
-real, dimension(:), allocatable    :: conv_wetdep
+                                      id_wetdepc_donner, id_wetdepm_donner  !f1p
+integer, dimension(:), allocatable :: id_wetdep_kg_m2_s
+real, dimension(:), allocatable    :: conv_wetdep, conv_wetdep_kg_m2_s, nb_N_ox, nb_N_red, nb_N
 
 real :: missing_value = -999.
 
@@ -236,7 +237,7 @@ character(len=64), dimension(9) :: cmip_longnames = &
 character(len=64), dimension(9) :: cmip_stdnames = &
                                   (/"primary_particulate_organic_matter_dry_aerosol", &
                                     "secondary_particulate_organic_matter_dry_aerosol", &
-                                    "black_carbon_dry_aerosol", "dust_dry_aerosol", &
+                                    "elemental_carbon_dry_aerosol", "dust_dry_aerosol", &
                                     "seasalt_dry_aerosol", "sulfate_dry_aerosol", &
                                     "sulfur_dioxide", "dimethyl_sulfide", "ammonium_dry_aerosol"/)
 
@@ -803,6 +804,10 @@ subroutine moist_processes_end ( )
       deallocate (Removal_mp_control%tracers_in_mca )      !---> h1g, 2017-02-02
 
       deallocate (prec_intgl)                              !---> h1g, 2017-02-02
+
+      if (allocated(id_wetdep_kg_m2_s))   deallocate(id_wetdep_kg_m2_s)
+      if (allocated(conv_wetdep_kg_m2_s)) deallocate(conv_wetdep_kg_m2_s)
+      if (allocated(conv_wetdep))         deallocate(conv_wetdep)
 !--------------------------------------------------------------------
 
       module_is_initialized = .false.
@@ -1085,6 +1090,11 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
           if (id_wetdep(n) > 0) then
             used = send_data (id_wetdep(n), total_wetdep(:,:,n),  &
                                                            Time, is, js)
+          endif
+
+          if (id_wetdep_kg_m2_s(n) > 0) then
+            used = send_data (id_wetdep_kg_m2_s(n), total_wetdep(:,:,n)*conv_wetdep_kg_m2_s(n),  &
+                                                                                    Time, is, js)
           endif
         end do
 
@@ -2143,7 +2153,11 @@ integer                     :: id_wetdep_cmip
       character(len=32)     :: tracer_units, tracer_name
       character(len=128)    :: diaglname, diaglname_uw, diaglname_donner
       integer, dimension(3) :: half = (/1,2,4/)
-      integer               :: n, nn
+      integer               :: n, nn, outunit
+
+      character(len=256) :: cmip_name, cmip_longname, cmip_longname2
+      logical :: cmip_is_aerosol
+      real    :: tracer_mw
 
 !------------ register the diagnostic fields of this module -------------
 
@@ -2213,8 +2227,8 @@ integer                     :: id_wetdep_cmip
                 'total cloud amount', 'percent')
 
         id_clt = register_cmip_diag_field_2d (mod_name, 'clt', Time, &
-                                         'Cloud Area Fraction', '%', &
-            standard_name= 'cloud_area_fraction_in_atmosphere_layer' )
+                                      'Total Cloud Fraction', '1.0', &
+                                standard_name= 'cloud_area_fraction' )
 
         id_tot_cloud_area = register_diag_field ( mod_name, &
           'tot_cloud_area', axes(1:3), Time, &
@@ -2222,8 +2236,8 @@ integer                     :: id_wetdep_cmip
                                            missing_value=missing_value )
 
         ID_cl = register_cmip_diag_field_3d ( mod_name, 'cl', Time, &
-          'Cloud Area Fraction', '%',    &
-          standard_name='cloud_area_fraction_in_atmosphere_layer' )
+                                  'Percentage Cloud Cover', '%',    &
+            standard_name='cloud_area_fraction_in_atmosphere_layer' )
 
         id_tot_h2o     = register_diag_field ( mod_name, &
           'tot_h2o', axes(1:3), Time, &
@@ -2298,7 +2312,7 @@ integer                     :: id_wetdep_cmip
 
         id_clivi = register_cmip_diag_field_2d ( mod_name, 'clivi', Time, &
                                       'Ice Water Path', 'kg m-2', &
-                     standard_name='atmosphere_cloud_ice_content' )
+                     standard_name='atmosphere_mass_content_of_cloud_ice' )
 
       endif
 
@@ -2386,7 +2400,7 @@ integer                     :: id_wetdep_cmip
 
         id_wetdep_cmip = register_cmip_diag_field_2d ( mod_name, 'wet'//TRIM(cmip_names(ic)), Time,  &
                                   'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
-                    standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_due_to_wet_deposition' )
+                    standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_particles_due_to_wet_deposition' )
         if (TRIM(cmip_names(ic)) .eq. 'poa'  ) id_wetpoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'soa'  ) id_wetsoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'bc'   ) id_wetbc_cmip   = id_wetdep_cmip
@@ -2408,16 +2422,46 @@ integer                     :: id_wetdep_cmip
       allocate (id_wetdep_donner   (num_prog_tracers))
       allocate (id_wetdepc_donner  (num_prog_tracers))
       allocate (id_wetdepm_donner  (num_prog_tracers))
+      allocate (id_wetdep_kg_m2_s  (num_prog_tracers))
       allocate (conv_wetdep        (num_prog_tracers))
+      allocate (conv_wetdep_kg_m2_s(num_prog_tracers))
+      allocate (nb_N_red           (num_prog_tracers))
+      allocate (nb_N_ox            (num_prog_tracers))
+      allocate (nb_N               (num_prog_tracers))
       id_wetdep         = -1
       id_wetdep_uw      = -1
       id_wetdep_donner  = -1
       id_wetdepc_donner = -1
       id_wetdepm_donner = -1
+      id_wetdep_kg_m2_s = -1
       
-      do n = 1,num_prog_tracers
-        call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
-                               units = tracer_units)
+      outunit = stdout()
+      do n = 1, num_prog_tracers
+        call get_tracer_names (MODEL_ATMOS, n, name = tracer_name, units=tracer_units)
+        call  get_cmip_param (n, cmip_name=cmip_name, cmip_longname=cmip_longname, cmip_longname2=cmip_longname2)        
+        call  get_chem_param (n, mw=tracer_mw, is_aerosol=cmip_is_aerosol, nb_N=nb_N(n), nb_N_Ox=nb_N_Ox(n), nb_N_red=nb_N_red(n))
+
+        write(outunit,'(a,g14.6)') trim(tracer_name)//', tracer_mw=',tracer_mw
+       
+        if (cmip_is_aerosol) then
+            id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
+                               trim(tracer_name)//'_wetdep_kg_m2_s', Time, &
+                               'Wet Deposition Rate of '//TRIM(cmip_longname2), 'kg m-2 s-1', &
+                   standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_dry_aerosol_due_to_wet_deposition')
+        else
+            id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
+                               trim(tracer_name)//'_wetdep_kg_m2_s', Time, &
+                               'Wet Deposition Rate of '//TRIM(cmip_longname2), 'kg m-2 s-1', &
+                           standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_due_to_wet_deposition')              
+        end if
+
+        if (id_wetdep_kg_m2_s(n) > 0) then
+          if (tracer_mw < 0.0) then
+            call error_mesg ('moist_processes', 'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
+         !else
+         !  write(outunit,'(a,g14.6)') trim(tracer_name)//', tracer_mw=',tracer_mw
+          end if
+        end if
 
         diaglname = trim(tracer_name)//  &
                         ' wet deposition from all precip'
@@ -2463,6 +2507,7 @@ integer                     :: id_wetdep_cmip
                        missing_value=missing_value)
 
           conv_wetdep(n) = 1d3/WTMAIR
+          conv_wetdep_kg_m2_s(n) = tracer_mw*1e-3  ! std units are mol/m2/s
 
 
         elseif ( tracer_units.eq. "mmr" ) then
@@ -2502,12 +2547,12 @@ integer                     :: id_wetdep_cmip
                       missing_value=missing_value)
 
         conv_wetdep(n) = 1.
+        conv_wetdep_kg_m2_s(n) = 1. ! no conversion needed
 
         else  
-          if ( mpp_pe() == mpp_root_pe() ) then
-            print*,   "unsupported tracer",tracer_name,tracer_units
-          end if
+          write(outunit,'(a)') 'unsupported tracer: '//trim(tracer_name)//', units='//trim(tracer_units)
           conv_wetdep(n) = 0.
+          conv_wetdep_kg_m2_s(n) = 0.
         end if 
 
         if (id_wetdep(n) > 0) wetdep_diagnostics_desired = .true.
