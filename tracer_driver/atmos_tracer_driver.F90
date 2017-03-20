@@ -797,6 +797,14 @@ character(len=32) :: tracer_units, tracer_name
          end if
       end do
 
+      if (id_bc_col_kg_m2.gt.0 .and. nomphilic.gt.0 .and. nomphobic.gt.0) then
+        suma = 0.
+        do k=1,kd
+           suma(:,:) = suma(:,:) + pwt(:,:,k)*(tracer(:,:,k,nbcphilic)+tracer(:,:,k,nbcphobic))
+        end do
+        used = send_data (id_bc_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+      end if
+
       if (id_dust_col_kg_m2.gt.0) then
         suma = 0.
         do n=1,ntp
