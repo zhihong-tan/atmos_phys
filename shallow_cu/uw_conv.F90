@@ -1102,19 +1102,17 @@ contains
 !#####################################################################
 !#####################################################################
 
-  SUBROUTINE uw_conv(is, js, Time, tb, qv, ub, vb, pmid, pint, zmid,    & !input
-       zint, qtr, omega, delt, pblht,                                   & !input
-       ustar, bstar, qstar, sflx, lflx, land, coldT, asol, tdt_rad,     & !input
-       tdt_dyn, qvdt_dyn,                    dgz_dyn, ddp_dyn,          & !commented out when do_mse_budget=T
-       tdt_tot, qvdt_dif,                    hfint0,                    & !commented out when do_mse_budget=T
-!      tdt_dyn, qvdt_dyn, qldt_dyn, qidt_dyn, dgz_dyn, ddp_dyn, hdt_dgz_adj, dgz_phy, & !input
-!      tdt_tot, qvdt_dif, qldt_dif, qidt_dif, hfint0,                   & !input
-       lat, lon, cush, do_strat,                                        & !input
+  SUBROUTINE uw_conv(is, js, Time, tb, qv, ub, vb, pmid,pint,zmid,zint, & !input
+       qtr, omega, delt, pblht, ustar, bstar, qstar, land,              & !input
+       coldT, asol, lat, lon, cush, tkep, do_strat,                     & !input
        skip_calculation, max_available_cf,                              & !input
        tten, qvten, qlten, qiten, qaten, qnten,                         & !output
-       uten, vten, rain, snow, cmf, liq_pflx, ice_pflx,                 & !output
-       cldql, cldqi, cldqa, cldqn, tracers, trtend, uw_wetdep,          & !output
-       cbmfo, gusto, tkep)
+       uten, vten, rain, snow, cmf, liq_pflx,                           & !output
+       ice_pflx, cldql, cldqi, cldqa, cldqn,                            & !output
+       tracers, trtend, uw_wetdep, cbmfo, gusto)
+!      sflx, lflx, tdt_rad, tdt_dyn, qvdt_dyn, qldt_dyn,                & !inputforMSE
+!      qidt_dyn, dgz_dyn, ddp_dyn, hdt_dgz_adj, dgz_phy,                & !inputforMSE
+!      tdt_tot, qvdt_dif, qldt_dif, qidt_dif, hfint0 )                  & !inputforMSE
 
 !CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 !
@@ -1151,15 +1149,13 @@ contains
     logical,intent(in)                   :: do_strat !logical flag
     logical,intent(in), dimension(:,:)   :: coldT    !logical flag
 
-    real, intent(in),    dimension(:,:)  :: pblht, ustar, bstar, qstar, sflx, lflx, lat, lon !pbl height...
+    real, intent(in),    dimension(:,:)  :: pblht, ustar, bstar, qstar,  lat, lon !pbl height...
     real, intent(inout), dimension(:,:)  :: cush  ! convective scale height (m) 
-    real, intent(inout), dimension(:,:)  :: hfint0! column integrated total MSE (J/m2)
-    real, intent(in),  dimension(:,:,:)  :: tdt_rad, tdt_dyn, qvdt_dyn
-    real, intent(in),  dimension(:,:,:)  :: dgz_dyn, ddp_dyn, tdt_tot, qvdt_dif
 
 !required when do_mse_budget=T
-!    real, intent(in),  dimension(:,:,:)  :: qldt_dyn, qidt_dyn, qldt_dif, qidt_dif, dgz_phy
-!    real, intent(in),  dimension(:,:)    :: hdt_dgz_adj
+!    real, intent(in),  dimension(:,:,:) :: tdt_rad, tdt_dyn, qvdt_dyn, dgz_dyn, ddp_dyn, tdt_tot
+!    real, intent(in),  dimension(:,:,:) :: qvdt_dif, qldt_dyn, qidt_dyn, qldt_dif, qidt_dif, dgz_phy
+!    real, intent(inout), dimension(:,:) :: hdt_dgz_adj, sflx, lflx, hfint0 !column integrated total MSE (J/m2)
 !required when do_mse_budget=T
 
     type(aerosol_type),  intent (in)     :: asol
@@ -1223,8 +1219,9 @@ contains
          cpool, bflux, nbuo_s, nbuo_d, pcb_s, pcb_d, pcb_c, pct_s, pct_d, pct_c, omgavg
 
 !commented out when do_mse_buget=T
-    real, dimension(size(tb,1),size(tb,2),size(tb,3))   :: qidt_dyn, qidt_dif, dgz_phy
-    real, dimension(size(tb,1),size(tb,2))              :: hdt_dgz_adj
+    real, dimension(size(tb,1),size(tb,2),size(tb,3))   :: tdt_rad, tdt_dyn, qvdt_dyn, dgz_dyn, ddp_dyn, tdt_tot
+    real, dimension(size(tb,1),size(tb,2),size(tb,3))   :: qvdt_dif, qldt_dyn, qidt_dyn, qldt_dif, qidt_dif, dgz_phy
+    real, dimension(size(tb,1),size(tb,2))              :: hdt_dgz_adj, sflx, lflx, hfint0
 !commented out when do_mse_buget=T
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)+1) :: hlflx, qtflx, pflx, qtflx_up, qtflx_dn
@@ -1482,7 +1479,9 @@ contains
    !initialize 3D variables outside the loop
 
 !commented out when do_mse_budget=T
-    qidt_dyn=0.; qidt_dif=0.; hdt_dgz_adj=0.; dgz_phy=0.;
+    tdt_rad=0.; tdt_dyn=0.; qvdt_dyn=0.; dgz_dyn=0.; ddp_dyn=0.; 
+    tdt_tot=0.; qvdt_dif=0.; qldt_dyn=0.; qldt_dif=0.; 
+    qidt_dyn=0.; qidt_dif=0.; hdt_dgz_adj=0.; sflx=0.; lflx=0.; dgz_phy=0.; hfint0=0.;
 !commented out when do_mse_budget=T
 
     tten=0.; qvten=0.; qlten=0.; qiten=0.; qaten=0.; qnten=0.;

@@ -448,17 +448,14 @@ real, dimension(:,:,:,:),     intent(inout) :: qtruw
 !    call uw_conv to calculate the effects of shallow convection.
 !-------------------------------------------------------------------------
       call uw_conv (is, js, Time, t, q, u, v, pfull, phalf, zfull, zhalf, &
-                    tracer, omega, dt, pblht, ustar, bstar, qstar, shflx, &
-                    lhflx, land, coldT, Aerosol, tdt_rad, tdt_dyn,   &
-                    qdt_dyn, dgz_dyn, ddp_dyn, tdt_dif, qdt_dif, hmint,  &
-                    lat, lon, cush, doing_prog_clouds,  &
+                    tracer, omega, dt, pblht, ustar, bstar, qstar, land,  &
+                    coldT, Aerosol,lat, lon, cush, tke, doing_prog_clouds,&
                     conv_calc_completed, available_cf_for_uw, ttnd_uw,    &
                     qtnd_uw, qltnd_uw, qitnd_uw, qatnd_uw, qntnd_uw,      &
                     utnd_uw, vtnd_uw, rain_uw, snow_uw, cmf, liq_precflx, &
                     ice_precflx, Cld_props%liquid_amt, Cld_props%ice_amt, &
                     Cld_props%cloud_area, Cld_props%droplet_number,       &
-                    trcr, qtruw, uw_wetdep,                               &
-                    cbmf, cgust, tke)
+                    trcr, qtruw, uw_wetdep, cbmf, cgust)
 
 !-------------------------------------------------------------------------
 !    call detr_ice_num to calculate the ice number tendency due to 
