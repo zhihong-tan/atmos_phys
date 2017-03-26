@@ -456,10 +456,9 @@ real, dimension(:,:,:,:),     intent(inout) :: qtruw
                     qtnd_uw, qltnd_uw, qitnd_uw, qatnd_uw, qntnd_uw,      &
                     utnd_uw, vtnd_uw, rain_uw, snow_uw, cmf, liq_precflx, &
                     ice_precflx, Cld_props%liquid_amt, Cld_props%ice_amt, &
-                    Cld_props%cloud_area, Cld_props%droplet_number,   &
-                    trcr, qtruw, uw_wetdep,       &
-                    cbmf, cgust, tke, pblhto, rkmo, taudpo, exist_shconv, exist_dpconv, &
-                    pblht_prev, hlsrc_prev, qtsrc_prev, cape_prev, cin_prev, tke_prev)
+                    Cld_props%cloud_area, Cld_props%droplet_number,       &
+                    trcr, qtruw, uw_wetdep,                               &
+                    cbmf, cgust, tke)
 
 !-------------------------------------------------------------------------
 !    call detr_ice_num to calculate the ice number tendency due to 

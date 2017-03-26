@@ -1079,9 +1079,6 @@ contains
       end if
     enddo
 
-    if (cpn%do_downdraft) then
-       call precip_downdraft_k(sd, cp, Uw_p, cp%dd)
-    end if
   end subroutine cumulus_plume_k
 
 
@@ -2770,106 +2767,6 @@ contains
     enddo
 
   end SUBROUTINE PRECIP_EVAP
-
-!#####################################################################
-!#####################################################################
-
-  subroutine precip_downdraft_k (sd, cp, Uw_p, dd)
-  
-    implicit none
-
-    type(sounding), intent(in)    :: sd
-    type(uw_params),intent(in)    :: Uw_p
-    type(cplume),   intent(in)    :: cp
-    type(ddraft),   intent(inout) :: dd
-
-    integer :: k, klm, km1, krel, let, ltop, jtt
-    real    :: coeff, rat, hk, hkm1, frc_rain
-    real    :: wdetrain, qsm, qstm, afac, B6, C6, revap, dsdp, fac, precip
-    real, dimension(1:size(sd%p)) :: wt, evap, water, qp, mp, up, vp
-
-    real :: omtrain=50.0 !rain fall speed (Ps/s)
-    real :: omtsnow=5.5  !snow fall speed (Pa/s)
-    real :: coeffr=1.0   !coefficient for rain evaporation
-    real :: coeffs=0.8   !coefficient for snow evaporation
-    real :: sigd=0.05    !fractional area covered by the downdraft
-    real :: sigs=0.12    !fraction of precipitation falling through environment
-    
-    qp   (:)=sd%qv(:)    !specific humidity of precipitating downdraft
-    up   (:)=sd%u (:)    !u in precipitating downdraft 
-    vp   (:)=sd%v (:)    !v in precipitating downdraft 
-    mp   (:)=0.          !precipitating downdraft mass flux
-    water(:)=0.          !precipitating water specific humidity
-    evap (:)=0.          !rate of evaporation of precipitation
-    wt   (:)=omtrain     !precipitation fall velocity
-
-    precip=0.;
-    do k = cp%ltop-1, 1, -1
-       wdetrain=cp%pptr(k)+cp%ppti(k)
-       frc_rain=cp%pptr(k)/max(wdetrain,1.e-28)
-       wdetrain=wdetrain*Uw_p%grav
-       coeff   =frc_rain*coeffr +(1.-frc_rain)*coeffs
-       wt(k)   =frc_rain*omtrain+(1.-frc_rain)*omtsnow
-
-       !temporary evaluation of specific humdity of precipitation downdraft
-       qsm =0.5*(sd%qv(k)+qp(k+1))
-       afac=coeff*sd%ps(k)*0.01*(sd%qs(k)-qsm)/(1.0e4+2.0e3*sd%ps(k)*0.01*sd%qs(k))
-       afac=max(afac,0.0)
-       B6  =sd%dp(k) * sigs * afac / wt(k)
-       C6  =(water(k+1)*wt(k+1) + wdetrain/sigd) / wt(k)
-       revap=0.5*(-B6+SQRT(B6*B6+4.*C6))
-       evap (k)=sigs*afac*revap
-       water(k)=revap*revap
-
-       !compute precipitating downdraft mass flux under hydrostatic approx.
-       if(k.gt.1) then
-         dsdp =(Uw_p%cp_air*(sd%t(k)-sd%t(k-1))+Uw_p%grav*sd%dz(k))/sd%dp(k)
-         dsdp =max(dsdp,10.0)
-         mp(k)=sd%leff(k)*sigd*evap(k)/(dsdp*Uw_p%grav)
-         mp(k)=max(mp(k),0.0)
-
-         !add small amount of inertia to downdraft 
-         fac  =2000.0/sd%dp(k)
-         mp(k)=(fac*mp(k+1)+mp(k))/(1.+fac)
-         !force mp to decrease linearly to 0 between about 950 mb and surface
-         jtt = 1
-         if(sd%p(k).gt.(0.949*sd%p(1))) then
-           jtt  =max(jtt,k)
-           mp(k)=mp(jtt)*(sd%p(1)-sd%p(k))/(sd%p(1)-sd%p(jtt))
-         end if
-       end if
-
-       !find specific humidity of precipitation downdraft
-       if(k.eq.1) then
-          qstm=sd%qs(1)
-       else
-          qstm=sd%qs(k-1)
-       end if
-       if(mp(k).gt.mp(k+1)) then
-          rat=mp(k+1)/mp(k)
-          qp(k)=qp(k+1)*rat+sd%qv(k)*(1.0-rat) + 1./Uw_p%grav &
-                * sigd * sd%dp(k) * (evap(k)/mp(k))
-          up(k)=up(k+1)*rat+sd%u(k)*(1.-rat)
-          vp(k)=vp(k+1)*rat+sd%v(k)*(1.-rat)
-       else
-        if(mp(k+1).gt.0.) then
-           qp(k)=(Uw_p%cp_air*(sd%t(k+1)-sd%t(k))+Uw_p%grav*sd%dz(k) &
-                  + qp(k+1)*sd%leff(k+1)) / sd%leff(k)
-           up(k)=up(k+1)
-           vp(k)=vp(k+1)
-        end if
-       end if
-       qp(k)=min(qp(k),qstm)
-       qp(k)=max(qp(k),0.0)
-       precip=precip+wt(1)*sigd*water(1)/Uw_p%grav
-
-    end do
-
-!       WD=BETA*ABS(mp(ICB))*0.01*RD*T(ICB)/(SIGD*P(ICB))
-!       QPRIME=0.5*(QP(1)-Q(1))
-!       TPRIME=LV0*QPRIME/CPD
-
-  end subroutine precip_downdraft_k
 
 !#####################################################################
 !#####################################################################
