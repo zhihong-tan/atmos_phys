@@ -1419,7 +1419,7 @@ type(time_type), intent(in)                                :: Time
       character(len=32) :: tracer_units, tracer_name
       character(len=256) :: cmip_name,cmip_longname, cmip_longname2
       logical :: cmip_is_aerosol, do_pm, do_check
-      real    :: tracer_mw
+      real    :: tracer_mw, sum_N_ox
 !>
   
 !-----------------------------------------------------------------------
@@ -1813,14 +1813,6 @@ type(time_type), intent(in)                                :: Time
       allocate(frac_pm10(nt))
       allocate(frac_pm25(nt))
 
-      id_n_ox_ddep =  register_cmip_diag_field_2d ( mod_name, &
-              'fam_noy_ddep_kg_m2_s', Time, &
-              'Dry Deposition Rate of all Nitrogen Oxides (NOY)', 'kg m-2 s-1', &
-              standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_dry_deposition')
-
-      id_n_ddep = 0
-      id_n_red_ddep=0
-
       ID_BC = register_cmip_diag_field_3d ( mod_name, 'fam_bc_kg_kg', Time, &
              'Elemental carbon mass mixing ratio', 'kg kg-1', &
              standard_name='mass_fraction_of_elemental_carbon_dry_aerosol_particles_in_air')      
@@ -1934,14 +1926,26 @@ type(time_type), intent(in)                                :: Time
             call error_mesg ('Tracer_driver', 'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
          end if
       end do
+
+      id_n_ox_ddep = 0
+      id_n_ddep = 0
+      id_n_red_ddep=0
          
       write (outunit,*) 'fam_N_ox is comprised of :'
+      sum_N_ox = 0.0
       do n = 1,nt
          if ( nb_N_ox(n) .gt. 0.) then
+            sum_N_ox = sum_N_ox + nb_N_ox(n)
             call get_tracer_names (MODEL_ATMOS, n, name = tracer_name, units = tracer_units)
             write (outunit,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
          end if            
       end do
+      if (sum_N_ox > 0.0) then
+        id_n_ox_ddep =  register_cmip_diag_field_2d ( mod_name, &
+                'fam_noy_ddep_kg_m2_s', Time, &
+                'Dry Deposition Rate of all Nitrogen Oxides (NOY)', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_dry_deposition')
+      end if
 
       write (outunit,*) 'fam_N_red is comprised of :'
       do n = 1,nt
