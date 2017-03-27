@@ -2170,7 +2170,7 @@ contains
 		   cldqn(i,j,k)=(cqn(k)+cqn(k+1))*0.5
                 end do
 
-		do k = 1,kmax+1
+		do k = 1,kmax
 	     	   cltc (i,j) = max(cltc(i,j),cldqa(i,j,k)) !assuming maximum overlap
              	end do
    	     end if
