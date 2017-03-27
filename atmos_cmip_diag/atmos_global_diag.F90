@@ -113,7 +113,7 @@ integer :: iunit, ierr, io
     iunit = open_namelist_file()
     ierr=1
     do while (ierr /= 0)
-      read (iunit, nml=fv_cmip_diag_nml, iostat=io, end=10)
+      read (iunit, nml=atmos_global_diag_nml, iostat=io, end=10)
       ierr = check_nml_error (io, 'atmos_global_diag_nml')
     enddo
 10  call close_file (iunit)
