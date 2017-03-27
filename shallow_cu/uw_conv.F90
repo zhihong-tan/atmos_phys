@@ -315,7 +315,7 @@ MODULE UW_CONV_MOD
   integer :: id_tdt_uwc, id_qdt_uwc, id_udt_uwc, id_vdt_uwc, id_prec_uwc, id_snow_uwc, &
              id_tdt_uws, id_qdt_uws, id_udt_uws, id_vdt_uws, id_prec_uws, id_snow_uws, &
 	     id_pct_uwc, id_pcb_uwc, id_pct_uws, id_pcb_uws, id_pct_uwd, id_pcb_uwd,   &
-	     id_cqa_uwc, id_cql_uwc, id_cqi_uwc, id_cqn_uwc,                           &
+	     id_cqa_uwc, id_cql_uwc, id_cqi_uwc, id_cqn_uwc, id_cltc_uwc,              &
 	     id_cqa_uws, id_cql_uws, id_cqi_uws, id_cqn_uws,                           &
        id_cin_uwc, id_cbmf_uwc, id_tke_uwc, id_tkep_uwc, id_plcl_uwc, id_zlcl_uwc, id_zinv_uwc,  &
        id_cush_uws,  id_plfc_uwc, id_enth_uwc,  &
@@ -607,6 +607,9 @@ contains
     id_cqn_uws = register_diag_field ( mod_name, 'cqn_uws', axes(half), Time, &
          'Updraft liquid drop number from shallow plume', '/kg', missing_value=mv)
 
+    id_cltc_uwc=register_diag_field (mod_name, 'cltc', axes(1:2), Time,     &
+         'Convective Cloud Fraction', 'none', missing_value=mv)
+
     id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(half),Time, &
          'liquid water static energy flux from uw_conv', 'W/m2', missing_value=mv)
     id_qtflx_uwc = register_diag_field (mod_name,'qtflx_uwc',axes(half),Time, &
@@ -861,7 +864,7 @@ contains
          'Out code from uw_conv', 'none' )
     id_feq_uwc = register_diag_field (mod_name, 'feq_uwc',   axes(1:2), Time,   &
          'fraction of time convection occurs from uw_conv', 'none', missing_value=mv)
-    id_feq_uws = register_diag_field (mod_name, 'feq_uws',   axes(1:2), Time,   &
+    id_feq_uws = register_diag_field (mod_name, 'sci',       axes(1:2), Time,   &
          'fraction of time shallow plume occurs', 'none', missing_value=mv)
     id_rkm_uws = register_diag_field (mod_name, 'rkm_uws', axes(1:2), Time, &
             'lateral mixing rate parameter for shallow_plume', 'none' )
@@ -1217,6 +1220,7 @@ contains
 	 rhos,       &
 	 lhflx,      &
 	 shflx,      &
+         cltc,       &
          hfint0_old,  pblht_avg, omg_avg, hlsrc_avg, qtsrc_avg, cape_avg, cin_avg, &
          hten, lts, eis, hdt_tot_int, hdt_ver_int,                                 &
          cpool, bflux, nbuo_s, nbuo_d, pcb_s, pcb_d, pcb_c, pct_s, pct_d, pct_c, omgavg
@@ -1489,7 +1493,8 @@ contains
 
     tten=0.; qvten=0.; qlten=0.; qiten=0.; qaten=0.; qnten=0.;
     uten=0.; vten =0.; rain =0.; snow =0.; plcl =0.; plfc=0.; plnb=0.;
-    cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.; zlcl=0.;
+    cldqa=0.; cldql=0.; cldqi=0.; cldqn=0.; zlcl=0.; cltc=0.;
+
     cqa  =0.; cql  =0.; cqi  =0.; cqn  =0.;
     cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
     hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.; amx=0.;
@@ -2157,19 +2162,17 @@ contains
              	      cqn(k)=0.
 		   end if
 	     	   cqa(k) = min(cqa(k),1.0)
-            	end do
-	     	do k = 1,kmax
+                end do
+                do k = 1,kmax
 		   cldqa(i,j,k)=(cqa(k)+cqa(k+1))*0.5
 		   cldql(i,j,k)=(cql(k)+cql(k+1))*0.5
 		   cldqi(i,j,k)=(cqi(k)+cqi(k+1))*0.5
 		   cldqn(i,j,k)=(cqn(k)+cqn(k+1))*0.5
-            	end do
-	     else
-		do k = 1,kmax
-	     	   cldqa (i,j,k) = max(cqa_s (i,j,k),cqa_d(i,j,k))
+                end do
+
+		do k = 1,kmax+1
+	     	   cltc (i,j) = max(cltc(i,j),cldqa(i,j,k)) !assuming maximum overlap
              	end do
-		cldql (i,j,:) = cql_s (i,j,:) + cql_d(i,j,:)
-             	cldqi (i,j,:) = cqi_s (i,j,:) + cqi_d(i,j,:)
    	     end if
 
              snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
@@ -2443,6 +2446,7 @@ contains
     used = send_data( id_cql_uwc,    cldql,        Time, is, js, 1)
     used = send_data( id_cqi_uwc,    cldqi,        Time, is, js, 1)
     used = send_data( id_cqn_uwc,    cldqn,        Time, is, js, 1)
+    used = send_data( id_cltc_uwc,   cltc,         Time, is, js)
     used = send_data( id_pcb_uwc,    pcb_c*0.01,   Time, is, js)
     used = send_data( id_pct_uwc,    pct_c*0.01,   Time, is, js)
 
