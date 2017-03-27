@@ -2410,6 +2410,7 @@ integer                     :: id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'so2'  ) id_wetso2_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'dms'  ) id_wetdms_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'nh4'  ) id_wetnh4_cmip  = id_wetdep_cmip
+        if (id_wetdep_cmip > 0) wetdep_diagnostics_desired = .true.
       enddo
      !-----------------------------------------------
 
@@ -2454,6 +2455,7 @@ integer                     :: id_wetdep_cmip
                                'Wet Deposition Rate of '//TRIM(cmip_longname2), 'kg m-2 s-1', &
                            standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_due_to_wet_deposition')              
         end if
+        if (id_wetdep_kg_m2_s(n) > 0) wetdep_diagnostics_desired = .true.
 
         if (id_wetdep_kg_m2_s(n) > 0) then
           if (tracer_mw < 0.0) then

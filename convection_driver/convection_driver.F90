@@ -104,7 +104,6 @@ private
 !--------------------- version number ----------------------------------
 character(len=128) ::  version = '$Id: $'
 character(len=128) :: tagname = '$Name: $'
-character(len=7), private :: mod_name_tr = 'tracers'
 !-------------------- namelist data (private) --------------------------
 
 !---------------- namelist variable definitions -----------------------
@@ -235,6 +234,8 @@ integer, dimension(:), allocatable ::    &
 
 real                      :: missing_value = -999.
 character(len=5), private :: mod_name = 'moist'
+character(len=8), private :: mod_name_tr = 'moist_tr'  ! fixes name conflict with
+                                                       ! tracers and moist
 
 
 
@@ -3712,7 +3713,7 @@ type(mp_removal_control_type), intent(in) :: Control
                         missing_value=missing_value)
         diaglname =  ' column integrated' // trim(tracer_name)
         id_conv_tracer_col(n) =  &
-                        register_diag_field ( mod_name, &
+                        register_diag_field ( mod_name_tr, &
                         TRIM(tracer_name)//'_col', &
                         axes(1:2), Time, trim(diaglname), &
                         TRIM(tracer_units)      ,   &
