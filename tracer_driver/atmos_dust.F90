@@ -207,7 +207,7 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
   endif
 
   ! cmip variables
-  if (id_drydust) then
+  if (id_drydust > 0) then
      used = send_data (id_drydust, all_dust_setl(:,:), Time, is_in=is, js_in=js)
   endif
   if (id_emidust > 0) then
