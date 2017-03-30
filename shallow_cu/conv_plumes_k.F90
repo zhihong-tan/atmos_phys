@@ -144,7 +144,7 @@ contains
 !#####################################################################
   subroutine dd_clear_k (dd)
     type(ddraft), intent(inout) :: dd
-    dd%hld   =0.; dd%qctd  =0.; dd%qvd   =0.; dd%qld=0.; dd%qid=0.;  
+    dd%hld   =0.; dd%qctd  =0.; dd%qvd   =0.; dd%qld=0.; dd%qid=0.;
     dd%ud    =0.; dd%vd    =0.; dd%wd    =0.; dd%dmf=0.;
     dd%pptr_d=0.; dd%ppti_d=0.; dd%pptn_d=0.; dd%trd=0.; dd%trd_dwet=0.;
   end subroutine dd_clear_k
@@ -549,9 +549,9 @@ contains
       totalmass = totalmass1
     else
       totalmass(1)= sd%am1(krel-1); !sd%am1-am4 unit: g/cm3
-      totalmass(2)= sd%am2(krel-1); 
-      totalmass(3)= sd%am3(krel-1); 
-      totalmass(4)= sd%am4(krel-1); 
+      totalmass(2)= sd%am2(krel-1);
+      totalmass(3)= sd%am3(krel-1);
+      totalmass(4)= sd%am4(krel-1);
     endif
 
     if (SUM(totalmass(:)) /= 0.0 .and. cpn%use_online_aerosol) then
@@ -641,7 +641,7 @@ contains
           if (cp%buog(k-1).gt.0) then
             rkm1 = rkm * (1.+cp%buog(k-1)*cpn%beta)
           else
-            rkm1 = rkm 
+            rkm1 = rkm
           endif
           rkm1 = min(rkm1,cpn%rkm_max)
           scaleh1 = cpn%scaleh0
@@ -838,41 +838,12 @@ contains
                                 clu_new, ciu_new, temp, cpn%do_ice,  &
                                 delta_qn, Uw_p, kbelowlet, sd%dp(k), &
                                 sd%dz(k), cp%wu(km1),sd%rho(k))
-!          call precip3_k       (cp%zs(k), cp%ps(k), cp%hlu(k), &
-!                                cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
-!                                hlu_new, qctu_new, qlu_new, qiu_new, &
-!                                clu_new, ciu_new, temp, cpn%do_ice, &
-!                                delta_qn, Uw_p, kbelowlet)        
        else if (cpn%mp_choice.eq.4) then
-          call precip4_k (cp%zs(k), cp%ps(k), cp%hlu(k), &
+          call precip3_k       (cp%zs(k), cp%ps(k), cp%hlu(k), &
                                 cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
                                 hlu_new, qctu_new, qlu_new, qiu_new, &
                                 clu_new, ciu_new, temp, cpn%do_ice, &
                                 delta_qn, Uw_p, kbelowlet)
-       else if (cpn%mp_choice.eq.5) then
-          call precip5_k (cp%zs(k), cp%ps(k), cp%hlu(k), &
-                                cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
-                                hlu_new, qctu_new, qlu_new, qiu_new, &
-                                clu_new, ciu_new, temp, cpn%do_ice, &
-                                delta_qn, Uw_p, kbelowlet, sd%dp(k))
-       else if (cpn%mp_choice.eq.6) then
-          call precip6_k (cp%zs(k), cp%ps(k), cp%hlu(k), &
-                                cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
-                                hlu_new, qctu_new, qlu_new, qiu_new, &
-                                clu_new, ciu_new, temp, cpn%do_ice, &
-                                delta_qn, Uw_p, kbelowlet, sd%dp(k))
-       else if (cpn%mp_choice.eq.7) then
-          call precip7_k (cp%zs(k), cp%ps(k), cp%hlu(k), &
-                                cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
-                                hlu_new, qctu_new, qlu_new, qiu_new, &
-                                clu_new, ciu_new, temp, cpn%do_ice, &
-                                delta_qn, Uw_p, kbelowlet, sd%dp(k))
-       else if (cpn%mp_choice.eq.8) then
-          call precip8_k (cp%zs(k), cp%ps(k), cp%hlu(k), &
-                                cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
-                                hlu_new, qctu_new, qlu_new, qiu_new, &
-                                clu_new, ciu_new, temp, cpn%do_ice, &
-                                delta_qn, Uw_p, kbelowlet, sd%dp(k))
        else
           call precip_new_k    (cp%zs(k), cp%ps(k), cp%hlu(k), &
                                 cp%qctu(k), cp%qnu(k), cpn, qrj, qsj, &
@@ -954,7 +925,7 @@ contains
           else
              ptmp=cpn%plev_for
           end if
-          if (ac%plfc.eq.0. .or. ac%plfc.lt.ptmp) then 
+          if (ac%plfc.eq.0. .or. ac%plfc.lt.ptmp) then
              plfc_tmp=ptmp
           else
              plfc_tmp=ac%plfc
@@ -1079,9 +1050,6 @@ contains
       end if
     enddo
 
-    if (cpn%do_downdraft) then
-       call precip_downdraft_k(sd, cp, Uw_p, cp%dd)
-    end if
   end subroutine cumulus_plume_k
 
 
@@ -1135,7 +1103,7 @@ contains
     qrj = pcp*qlj*qctmp
     qsj = pcp*qij*qctmp
     nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
- 
+
     if (qlj.le.0) then
        delta_qn = -qnu
        qnu = 0
@@ -1229,7 +1197,7 @@ contains
     qrj = pcp*qlj*qctmp
     qsj = pcp*qij*qctmp
     nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
- 
+
     if (qlj.le.0) then
        delta_qn = -qnu
        qnu = 0
@@ -1268,7 +1236,7 @@ contains
 
     !Precip at the flux level
     call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
-                  Uw_p)  
+                  Uw_p)
     exnj=exn_k(ps,Uw_p)
 
     if (cpn%do_conv_micro_N) then
@@ -1331,347 +1299,8 @@ contains
     ciu_new  = qiu_new
 
     return
-    
+
   end subroutine precip3_new_k
-
-
-
-
-  subroutine precip8_k (zs, ps, hlu, qctu, qnu, cpn, qrj, qsj, &
-                              hlu_new, qctu_new, qlu_new, qiu_new, &
-                              clu_new, ciu_new, temp, doice, delta_qn, &
-                              Uw_p, kbelowlet, delp)
-    type(cpnlist),  intent(in)    :: cpn
-    type(uw_params),  intent(inout)    :: Uw_p
-    real,           intent(in)    :: zs, ps, hlu, qctu, delp
-    real,           intent(inout)    :: qnu, delta_qn
-    real,           intent(inout) :: qrj, qsj, hlu_new, qctu_new,  &
-                                     qlu_new, qiu_new, clu_new,  &
-                                     ciu_new, temp
-    logical,        intent(in)    :: doice, kbelowlet
-
-    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
-               auto_th, leff, pcp, qctmp, deltaqc, auto_th2, peff
-
-    !Precip at the flux level
-    call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
-                  Uw_p)
-    exnj=exn_k(ps,Uw_p)
-    temp=thj*exnj-273.15
-    qctmp = qlj+qij;
-
-    if (temp.ge.-5.15) then
-       auto_th=cpn%auto_th0
-       peff=cpn%peff_l
-    else
-       auto_th = 0.0
-       peff=cpn%peff_l
-       peff=peff+(cpn%peff_i-peff)* min((temp+5.15)/(cpn%tcrit+5.15),1.0)
-     end if
-     peff=min(peff*delp,1.0)
-     pcp =max((qctmp-auto_th)*peff,0.)
-     !pcp =max(qctmp*peff,0.)
-
-    if (.not.kbelowlet) pcp=0.0
-
-    temp=temp+273.15
-    qctmp = 1./max(qctmp,1.e-28)
-    qrj = pcp*qlj*qctmp
-    qsj = pcp*qij*qctmp
-    nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
- 
-    if (qlj.le.0) then
-       delta_qn = -qnu
-       qnu = 0
-    else
-       delta_qn = qnu * qrj * qctmp
-       qnu      = qnu - delta_qn
-    end if
-
-    leff     = (1-nu)*Uw_p%HLv + nu*Uw_p%HLs
-    qctu_new = qctu - (qrj + qsj)
-    hlu_new  = hlu  + (qrj + qsj)*leff
-    qlu_new  = qlj - qrj
-    qiu_new  = qij - qsj
-    clu_new  = qlu_new
-    ciu_new  = qiu_new
-
-    return
-
-  end subroutine precip8_k
-
-
-  subroutine precip7_k (zs, ps, hlu, qctu, qnu, cpn, qrj, qsj, &
-                              hlu_new, qctu_new, qlu_new, qiu_new, &
-                              clu_new, ciu_new, temp, doice, delta_qn, &
-                              Uw_p, kbelowlet, delp)
-    type(cpnlist),  intent(in)    :: cpn
-    type(uw_params),  intent(inout)    :: Uw_p
-    real,           intent(in)    :: zs, ps, hlu, qctu, delp
-    real,           intent(inout)    :: qnu, delta_qn
-    real,           intent(inout) :: qrj, qsj, hlu_new, qctu_new,  &
-                                     qlu_new, qiu_new, clu_new,  &
-                                     ciu_new, temp
-    logical,        intent(in)    :: doice, kbelowlet
-
-    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
-               auto_th, leff, pcp, qctmp, deltaqc, auto_th2, peff
-
-    !Precip at the flux level
-    call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
-                  Uw_p)
-    exnj=exn_k(ps,Uw_p)
-    temp=thj*exnj-273.15
-    qctmp = qlj+qij;
-
-    if (temp.ge.-5.15) then
-       peff=cpn%peff_l
-       peff=min(peff*delp,1.0)
-       pcp =max((qctmp-cpn%auto_th0)*peff,0.)
-    else
-       peff=cpn%peff_i
-       peff=min(peff*delp,1.0)
-       peff=peff+(1.0-peff)* min(temp/cpn%tcrit,1.0)
-       pcp =max(qctmp*peff,0.)
-    end if
-
-    if (.not.kbelowlet) pcp=0.0
-
-    temp=temp+273.15
-    qctmp = 1./max(qctmp,1.e-28)
-    qrj = pcp*qlj*qctmp
-    qsj = pcp*qij*qctmp
-    nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
- 
-    if (qlj.le.0) then
-       delta_qn = -qnu
-       qnu = 0
-    else
-       delta_qn = qnu * qrj * qctmp
-       qnu      = qnu - delta_qn
-    end if
-
-    leff     = (1-nu)*Uw_p%HLv + nu*Uw_p%HLs
-    qctu_new = qctu - (qrj + qsj)
-    hlu_new  = hlu  + (qrj + qsj)*leff
-    qlu_new  = qlj - qrj
-    qiu_new  = qij - qsj
-    clu_new  = qlu_new
-    ciu_new  = qiu_new
-
-    return
-
-  end subroutine precip7_k
-
-
-  subroutine precip6_k (zs, ps, hlu, qctu, qnu, cpn, qrj, qsj, &
-                              hlu_new, qctu_new, qlu_new, qiu_new, &
-                              clu_new, ciu_new, temp, doice, delta_qn, &
-                              Uw_p, kbelowlet, delp)
-    type(cpnlist),  intent(in)    :: cpn
-    type(uw_params),  intent(inout)    :: Uw_p
-    real,           intent(in)    :: zs, ps, hlu, qctu, delp
-    real,           intent(inout)    :: qnu, delta_qn
-    real,           intent(inout) :: qrj, qsj, hlu_new, qctu_new,  &
-                                     qlu_new, qiu_new, clu_new,  &
-                                     ciu_new, temp
-    logical,        intent(in)    :: doice, kbelowlet
-
-    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
-               auto_th, leff, pcp, qctmp, deltaqc, auto_th2, peff
-
-    !Precip at the flux level
-    call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
-                  Uw_p)
-    exnj=exn_k(ps,Uw_p)
-    temp=thj*exnj-273.15
-
-    if (temp.ge.0.0) then
-       auto_th=cpn%auto_th0
-    else
-       auto_th=cpn%auto_th0*(1.0-temp/cpn%tcrit)
-    end if
-    auto_th=max(auto_th,0.0)
-
-    qctmp = qlj+qij;
-
-    if (temp.ge.-5.15) then
-       peff  = cpn%peff_l
-    else
-       peff  = cpn%peff_i
-    end if
-    peff  = min(peff*delp,1.0)
-    pcp   = max((qctmp-auto_th)*peff,0.)
-
-!    if (temp.ge.-5.15) then
-!       peff=cpn%peff_l
-!       peff=min(peff*delp,1.0)
-!       pcp =max((qctmp-cpn%auto_th0)*peff,0.)
-!    else
-!       peff=cpn%peff_l
-!       peff=min(peff*delp,1.0)
-!       peff=peff+(1.0-peff)* min(temp/cpn%tcrit,1.0)
-!       pcp =max(qctmp*peff,0.)
-!    end if
-
-    if (.not.kbelowlet) pcp=0.0
-
-    temp=temp+273.15
-    qctmp = 1./max(qctmp,1.e-28)
-    qrj = pcp*qlj*qctmp
-    qsj = pcp*qij*qctmp
-    nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
- 
-    if (qlj.le.0) then
-       delta_qn = -qnu
-       qnu = 0
-    else
-       delta_qn = qnu * qrj * qctmp
-       qnu      = qnu - delta_qn
-    end if
-
-    leff     = (1-nu)*Uw_p%HLv + nu*Uw_p%HLs
-    qctu_new = qctu - (qrj + qsj)
-    hlu_new  = hlu  + (qrj + qsj)*leff
-    qlu_new  = qlj - qrj
-    qiu_new  = qij - qsj
-    clu_new  = qlu_new
-    ciu_new  = qiu_new
-
-    return
-
-  end subroutine precip6_k
-
-  subroutine precip5_k (zs, ps, hlu, qctu, qnu, cpn, qrj, qsj, &
-                              hlu_new, qctu_new, qlu_new, qiu_new, &
-                              clu_new, ciu_new, temp, doice, delta_qn, &
-                              Uw_p, kbelowlet, delp)
-    type(cpnlist),  intent(in)    :: cpn
-    type(uw_params),  intent(inout)    :: Uw_p
-    real,           intent(in)    :: zs, ps, hlu, qctu, delp
-    real,           intent(inout)    :: qnu, delta_qn
-    real,           intent(inout) :: qrj, qsj, hlu_new, qctu_new,  &
-                                     qlu_new, qiu_new, clu_new,  &
-                                     ciu_new, temp
-    logical,        intent(in)    :: doice, kbelowlet
-
-    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
-               auto_th, leff, pcp, qctmp, deltaqc, auto_th2, peff
-
-    !Precip at the flux level
-    call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
-                  Uw_p)
-    exnj=exn_k(ps,Uw_p)
-    temp=thj*exnj-273.15
-!    if (temp.ge.-5.0) then
-!       peff=cpn%peff_l*delp
-!    else
-!       peff=cpn%peff_i*delp
-!    end if
-!!    peff=max(1.0-peff,0.0)
-!    peff=min(peff,1.0)
-
-!    if (.not.kbelowlet) peff=0.0
-
-    qctmp   = qlj+qij;
-    if (temp.ge.-5.15) then
-       peff=cpn%peff_l*delp
-       peff=min(peff,1.0)
-       pcp =max((qctmp-cpn%auto_th0)*peff,0.)
-    else
-       peff=cpn%peff_i*delp
-       peff=min(peff,1.0)
-       pcp =max(qctmp*peff,0.)
-    end if
-    if (.not.kbelowlet) pcp=0.0
-
-    temp=temp+273.15
-
-!    qctmp   = qlj+qij;
-!    pcp = max(qctmp*peff,0.)
-    qctmp = 1./max(qctmp,1.e-28)
-    qrj = pcp*qlj*qctmp
-    qsj = pcp*qij*qctmp
-    nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
- 
-    if (qlj.le.0) then
-       delta_qn = -qnu
-       qnu = 0
-    else
-       delta_qn = qnu * qrj * qctmp
-       qnu      = qnu - delta_qn
-    end if
-
-    leff     = (1-nu)*Uw_p%HLv + nu*Uw_p%HLs
-    qctu_new = qctu - (qrj + qsj)
-    hlu_new  = hlu  + (qrj + qsj)*leff
-    qlu_new  = qlj - qrj
-    qiu_new  = qij - qsj
-    clu_new  = qlu_new
-    ciu_new  = qiu_new
-
-    return
-
-  end subroutine precip5_k
-
-
-  subroutine precip4_k (zs, ps, hlu, qctu, qnu, cpn, qrj, qsj, &
-                              hlu_new, qctu_new, qlu_new, qiu_new, &
-                              clu_new, ciu_new, temp, doice, delta_qn, &
-                              Uw_p, kbelowlet)
-    type(cpnlist),  intent(in)    :: cpn
-    type(uw_params),  intent(inout)    :: Uw_p
-    real,           intent(in)    :: zs, ps, hlu, qctu
-    real,           intent(inout)    :: qnu, delta_qn
-    real,           intent(inout) :: qrj, qsj, hlu_new, qctu_new,  &
-                                     qlu_new, qiu_new, clu_new,  &
-                                     ciu_new, temp
-    logical,        intent(in)    :: doice, kbelowlet
-
-    real    :: thj, qvj, qlj, qij, qse, thvj, nu, exnj,  &
-               auto_th, leff, pcp, qctmp, deltaqc, auto_th2, peff
-
-    !Precip at the flux level
-    call findt_k (zs,ps,hlu,qctu,thj,qvj,qlj,qij,qse,thvj,doice, &
-                  Uw_p)
-    exnj=exn_k(ps,Uw_p)
-    temp=thj*exnj-273.15
-    if (temp.ge.0.0) then
-       peff=cpn%peff_l
-    else
-       peff=cpn%peff_i
-    end if
-
-    if (.not.kbelowlet) peff=0.0
-
-    temp=temp+273.15
-
-    qctmp   = qlj+qij;
-    pcp = max(qctmp*peff,0.)
-    qctmp = 1./max(qctmp,1.e-28)
-    qrj = pcp*qlj*qctmp
-    qsj = pcp*qij*qctmp
-    nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
- 
-    if (qlj.le.0) then
-       delta_qn = -qnu
-       qnu = 0
-    else
-       delta_qn = qnu * qrj * qctmp
-       qnu      = qnu - delta_qn
-    end if
-
-    leff     = (1-nu)*Uw_p%HLv + nu*Uw_p%HLs
-    qctu_new = qctu - (qrj + qsj)
-    hlu_new  = hlu  + (qrj + qsj)*leff
-    qlu_new  = qlj - qrj
-    qiu_new  = qij - qsj
-    clu_new  = qlu_new
-    ciu_new  = qiu_new
-
-    return
-
-  end subroutine precip4_k
 
 
   subroutine precip3_k (zs, ps, hlu, qctu, qnu, cpn, qrj, qsj, &
@@ -1731,7 +1360,7 @@ contains
     qrj = pcp*qlj*qctmp
     qsj = pcp*qij*qctmp
     nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
-    
+
     if (qlj.le.0) then
        delta_qn = -qnu
        qnu = 0
@@ -1808,7 +1437,7 @@ contains
        qrj = pcp*fliq
        qsj = pcp*(1.-fliq)
        nu  = max(min((268. - temp)/Uw_p%tice0,1.0),0.0)
-    
+
        if (qlj.le.0) then
           delta_qn = -qnu
           qnu = 0
@@ -2180,7 +1809,7 @@ contains
          cp%qnu (k)   =0.;
          cp%uu  (k)   =cp%uu(krel-1)
          cp%vu  (k)   =cp%vu(krel-1)
-         ct%hlflx(k)  =cp%umf(k)*(cp%hlu (k)-(cp%hl (kp1)+sd%sshl (kp1)*(sd%ps(k)-sd%p(kp1)))) 
+         ct%hlflx(k)  =cp%umf(k)*(cp%hlu (k)-(cp%hl (kp1)+sd%sshl (kp1)*(sd%ps(k)-sd%p(kp1))))
          ct%qctflx(k) =cp%umf(k)*(cp%qctu(k)-(cp%qct(kp1)+sd%ssqct(kp1)*(sd%ps(k)-sd%p(kp1))))
          ct%trflx(k,:)=cp%umf(k)*(cp%tru(k,:)-(cp%tr(kp1,:)+sd%sstr(kp1,:)*(sd%ps(k)-sd%p(kp1))))
          ct%umflx(k) =cp%umf(k)*(cp%uu(k) - cp%u(kp1))
@@ -2189,7 +1818,7 @@ contains
          ct%qiflx(k) =cp%umf(k)*(cp%qiu(k)- cp%qi(kp1))
          ct%qaflx(k) =cp%umf(k)*(1        - cp%qa(kp1))
          ct%qnflx(k) =cp%umf(k)*(cp%qnu(k)- cp%qn(kp1))
-         cp%pptr (k) =0.0; 
+         cp%pptr (k) =0.0;
          cp%ppti (k) =0.0;
          cp%pptn (k) =0.0;
          ct%qtflxu(k)=cp%umf(k)*cp%qctu(k)
@@ -2770,106 +2399,6 @@ contains
     enddo
 
   end SUBROUTINE PRECIP_EVAP
-
-!#####################################################################
-!#####################################################################
-
-  subroutine precip_downdraft_k (sd, cp, Uw_p, dd)
-  
-    implicit none
-
-    type(sounding), intent(in)    :: sd
-    type(uw_params),intent(in)    :: Uw_p
-    type(cplume),   intent(in)    :: cp
-    type(ddraft),   intent(inout) :: dd
-
-    integer :: k, klm, km1, krel, let, ltop, jtt
-    real    :: coeff, rat, hk, hkm1, frc_rain
-    real    :: wdetrain, qsm, qstm, afac, B6, C6, revap, dsdp, fac, precip
-    real, dimension(1:size(sd%p)) :: wt, evap, water, qp, mp, up, vp
-
-    real :: omtrain=50.0 !rain fall speed (Ps/s)
-    real :: omtsnow=5.5  !snow fall speed (Pa/s)
-    real :: coeffr=1.0   !coefficient for rain evaporation
-    real :: coeffs=0.8   !coefficient for snow evaporation
-    real :: sigd=0.05    !fractional area covered by the downdraft
-    real :: sigs=0.12    !fraction of precipitation falling through environment
-    
-    qp   (:)=sd%qv(:)    !specific humidity of precipitating downdraft
-    up   (:)=sd%u (:)    !u in precipitating downdraft 
-    vp   (:)=sd%v (:)    !v in precipitating downdraft 
-    mp   (:)=0.          !precipitating downdraft mass flux
-    water(:)=0.          !precipitating water specific humidity
-    evap (:)=0.          !rate of evaporation of precipitation
-    wt   (:)=omtrain     !precipitation fall velocity
-
-    precip=0.;
-    do k = cp%ltop-1, 1, -1
-       wdetrain=cp%pptr(k)+cp%ppti(k)
-       frc_rain=cp%pptr(k)/max(wdetrain,1.e-28)
-       wdetrain=wdetrain*Uw_p%grav
-       coeff   =frc_rain*coeffr +(1.-frc_rain)*coeffs
-       wt(k)   =frc_rain*omtrain+(1.-frc_rain)*omtsnow
-
-       !temporary evaluation of specific humdity of precipitation downdraft
-       qsm =0.5*(sd%qv(k)+qp(k+1))
-       afac=coeff*sd%ps(k)*0.01*(sd%qs(k)-qsm)/(1.0e4+2.0e3*sd%ps(k)*0.01*sd%qs(k))
-       afac=max(afac,0.0)
-       B6  =sd%dp(k) * sigs * afac / wt(k)
-       C6  =(water(k+1)*wt(k+1) + wdetrain/sigd) / wt(k)
-       revap=0.5*(-B6+SQRT(B6*B6+4.*C6))
-       evap (k)=sigs*afac*revap
-       water(k)=revap*revap
-
-       !compute precipitating downdraft mass flux under hydrostatic approx.
-       if(k.gt.1) then
-         dsdp =(Uw_p%cp_air*(sd%t(k)-sd%t(k-1))+Uw_p%grav*sd%dz(k))/sd%dp(k)
-         dsdp =max(dsdp,10.0)
-         mp(k)=sd%leff(k)*sigd*evap(k)/(dsdp*Uw_p%grav)
-         mp(k)=max(mp(k),0.0)
-
-         !add small amount of inertia to downdraft 
-         fac  =2000.0/sd%dp(k)
-         mp(k)=(fac*mp(k+1)+mp(k))/(1.+fac)
-         !force mp to decrease linearly to 0 between about 950 mb and surface
-         jtt = 1
-         if(sd%p(k).gt.(0.949*sd%p(1))) then
-           jtt  =max(jtt,k)
-           mp(k)=mp(jtt)*(sd%p(1)-sd%p(k))/(sd%p(1)-sd%p(jtt))
-         end if
-       end if
-
-       !find specific humidity of precipitation downdraft
-       if(k.eq.1) then
-          qstm=sd%qs(1)
-       else
-          qstm=sd%qs(k-1)
-       end if
-       if(mp(k).gt.mp(k+1)) then
-          rat=mp(k+1)/mp(k)
-          qp(k)=qp(k+1)*rat+sd%qv(k)*(1.0-rat) + 1./Uw_p%grav &
-                * sigd * sd%dp(k) * (evap(k)/mp(k))
-          up(k)=up(k+1)*rat+sd%u(k)*(1.-rat)
-          vp(k)=vp(k+1)*rat+sd%v(k)*(1.-rat)
-       else
-        if(mp(k+1).gt.0.) then
-           qp(k)=(Uw_p%cp_air*(sd%t(k+1)-sd%t(k))+Uw_p%grav*sd%dz(k) &
-                  + qp(k+1)*sd%leff(k+1)) / sd%leff(k)
-           up(k)=up(k+1)
-           vp(k)=vp(k+1)
-        end if
-       end if
-       qp(k)=min(qp(k),qstm)
-       qp(k)=max(qp(k),0.0)
-       precip=precip+wt(1)*sigd*water(1)/Uw_p%grav
-
-    end do
-
-!       WD=BETA*ABS(mp(ICB))*0.01*RD*T(ICB)/(SIGD*P(ICB))
-!       QPRIME=0.5*(QP(1)-Q(1))
-!       TPRIME=LV0*QPRIME/CPD
-
-  end subroutine precip_downdraft_k
 
 !#####################################################################
 !#####################################################################
