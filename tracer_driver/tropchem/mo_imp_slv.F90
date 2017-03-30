@@ -306,10 +306,10 @@ logical                       :: module_is_initialized = .false.
             ol_c10h16_ndx = get_rxt_ndx( 'ol_terp' )
             uoh_no2_ndx = get_rxt_ndx( 'uoh_no2' )
             n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
-            no3_ndx = get_rxt_ndx( 'no3h' )
+            no3h_ndx = get_rxt_ndx( 'no3h' )
             wrk(1:12) = (/ ol_o1d_ndx, ol_oh_ndx, ol_ho2_ndx, ol_c3h6_ndx, ol_isop_ndx, &
                            ol_c2h4_ndx, ol_mvk_ndx, ol_macr_ndx, ol_c10h16_ndx, uoh_no2_ndx, &
-                           n2o5h_ndx, no3_ndx /)
+                           n2o5h_ndx, no3h_ndx /)
             if( any( wrk(1:12) < 1 ) ) then
                do_ox_pl = .false.
             end if
@@ -790,7 +790,7 @@ iter_loop : &
              + .235*reaction_rates(indx,ol_c10h16_ndx)*base_sol(indx,c10h16_ndx) &
              + (reaction_rates(indx,uoh_no2_ndx) * base_sol(indx,no2_ndx) * base_sol(indx,oh_ndx) &
                 + 3. * reaction_rates(indx,n2o5h_ndx) * base_sol(indx,n2o5_ndx) &
-                + 2. * reaction_rates(indx,no3_ndx) * base_sol(indx,no3_ndx)) &
+                + 2. * reaction_rates(indx,no3h_ndx) * base_sol(indx,no3_ndx)) &
                /max( base_sol(indx,ox_ndx),1.e-20 )
              ! here I sperate the o1d term because we need ozone implicitly from o1d.
                loss_ox(indx)=loss_ox(indx)*base_sol(indx,ox_ndx)&
