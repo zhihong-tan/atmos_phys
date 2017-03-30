@@ -207,7 +207,7 @@ subroutine atmos_dust_sourcesink ( lon, lat, frac_land, pwt, dt, &
   endif
 
   ! cmip variables
-  if (id_drydust) then
+  if (id_drydust > 0) then
      used = send_data (id_drydust, all_dust_setl(:,:), Time, is_in=is, js_in=js)
   endif
   if (id_emidust > 0) then
@@ -584,11 +584,11 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   ! register cmip variables
   id_drydust = register_cmip_diag_field_2d ( module_name, 'drydust', Time, &
                               'Dry Deposition Rate of Dust', 'kg m-2 s-1', &
-                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_due_to_dry_deposition')
+                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_particles_due_to_dry_deposition')
 
   id_emidust = register_cmip_diag_field_2d ( module_name, 'emidust', Time, &
                               'Total Emission Rate of Dust', 'kg m-2 s-1', &
-                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_due_to_emission')
+                standard_name='tendency_of_atmosphere_mass_content_of_dust_dry_aerosol_particles_due_to_emission')
 
  
   if (do_emission) then

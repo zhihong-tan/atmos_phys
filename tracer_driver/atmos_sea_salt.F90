@@ -690,11 +690,11 @@ subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
   ! cmip variables
   id_dryss = register_cmip_diag_field_2d ( module_name, 'dryss', Time, &
                                   'Dry Deposition Rate of Seasalt', 'kg m-2 s-1', &
-             standard_name='tendency_of_atmosphere_mass_content_of_seasalt_dry_aerosol_due_to_dry_deposition')
+             standard_name='tendency_of_atmosphere_mass_content_of_seasalt_dry_aerosol_particles_due_to_dry_deposition')
 
   id_emiss = register_cmip_diag_field_2d ( module_name, 'emiss', Time, &
                                   'Total Emission Rate of Seasalt', 'kg m-2 s-1', &
-             standard_name='tendency_of_atmosphere_mass_content_of_seasalt_dry_aerosol_due_to_emission')
+             standard_name='tendency_of_atmosphere_mass_content_of_seasalt_dry_aerosol_particles_due_to_emission')
 
  
   do_seasalt = .TRUE.
