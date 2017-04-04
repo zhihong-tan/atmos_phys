@@ -213,35 +213,35 @@ character(len=80)  :: gas_conc_source   = ' '
 character(len=80)  :: gas_conc_filename = 'gas_conc_3D.nc'
 character(len=80), dimension(6) :: gas_conc_name
 data gas_conc_name/'OH','HO2','NO3','O3','jH2O2','pH'/
-character(len=80)     :: gas_conc_time_dependency_type
+character(len=80)     :: gas_conc_time_dependency_type = 'constant'
 integer, dimension(6) :: gas_conc_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 
 character(len=80)  :: anthro_source   = ' '
 character(len=80)  :: anthro_filename = 'aero_anthro_emission_1979_2006.nc'
 character(len=80), dimension(2) :: anthro_emission_name
 data anthro_emission_name/'so2_anthro','so4_anthro'/
-character(len=80)     :: anthro_time_dependency_type
+character(len=80)     :: anthro_time_dependency_type = 'constant'
 integer, dimension(6) :: anthro_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 
 character(len=80)  :: biobur_source   = ' '
 character(len=80)  :: biobur_filename = 'aero_biobur_emission_1979_2006.nc'
 character(len=80), dimension(2) :: biobur_emission_name
 data biobur_emission_name/'so2_biobur','so4_biobur'/
-character(len=80)     :: biobur_time_dependency_type
+character(len=80)     :: biobur_time_dependency_type  = 'constant'
 integer, dimension(6) :: biobur_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 
 character(len=80)  :: ship_source   = ' '
 character(len=80)  :: ship_filename = 'aero_ship_emission_1979_2006.nc'
 character(len=80), dimension(2) :: ship_emission_name
 data ship_emission_name/'so2_ship','so4_ship'/
-character(len=80)     :: ship_time_dependency_type
+character(len=80)     :: ship_time_dependency_type = 'constant'
 integer, dimension(6) :: ship_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 
 character(len=80)  :: aircraft_source = ' '
 character(len=80)  :: aircraft_filename = 'aircraft_emission.nc'
 character(len=80)  :: aircraft_emission_name(1)
 data aircraft_emission_name/'fuel'/
-character(len=80)     :: aircraft_time_dependency_type
+character(len=80)     :: aircraft_time_dependency_type = 'constant'
 integer, dimension(6) :: aircraft_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 real :: so2_aircraft_EI = 1.e-3  ! kg of SO2/kg of fuel
 character(len=80)  :: cloud_chem_solver = 'legacy' !f1p

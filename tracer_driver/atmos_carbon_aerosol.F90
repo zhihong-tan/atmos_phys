@@ -217,7 +217,7 @@ integer, dimension(6) :: bcbf_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! ship emissions based on V. Eyrig
 character(len=80)     :: bcsh_source = ' '
-character(len=80)     :: bcsh_time_dependency_type
+character(len=80)     :: bcsh_time_dependency_type = 'constant'
 integer, dimension(6) :: bcsh_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! aircraft emissions based on Steven L. Baughcum

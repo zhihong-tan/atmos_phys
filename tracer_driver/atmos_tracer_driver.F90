@@ -190,6 +190,7 @@ use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
 use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_emissions,          &
+                                  atmos_co2_time_vary,          &
                                   atmos_co2_gather_data,        &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
@@ -1473,7 +1474,7 @@ type(time_type), intent(in)                                :: Time
 
 !co2
       if (nco2 > 0) then
-      call atmos_co2_init ( Time, axes(1:3))
+      call atmos_co2_init ( Time, size(r,1), size(r,2), axes(1:3))
         co2_clock = mpp_clock_id( 'Tracer: CO2', &
                     grain=CLOCK_MODULE )
       endif
@@ -1560,10 +1561,6 @@ type(time_type), intent(in)                                :: Time
 
       !---- register cmip named variables ----
 
-      ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
-                   'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
-                   standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
-
       ID_concso2 = register_cmip_diag_field_3d ( mod_name, &
                    'concso2', Time, 'Mole Fraction of SO2', '1.0', &
                    standard_name='mole_fraction_of_sulfur_dioxide_in_air')
@@ -1572,25 +1569,44 @@ type(time_type), intent(in)                                :: Time
                    'concdms', Time, 'Mole Fraction of DMS', '1.0', &
                     standard_name='mole_fraction_of_dimethyl_sulfide_in_air')
 
-      ID_concnh4 = register_cmip_diag_field_3d ( mod_name, &
+      if (nNH4NO3 > 0 .and. nNH4 > 0) then
+        ID_concnh4 = register_cmip_diag_field_3d ( mod_name, &
                    'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
                    standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
 
-      id_sconcno3 = register_cmip_diag_field_2d ( mod_name, &
-                  'sconcno3', Time, 'Surface Concentration of NO3', 'kg m-3', &
-                  standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
-
-      id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, & 
+        id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, & 
                   'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
                   standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
 
-      id_loadno3 = register_cmip_diag_field_2d ( mod_name, &
-                   'loadno3', Time, 'Load of NO3', 'kg m-2', &
-                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol')
-
-      id_loadnh4 = register_cmip_diag_field_2d ( mod_name, &
+        id_loadnh4 = register_cmip_diag_field_2d ( mod_name, &
                    'loadnh4', Time, 'Load of NH4', 'kg m-2', &
                    standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
+
+         id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
+                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_due_to_dry_deposition')
+      else
+        id_sconcnh4 = 0
+        id_loadnh4 = 0
+        id_drynh4 = 0
+      endif
+      
+      if (nNH4NO3 > 0) then
+        ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
+                   'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
+                   standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+
+        id_sconcno3 = register_cmip_diag_field_2d ( mod_name, &
+                  'sconcno3', Time, 'Surface Concentration of NO3', 'kg m-3', &
+                  standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+
+        id_loadno3 = register_cmip_diag_field_2d ( mod_name, &
+                   'loadno3', Time, 'Load of NO3', 'kg m-2', &
+                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol')
+      else
+        id_sconcno3 = 0
+        id_loadno3 = 0
+      endif
 
       id_dryso2 = register_cmip_diag_field_2d ( mod_name, &
                      'dryso2', Time, 'Dry Deposition Rate of SO2', 'kg m-2 s-1', &
@@ -1607,10 +1623,6 @@ type(time_type), intent(in)                                :: Time
       id_drynh3 = register_cmip_diag_field_2d ( mod_name, &
                     'drynh3', Time, 'Dry Deposition Rate of NH3', 'kg m-2 s-1', &
                     standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_dry_deposition')
-
-      id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
-                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_due_to_dry_deposition')
 
       id_drybc = register_cmip_diag_field_2d ( mod_name, &
                   'drybc', Time, 'Dry Deposition Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
@@ -1680,6 +1692,10 @@ type(time_type), intent(in) :: Time
         call atmos_sulfate_time_vary (Time)
       endif
 
+      if (nco2 > 0) then
+        call atmos_co2_time_vary (Time)
+      endif
+
       call dry_deposition_time_vary (drydep_data, Time)
 
       if (do_tropchem) then
@@ -1689,8 +1705,6 @@ type(time_type), intent(in) :: Time
 
 
 end subroutine atmos_tracer_driver_time_vary
-
-
 
 
 !#####################################################################
