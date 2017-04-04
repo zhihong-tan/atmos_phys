@@ -409,8 +409,8 @@ character(len=7), parameter :: mod_name = 'tracers'
                       'kg/m2/s')
 
       id_chepsoa = register_cmip_diag_field_2d ( mod_name, 'chepsoa', Time, &
-                       'Production Rate of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
-                      standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_due_to_net_chemical_production')
+                       'Chemical Production of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
+                      standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production')
                       
       id_SOA_isoprene  = register_diag_field ( mod_name,       &
                         'SOA_isoprene',axes(1:2),Time,            &

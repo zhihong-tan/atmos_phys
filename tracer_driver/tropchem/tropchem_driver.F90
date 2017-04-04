@@ -23,7 +23,7 @@ module tropchem_driver_mod
 
 !-----------------------------------------------------------------------
 
-use                    mpp_mod, only : input_nml_file 
+use                    mpp_mod, only : input_nml_file
 use                    fms_mod, only : file_exist,   &
                                        field_exist, &
                                        write_version_number, &
@@ -74,17 +74,17 @@ use           interpolator_mod, only : interpolate_type,     &
                                        query_interpolator,   &
                                        init_clim_diag,       &
                                        CONSTANT,             &
-                                       INTERP_WEIGHTED_P  
+                                       INTERP_WEIGHTED_P
 use            time_interp_mod, only : time_interp_init, time_interp
 use              mo_chemdr_mod, only : chemdr, chemdr_init
 use              mo_setsox_mod, only : setsox_init
 use             mo_chemini_mod, only : chemini
-use             M_TRACNAME_MOD, only : tracnam         
+use             M_TRACNAME_MOD, only : tracnam
 #ifndef AM3_CHEM
-use                MO_GRID_MOD, only : pcnstm1 
+use                MO_GRID_MOD, only : pcnstm1
 use              CHEM_MODS_MOD, only : phtcnt, gascnt
 #else
-use            AM3_MO_GRID_MOD, only : pcnstm1 
+use            AM3_MO_GRID_MOD, only : pcnstm1
 use          AM3_CHEM_MODS_MOD, only : phtcnt, gascnt
 #endif
 use               MOZ_HOOK_MOD, only : moz_hook_init
@@ -115,6 +115,13 @@ use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
                       CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
+
+use atmos_cmip_diag_mod,   only : register_cmip_diag_field_3d, &
+                                  register_cmip_diag_field_2d, &
+                                  send_cmip_data_3d, &
+                                  cmip_diag_id_type, &
+                                  query_cmip_diag_id
+
 implicit none
 
 private
@@ -126,7 +133,7 @@ public  tropchem_driver, tropchem_driver_init,  &
         tropchem_driver_time_vary, tropchem_driver_endts
 
 !-----------------------------------------------------------------------
-!     ...  declare type that will store the field infomation for the 
+!     ...  declare type that will store the field infomation for the
 !          emission file
 !-----------------------------------------------------------------------
 type,public :: field_init_type
@@ -176,7 +183,7 @@ character(len=64)  :: cfc_lbc_filename = 'chemlbf'      ! Input file for CFC low
 logical            :: time_varying_cfc_lbc = .true.     ! Allow time variation of CFC lower boundary conditions
 integer, dimension(6) :: cfc_lbc_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /) ! Entry date for CFC lower boundary condition file
 real               :: Tdaily_clim = 297.                ! climatological T for use in MEGAN gamma_age calc
-real               :: Pdaily_clim = 420.                ! climatological PPFD for MEGAN light correction 
+real               :: Pdaily_clim = 420.                ! climatological PPFD for MEGAN light correction
 !++amf/van
 integer, parameter :: nveg=5, npft=17, nmos=12          ! number of vegetation types, pfts, and months
 !--amf/van
@@ -191,13 +198,13 @@ logical            :: time_varying_solarflux = .false.  ! allow sloar cycle on f
 ! namelist to fix solar flux bug
 ! if set to true then solar flux will vary with time
 logical :: solar_flux_bugfix = .false.  ! reproduce original behavior
- 
+
 
 !co2
 real*8             :: co2_fixed_value   = 330e-6
 !character(len=64)  :: co2_filename = 'co2_gblannualdata'
 character(len=64)  :: co2_filename = 'no_file'
-real               :: co2_scale_factor = 1.e-6             
+real               :: co2_scale_factor = 1.e-6
 real               :: co2_fixed_year   = -999
 
 character(len=64)  :: cloud_chem_pH_solver     = 'bisection'
@@ -248,12 +255,12 @@ namelist /tropchem_driver_nml/    &
                                file_emis3d_2, &
                                file_ub, &
                                file_dry, &
-                               inv_list, & 
+                               inv_list, &
                                file_aircraft,&
                                lght_no_prd_factor, &
                                normalize_lght_no_prd_area, &
                                min_land_frac_lght, &
-			       strat_chem_age_factor, &
+                               strat_chem_age_factor, &
                                strat_chem_dclydt_factor, &
                                do_tropchem, &
                                use_tdep_jvals, &
@@ -273,7 +280,7 @@ namelist /tropchem_driver_nml/    &
                                co2_fixed_value, &
                                co2_fixed_year, &
                                co2_filename, &
-                               co2_scale_factor, &                               
+                               co2_scale_factor, &
                                cfc_lbc_filename, &
                                time_varying_cfc_lbc, &
                                cfc_lbc_dataset_entry, &
@@ -284,8 +291,8 @@ namelist /tropchem_driver_nml/    &
                                do_fastjx_photo, &
                                clouds_in_fastjx, &
                                check_convergence, &
-	                       solar_flux_bugfix, &
-                               e90_tropopause_vmr, &                               
+                               solar_flux_bugfix, &
+                               e90_tropopause_vmr, &
                                aerosol_thermo_method, &
                                het_chem_type, &
                                gn2o5,gno2,gno3,gso2,gnh3,ghno3_dust,gh2so4_dust,gho2,ghno3_dust_dynamic,gso2_dust,gn2o5_dust,gno3_dust, &
@@ -298,13 +305,17 @@ namelist /tropchem_driver_nml/    &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
                                max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &
-			       sim_data_filename,time_varying_solarflux
+                               sim_data_filename,time_varying_solarflux
 
 integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
 real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
                    m2_to_cm2  = 1.e4,     & !conversion factor (cm2/m2)
                    twopi      = 2.*PI
+
+real, parameter :: mw_so4     = 96e-3 !kg/mol
+integer         :: nso4
+
 real, parameter :: emis_cons = WTMAIR * g_to_kg * m2_to_cm2 / AVOGNO
 logical, dimension(pcnstm1) :: has_emis = .false., &      ! does tracer have surface emissions?
                                has_emis3d = .false., &    ! does tracer have 3-D emissions?
@@ -355,6 +366,10 @@ integer :: age_ndx ! index of age tracer
 logical :: module_is_initialized=.false.
 logical :: use_lsc_in_fastjx
 
+!cmip6 diagnostics
+type(cmip_diag_id_type) :: ID_pso4_aq_kg_m2_s, ID_pso4_gas_kg_m2_s
+
+
 integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_emis, id_emis3d, id_xactive_emis, &
                                id_ub, id_lb, id_airc
@@ -369,7 +384,7 @@ integer :: id_so2_emis_cmip2, id_nh3_emis_cmip2
 integer :: id_emico, id_emino, id_emiso2, id_eminh3
 integer :: id_glaiage, id_gtemp, id_glight, id_tsfc, id_fsds, id_ctas, id_cfsds
 integer :: isop_oldmonth = 0
-logical :: newmonth            
+logical :: newmonth
 logical :: has_ts_avg = .true.   ! currently reading in from monthly mean files.
 integer, dimension(phtcnt)  :: id_jval
 integer, dimension(gascnt)  :: id_rate_const
@@ -388,7 +403,7 @@ type(lb_type), dimension(pcnstm1) :: lb
 
 type :: co2_type
    logical                                :: use_fix_value
-   real                                   :: fixed_value   
+   real                                   :: fixed_value
    real,dimension(:), pointer             :: gas_value
    type(time_type), dimension(:), pointer :: gas_time
    logical                                :: use_fix_time
@@ -406,8 +421,8 @@ real, allocatable, dimension(:,:) :: diag_gamma_light, diag_gamma_temp  ! for ga
 real, allocatable, dimension(:,:) :: diag_climtas, diag_climfsds ! climatological tas and fsds
 
 !if set up to read from restart file, then these would be 2D arrays.. for now, use mm clim. values
-!real, allocatable, dimension(:,:) :: ts_avg   ! surface air T, averaged over some period (K) 
-!real, allocatable, dimension(:,:) :: fsds_avg  ! avg shortwave down in visible (W/m2) 
+!real, allocatable, dimension(:,:) :: ts_avg   ! surface air T, averaged over some period (K)
+!real, allocatable, dimension(:,:) :: fsds_avg  ! avg shortwave down in visible (W/m2)
 
 !monthly mean sfc air T and sw down at surface, from C. Wiedinmyer 2/18/09 - Sheffield inputs (Princeton)
 ! CW provided 1948-2000; current input files take 1980-2000 average
@@ -537,7 +552,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real, intent(in),    dimension(:,:,:)          :: pwt
    real, intent(in),    dimension(:,:,:,:)        :: r
    real, intent(out),   dimension(:,:,:,:)        :: chem_dt
-   type(time_type), intent(in)                    :: Time, Time_next     
+   type(time_type), intent(in)                    :: Time, Time_next
    integer, intent(in)                            :: is, ie, js, je
    real, intent(in),    dimension(:,:,:)          :: phalf,pfull,t
    real, intent(in)                               :: dt      ! timestep (s)
@@ -552,7 +567,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real, intent(in),    dimension(:,:)            :: w10m    ! wind speed at 10m (m/s)
    real, intent(in), dimension(:,:)               :: flux_sw_down_vis_dir !W/m2 direct visible sfc flux
    real, intent(in), dimension(:,:)               :: flux_sw_down_vis_dif !W/m2 diffuse visible sfc flux
-   real, intent(in), dimension(:,:)               :: half_day! half-day length (0 to pi)   
+   real, intent(in), dimension(:,:)               :: half_day! half-day length (0 to pi)
    real, intent(inout), dimension(:,:,:,:)        :: rdiag   ! diagnostic tracer concentrations
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
@@ -586,7 +601,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real, dimension(size(r,1),size(r,2),size(r,3),phtcnt) :: jvals
    real, dimension(size(r,1),size(r,2),size(r,3),gascnt) :: rate_constants
    real, dimension(size(r,1),size(r,2),size(r,3)) :: imp_slv_nonconv
-   real, dimension(size(r,1),size(r,2),size(r,3)):: e90_vmr 
+   real, dimension(size(r,1),size(r,2),size(r,3)):: e90_vmr
    real :: solar_phase
    real :: solflxband(num_solar_bands)
    type(psc_type) :: psc
@@ -615,7 +630,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    endwhere
 
    id=size(r,1); jd=size(r,2); kd=size(r,3)
-   
+
    ninv=0
    do n = 1, size(inv_list)
       if(inv_list(n) /= '') then
@@ -624,7 +639,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          exit
       end if
    end do
- 
+
    emis_source(:,:,:,:) = 0.0
    airc_emis(:,:,:,:) = 0.0
 
@@ -698,7 +713,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                                  emis3d_field_names(n)%field_names, &
                                  diurnal_emis3d(n), coszen, half_day, lon, &
                                  is, js, id_emis3d(n) )
-      
+
          emis_source(:,:,:,n) = emis_source(:,:,:,n) &
                               + emis3d(:,:,:)/pwt(:,:,:) * emis_cons
          if (tracnam(n) == 'SO2') then
@@ -777,7 +792,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                             airc_emis(:,:,:,n), trim(airc_names(n)),is,js)
          if(id_airc(n) > 0)&
               used = send_data(id_airc(n),airc_emis(:,:,:,n),Time_next, is_in=is, js_in=js)
-    
+
          if (tracnam(n) == 'CO') then
            do k=1, size(emis3d,3)
            emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
@@ -849,7 +864,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       inv_index = get_tracer_index( MODEL_ATMOS, trim(inv_list(n)) ) - ntp
       rdiag(:,:,:,inv_index) = inv_data(:,:,:,n)
    end do
-      
+
 !-----------------------------------------------------------------------
 !     ... read in the sulfate aerosol concentrations
 !-----------------------------------------------------------------------
@@ -859,7 +874,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    call mpp_clock_begin(clock_id)
 
    chem_dt(:,:,:,:) =0.
-    
+
 !-----------------------------------------------------------------------
 !     ... assign concentrations of prognostic (r) and diagnostic (rdiag)
 !         species to r_temp
@@ -961,7 +976,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
             co2_time = Time
          end if
          call time_interp( co2_time, co2_t%gas_time(:), frac, index1, index2 )
-         ico2 = co2_t%gas_value(index1) + & 
+         ico2 = co2_t%gas_value(index1) + &
               frac*( co2_t%gas_value(index2) - co2_t%gas_value(index1) )
          co2_2d(:,:) = ico2
       end if
@@ -974,7 +989,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       if (nco2>0) then
          co2_2d(:,:) = r(:,j,:,nco2)
       end if
-      
+
 !-----------------------------------------------------------------------
 !     ... get stratospheric h2so4
 !-----------------------------------------------------------------------
@@ -989,10 +1004,10 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          h2o_temp(:,:) = qlocal(:,:) * WTMAIR/WTMH2O
       end if
       cloud_water(:,:) = MAX(r(:,j,:,inql)+r(:,j,:,inqi),0.)
-      where ( cloud_water(:,:) .gt. 0 ) 
-	  frac_liq(:,:) =  MAX( r(:,j,:,inql) , 0.)/cloud_water
+      where ( cloud_water(:,:) .gt. 0 )
+          frac_liq(:,:) =  MAX( r(:,j,:,inql) , 0.)/cloud_water
       elsewhere
-      frac_liq(:,:) = 1. 
+      frac_liq(:,:) = 1.
       endwhere
 
       if (repartition_water_tracers) then
@@ -1048,7 +1063,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       e90_vmr(:,j,:) = r(:,j,:,e90_ndx)
    else
       e90_vmr(:,j,:) = 0.
-   end if 
+   end if
 
 !-----------------------------------------------------------------------
 !     ... call chemistry driver
@@ -1056,13 +1071,13 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       call chemdr(r_temp(:,j,:,:),             & ! species volume mixing ratios (VMR)
                   r(:,j,:,:),                  &
                   phalf(:,j,:),                & ! pressure at boundaries (Pa)
-                  pwt(:,j,:) ,                 & ! column air density (Kg/m2)  
+                  pwt(:,j,:) ,                 & ! column air density (Kg/m2)
                   j,                           & ! j
                   Time_next,                   & ! time
                   lat(:,j),                    & ! latitude
                   lon(:,j),                    & ! longitude
                   dt,                          & ! timestep in seconds
-                  phalf(:,j,SIZE(phalf,3)),    & ! surface press ( pascals )  
+                  phalf(:,j,SIZE(phalf,3)),    & ! surface press ( pascals )
                   phalf(:,j,1),                & ! model top pressure (pascals)
                   pfull(:,j,:),                & ! midpoint press ( pascals )
                   pdel,                        & ! delta press across midpoints
@@ -1094,7 +1109,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                   co2_2d,                      &
                   trop_diag_array(:,j,:,:),    &
                   trop_option,                 &
-                  trop_diag) 
+                  trop_diag)
 
       call strat_chem_destroy_psc( psc )
 
@@ -1125,7 +1140,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          used = send_data(id_loss_mol(n),loss(:,:,:,n)*pwt(:,:,:)*1.e3/WTMAIR, &
               Time_next,is_in=is,js_in=js)
       end if
-      
+
       if (n == sphum_ndx) then
          scale_factor = WTMAIR/WTMH2O
 ! add PSC ice back to H2O
@@ -1170,7 +1185,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       if(id_chem_tend(n)>0) then
          used = send_data( id_chem_tend(n), tend_tmp(:,:,:), Time_next, is_in=is,js_in=js)
       end if
-     
+
 !-----------------------------------------------------------------------
 !     ... apply upper boundary condition
 !-----------------------------------------------------------------------
@@ -1179,7 +1194,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          if(id_ub(n)>0) then
             used = send_data(id_ub(n), r_ub(:,:,:,n), Time_next, is_in=is, js_in=js)
          end if
-         where (pfull(:,:,:) < ub_pres)            
+         where (pfull(:,:,:) < ub_pres)
             chem_dt(:,:,:,indices(n)) = (r_ub(:,:,:,n) - r(:,:,:,indices(n))) / relaxed_dt
          endwhere
       end if
@@ -1228,13 +1243,24 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    if (id_pso4_o3>0 .and. trop_diag%ind_pso4_o3>0) then
       used = send_data(id_pso4_o3,trop_diag_array(:,:,:,trop_diag%ind_pso4_o3)*pwt(:,:,:)/(WTMAIR*1e-3), &
            Time_next,is_in=is,js_in=js)
-   end if  
+   end if
+
+   if (query_cmip_diag_id(ID_pso4_gas_kg_m2_s)) then
+      used = send_cmip_data_3d (ID_pso4_gas_kg_m2_s,  &
+           mw_so4 * prod(:,:,:,nso4)*pwt(:,:,:)/(WTMAIR*1e-3), &
+           Time_next, is_in=is, js_in=js, ks_in=1)
+   end if
+   if (query_cmip_diag_id(ID_pso4_aq_kg_m2_s)) then
+      used = send_cmip_data_3d (ID_pso4_aq_kg_m2_s,  &
+           mw_so4 * (trop_diag_array(:,:,:,trop_diag%ind_pso4_o3)+ trop_diag_array(:,:,:,trop_diag%ind_pso4_h2o2))*pwt(:,:,:)/(WTMAIR*1e-3), &
+           Time_next, is_in=is, js_in=js, ks_in=1)
+   end if
    if (id_cH>0 .and. trop_diag%ind_cH>0) then
       used = send_data(id_cH,trop_diag_array(:,:,:,trop_diag%ind_cH),Time_next,is_in=is,js_in=js)
    end if
    if (id_lwc>0 .and. trop_diag%ind_lwc>0) then
       used = send_data(id_lwc,trop_diag_array(:,:,:,trop_diag%ind_lwc),Time_next,is_in=is,js_in=js)
-   end if   
+   end if
    do n=1,5
       if (id_phno3_d(n) >0) then
          !phno3_d is in VMR/s convert to mole/m2/s
@@ -1255,8 +1281,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    end if
    if (id_pso4_g_d>0) then
       used = send_data(id_pso4_g_d,trop_diag_array(:,:,:,trop_diag%ind_pso4_g_d)*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
-   end if   
-   
+   end if
+
 !-----------------------------------------------------------------------
 !     ... special case(nox = no + no2)
 !-----------------------------------------------------------------------
@@ -1264,7 +1290,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 !  nno2 = get_tracer_index(MODEL_ATMOS,'no2')
 !  if((nno /= 0) .and. (nno2 /= 0)) then
 !     rno(:,:,:) = r(:,:,:,nno)/ MAX((r(:,:,:,nno) + r(:,:,:,nno2)),1.e-30)
-     
+
 !     call interpolator(ub, Time,phalf,ub_temp,'nox',is,js)
 
 !     where(pfull(:,:,:) < ub_pres)
@@ -1443,7 +1469,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       chem_dt(:,:,:,indices(br_ndx)) = chem_dt(:,:,:,indices(br_ndx)) + dbrydt(:,:,:)
       used = send_data(id_dbrydt, dbrydt, Time_next, is_in=is, js_in=js)
    end if
-   
+
 !-----------------------------------------------------------------------
 !     ... Set diagnostic tracers for chemical families
 !-----------------------------------------------------------------------
@@ -1490,7 +1516,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       else
          used = send_data(id_h2o_chem, q(:,:,:)*WTMAIR/WTMH2O, Time_next, is_in=is, js_in=js)
       end if
-   end if      
+   end if
    used = send_data(id_coszen, coszen_local(:,:), Time_next, is_in=is, js_in=js)
    used = send_data(id_imp_slv_nonconv,imp_slv_nonconv(:,:,:),Time_next,is_in=is,js_in=js)
 
@@ -1504,9 +1530,9 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    end if
 
    call mpp_clock_end(clock_id)
-   
+
 !-----------------------------------------------------------------------
-    
+
 end subroutine tropchem_driver
 !</SUBROUTINE>
 
@@ -1617,7 +1643,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !     ... write version number
 !-----------------------------------------------------------------------
    call write_version_number(version, tagname)
-    
+
 !-----------------------------------------------------------------------
 !     ... read namelist
 !-----------------------------------------------------------------------
@@ -1634,9 +1660,9 @@ function tropchem_driver_init( r, mask, axes, Time, &
 10    call close_file(unit)
 #endif
    end if
-  
+
    logunit = stdlog()
-   if(mpp_pe() == mpp_root_pe()) then       
+   if(mpp_pe() == mpp_root_pe()) then
       write(logunit, nml=tropchem_driver_nml)
       verbose = verbose + 1
    end if
@@ -1645,7 +1671,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
    if (.not. Ltropchem) then
       return
    end if
-      
+
 !-------------------------------------------------------------------------
 !     ... Make sure input value for clouds_in_fastjx is a valid option.
 !-------------------------------------------------------------------------
@@ -1660,7 +1686,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
 
 
 if ( (gNO3_dust .gt. 0. .or. gN2O5_dust .gt. 0.) .and. .not. het_chem_fine_aerosol_only ) then
-   call error_mesg ('tropchem_driver_init', 'uptake on dust + all aerosol => double counting', FATAL )      
+   call error_mesg ('tropchem_driver_init', 'uptake on dust + all aerosol => double counting', FATAL )
 end if
 
 if ( trim(cloud_chem_type) == 'legacy' ) then
@@ -1685,7 +1711,7 @@ elseif ( trim(cloud_chem_pH_solver) == 'bisection' ) then
 elseif ( trim(cloud_chem_pH_solver) == 'cubic' ) then
    trop_option%cloud_chem_pH_solver   = CLOUD_CHEM_PH_CUBIC
 else
-   call error_mesg ('tropchem_driver_init', 'undefined cloud chem', FATAL )      
+   call error_mesg ('tropchem_driver_init', 'undefined cloud chem', FATAL )
 end if
 
 if ( cloud_pH .lt. 0 ) then
@@ -1742,7 +1768,7 @@ elseif ( trim(aerosol_thermo_method)   == 'isorropia' ) then
 elseif ( trim(aerosol_thermo_method)   == 'no_thermo' ) then
    trop_option%aerosol_thermo = NO_AERO
 else
-   call error_mesg ('tropchem_driver_init', 'undefined aerosol thermo', FATAL )      
+   call error_mesg ('tropchem_driver_init', 'undefined aerosol thermo', FATAL )
 end if
 
 !-----------------------------------------------------------------------
@@ -1758,7 +1784,7 @@ end if
    call chemini( file_jval_lut, file_jval_lut_min, use_tdep_jvals, &
                  o3_column_top, jno_scale_factor, verbose,   &
                  retain_cm3_bugs, do_fastjx_photo, trop_option)
-   
+
 !-----------------------------------------------------------------------
 !     ... set initial value of indices
 !-----------------------------------------------------------------------
@@ -1774,7 +1800,7 @@ end if
       end if
       if (n >0) then
          indices(i) = n
-         if (indices(i) > 0 .and. mpp_pe() == mpp_root_pe()) then 
+         if (indices(i) > 0 .and. mpp_pe() == mpp_root_pe()) then
             write(*,30) tracnam(i),indices(i)
             write(logunit,30) trim(tracnam(i)),indices(i)
          end if
@@ -1877,7 +1903,7 @@ end if
                            lonb_mod, latb_mod, emis_field_names(i), &
                            has_emis(i), diurnal_emis(i), axes, Time, land_does_emission(i) )
       if( has_emis(i) ) emis_files(i) = trim(nc_file)
-        
+
 !-----------------------------------------------------------------------
 !     ... Vertically-distributed emissions
 !-----------------------------------------------------------------------
@@ -1918,14 +1944,14 @@ end if
             end if
 
             has_ubc(i) = .true.
-              
+
          end if
       end if
 
 !-----------------------------------------------------------------------
 !     ... Lower boundary condition
 !-----------------------------------------------------------------------
-      lbc_entry(i) = get_base_time()     
+      lbc_entry(i) = get_base_time()
       if( query_method('lower_bound', MODEL_ATMOS,indices(i),name,control) ) then
          if( trim(name)=='file' ) then
             flag_file = parse(control, 'file', filename)
@@ -1939,14 +1965,14 @@ end if
                   allocate( lb(i)%gas_value(series_length), &
                             lb(i)%gas_time(series_length) )
 !---------------------------------------------------------------------
-!    convert the time stamps of the series to time_type variables.     
+!    convert the time stamps of the series to time_type variables.
 !---------------------------------------------------------------------
                   do n = 1,series_length
                      read (flb, FMT = '(2f12.4)') input_time, lb(i)%gas_value(n)
                      year = INT(input_time)
                      Year_t = set_date(year,1,1,0,0,0)
                      diy = days_in_year (Year_t)
-                     extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
+                     extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY
                      lb(i)%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
                   end do
                   if (flag_spec > 0) then
@@ -1958,7 +1984,7 @@ end if
                      year = INT(fixed_year)
                      Year_t = set_date(year,1,1,0,0,0)
                      diy = days_in_year (Year_t)
-                     extra_seconds = (fixed_year - year)*diy*SECONDS_PER_DAY 
+                     extra_seconds = (fixed_year - year)*diy*SECONDS_PER_DAY
                      lbc_entry(i) = Year_t + set_time(NINT(extra_seconds), 0)
                   end if
                else
@@ -1998,7 +2024,7 @@ end if
                   conc_files(i) = trim(file_conc)
                   init_conc = conc
                end if
-                  
+
                if( flag_spec > 0 ) then
                   conc_names(i) = trim(lowercase(specname))
                   specname = lowercase(specname)
@@ -2006,12 +2032,12 @@ end if
                   conc_names(i) = trim(lowercase(tracnam(i)))
                   specname = trim(lowercase(tracnam(i)))
                end if
-                  
+
                call interpolator(init_conc, Time, phalf,r(:,:,:,indices(i)),trim(specname))
             end if
          end if
       end if
-             
+
 !-----------------------------------------------------------------------
 !     ... Aircraft emissions
 !-----------------------------------------------------------------------
@@ -2030,7 +2056,7 @@ end if
                airc_files(i) = trim(file_aircraft)
                inter_aircraft_emis(i) = airc_default
             end if
-               
+
             if( flag_spec >0 ) then
                airc_names(i) = trim(specname)
             else
@@ -2039,7 +2065,7 @@ end if
          end if
       end if
 
-             
+
 !-----------------------------------------------------------------------
 !     ... Wet deposition
 !-----------------------------------------------------------------------
@@ -2048,12 +2074,12 @@ end if
       else
          wet_ind(i) = ''
       end if
-         
+
    end do
-  
+
 !move CO2 input out of the loop of "do i = 1,pcnstm1", 2016-07-25
 !fp
-!CO2           
+!CO2
       if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
          co2_t%use_fix_value  = .false.
          !read from file
@@ -2065,7 +2091,7 @@ end if
             year = INT(input_time)
             Year_t = set_date(year,1,1,0,0,0)
             diy = days_in_year (Year_t)
-            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY 
+            extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY
             co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
          end do
          call close_file(flb)
@@ -2077,14 +2103,14 @@ end if
             year = INT(co2_fixed_year)
             Year_t = set_date(year,1,1,0,0,0)
             diy = days_in_year (Year_t)
-            extra_seconds = (co2_fixed_year - year)*diy*SECONDS_PER_DAY 
-            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)            
+            extra_seconds = (co2_fixed_year - year)*diy*SECONDS_PER_DAY
+            co2_t%fixed_entry = Year_t + set_time(NINT(extra_seconds), 0)
          end if
       else
          co2_t%use_fix_value  = .true.
          co2_t%fixed_value    = co2_fixed_value
       end if
- 
+
 !-----------------------------------------------------------------------
 !     ... Print out settings for tracer
 !-----------------------------------------------------------------------
@@ -2105,7 +2131,7 @@ end if
                   call error_mesg('atmos_tracer_utilities_init', &
                        'Emission of atmospheric tracer //"'//trim(tracnam(i))//&
                        '" is done on land side, but corresponding land tracer is not defined in the field table.', FATAL)
-                  write(logunit,*) 'Emissions done in land'    
+                  write(logunit,*) 'Emissions done in land'
                endif
             end if
          end if
@@ -2148,7 +2174,7 @@ end if
    inqa = get_tracer_index(MODEL_ATMOS,'cld_amt') ! cloud fraction
    inql = get_tracer_index(MODEL_ATMOS,'liq_wat') ! cloud liquid specific humidity
    inqi = get_tracer_index(MODEL_ATMOS,'ice_wat') ! cloud ice water specific humidity
-      
+
    age_ndx = get_tracer_index(MODEL_ATMOS,'age')  ! age tracer
 
 !-----------------------------------------------------------------------
@@ -2203,26 +2229,26 @@ end if
                              Time, 'co_emis_cmip', 'kg/m2/s')
    id_no_emis_cmip =     &
         register_diag_field( module_name, 'no_emis_cmip', axes(1:2), &
-                            Time, 'no_emis_cmip', 'kg/m2/s')  
+                            Time, 'no_emis_cmip', 'kg/m2/s')
    id_so2_emis_cmip =     &
         register_diag_field( module_name, 'so2_emis_cmip', axes(1:2), &
                              Time, 'so2_emis_cmip', 'kg/m2/s')
    id_nh3_emis_cmip =     &
         register_diag_field( module_name, 'nh3_emis_cmip', axes(1:2), &
-                            Time, 'nh3_emis_cmip', 'kg/m2/s')  
+                            Time, 'nh3_emis_cmip', 'kg/m2/s')
 
    id_co_emis_cmip2 =     &
         register_diag_field( module_name, 'co_emis_cmip2', axes(1:2), &
                              Time, 'co_emis_cmip2', 'kg/m2/s')
    id_no_emis_cmip2 =     &
         register_diag_field( module_name, 'no_emis_cmip2', axes(1:2), &
-                            Time, 'no_emis_cmip2', 'kg/m2/s')  
+                            Time, 'no_emis_cmip2', 'kg/m2/s')
    id_so2_emis_cmip2 =     &
         register_diag_field( module_name, 'so2_emis_cmip2', axes(1:2), &
                              Time, 'so2_emis_cmip2', 'kg/m2/s')
    id_nh3_emis_cmip2 =     &
         register_diag_field( module_name, 'nh3_emis_cmip2', axes(1:2), &
-                            Time, 'nh3_emis_cmip2', 'kg/m2/s')  
+                            Time, 'nh3_emis_cmip2', 'kg/m2/s')
    !---- register cmip-named variables ----
    id_emico = register_cmip_diag_field_2d ( module_name, 'emico', Time, &
                              'Total Emission Rate of CO', 'kg m-2 s-1', &
@@ -2249,6 +2275,12 @@ end if
    id_lwc         = register_diag_field( module_name, 'lwc',axes(1:3), Time, 'lwc','L(water)/L(air)')
    id_pso4_h2o2   = register_diag_field( module_name, 'PSO4_H2O2',axes(1:3), Time, 'PSO4_H2O2','mole/m2/s')
    id_pso4_o3     = register_diag_field( module_name, 'PSO4_O3',axes(1:3), Time, 'PSO4_O3','mole/m2/s')
+
+!for cmip6
+   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, 'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
+   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (  module_name,'pso4_gas_kg_m2_s', Time,'Gas-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
+
+   nso4 = get_spc_ndx('SO4')
 
    do i=1,pcnstm1
       id_chem_tend(i) = register_diag_field( module_name, trim(tracnam(i))//'_chem_dt', axes(1:3), &
@@ -2335,7 +2367,7 @@ end if
 !     ... initialize time_interp
 !-----------------------------------------------------------------------
    call time_interp_init
-      
+
 
 !-----------------------------------------------------------------------
 !     ... initialize mpp clock id
@@ -2352,11 +2384,11 @@ end if
    end if
 
    call tropchem_types_init(trop_diag,small_value)
-   if ( id_pso4_h2o2 > 0 ) then
+   if ( query_cmip_diag_id(ID_pso4_aq_kg_m2_s) .or. id_pso4_h2o2 > 0 ) then
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_pso4_h2o2 = trop_diag%nb_diag
    end if
-   if ( id_pso4_o3 > 0 ) then
+   if ( query_cmip_diag_id(ID_pso4_aq_kg_m2_s) .or. id_pso4_o3 > 0 ) then
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_pso4_o3   = trop_diag%nb_diag
    end if
@@ -2383,24 +2415,24 @@ end if
    do i=1,5
       if ( id_phno3_d(i) > 0 ) then
          trop_diag%nb_diag          = trop_diag%nb_diag + 1
-         trop_diag%ind_phno3_d(i)   = trop_diag%nb_diag   
+         trop_diag%ind_phno3_d(i)   = trop_diag%nb_diag
       end if
    end do
    do i=1,5
       if ( id_pso4_d(i) > 0 ) then
          trop_diag%nb_diag          = trop_diag%nb_diag + 1
-         trop_diag%ind_pso4_d(i)   = trop_diag%nb_diag   
+         trop_diag%ind_pso4_d(i)   = trop_diag%nb_diag
       end if
    end do
-      
+
    module_is_initialized = .true.
-      
-      
+
+
 !-----------------------------------------------------------------------
-      
+
 end function tropchem_driver_init
 !</FUNCTION>
- 
+
 !#####################################################################
 
 subroutine tropchem_driver_time_vary (Time)
@@ -2452,7 +2484,7 @@ type(time_type), intent(in) :: Time
 
 !----------------------------------------------------------------------
 !    determine if this time step starts a new month; if so, then
-!    new interactive isoprene emission data is needed, and the 
+!    new interactive isoprene emission data is needed, and the
 !    necessary flag is set.
 !----------------------------------------------------------------------
       do n=1,pcnstm1
@@ -2470,10 +2502,10 @@ type(time_type), intent(in) :: Time
           end select
         endif
       end do
-             
 
-end subroutine tropchem_driver_time_vary 
-      
+
+end subroutine tropchem_driver_time_vary
+
 
 
 
@@ -2502,8 +2534,8 @@ subroutine tropchem_driver_endts
         endif
       end do
 
-      call unset_interpolator_time_flag(conc)           
-      call unset_interpolator_time_flag(sulfate)         
+      call unset_interpolator_time_flag(conc)
+      call unset_interpolator_time_flag(sulfate)
 
       do n=1, size(ub,1)
         if (has_ubc(n)) then
@@ -2511,7 +2543,7 @@ subroutine tropchem_driver_endts
         endif
       end do
 
-      call strat_chem_dcly_dt_endts               
+      call strat_chem_dcly_dt_endts
 
 
 
@@ -2525,12 +2557,12 @@ subroutine tropchem_driver_end
 !-----------------------------------------------------------------------
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
-      
+
    module_is_initialized = .false.
-      
-      
+
+
 !-----------------------------------------------------------------------
-      
+
 end subroutine tropchem_driver_end
 
 !#######################################################################
@@ -2546,14 +2578,14 @@ end subroutine tropchem_driver_end
 !     call read_2D_emis_data( emis_type, emis, Time, &
 !                             field_names, &
 !                             Ldiurnal, coszen, half_day, lon, &
-!                             is, js, id_emis_diag ) 
+!                             is, js, id_emis_diag )
 !   </TEMPLATE>
 
 subroutine read_2D_emis_data( emis_type, emis, Time, Time_next, &
                               field_names, &
                               Ldiurnal, coszen, half_day, lon, &
                               is, js )
-    
+
    type(interpolate_type),intent(inout) :: emis_type
    real, dimension(:,:),intent(out) :: emis
    type(time_type),intent(in) :: Time, Time_next
@@ -2617,14 +2649,14 @@ end subroutine read_2D_emis_data
 !     call read_3D_emis_data( emis_type, emis, Time, phalf, &
 !                             field_names, &
 !                             Ldiurnal, coszen, half_day, lon, &
-!                             is, js, id_emis_diag ) 
+!                             is, js, id_emis_diag )
 !   </TEMPLATE>
 
 subroutine read_3D_emis_data( emis_type, emis, Time, Time_next, phalf, &
                               field_names, &
                               Ldiurnal, coszen, half_day, lon, &
                               is, js, id_emis_diag )
-    
+
    type(interpolate_type),intent(inout) :: emis_type
    real, dimension(:,:,:),intent(in) :: phalf
    real, dimension(:,:,:),intent(out) :: emis
@@ -2692,13 +2724,13 @@ end subroutine read_3D_emis_data
 !     Calculates interactive emissions
 !   </DESCRIPTION>
 !   <TEMPLATE>
-!     call calc_xactive_emis( index, emis, Time, is, js, id_emis_diag ) 
+!     call calc_xactive_emis( index, emis, Time, is, js, id_emis_diag )
 !   </TEMPLATE>
 
 subroutine calc_xactive_emis( index, Time, Time_next, lon, lat, pwt, is, ie, js, je, &
                               area, land, ocn_flx_fraction, tsurf, w10m, emis, &
                               kbot, id_emis_diag )
-    
+
    integer,intent(in) :: index
    type(time_type),intent(in) :: Time, Time_next
    real, intent(in), dimension(:,:) :: lon, lat
@@ -2706,7 +2738,7 @@ subroutine calc_xactive_emis( index, Time, Time_next, lon, lat, pwt, is, ie, js,
    integer, intent(in) :: is, ie, js, je
    real, intent(in), dimension(:,:) :: area    ! grid box area (m^2)
    real, intent(in), dimension(:,:) :: land    ! land fraction
-   real, intent(in), dimension(:,:) :: ocn_flx_fraction 
+   real, intent(in), dimension(:,:) :: ocn_flx_fraction
    real, intent(in), dimension(:,:) :: tsurf   ! surface temperature (K)
    real, intent(in), dimension(:,:) :: w10m    ! wind speed at 10m (m/s)
    real, dimension(:,:,:),intent(out) :: emis  ! VMR/s
@@ -2715,7 +2747,7 @@ subroutine calc_xactive_emis( index, Time, Time_next, lon, lat, pwt, is, ie, js,
 
    logical :: used
 
-   
+
    if (index == dms_ndx) then
       call atmos_DMS_emission( lon, lat, area, ocn_flx_fraction, tsurf, w10m, pwt, &
                                emis, Time, Time_next, is, ie, js, je, kbot )
@@ -2750,7 +2782,7 @@ end subroutine calc_xactive_emis
 subroutine init_emis_data( emis_type, model, method_type, pos, file_name, &
                            lonb_mod, latb_mod, field_type, flag, diurnal, &
                            axes, Time, land_does_emis )
-    
+
    type(interpolate_type),intent(inout) :: emis_type
    integer, intent(in) :: model,pos
    character(len=*),intent(in) :: method_type
@@ -2761,12 +2793,12 @@ subroutine init_emis_data( emis_type, model, method_type, pos, file_name, &
    logical, intent(out), optional :: land_does_emis
    integer        , intent(in)  :: axes(4)
    type(time_type), intent(in)  :: Time
-    
+
    character(len=64) :: name, control
    integer :: nfields
    integer :: flag_name, flag_file, flag_diurnal
    character(len=64) :: emis_name, emis_file, control_diurnal
-   
+
    flag = .false.
    diurnal = .false.
    control = ''
@@ -2819,7 +2851,7 @@ end subroutine init_emis_data
 subroutine init_xactive_emis( model, method_type, index, species, &
                               axes, Time, lonb_mod, latb_mod, phalf, &
                               flag, id_xemis, mask )
-    
+
    integer,         intent(in)  :: model, index
    character(len=*),intent(in)  :: method_type, species
    integer        , intent(in)  :: axes(4)
@@ -2829,7 +2861,7 @@ subroutine init_xactive_emis( model, method_type, index, species, &
    real,            intent(in), dimension(:,:,:), optional :: mask
    logical,         intent(out) :: flag
    integer,         intent(out) :: id_xemis
-    
+
    character(len=64) :: name, control
    integer :: nhalf, nfull
 
@@ -2839,7 +2871,7 @@ subroutine init_xactive_emis( model, method_type, index, species, &
    nfull = nhalf - 1
 
    flag = query_method(trim(method_type),model,index,name,control)
-   
+
 !  if (flag) then
       select case (trim(species))
          case ('DMS')
@@ -2877,7 +2909,7 @@ end subroutine init_xactive_emis
 !   <DESCRIPTION>
 !     Initialize interactive isoprene emissions: read in emission capacities,
 !     LAI for each pft, percentage pft in each grid cell, climatological (1980-2000)
-!     monthly mean surface air temp + downward short wave radiation from 
+!     monthly mean surface air temp + downward short wave radiation from
 !     Sheffield et al., J. clim, 2006  (obtained from Christine Wiedinmyer, NCAR,
 !     Feb, 2009.  Also allocate and initialize arrays needed for diagnostics, etc.
 !     Updated to MEGAN v2.1 amf/van
@@ -2924,7 +2956,7 @@ subroutine isop_xactive_init( lonb, latb, axes )
        'tas07','tas08','tas09','tas10','tas11','tas12' /)
   character(len=5) :: dswnames(nmos) = (/ 'dsw01','dsw02','dsw03','dsw04','dsw05','dsw06', &
        'dsw07','dsw08','dsw09','dsw10','dsw11','dsw12' /)
-  integer :: id_ec(nveg), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)  
+  integer :: id_ec(nveg), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
   real, dimension(nlonin,nlatin) :: datain
   real, dimension(nlonin,nlatin,npft) :: datapft
   real, dimension(nlonin,nlatin,npft,nmos) :: datalai
@@ -2955,15 +2987,15 @@ subroutine isop_xactive_init( lonb, latb, axes )
   diag_climtas(:,:) = 0.
   diag_climfsds(:,:) = 0.
 ! always get gamma age / gamma lai at start of run.
-! newmonth = .true.     
+! newmonth = .true.
 
 !  --- check existence of input file containing isoprene emission capacities --------
   if (file_exist(ecfile)) then
-      
+
 !set up for input grid
      if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
           'Reading NetCDF formatted input file: iso_bvoc.nc', NOTE)
-      
+
 ! amf/van -- new file only has lat lon centers, not boundaries...
 !read in lat & lon boundaries from input file and convert to radians
 !no.domain = true tells it all fields are in one global file (as opposed to e.g., one per cube face)
@@ -2979,12 +3011,12 @@ subroutine isop_xactive_init( lonb, latb, axes )
      inlate(nlatin+1) = inlat(nlatin)+(dlat/2.)
 
 !     print*, 'lat,lon edges for new megan.isop.nc file: ', inlate, inlone
-     
+
      call horiz_interp_init
      call horiz_interp_new ( Interp, inlone, inlate, lonb, latb )
 
 ! loop over vegnames
-     do i = 1, nveg 
+     do i = 1, nveg
 !register diagnostic field
         id_ec(i) = register_static_field( 'tracers', vegnames(i), axes(1:2), &
              vegnames(i), 'molec/cm2/s')
@@ -2993,11 +3025,11 @@ subroutine isop_xactive_init( lonb, latb, axes )
         call horiz_interp (Interp, datain, ecisop(:,:,i), verbose=verbose)
 !send data to diagnostic
         if (id_ec(i) > 0) then
-           used = send_data(id_ec(i),ecisop(:,:,i)) 
+           used = send_data(id_ec(i),ecisop(:,:,i))
         endif
      end do
-    
-  else 
+
+  else
      print*, 'what is ecfile ', ecfile
      call error_mesg ('isop_xactive_init',  &
           'ecfile does not exist.', FATAL)
@@ -3005,11 +3037,11 @@ subroutine isop_xactive_init( lonb, latb, axes )
 
 !  --- check existence of input file containing % pft --------
   if (file_exist(pftfile)) then
-      
+
 !set up for input grid
      if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
           'Reading NetCDF formatted input file: mksrf_pft.060929.nc', NOTE)
-      
+
 !read in lat & lon from input file, get boundaries and convert to radians
      call read_data (pftfile, 'lon', lonpft, no_domain=.true.)
      call read_data (pftfile, 'lat', latpft, no_domain=.true.)
@@ -3022,55 +3054,55 @@ subroutine isop_xactive_init( lonb, latb, axes )
      latpfte(1) = edges
      latpfte(nlatin+1) = edgen
      lonpfte(nlonin+1) = edgee
-     
+
      dlon = 2.*(lonpft(1)-edgew)
      dlat = 2.*(latpft(1)-edges)
 
-     do i = 2, nlatin 
+     do i = 2, nlatin
         latpfte(i) = latpfte(i-1)+dlat
      end do
 
      do i = 2, nlonin
         lonpfte(i) = lonpfte(i-1)+dlon
-     end do     
+     end do
 
      lonpfte = lonpfte*DEG_TO_RAD
      latpfte = latpfte*DEG_TO_RAD
-     
+
      call horiz_interp_init
      call horiz_interp_new ( Interp, lonpfte, latpfte, lonb, latb )
 
      call read_data (pftfile, 'pft', pft, no_domain=.true.)
 
-!read pct_pft field 
+!read pct_pft field
      call read_data (pftfile, 'PCT_PFT', datapft, no_domain=.true.)
 
 ! loop over vegnames
-     do i = 1, npft       
+     do i = 1, npft
 !register diagnostic field
         id_pft(i) = register_static_field( 'tracers', pftnames(i), axes(1:2), &
              pftnames(i), 'unitless')
         call horiz_interp (Interp, datapft(:,:,i), pctpft(:,:,i), verbose=verbose)
 !send data to diagnostic
         if (id_pft(i) > 0) then
-           used = send_data(id_pft(i),pctpft(:,:,i)) 
+           used = send_data(id_pft(i),pctpft(:,:,i))
         endif
      end do
-!scale pctpft from percentage to fraction 
+!scale pctpft from percentage to fraction
      pctpft(:,:,:) = .01 * pctpft(:,:,:)
-    
-  else 
+
+  else
      call error_mesg ('isop_xactive_init',  &
           'pftfile does not exist.', FATAL)
   endif
 
 !  --- check existence of input file containing monthly lai, for each pft --------
   if (file_exist(laifile)) then
-      
+
 !set up for input grid
      if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
           'Reading NetCDF formatted input file: mksrf_lai.060929.nc', NOTE)
-      
+
 !read in lat & lon from input file, get boundaries and convert to radians
      call read_data (laifile, 'lon', lonlai, no_domain=.true.)
      call read_data (laifile, 'lat', latlai, no_domain=.true.)
@@ -3080,21 +3112,21 @@ subroutine isop_xactive_init( lonb, latb, axes )
      latlaie(1) = edges
      latlaie(nlatin+1) = edgen
      lonlaie(nlonin+1) = edgee
-     
+
      dlon = 2.*(lonlai(1)-edgew)
      dlat = 2.*(latlai(1)-edges)
 
-     do i = 2, nlatin 
+     do i = 2, nlatin
         latlaie(i) = latlaie(i-1)+dlat
      end do
 
      do i = 2, nlonin
         lonlaie(i) = lonlaie(i-1)+dlon
-     end do     
+     end do
 
      lonlaie = lonlaie*DEG_TO_RAD
      latlaie = latlaie*DEG_TO_RAD
-     
+
      call horiz_interp_init
      call horiz_interp_new ( Interp, lonlaie, latlaie, lonb, latb )
 
@@ -3102,12 +3134,12 @@ subroutine isop_xactive_init( lonb, latb, axes )
      call read_data (laifile, 'time', mos, no_domain=.true.)
 
 ! loop over vegnames
-     do i = 1, npft 
+     do i = 1, npft
         call read_data (laifile,lainames(i),datalai(:,:,i,:), no_domain=.true.)
         do m = 1, nmos
             call horiz_interp (Interp, datalai(:,:,i,m), mlai(:,:,i,m), verbose=verbose)
 !store diagnostics for one month only - choose July for now
-            if (m .eq. 7) then 
+            if (m .eq. 7) then
 !register diagnostic field
                id_lai(i) = register_static_field( 'tracers', lainames(i), axes(1:2), &
                     lainames(i), 'unitless')
@@ -3118,27 +3150,27 @@ subroutine isop_xactive_init( lonb, latb, axes )
             endif
          end do
       end do
-    
-   else 
+
+   else
       call error_mesg ('isop_xactive_init',  &
            'laifile does not exist', FATAL)
    endif
 
 !  --- check existence of input file containing climatological (1980-2000) monthly air surface temp --------
   if (file_exist(tasfile)) then
-      
+
 !set up for input grid
      if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
           'Reading NetCDF formatted input file: tas_monthly_clim_1980-2000.nc', NOTE)
-      
+
 !read in lat & lon from input file, get boundaries and convert to radians
      call read_data (tasfile, 'lon', metlon, no_domain=.true.)
      call read_data (tasfile, 'lat', metlat, no_domain=.true.)
-     
+
      dlon = 0.5*(metlon(1)-metlon(2))
      dlat = 0.5*(metlat(2)-metlat(1))
 
-     do i = 1, metlatin 
+     do i = 1, metlatin
         metlate(i) = metlat(i)-dlat
      end do
 
@@ -3146,20 +3178,20 @@ subroutine isop_xactive_init( lonb, latb, axes )
 
      do i = 1, metlonin
         metlone(i) = metlon(i)-dlon
-     end do     
+     end do
      metlone(metlonin+1) = metlon(metlonin)+dlon
 
      metlone = metlone*DEG_TO_RAD
      metlate = metlate*DEG_TO_RAD
-     
+
      call horiz_interp_init
      call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
 
-     call read_data (tasfile, 'time', mos, no_domain=.true.) 
+     call read_data (tasfile, 'time', mos, no_domain=.true.)
      call read_data (tasfile,'tas_clim', tas(:,:,:), no_domain=.true.)
-        
+
      do m = 1, nmos
-        call horiz_interp (Interp, tas(:,:,m), ts_avg(:,:,m), verbose=verbose) 
+        call horiz_interp (Interp, tas(:,:,m), ts_avg(:,:,m), verbose=verbose)
 !register diagnostic field
         id_tas(m) = register_static_field( 'tracers', tasnames(m), axes(1:2), &
              tasnames(m), 'unitless')
@@ -3168,7 +3200,7 @@ subroutine isop_xactive_init( lonb, latb, axes )
            used = send_data(id_tas(m),ts_avg(:,:,m))
         endif
      end do
-  else 
+  else
      call error_mesg ('isop_xactive_init',  &
           tasfile, NOTE)
      call error_mesg ('isop_xactive_init',  &
@@ -3178,19 +3210,19 @@ subroutine isop_xactive_init( lonb, latb, axes )
 
 !  --- check existence of input file containing climatological (1980-2000) monthly surface down SW radiation --------
   if (file_exist(dswfile)) then
-      
+
 !set up for input grid
      if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
           'Reading NetCDF formatted input file: dswrf_monthly_clim_1980-2000.nc', NOTE)
-      
+
 !read in lat & lon from input file, get boundaries and convert to radians
      call read_data (dswfile, 'lon', metlon, no_domain=.true.)
      call read_data (dswfile, 'lat', metlat, no_domain=.true.)
-     
+
      dlon = 0.5*(metlon(1)-metlon(2))
      dlat = 0.5*(metlat(2)-metlat(1))
 
-     do i = 1, metlatin 
+     do i = 1, metlatin
         metlate(i) = metlat(i)-dlat
      end do
 
@@ -3198,18 +3230,18 @@ subroutine isop_xactive_init( lonb, latb, axes )
 
      do i = 1, metlonin
         metlone(i) = metlon(i)-dlon
-     end do     
+     end do
      metlone(metlonin+1) = metlon(metlonin)+dlon
 
      metlone = metlone*DEG_TO_RAD
      metlate = metlate*DEG_TO_RAD
-     
+
      call horiz_interp_init
      call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
 
      call read_data (dswfile, 'time', mos, no_domain=.true.)
      call read_data (dswfile,'dswrf_clim', dswrf(:,:,:), no_domain=.true.)
-        
+
      do m = 1, nmos
         call horiz_interp (Interp, dswrf(:,:,m), fsds_avg(:,:,m), verbose=verbose)
 !register diagnostic field
@@ -3220,8 +3252,8 @@ subroutine isop_xactive_init( lonb, latb, axes )
            used = send_data(id_dsw(m),fsds_avg(:,:,m))
         endif
      end do
-    
-  else 
+
+  else
      call error_mesg ('isop_xactive_init',  &
           'dswfile does not exist', FATAL)
   endif
@@ -3237,7 +3269,7 @@ end subroutine isop_xactive_init
 !     Calculates interactive isoprene emissions
 !   </OVERVIEW>
 !   <DESCRIPTION>
-!     Calculates interactive isoprene emissions using algorithms from 
+!     Calculates interactive isoprene emissions using algorithms from
 !      PCEEA MEGAN model in Guenther, ACP, 2006.
 !      Note - gamma soil moisture is assumed constant (at one)
 !   </DESCRIPTION>
@@ -3246,27 +3278,27 @@ end subroutine isop_xactive_init
 !                              area, land, tsfcair, flux_sw_down_vis, &
 !                              coszen, emis,   id_gamma_lai_age, &
 !                                 id_gamma_temp, id_gamma_light, &
-!                                 id_tsfcair, id_fsdvd, id_climtas, id_climfsds, id_emis_diag ) 
+!                                 id_tsfcair, id_fsdvd, id_climtas, id_climfsds, id_emis_diag )
 !   </TEMPLATE>
-             
+
 subroutine calc_xactive_isop( index, Time, Time_next,lon, lat, oro, pwtsfc, is, js, &
                               area, land, tsfcair, flux_sw_down_vis, &
                               coszen, emis,   id_gamma_lai_age, &
                               id_gamma_temp, id_gamma_light, id_tsfcair, &
-                              id_fsdvd, id_climtas, id_climfsds, id_emis_diag ) 
-    
+                              id_fsdvd, id_climtas, id_climfsds, id_emis_diag )
+
    integer,intent(in) :: index
    type(time_type),intent(in) :: Time, Time_next
    real, intent(in), dimension(:,:) :: lon, lat
    real, intent(in), dimension(:,:) :: pwtsfc
-   integer, intent(in) :: is, js 
+   integer, intent(in) :: is, js
    real, intent(in), dimension(:,:) :: area    ! grid box area (m^2)
    real, intent(in), dimension(:,:) :: land    ! land fraction
    real, intent(in), dimension(:,:) :: oro     ! land = 1; ocean = 0
    real, intent(in), dimension(:,:) :: tsfcair   ! surface temperature (K)
    real, intent(in), dimension(:,:) :: flux_sw_down_vis !W/m2 visible (direct+diffuse) sfc flux
    real, intent(in), dimension(:,:) :: coszen  ! cosine of solar zenith angle
-   real, dimension(:,:),intent(out) :: emis  ! 
+   real, dimension(:,:),intent(out) :: emis  !
    integer, intent(in), optional :: id_gamma_lai_age, id_gamma_temp, id_gamma_light
    integer, intent(in), optional :: id_climtas, id_climfsds
    integer, intent(in), optional :: id_emis_diag, id_tsfcair
@@ -3283,18 +3315,18 @@ subroutine calc_xactive_isop( index, Time, Time_next,lon, lat, oro, pwtsfc, is, 
    call get_date(Time,yr,mo,day,hr,min,sec)  !model GMT
 
 !update gamma age and gamma once per month
-   if (newmonth) then 
-!     if( mpp_pe() == mpp_root_pe() ) then 
+   if (newmonth) then
+!     if( mpp_pe() == mpp_root_pe() ) then
 !        print *, 'pts_proc, oldmonth', pts_processed, isop_oldmonth
 !        print *, 'time', yr,mo,day,hr,min,sec
 !        print*, 'AMF calc_xactive_isop: calling get_monthly_gammas'
 !        print*, 'id_gamma_lai_age = ', id_gamma_lai_age
 !        print*, 'sum(diag_gamma_lai_age', sum(diag_gamma_lai_age(:,:))
 !     end if
-      
+
       call get_monthly_gammas( lon, lat, oro, is, js, mo, &
                                id_gamma_lai_age )
-!     if( mpp_pe() == mpp_root_pe() ) then 
+!     if( mpp_pe() == mpp_root_pe() ) then
 !        print *, 'pts_proc, oldmonth AFTER', pts_processed, isop_oldmonth
 !        print*, 'AMF calc_xactive_isop: after call to  get_monthly_gammas'
 !        print*, 'id_gamma_lai_age = ', id_gamma_lai_age
@@ -3323,38 +3355,38 @@ subroutine calc_xactive_isop( index, Time, Time_next,lon, lat, oro, pwtsfc, is, 
    end if
 
 ! also store sw visible direct at surface and surface air temperature diagnostics
-   if (present(id_fsdvd)) then 
-      if (id_fsdvd > 0) then 
+   if (present(id_fsdvd)) then
+      if (id_fsdvd > 0) then
          used = send_data( id_fsdvd, flux_sw_down_vis, Time_next, is_in=is, js_in=js)
       end if
    end if
 
-   if (present(id_tsfcair)) then 
-      if (id_tsfcair > 0) then 
+   if (present(id_tsfcair)) then
+      if (id_tsfcair > 0) then
          used = send_data( id_tsfcair, tsfcair, Time_next, is_in=is, js_in=js)
       end if
    end if
 
-   if (present(id_gamma_light)) then 
-      if (id_gamma_light > 0) then 
+   if (present(id_gamma_light)) then
+      if (id_gamma_light > 0) then
          used = send_data( id_gamma_light, diag_gamma_light(is:ie,js:je), Time_next, is_in=is, js_in=js)
       end if
    end if
 
-   if (present(id_gamma_temp)) then 
-      if (id_gamma_temp > 0) then 
+   if (present(id_gamma_temp)) then
+      if (id_gamma_temp > 0) then
          used = send_data( id_gamma_temp, diag_gamma_temp(is:ie,js:je), Time_next, is_in=is, js_in=js)
       end if
    end if
 
-   if (present(id_climtas)) then 
-      if (id_climtas > 0) then 
+   if (present(id_climtas)) then
+      if (id_climtas > 0) then
          used = send_data( id_climtas, diag_climtas(is:ie,js:je), Time_next, is_in=is, js_in=js)
       end if
    end if
 
-   if (present(id_climfsds)) then 
-      if (id_climfsds > 0) then 
+   if (present(id_climfsds)) then
+      if (id_climfsds > 0) then
          used = send_data( id_climfsds, diag_climfsds(is:ie,js:je), Time_next, is_in=is, js_in=js)
       end if
    end if
@@ -3362,13 +3394,13 @@ subroutine calc_xactive_isop( index, Time, Time_next,lon, lat, oro, pwtsfc, is, 
 !store combined diagnostic of gamma_lai * gamma_age, summed over each vegetation type
    if (present(id_gamma_lai_age)) then
       if (id_gamma_lai_age > 0) then
-!         if( mpp_pe() == mpp_root_pe() ) then 
+!         if( mpp_pe() == mpp_root_pe() ) then
 !            print*, 'AMF calc_xactive_isop: after call to send_data for glaiage'
 !            print*, 'id_gamma_lai_age = ', id_gamma_lai_age
 !            print*, 'sum(diag_gamma_lai_age', sum(diag_gamma_lai_age(:,:))
 !         end if
          used = send_data( id_gamma_lai_age, diag_gamma_lai_age(is:ie,js:je), Time_next, is_in=is, js_in=js)
-              
+
       end if
    end if
 
@@ -3396,18 +3428,18 @@ end subroutine calc_xactive_isop
 !                          coszen, area, pwtsfc, emis )
 !   </TEMPLATE>
 !   <IN NAME="lon" TYPE="real" DIM="(:,:)">
-!      longitude value for each i,j grid cell 
+!      longitude value for each i,j grid cell
 !   </IN>
 !   <IN NAME="lat" TYPE="real" DIM="(:,:)">
-!      latitude value for each i,j grid cell 
+!      latitude value for each i,j grid cell
 !   </IN>
 !   <IN NAME="is" TYPE="integer">
-!      beginning i for location of this group of 
-!      grid cells within global grid, used in diag manager 
+!      beginning i for location of this group of
+!      grid cells within global grid, used in diag manager
 !   </IN>
 !   <IN NAME="js" TYPE="integer">
-!      beginning j for location of this group of 
-!      grid cells within global grid, used in diag manager 
+!      beginning j for location of this group of
+!      grid cells within global grid, used in diag manager
 !   </IN>
 !   <IN NAME="calday" TYPE="real">
 !      Fractional Julian day of year (model GMT)
@@ -3439,14 +3471,14 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
                           coszen, area, pwtsfc, emis )
 !-------------------------------------------------------------------------------------
 !       ... biogenic voc isoprene emissions
-!-------------------------------------------------------------------------------------  
+!-------------------------------------------------------------------------------------
 
       implicit none
 
       real, intent(in), dimension(:,:) :: lon, lat
-      integer, intent(in) :: is, js, mo  
-      real, intent(in)    :: calday          
-      real, intent(in), dimension(:,:)  :: coszen     
+      integer, intent(in) :: is, js, mo
+      real, intent(in)    :: calday
+      real, intent(in), dimension(:,:)  :: coszen
       real, intent(in), dimension(:,:)  :: tsfcair        ! surface temperature
       real, intent(in), dimension(:,:)  :: flux_sw_down_vis !W/m2 direct visible sfc flux
       real, intent(in), dimension(:,:)  :: area      ! grid box area (m^2)
@@ -3466,9 +3498,9 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
       real    :: ppfd, x, Eopt, Ptoa, phi
       real    :: Topt
       real    :: fac_par, fac_tmp
-      real    :: Tdaily, Pdaily 
+      real    :: Tdaily, Pdaily
       real    :: t_diff
-    
+
       nlon = size(lon,1)
       nlat = size(lat,2)
       do j = 1,nlat
@@ -3484,8 +3516,8 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
 ! each grid cell)
 !Note the factor of 0.5 to convert from total shortwave to PPFD
 ! vs. AM3 which has visible component available.
-         if( has_ts_avg ) then  
-            Pdaily =  fsds_avg(i+is-1,j+js-1,mo) * const0 * 0.5 
+         if( has_ts_avg ) then
+            Pdaily =  fsds_avg(i+is-1,j+js-1,mo) * const0 * 0.5
             Tdaily  = ts_avg(i+is-1,j+js-1,mo)
          else
             Pdaily = Pdaily_clim * const0 * 0.5
@@ -3496,9 +3528,9 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
          Ptoa = 3000. + 99.* cos( twopi*(calday - 10.)/365. )    !Guenther et al Eqn 13
 
 
-! Guenther eqns 11a/b 
-         if (coszen(i,j) <= 0.) then 
-            fac_par = 0.   
+! Guenther eqns 11a/b
+         if (coszen(i,j) <= 0.) then
+            fac_par = 0.
          else
             phi = ppfd / (coszen(i,j)*Ptoa)   ! Eqn 12
 
@@ -3506,9 +3538,9 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
 !  phi can get > 1 and then fac_par gets negative with the above equation
 !  set phi=1 if phi> 1 as recommended by Alex (MZ4 code)
 !-------------------------------------------------------------------------------------
-            phi = min( phi,1. )   
+            phi = min( phi,1. )
             !Eqn 11b - note typo in MZ4 - 2.49 instead of 2.46
-            fac_par = coszen(i,j)*(2.46 * (1. + .0005 *(Pdaily - 400.))*phi - .9*phi*phi) 
+            fac_par = coszen(i,j)*(2.46 * (1. + .0005 *(Pdaily - 400.))*phi - .9*phi*phi)
          end if
 
 !-------------------------------------------------------------------------------------
@@ -3521,13 +3553,13 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
          x       = (tsfcair(i,j) - Topt)/(tsfcair(i,j)*Topt*.00831)
          Eopt    = 1.75 * exp( .08*t_diff )
 !Eqn 14 --  gammaT
-         fac_tmp = Eopt * (ctm2 * exp( ctm1*x ))/(ctm2 - ctm1*(1. - exp( ctm2*x )))  
+         fac_tmp = Eopt * (ctm2 * exp( ctm1*x ))/(ctm2 - ctm1*(1. - exp( ctm2*x )))
 
 !-------------------------------------------------------------------------------------
-!     emisop_month contains regridded potential emissions including 
-!                  application of gamma LAI and gamma AGE for this month 
+!     emisop_month contains regridded potential emissions including
+!                  application of gamma LAI and gamma AGE for this month
 !     ... change units from microg/m2/h to mol/cm2/s
-!      units of MZ4 input file incorrectly labled as mol/cm2/s... 
+!      units of MZ4 input file incorrectly labled as mol/cm2/s...
 !-------------------------------------------------------------------------------------
          emis(i,j) = emisop_month(i+is-1,j+js-1) * fac_par * fac_tmp *  2.46e8
          diag_gamma_temp(i+is-1,j+js-1) = fac_tmp
@@ -3547,7 +3579,7 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
 !              from Guenther et al 2006 - could eventually parameterize these
 !                    (neither included in MZ4)
 !-------------------------------------------------------------------------------------
-   emis(:,:) =  emis(:,:) * rho_iso * gamma_sm 
+   emis(:,:) =  emis(:,:) * rho_iso * gamma_sm
 
 end subroutine get_isop_emis
 !</SUBROUTINE>
@@ -3556,7 +3588,7 @@ end subroutine get_isop_emis
 
 ! <SUBROUTINE NAME="get_monthly_gammas">
 !   <OVERVIEW>
-!     Each month, update isoprene emissions to include scaling from 
+!     Each month, update isoprene emissions to include scaling from
 !     gamma_age and gamma_lai
 !   </OVERVIEW>
 !   <DESCRIPTION>
@@ -3570,10 +3602,10 @@ end subroutine get_isop_emis
 !   </DESCRIPTION>
 !   <TEMPLATE>
 !     get_monthly_gammas( lon, lat, oro, is, js, &
-!                                   month, id_gamma_lai_age )  
+!                                   month, id_gamma_lai_age )
 !   </TEMPLATE>
 
-!removed fsds since not used... 
+!removed fsds since not used...
 subroutine get_monthly_gammas( lon, lat, oro, is, js, &
                                    month, id_gamma_lai_age )
 
@@ -3581,10 +3613,10 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
 
       real, intent(in), dimension(:,:) :: lon, lat
       real, intent(in), dimension(:,:) :: oro     ! land = 1; ocean = 0
-      integer, intent(in) :: is, js    
+      integer, intent(in) :: is, js
       integer, intent(in)      :: month
       integer, intent(in),optional :: id_gamma_lai_age  !id for diagnostic
-  
+
 !-------------------------------------------------------------------------------------
 !       ... local variables
 !-------------------------------------------------------------------------------------
@@ -3592,7 +3624,7 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
       integer                  :: ie, je
       integer                  :: pft_li(nveg)
       integer                  :: pft_lu(nveg)
-!      real                     :: wrk_area  
+!      real                     :: wrk_area
       real                     :: total_iso
       real                     :: work_iso(nveg)    !amf/van
       real                     :: ts_wrk
@@ -3610,18 +3642,18 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
       ie = is + nlon -1
       je = js + nlat -1
 
-!       if( mpp_pe() == mpp_root_pe() ) then 
+!       if( mpp_pe() == mpp_root_pe() ) then
 !          print*, 'AMF get_monthly_gammas: made it here'
 !       end if
-      
+
 !++amf/van
       age_work(:) = .true.
       age_work((/2,3,5,6,10/)) = .false.
 
-! hardwired indices for matching pfts to ecs 
-! pfts 2-4   fine leaf 
+! hardwired indices for matching pfts to ecs
+! pfts 2-4   fine leaf
 ! pfts 5-9   broadleaf
-! pfts 10-12 shrubs 
+! pfts 10-12 shrubs
 ! pfts 13-15 grass
 ! pfts 16-17 crops
 
@@ -3629,19 +3661,19 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
       pft_lu(1:nveg-1) = (/ 4,9,12,15 /)
       pft_lu(nveg) = npft
 !--amf/van
-      do j = js,je 
-         do i = is,ie 
-            total_iso = 0. 
+      do j = js,je
+         do i = is,ie
+            total_iso = 0.
             total_work_gamma = 0.
             if (has_ts_avg) then
               ts_wrk = ts_avg(i,j,month)
             end if
 
 !-----------------------------------------------------------------
-!       ... no emissions for ocean grid point 
+!       ... no emissions for ocean grid point
 !-----------------------------------------------------------------
             if( oro(i-is+1,j-js+1) .eq. 1 ) then
-                
+
 !++amv/van
             lai_work(:,:) = mlai(i,j,:,:)
             lai_fac(:) = calc_gamma_lai_age( lai_work, ts_wrk, month, age_work)
@@ -3654,7 +3686,7 @@ subroutine get_monthly_gammas( lon, lat, oro, is, js, &
             end do
             total_work_gamma = total_work_gamma + sum(work_gamma)
             total_iso = total_iso + sum(work_iso)
-        
+
 !--amf/van
               emisop_month(i,j) = total_iso
               diag_gamma_lai_age(i,j) = total_work_gamma
@@ -3702,8 +3734,8 @@ end subroutine get_monthly_gammas
 function calc_gamma_lai_age(clai, ts_wrk, month, doage )
 
 !AMF - COULD ADD OPTION TO USE AVERAGE TS AND FSDS OVER
-! PAST MONTH /WEEKS -- would need to save to restart file  
-! NOTE - MZ4 FAC_LAI DOESN"T SEEM TO USE FSDS_AVG, NOR DOES IT IN GUENTHER'S EQNS, 
+! PAST MONTH /WEEKS -- would need to save to restart file
+! NOTE - MZ4 FAC_LAI DOESN"T SEEM TO USE FSDS_AVG, NOR DOES IT IN GUENTHER'S EQNS,
 ! SO ELIMINATE FROM THIS FUNCTION
 
   implicit none
@@ -3712,13 +3744,13 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
   integer, intent(in) :: month            !current month index
   real, intent(in) :: ts_wrk              ! currently = climatological sfc T for ea i,j,m
   real, intent(in) :: clai(:,:)           ! monthly lai for this grid cell,   amf/van
-  
+
 !-------------------------------------------------------------------------------------
 !       ... local variables
 !-------------------------------------------------------------------------------------
 ! ggp: equations 18 and 19 from Guenther et al. include a dependence of ti and tm on temperature
-! of preceding timestep (i.e. month here); not considered here. 
-! ggp/lamar: instead of using a constant ti and tm, it can be calculated based on information 
+! of preceding timestep (i.e. month here); not considered here.
+! ggp/lamar: instead of using a constant ti and tm, it can be calculated based on information
 ! of monthly average temperature
 !-------------------------------------------------------------------------------------
 
@@ -3756,13 +3788,13 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
       if( has_ts_avg ) then
          if( ts_wrk <= 303. ) then
             ti = 5. + 0.7*(300. - ts_wrk)                     !eqn 18a (see corrigendum)
-         else        
+         else
             ti = 2.9                                          ! eqn 18b (corrigendum)
          end if
       else
          ti = 5. + 0.7*(300. - Tdaily_clim)                   ! Tdaily_clim in tropchem_driver_nml
       end if
-      tm = 2.3*ti                                             ! Eq 19 
+      tm = 2.3*ti                                             ! Eq 19
 
 !++amf/van
       calc_gamma_lai_age(1) = 0.
@@ -3810,12 +3842,12 @@ function calc_gamma_lai_age(clai, ts_wrk, month, doage )
       end if
 
 !-------------------------------------------------------------------------------------
-!     gamma_age ("gamma" below) * gamma_lai where gamma_lai is from Eqn 15 
+!     gamma_age ("gamma" below) * gamma_lai where gamma_lai is from Eqn 15
 !-------------------------------------------------------------------------------------
       calc_gamma_lai_age(n) = gamma * .49 * clai(n,month) / sqrt( 1. + 0.2 * clai(n, month)*clai(n, month) )
 
       end do
-  
+
 
 end function calc_gamma_lai_age
 
