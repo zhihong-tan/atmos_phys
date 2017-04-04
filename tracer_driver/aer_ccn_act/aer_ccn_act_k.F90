@@ -37,7 +37,7 @@ character(len=128) :: tagname = '$Name$'
   real, dimension(MD) :: Dm = (/0.01, 0.07/) ! Geometric mean diameter (micron)
   real, dimension(MD) :: LNSIGMA = (/0.47, 0.6931/) ! ln( Sigma (St. Dev.) )
 
-  logical :: nooc, use_full_wpdf_weight
+  logical :: nooc
 
 !Parameters for look-up tables
 
@@ -78,12 +78,12 @@ subroutine aer_ccn_act_k_init      &
               lowup_in, highup_in, lowup2_in, highup2_in, lowmass2_in, &
               highmass2_in, lowmass3_in, highmass3_in,  &
               lowmass4_in, highmass4_in, lowmass5_in, highmass5_in, &
-              lowT2_in, highT2_in, use_full_wpdf_weight_in)     
+              lowT2_in, highT2_in)     
 
 real, dimension(:,:,:,:,:), intent(in) :: droplets_in
 real, dimension(:,:,:,:,:), intent(in) :: droplets2_in
 integer, intent(in) :: res_in, res2_in
-logical, intent(in) :: nooc_in, use_full_wpdf_weight_in
+logical, intent(in) :: nooc_in
 real, intent(in)    :: sul_concen_in, low_concen_in, high_concen_in
 real, intent(in)    :: lowup_in, highup_in, lowup2_in, highup2_in,  &
                        lowmass2_in, highmass2_in, lowmass3_in,  &
@@ -118,7 +118,6 @@ real, intent(in)    :: lowup_in, highup_in, lowup2_in, highup2_in,  &
     highmass2 = highmass2_in
     lowT2 = lowT2_in
     highT2 = highT2_in
-    use_full_wpdf_weight = use_full_wpdf_weight_in
 
     module_is_initialized = .true.
 
@@ -418,7 +417,6 @@ if (lintegrate) then
 
   sum1 = 0.0d0
   sum2 = 0.0d0
-  if (use_full_pdf_weight .and. ia > 1) sum2 = sum(w(1:ia-1))
   tmp = sqrt(2.0 * wp2 )
   do i=ia,ib
     wtmp = tmp * x(i) + wm
@@ -546,7 +544,6 @@ if (lintegrate) then
 
   sum1 = 0.0d0
   sum2 = 0.0d0
-  if (use_full_pdf_weight .and. ia > 1) sum2 = sum(w(1:ia-1))
   tmp = sqrt(2.0 * wp2 )
   do i=ia,ib
     wtmp = tmp * x(i) + wm
