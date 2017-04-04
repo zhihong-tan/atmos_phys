@@ -55,6 +55,8 @@ use tracer_manager_mod, only: get_tracer_index, &
 
 use moist_proc_utils_mod,  only: rh_calc
 
+use atmos_cmip_diag_mod, only: register_cmip_diag_field_2d
+
 implicit none
 private
 
@@ -142,6 +144,7 @@ integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl, id_gust,  &
            id_uwnd,   id_vwnd,   id_diff_t_stab, id_diff_m_stab,  &
            id_diff_t_entr, id_diff_m_entr,                        &
            id_z_Ri_025, id_tref, id_qref, id_rh_Ri_025  ! cjg: PBL depth mods, h1g, add RH diagnostics at Ri_025, 2015-04-02
+integer :: id_bldep ! cmip6 boundary layer depth
 
 real :: missing_value = -999.
 
@@ -316,7 +319,7 @@ if (do_mellor_yamada) then
 
 
 
-     if ( id_z_pbl > 0 ) then
+     if ( id_z_pbl > 0 .or. id_bldep > 0 ) then
      !------ compute pbl depth from k_profile if diagnostic needed -----
      call my25_turb (is, js, dt_tke, frac_land, p_half, p_full, thv, uu, vv, &
                      z_half, z_full, rough,   &
@@ -613,6 +616,10 @@ end if
 !------- boundary layer depth -------
       if ( id_z_pbl > 0 ) then
          used = send_data ( id_z_pbl, z_pbl, Time_next, is, js )
+      endif
+!------- cmip name ------
+      if ( id_bldep > 0 ) then
+         used = send_data ( id_bldep, z_pbl, Time_next, is, js )
       endif
 
 !------- gustiness -------
@@ -918,6 +925,10 @@ endif
    id_z_pbl = &
    register_diag_field ( mod_name, 'z_pbl', axes(1:2), Time,       &
                         'depth of planetary boundary layer',  'm'  )
+!--- cmip variable name ---
+   id_bldep = register_cmip_diag_field_2d ( mod_name, 'bldep', Time, &
+                                        'Boundary Layer Depth', 'm', &
+                        standard_name = 'atmosphere_boundary_layer_thickness' )
 
 !-->cjg: addition for new PBL depth diagnostic
    id_tref = &

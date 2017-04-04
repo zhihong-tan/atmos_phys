@@ -848,16 +848,6 @@ contains
     ac%plcl=0.; ac%zlcl=0.; ac%thvlcl=0.; ac%thv0lcl=0; ac%rho0lcl=0.;
     ac%plfc=0.; ac%plnb=0.; ac%cape=0.; ac%cin=0.;
 
-!!$!below is pzhu's version now commented out
-!!$    esrc=qctsrc*psrc/100./(qctsrc+epsilo)             ! water vapor pressure
-!!$    tdsrc=tfreeze/(1-tfreeze*rvgas*log(esrc/6.11)/HLv)! dew-point of source air
-!!$    temsrc=thcsrc*exn(psrc)                           ! temperature of source air
-!!$    zlcl=123.5*(temsrc-tdsrc)+zsrc                    ! from sea-level
-!!$    tlcl=temsrc-0.0098*(zlcl-zsrc)
-!!$    ac % zlcl =zlcl
-!!$    ac % plcl =psrc*(tlcl/temsrc)**(1./Kappa)
-
-
     !calculate lifted condensation level of air at parcel origin level
     !(within 0.2% of formula of Bolton, mon. wea. rev.,1980)
     call findt_k(zsrc, psrc, hlsrc, qctsrc, thj, qvj,    &
