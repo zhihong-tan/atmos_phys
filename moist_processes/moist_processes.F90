@@ -184,12 +184,11 @@ real    :: sea_salt_scale = 0.1
 real    :: om_to_oc = 1.67
 logical :: do_height_adjust = .false.
    logical :: do_diag_clouds=.false.
-   logical :: use_cf_metadata = .false.
 
 namelist /moist_processes_nml/ do_unified_clouds, do_lsc, do_mca, do_ras,   &
                   do_uw_conv, do_donner_deep, do_dryadj, do_bm,             &
                   do_bmmass, do_bmomp, do_simple, do_rh_clouds,             &
-                  use_cf_metadata,  do_diag_clouds,                         &
+                  do_diag_clouds,                                           &
                   pdepth, limit_conv_cloud_frac, include_donmca_in_cosp,    &
                   use_online_aerosol, use_sub_seasalt, sea_salt_scale,      &
                   om_to_oc, do_height_adjust
