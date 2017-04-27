@@ -1430,7 +1430,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         do k=1,kx
           tca2(:,:) = tca2(:,:)*(1.0 - total_cloud_area(:,:,k))
         end do
-        tca2 = (1. - tca2) ! cmip6 = Cloud Area Fraction
+        tca2 = 100.*(1. - tca2) ! cmip6 = Cloud Cover Percentage
         used = send_data (id_clt, tca2, Time, is, js)
       endif
 
@@ -2226,7 +2226,7 @@ integer                     :: id_wetdep_cmip
                 'total cloud amount', 'percent')
 
         id_clt = register_cmip_diag_field_2d (mod_name, 'clt', Time, &
-                                      'Total Cloud Fraction', '1.0', &
+                                      'Total Cloud Cover Percentage', '%', &
                                 standard_name= 'cloud_area_fraction' )
 
         id_tot_cloud_area = register_diag_field ( mod_name, &

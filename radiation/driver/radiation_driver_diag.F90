@@ -282,9 +282,9 @@ integer                      :: id_rlds, id_rldscs, id_rlus, id_rsds,   &
                                 id_rsdscs, id_rsus, id_rsuscs, id_rsdt, &
                                 id_rsut, id_rsutcs, id_rlut, id_rlutcs, &
                                 id_rtmt, id_rsdsdiff, id_rsdscsdiff
-integer                      :: id_rsdsca, id_rsusca, id_rsutca, &
-                                id_rsdscc, id_rsuscc, id_rsutcc, &
-                                id_rldsca, id_rlutca, id_rldscc, id_rlutcc
+integer                      :: id_rsdsaf, id_rsusaf, id_rsutaf, &
+                                id_rsdscsaf, id_rsuscsaf, id_rsutcsaf, &
+                                id_rldsaf, id_rlutaf, id_rldscsaf, id_rlutcsaf
 type(cmip_diag_id_type)      :: ID_tntr, ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs, &
                                 ID_rsu, ID_rsucs, ID_rsd, ID_rsdcs
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
@@ -1106,12 +1106,12 @@ logical,         intent(in) :: do_lwaerosol
                 'Surface Downwelling Clear-Sky Longwave Radiation',  'W m-2', &
            standard_name = 'surface_downwelling_longwave_flux_in_air_assuming_clear_sky')
 
-        id_rldsca = register_cmip_diag_field_2d (mod_name, 'rldsca', Time, &
-                'Surface Downwelling Clean-Sky Longwave Radiation',  'W m-2', &
+        id_rldsaf = register_cmip_diag_field_2d (mod_name, 'rldsaf', Time, &
+                'Surface Downwelling Aerosol-Free Longwave Radiation',  'W m-2', &
            standard_name = 'surface_downwelling_longwave_flux_in_air_assuming_clean_sky')
 
-        id_rldscc = register_cmip_diag_field_2d (mod_name, 'rldscc', Time, &
-                'Surface Downwelling Clean-Clear-Sky Longwave Radiation',  'W m-2', &
+        id_rldscsaf = register_cmip_diag_field_2d (mod_name, 'rldscsaf', Time, &
+                'Surface Downwelling Clear-Sky, Aerosol-Free Longwave Radiation',  'W m-2', &
            standard_name = 'surface_downwelling_longwave_flux_in_air_assuming_clean_clear_sky')
 
         id_rlus = register_cmip_diag_field_2d (mod_name, 'rlus', Time, &
@@ -1126,12 +1126,12 @@ logical,         intent(in) :: do_lwaerosol
                 'Surface Downwelling Clear-Sky Shortwave Radiation', 'W m-2', &
            standard_name = 'surface_downwelling_shortwave_flux_in_air_assuming_clear_sky')
 
-        id_rsdsca = register_cmip_diag_field_2d (mod_name, 'rsdsca', Time, &
-                'Surface Downwelling Clean-Sky Shortwave Radiation', 'W m-2', &
+        id_rsdsaf = register_cmip_diag_field_2d (mod_name, 'rsdsaf', Time, &
+                'Surface Downwelling Aerosol-Free Shortwave Radiation', 'W m-2', &
            standard_name = 'surface_downwelling_shortwave_flux_in_air_assuming_clean_sky')
 
-        id_rsdscc = register_cmip_diag_field_2d (mod_name, 'rsdscc', Time, &
-                'Surface Downwelling Clean-Clear-Sky Shortwave Radiation', 'W m-2', &
+        id_rsdscsaf = register_cmip_diag_field_2d (mod_name, 'rsdscsaf', Time, &
+                'Surface Downwelling Clear-Sky, Aerosol-Free Shortwave Radiation', 'W m-2', &
            standard_name = 'surface_downwelling_shortwave_flux_in_air_assuming_clean_clear_sky')
 
         id_rsus = register_cmip_diag_field_2d (mod_name, 'rsus', Time, &
@@ -1142,12 +1142,12 @@ logical,         intent(in) :: do_lwaerosol
                 'Surface Upwelling Clear-Sky Shortwave Radiation', 'W m-2', &
            standard_name = 'surface_upwelling_shortwave_flux_in_air_assuming_clear_sky')
 
-        id_rsusca = register_cmip_diag_field_2d (mod_name, 'rsusca', Time, &
-                'Surface Upwelling Clean-Sky Shortwave Radiation', 'W m-2', &
+        id_rsusaf = register_cmip_diag_field_2d (mod_name, 'rsusaf', Time, &
+                'Surface Upwelling Aerosol-Free Shortwave Radiation', 'W m-2', &
            standard_name = 'surface_upwelling_shortwave_flux_in_air_assuming_clean_sky')
 
-        id_rsuscc = register_cmip_diag_field_2d (mod_name, 'rsuscc', Time, &
-                'Surface Upwelling Clean-Clear-Sky Shortwave Radiation', 'W m-2', &
+        id_rsuscsaf = register_cmip_diag_field_2d (mod_name, 'rsuscsaf', Time, &
+                'Surface Upwelling Clear-Sky, Aerosol-Free Shortwave Radiation', 'W m-2', &
            standard_name = 'surface_upwelling_shortwave_flux_in_air_assuming_clean_clear_sky')
 
         id_rsdt = register_cmip_diag_field_2d (mod_name, 'rsdt', Time, &
@@ -1162,13 +1162,13 @@ logical,         intent(in) :: do_lwaerosol
                  'TOA Outgoing Clear-Sky Shortwave Radiation', 'W m-2',    &
                  standard_name = 'toa_outgoing_shortwave_flux_assuming_clear_sky')
 
-        id_rsutca = register_cmip_diag_field_2d (mod_name, 'rsutca', Time, &
-                 'TOA Outgoing Clean-Sky Shortwave Radiation', 'W m-2',    &
-                 standard_name = 'toa_outgoing_shortwave_flux_assuming_clean_sky')
+        id_rsutaf = register_cmip_diag_field_2d (mod_name, 'rsutaf', Time, &
+                 'TOA Outgoing Aerosol-Free Shortwave Radiation', 'W m-2',    &
+                 standard_name = 'toa_outgoing_shortwave_flux_in_air_assuming_clean_sky')
 
-        id_rsutcc = register_cmip_diag_field_2d (mod_name, 'rsutcc', Time, &
-                 'TOA Outgoing Clean-Clear-Sky Shortwave Radiation', 'W m-2',    &
-                 standard_name = 'toa_outgoing_shortwave_flux_assuming_clean_clear_sky')
+        id_rsutcsaf = register_cmip_diag_field_2d (mod_name, 'rsutcsaf', Time, &
+                 'TOA Outgoing Clear-Sky, Aerosol-Free Shortwave Radiation', 'W m-2',    &
+                 standard_name = 'toa_outgoing_shortwave_flux_in_air_assuming_clean_clear_sky')
 
         id_rlut = register_cmip_diag_field_2d (mod_name, 'rlut', Time, &
                         'TOA Outgoing Longwave Radiation', 'W m-2',    &
@@ -1178,13 +1178,13 @@ logical,         intent(in) :: do_lwaerosol
                    'TOA Outgoing Clear-Sky Longwave Radiation', 'W m-2',   &
                  standard_name = 'toa_outgoing_longwave_flux_assuming_clear_sky')
 
-        id_rlutca = register_cmip_diag_field_2d (mod_name, 'rlutca', Time, &
-                   'TOA Outgoing Clean-Sky Longwave Radiation', 'W m-2',   &
-                 standard_name = 'toa_outgoing_longwave_flux_assuming_clean_sky')
+        id_rlutaf = register_cmip_diag_field_2d (mod_name, 'rlutaf', Time, &
+                   'TOA Outgoing Aerosol-Free Longwave Radiation', 'W m-2',   &
+                 standard_name = 'toa_outgoing_longwave_flux_in_air_assuming_clean_sky')
 
-        id_rlutcc = register_cmip_diag_field_2d (mod_name, 'rlutcc', Time, &
-                   'TOA Outgoing Clean-Clear-Sky Longwave Radiation', 'W m-2',   &
-                 standard_name = 'toa_outgoing_longwave_flux_assuming_clean_clear_sky')
+        id_rlutcsaf = register_cmip_diag_field_2d (mod_name, 'rlutcsaf', Time, &
+                   'TOA Outgoing Clear-Sky, Aerosol-Free Longwave Radiation', 'W m-2',   &
+                 standard_name = 'toa_outgoing_longwave_flux_in_air_assuming_clean_clear_sky')
 
         id_rtmt = register_cmip_diag_field_2d (mod_name, 'rtmt', Time, &
                         'Net Downward Flux at Top of Model', 'W m-2',  &
@@ -2005,18 +2005,18 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         if (do_swaerosol_forcing) then
 
 !------- downward sw flux surface (without aerosols) -------
-          if (id_rsdsca > 0 ) then
-            used = send_data (id_rsdsca, swdns_ad, Time_diag, is, js )
+          if (id_rsdsaf > 0 ) then
+            used = send_data (id_rsdsaf, swdns_ad, Time_diag, is, js )
           endif
 
 !------- upward sw flux surface (without aerosols) -------
-          if (id_rsusca > 0 ) then
-            used = send_data (id_rsusca, swups_ad, Time_diag, is, js )
+          if (id_rsusaf > 0 ) then
+            used = send_data (id_rsusaf, swups_ad, Time_diag, is, js )
           endif
 
 !------- outgoing sw flux toa -------
-         if (id_rsutca > 0 ) then
-            used = send_data (id_rsutca, swout_ad, Time_diag, is, js )
+         if (id_rsutaf > 0 ) then
+            used = send_data (id_rsutaf, swout_ad, Time_diag, is, js )
           endif
 
         endif
@@ -2171,18 +2171,18 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           if (do_swaerosol_forcing) then
 
 !------- downward sw flux surface (clean-clear-sky) -------
-            if (id_rsdscc > 0 ) then
-              used = send_data (id_rsdscc, swdns_ad_clr, Time_diag, is, js )
+            if (id_rsdscsaf > 0 ) then
+              used = send_data (id_rsdscsaf, swdns_ad_clr, Time_diag, is, js )
             endif
 
 !------- upward sw flux surface (clean-clear-sky) -------
-            if (id_rsuscc > 0 ) then
-              used = send_data (id_rsuscc, swups_ad_clr, Time_diag, is, js )
+            if (id_rsuscsaf > 0 ) then
+              used = send_data (id_rsuscsaf, swups_ad_clr, Time_diag, is, js )
             endif
 
 !------- outgoing sw flux toa (clean-clear-sky) -------
-            if (id_rsutcc > 0 ) then
-              used = send_data (id_rsutcc, swout_ad_clr, Time_diag, is, js )
+            if (id_rsutcsaf > 0 ) then
+              used = send_data (id_rsutcsaf, swout_ad_clr, Time_diag, is, js )
             endif
 
           endif
@@ -2742,13 +2742,13 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         if (do_lwaerosol_forcing) then
 
 !------- downward lw flux surface (without aerosols) -------
-          if ( id_rldsca > 0 ) then
-            used = send_data (id_rldsca, lwdns_ad, Time_diag, is, js )
+          if ( id_rldsaf > 0 ) then
+            used = send_data (id_rldsaf, lwdns_ad, Time_diag, is, js )
           endif
 
 !------- outgoing lw flux toa (without aerosols) -------
-          if (id_rlutca > 0 ) then
-            used = send_data (id_rlutca, olr_ad, Time_diag, is, js )
+          if (id_rlutaf > 0 ) then
+            used = send_data (id_rlutaf, olr_ad, Time_diag, is, js )
           endif
 
         endif
@@ -2849,13 +2849,13 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           if (do_lwaerosol_forcing) then
 
 !------- downward lw flux surface (clean-clear-sky) -------
-            if (id_rldscc > 0 ) then
-              used = send_data (id_rldscc, lwdns_ad_clr, Time_diag, is, js )
+            if (id_rldscsaf > 0 ) then
+              used = send_data (id_rldscsaf, lwdns_ad_clr, Time_diag, is, js )
             endif
 
 !------- outgoing lw flux toa (clean-clear-sky) -------
-            if (id_rlutcc > 0 ) then
-              used = send_data (id_rlutcc, olr_ad_clr, Time_diag, is, js )
+            if (id_rlutcsaf > 0 ) then
+              used = send_data (id_rlutcsaf, olr_ad_clr, Time_diag, is, js )
             endif
 
           endif

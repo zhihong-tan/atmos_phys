@@ -609,7 +609,7 @@ contains
          'Updraft liquid drop number from shallow plume', '/kg', missing_value=mv)
 
     id_cltc_uwc = register_cmip_diag_field_2d (mod_name, 'cltc_uw', Time,  &
-                                      'Convective Cloud Fraction', '1.0',  &
+                                'Convective Cloud Cover Percentage', '%',  &
                              standard_name='convective_cloud_area_fraction')
 
     id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(half),Time, &
@@ -2449,7 +2449,7 @@ contains
     used = send_data( id_cql_uwc,    cldql,        Time, is, js, 1)
     used = send_data( id_cqi_uwc,    cldqi,        Time, is, js, 1)
     used = send_data( id_cqn_uwc,    cldqn,        Time, is, js, 1)
-    used = send_data( id_cltc_uwc,   cltc,         Time, is, js)
+    used = send_data( id_cltc_uwc,   cltc*100.,    Time, is, js)
     used = send_data( id_pcb_uwc,    pcb_c*0.01,   Time, is, js)
     used = send_data( id_pct_uwc,    pct_c*0.01,   Time, is, js)
 
