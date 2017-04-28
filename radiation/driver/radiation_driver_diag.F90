@@ -286,7 +286,8 @@ integer                      :: id_rsdsaf, id_rsusaf, id_rsutaf, &
                                 id_rsdscsaf, id_rsuscsaf, id_rsutcsaf, &
                                 id_rldsaf, id_rlutaf, id_rldscsaf, id_rlutcsaf
 type(cmip_diag_id_type)      :: ID_tntr, ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs, &
-                                ID_rsu, ID_rsucs, ID_rsd, ID_rsdcs
+                                ID_rsu, ID_rsucs, ID_rsd, ID_rsdcs, &
+                                ID_rsuaf, ID_rsucsaf, ID_rsdaf, ID_rsdcsaf
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
                                         id_netlw_special
@@ -1082,6 +1083,14 @@ logical,         intent(in) :: do_lwaerosol
                              'Upwelling Clear-Sky Shortwave Radiation', 'W m-2', &
             standard_name = 'upwelling_shortwave_flux_in_air_assuming_clear_sky', axis='half' )
 
+        ID_rsuaf = register_cmip_diag_field_3d (mod_name, 'rsuaf', Time, & 
+                             'Upwelling Clean-Sky Shortwave Radiation at each level', 'W m-2', &
+            standard_name = 'upwelling_shortwave_flux_in_air_assuming_clean_sky', axis='half' )
+
+        ID_rsucsaf = register_cmip_diag_field_3d (mod_name, 'rsucsaf', Time, & 
+                             'Upwelling Clean-Clear-Sky Shortwave Radiation at each level', 'W m-2', &
+            standard_name = 'upwelling_shortwave_flux_in_air_assuming_clean_clear_sky', axis='half' )
+
         ID_rsd = register_cmip_diag_field_3d (mod_name, 'rsd', Time, & 
                              'Downwelling Shortwave Radiation', 'W m-2', &
             standard_name = 'downwelling_shortwave_flux_in_air', axis='half' )
@@ -1089,6 +1098,14 @@ logical,         intent(in) :: do_lwaerosol
         ID_rsdcs = register_cmip_diag_field_3d (mod_name, 'rsdcs', Time, & 
                              'Downwelling Clear-Sky Shortwave Radiation', 'W m-2', &
             standard_name = 'downwelling_shortwave_flux_in_air_assuming_clear_sky', axis='half' )
+
+        ID_rsdaf = register_cmip_diag_field_3d (mod_name, 'rsdaf', Time, & 
+                             'Downwelling Clean-Sky Shortwave Radiation at each level', 'W m-2', &
+            standard_name = 'downwelling_shortwave_flux_in_air_assuming_clean_sky', axis='half' )
+
+        ID_rsdcsaf = register_cmip_diag_field_3d (mod_name, 'rsdcsaf', Time, & 
+                             'Downwelling Clean-Clear-Sky Shortwave Radiation at each level', 'W m-2', &
+            standard_name = 'downwelling_shortwave_flux_in_air_assuming_clean_clear_sky', axis='half' )
 
         ID_tntrl = register_cmip_diag_field_3d (mod_name, 'tntrl', Time, & 
            'Tendency of Air Temperature due to Longwave Radiative Heating', 'K s-1', &
@@ -1972,14 +1989,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
 !------- 3d upward sw flux -------
         if (query_cmip_diag_id(ID_rsu)) then
-          used = send_cmip_data_3d (ID_rsu, Rad_output%ufsw(is:ie,js:je,:),  &
-                            Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsu, ufsw(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- 3d downward sw flux -------
         if (query_cmip_diag_id(ID_rsd)) then
-          used = send_cmip_data_3d (ID_rsd, Rad_output%dfsw(is:ie,js:je,:),  &
-                            Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsd, dfsw(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- downward sw flux surface -------
@@ -2015,8 +2030,18 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
           endif
 
 !------- outgoing sw flux toa -------
-         if (id_rsutaf > 0 ) then
+          if (id_rsutaf > 0 ) then
             used = send_data (id_rsutaf, swout_ad, Time_diag, is, js )
+          endif
+
+!------- 3d upward sw flux -------
+          if (query_cmip_diag_id(ID_rsuaf)) then
+            used = send_cmip_data_3d (ID_rsuaf, ufsw_ad(is:ie,js:je,:), Time_diag, is, js, 1)
+          endif
+
+!------- 3d downward sw flux -------
+          if (query_cmip_diag_id(ID_rsdaf)) then
+            used = send_cmip_data_3d (ID_rsdaf, ufsw_ad(is:ie,js:je,:), Time_diag, is, js, 1)
           endif
 
         endif
@@ -2036,15 +2061,13 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
 !---- 3d upward sw flux ---------
          if (id_ufsw(ipass) > 0 ) then
-           used = send_data (id_ufsw(ipass),    &
-                             Rad_output%ufsw_clr(is:ie,js:je,:),   &
+           used = send_data (id_ufsw(ipass), Rad_output%ufsw_clr(is:ie,js:je,:), &
                              Time_diag, is, js, 1)
          endif
  
 !---- 3d downward sw flux ---------
          if (id_dfsw(ipass) > 0 ) then
-           used = send_data (id_dfsw(ipass),    &
-                             Rad_output%dfsw_clr(is:ie,js:je,:),   &
+           used = send_data (id_dfsw(ipass), Rad_output%dfsw_clr(is:ie,js:je,:), &
                              Time_diag, is, js, 1)
          endif
 
@@ -2143,14 +2166,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
 !------- 3d upward sw flux -------
         if (query_cmip_diag_id(ID_rsucs)) then
-          used = send_cmip_data_3d (ID_rsucs, Rad_output%ufsw_clr(is:ie,js:je,:),  &
-                            Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsucs, ufswcf(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- 3d downward sw flux -------
         if (query_cmip_diag_id(ID_rsdcs)) then
-          used = send_cmip_data_3d (ID_rsdcs, Rad_output%dfsw_clr(is:ie,js:je,:),  &
-                            Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsdcs, dfswcf(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- downward sw flux surface -------
@@ -2183,6 +2204,16 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- outgoing sw flux toa (clean-clear-sky) -------
             if (id_rsutcsaf > 0 ) then
               used = send_data (id_rsutcsaf, swout_ad_clr, Time_diag, is, js )
+            endif
+
+!------- 3d upward sw flux ---------
+            if (query_cmip_diag_id(ID_rsucsaf)) then
+              used = send_cmip_data_3d (ID_rsucsaf, ufswcf_ad(is:ie,js:je,:), Time_diag, is, js, 1)
+            endif
+
+!------- 3d downward sw flux ---------
+            if (query_cmip_diag_id(ID_rsdcsaf)) then
+              used = send_cmip_data_3d (ID_rsdcsaf, dfswcf_ad(is:ie,js:je,:), Time_diag, is, js, 1)
             endif
 
           endif
