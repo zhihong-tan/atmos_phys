@@ -781,7 +781,7 @@ module MO_FASTJX_MOD
       logical, intent(in)                   ::  time_varying_solarflux    ! solar cycle on fastjx?
 !---reports out the JX J-values, upper level program converts to CTM chemistry J's
 !      real*8, intent(out), dimension(L1_-1,NJXU)::  VALJXX
-      real*8, intent(out), dimension(:,NJX_)::  ZPJ
+      real*8, intent(out), dimension(:,:)   ::  ZPJ
 
 !-----------------------------------------------------------------------
 !--------key LOCAL atmospheric data needed to solve plane-parallel J----
@@ -792,7 +792,7 @@ module MO_FASTJX_MOD
       real*8, dimension(size(phalf1)+1)     ::  PPJ,RELH
       integer,dimension(2*size(pfull1)+3)   ::  JXTRA
       real*8, dimension(W_)                 ::  FJTOP,FJBOT,FSBOT,FLXD0,RFL
-      real*8, dimension(:, W_)              ::  AVGF, FJFLX
+      real*8, dimension(size(pfull1), W_)   ::  AVGF, FJFLX
       real*8, dimension(size(phalf1),W_)    ::  DTAUX, FLXD
       real*8, dimension(8,size(phalf1),W_)  ::  POMEGAX
       real*8, dimension(size(phalf1))       ::  DTAU600
@@ -802,7 +802,7 @@ module MO_FASTJX_MOD
       logical  :: LPRTJ                   ! set to false
 
 !------------array dimensions-------------------------------------------
-      integer            :: L_, L1_, JXL_, JXL1_
+      integer            :: L_, L1_, JXL_, JXL1_, JTAUMX
 !---flux/heating arrays (along with FJFLX,FLXD,FLXD0)
       real*8             :: FLXJ(size(phalf1)),FFX0,FXBOT,FABOT
       real*8             :: ODABS,ODRAY,ODI,ODL
@@ -839,6 +839,7 @@ module MO_FASTJX_MOD
       L1_   = size(phalf1)
       JXL_  = size(pfull1)
       JXL1_ = JXL_ + 1
+      JTAUMX  =(N_ - 4*L_)/2  ! JTAUMX = maximum number of divisions (i.e., may not get to ATAUMN)
       if (L1_ .gt. JXL1_) then
         write(*,*) ' PHOTO_JX: not enough levels in JX', L1_, JXL1_
         stop
@@ -2122,12 +2123,12 @@ module MO_FASTJX_MOD
 !-----------------------------------------------------------------------
       implicit none
 
-      real*8, intent(in) ::   DTAUX(:,W_),POMEGAX(8,:,W_)
+      real*8, intent(in) ::   DTAUX(:,:),POMEGAX(:,:,:)
       real*8, intent(in) ::   AMF2(:,:)
-      real*8, intent(in) ::   U0,RFL(W_)
+      real*8, intent(in) ::   U0,RFL(:)
       integer, intent(in) ::  JXTRA(:), LU
-      real*8, intent(out) ::FJACT(:,W_),FJTOP(W_),FJBOT(W_),FSBOT(W_)
-      real*8, intent(out) ::  FJFLX(:,W_),FLXD(:,W_),FLXD0(W_)
+      real*8, intent(out) ::FJACT(:,:),FJTOP(:),FJBOT(:),FSBOT(:)
+      real*8, intent(out) ::  FJFLX(:,:),FLXD(:,:),FLXD0(:)
 
       integer JNDLEV(size(FJACT,1)),JNELEV(size(DTAUX,1))
       integer JADDLV(size(JXTRA)),JADDTO(size(JXTRA)),L2LEV(size(JXTRA))
