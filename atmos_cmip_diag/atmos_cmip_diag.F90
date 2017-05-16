@@ -236,7 +236,7 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
     ! at full levels (with bounds attribute)
     id_lev = diag_axis_init('lev', lev, '1.0', 'Z', &
                             'hybrid sigma pressure coordinate', &
-                             direction=-1, set_name='cmip')
+                             direction=-1, set_name='cmip', req='lev_bnds')
     call diag_axis_add_attribute (id_lev, 'formula', 'p(n,k,j,i) = ap(k) + b(k)*ps(n,j,i)')
     call diag_axis_add_attribute (id_lev, 'formula_terms', 'ap: ap b: b ps: ps')
     call diag_axis_add_attribute (id_lev, 'bounds', 'lev_bnds')
