@@ -3107,12 +3107,12 @@ type(mp_removal_control_type), intent(in) :: Control
       id_conv_rain3d= register_diag_field ( mod_name, &
                       'conv_rain3d', axes(half), Time, &
                       'Rain fall rate from convection -3D ',    &
-                      'kg(h2o)/m2/s' )
+                      'kg(h2o)/m2/s', interp_method='conserve_order1' )
 
       id_conv_snow3d= register_diag_field ( mod_name, &
                       'conv_snow3d', axes(half), Time, &
                       'Snow fall rate from convection -3D',   &
-                      'kg(h2o)/m2/s' )
+                      'kg(h2o)/m2/s', interp_method='conserve_order1' )
 
 !----------------------------------------------------------------------
 !    tendencies of cloud tracers resulting from convection.
@@ -3307,12 +3307,14 @@ type(mp_removal_control_type), intent(in) :: Control
 !     if (do_ras) then
         id_ras_precip = register_diag_field ( mod_name, &
                        'ras_precip', axes(1:2), Time, &
-                       'Precipitation rate from ras ',       'kg/m2/s' )
+                       'Precipitation rate from ras ',       'kg/m2/s', &
+                        interp_method = 'conserve_order1' )
 
         id_ras_freq = register_diag_field ( mod_name, &
                       'ras_freq', axes(1:2), Time, &
                       'frequency of precip from ras ',       'number' , &
-                      missing_value = missing_value                       )
+                      missing_value = missing_value , &
+                      interp_method = 'conserve_order1' )
 !     endif
 
 !------------------------------------------------------------------------
@@ -3323,12 +3325,14 @@ type(mp_removal_control_type), intent(in) :: Control
       if (do_donner_deep) then
         id_don_precip = register_diag_field ( mod_name, &
                         'don_precip', axes(1:2), Time, &
-                        'Precipitation rate from donner ',      'kg/m2/s' )
+                        'Precipitation rate from donner ',      'kg/m2/s', &
+                        interp_method = 'conserve_order1' )
 
         id_don_freq = register_diag_field ( mod_name, &
                       'don_freq', axes(1:2), Time, &
                       'frequency of precip from donner ',       'number', &
-                      missing_value = missing_value                       )
+                      missing_value = missing_value, &
+                      interp_method = 'conserve_order1' )
 
         id_enth_donner_col2 = register_diag_field ( mod_name, &
                               'enth_donner_col2', axes(1:2), Time, &
@@ -3591,7 +3595,8 @@ type(mp_removal_control_type), intent(in) :: Control
         id_uw_freq = register_diag_field ( mod_name, &
                      'uw_freq', axes(1:2), Time, &
                      'frequency of precip from uw shallow ',  'number' , &
-                     missing_value = missing_value                       )
+                     missing_value = missing_value, &
+                     interp_method = "conserve_order1" )
 
         id_enth_uw_col = register_diag_field ( mod_name, &
                          'enth_uw_col', axes(1:2), Time, &

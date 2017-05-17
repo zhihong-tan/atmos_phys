@@ -1402,25 +1402,30 @@ type(time_type),         intent(in) :: Time
 
       id_lsc_precip = register_diag_field ( mod_name, &
         'lsc_precip', axes(1:2), Time, &
-        'Precipitation rate from lsc ',       'kg/m2/s' )
+        'Precipitation rate from lsc ',       'kg/m2/s', &
+         interp_method = "conserve_order1" )
 
       id_lsc_freq = register_diag_field ( mod_name, &
         'lsc_freq', axes(1:2), Time, &
         'frequency of precip from lsc ',       'number' , &
-         missing_value = missing_value                       )
+         missing_value = missing_value,    &
+         interp_method = "conserve_order1" )
 
       id_lscale_rain3d= register_diag_field ( mod_name, &
         'lscale_rain3d', axes(half), Time, &
-        'Rain fall rate from lscale  -3D ',   'kg(h2o)/m2/s' )
+        'Rain fall rate from lscale  -3D ',   'kg(h2o)/m2/s', &
+         interp_method = "conserve_order1" )
 
       id_lscale_snow3d= register_diag_field ( mod_name, &
         'lscale_snow3d', axes(half), Time, &
-        'Snow fall rate from lscale -3D',       'kg(h2o)/m2/s' )
+        'Snow fall rate from lscale -3D',       'kg(h2o)/m2/s', &
+         interp_method = "conserve_order1" )
    
       id_lscale_precip3d= register_diag_field ( mod_name, &
         'lscale_precip3d', axes(1:3), Time, &
         'LS Precip falling out of gridbox',       'kg(h2o)/m2/s' , &
-        mask_variant = .true., missing_value = missing_value)
+        mask_variant = .true., missing_value = missing_value, &
+        interp_method = "conserve_order1")
 
       if (do_lsc ) then
         id_tdt_ls = register_diag_field ( mod_name, &

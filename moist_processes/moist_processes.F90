@@ -2272,31 +2272,32 @@ integer                     :: id_wetdep_cmip
         id_lsc_cloud_area = register_diag_field ( mod_name, &
           'lsc_cloud_area', axes(1:3), Time, &
           'Large-scale cloud area', 'percent',    &
-                                            missing_value=missing_value )
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         id_lsc_liq_amt = register_diag_field ( mod_name, &
           'lsc_liq_amt', axes(1:3), Time, &
            'Large-scale cloud liquid amount', 'kg/kg',   &
-                                            missing_value=missing_value )
+            missing_value=missing_value, interp_method='conserve_order1' )
 
         id_lsc_ice_amt = register_diag_field ( mod_name, &
           'lsc_ice_amt', axes(1:3), Time, &
           'Large-scale cloud ice amount', 'kg/kg',    &
-                                            missing_value=missing_value )
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         id_conv_cloud_area = register_diag_field ( mod_name, &
           'conv_cloud_area', axes(1:3), Time, &
-          'Convective cloud area', 'percent', missing_value=missing_value )
+          'Convective cloud area', 'percent', missing_value=missing_value, &
+          interp_method='conserve_order1' )
 
         id_conv_liq_amt = register_diag_field ( mod_name, &
           'conv_liq_amt', axes(1:3), Time, &
           'Convective cloud liquid amount', 'kg/kg',    &
-                                             missing_value=missing_value )
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         id_conv_ice_amt = register_diag_field ( mod_name, &
           'conv_ice_amt', axes(1:3), Time, &
           'Convective cloud ice amount', 'kg/kg',    &
-                                             missing_value=missing_value)
+          missing_value=missing_value, interp_method='conserve_order1' )
 
         id_WP_all_clouds = register_diag_field ( mod_name, &
           'WP_all_clouds', axes(1:2), Time, &
