@@ -288,6 +288,7 @@ integer                      :: id_rsdsaf, id_rsusaf, id_rsutaf, &
 type(cmip_diag_id_type)      :: ID_tntr, ID_tntrs, ID_tntrscs, ID_tntrl, ID_tntrlcs, &
                                 ID_rsu, ID_rsucs, ID_rsd, ID_rsdcs, &
                                 ID_rsuaf, ID_rsucsaf, ID_rsdaf, ID_rsdcsaf
+integer                      :: id_albs, id_sza
 integer, dimension(MX_SPEC_LEVS,2)   :: id_swdn_special,   &
                                         id_swup_special,  &
                                         id_netlw_special
@@ -1495,7 +1496,18 @@ logical,         intent(in) :: do_lwaerosol
                 'fracday',axes(1:2), Time,   &
                 'daylight fraction of radiation timestep',   &
                 'percent', missing_value=missing_value)
-        
+
+! cmip6 albedo
+      id_albs = register_cmip_diag_field_2d (mod_name, 'albs', Time, &
+                        'Surface Albedo', '1.0',    &
+                         standard_name = 'surface_albedo', &
+                         interp_method = 'conserve_order1', &
+                         mask_variant = .true.)
+! cmip6 zenith angle
+      id_sza = register_cmip_diag_field_2d (mod_name, 'sza', Time, &
+                        'Solar Zenith Angle', 'degrees',    &
+                         standard_name = 'solar_zenith_angle', &
+                         interp_method = 'conserve_order1')
 
 !-----------------------------------------------------------------------
 
@@ -1642,7 +1654,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                                                 lwdns, swin_clr,   &
                                                 swout_clr, olr_clr, &
                                                 swups_clr, swdns_clr,&
-                                                lwups_clr, lwdns_clr   
+                                                lwups_clr, lwdns_clr
 
       real, dimension (ie-is+1,je-js+1, MX_SPEC_LEVS) ::    & 
                                                 swdn_trop,  &
@@ -1666,7 +1678,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                               swups_ad,    swdns_ad, lwups_ad,lwdns_ad,&
                                  swin_ad_clr, swout_ad_clr, olr_ad_clr,&
                   swups_ad_clr, swdns_ad_clr, lwups_ad_clr, lwdns_ad_clr, &
-                                                               heat2d
+                                                      heat2d, albs
       real, dimension (ie-is+1,je-js+1, size(Rad_output%tdtsw,3)+1) :: &
                                                dfsw_ad, ufsw_ad,  &
                                                dfswcf_ad, ufswcf_ad
@@ -2402,6 +2414,16 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                      Time_diag, is, js )
         endif
 
+        ! cmip6 albedo (missing where swdns=0) 
+        if ( id_albs > 0 ) then
+          where (swdns > 0.0)
+            albs = swups/swdns
+          elsewhere
+            albs = 0.0
+          endwhere
+          used = send_data ( id_albs, albs, Time_diag, is, js, mask=swdns > 0.0 )
+        endif
+
 !------- surface visible albedo  -------------------------
         if ( id_alb_sfc_vis_dir > 0 ) then
           used = send_data ( id_alb_sfc_vis_dir, &
@@ -2529,6 +2551,10 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
             if ( id_cosz > 0 ) then
               used = send_data ( id_cosz, Astro_phys%cosz, Time_diag, is, js )
             endif
+            ! cmip solar zenith angle in degrees
+            if ( id_sza > 0 ) then
+              used = send_data ( id_sza, acos(Astro_phys%cosz)*RADIAN, Time_diag, is, js )
+            endif
 
 !------- daylight fraction  --------------
             if ( id_fracday > 0 ) then
@@ -2540,6 +2566,10 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- cosine of zenith angle ----------------
                if ( id_cosz > 0 ) then
                  used = send_data ( id_cosz, Astro%cosz, Time_diag, is, js )
+               endif
+               ! cmip solar zenith angle in degrees
+               if ( id_sza > 0 ) then
+                 used = send_data ( id_sza, acos(Astro%cosz)*RADIAN, Time_diag, is, js )
                endif
 
 !------- daylight fraction  --------------
