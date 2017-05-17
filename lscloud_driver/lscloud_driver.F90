@@ -1494,11 +1494,13 @@ type(time_type),         intent(in) :: Time
 
         id_prec_ls = register_diag_field ( mod_name, &
           'prec_ls', axes(1:2), Time, &
-          'Precipitation rate from strat cloud',          'kg/m2/s' )
+          'Precipitation rate from strat cloud',          'kg/m2/s', &
+           interp_method = 'conserve_order1' )
 
         id_snow_ls = register_diag_field ( mod_name, &
           'snow_ls', axes(1:2), Time, &
-          'Frozen precip rate from strat cloud',          'kg/m2/s' )
+          'Frozen precip rate from strat cloud',          'kg/m2/s', &
+           interp_method = 'conserve_order1' )
 
         id_q_ls_col = register_diag_field ( mod_name, &
           'q_ls_col', axes(1:2), Time, &

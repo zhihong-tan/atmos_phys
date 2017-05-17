@@ -3087,7 +3087,8 @@ type(mp_removal_control_type), intent(in) :: Control
       id_conv_freq = register_diag_field ( mod_name, &
                      'conv_freq', axes(1:2), Time, &
                      'frequency of convection ',       '1', &
-                     missing_value = missing_value                       )
+                     missing_value = missing_value, &
+                      interp_method = "conserve_order1" )
 
       id_prsnc = register_cmip_diag_field_2d ( mod_name, 'prsnc', Time, &
                               'Convective Snowfall Flux', 'kg m-2 s-1', &
@@ -3096,7 +3097,8 @@ type(mp_removal_control_type), intent(in) :: Control
 
       id_ci = register_cmip_diag_field_2d ( mod_name, 'ci', Time, &
                     'Fraction of Time Convection Occurs in Cell',  '1.0', &
-                         standard_name='convection_time_fraction' )
+                         standard_name='convection_time_fraction', &
+                         interp_method='conserve_order1' )
 
       id_gust_conv = register_diag_field ( mod_name, &
                      'gust_conv', axes(1:2), Time, &
