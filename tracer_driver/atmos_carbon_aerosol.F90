@@ -217,7 +217,7 @@ integer, dimension(6) :: bcbf_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! ship emissions based on V. Eyrig
 character(len=80)     :: bcsh_source = ' '
-character(len=80)     :: bcsh_time_dependency_type
+character(len=80)     :: bcsh_time_dependency_type = 'constant'
 integer, dimension(6) :: bcsh_dataset_entry  = (/ 1, 1, 1, 0, 0, 0 /)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! aircraft emissions based on Steven L. Baughcum
@@ -452,6 +452,8 @@ real, parameter                            :: yield_soa = 0.1
      call interpolator(bcff_aerosol_interp, bcff_time, bcemisff_l1, &
           trim(bcff_emission_name(1)), is, js)
    endif
+
+   nlevel_fire=0
 
    if ( trim(bcbb_source).ne.' ') then
     nlevel_fire = 1
@@ -1301,15 +1303,15 @@ integer ::  unit, ierr, io, logunit
     ! cmip fields
      id_emibc = register_cmip_diag_field_2d ( mod_name, 'emibc', Time, &
                      'Emission Rate of Black Carbon Aerosol Mass', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_due_to_emission')
+                     standard_name='tendency_of_atmosphere_mass_content_of_black_carbon_dry_aerosol_particles_due_to_emission')
 
      id_emipoa = register_cmip_diag_field_2d ( mod_name, 'emipoa', Time, &
                      'Emission Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles_due_to_emission')
 
      id_emibb = register_cmip_diag_field_2d ( mod_name, 'emibb', Time, &
                      'Total Emission of Primary Aerosol from Biomass Burning', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_due_to_emission')
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles_due_to_emission')
 
 !----------------------------------------------------------------------
 
