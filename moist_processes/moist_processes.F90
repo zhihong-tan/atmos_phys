@@ -184,12 +184,11 @@ real    :: sea_salt_scale = 0.1
 real    :: om_to_oc = 1.67
 logical :: do_height_adjust = .false.
    logical :: do_diag_clouds=.false.
-   logical :: use_cf_metadata = .false.
 
 namelist /moist_processes_nml/ do_unified_clouds, do_lsc, do_mca, do_ras,   &
                   do_uw_conv, do_donner_deep, do_dryadj, do_bm,             &
                   do_bmmass, do_bmomp, do_simple, do_rh_clouds,             &
-                  use_cf_metadata,  do_diag_clouds,                         &
+                  do_diag_clouds,                                           &
                   pdepth, limit_conv_cloud_frac, include_donmca_in_cosp,    &
                   use_online_aerosol, use_sub_seasalt, sea_salt_scale,      &
                   om_to_oc, do_height_adjust
@@ -1431,7 +1430,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         do k=1,kx
           tca2(:,:) = tca2(:,:)*(1.0 - total_cloud_area(:,:,k))
         end do
-        tca2 = (1. - tca2) ! cmip6 = Cloud Area Fraction
+        tca2 = 100.*(1. - tca2) ! cmip6 = Cloud Cover Percentage
         used = send_data (id_clt, tca2, Time, is, js)
       endif
 
@@ -2227,7 +2226,7 @@ integer                     :: id_wetdep_cmip
                 'total cloud amount', 'percent')
 
         id_clt = register_cmip_diag_field_2d (mod_name, 'clt', Time, &
-                                      'Total Cloud Fraction', '1.0', &
+                                      'Total Cloud Cover Percentage', '%', &
                                 standard_name= 'cloud_area_fraction' )
 
         id_tot_cloud_area = register_diag_field ( mod_name, &

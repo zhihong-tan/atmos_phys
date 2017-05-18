@@ -13,6 +13,7 @@ MODULE UW_CONV_MOD
   use  field_manager_mod, only: MODEL_ATMOS
   use  tracer_manager_mod, only: get_tracer_names, query_method, &
                                  get_tracer_index, NO_TRACER
+  use atmos_cmip_diag_mod, only: register_cmip_diag_field_2d
   use  sat_vapor_pres_mod,only : sat_vapor_pres_init
   use atmos_tracer_utilities_mod, only : get_wetdep_param
   use moist_proc_utils_mod, only : mp_nml_type
@@ -607,8 +608,9 @@ contains
     id_cqn_uws = register_diag_field ( mod_name, 'cqn_uws', axes(half), Time, &
          'Updraft liquid drop number from shallow plume', '/kg', missing_value=mv)
 
-    id_cltc_uwc=register_diag_field (mod_name, 'cltc', axes(1:2), Time,     &
-         'Convective Cloud Fraction', 'none', missing_value=mv)
+    id_cltc_uwc = register_cmip_diag_field_2d (mod_name, 'cltc_uw', Time,  &
+                                'Convective Cloud Cover Percentage', '%',  &
+                             standard_name='convective_cloud_area_fraction')
 
     id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(half),Time, &
          'liquid water static energy flux from uw_conv', 'W/m2', missing_value=mv)
@@ -864,8 +866,9 @@ contains
          'Out code from uw_conv', 'none' )
     id_feq_uwc = register_diag_field (mod_name, 'feq_uwc',   axes(1:2), Time,   &
          'fraction of time convection occurs from uw_conv', 'none', missing_value=mv)
-    id_feq_uws = register_diag_field (mod_name, 'sci',       axes(1:2), Time,   &
-         'fraction of time shallow plume occurs', 'none', missing_value=mv)
+    id_feq_uws = register_cmip_diag_field_2d (mod_name, 'sci_uw', Time,  &
+                    'Fraction of Time Shallow Convection Occurs', '1.0', &
+                         standard_name='shallow_convection_time_fraction')
     id_rkm_uws = register_diag_field (mod_name, 'rkm_uws', axes(1:2), Time, &
             'lateral mixing rate parameter for shallow_plume', 'none' )
     id_frkm_uws = register_diag_field (mod_name, 'frkm_uws', axes(1:2), Time, &
@@ -2446,7 +2449,7 @@ contains
     used = send_data( id_cql_uwc,    cldql,        Time, is, js, 1)
     used = send_data( id_cqi_uwc,    cldqi,        Time, is, js, 1)
     used = send_data( id_cqn_uwc,    cldqn,        Time, is, js, 1)
-    used = send_data( id_cltc_uwc,   cltc,         Time, is, js)
+    used = send_data( id_cltc_uwc,   cltc*100.,    Time, is, js)
     used = send_data( id_pcb_uwc,    pcb_c*0.01,   Time, is, js)
     used = send_data( id_pct_uwc,    pct_c*0.01,   Time, is, js)
 
