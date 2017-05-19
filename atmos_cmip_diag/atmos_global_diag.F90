@@ -38,7 +38,6 @@ public :: atmos_global_diag_init, &
 
 interface send_global_diag
    module procedure send_global_diag_data
-   module procedure send_global_diag_tile_data
    module procedure send_global_diag_buffer
 end interface
 
@@ -113,7 +112,7 @@ integer :: iunit, ierr, io
     iunit = open_namelist_file()
     ierr=1
     do while (ierr /= 0)
-      read (iunit, nml=fv_cmip_diag_nml, iostat=io, end=10)
+      read (iunit, nml=atmos_global_diag_nml, iostat=io, end=10)
       ierr = check_nml_error (io, 'atmos_global_diag_nml')
     enddo
 10  call close_file (iunit)
@@ -297,6 +296,7 @@ real :: gbl_sum, area_sum
       ('atmos_global_diag_mod', 'module has not been initialized', FATAL)
 
   if (field_num == 0) return
+
   if (field_num < 0 .or. field_num > num_fields) call error_mesg &
       ('atmos_global_diag_mod', 'invalid field number in send_global_diag_data', FATAL)
 
@@ -341,46 +341,6 @@ end function send_global_diag_data
 
 !#######################################################################
 
-function send_global_diag_tile_data (field_num, data, area, Time, mask)
-integer,           intent(in) :: field_num
-real,              intent(in) :: data(:,:,:)
-real,              intent(in) :: area(:,:,:)
-type(time_type),   intent(in) :: Time
-logical,           intent(in) :: mask(:,:,:)
-
-logical :: send_global_diag_tile_data
-!-----------------------------------------------------------------------
-
-integer :: k
-real, dimension(size(data,1),size(data,2)) :: avg, wt
-
-!-----------------------------------------------------------------------
-
-avg = 0.0
-wt  = 0.0
-
-! average over tiles
-  do k = 1, size(area,3)
-    where (mask(:,:,k))
-      avg = avg + data(:,:,k)*area(:,:,k)
-      wt  = wt  + area(:,:,k)
-    endwhere
-  enddo
-
-  where (wt > 0.0)
-    avg = avg/wt
-  elsewhere
-    avg = 0.0
-  endwhere
-
-  send_global_diag_tile_data = send_global_diag_data (field_num, avg, Time, wt, any(mask,dim=3))
-
-!-----------------------------------------------------------------------
-
-end function send_global_diag_tile_data
-
-!#######################################################################
-
 function send_global_diag_buffer (field_num)
 integer,         intent(in) :: field_num
 logical :: send_global_diag_buffer
@@ -395,6 +355,7 @@ real :: gbl_sum, area_sum
       ('atmos_global_diag_mod', 'module has not been initialized', FATAL)
 
   if (field_num == 0) return
+
   if (field_num < 0 .or. field_num > num_fields) call error_mesg &
       ('atmos_global_diag_mod', 'invalid field number in send_global_diag_buffer', FATAL)
 

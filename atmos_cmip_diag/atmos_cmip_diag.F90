@@ -236,7 +236,7 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
     ! at full levels (with bounds attribute)
     id_lev = diag_axis_init('lev', lev, '1.0', 'Z', &
                             'hybrid sigma pressure coordinate', &
-                             direction=-1, set_name='cmip')
+                             direction=-1, set_name='cmip', req='lev_bnds')
     call diag_axis_add_attribute (id_lev, 'formula', 'p(n,k,j,i) = ap(k) + b(k)*ps(n,j,i)')
     call diag_axis_add_attribute (id_lev, 'formula_terms', 'ap: ap b: b ps: ps')
     call diag_axis_add_attribute (id_lev, 'bounds', 'lev_bnds')
@@ -249,8 +249,8 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
                              direction=-1, set_name='cmip')
     call diag_axis_add_attribute (id_levhalf, 'standard_name', &
                                   'atmosphere_hybrid_sigma_pressure_coordinate')
-    call diag_field_add_attribute ( id_levhalf, 'formula', 'p(n,k+1/2,j,i) = ap(k+1/2) + b(k+1/2)*ps(n,j,i)')
-    call diag_field_add_attribute ( id_levhalf, 'formula_terms', 'ap: ap_bnds b: b_bnds ps: ps')
+    call diag_axis_add_attribute ( id_levhalf, 'formula', 'p(n,k+1/2,j,i) = ap(k+1/2) + b(k+1/2)*ps(n,j,i)')
+    call diag_axis_add_attribute ( id_levhalf, 'formula_terms', 'ap: ap_bnds b: b_bnds ps: ps')
 
     ! vertex number for bounds dimension
     id_nv = diag_axis_init('nv', (/1.,2./), 'none', 'N', 'vertex number', set_name='nv')
