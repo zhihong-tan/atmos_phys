@@ -3513,7 +3513,7 @@ endif
                    tdt, qdt, rdt, rdiag, udt, vdt,                   &
                    dcond_ls_liquid, dcond_ls_ice,             &
                    Ndrop_act_clubb, Icedrop_act_clubb,        &
-                   ndust, rbar_dust,                          &
+                   totalmass1, imass1,  &
                    diff_t_clubb,                              &
                    qcvar_clubb,                               &
                    tdt_shf,  qdt_lhf ,                        &                   
@@ -3633,12 +3633,12 @@ endif
   real, intent(in), dimension(:,:)              ::  u_star, b_star, q_star
   real, intent(inout), dimension(:,:,:)         ::  tdt, qdt, udt, vdt
   real, intent(inout), dimension(:,:,:,:)       ::  rdt
-  real, intent(inout), dimension(:,:,:,:)       ::  rdiag
+  real, intent(inout), dimension(:,:,:,ntp+1:)  ::  rdiag
   real, intent(out), dimension(:,:,:)           ::  dcond_ls_liquid
   real, intent(out), dimension(:,:,:)           ::  dcond_ls_ice
   real, intent(out), dimension(:,:,:)           ::  Ndrop_act_clubb
   real, intent(out), dimension(:,:,:)           ::  Icedrop_act_clubb
-  real, intent(out), dimension(:,:,:)           ::  ndust, rbar_dust
+  real, intent( in), dimension(:,:,:,:)         ::  totalmass1, imass1
   real, intent(out), dimension(:,:,:)           ::  diff_t_clubb
   real, intent(out), optional, dimension(:,:,:) ::  qcvar_clubb   
   type(aerosol_type), intent(in), optional      ::  Aerosol
@@ -3654,7 +3654,9 @@ endif
   !=====================================================================
   !=====================================================================
 
-  subroutine clubb_init(id, jd, kd, lon, lat, axes, Time, phalf )
+  subroutine clubb_init(id, jd, kd, lon, lat, axes, Time, phalf, &
+                              l_host_applies_sfc_fluxes_in , &
+                                   do_ice_nucl_wpdf_in, do_liq_num_in)
 
   !---------------------------------------------------------------------
   ! Initialize and set-up clubb
@@ -3685,6 +3687,10 @@ endif
   integer, dimension(4), intent(in)    :: axes
   type(time_type), intent(in)          :: Time
   real, dimension(:,:,:), intent(in)   :: phalf
+  logical,   intent(in)                :: l_host_applies_sfc_fluxes_in
+  logical,   intent(in)                :: do_ice_nucl_wpdf_in   
+  logical,   intent(in)                :: do_liq_num_in         
+ 
  
   call error_mesg ('clubb_driver_mod', 'Not compiled with -DCLUBB', FATAL)
   end subroutine clubb_init
