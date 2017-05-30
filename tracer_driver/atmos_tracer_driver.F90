@@ -509,7 +509,7 @@ real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 
-integer :: isulf, j, k, id, jd, kd, ntcheck
+integer :: isulf, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
 integer :: nql  ! index of cloud liquid specific humidity
 integer :: nqi  ! index of cloud ice water specific humidity
@@ -1916,7 +1916,7 @@ type(time_type), intent(in)                                :: Time
             write(hstr,'(A1,I2.2,A1)') '_',hh-1,'h'
             id_tracer_diag_hour(n,hh)  = register_diag_field (mod_name, &
                  trim(tracer_name)//hstr, axes(1:3), Time, &
-                 trim(tracer_name)//hstr, tracer_units, missing_value=cmor_missing_value,mask_variant = .true.)
+                 trim(tracer_name)//hstr, tracer_units, missing_value=-999.,mask_variant = .true.)
          end do
 
          call  get_cmip_param (n, cmip_name=cmip_name, cmip_longname=cmip_longname, cmip_longname2=cmip_longname2)
@@ -1981,10 +1981,10 @@ type(time_type), intent(in)                                :: Time
          write(hstr,'(A1,I2.2,A1)') '_',hh-1,'h'
          id_temp_hour(hh)  = register_diag_field (mod_name, &
               'temp'//hstr, axes(1:3), Time, &
-              'temp'//hstr, 'K', missing_value=cmor_missing_value,mask_variant = .true.)
+              'temp'//hstr, 'K', missing_value=-999.,mask_variant = .true.)
          id_ps_hour(hh)  = register_diag_field (mod_name, &
               'ps'//hstr, axes(1:2), Time, &
-              'ps'//hstr, 'Pa', missing_value=cmor_missing_value,mask_variant = .true.)
+              'ps'//hstr, 'Pa', missing_value=-999.,mask_variant = .true.)
       end do
 
       id_n_ox_ddep = 0
