@@ -121,7 +121,8 @@ use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_tracer_names,   &
                                   get_tracer_indices, &
                                   adjust_positive_def, &
-                                  query_method
+                                  query_method, &
+				  NO_TRACER
 use field_manager_mod,     only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only :                      &
                                   dry_deposition,           &
@@ -282,7 +283,8 @@ integer :: nDMS_cmip =0
 integer :: nSO2_cmip =0
 integer :: nSO4_cmip =0
 integer :: nNH3_cmip =0
-integer :: noh       =0
+integer :: nOH       =0
+integer :: nC4H10    =0
 integer :: ncodirect =0    
 integer :: ne90 =0          
 integer :: nsulfate  =0
@@ -1201,7 +1203,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                       tracer(:,:,:,nbcphilic), rtndbcphil, &
                                       tracer(:,:,:,nomphobic), rtndomphob, &
                                       tracer(:,:,:,nomphilic), rtndomphil, &
-                                      tracer(:,:,:,noh),    &
+                                      tracer(:,:,:,nOH),    &
                                       Time_next,is,ie,js,je)
       rdt(:,:,:,nbcphobic)=rdt(:,:,:,nbcphobic)+rtndbcphob(:,:,:)
       rdt(:,:,:,nbcphilic)=rdt(:,:,:,nbcphilic)+rtndbcphil(:,:,:)
@@ -1262,7 +1264,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, fliq, cldf, &
                 jday,hour,minute,second,lat,lon,    &
                 do_tracer_sulfate, tr_sulfate, rt_sulfate, &
-                tracer(:,:,:,noh), &
+                tracer(:,:,:,nOH), &
                 Time,Time_next, is,ie,js,je,kbot)
       do isulf=1,nsulfate
         if (do_tracer_sulfate(isulf)) rdt(:,:,:,tr_nbr_sulfate(isulf))= &
@@ -1279,9 +1281,12 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                      'Number of tracers .lt. number for SOA', FATAL)
 
       call mpp_clock_begin (SOA_clock)
-      call atmos_SOA_chem(pwt,t,pfull,phalf,dt, &
-                jday,hour,minute,second,lat,lon,    &
-                tracer(:,:,:,nSOA),rtnd, Time,Time_next,is,ie,js,je,kbot )
+      call atmos_SOA_chem(pwt ,t, pfull, phalf, dt, &
+                jday, hour, minute, second, lat, lon,    &
+                tracer(:,:,:,nSOA), &
+		tracer(:,:,:,nOH), &
+		tracer(:,:,:,nC4H10), &
+		rtnd, Time, Time_next, is,ie,js,je,kbot )
 
       rdt(:,:,:,nSOA)=rdt(:,:,:,nSOA)+rtnd(:,:,:)
       call mpp_clock_end (SOA_clock)
@@ -1611,7 +1616,15 @@ type(time_type), intent(in)                                :: Time
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
       nSO4_cmip = get_tracer_index(MODEL_ATMOS,'so4')
       nNH3_cmip = get_tracer_index(MODEL_ATMOS,'nh3')
-      noh       = get_tracer_index(MODEL_ATMOS,'oh')
+      nOH       = get_tracer_index(MODEL_ATMOS,'oh')
+      nC4H10    = get_tracer_index(MODEL_ATMOS,'c4h10')
+! Check for presence of OH and C4H10 (diagnostic) tracers
+! If not present set index to 1 so interface calls do not fail,
+! but FATAL error will be issued by atmos_sulfate_init, 
+! atmos_carbon_aerosol_init (if do_dynamic_bc or do_dynamic_om), and
+! atmos_SOA_init (if use_interactive_tracers)
+      if (nOH == NO_TRACER) nOH = 1
+      if (nC4H10 == NO_TRACER) nC4H10 = 1
       ncodirect = get_tracer_index(MODEL_ATMOS,'codirect')
       ne90      = get_tracer_index(MODEL_ATMOS,'e90')
 
