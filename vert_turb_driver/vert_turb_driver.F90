@@ -55,7 +55,11 @@ use tracer_manager_mod, only: get_tracer_index, &
 
 use moist_proc_utils_mod,  only: rh_calc
 
-use atmos_cmip_diag_mod, only: register_cmip_diag_field_2d
+use atmos_cmip_diag_mod, only: register_cmip_diag_field_2d, &
+                               register_cmip_diag_field_3d, &
+                               send_cmip_data_3d, &
+                               cmip_diag_id_type, &
+                               query_cmip_diag_id
 
 implicit none
 private
@@ -145,6 +149,7 @@ integer :: id_tke,    id_lscale, id_lscale_0, id_z_pbl, id_gust,  &
            id_diff_t_entr, id_diff_m_entr,                        &
            id_z_Ri_025, id_tref, id_qref, id_rh_Ri_025  ! cjg: PBL depth mods, h1g, add RH diagnostics at Ri_025, 2015-04-02
 integer :: id_bldep ! cmip6 boundary layer depth
+type(cmip_diag_id_type) :: ID_evu, ID_edt
 
 real :: missing_value = -999.
 
@@ -646,15 +651,17 @@ end if
   endif
 
 !------- diffusion coefficient for heat/moisture -------
-   if ( id_diff_t > 0 ) then
+   if ( id_diff_t > 0 .or. query_cmip_diag_id(ID_edt) ) then
       diag3(:,:,1:nlev) = diff_t(:,:,1:nlev)
-      used = send_data ( id_diff_t, diag3, Time_next, is, js, 1, mask=lmask )
+      if (id_diff_t > 0) used = send_data ( id_diff_t, diag3, Time_next, is, js, 1, mask=lmask )
+      if (query_cmip_diag_id(ID_edt)) used = send_cmip_data_3d (ID_edt, diag3, Time_next, is, js, 1, mask=lmask)
    endif
 
 !------- diffusion coefficient for momentum -------
-   if ( id_diff_m > 0 ) then
+   if ( id_diff_m > 0 .or. query_cmip_diag_id(ID_evu)) then
       diag3(:,:,1:nlev) = diff_m(:,:,1:nlev)
-      used = send_data ( id_diff_m, diag3, Time_next, is, js, 1, mask=lmask )
+      if (id_diff_m > 0) used = send_data ( id_diff_m, diag3, Time_next, is, js, 1, mask=lmask )
+      if (query_cmip_diag_id(ID_evu)) used = send_cmip_data_3d (ID_evu, diag3, Time_next, is, js, 1, mask=lmask)
    endif
 
 !------- diffusion coefficient for shallow conv -------
@@ -962,6 +969,17 @@ endif
    register_diag_field ( mod_name, 'diff_m', axes(half), Time,      &
                         'vert diff coeff for momentum',  'm2/s'   , &
                         missing_value=missing_value               )
+
+! cmip6 diagnostics
+
+   ID_evu = register_cmip_diag_field_3d ( mod_name, 'evu', Time, &
+                      'Eddy Viscosity Coefficient for Momentum Variables', 'm2 s-1', &
+                       standard_name='atmosphere_momentum_diffusivity', axis='half' )
+
+   ID_edt = register_cmip_diag_field_3d ( mod_name, 'edt', Time, &
+                      'Eddy Diffusivity Coefficient for Temperature Variable', 'm2 s-1', &
+                       standard_name='atmosphere_heat_diffusivity', axis='half' )
+                     
 
 if (do_shallow_conv) then
 

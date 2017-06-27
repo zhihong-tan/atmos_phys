@@ -13,7 +13,10 @@ MODULE UW_CONV_MOD
   use  field_manager_mod, only: MODEL_ATMOS
   use  tracer_manager_mod, only: get_tracer_names, query_method, &
                                  get_tracer_index, NO_TRACER
-  use atmos_cmip_diag_mod, only: register_cmip_diag_field_2d
+  use atmos_cmip_diag_mod, only: register_cmip_diag_field_2d, &
+                                 register_cmip_diag_field_3d, &
+                                 send_cmip_data_3d, &
+                                 cmip_diag_id_type
   use  sat_vapor_pres_mod,only : sat_vapor_pres_init
   use atmos_tracer_utilities_mod, only : get_wetdep_param
   use moist_proc_utils_mod, only : mp_nml_type
@@ -369,6 +372,10 @@ MODULE UW_CONV_MOD
        id_dcwfndt_fre, id_dcwfndt_pbl, id_cwfn3d_uwd, id_cape3d_uwd
 !========Option for deep convection=======================================
 
+  ! 3d cmip diagnostics
+  type(cmip_diag_id_type) :: ID_clc_uwc, ID_clwc_uwc, ID_clic_uwc, ID_smc_uwc, &
+                             ID_dmc_uwc
+
   type(cwetdep_type), dimension(:), allocatable :: wetdep
   type(uw_params),  save  :: Uw_p
   character(len=32), dimension(:), allocatable   :: tracername
@@ -608,9 +615,29 @@ contains
     id_cqn_uws = register_diag_field ( mod_name, 'cqn_uws', axes(half), Time, &
          'Updraft liquid drop number from shallow plume', '/kg', missing_value=mv)
 
+   !---- cmip diagnostics ----
     id_cltc_uwc = register_cmip_diag_field_2d (mod_name, 'cltc_uw', Time,  &
                                 'Convective Cloud Cover Percentage', '%',  &
                              standard_name='convective_cloud_area_fraction')
+    ID_clc_uwc = register_cmip_diag_field_3d (mod_name, 'clc_uw', Time,  &     ! same as 'cqa_uwc'
+                                 'Convective Cloud Area Fraction', '%',  &
+                             standard_name='convective_cloud_area_fraction_in_atmosphere_layer')
+    ID_clwc_uwc = register_cmip_diag_field_3d (mod_name, 'clwc_uw', Time,  &   ! same as 'cql_uwc'
+                                 'Mass Fraction of Convective Cloud Liquid Water', '1.0',  &
+                             standard_name='mass_fraction_of_convective_cloud_liquid_water_in_air')
+    ID_clic_uwc = register_cmip_diag_field_3d (mod_name, 'clic_uw', Time,  &   ! same as 'cqi_uwc'
+                                 'Mass Fraction of Convective Cloud Ice', '1.0',  &
+                             standard_name='mass_fraction_of_convective_cloud_ice_in_air')
+    ID_smc_uwc = register_cmip_diag_field_3d ( mod_name, 'smc_uw', Time, &  ! same as 'cmf_uws'
+                    'Shallow Convective Mass Flux', 'kg m-2 s-1', &
+          standard_name='atmosphere_net_upward_shallow_convective_mass_flux', axis='half' )
+    if (do_deep) then
+      ID_dmc_uwc = register_cmip_diag_field_3d ( mod_name, 'dmc_uw', Time, &   ! same as 'cmf_uwd'
+                         'Deep Convective Mass Flux', 'kg m-2 s-1', &
+           standard_name='atmosphere_net_upward_deep_convective_mass_flux', axis='half' )
+    endif
+   !---- end cmip diagnostics ----
+
 
     id_hlflx_uwc=register_diag_field (mod_name,'hlflx_uwc',axes(half),Time, &
          'liquid water static energy flux from uw_conv', 'W/m2', missing_value=mv)
@@ -2449,9 +2476,14 @@ contains
     used = send_data( id_cql_uwc,    cldql,        Time, is, js, 1)
     used = send_data( id_cqi_uwc,    cldqi,        Time, is, js, 1)
     used = send_data( id_cqn_uwc,    cldqn,        Time, is, js, 1)
-    used = send_data( id_cltc_uwc,   cltc*100.,    Time, is, js)
     used = send_data( id_pcb_uwc,    pcb_c*0.01,   Time, is, js)
     used = send_data( id_pct_uwc,    pct_c*0.01,   Time, is, js)
+   ! cmip diagnostics
+    if (id_cltc_uwc > 0) used = send_data ( id_cltc_uwc,   cltc*100.,   Time, is, js)
+    used = send_cmip_data_3d ( ID_clc_uwc,  cldqa, Time, is, js, 1)
+    used = send_cmip_data_3d ( ID_clwc_uwc, cldql, Time, is, js, 1)
+    used = send_cmip_data_3d ( ID_clic_uwc, cldqi, Time, is, js, 1)
+    used = send_cmip_data_3d ( ID_smc_uwc,  cmf_s, Time, is, js, 1)
 
     used = send_data( id_cqa_uws,    cqa_s,        Time, is, js, 1)
     used = send_data( id_cql_uws,    cql_s,        Time, is, js, 1)
@@ -2713,6 +2745,7 @@ contains
        used=send_data( id_qdt_uwd,   qvten_d,        Time, is, js, 1)
        used=send_data( id_qtdt_uwd,  qtten_d,        Time, is, js, 1)
        used=send_data( id_cmf_uwd,   cmf_d,          Time, is, js, 1)
+       used=send_cmip_data_3d ( ID_dmc_uwc,  cmf_d,  Time, is, js, 1)   ! cmip diag
        used=send_data( id_buo_uwd,   buo_d,          Time, is, js, 1)
        used=send_data( id_wuo_uwd,   wuo_d,          Time, is, js, 1)
 
