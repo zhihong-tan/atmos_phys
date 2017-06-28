@@ -2480,7 +2480,7 @@ contains
     used = send_data( id_pct_uwc,    pct_c*0.01,   Time, is, js)
    ! cmip diagnostics
     if (id_cltc_uwc > 0) used = send_data ( id_cltc_uwc,   cltc*100.,   Time, is, js)
-    used = send_cmip_data_3d ( ID_clc_uwc,  cldqa, Time, is, js, 1)
+    used = send_cmip_data_3d ( ID_clc_uwc,  cldqa*100., Time, is, js, 1)
     used = send_cmip_data_3d ( ID_clwc_uwc, cldql, Time, is, js, 1)
     used = send_cmip_data_3d ( ID_clic_uwc, cldqi, Time, is, js, 1)
     used = send_cmip_data_3d ( ID_smc_uwc,  cmf_s, Time, is, js, 1)

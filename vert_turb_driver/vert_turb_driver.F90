@@ -637,7 +637,8 @@ end if
 
   if ( id_diff_t > 0 .or. id_diff_m > 0 .or. id_diff_sc > 0 .or. &
        id_diff_t_stab > 0 .or. id_diff_m_stab > 0 .or.           &
-       id_diff_t_entr > 0 .or. id_diff_m_entr > 0  ) then
+       id_diff_t_entr > 0 .or. id_diff_m_entr > 0 .or.           &
+       query_cmip_diag_id(ID_edt) .or. query_cmip_diag_id(ID_evu) ) then
 !       --- set up local mask for fields without surface data ---
         if (present(mask)) then
             lmask(:,:,1:nlev) = mask(:,:,1:nlev) > 0.5
