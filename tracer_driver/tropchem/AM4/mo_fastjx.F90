@@ -5,6 +5,8 @@ module MO_FASTJX_MOD
 !       
 !       Aug 12, 2015
 !       Jingyi.Li@noaa.gov
+!
+!       December 2016 -- removed hard-coding for number of vertical levels (LWH)
 !----------------------------------------------------------------------
 !         Below is the original information from FASTJX code
 ! ---------- JX71_notes.f90
@@ -503,24 +505,24 @@ module MO_FASTJX_MOD
 !     MASFAC = used to calc ZH
 !     pfactor1 = pa => molec/cm2
 !-----------------------------------------------------------------------
-      integer, parameter                ::      L_      =48             !altitude(levels) dim of CTM grid
-      integer, parameter                ::      L1_     =L_+1           !assuming another layer above the top layer
-      integer, parameter                ::      L2_     =2*L_+2         !2*L1_ = 2*L_ + 2 = no. levels in the basic Fast-JX grid (mid-level_ 
-      integer, parameter                ::      JXL_    =48             ! JXL_: vertical(levels) dim for J-values computed within fast-JX
-      integer, parameter                ::      JXL1_   =JXL_+1
-      integer, parameter                ::      JXL2_   =2*JXL_+2       ! JXL2_: 2*JXL_ + 2 = mx no. levels in the basic Fast-JX grid (mid-level)
+!     integer, parameter                ::      L_      =48             !altitude(levels) dim of CTM grid
+!     integer, parameter                ::      L1_     =L_+1           !assuming another layer above the top layer
+!     integer, parameter                ::      L2_     =2*L_+2         !2*L1_ = 2*L_ + 2 = no. levels in the basic Fast-JX grid (mid-level_
+!     integer, parameter                ::      JXL_    =48             ! JXL_: vertical(levels) dim for J-values computed within fast-JX
+!     integer, parameter                ::      JXL1_   =JXL_+1
+!     integer, parameter                ::      JXL2_   =2*JXL_+2       ! JXL2_: 2*JXL_ + 2 = mx no. levels in the basic Fast-JX grid (mid-level)
       real*8,  parameter                ::      SZAMAX  =98.0d0         !Solar zenith angle cut-off, above which to skip calculation
       integer, parameter                ::      WX_     =18             !dim = no. of wavelengths in input file
-!      integer, parameter                ::      X_      =72            !dim = no. of X-section data sets (input data)
+!     integer, parameter                ::      X_      =72            !dim = no. of X-section data sets (input data)
       integer, parameter                ::      X_      =69             ! ++j2l modified to match AM3
       integer, parameter                ::      A_      =40             !dim = no. of Aerosol/cloud Mie sets (input data)
       integer, parameter                ::      C_      =16             ! C_   = dim = no. of cld-data sets (input data)
       integer, parameter                ::      W_      =18             !dim = no. of Wavelength bins:  =18 std, =12 trop only
 
-!      integer, parameter                ::      JVN_    =101           ! max no. of J-values
+!     integer, parameter                ::      JVN_    =101           ! max no. of J-values
       integer, parameter                ::      JVN_    =69             ! max no. of J-values
       integer, parameter                ::      AN_     =25             ! no of separate aerosols per layer (needs NDX for each)
-!      integer, parameter                ::      NJX_    =100
+!     integer, parameter                ::      NJX_    =100
       integer, parameter                ::      NJX_    =69             ! ++j2l modified to match AM3 
       integer, parameter                ::      N_      =601            !no. of levels in Mie scattering arrays
                                                                         !     = 2*NC+1 = 4*(L_+1) + 1`+ 2*sum(JADDLV)
@@ -540,7 +542,7 @@ module MO_FASTJX_MOD
       real*8, parameter                 ::      ZZHT    =5.d5           !Effective scale height above top of atmosphere (cm)
       real*8, parameter                 ::      ATAU    =1.120d0        ! ATAU: heating rate (factor increase from one layer to the next)
       real*8, parameter                 ::      ATAU0   =0.010d0        ! ATAU0: minimum heating rate
-      integer, parameter                ::      JTAUMX  =(N_ - 4*L_)/2  ! JTAUMX = maximum number of divisions (i.e., may not get to ATAUMN)
+!     integer, parameter                ::      JTAUMX  =(N_ - 4*L_)/2  ! JTAUMX = maximum number of divisions (i.e., may not get to ATAUMN)
 
 !-----RD_XXX  <- FJX_spec.dat-------------------------------------------
       real*8                            ::      WBIN(WX_+1)             ! WBIN: Boundaries of wavelength bins
@@ -763,9 +765,9 @@ module MO_FASTJX_MOD
 !   PPP - pressure at CTM layer edge, PPP(L1_+1)=0 (top-of-atmos)
 !---calling sequence variables
       real*8,  intent(in)                   :: U0,REFLB,SOLF
-      real*8,  intent(in),dimension(L1_)    :: phalf1,&               !Pressure at boundaries (Pa) 49 layer
+      real*8,  intent(in),dimension(:)      :: phalf1,&               !Pressure at boundaries (Pa) 49 layer
                                                zhalf1                 !height at layer boundaries      
-      real*8,  intent(in),dimension(L_)     :: pfull1,&               !Pressure at mid-layer (Pa)  48
+      real*8,  intent(in),dimension(:)      :: pfull1,&               !Pressure at mid-layer (Pa)  48
                                                tfull,&                !Temperature at mid-Layer (K)           
                                                XO3,&                  !O3 mixing ratio (VMR)              
                                                pwt                    !Column air density (Kg/m2)          
@@ -779,38 +781,40 @@ module MO_FASTJX_MOD
       logical, intent(in)                   ::  time_varying_solarflux    ! solar cycle on fastjx?
 !---reports out the JX J-values, upper level program converts to CTM chemistry J's
 !      real*8, intent(out), dimension(L1_-1,NJXU)::  VALJXX
-      real*8, intent(out), dimension(L1_-1,NJX_)::  ZPJ
+      real*8, intent(out), dimension(:,:)   ::  ZPJ
 
 !-----------------------------------------------------------------------
 !--------key LOCAL atmospheric data needed to solve plane-parallel J----
 !-----these are dimensioned JXL_, and must have JXL_ .ge. L_
-      real*8, dimension(L1_)                ::  LWP,IWP,REFFL,REFFI,phalf
-      real*8, dimension(L_)                 ::  pfull
-      real*8, dimension(L1_+1)              ::  TTJ,DDJ,OOJ,ZZJ
-      real*8, dimension(L1_+1)              ::  PPJ,RELH
-      integer,dimension(L2_+1)              ::  JXTRA
+      real*8, dimension(size(phalf1))       ::  LWP,IWP,REFFL,REFFI,phalf
+      real*8, dimension(size(pfull1))       ::  pfull
+      real*8, dimension(size(phalf1)+1)     ::  TTJ,DDJ,OOJ,ZZJ
+      real*8, dimension(size(phalf1)+1)     ::  PPJ,RELH
+      integer,dimension(2*size(pfull1)+3)   ::  JXTRA
       real*8, dimension(W_)                 ::  FJTOP,FJBOT,FSBOT,FLXD0,RFL
-      real*8, dimension(L_, W_)             ::  AVGF, FJFLX
-      real*8, dimension(L1_,W_)             ::  DTAUX, FLXD
-      real*8, dimension(8,L1_,W_)           ::  POMEGAX
-      real*8, dimension(L1_)                ::  DTAU600
-      real*8, dimension(8,L1_)              ::  POMG600
-      real*8, dimension(W_,L1_)             ::  FFX
+      real*8, dimension(size(pfull1), W_)   ::  AVGF, FJFLX
+      real*8, dimension(size(phalf1),W_)    ::  DTAUX, FLXD
+      real*8, dimension(8,size(phalf1),W_)  ::  POMEGAX
+      real*8, dimension(size(phalf1))       ::  DTAU600
+      real*8, dimension(8,size(phalf1))     ::  POMG600
+      real*8, dimension(W_,size(phalf1))    ::  FFX
       real*8, dimension(W_,8)               ::  FFXNET
       logical  :: LPRTJ                   ! set to false
 
+!------------array dimensions-------------------------------------------
+      integer            :: L_, L1_, JXL_, JXL1_, JTAUMX
 !---flux/heating arrays (along with FJFLX,FLXD,FLXD0)
-      real*8             :: FLXJ(L1_),FFX0,FXBOT,FABOT
+      real*8             :: FLXJ(size(phalf1)),FFX0,FXBOT,FABOT
       real*8             :: ODABS,ODRAY,ODI,ODL
       real*8             :: RFLECT,FREFS,FREFL,FREFI
-      real*8             :: AMF2(2*L1_+1,2*L1_+1)
+      real*8             :: AMF2(2*size(phalf1)+1,2*size(phalf1)+1)
 !------------key SCATTERING arrays for clouds+aerosols------------------
       real*8             :: OPTX(5),SSAX(5),SLEGX(8,5)
-      real*8             :: OD(5,L1_),SSA(5,L1_),SLEG(8,5,L1_)
-      real*8             :: OD600(L1_)
+      real*8             :: OD(5,size(phalf1)),SSA(5,size(phalf1)),SLEG(8,5,size(phalf1))
+      real*8             :: OD600(size(phalf1))
       real*8             :: PATH,RH,XTINCT
 !------------key arrays AFTER solving for J's---------------------------
-      real*8             :: FFF(W_,JXL_),VALJ(X_)
+      real*8             :: FFF(W_,size(pfull1)),VALJ(X_)
       real*8             :: FLXUP(W_),FLXDN(W_),DIRUP(W_),DIRDN(W_)
 
       integer            :: LU,L2U, I,J,K,L,M,KMIE,KW,NAER,NDXI,NDXL, RATIO(W_)
@@ -818,8 +822,8 @@ module MO_FASTJX_MOD
 !-----------------------------------------------------------------------
       real*8             :: FACTOR
       real*8             :: SZA, IWC
-      real*8, dimension(L1_+1)  :: ZZZ                 ! ZZZ at boundaries
-      real*8, dimension(L1_-1,NJX_)::  VALJXX
+      real*8, dimension(size(phalf1)+1)  :: ZZZ                 ! ZZZ at boundaries
+      real*8, dimension(size(phalf1)-1,NJX_)::  VALJXX
 !-----------------------------------------------------------------------
       type(time_type),intent(in) :: Time
       integer :: yr, mo, day, hr, minute, sec
@@ -830,6 +834,12 @@ module MO_FASTJX_MOD
          call get_solar_data(yr, mo, solar_constant, solflxband_now)
          FL = solflxband_now
       endif
+!------------set array dimensions---------------------------------------
+      L_    = size(pfull1)
+      L1_   = size(phalf1)
+      JXL_  = size(pfull1)
+      JXL1_ = JXL_ + 1
+      JTAUMX  =(N_ - 4*L_)/2  ! JTAUMX = maximum number of divisions (i.e., may not get to ATAUMN)
       if (L1_ .gt. JXL1_) then
         write(*,*) ' PHOTO_JX: not enough levels in JX', L1_, JXL1_
         stop
@@ -2113,28 +2123,30 @@ module MO_FASTJX_MOD
 !-----------------------------------------------------------------------
       implicit none
 
-      real*8, intent(in) ::   DTAUX(JXL1_,W_),POMEGAX(8,JXL1_,W_)
-      real*8, intent(in) ::   AMF2(2*JXL1_+1,2*JXL1_+1)
-      real*8, intent(in) ::   U0,RFL(W_)
-      integer, intent(in) ::  JXTRA(JXL2_+1), LU
-      real*8, intent(out) ::FJACT(JXL_,W_),FJTOP(W_),FJBOT(W_),FSBOT(W_)
-      real*8, intent(out) ::  FJFLX(JXL_,W_),FLXD(JXL1_,W_),FLXD0(W_)
+      real*8, intent(in) ::   DTAUX(:,:),POMEGAX(:,:,:)
+      real*8, intent(in) ::   AMF2(:,:)
+      real*8, intent(in) ::   U0,RFL(:)
+      integer, intent(in) ::  JXTRA(:), LU
+      real*8, intent(out) ::FJACT(:,:),FJTOP(:),FJBOT(:),FSBOT(:)
+      real*8, intent(out) ::  FJFLX(:,:),FLXD(:,:),FLXD0(:)
 
-      integer JNDLEV(JXL_),JNELEV(JXL1_)
-      integer JADDLV(JXL2_+1),JADDTO(JXL2_+1),L2LEV(JXL2_+1)
+      integer JNDLEV(size(FJACT,1)),JNELEV(size(DTAUX,1))
+      integer JADDLV(size(JXTRA)),JADDTO(size(JXTRA)),L2LEV(size(JXTRA))
       integer JTOTL,I,II,J,K,L,LL,IX,JK,   L2,L2L,L22,LZ,LZZ,ND
       integer L1U,L2U,   LZ0,LZ1,LZMID
       real*8   SUMT,SUMJ
 
-      real*8  DTAU(JXL1_+1,W_),POMEGAJ(M2_,JXL2_+1,W_),TTAU(JXL2_+1,W_)
-      real*8  FTAU2(JXL2_+1,W_),POMEGAB(M2_,W_)
+      real*8  DTAU(size(DTAUX,1)+1,W_),POMEGAJ(M2_,size(JXTRA),W_),TTAU(size(JXTRA),W_)
+      real*8  FTAU2(size(JXTRA),W_),POMEGAB(M2_,W_)
       real*8  ATAUA,ATAUZ,XLTAU,TAUDN,TAUUP,DTAUJ,FJFLX0
       real*8, dimension(W_) :: TAUBTM,TAUTOP,FBTM,FTOP,ZFLUX
 !--- variables used in mie code-----------------------------------------
       real*8, dimension(W_)         :: FJT,FJB
       real*8, dimension(N_,W_)      :: FJ,FZ,ZTAU
       real*8, dimension(M2_,N_,W_)  :: POMEGA
-      real*8, dimension(2*JXL1_,W_)  :: FLXD2
+      real*8, dimension(2*size(DTAUX,1),W_)  :: FLXD2
+!------------array dimensions-------------------------------------------
+      integer            :: JXL_
 
 !---there is a parallel correspondence:
 !  dimension of JX arrays JXL_ .ge. dimension that CTM is using = L_
@@ -2224,6 +2236,8 @@ module MO_FASTJX_MOD
 !---    JADDLV is taken from JXTRA, which is based on visible OD.
 !---    JADDTO(L2=1:L2_+1) is the cumulative number of levels to be added
 !---these should be fixed for all wavelengths to lock-in the array sizes
+!------------set array dimensions---------------------------------------
+      JXL_ = size(FJACT,1)
       if (LU .gt. JXL_) then
          write(*,*) ' OPMIE:  JXL_ .lt. L_', LU, JXL_
          stop
@@ -3295,10 +3309,14 @@ module MO_FASTJX_MOD
       real*8  QO2TOT, QO3TOT, QO31DY, QO31D, QQQT, TFACT
       real*8  TT,PP,DD,TT200,TFACA,TFAC0,TFAC1,TFAC2,QQQA,QQ2,QQ1A,QQ1B
       integer J,K,L, IV
+!------------array dimensions-------------------------------------------
+      integer            :: L1_
       if (NJXU .lt. NJX) then
         write(*,*) ' JRATET:  CTM has not enough J-values dimensioned'
         stop
       endif
+!------------set array dimensions---------------------------------------
+      L1_ = LU + 1
 
       do L = 1,LU
 !---need temperature, pressure, and density at mid-layer (for some quantum yields):
