@@ -26,9 +26,15 @@ use time_manager_mod,        only: time_type, time_manager_init,  &
                                    operator(>)
 use diag_manager_mod,        only: register_diag_field, send_data, &
                                    diag_manager_init, get_diag_field_id, &
+                                   register_static_field, diag_axis_init, &
+                                   diag_field_add_attribute, &
                                    DIAG_FIELD_NOT_FOUND
-use diag_data_mod,           only: CMOR_MISSING_VALUE
+use diag_data_mod,           only: CMOR_MISSING_VALUE, null_axis_id
 use constants_mod,           only: diffac, GRAV, RDGAS
+
+! atmos shared modules
+
+use atmos_cmip_diag_mod,     only: register_cmip_diag_field_2d
 
 ! cloud radiation modules
 
@@ -322,6 +328,16 @@ integer, dimension(:), allocatable ::    &
 
 ! cmip diagnostic fields
 integer :: id_reffclwtop, id_cldncl, id_cldnvi
+
+! cmip low, mid, high clouds
+integer, parameter :: id_p840=1, id_p560=2, id_p220=3
+integer, dimension(3)   :: plevels = (/ 840, 560, 220 /)
+integer, dimension(2,3) :: plevel_bnds = (/ 1000, 680, &
+                                             680, 440, &
+                                             440,   0 /)
+integer :: id_plevel(3)
+integer :: id_cll, id_clm, id_clh
+
  
 logical :: output_opdepth_diagnostics = .false.
 logical :: module_is_initialized = .false.    ! module  initialized ?
@@ -1654,7 +1670,7 @@ if (Time_diag > Time) then
 !    wise it is 0.0. define high cloud percentage by summing over all 
 !    bands.
 !---------------------------------------------------------------------
-        if (id_high_cld_amt > 0)  then
+        if (id_high_cld_amt > 0 .or. id_clh > 0) then
           nn=size(tmplmask4,3)
           do n=1,ncol
             tmplmask4(:,:,:,n) = (pflux(:,:,1:nn) <= high_btm)
@@ -1666,8 +1682,8 @@ if (Time_diag > Time) then
           cloud2n(:,:,:) = MIN (cloud2n(:,:,:), 1.0)
           hml_ca(:,:,1) = 100.0*SUM (cloud2n(:,:,:), dim = 3)/  &
                                                             REAL (ncol)
-          used = send_data (id_high_cld_amt, hml_ca(:,:,1),  &
-                            Time_diag, is, js)
+          used = send_data (id_high_cld_amt, hml_ca(:,:,1), Time_diag, is, js)
+          used = send_data (id_clh,          hml_ca(:,:,1), Time_diag, is, js)
         endif
 
 !---------------------------------------------------------------------
@@ -1677,7 +1693,7 @@ if (Time_diag > Time) then
 !    wise it is 0.0. define middle cloud percentage by summing over all 
 !    bands.
 !---------------------------------------------------------------------
-        if (id_mid_cld_amt > 0) then    
+        if (id_mid_cld_amt > 0 .or. id_clm > 0) then    
           nn=size(tmplmask4,3)
           do n=1,ncol
             tmplmask4(:,:,:,n) =     &
@@ -1691,8 +1707,8 @@ if (Time_diag > Time) then
           cloud2n(:,:,:) = MIN (cloud2n(:,:,:), 1.0)
           hml_ca(:,:,2) = 100.0*SUM (cloud2n(:,:,:), dim = 3)/  &
                                                             REAL (ncol)
-          used = send_data (id_mid_cld_amt, hml_ca(:,:,2),   &
-                            Time_diag, is, js)
+          used = send_data (id_mid_cld_amt, hml_ca(:,:,2), Time_diag, is, js)
+          used = send_data (id_clm,         hml_ca(:,:,2), Time_diag, is, js)
         endif
 
 !---------------------------------------------------------------------
@@ -1702,7 +1718,7 @@ if (Time_diag > Time) then
 !    wise it is 0.0. define low cloud percentage by summing over all 
 !    bands.
 !---------------------------------------------------------------------
-        if (id_low_cld_amt > 0)  then            
+        if (id_low_cld_amt > 0 .or. id_cll > 0)  then            
           nn=size(tmplmask4,3)
           do n=1,ncol
             tmplmask4(:,:,:,n) = (pflux(:,:,1:nn) > mid_btm)
@@ -1714,8 +1730,8 @@ if (Time_diag > Time) then
           cloud2n(:,:,:) = MIN (cloud2n(:,:,:), 1.0)
           hml_ca(:,:,3) = 100.0*SUM (cloud2n(:,:,:), dim = 3)/    &
                                                             REAL (ncol)
-          used = send_data (id_low_cld_amt, hml_ca(:,:,3),  &
-                            Time_diag, is, js)
+          used = send_data (id_low_cld_amt, hml_ca(:,:,3), Time_diag, is, js)
+          used = send_data (id_cll,         hml_ca(:,:,3), Time_diag, is, js)
         endif
           
 !---------------------------------------------------------------------
@@ -3797,6 +3813,12 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
       integer          :: n
       integer          :: area_id
 
+      ! for cmip low, mid, high clouds
+      integer :: k
+      integer :: id_plevel_bnds, id_nv
+      character(len=4) :: plabel
+      logical :: used
+
 !---------------------------------------------------------------------
 !    retrieve the diag_manager id for the area diagnostic, needed for
 !    cmorizing various diagnostics.
@@ -3858,6 +3880,49 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
                         'Column Integrated Cloud Droplet Number', 'm-2', &
                         standard_name='atmosphere_number_content_of_cloud_droplets', &
                         area=area_id, missing_value=CMOR_MISSING_VALUE )
+
+      ! cmip low, middle, high cloud ammounts
+      do k = 1, size(plevels,1)
+        write(plabel,'(i4)') plevels(k)
+        plabel = adjustl(plabel)
+        id_plevel(k) = register_static_field (mod_name, 'p'//trim(plabel), (/null_axis_id/), &
+                                      trim(plabel)//' hPa', 'Pa', standard_name='air_pressure')
+        if (id_plevel(k) > 0) then
+          call diag_field_add_attribute (id_plevel(k), 'axis', 'Z')
+          call diag_field_add_attribute (id_plevel(k), 'positive', 'down' )
+          ! add bounds
+          id_nv = diag_axis_init('nv', (/1.,2./), 'none', 'N', 'vertex number', set_name='nv')
+          id_plevel_bnds = register_static_field (mod_name, 'p'//trim(plabel)//'_bnds', &
+                               (/id_nv,null_axis_id/), trim(plabel)//' hPa boundaries', &
+                               'Pa', standard_name='air_pressure')
+          if (id_plevel_bnds > 0) then
+            call diag_field_add_attribute (id_plevel(k), 'bounds', 'p'//trim(plabel)//'_bnds')
+            used = send_data (id_plevel_bnds, real(plevel_bnds(:,k))*100., Time)
+          endif
+          used = send_data (id_plevel(k), real(plevels(k))*100., Time)
+        end if
+      enddo
+
+      id_cll = register_cmip_diag_field_2d (mod_name, 'cll', Time, &
+                          'Low Level Cloud Cover Percentage', '%', &
+                      standard_name='cloud_area_fraction_in_atmosphere_layer')
+      if (id_cll > 0 .and. id_plevel(id_p840) > 0) then
+        call diag_field_add_attribute (id_cll, 'coordinates', 'p840')
+      endif
+
+      id_clm = register_cmip_diag_field_2d (mod_name, 'clm', Time, &
+                          'Mid Level Cloud Cover Percentage', '%', &
+                      standard_name='cloud_area_fraction_in_atmosphere_layer')
+      if (id_clm > 0 .and. id_plevel(id_p560) > 0) then
+        call diag_field_add_attribute (id_clm, 'coordinates', 'p560')
+      endif
+
+      id_clh = register_cmip_diag_field_2d (mod_name, 'clh', Time, &
+                          'High Level Cloud Cover Percentage', '%', &
+                      standard_name='cloud_area_fraction_in_atmosphere_layer')
+      if (id_clh > 0 .and. id_plevel(id_p220) > 0) then
+        call diag_field_add_attribute (id_clh, 'coordinates', 'p220')
+      endif
 
 !---------------------------------------------------------------------
 !    register various cloud fraction diagnostics.
