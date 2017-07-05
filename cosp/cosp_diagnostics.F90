@@ -191,9 +191,11 @@ logical   :: use_vgrid, csat_vgrid
 integer, parameter :: id_p840=1, id_p560=2, id_p220=3
 integer, dimension(3)   :: id_plevel
 integer, dimension(3)   :: plevels = (/ 840, 560, 220 /)
-integer, dimension(2,3) :: plevel_bnds = (/ 1000, 680, &
+integer, dimension(2,3) :: plevel_bnds = reshape( &
+                                          (/ 1000, 680, &
                                              680, 440, &
-                                             440,   0 /)
+                                             440,   0 /), &
+                                          (/2,3/))
 
 
 !---------------- End of declaration of variables --------------

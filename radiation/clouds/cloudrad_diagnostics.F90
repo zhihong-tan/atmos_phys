@@ -332,9 +332,11 @@ integer :: id_reffclwtop, id_cldncl, id_cldnvi
 ! cmip low, mid, high clouds
 integer, parameter :: id_p840=1, id_p560=2, id_p220=3
 integer, dimension(3)   :: plevels = (/ 840, 560, 220 /)
-integer, dimension(2,3) :: plevel_bnds = (/ 1000, 680, &
+integer, dimension(2,3) :: plevel_bnds = reshape( &
+                                          (/ 1000, 680, &
                                              680, 440, &
-                                             440,   0 /)
+                                             440,   0 /), &
+                                          (/2,3/) )
 integer :: id_plevel(3)
 integer :: id_cll, id_clm, id_clh
 
