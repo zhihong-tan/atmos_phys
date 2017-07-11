@@ -42,7 +42,10 @@ use time_manager_mod,         only: set_date, time_type, operator (+), &
                                     assignment(=), set_time
 use diag_grid_mod,            only: get_local_indexes2
 use diag_manager_mod,         only: register_diag_field, send_data,  &
-                                    diag_axis_init, register_static_field
+                                    diag_axis_init, register_static_field, &
+                                    diag_field_add_attribute
+use diag_data_mod,            only: null_axis_id
+use atmos_cmip_diag_mod,      only: register_cmip_diag_field_2d
 USE MOD_COSP_TYPES,           only: cosp_config, cosp_gridbox,   &
                                     cosp_subgrid, cosp_sgradar,  &
                                     cosp_sglidar, cosp_isccp, &
@@ -183,6 +186,17 @@ integer, dimension(:), allocatable :: channels
 integer   :: nsat_time_prev
 integer   :: nsat_time
 logical   :: use_vgrid, csat_vgrid
+
+! cmip low, mid, high clouds
+integer, parameter :: id_p840=1, id_p560=2, id_p220=3
+integer, dimension(3)   :: id_plevel
+integer, dimension(3)   :: plevels = (/ 840, 560, 220 /)
+integer, dimension(2,3) :: plevel_bnds = reshape( &
+                                          (/ 1000, 680, &
+                                             680, 440, &
+                                             440,   0 /), &
+                                          (/2,3/))
+
 
 !---------------- End of declaration of variables --------------
 
@@ -338,6 +352,12 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    character(len=8) :: chvers2, chvers3, chvers5, chvers6
    type(cosp_gridbox) :: gbx_t ! Gridbox information. Input for COSP
    type(cosp_vgrid)   :: vgrid_t   ! Information on vertical grid of stats
+
+   ! for cmip low, mid, high clouds
+   integer :: k 
+   integer :: id_plevel_bnds, id_nv
+   character(len=4) :: plabel
+   logical :: used 
 
 
 !--------------------------------------------------------------------
@@ -745,25 +765,68 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
 
 
    if (cfg%Llidar_sim) then
-     id_cltcalipso = register_diag_field &
-      (mod_name, 'cltcalipso', axes(1:2), Time, &
-          'Lidar Total Cloud Fraction',  'percent', &
-          mask_variant = .true., missing_value=missing_value)
+    !id_cltcalipso = register_diag_field &
+    ! (mod_name, 'cltcalipso', axes(1:2), Time, &
+    !     'Lidar Total Cloud Fraction',  'percent', &
+    !     mask_variant = .true., missing_value=missing_value)
+     id_cltcalipso = register_cmip_diag_field_2d (mod_name, 'cltcalipso', Time, &
+                                   'CALIPSO Total Cloud Cover Percentage', '%', &
+                        standard_name='cloud_area_fraction', mask_variant=.true.)
 
-     id_cllcalipso = register_diag_field &
-      (mod_name, 'cllcalipso', axes(1:2), Time, &
-          'Lidar Low-level Cloud Fraction',  'percent', &
-          mask_variant = .true., missing_value=missing_value)
+    ! coordinates for low, mid and high clouds
+    do k = 1, size(plevels,1)
+      write(plabel,'(i4)') plevels(k)
+      plabel = adjustl(plabel)
+      id_plevel(k) = register_static_field (mod_name, 'p'//trim(plabel), (/null_axis_id/), &
+                                   trim(plabel)//' hPa', 'Pa', standard_name='air_pressure')
+      if (id_plevel(k) > 0) then
+        call diag_field_add_attribute (id_plevel(k), 'axis', 'Z')
+        call diag_field_add_attribute (id_plevel(k), 'positive', 'down' )
+        ! add bounds
+        id_nv = diag_axis_init('nv', (/1.,2./), 'none', 'N', 'vertex number', set_name='nv')
+        id_plevel_bnds = register_static_field (mod_name, 'p'//trim(plabel)//'_bnds', &
+                             (/id_nv,null_axis_id/), trim(plabel)//' hPa boundaries', &
+                             'Pa', standard_name='air_pressure')
+        if (id_plevel_bnds > 0) then
+          call diag_field_add_attribute (id_plevel(k), 'bounds', 'p'//trim(plabel)//'_bnds')
+          used = send_data (id_plevel_bnds, real(plevel_bnds(:,k))*100., Time)
+        endif
+        used = send_data (id_plevel(k), real(plevels(k))*100., Time)
+      endif
+    enddo
 
-     id_clmcalipso = register_diag_field &
-      (mod_name, 'clmcalipso', axes(1:2), Time, &
-          'Lidar Mid-level Cloud Fraction',  'percent', &
-          mask_variant = .true., missing_value=missing_value)
+    !id_cllcalipso = register_diag_field &
+    ! (mod_name, 'cllcalipso', axes(1:2), Time, &
+    !     'Lidar Low-level Cloud Fraction',  'percent', &
+    !     mask_variant = .true., missing_value=missing_value)
+     id_cllcalipso = register_cmip_diag_field_2d (mod_name, 'cllcalipso', Time, &
+                               'CALIPSO Low Level Cloud Cover Percentage', '%', &
+                       standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                       mask_variant=.true.)
+     if (id_cllcalipso > 0 .and. id_plevel(id_p840) > 0) &
+         call diag_field_add_attribute (id_cllcalipso, 'coordinates', 'p840')
 
-     id_clhcalipso = register_diag_field &
-      (mod_name, 'clhcalipso', axes(1:2), Time, &
-          'Lidar High-level Cloud Fraction',  'percent', &
-          mask_variant = .true., missing_value=missing_value)
+    !id_clmcalipso = register_diag_field &
+    ! (mod_name, 'clmcalipso', axes(1:2), Time, &
+    !     'Lidar Mid-level Cloud Fraction',  'percent', &
+    !     mask_variant = .true., missing_value=missing_value)
+     id_clmcalipso = register_cmip_diag_field_2d (mod_name, 'clmcalipso', Time, &
+                               'CALIPSO Mid Level Cloud Cover Percentage', '%', &
+                       standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                       mask_variant=.true.)
+     if (id_clmcalipso > 0 .and. id_plevel(id_p560) > 0) &
+         call diag_field_add_attribute (id_clmcalipso, 'coordinates', 'p560')
+
+    !id_clhcalipso = register_diag_field &
+    ! (mod_name, 'clhcalipso', axes(1:2), Time, &
+    !     'Lidar High-level Cloud Fraction',  'percent', &
+    !     mask_variant = .true., missing_value=missing_value)
+     id_clhcalipso = register_cmip_diag_field_2d (mod_name, 'clhcalipso', Time, &
+                              'CALIPSO High Level Cloud Cover Percentage', '%', &
+                       standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                       mask_variant=.true.)
+     if (id_clhcalipso > 0 .and. id_plevel(id_p220) > 0) &
+         call diag_field_add_attribute (id_clhcalipso, 'coordinates', 'p220')
 
      id_cltcalipsoice = register_diag_field &
       (mod_name, 'cltcalipsoice', axes(1:2), Time, &
@@ -1076,16 +1139,22 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
  endif !(cfg%Lradar_sim .and. cfg%Llidar_sim) 
 
  if (cfg%Lisccp_sim) then
-   id_tclisccp = register_diag_field &
-      (mod_name, 'tclisccp', axes(1:2), Time, &
-          'Total Cloud Fraction as Calculated by the ISCCP Simulator', &
-          'percent', &
-          mask_variant = .true., missing_value=missing_value)
+  !id_tclisccp = register_diag_field &
+  !   (mod_name, 'tclisccp', axes(1:2), Time, &
+  !       'Total Cloud Fraction as Calculated by the ISCCP Simulator', &
+  !       'percent', &
+  !       mask_variant = .true., missing_value=missing_value)
+    id_tclisccp = register_cmip_diag_field_2d (mod_name, 'tclisccp', Time, &
+                                'ISCCP Total Cloud Cover Percentage', '%', &
+                   standard_name='cloud_area_fraction', mask_variant=.true.)
 
-   id_ctpisccp = register_diag_field &
-      (mod_name, 'ctpisccp', axes(1:2), Time, &
-       'Mean Cloud Top Pressure *CPCT as Calculated by the ISCCP Simulator', &
-         'Pa', mask_variant = .true., missing_value=missing_value)
+  !id_ctpisccp = register_diag_field &
+  !   (mod_name, 'ctpisccp', axes(1:2), Time, &
+  !    'Mean Cloud Top Pressure *CPCT as Calculated by the ISCCP Simulator', &
+  !      'Pa', mask_variant = .true., missing_value=missing_value)
+   id_ctpisccp = register_cmip_diag_field_2d (mod_name, 'ctpisccp', Time, &
+                                   'ISCCP Mean Cloud Top Pressure', 'Pa', &
+            standard_name='air_pressure_at_cloud_top', mask_variant=.true.)
 
    id_tbisccp = register_diag_field &
       (mod_name, 'tbisccp', axes(1:2), Time, &
@@ -1103,11 +1172,15 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
          'dimensionless', &
           mask_variant = .true., missing_value=missing_value)
 
-   id_albisccp = register_diag_field &
-      (mod_name, 'albisccp', axes(1:2), Time, &
-       'Mean Cloud Albedo *CPCT as Calculated by the ISCCP Simulator', &
-         'fraction', &
-          mask_variant = .true., missing_value=missing_value)
+  !id_albisccp = register_diag_field &
+  !   (mod_name, 'albisccp', axes(1:2), Time, &
+  !    'Mean Cloud Albedo *CPCT as Calculated by the ISCCP Simulator', &
+  !      'fraction', &
+  !       mask_variant = .true., missing_value=missing_value)
+   id_albisccp = register_cmip_diag_field_2d (mod_name, 'albisccp', Time, &
+                                          'ISCCP Mean Cloud Albedo', '%', &
+                         standard_name='cloud_albedo', mask_variant=.true.)
+
    id_boxtauisccp = register_diag_field &
       (mod_name, 'boxtauisccp', cosp_axes(columnindx), Time, &
          'Optical Depth  from the ISCCP Simulator', 'dimensionless', &
