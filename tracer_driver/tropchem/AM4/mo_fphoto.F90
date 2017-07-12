@@ -1051,8 +1051,8 @@ subroutine set_aerosol_mc(r,pwt,rh,aerop,aeron)
       v2(:,:) = (bc1(:,:)+bc2(:,:))/denbc
  do j=lbound(v1,dim=2),ubound(v1,dim=2)  ; do i=lbound(v1,dim=1),ubound(v1,dim=1)
     if (v1(i,j) == 0 .and. v2(i,j) == 0) then
-      vi(i,j) = 0
-    elseif (v1(:,:)+v2(:,:) == 0) then
+      v1(i,j) = 0
+    elseif (v1(i,j)+v2(i,j) == 0) then
       call mpp_error(FATAL, "v1+v2 = 0: can not divide by 0")     
     else
       v1(i,j) = v1(i,j)/(v1(i,j)+v2(i,j))*100.
