@@ -1049,7 +1049,16 @@ subroutine set_aerosol_mc(r,pwt,rh,aerop,aeron)
       
       v1(:,:) = so4(:,:)/denso4
       v2(:,:) = (bc1(:,:)+bc2(:,:))/denbc
-      v1(:,:) = v1(:,:)/(v1(:,:)+v2(:,:))*100.
+ do j=lbound(v1,dim=2),ubound(v1,dim=2)  ; do i=lbound(v1,dim=1),ubound(v1,dim=1)
+    if (v1(i,j) == 0 .and. v2(i,j) == 0) then
+      v1(i,j) = 0
+    elseif (v1(i,j)+v2(i,j) == 0) then
+      call mpp_error(FATAL, "v1+v2 = 0: can not divide by 0")     
+    else
+      v1(i,j) = v1(i,j)/(v1(i,j)+v2(i,j))*100.
+    endif
+
+ enddo;enddo
 !      if (mpp_pe() == mpp_root_pe() ) then 
 !             write(*,*) 'fphoto: v1=',v1(2,:)      
 !      end if     
