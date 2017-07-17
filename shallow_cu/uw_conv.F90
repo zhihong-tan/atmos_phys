@@ -1563,13 +1563,17 @@ contains
       enddo
     end if
 
+    do k=1,kmax
+       do j = 1, jmax
+          do i=1, imax
+             pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
+          enddo
+       enddo
+    enddo
+
     do j = 1, jmax
        do i=1, imax
-
          trtend_t=0.; trwet_t=0.;
-         do k=1,kmax
-           pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
-         enddo
     !relaxation TKE back to 0 with time-scale of disscale
     !tkeavg = ustar(i,j)*bstar(i,j)*disscale
     !dissipate tke with length-scale of disscale
@@ -2096,10 +2100,15 @@ contains
                 fero_d  (i,j,nk) = cp1%fer(k)
                 fdro_d  (i,j,nk) = cp1%fdr(k)
                 fdrso_d (i,j,nk) = cp1%fdrsat(k)*cp1%fdr(k)!*cp1%umf(k)
-                do n = 1, size(trtend,4)
+             enddo
+
+             do n = 1, size(trtend,4)
+                do k = 1,kmax !cp1%ltop
+                   nk = kmax+1-k
                    trevp_d(i,j,nk,n) = ct1%trevp(k,n)
                 enddo
              enddo
+
              snow_d  (i,j)  = ct1%snow
              rain_d  (i,j)  = ct1%rain
              cbmf_d  (i,j)  = cbmf_deep
@@ -2123,14 +2132,15 @@ contains
 !                                              cp1%tr, trtend_t, trwet_t)
              call check_tracer_realizability (kmax, size(trtend,4), delt, &
                                               cp1%tr, trtend_t, trwet_t, pmass(i,j,:), tracer_check_type, rn = rn    )
-             do k = 1,kmax!cp1%ltop
-               nk = kmax+1-k
-               do n = 1, size(trtend,4)
-                 trtend(i,j,nk,n) = trtend_t(k,n) + trwet_t(k,n)
-                 trwet(i,j,nk,n)  = trwet_t(k,n)
+             do n = 1, size(trtend,4)
+                do k = 1,kmax !cp1%ltop
+                   nk = kmax+1-k
+
+                   trtend(i,j,nk,n) = trtend_t(k,n) + trwet_t(k,n)
+                   trwet(i,j,nk,n)  = trwet_t(k,n)
 !f1p
-                 trtend_nc(i,j,nk,n) = trtend_t_nc(k,n) + trwet_t_nc(k,n)
-                 rn_diag(i,j,nk,n) = rn(k,n)
+                   trtend_nc(i,j,nk,n) = trtend_t_nc(k,n) + trwet_t_nc(k,n)
+                   rn_diag(i,j,nk,n) = rn(k,n)
 !>
                enddo
              enddo
@@ -2361,19 +2371,25 @@ contains
       hdt_conv_int(:,:,:) = tdt_conv_int(:,:,:)+qdt_conv_int(:,:,:)+dgz_conv_int(:,:,:)
     endif !do_mse_budget
 
-    do i=1,imax
-       do j=1,jmax
-          cush(i,j) = cush_s(i,j)
+    cush(:,:) = cush_s(:,:)
+    do j = 1,jmax
+       do i = 1,imax
           if (cush_s(i,j) .gt. 0) feq_s(i,j)=1.;
           if (cush_d(i,j) .gt. 0) feq_d(i,j)=1.;
-          do k=1,kmax
-             cfq_s(i,j,k) = 0.
-             cfq_d(i,j,k) = 0.
+       enddo
+    enddo
+
+    cfq_s(:,:,:) = 0.
+    cfq_d(:,:,:) = 0.
+    do k = 1,kmax
+       do j = 1,jmax
+          do i = 1,imax
              if (cmf_s(i,j,k) .gt. 0.) cfq_s(i,j,k) = 1.
              if (cmf_d(i,j,k) .gt. 0.) cfq_d(i,j,k) = 1.
           enddo
        enddo
     enddo
+
 
     if (do_imposing_rad_cooling) then
       tten_rad(:,:,:) = 0.0
@@ -2781,28 +2797,20 @@ contains
     end if
 
     if (do_imposing_rad_cooling) then
-      do j = 1,jmax
-         do i=1,imax
-           tten(i,j,:) = tten (i,j,:) + tten_rad (i,j,:)
-         enddo
-       enddo
+      tten(:,:,:) = tten(:,:,:) + tten_rad(:,:,:)
     end if
 
     if (do_imposing_forcing) then
-       do j = 1,jmax
-          do i=1,imax
-             tten (i,j,:) = tten (i,j,:) + tten_forc(i,j,:)
-             qvten(i,j,:) = qvten(i,j,:) + qten_forc(i,j,:)
-          enddo
-        enddo
+       tten(:,:,:) = tten(:,:,:) + tten_forc(:,:,:)
+       qvten(:,:,:) = qvten(:,:,:) + qten_forc(:,:,:)
     end if
 
     if (do_mse_budget) then
-      do j = 1,jmax
-        do i=1,imax
-          hten(i,j)=0
-          do k=1,kmax
-             hten(i,j)=hten(i,j)+(cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
+      hten(:,:) = 0
+      do k = 1,kmax
+        do j = 1,jmax
+          do i = 1,imax
+            hten(i,j)=hten(i,j)+(cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
           enddo
         enddo
       enddo
