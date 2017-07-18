@@ -687,18 +687,45 @@ real, parameter                            :: yield_soa = 0.1
         end do
       end do
     else
-!
-! --- Inject equally through the boundary layer -------
-!
-      if (.not. no_biobur_if_no_pbl .and. .not. do_biobur_pbl_bug) fbb(kd,1)=1.
-      bltop = z_pbl(i,j)
-      do l = kd,1,-1
-        z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
-        z2=z_half(i,j,l)-z_half(i,j,kd+1)
-        if (bltop.lt.z1) exit
-        if (bltop.ge.z2) fbb(l,1)=(z2-z1)/bltop
-        if (bltop.gt.z1.and.bltop.lt.z2) fbb(l,1) = (bltop-z1)/bltop
-      enddo
+      if (do_biobur_pbl_bug) then
+        do j = 1, jd
+          do i = 1, id
+            fbb(:)=0.
+            if (.not. no_biobur_if_no_pbl) fbb(kd)=1.
+            bltop = z_pbl(i,j)
+            do l = kd,1,-1
+              z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
+              z2=z_half(i,j,l)-z_half(i,j,kd+1)
+              if (bltop.lt.z1) exit
+              if (bltop.ge.z2) fbb(l)=(z2-z1)/bltop
+              if (bltop.gt.z1.and.bltop.lt.z2) fbb(l) = (bltop-z1)/bltop
+              bcemisob(i,j,l) = bcemisob(i,j,l) + fbb(l)*bcemisbb(i,j,1)
+              omemisob(i,j,l) = omemisob(i,j,l) + fbb(l)*omemisbb(i,j,1)
+              !do lf = 2, nlevel_fire
+              !  bcemisob(i,j,l) = bcemisob(i,j,l) + bcemisbb(i,j,lf)
+              !  omemisob(i,j,l) = omemisob(i,j,l) + omemisbb(i,j,lf)
+              !end do
+            end do
+          end do
+        end do
+      else
+        do j = 1, jd
+          do i = 1, id
+            fbb(:)=0.
+            if (.not. no_biobur_if_no_pbl) fbb(kd)=1.
+            bltop = z_pbl(i,j)
+            do l = kd,1,-1
+              z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
+              z2=z_half(i,j,l)-z_half(i,j,kd+1)
+              if (bltop.lt.z1) exit
+              if (bltop.ge.z2) fbb(l)=(z2-z1)/bltop
+              if (bltop.gt.z1.and.bltop.lt.z2) fbb(l) = (bltop-z1)/bltop
+              bcemisob(i,j,l) = bcemisob(i,j,l) + fbb(l)*bcemisbb(i,j,1)
+              omemisob(i,j,l) = omemisob(i,j,l) + fbb(l)*omemisbb(i,j,1)
+            end do
+          end do
+        end do
+      endif
     endif
 
 ! Fossil fuel emission
