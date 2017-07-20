@@ -96,6 +96,7 @@ namelist /atmos_co2_nml/  &
 public :: co2_radiation_override, do_co2_emissions
 
 logical :: module_is_initialized = .FALSE.
+logical :: module_flux_is_initialized = .FALSE.
 integer :: logunit
 
 !---- version number -----
@@ -496,7 +497,7 @@ character(len=256), parameter   :: note_header =                                
 
 integer :: outunit
 
-if ( .not. module_is_initialized) then
+if ( .not. module_flux_is_initialized) then
 
 !----- set initial value of carbon ------------
   logunit=stdlog()
@@ -514,7 +515,7 @@ if ( .not. module_is_initialized) then
       call error_mesg (trim(error_header), ' Could not find index for sphum', FATAL)
     endif
   endif
-  module_is_initialized = .TRUE.
+  module_flux_is_initialized = .TRUE.
 endif
 
 !
