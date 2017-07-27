@@ -248,7 +248,7 @@ logical :: do_liq_num
 logical :: do_ice_num
 logical :: do_cosp
 integer :: do_clubb
-integer :: do_lsc
+logical :: do_lsc
 logical :: do_mca 
 logical :: do_ras 
 logical :: do_uw_conv
@@ -3087,7 +3087,8 @@ type(mp_removal_control_type), intent(in) :: Control
       id_conv_freq = register_diag_field ( mod_name, &
                      'conv_freq', axes(1:2), Time, &
                      'frequency of convection ',       '1', &
-                     missing_value = missing_value                       )
+                     missing_value = missing_value, &
+                      interp_method = "conserve_order1" )
 
       id_prsnc = register_cmip_diag_field_2d ( mod_name, 'prsnc', Time, &
                               'Convective Snowfall Flux', 'kg m-2 s-1', &
@@ -3096,7 +3097,8 @@ type(mp_removal_control_type), intent(in) :: Control
 
       id_ci = register_cmip_diag_field_2d ( mod_name, 'ci', Time, &
                     'Fraction of Time Convection Occurs in Cell',  '1.0', &
-                         standard_name='convection_time_fraction' )
+                         standard_name='convection_time_fraction', &
+                         interp_method='conserve_order1' )
 
       id_gust_conv = register_diag_field ( mod_name, &
                      'gust_conv', axes(1:2), Time, &
@@ -3105,12 +3107,12 @@ type(mp_removal_control_type), intent(in) :: Control
       id_conv_rain3d= register_diag_field ( mod_name, &
                       'conv_rain3d', axes(half), Time, &
                       'Rain fall rate from convection -3D ',    &
-                      'kg(h2o)/m2/s' )
+                      'kg(h2o)/m2/s', interp_method='conserve_order1' )
 
       id_conv_snow3d= register_diag_field ( mod_name, &
                       'conv_snow3d', axes(half), Time, &
                       'Snow fall rate from convection -3D',   &
-                      'kg(h2o)/m2/s' )
+                      'kg(h2o)/m2/s', interp_method='conserve_order1' )
 
 !----------------------------------------------------------------------
 !    tendencies of cloud tracers resulting from convection.
@@ -3305,12 +3307,14 @@ type(mp_removal_control_type), intent(in) :: Control
 !     if (do_ras) then
         id_ras_precip = register_diag_field ( mod_name, &
                        'ras_precip', axes(1:2), Time, &
-                       'Precipitation rate from ras ',       'kg/m2/s' )
+                       'Precipitation rate from ras ',       'kg/m2/s', &
+                        interp_method = 'conserve_order1' )
 
         id_ras_freq = register_diag_field ( mod_name, &
                       'ras_freq', axes(1:2), Time, &
                       'frequency of precip from ras ',       'number' , &
-                      missing_value = missing_value                       )
+                      missing_value = missing_value , &
+                      interp_method = 'conserve_order1' )
 !     endif
 
 !------------------------------------------------------------------------
@@ -3321,12 +3325,14 @@ type(mp_removal_control_type), intent(in) :: Control
       if (do_donner_deep) then
         id_don_precip = register_diag_field ( mod_name, &
                         'don_precip', axes(1:2), Time, &
-                        'Precipitation rate from donner ',      'kg/m2/s' )
+                        'Precipitation rate from donner ',      'kg/m2/s', &
+                        interp_method = 'conserve_order1' )
 
         id_don_freq = register_diag_field ( mod_name, &
                       'don_freq', axes(1:2), Time, &
                       'frequency of precip from donner ',       'number', &
-                      missing_value = missing_value                       )
+                      missing_value = missing_value, &
+                      interp_method = 'conserve_order1' )
 
         id_enth_donner_col2 = register_diag_field ( mod_name, &
                               'enth_donner_col2', axes(1:2), Time, &
@@ -3589,7 +3595,8 @@ type(mp_removal_control_type), intent(in) :: Control
         id_uw_freq = register_diag_field ( mod_name, &
                      'uw_freq', axes(1:2), Time, &
                      'frequency of precip from uw shallow ',  'number' , &
-                     missing_value = missing_value                       )
+                     missing_value = missing_value, &
+                     interp_method = "conserve_order1" )
 
         id_enth_uw_col = register_diag_field ( mod_name, &
                          'enth_uw_col', axes(1:2), Time, &

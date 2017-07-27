@@ -543,7 +543,7 @@ integer, dimension(:), allocatable :: id_tracer_phys,         &
                                       id_tracer_phys_moist
 
 type(cmip_diag_id_type) :: ID_tntmp, ID_tnhusmp, &
-                           ID_pfull, ID_phalf
+                           ID_pfull, ID_phalf, ID_zg !, ID_zfull
 
 type (clouds_from_moist_block_type) :: Restart
 
@@ -1254,6 +1254,14 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
                                 'Pressure on Model Half-Levels', 'Pa', &
                               standard_name='air_pressure', axis='half')
 
+      ID_zg = register_cmip_diag_field_3d ( mod_name, 'zg', Time, &
+                                      'Geopotential Height', 'm', &
+                             standard_name = 'geopotential_height')
+
+     !ID_zfull = register_cmip_diag_field_3d ( mod_name, 'zfull', Time, &
+     !                            'Altitude of Model Full-Levels', 'm', &
+     !                standard_name = 'height_above_reference_ellipsoid')
+
      !-------- CMIP diagnostics (tendencies due to physics) --------
       ID_tntmp = register_cmip_diag_field_3d ( mod_name, 'tntmp', Time, &
                   'Tendency of Air Temperature due to Model Physics', 'K s-1', & 
@@ -1854,6 +1862,12 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 
       if (query_cmip_diag_id(ID_phalf)) then
          used = send_cmip_data_3d (ID_phalf, p_half, Time_next, is, js, 1)
+      endif
+
+     ! only allow output of geop height on model levels
+     ! output from dycore for pressure levels
+      if (query_cmip_diag_id(ID_zg)) then
+         used = send_cmip_data_3d (ID_zg, z_full, Time_next, is, js, 1)
       endif
 
 !---------------------------------------------------------------------

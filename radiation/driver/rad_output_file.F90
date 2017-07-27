@@ -182,17 +182,21 @@ integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, &
 integer, dimension(6) :: cmip_family_mapping
 integer, dimension(6) :: id_cmipload, id_cmipsconc
 type(cmip_diag_id_type), dimension(6) :: ID_cmipconc
-character(len=8), dimension(6) :: cmip_names = (/"oa","poa","soa","bc","dust","ss"/)
+character(len=8), dimension(6) :: cmip_names = (/"oa  ","poa ","soa ","bc  ","dust","ss  "/)
 character(len=64), dimension(6) :: cmip_longnames = &
-                                  (/"Dry Aerosol Organic Matter", &
-                                    "Dry Aerosol Primary Organic Matter", &
+                                  (/"Dry Aerosol Organic Matter          ", &
+                                    "Dry Aerosol Primary Organic Matter  ", &
                                     "Dry Aerosol Secondary Organic Matter", &
-                                    "Black Carbon Aerosol", "Dust", "Seasalt"/)
+                                    "Black Carbon Aerosol                ", &
+                                    "Dust                                ", &
+                                    "Seasalt                             "/)
 character(len=64), dimension(6) :: cmip_stdnames = &
-                                  (/"particulate_organic_matter", &
-                                    "primary_particulate_organic_matter", &
+                                  (/"particulate_organic_matter          ", &
+                                    "primary_particulate_organic_matter  ", &
                                     "secondary_particulate_organic_matter", &
-                                    "black_carbon", "dust", "seasalt"/)
+                                    "black_carbon                        ", &
+                                    "dust                                ", &
+                                    "seasalt                             "/)
 
 !---------------------------------------------------------------------
 !    miscellaneous variables
@@ -1502,6 +1506,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
       real                     :: trange(2)
       integer                  :: ncmip
 
+      character(len=100)       :: c_n, c_sn, c_ln
 !---------------------------------------------------------------------
 !   local variables:
 !
@@ -1782,15 +1787,18 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           call error_mesg('rad_output_file_mod','family_name='//TRIM(family_names(n))//', ncmip='//TRIM(string(ncmip)),NOTE)
           if (ncmip > 0) then
             cmip_family_mapping(ncmip) = n
-            id_cmipload(ncmip) = register_cmip_diag_field_2d (mod_name, 'load'//TRIM(cmip_names(ncmip)), &
-                                                Time, 'Load of '//TRIM(cmip_longnames(ncmip)), 'kg m-2', &
-                          standard_name='atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ncmip))//'_dry_aerosol')
-            id_cmipsconc(ncmip) = register_cmip_diag_field_2d (mod_name, 'sconc'//TRIM(cmip_names(ncmip)), &
-                                 Time, 'Surface Concentration of '//TRIM(cmip_longnames(ncmip)), 'kg m-3', &
-                          standard_name='mass_concentration_of_'//TRIM(cmip_stdnames(ncmip))//'_dry_aerosol_in_air')
-            ID_cmipconc(ncmip) = register_cmip_diag_field_3d (mod_name, 'conc'//TRIM(cmip_names(ncmip)), &
-                                 Time, 'Concentration of '//TRIM(cmip_longnames(ncmip)), 'kg m-3', &
-                          standard_name='mass_concentration_of_'//TRIM(cmip_stdnames(ncmip))//'_dry_aerosol_in_air')
+            c_n = cmip_names(ncmip)
+            c_sn = cmip_stdnames(ncmip)
+            c_ln = cmip_longnames(ncmip) 
+            id_cmipload(ncmip) = register_cmip_diag_field_2d (mod_name, 'load'//TRIM(c_n), &
+                                                Time, 'Load of '//TRIM(c_ln), 'kg m-2', &
+                          standard_name='atmosphere_mass_content_of_'//TRIM(c_sn)//'_dry_aerosol')
+            id_cmipsconc(ncmip) = register_cmip_diag_field_2d (mod_name, 'sconc'//TRIM(c_n), &
+                                 Time, 'Surface Concentration of '//TRIM(c_ln), 'kg m-3', &
+                          standard_name='mass_concentration_of_'//TRIM(c_sn)//'_dry_aerosol_in_air')
+            ID_cmipconc(ncmip) = register_cmip_diag_field_3d (mod_name, 'conc'//TRIM(c_n), &
+                                 Time, 'Concentration of '//TRIM(c_ln), 'kg m-3', &
+                          standard_name='mass_concentration_of_'//TRIM(c_sn)//'_dry_aerosol_in_air')
           endif
           !----
 
