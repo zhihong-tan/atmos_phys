@@ -35,7 +35,8 @@ use           diag_manager_mod, only : send_data,               &
                                        get_base_time
 use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,        &
-                                       set_tracer_atts
+                                       set_tracer_atts,         &
+                                       NO_TRACER
 use          field_manager_mod, only : MODEL_ATMOS
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR, AVOGNO
 use           interpolator_mod, only:  interpolate_type,  &
@@ -58,7 +59,9 @@ public  atmos_SOA_init, atmos_SOA_end, atmos_SOA_chem, &
 
 character(len=6), parameter :: module_name = 'tracer'
 
-integer :: nSOA = 0  ! tracer number for Secondary Organic Aerosol 
+integer :: nSOA    = 0  ! tracer number for Secondary Organic Aerosol
+integer :: nOH     = 0  ! tracer number for OH
+integer :: nC4H10  = 0  ! tracer number for C4H10
 
 !--- identification numbers for  diagnostic fields and axes ----
 integer ::   id_OH_conc            = 0
@@ -99,6 +102,7 @@ real, parameter       :: om_oc_ratio = 1.5
 real, parameter       :: isoprene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_isoprene * om_oc_ratio
 real, parameter       :: terpene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_terpene * om_oc_ratio
 integer, parameter    :: TS_CONSTANT=1, TS_FIXED=2, TS_VARYING=3
+real, parameter :: boltz = 1.38044e-16      ! Boltzmann's Constant (erg/K)
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -119,7 +123,9 @@ character(len=80)     :: isoprene_time_dependency_type = 'constant'
 character(len=80)     :: terpene_time_dependency_type  = 'constant'
 real                  :: isoprene_SOA_yield = 0.05
 real                  :: terpene_SOA_yield  = 0.05
+logical               :: use_interactive_tracers = .false.
 namelist /secondary_organics_nml/ gas_conc_filename, gas_conc_name, &
+                                  use_interactive_tracers, &
                                   isoprene_source, &
                                   isoprene_filename, &
                                   isoprene_input_name, &
@@ -203,8 +209,28 @@ character(len=7), parameter :: mod_name = 'tracers'
                  write (logunit,30) SOA_tracer,nsoa
       endif
 
-
   30   format (A,' was initialized as tracer number ',i2)
+
+!----- check for other required tracers ------------
+
+      nOH = get_tracer_index(MODEL_ATMOS,'OH')
+      if (nOH > 0 .and. mpp_pe() == mpp_root_pe()) then
+         write (*,40) 'OH',nOH
+         write (logunit,40) 'OH',nOH
+      endif
+      nC4H10 = get_tracer_index(MODEL_ATMOS,'C4H10')
+      if (nC4H10 > 0 .and. mpp_pe() == mpp_root_pe()) then
+         write (*,40) 'C4H10',nC4H10
+         write (logunit,40) 'C4H10',nC4H10
+      endif
+  40  format (A,' was initialized as tracer number ',i2)
+      if (use_interactive_tracers) then
+         write (*,*) 'atmos_soa_mod: Using interactive tracers'
+         write (logunit,*) 'atmos_soa_mod: Using interactive tracers'
+         if (nOH==NO_TRACER .or. nC4H10==NO_TRACER) &
+           call error_mesg ('atmos_soa_mod', &
+            'OH and C4H10 tracers must be present if use_interactive_tracers=T', FATAL)
+      endif
 
      call interpolator_init (gas_conc_interp, trim(gas_conc_filename),  &
                              lonb, latb,&        
@@ -559,7 +585,8 @@ end subroutine atmos_SOA_endts
 !-----------------------------------------------------------------------
       SUBROUTINE atmos_SOA_chem(pwt,temp,pfull, phalf, dt, &
                           jday,hour,minute,second,lat,lon, &
-                          SOA, SOA_dt, Time,Time_next,is,ie,js,je,kbot)
+                          SOA, OH, C4H10, SOA_dt, &
+			  Time,Time_next,is,ie,js,je,kbot)
 
 ! ****************************************************************************
       real, intent(in),    dimension(:,:,:)          :: pwt
@@ -567,7 +594,7 @@ end subroutine atmos_SOA_endts
       real, intent(in)                               :: dt
       integer, intent(in)                            :: jday, hour,minute,second
       real, intent(in),  dimension(:,:)              :: lat, lon  ! [radian]
-      real, intent(in),    dimension(:,:,:)          :: SOA
+      real, intent(in),    dimension(:,:,:)          :: SOA, OH, C4H10
       real, intent(out),   dimension(:,:,:)          :: SOA_dt
       type(time_type), intent(in)                    :: Time, Time_next
       integer, intent(in),  dimension(:,:), optional :: kbot
@@ -588,71 +615,88 @@ end subroutine atmos_SOA_endts
       real, parameter                            :: B1 = 0.070257
       real, parameter                            :: B2 = 0.000907
       real, parameter                            :: B3 = 0.000148
+      real, parameter                            :: A_C4H10_OH = 1.55E-11
+      real, parameter                            :: B_C4H10_OH = 540.
       real                                       :: decl, hd, x
       integer :: i,j,k,id,jd,kd
       integer                                    :: istep, nstep
+      real                                       :: air_dens
 ! Local grid sizes
       id=size(SOA,1); jd=size(SOA,2); kd=size(SOA,3)
 
-      OH_conc(:,:,:)=0.  ! molec/cm3
-      call interpolator(gas_conc_interp, Time, phalf, OH_conc, &
-                       trim(gas_conc_name(1)), is, js)
+      if (.not. use_interactive_tracers) then
+         OH_conc(:,:,:)=0.  ! molec/cm3
+         call interpolator(gas_conc_interp, Time, phalf, OH_conc, &
+                           trim(gas_conc_name(1)), is, js)
 
-      C4H10_conc(:,:,:)=0.0
-      call interpolator(gas_conc_interp, Time, phalf, C4H10_conc, &
-                       trim(gas_conc_name(2)), is, js)
-      C4H10_conc(:,:,:)=C4H10_conc(:,:,:)*WTM_C4H10/WTMAIR
+         C4H10_conc(:,:,:)=0.0
+         call interpolator(gas_conc_interp, Time, phalf, C4H10_conc, &
+                           trim(gas_conc_name(2)), is, js)
+         C4H10_conc(:,:,:)=C4H10_conc(:,:,:)*WTM_C4H10/WTMAIR
 
-      x = 2. *pi *float(jday-1)/365.
-      decl = A0 - A1*cos(  X) + B1*sin(  X) - A2*cos(2.*X) + B2*sin(2.*X) &
-           - A3*cos(3.*X) + B3*sin(3.*X)
-      xu(:,:) = -tan(lat(:,:))*tan(decl)
-      where ( xu > -1 .and. xu < 1 ) dayl=acos(xu)/pi
-      where ( xu <= -1 ) dayl = 1.
-      where ( xu >= 1 ) dayl = 0.
+         x = 2. *pi *float(jday-1)/365.
+         decl = A0 - A1*cos(  X) + B1*sin(  X) - A2*cos(2.*X) + B2*sin(2.*X) &
+              - A3*cos(3.*X) + B3*sin(3.*X)
+         xu(:,:) = -tan(lat(:,:))*tan(decl)
+         where ( xu > -1 .and. xu < 1 ) dayl=acos(xu)/pi
+         where ( xu <= -1 ) dayl = 1.
+         where ( xu >= 1 ) dayl = 0.
 !   Calculate normalization factors for OH and NO3 such that
 !   the diurnal average respect the monthly input values.
-      hd=0.
-      fact_OH(:,:)  = 0.
-      nstep = int(24.*3600./dt)
-      do istep=1,nstep
-        hd=hd+dt/3600./24.
-        hl(:,:) = pi*(1.-dayl(:,:))
-        hc(:,:) = pi*(1.+dayl(:,:))
-        h(:,:)=2.*pi*mod(hd+lon(:,:)/2./pi,1.)
-        where ( h.ge.hl .and. h.lt.hc )
+         hd=0.
+         fact_OH(:,:)  = 0.
+         nstep = int(24.*3600./dt)
+         do istep=1,nstep
+            hd=hd+dt/3600./24.
+            hl(:,:) = pi*(1.-dayl(:,:))
+            hc(:,:) = pi*(1.+dayl(:,:))
+            h(:,:)=2.*pi*mod(hd+lon(:,:)/2./pi,1.)
+            where ( h.ge.hl .and. h.lt.hc )
 ! Daytime
-          hred=(h-hl)/(hc-hl)
-          fact_OH  = fact_OH + amax1(0.,sin(pi*hred)/2.)/nstep
-        endwhere
-      enddo
+               hred=(h-hl)/(hc-hl)
+               fact_OH  = fact_OH + amax1(0.,sin(pi*hred)/2.)/nstep
+            endwhere
+         enddo
 
 
-      hd=amax1(0.,amin1(1.,(hour+minute/60.+second/3600.)/24.))
-      hl(:,:) = pi*(1.-dayl(:,:))
-      hc(:,:) = pi*(1.+dayl(:,:))
-      h(:,:)=2.*pi*mod(hd+lon(:,:)/2./pi,1.)
-      fac_OH(:,:)  = 0.
-      where ( h.ge.hl .and. h.lt.hc )
+         hd=amax1(0.,amin1(1.,(hour+minute/60.+second/3600.)/24.))
+         hl(:,:) = pi*(1.-dayl(:,:))
+         hc(:,:) = pi*(1.+dayl(:,:))
+         h(:,:)=2.*pi*mod(hd+lon(:,:)/2./pi,1.)
+         fac_OH(:,:)  = 0.
+         where ( h.ge.hl .and. h.lt.hc )
 ! Daytime
-          hred=(h-hl)/(hc-hl)
-          fac_OH  = amax1(0.,sin(pi*hred)/2.)/fact_OH
-      elsewhere
+            hred=(h-hl)/(hc-hl)
+            fac_OH  = amax1(0.,sin(pi*hred)/2.)/fact_OH
+         elsewhere
 ! Nightime
-          fac_OH  = 0.
-      endwhere
+            fac_OH  = 0.
+         endwhere
 
 !----------------------------------------------------------------------
 !    SOA_dt initially contains chemical production (pseudo-emission added later)
 !----------------------------------------------------------------------
-      do i=1,id
-        do j=1,jd
-          do k=1,kd 
-            SOA_dt(i,j,k) = 1.55E-11 * exp( -540./temp(i,j,k) ) * c4h10_SOA_yield &
-                * C4H10_conc(i,j,k)*OH_conc(i,j,k)*fac_oh(i,j)
-          enddo
-        enddo
-      enddo
+         do i=1,id
+         do j=1,jd
+         do k=1,kd
+            SOA_dt(i,j,k) = A_C4H10_OH * exp( -B_C4H10_OH/temp(i,j,k) ) * c4h10_SOA_yield &
+                          * C4H10_conc(i,j,k)*OH_conc(i,j,k)*fac_oh(i,j)
+         enddo
+         enddo
+         enddo
+
+      else
+         do i=1,id
+         do j=1,jd
+         do k=1,kd
+            air_dens = 10.*pfull(i,j,k)/(boltz*temp(i,j,k)) ! molec/cm3
+            SOA_dt(i,j,k) = A_C4H10_OH * exp( -B_C4H10_OH/temp(i,j,k) ) * c4h10_SOA_yield &
+                          * C4H10(i,j,k)*OH(i,j,k)*air_dens
+         enddo
+         enddo
+         enddo
+
+      endif
 
       SOA_chem(:,:,:)=SOA_dt(:,:,:)*pwt(:,:,:)
 

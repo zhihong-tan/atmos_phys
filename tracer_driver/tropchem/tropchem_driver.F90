@@ -161,6 +161,7 @@ character(len=64)  :: file_dry = 'depvel.nc',         & ! NetCDF file for dry de
                       file_jval_lut = 'jvals.v5',     & ! ascii file for photolysis rate lookup table
                       file_jval_lut_min = ''            ! ascii file for photolysis rate LUT (for solar min)
 character(len=10), dimension(maxinv) :: inv_list =''    ! list of invariant (fixed) tracers
+real               :: aircraft_scale_factor = -999.     ! aircraft emissions scale factor
 real               :: lght_no_prd_factor = 1.           ! lightning NOx scale factor
 logical            :: normalize_lght_no_prd_area = .false. ! normalize lightning NOx production by grid cell area
 real               :: min_land_frac_lght = -999.        ! minimum land fraction for lightning NOx calculation
@@ -257,6 +258,7 @@ namelist /tropchem_driver_nml/    &
                                file_dry, &
                                inv_list, &
                                file_aircraft,&
+                               aircraft_scale_factor, &
                                lght_no_prd_factor, &
                                normalize_lght_no_prd_area, &
                                min_land_frac_lght, &
@@ -790,6 +792,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       if(has_airc(n)) then
          call interpolator( inter_aircraft_emis(n), Time, phalf, &
                             airc_emis(:,:,:,n), trim(airc_names(n)),is,js)
+         if (aircraft_scale_factor >= 0.) airc_emis(:,:,:,n) = airc_emis(:,:,:,n) * aircraft_scale_factor
          if(id_airc(n) > 0)&
               used = send_data(id_airc(n),airc_emis(:,:,:,n),Time_next, is_in=is, js_in=js)
 
@@ -2277,8 +2280,12 @@ end if
    id_pso4_o3     = register_diag_field( module_name, 'PSO4_O3',axes(1:3), Time, 'PSO4_O3','mole/m2/s')
 
 !for cmip6
-   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, 'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
-   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (  module_name,'pso4_gas_kg_m2_s', Time,'Gas-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
+   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, &
+                             'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1',   &
+standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
+   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (  module_name,'pso4_gas_kg_m2_s', Time,&
+                             'Gas-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1',       &
+standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
 
    nso4 = get_spc_ndx('SO4')
 
