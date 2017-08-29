@@ -176,7 +176,7 @@ integer                            :: id_radswp, id_radp, id_temp, &
 type(cmip_diag_id_type)  :: ID_o3, ID_ec550aer, ID_concso4, ID_concsoa
 integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, &
                             id_od550aer, id_od550lt1aer, id_abs550aer, id_od870aer, &
-                            id_od440aer, id_o3_col, id_od550so4
+                            id_od440aer, id_o3_col, id_od550so4, id_od550soa
 
 ! cmip names for select tracer families
 ! also partial long_names and standard_names
@@ -1039,7 +1039,7 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
           used = send_data (id_qo3_col, qo3_col, Time_diag, is, js)
         endif
 
-        if (query_cmip_diag_id(id_o3_col)) then
+        if (id_o3_col > 0 ) then
           used = send_data (id_o3_col, qo3_col, Time_diag, is, js)
         endif
 
@@ -1134,6 +1134,9 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
             end do
             if (id_od550so4 > 0) then
               used = send_data (id_od550so4, extopdep_col(:,:,nso4,nvis), Time_diag, is, js)
+            endif
+            if (id_od550soa > 0) then
+              used = send_data (id_od550soa, extopdep_col(:,:,nsoa,nvis), Time_diag, is, js)
             endif
           end do
           if (Aerosolrad_control%volcanic_lw_aerosols) then
@@ -1628,7 +1631,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                           'ozone column', &
                           'DU', missing_value=missing_value)
 
-      id_o3_col= register_cmip_diag_field_3d (mod_name, 'toz', Time, &
+      id_o3_col= register_cmip_diag_field_2d (mod_name, 'toz', Time, &
 !                         'Total Ozone Column', 'm', &
                           'Total Ozone Column', 'DU', &
                         standard_name = 'equivalent_thickness_at_stp_of_atmosphere_ozone_content')
@@ -1892,7 +1895,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
    end do
 
         !---- register cmip fields ----
-        id_od550aer = 0; id_abs550aer = 0; id_od550lt1aer = 0; id_od870aer = 0; id_od550so4 = 0
+        id_od550aer = 0; id_abs550aer = 0; id_od550lt1aer = 0; id_od870aer = 0; id_od550so4 = 0; id_od550soa = 0
         if (naero > 0 .and. nvis > 0) then
           id_od550aer = register_cmip_diag_field_2d (mod_name, 'od550aer', Time, &
                             'Ambient Aerosol Optical Thickness at 550 nm', '1.0', &
@@ -1923,6 +1926,11 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           id_od550so4 = register_cmip_diag_field_2d (mod_name, 'od550so4', Time, &
                             'Sulfate aod at 550 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_sulfate_ambient_aerosol')
+        endif
+        if (nsoa > 0 .and. nvis > 0) then
+          id_od550soa = register_cmip_diag_field_2d (mod_name, 'od550soa', Time, &
+                            'SOA aod at 550 nm', '1.0', &
+                            standard_name='atmosphere_optical_thickness_due_to_particulate_organic_matter_ambient_aerosol')
         endif
         !----
 
