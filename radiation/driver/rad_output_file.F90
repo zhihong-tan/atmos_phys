@@ -175,20 +175,22 @@ integer                            :: id_radswp, id_radp, id_temp, &
 
 type(cmip_diag_id_type)  :: ID_o3, ID_ec550aer, ID_concso4, ID_concsoa
 integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, &
-                            id_od550aer, id_od550lt1aer, id_abs550aer, id_od870aer
+                            id_od550aer, id_od550lt1aer, id_abs550aer, id_od870aer, &
+                            id_od440aer, id_o3_col, id_od550so4
 
 ! cmip names for select tracer families
 ! also partial long_names and standard_names
-integer, dimension(6) :: cmip_family_mapping
-integer, dimension(6) :: id_cmipload, id_cmipsconc
-type(cmip_diag_id_type), dimension(6) :: ID_cmipconc
-character(len=8), dimension(6) :: cmip_names = (/"oa","poa","soa","bc","dust","ss"/)
-character(len=64), dimension(6) :: cmip_longnames = &
+integer, parameter    :: NCMIP_DIAG = 6
+integer, dimension(NCMIP_DIAG) :: cmip_family_mapping
+integer, dimension(NCMIP_DIAG) :: id_cmipload, id_cmipsconc, id_cmipaod
+type(cmip_diag_id_type), dimension(NCMIP_DIAG) :: id_cmipconc
+character(len=8), dimension(NCMIP_DIAG) :: cmip_names = (/"oa","poa","soa","bc","dust","ss"/)
+character(len=64), dimension(NCMIP_DIAG) :: cmip_longnames = &
                                   (/"Dry Aerosol Organic Matter", &
                                     "Dry Aerosol Primary Organic Matter", &
                                     "Dry Aerosol Secondary Organic Matter", &
                                     "Black Carbon Aerosol", "Dust", "Seasalt"/)
-character(len=64), dimension(6) :: cmip_stdnames = &
+character(len=64), dimension(NCMIP_DIAG) :: cmip_stdnames = &
                                   (/"particulate_organic_matter", &
                                     "primary_particulate_organic_matter", &
                                     "secondary_particulate_organic_matter", &
@@ -197,7 +199,7 @@ character(len=64), dimension(6) :: cmip_stdnames = &
 !---------------------------------------------------------------------
 !    miscellaneous variables
 !---------------------------------------------------------------------
-integer :: nso4, nsoa, naero, npm25, nvis, n870
+integer :: nso4, nsoa, naero, npm25, nvis, n870, n440
 integer :: naerosol=0                      ! number of active aerosols
 logical :: module_is_initialized= .false.  ! module initialized ?
 integer, parameter              :: N_DIAG_BANDS = 10
@@ -926,8 +928,11 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
                 if (id_cmipsconc(ncmip) > 0) then
                   used = send_data (id_cmipsconc(ncmip), aerosol_fam(:,:,kerad,n)/deltaz(:,:,kerad), Time_diag, is, js)
                 endif
-                if (query_cmip_diag_id(ID_cmipconc(ncmip))) then
-                  used = send_cmip_data_3d (ID_cmipconc(ncmip), aerosol_fam(:,:,:,n)/deltaz(:,:,:), Time_diag, is, js, 1)
+                if (query_cmip_diag_id(id_cmipconc(ncmip))) then
+                  used = send_cmip_data_3d (id_cmipconc(ncmip), aerosol_fam(:,:,:,n)/deltaz(:,:,:), Time_diag, is, js, 1)
+                endif
+                if (id_cmipaod(ncmip) > 0) then
+                  used = send_data (id_cmipaod(ncmip), extopdep_fam_col(:,:,n,nvis), Time_diag, is, js)
                 endif
               endif
             enddo
@@ -946,6 +951,9 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
             endif
             if (id_od870aer > 0) then
               used = send_data (id_od870aer, extopdep_fam_col(:,:,naero,n870), Time_diag, is, js)
+            endif
+            if (id_od440aer > 0) then
+              used = send_data (id_od440aer, extopdep_fam_col(:,:,naero,n440), Time_diag, is, js)
             endif
             !----
 
@@ -1029,6 +1037,10 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
 
         if (id_qo3_col  > 0 ) then
           used = send_data (id_qo3_col, qo3_col, Time_diag, is, js)
+        endif
+
+        if (query_cmip_diag_id(id_o3_col)) then
+          used = send_data (id_o3_col, qo3_col, Time_diag, is, js)
         endif
 
           if (id_dphalf > 0 ) then
@@ -1120,6 +1132,9 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
               endif
 !           endif
             end do
+            if (id_od550so4 > 0) then
+              used = send_data (id_od550so4, extopdep_col(:,:,nso4,nvis), Time_diag, is, js)
+            endif
           end do
           if (Aerosolrad_control%volcanic_lw_aerosols) then
 !           co_indx = size(Aerosolrad_diags%lw_ext,4)
@@ -1613,6 +1628,11 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                           'ozone column', &
                           'DU', missing_value=missing_value)
 
+      id_o3_col= register_cmip_diag_field_3d (mod_name, 'toz', Time, &
+!                         'Total Ozone Column', 'm', &
+                          'Total Ozone Column', 'DU', &
+                        standard_name = 'equivalent_thickness_at_stp_of_atmosphere_ozone_content')
+
 !--------------------------------------------------------------------
 !    allocate space for and save aerosol name information.
 !--------------------------------------------------------------------
@@ -1788,9 +1808,12 @@ logical,                        intent(in) :: volcanic_sw_aerosols
             id_cmipsconc(ncmip) = register_cmip_diag_field_2d (mod_name, 'sconc'//TRIM(cmip_names(ncmip)), &
                                  Time, 'Surface Concentration of '//TRIM(cmip_longnames(ncmip)), 'kg m-3', &
                           standard_name='mass_concentration_of_'//TRIM(cmip_stdnames(ncmip))//'_dry_aerosol_in_air')
-            ID_cmipconc(ncmip) = register_cmip_diag_field_3d (mod_name, 'conc'//TRIM(cmip_names(ncmip)), &
+            id_cmipconc(ncmip) = register_cmip_diag_field_3d (mod_name, 'conc'//TRIM(cmip_names(ncmip)), &
                                  Time, 'Concentration of '//TRIM(cmip_longnames(ncmip)), 'kg m-3', &
                           standard_name='mass_concentration_of_'//TRIM(cmip_stdnames(ncmip))//'_dry_aerosol_in_air')
+            id_cmipaod(ncmip) = register_cmip_diag_field_2d (mod_name, 'od550'//TRIM(cmip_names(ncmip)), &
+                                                Time, TRIM(cmip_longnames(ncmip))//' aod at 550nm', '1', &
+                          standard_name='atmosphere_optical_thickness_due_to_'//TRIM(cmip_stdnames(ncmip))//'_ambient_aerosol')
           endif
           !----
 
@@ -1810,8 +1833,8 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         allocate (asymdep_fam_names(nfamilies))
         allocate (asymdep_fam_column_names(nfamilies))
 
-        ! indices to aerosol, pm2.5, vis, and 870 bands
-        naero = 0; npm25 = 0; nvis = 0; n870 = 0
+        ! indices to aerosol, pm2.5, vis, 870, and 440 bands
+        naero = 0; npm25 = 0; nvis = 0; n870 = 0; n440 = 0
         do n = 1, nfamilies
           if (TRIM(family_names(n)) .eq. 'aerosol') naero = n
           if (TRIM(family_names(n)) .eq. 'pm2.5')   npm25 = n
@@ -1819,6 +1842,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         do nl = 1, N_DIAG_BANDS
           if (TRIM(band_suffix(nl)) .eq. '_vis') nvis = nl
           if (TRIM(band_suffix(nl)) .eq. '_870') n870 = nl
+          if (TRIM(band_suffix(nl)) .eq. '_440') n440 = nl
         enddo
 
    do nl=1,N_DIAG_BANDS
@@ -1868,7 +1892,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
    end do
 
         !---- register cmip fields ----
-        id_od550aer = 0; id_abs550aer = 0; id_od550lt1aer = 0; id_od870aer = 0
+        id_od550aer = 0; id_abs550aer = 0; id_od550lt1aer = 0; id_od870aer = 0; id_od550so4 = 0
         if (naero > 0 .and. nvis > 0) then
           id_od550aer = register_cmip_diag_field_2d (mod_name, 'od550aer', Time, &
                             'Ambient Aerosol Optical Thickness at 550 nm', '1.0', &
@@ -1889,6 +1913,16 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           id_od870aer = register_cmip_diag_field_2d (mod_name, 'od870aer', Time, &
                             'Ambient Aerosol Optical Thickness at 870 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
+        endif
+        if (naero > 0 .and. n440 > 0) then
+          id_od440aer = register_cmip_diag_field_2d (mod_name, 'od440aer', Time, &
+                            'Ambient Aerosol Optical Thickness at 440 nm', '1.0', &
+                            standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
+        endif
+        if (nso4 > 0 .and. nvis > 0) then
+          id_od550so4 = register_cmip_diag_field_2d (mod_name, 'od550so4', Time, &
+                            'Sulfate aod at 550 nm', '1.0', &
+                            standard_name='atmosphere_optical_thickness_due_to_sulfate_ambient_aerosol')
         endif
         !----
 
