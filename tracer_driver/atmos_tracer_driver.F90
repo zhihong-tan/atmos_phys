@@ -329,11 +329,11 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
- type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC
+ type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
-            id_drynh4, id_drybc, id_drypoa, id_drysoa
+            id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa
 
 !for cmip6 (f1p)
  type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
@@ -504,6 +504,7 @@ real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
 real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
+real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 
@@ -785,6 +786,11 @@ character(len=32) :: tracer_units, tracer_name
             pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic)),  &
                                      Time_next, is_in=is, js_in=js)
       endif
+      if (id_dryoa > 0 .and. nomphilic > 0 .and. nomphobic > 0 .and. nSOA > 0) then
+        used  = send_data (id_dryoa,  &
+            pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic) + dsinku(:,:,nSOA)),  &
+                                     Time_next, is_in=is, js_in=js)
+      endif
 
       do n=1,ntp
          if (id_tracer_col_kg_m2(n).gt.0) then
@@ -1013,6 +1019,28 @@ character(len=32) :: tracer_units, tracer_name
 
      if ( query_cmip_diag_id(ID_BC) .and. nbcphilic > 0 .and. nbcphobic > 0) then
         used = send_cmip_data_3d ( ID_BC, tracer(:,:,:,nbcphilic)+tracer(:,:,:,nbcphobic), &
+             Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
+     if ( query_cmip_diag_id(ID_DUST) ) then
+        sumb = 0.
+        do n=1,ntp
+          if (is_dust_tracer(n)) then
+             sumb(:,:,:) = sumb(:,:,:) + tracer(:,:,:,n)
+          end if
+        end do
+        used = send_cmip_data_3d ( ID_DUST, sumb(:,:,:), &
+             Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
+     if ( query_cmip_diag_id(ID_SS) ) then
+        sumb = 0.
+        do n=1,ntp
+          if (is_seasalt_tracer(n)) then
+             sumb(:,:,:) = sumb(:,:,:) + tracer(:,:,:,n)
+          end if
+        end do
+        used = send_cmip_data_3d ( ID_SS, sumb(:,:,:), &
              Time_next, is_in=is, js_in=js, ks_in=1)
      end if
 
@@ -1790,6 +1818,10 @@ type(time_type), intent(in)                                :: Time
       id_drysoa = register_cmip_diag_field_2d ( mod_name, &
                   'drysoa', Time, 'Dry Deposition Rate of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
+
+      id_dryoa = register_cmip_diag_field_2d ( mod_name, &
+                  'dryoa', Time, 'Dry Deposition Rate of Dry Aerosol Total Organic Matter', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
       !----
 
 !<f1p: tracer diagnostics
@@ -1820,6 +1852,14 @@ type(time_type), intent(in)                                :: Time
       ID_OM = register_cmip_diag_field_3d ( mod_name, 'fam_om_kg_kg', Time, &
              'Total organic aerosol mass mixing ratio', 'kg kg-1', &
              standard_name='mass_fraction_of_particulate_organic_matter_dry_aerosol_particles_in_air')
+
+      ID_DUST = register_cmip_diag_field_3d ( mod_name, 'fam_dust_kg_kg', Time, &
+             'Dust aerosol mass mixing ratio', 'kg kg-1', &
+             standard_name='mass_fraction_of_dust_dry_aerosol_particles_in_air')
+
+      ID_SS = register_cmip_diag_field_3d ( mod_name, 'fam_seasalt_kg_kg', Time, &
+             'Sea salt mass mixing ratio', 'kg kg-1', &
+             standard_name='mass_fraction_of_seasalt_dry_aerosol_particles_in_air')
 
       ID_pm10 = register_cmip_diag_field_3d ( mod_name, 'pm10_kg_kg', Time, &
               'PM10 mass mixing ratio',  'kg kg-1', &
