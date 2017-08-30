@@ -25,6 +25,7 @@ use fms_mod,           only: open_namelist_file, fms_init, &
 use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
+			     diag_field_add_attribute, &
                              DIAG_FIELD_NOT_FOUND
 use diag_axis_mod,     only: get_axis_num
 use diag_data_mod,     only: CMOR_MISSING_VALUE
@@ -1817,6 +1818,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
             id_cmipaod(ncmip) = register_cmip_diag_field_2d (mod_name, 'od550'//TRIM(cmip_names(ncmip)), &
                                                 Time, TRIM(cmip_longnames(ncmip))//' aod at 550nm', '1', &
                           standard_name='atmosphere_optical_thickness_due_to_'//TRIM(cmip_stdnames(ncmip))//'_ambient_aerosol')
+            call diag_field_add_attribute ( id_cmipaod(ncmip), 'comment', 'wavelength: 550 nm')
           endif
           !----
 
@@ -1900,9 +1902,11 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           id_od550aer = register_cmip_diag_field_2d (mod_name, 'od550aer', Time, &
                             'Ambient Aerosol Optical Thickness at 550 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
-          id_abs550aer = register_cmip_diag_field_2d (mod_name, 'abs550aer', Time, &
+          call diag_field_add_attribute ( id_od550aer, 'comment', 'wavelength: 550 nm')
+	  id_abs550aer = register_cmip_diag_field_2d (mod_name, 'abs550aer', Time, &
                             'Ambient Aerosol Absorption Optical Thickness at 550 nm', '1.0', &
                             standard_name='atmosphere_absorption_optical_thickness_due_to_ambient_aerosol')
+          call diag_field_add_attribute ( id_abs550aer, 'comment', 'wavelength: 550 nm')
           ID_ec550aer = register_cmip_diag_field_3d (mod_name, 'ec550aer', Time, &
                             'Ambient Aerosol Extinction at 550 nm', 'm-1', &
                             standard_name='volume_extinction_coefficient_in_air_due_to_ambient_aerosol')
@@ -1911,26 +1915,31 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           id_od550lt1aer = register_cmip_diag_field_2d (mod_name, 'od550lt1aer', Time, &
                             'Ambient Fine Aerosol Optical Thickness at 550 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_pm1_ambient_aerosol')
+          call diag_field_add_attribute ( id_od550lt1aer, 'comment', 'wavelength: 550 nm')
         endif
         if (naero > 0 .and. n870 > 0) then
           id_od870aer = register_cmip_diag_field_2d (mod_name, 'od870aer', Time, &
                             'Ambient Aerosol Optical Thickness at 870 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
+          call diag_field_add_attribute ( id_od870aer, 'comment', 'wavelength: 870 nm')
         endif
         if (naero > 0 .and. n440 > 0) then
           id_od440aer = register_cmip_diag_field_2d (mod_name, 'od440aer', Time, &
                             'Ambient Aerosol Optical Thickness at 440 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
+          call diag_field_add_attribute ( id_od440aer, 'comment', 'wavelength: 440 nm')
         endif
         if (nso4 > 0 .and. nvis > 0) then
           id_od550so4 = register_cmip_diag_field_2d (mod_name, 'od550so4', Time, &
                             'Sulfate aod at 550 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_sulfate_ambient_aerosol')
+          call diag_field_add_attribute ( id_od550so4, 'comment', 'wavelength: 550 nm')
         endif
         if (nsoa > 0 .and. nvis > 0) then
           id_od550soa = register_cmip_diag_field_2d (mod_name, 'od550soa', Time, &
                             'SOA aod at 550 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_particulate_organic_matter_ambient_aerosol')
+          call diag_field_add_attribute ( id_od550soa, 'comment', 'wavelength: 550 nm')
         endif
         !----
 
