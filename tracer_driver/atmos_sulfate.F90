@@ -396,6 +396,11 @@ integer :: n, m, nsulfate
 
   30   format (A,' was initialized as tracer number ',i2)
 
+   n = get_tracer_index(MODEL_ATMOS,'oh')
+   if ( n < 0 ) &
+     call error_mesg ('atmos_sulfate_mod', &
+           'OH tracer is required for simple sulfate chemistry, but is not present in field_table', FATAL)
+
 !----------------------------------------------------------------------
 !    initialize namelist entries
 !----------------------------------------------------------------------
