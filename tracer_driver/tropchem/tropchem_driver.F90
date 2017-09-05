@@ -2227,7 +2227,7 @@ end if
    id_eminox = register_cmip_diag_field_2d ( module_name, 'eminox', Time, &
                               'Total Emission Rate of NOx', 'kg m-2 s-1', &
                 standard_name='tendency_of_atmosphere_mass_content_of_nox_expressed_as_nitrogen_due_to_emission')
-   id_emiisop = register_cmip_diag_field_2d ( module_name, 'eminox', Time, &
+   id_emiisop = register_cmip_diag_field_2d ( module_name, 'emiisop', Time, &
                                'Total Emission Rate of Isoprene', 'kg m-2 s-1', &
                  standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
 

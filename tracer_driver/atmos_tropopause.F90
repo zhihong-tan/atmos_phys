@@ -20,6 +20,7 @@ use              fms_mod, only : file_exist, write_version_number,    &
 use     diag_manager_mod, only : send_data
 use atmos_cmip_diag_mod,  only : register_cmip_diag_field_2d
 use     time_manager_mod, only : time_type
+use              mpp_mod, only : input_nml_file 
 
 
 implicit none
@@ -105,12 +106,12 @@ contains
 subroutine atmos_tropopause(is, ie, js, je, Time, Time_next, t, pfull, z_full, &
                             tropopause_ind)
 
-   integer, intent(in)                 :: is, ie, js, je
-   type (time_type),      intent(in)   :: Time, Time_next
-   real, intent(in),  dimension(:,:,:) :: t            ! K
-   real, intent(in),  dimension(:,:,:) :: pfull        ! Pa
-   real, intent(in),  dimension(:,:,:) :: z_full       ! m
-   real, intent(out),  dimension(:,:)  :: tropopause_ind ! 1
+   integer, intent(in)                   :: is, ie, js, je
+   type (time_type), intent(in)          :: Time, Time_next
+   real,    intent(in), dimension(:,:,:) :: t            ! K
+   real,    intent(in), dimension(:,:,:) :: pfull        ! Pa
+   real,    intent(in), dimension(:,:,:) :: z_full       ! m
+   integer, intent(out), dimension(:,:)  :: tropopause_ind ! 1
 !
 !-----------------------------------------------------------------------
 !     local parameters
@@ -137,20 +138,20 @@ real, dimension(size(t,1),size(t,2)) :: ptp, tatp, ztp
        do k = kd-1,2,-1
           if (z_full(i,j,k) < ztrop_low ) then
               cycle
-          else if( z_full(i,k) > ztrop_high ) then
-              troplev(i,j)    = k
+          else if( z_full(i,j,k) > ztrop_high ) then
+              tropopause_ind(i,j)    = k
               exit
           end if
           dtemp = t(i,j,k) - t(i,j,k-1)
           if( dtemp < max_dtdz*(z_full(i,j,k-1) - z_full(i,j,k)) ) then
-             troplev(i,j)    = k
+             tropopause_ind(i,j)    = k
              exit
           end if
        end do
 
-       ptp(i,j) = pfull(i,j,troplev(i,j))
-       tatp(i,j) = t(i,j,troplev(i,j))
-       ztp(i,j) = z_full(i,j,troplev(i,j))
+       ptp(i,j) = pfull(i,j,tropopause_ind(i,j))
+       tatp(i,j) = t(i,j,tropopause_ind(i,j))
+       ztp(i,j) = z_full(i,j,tropopause_ind(i,j))
 
     enddo
     enddo
