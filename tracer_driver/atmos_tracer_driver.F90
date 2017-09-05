@@ -199,6 +199,9 @@ use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
                                   atmos_co2_end
+use atmos_tropopause_mod,only: &
+                                  atmos_tropopause_init, &
+                                  atmos_tropopause
 
 use interpolator_mod,      only : interpolate_type
 
@@ -251,6 +254,7 @@ integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
 integer :: co2_clock = 0
+integer :: tropopause_clock = 0
 
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
 logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
@@ -1071,6 +1075,14 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 
 !------------------------------------------------------------------------
+! Compute tropopause diagnostics
+!------------------------------------------------------------------------
+   call mpp_clock_begin (tropopause_clock)
+   call atmos_tropopause(is, ie, js, je, Time, Time_next, t, pfull, z_full,     &
+                         tropopause_ind)
+   call mpp_clock_end (tropopause_clock)
+
+!------------------------------------------------------------------------
 ! Compute radon source-sink tendency
 !------------------------------------------------------------------------
     call mpp_clock_begin (radon_clock)
@@ -1715,6 +1727,10 @@ type(time_type), intent(in)                                :: Time
       if (ncodirect > 0 .or. ne90 > 0) then
         call regional_tracer_driver_init (lonb, latb, axes, Time, mask)
       endif
+
+!tropopause diagnostics
+      call atmos_tropopause_init (Time)
+      tropopause_clock = mpp_clock_id( 'Tracer: Tropopause', grain=CLOCK_MODULE )
 
      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
