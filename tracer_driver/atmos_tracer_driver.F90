@@ -352,7 +352,8 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
  real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:), frac_pm1(:), frac_pm10(:), frac_pm25(:)
  integer, allocatable :: id_tracer_ddep_kg_m2_s(:)
 
- real, parameter      :: o3_column_factor = AVOGNO / (WTMAIR*1.e-3 * 2.687e25) ! Convert to equiv depth in m at STP (T=0C, P=1atm)
+ real, parameter      :: o3_column_factor = 2.687e25 ! Molecular density (molec/m3) of air at STP (T=0C, P=1atm)
+                                                     ! Used to convert from molec/m2 to equivalent depth (in m) at STP
 
 !-----------------------------------------------------------------------
 type(time_type) :: Time
@@ -1090,7 +1091,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
         do k=1,kd
            suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,no3)
         end do
-	suma = suma * o3_column_factor
+	suma = suma * AVOGNO / (WTMAIR*1.e-3 * o3_column_factor)
         used = send_data (id_toz, suma, Time_next, is_in=is, js_in=js)
       end if
 
@@ -1103,7 +1104,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
            end do
         end do
         end do
-	suma = suma * o3_column_factor
+	suma = suma * AVOGNO / (WTMAIR*1.e-3 * o3_column_factor)
         used = send_data (id_tropoz, suma, Time_next, is_in=is, js_in=js)
       end if
 
