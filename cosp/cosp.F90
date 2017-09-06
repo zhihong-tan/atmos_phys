@@ -6,7 +6,7 @@
 
 ! $Id$
 ! $Name$
-! cosp_version = 1.4.0
+! cosp_version = 1.4.1
 
 #endif
 
