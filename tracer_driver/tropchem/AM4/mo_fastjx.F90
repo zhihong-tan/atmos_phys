@@ -507,7 +507,7 @@ module MO_FASTJX_MOD
 !-----------------------------------------------------------------------
 !     integer, parameter                ::      L_      =48             !altitude(levels) dim of CTM grid
 !     integer, parameter                ::      L1_     =L_+1           !assuming another layer above the top layer
-!     integer, parameter                ::      L2_     =2*L_+2         !2*L1_ = 2*L_ + 2 = no. levels in the basic Fast-JX grid (mid-level_ 
+!     integer, parameter                ::      L2_     =2*L_+2         !2*L1_ = 2*L_ + 2 = no. levels in the basic Fast-JX grid (mid-level_
 !     integer, parameter                ::      JXL_    =48             ! JXL_: vertical(levels) dim for J-values computed within fast-JX
 !     integer, parameter                ::      JXL1_   =JXL_+1
 !     integer, parameter                ::      JXL2_   =2*JXL_+2       ! JXL2_: 2*JXL_ + 2 = mx no. levels in the basic Fast-JX grid (mid-level)

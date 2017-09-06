@@ -59,7 +59,7 @@ public  atmos_SOA_init, atmos_SOA_end, atmos_SOA_chem, &
 
 character(len=6), parameter :: module_name = 'tracer'
 
-integer :: nSOA    = 0  ! tracer number for Secondary Organic Aerosol 
+integer :: nSOA    = 0  ! tracer number for Secondary Organic Aerosol
 integer :: nOH     = 0  ! tracer number for OH
 integer :: nC4H10  = 0  ! tracer number for C4H10
 
@@ -210,6 +210,7 @@ character(len=7), parameter :: mod_name = 'tracers'
                  write (logunit,30) SOA_tracer,nsoa
       endif
 
+
   30   format (A,' was initialized as tracer number ',i2)
 
 !----- check for other required tracers ------------
@@ -232,7 +233,7 @@ character(len=7), parameter :: mod_name = 'tracers'
            call error_mesg ('atmos_soa_mod', &
             'OH and C4H10 tracers must be present if use_interactive_tracers=T', FATAL)
       endif
-     
+
      call interpolator_init (gas_conc_interp, trim(gas_conc_filename),  &
                              lonb, latb,&        
                              data_out_of_bounds=  (/CONSTANT/), &
@@ -437,6 +438,10 @@ character(len=7), parameter :: mod_name = 'tracers'
 
       id_chepsoa       = register_cmip_diag_field_2d ( mod_name, 'chepsoa', Time, &
                         'Chemical Production of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
+                        standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production')
+                      
+      id_chepasoa      = register_cmip_diag_field_2d ( mod_name, 'chepasoa', Time, &
+                        'Total Net Production of Anthropogenic Secondary Organic Aerosol', 'kg m-2 s-1', &
                         standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production')
                       
       id_chepasoa      = register_cmip_diag_field_2d ( mod_name, 'chepasoa', Time, &
@@ -683,7 +688,7 @@ end subroutine atmos_SOA_endts
 !----------------------------------------------------------------------
          do i=1,id
          do j=1,jd
-         do k=1,kd 
+         do k=1,kd
             SOA_dt(i,j,k) = A_C4H10_OH * exp( -B_C4H10_OH/temp(i,j,k) ) * c4h10_SOA_yield &
                           * C4H10_conc(i,j,k)*OH_conc(i,j,k)*fac_oh(i,j)
          enddo
@@ -693,8 +698,8 @@ end subroutine atmos_SOA_endts
       else
          do i=1,id
          do j=1,jd
-         do k=1,kd 
-	    air_dens = 10.*pfull(i,j,k)/(boltz*temp(i,j,k)) ! molec/cm3
+         do k=1,kd
+            air_dens = 10.*pfull(i,j,k)/(boltz*temp(i,j,k)) ! molec/cm3
             SOA_dt(i,j,k) = A_C4H10_OH * exp( -B_C4H10_OH/temp(i,j,k) ) * c4h10_SOA_yield &
                           * C4H10(i,j,k)*OH(i,j,k)*air_dens
          enddo
