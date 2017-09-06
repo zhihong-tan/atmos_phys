@@ -58,7 +58,7 @@ integer :: id_emisbb, id_omemisbb_col
 integer :: id_bcemisbf, id_bcemisbb, id_bcemissh, id_bcemisff, id_bcemisav
 integer :: id_omemisbf, id_omemisbb, id_omemissh, id_omemisff, id_omemisbg, id_omemisoc
 integer :: id_bc_tau
-integer :: id_emibc, id_emipoa, id_emibb ! cmip
+integer :: id_emibc, id_emipoa, id_emiapoa, id_emibb ! cmip
 
 integer :: id_SOA_prod           = 0
 !----------------------------------------------------------------------
@@ -888,6 +888,16 @@ real, parameter                            :: yield_soa = 0.1
         endif
       endif
 
+! column anthropogenic emissions for om
+      if (id_emiapoa > 0) then
+
+        om_emis = omemisbf(:,:) + omemissh(:,:)
+        do k=1,kd
+          om_emis(:,:) = om_emis(:,:) + omemisff(:,:,k)
+        end do
+        used = send_data ( id_emiapoa, om_emis, diag_time, is_in=is,js_in=js)
+      endif
+
       ! cmip field: same as emisbb
       if (id_emibb > 0) then
         used = send_data ( id_emibb, emisob, diag_time, is_in=is,js_in=js)
@@ -1307,6 +1317,10 @@ integer ::  unit, ierr, io, logunit
 
      id_emipoa = register_cmip_diag_field_2d ( mod_name, 'emipoa', Time, &
                      'Emission Rate of Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
+                     standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles_due_to_emission')
+
+     id_emiapoa = register_cmip_diag_field_2d ( mod_name, 'emipoa', Time, &
+                     'Emission Rate of Anthropogenic Dry Aerosol Primary Organic Matter', 'kg m-2 s-1', &
                      standard_name='tendency_of_atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles_due_to_emission')
 
      id_emibb = register_cmip_diag_field_2d ( mod_name, 'emibb', Time, &
