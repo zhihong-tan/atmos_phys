@@ -74,7 +74,10 @@ use mod_modis_sim,            only: numTauHistogramBins,   &
                                     tauHistogramBoundaries, &
                                     nominalTauHistogramBoundaries, &
                                     nominalTauHistogramCenters, &
-                                    nominalPressureHistogramBoundaries
+                                    nominalPressureHistogramBoundaries, &
+                                    numMODISReffIceBins, &
+                                    numMODISReffLiqBins,  &
+                                    reffIce_binEdges, reffLiq_binEdges
 use mod_cosp_utils,           only: flip_vert_index
 
 IMPLICIT NONE
@@ -87,7 +90,7 @@ public cosp_diagnostics_init, output_cosp_fields, cosp_diagnostics_end, &
 
 character(len=128)  :: version =  '$Id $'
 character(len=128)  :: tagname =  '$Name $'
-!   cosp_version = 1.4.0
+!   cosp_version = 1.4.1
 
 !---------------------------------------------------------------------
 !namelist variables
@@ -168,7 +171,13 @@ integer , dimension(MISR_N_CTH)   :: id_misr
 integer , dimension(7,MISR_N_CTH) :: id_misr_n
 integer , dimension(numTauHistogramBins, numPressureHistogramBins) ::  &
                                                          id_tauctpmodis_n
+integer , dimension(numTauHistogramBins, numMODISReffIceBins) ::  &
+                                                   id_taurefficemodis_n
+integer , dimension(numTauHistogramBins, numMODISReffLiqBins) ::  &
+                                                   id_taureffliqmodis_n
 integer , dimension(numPressureHistogramBins) :: id_tauctpmodis
+integer , dimension(numMODISReffIceBins     ) :: id_taurefficemodis
+integer , dimension(numMODISReffLiqBins     ) :: id_taureffliqmodis
 
 real  :: missing_value = -1.0E30
 
@@ -1407,6 +1416,82 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
                 mask_variant = .true., missing_value=missing_value)
      end do
    end do
+
+!taurefficemodis
+   do n=numMODISReffIceBins,1,-1
+       if (n <=9) then
+       write (chvers, '(i1)') n
+       else
+       write (chvers, '(i2)') n
+       endif
+     write (chvers2, '(e8.2)') reffIce_binEdges(1,n)
+     write (chvers3, '(e8.2)') reffIce_binEdges(2,n)
+     id_taurefficemodis(n) = register_diag_field &
+       (mod_name, 'taurefficemodis_'// trim(chvers), cosp_axes(modistauindx), &
+          Time, 'MODIS Cld Frac for clouds with icesize between ' // trim(chvers2) &
+             // ' and' // trim(chvers3) // ' Pa', 'percent', &
+                  mask_variant = .true., missing_value=missing_value)
+   end do
+
+   do m=1,numTauHistogramBins
+     write (chvers4, '(i1)') m + 1
+     write (chvers5, '(f6.1)') nominalTauHistogramBoundaries(1,m)
+     write (chvers6, '(f6.1)') nominalTauHistogramBoundaries(2,m)
+     do n=numMODISReffIceBins,1,-1
+       if (n <=9) then
+       write (chvers, '(i1)') n
+       else
+       write (chvers, '(i2)') n
+       endif
+       write (chvers2, '(e8.2)') reffIce_binEdges(1,n)
+       write (chvers3, '(e8.2)') reffIce_binEdges(2,n)
+       id_taurefficemodis_n(m,n) = register_diag_field &
+         (mod_name, 'taurefficemodis_'// trim(chvers4)//'_' // trim(chvers), &
+          axes(1:2), Time, 'MODIS CldFrac - tau between ' // &
+           trim(chvers5) // ' and ' // trim(chvers6) //  &
+           ' , icesize between ' // trim(chvers2) // ' and' // &
+             trim(chvers3) // ' Pa', 'percent', &
+                mask_variant = .true., missing_value=missing_value)
+     end do
+   end do
+
+!taureffliqmodis
+   do n=numPressureHistogramBins,1,-1
+       if (n <=9) then
+       write (chvers, '(i1)') n
+       else
+       write (chvers, '(i2)') n
+       endif
+     write (chvers2, '(e8.2)') reffLiq_binEdges(1,n)
+     write (chvers3, '(e8.2)') reffLiq_binEdges(2,n)
+     id_taureffliqmodis(n) = register_diag_field &
+       (mod_name, 'taureffliqmodis_'// trim(chvers), cosp_axes(modistauindx), &
+          Time, 'MODIS Cld Frac for clouds with dropsize between ' // trim(chvers2) &
+             // ' and' // trim(chvers3) // ' Pa', 'percent', &
+                  mask_variant = .true., missing_value=missing_value)
+   end do
+
+   do m=1,numTauHistogramBins
+     write (chvers4, '(i1)') m + 1
+     write (chvers5, '(f6.1)') nominalTauHistogramBoundaries(1,m)
+     write (chvers6, '(f6.1)') nominalTauHistogramBoundaries(2,m)
+     do n=numMODISReffLiqBins,1,-1
+       if (n <=9) then
+       write (chvers, '(i1)') n
+       else
+       write (chvers, '(i2)') n
+       endif
+       write (chvers2, '(e8.2)') reffLiq_binEdges(1,n)
+       write (chvers3, '(e8.2)') reffLiq_binEdges(2,n)
+       id_taureffliqmodis_n(m,n) = register_diag_field &
+         (mod_name, 'taureffliqmodis_'// trim(chvers4)//'_' // trim(chvers), &
+          axes(1:2), Time, 'MODIS CldFrac - tau between ' // &
+           trim(chvers5) // ' and ' // trim(chvers6) //  &
+           ' , dropsize between ' // trim(chvers2) // ' and' // &
+             trim(chvers3) // ' Pa', 'percent', &
+                mask_variant = .true., missing_value=missing_value)
+     end do
+   end do
  endif !(Lmodis_sim)
 
 
@@ -1512,8 +1597,16 @@ real, dimension(nlon,nlat, nlevels+1), intent(in) :: phalf_plus, zhalf_plus
       real, dimension(Nlon,Nlat,7,7            ) :: y9 
       real, dimension(Nlon,Nlat,numTauHistogramBins,  &
                                       numPressureHistogramBins  ) :: y13
+      real, dimension(Nlon,Nlat,numTauHistogramBins,  &
+                                      numMODISReffIceBins  ) :: y13a
+      real, dimension(Nlon,Nlat,numTauHistogramBins,  &
+                                      numMODISReffLiqBins  ) :: y13b
       real, dimension(Nlon,Nlat,numTauHistogramBins+1,  &
                                       numPressureHistogramBins  ) :: y12
+      real, dimension(Nlon,Nlat,numTauHistogramBins+1,  &
+                                      numMODISReffIceBins  ) :: y12a
+      real, dimension(Nlon,Nlat,numTauHistogramBins+1,  &
+                                      numMODISReffLiqBins  ) :: y12b
       real, dimension(Nlon,Nlat,7,MISR_N_CTH   ) :: y10
       logical, dimension (Nlon,Nlat,Nlevels) :: mask_y3a
       logical, dimension (Nlon,Nlat) :: lmsk
@@ -2314,6 +2407,42 @@ endif
      do n=1, numPressureHistogramBins   
        used = send_data (id_tauctpmodis_n(m,n), y13(:,:,m,n), Time_diag, &
                            is, js, mask = y13(:,:,m,n) /= missing_value )
+     end do
+   end do
+ endif
+
+!4d array (i,j, modis_tau,modis_reffice):
+ if (cfg%Lmodis_sim) then
+   call map_point_to_ll (Nlon, Nlat, geomode,   &
+             x3=modis%Optical_Thickness_vs_Reffice, y4 = y12a)
+   y13a(:,:,1:numTauHistogramBins,:) = y12a(:,:,2:numTauHistogramBins+1,:)
+   do n=1, numMODISReffIceBins   
+     used = send_data (id_taurefficemodis(n), y13a(:,:,:,n), Time_diag, is, &
+                           js, 1, mask = y13a(:,:,:,n) /= missing_value )
+   end do
+
+   do m=1,numTauHistogramBins
+     do n=1, numMODISReffIceBins   
+       used = send_data (id_taurefficemodis_n(m,n), y13a(:,:,m,n), Time_diag, &
+                           is, js, mask = y13a(:,:,m,n) /= missing_value )
+     end do
+   end do
+ endif
+
+!4d array (i,j, modis_tau,modis_reffliq):
+ if (cfg%Lmodis_sim) then
+   call map_point_to_ll (Nlon, Nlat, geomode,   &
+             x3=modis%Optical_Thickness_vs_ReffLiq, y4 = y12b)
+   y13b(:,:,1:numTauHistogramBins,:) = y12b(:,:,2:numTauHistogramBins+1,:)
+   do n=1, numMODISReffLiqBins   
+     used = send_data (id_taureffliqmodis(n), y13b(:,:,:,n), Time_diag, is, &
+                           js, 1, mask = y13b(:,:,:,n) /= missing_value )
+   end do
+
+   do m=1,numTauHistogramBins
+     do n=1, numMODISReffLiqBins   
+       used = send_data (id_taureffliqmodis_n(m,n), y13b(:,:,m,n), Time_diag, &
+                           is, js, mask = y13b(:,:,m,n) /= missing_value )
      end do
    end do
  endif

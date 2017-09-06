@@ -2231,20 +2231,23 @@ integer                     :: id_wetdep_cmip
 
         id_tot_cld_amt = register_diag_field    &
               (mod_name, 'cld_amt_2d', axes(1:2), Time, &
-                'total cloud amount', 'percent')
+                'total cloud amount', 'percent', &
+                interp_method = 'conserve_order1' )
 
         id_clt = register_cmip_diag_field_2d (mod_name, 'clt', Time, &
                                       'Total Cloud Cover Percentage', '%', &
-                                standard_name= 'cloud_area_fraction' )
+                                standard_name= 'cloud_area_fraction', &
+                                interp_method = 'conserve_order1' )
 
         id_tot_cloud_area = register_diag_field ( mod_name, &
           'tot_cloud_area', axes(1:3), Time, &
           'Cloud area -- all clouds', 'percent',    &
-                                           missing_value=missing_value )
+          missing_value=missing_value, interp_method='conserve_order1' )
 
         ID_cl = register_cmip_diag_field_3d ( mod_name, 'cl', Time, &
                                   'Percentage Cloud Cover', '%',    &
-            standard_name='cloud_area_fraction_in_atmosphere_layer' )
+           standard_name='cloud_area_fraction_in_atmosphere_layer', &
+           interp_method='conserve_order1' )
 
         id_tot_h2o     = register_diag_field ( mod_name, &
           'tot_h2o', axes(1:3), Time, &
@@ -2257,69 +2260,77 @@ integer                     :: id_wetdep_cmip
         id_tot_liq_amt = register_diag_field ( mod_name, &
           'tot_liq_amt', axes(1:3), Time, &
           'Liquid amount -- all clouds', 'kg/kg',    &
-                                              missing_value=missing_value)
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         ID_clw = register_cmip_diag_field_3d ( mod_name, 'clw', Time, &
           'Mass Fraction of Cloud Liquid Water', 'kg kg-1',   &
-          standard_name='mass_fraction_of_cloud_liquid_water_in_air' )
+          standard_name='mass_fraction_of_cloud_liquid_water_in_air', &
+          interp_method='conserve_order1' )
 
         id_tot_ice_amt = register_diag_field ( mod_name, &
           'tot_ice_amt', axes(1:3), Time, &
           'Ice amount -- all clouds', 'kg/kg',  &
-                                            missing_value=missing_value )
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         ID_cli = register_cmip_diag_field_3d ( mod_name, 'cli', Time, &
           'Mass Fraction of Cloud Ice', 'kg kg-1',   &
-          standard_name='mass_fraction_of_cloud_ice_in_air' )
+          standard_name='mass_fraction_of_cloud_ice_in_air', &
+          interp_method='conserve_order1' )
 
         id_lsc_cloud_area = register_diag_field ( mod_name, &
           'lsc_cloud_area', axes(1:3), Time, &
           'Large-scale cloud area', 'percent',    &
-                                            missing_value=missing_value )
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         id_lsc_liq_amt = register_diag_field ( mod_name, &
           'lsc_liq_amt', axes(1:3), Time, &
            'Large-scale cloud liquid amount', 'kg/kg',   &
-                                            missing_value=missing_value )
+            missing_value=missing_value, interp_method='conserve_order1' )
 
         id_lsc_ice_amt = register_diag_field ( mod_name, &
           'lsc_ice_amt', axes(1:3), Time, &
           'Large-scale cloud ice amount', 'kg/kg',    &
-                                            missing_value=missing_value )
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         id_conv_cloud_area = register_diag_field ( mod_name, &
           'conv_cloud_area', axes(1:3), Time, &
-          'Convective cloud area', 'percent', missing_value=missing_value )
+          'Convective cloud area', 'percent', missing_value=missing_value, &
+          interp_method='conserve_order1' )
 
         id_conv_liq_amt = register_diag_field ( mod_name, &
           'conv_liq_amt', axes(1:3), Time, &
           'Convective cloud liquid amount', 'kg/kg',    &
-                                             missing_value=missing_value )
+           missing_value=missing_value, interp_method='conserve_order1' )
 
         id_conv_ice_amt = register_diag_field ( mod_name, &
           'conv_ice_amt', axes(1:3), Time, &
           'Convective cloud ice amount', 'kg/kg',    &
-                                             missing_value=missing_value)
+          missing_value=missing_value, interp_method='conserve_order1' )
 
         id_WP_all_clouds = register_diag_field ( mod_name, &
           'WP_all_clouds', axes(1:2), Time, &
-          'Total  water path -- all clouds + ls precip',        'kg/m2'   )
+          'Total  water path -- all clouds + ls precip',        'kg/m2', &
+           interp_method = 'conserve_order1' )
 
         id_clwvi = register_cmip_diag_field_2d ( mod_name, 'clwvi', Time, &
                                 'Condensed Water Path', 'kg m-2', &
-         standard_name='atmosphere_cloud_condensed_water_content' )
+         standard_name='atmosphere_cloud_condensed_water_content', &
+         interp_method='conserve_order1' )
 
         id_LWP_all_clouds = register_diag_field ( mod_name, &
           'LWP_all_clouds', axes(1:2), Time, &
-          'Liquid water path -- all clouds + ls rain',          'kg/m2'   )
+          'Liquid water path -- all clouds + ls rain',          'kg/m2', &
+           interp_method = 'conserve_order1' )
 
         id_IWP_all_clouds = register_diag_field ( mod_name, &
           'IWP_all_clouds', axes(1:2), Time, &
-          'Ice water path -- all clouds + ls snow',           'kg/m2'   )
+          'Ice water path -- all clouds + ls snow',           'kg/m2', &
+           interp_method = 'conserve_order1' )
 
         id_clivi = register_cmip_diag_field_2d ( mod_name, 'clivi', Time, &
                                       'Ice Water Path', 'kg m-2', &
-                     standard_name='atmosphere_mass_content_of_cloud_ice' )
+                     standard_name='atmosphere_mass_content_of_cloud_ice', &
+                     interp_method='conserve_order1' )
 
       endif
 

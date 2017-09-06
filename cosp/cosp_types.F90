@@ -6,7 +6,7 @@
 
 ! $Id$
 ! $Name$
-! cosp_version = 1.4.0
+! cosp_version = 1.4.1
 
 #endif
 
@@ -65,7 +65,7 @@ MODULE MOD_COSP_TYPES
                 Lfracout,LlidarBetaMol532,Ltbrttov, &
                 Lcltmodis,Lclwmodis,Lclimodis,Lclhmodis,Lclmmodis,Lcllmodis,Ltautmodis,Ltauwmodis,Ltauimodis,Ltautlogmodis, &
                 Ltauwlogmodis,Ltauilogmodis,Lreffclwmodis,Lreffclimodis,Lpctmodis,Llwpmodis, &
-                Liwpmodis,Lclmodis
+                Liwpmodis,Lclmodis,Lcrimodis,Lcrlmodis
 
      character(len=32) :: out_list(N_OUT_LIST)
   END TYPE COSP_CONFIG

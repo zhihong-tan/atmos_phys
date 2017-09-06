@@ -39,7 +39,7 @@
 MODULE MOD_COSP_CONSTANTS
     IMPLICIT NONE
 
-    character(len=32) :: COSP_VERSION='COSP v1.4'
+    character(len=32) :: COSP_VERSION='COSP v1.4.1'
 
     ! Indices to address arrays of LS and CONV hydrometeors
     integer,parameter :: I_LSCLIQ = 1

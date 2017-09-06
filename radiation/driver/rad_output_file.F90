@@ -1903,7 +1903,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                             'Ambient Aerosol Optical Thickness at 550 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_ambient_aerosol_particles')
           call diag_field_add_attribute ( id_od550aer, 'comment', 'wavelength: 550 nm')
-	  id_abs550aer = register_cmip_diag_field_2d (mod_name, 'abs550aer', Time, &
+          id_abs550aer = register_cmip_diag_field_2d (mod_name, 'abs550aer', Time, &
                             'Ambient Aerosol Absorption Optical Thickness at 550 nm', '1.0', &
                             standard_name='atmosphere_absorption_optical_thickness_due_to_ambient_aerosol')
           call diag_field_add_attribute ( id_abs550aer, 'comment', 'wavelength: 550 nm')
