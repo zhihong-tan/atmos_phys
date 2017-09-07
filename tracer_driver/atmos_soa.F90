@@ -444,10 +444,6 @@ character(len=7), parameter :: mod_name = 'tracers'
                         'Total Net Production of Anthropogenic Secondary Organic Aerosol', 'kg m-2 s-1', &
                         standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production')
                       
-      id_chepasoa      = register_cmip_diag_field_2d ( mod_name, 'chepasoa', Time, &
-                        'Total Net Production of Anthropogenic Secondary Organic Aerosol', 'kg m-2 s-1', &
-                        standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production')
-                      
       id_SOA_isoprene  = register_diag_field ( mod_name,       &
                         'SOA_isoprene',axes(1:2),Time,            &
                         'SOA pseudo-emission from isoprene',        &
