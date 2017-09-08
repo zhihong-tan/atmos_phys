@@ -68,7 +68,7 @@ integer ::   id_OH_conc            = 0
 integer ::   id_C4H10_conc         = 0
 integer ::   id_SOA_chem           = 0
 integer ::   id_SOA_chem_col       = 0
-integer ::   id_chepsoa            = 0 ! cmip field (same as SOA_chem_col)
+integer ::   id_chepsoa            = 0 ! cmip field
 integer ::   id_chepasoa           = 0 ! cmip field
 integer ::   id_SOA_isoprene       = 0
 integer ::   id_SOA_terpene        = 0
@@ -436,9 +436,9 @@ character(len=7), parameter :: mod_name = 'tracers'
                       'column SOA production by C4H10 + OH',        &
                       'kg/m2/s')
 
-      id_chepsoa = register_cmip_diag_field_2d ( mod_name, 'chepsoa', Time, &
-                       'Chemical Production of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
-                      standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production')
+      id_chepsoa       = register_cmip_diag_field_2d ( mod_name, 'chepsoa', Time, &
+                        'Chemical Production of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
+                        standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_net_chemical_production')
                       
       id_chepasoa      = register_cmip_diag_field_2d ( mod_name, 'chepasoa', Time, &
                         'Total Net Production of Anthropogenic Secondary Organic Aerosol', 'kg m-2 s-1', &

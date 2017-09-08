@@ -1903,7 +1903,6 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       endif
 
       !---- cmip fields ----
-      ! should vertical integral be pressure-weighted?
       if (id_emiso2 > 0) then
         emis2d = 0.0
         do k = 1, size(so2_emis,3)

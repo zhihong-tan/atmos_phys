@@ -133,7 +133,7 @@ use atmos_tracer_utilities_mod, only :                      &
                                   get_rh, get_w10m, get_cldf, &
                                   sjl_fillz, &
                                   get_cmip_param, get_chem_param
-use constants_mod,         only : grav, WTMAIR, PI
+use constants_mod,         only : grav, WTMAIR, PI, AVOGNO
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
                                   atmos_radon_end
@@ -199,6 +199,9 @@ use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
                                   atmos_co2_end
+use atmos_tropopause_mod,only: &
+                                  atmos_tropopause_init, &
+                                  atmos_tropopause
 
 use interpolator_mod,      only : interpolate_type
 
@@ -251,6 +254,7 @@ integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
 integer :: co2_clock = 0
+integer :: tropopause_clock = 0
 
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
 logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
@@ -344,9 +348,12 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
  integer, allocatable :: id_tracer_surf_mol_mol(:),id_tracer_surf_kg_kg(:)
  integer, allocatable :: id_tracer_col_kg_m2(:)
  integer              :: id_pm25_surf, id_dust_col_kg_m2, id_seasalt_col_kg_m2, id_bc_col_kg_m2
+ integer              :: id_toz, id_tropoz
  real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:), frac_pm1(:), frac_pm10(:), frac_pm25(:)
  integer, allocatable :: id_tracer_ddep_kg_m2_s(:)
 
+ real, parameter      :: o3_column_factor = 2.687e25 ! Molecular density (molec/m3) of air at STP (T=0C, P=1atm)
+                                                     ! Used to convert from molec/m2 to equivalent depth (in m) at STP
 
 !-----------------------------------------------------------------------
 type(time_type) :: Time
@@ -509,6 +516,7 @@ real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
 real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
+integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 
@@ -1069,6 +1077,36 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
              Time_next, is_in=is, js_in=js, ks_in=1)
      end if
 
+
+!------------------------------------------------------------------------
+! Compute tropopause diagnostics
+!------------------------------------------------------------------------
+   call mpp_clock_begin (tropopause_clock)
+   call atmos_tropopause(is, ie, js, je, Time, Time_next, t, pfull, z_full,     &
+                         tropopause_ind)
+   call mpp_clock_end (tropopause_clock)
+
+      if (id_toz > 0 .and. no3 > 0) then
+        suma = 0.
+        do k=1,kd
+           suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,no3)
+        end do
+	suma = suma * AVOGNO / (WTMAIR*1.e-3 * o3_column_factor)
+        used = send_data (id_toz, suma, Time_next, is_in=is, js_in=js)
+      end if
+
+      if (id_tropoz > 0 .and. no3 > 0) then
+        suma = 0.
+	do i = 1,id
+	do j = 1,jd
+           do k=1,tropopause_ind(i,j)
+              suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,no3)
+           end do
+        end do
+        end do
+	suma = suma * AVOGNO / (WTMAIR*1.e-3 * o3_column_factor)
+        used = send_data (id_tropoz, suma, Time_next, is_in=is, js_in=js)
+      end if
 
 !------------------------------------------------------------------------
 ! Compute radon source-sink tendency
@@ -1716,6 +1754,10 @@ type(time_type), intent(in)                                :: Time
         call regional_tracer_driver_init (lonb, latb, axes, Time, mask)
       endif
 
+!tropopause diagnostics
+      call atmos_tropopause_init (Time)
+      tropopause_clock = mpp_clock_id( 'Tracer: Tropopause', grain=CLOCK_MODULE )
+
      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
 
@@ -1948,6 +1990,14 @@ type(time_type), intent(in)                                :: Time
       id_seasalt_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_seasalt_col_kg_m2', &
                             Time, 'Load of Seasalt', 'kg m-2', &
                             standard_name='atmosphere_mass_content_of_seasalt_dry_aerosol')
+
+      id_toz = register_cmip_diag_field_2d ( mod_name, 'toz', &
+                       Time, 'Total Ozone Column', 'm', &
+                       standard_name='equivalent_thickness_at_stp_of_atmosphere_ozone_content')
+
+      id_tropoz = register_cmip_diag_field_2d ( mod_name, 'tropoz', &
+                       Time, 'Tropospheric Ozone Column', 'm', &
+                       standard_name='equivalent_thickness_at_stp_of_atmosphere_ozone_content')
 
       outunit = stdout()
 
