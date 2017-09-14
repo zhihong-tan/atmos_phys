@@ -26,7 +26,8 @@
 
     _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
           & error, zeta_min, max_iter, small,                         &
-          & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, drag_min,  &!miz
+          & neutral, stable_option, new_mo_option, rich_crit, zeta_trans,  &
+          & drag_min_heat, drag_min_moist, drag_min_mom,              &
           & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
           & drag_q, u_star, b_star, lavail, avail, ier)
 
@@ -39,7 +40,8 @@
        logical, intent(in   )                :: neutral
        integer, intent(in   )                :: stable_option
        logical, intent(in   )                :: new_mo_option !miz
-       real   , intent(in   )                :: rich_crit, zeta_trans, drag_min
+       real   , intent(in   )                :: rich_crit, zeta_trans
+       real   , intent(in   )                :: drag_min_heat, drag_min_moist, drag_min_mom
        integer, intent(in   )                :: n
        real   , intent(in   ), dimension(n)  :: pt      ! potential temperature
        real   , intent(in   ), dimension(n)  :: pt0     ! reference potential temperature
