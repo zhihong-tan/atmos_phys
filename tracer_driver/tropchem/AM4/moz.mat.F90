@@ -49,6 +49,8 @@
                  rxt(:,115)*y(:,40))*y(:,17)
       loss(:,8) = 0.
       prod(:,8) = 0.
+      loss(:,9) = 0.
+      prod(:,9) = 0.
 
       end subroutine exp_prod_loss
 
@@ -555,6 +557,8 @@
                  rxt(:,245)*y(:,65))*y(:,66) +rxt(:,199)*y(:,18)
 
          prod(:,8) = 0.
+
+         prod(:,9) = 0.
 
 !--------------------------------------------------------------------
 ! ... "Independent" production for Implicit species

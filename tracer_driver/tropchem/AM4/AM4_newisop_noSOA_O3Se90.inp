@@ -1,6 +1,6 @@
 BEGSIM
 output_unit_number = 7
-output_file        = AM4_isop_noSOA.doc
+output_file        = AM4_isop_noSOA_O3Se90.doc
 procout_path       = ../output/
 src_path           = ../bkend/
 sim_dat_path       = ../output/
@@ -53,7 +53,7 @@ End Comments
  MGLY -> CH3COCHO
  MVKO2, MVKOOH, MACRNO2
  MAO3, MAOP, MAOPO2, ATO2
- ATOOH,INO2, INPN, ISNOOA, ISN1,O3S -> O3
+ ATOOH,INO2, INPN, ISNOOA, ISN1,O3S -> O3, O3S_E90 -> O3
       End Solution
 
       Fixed
@@ -70,7 +70,7 @@ End Comments
    Solution Classes
       Explicit
        N2O, CH4, CO, C2H6, C3H8, H2
-       H2O, O3S
+       H2O, O3S, O3S_E90
       End Explicit
       Implicit
        O3, O1D, O, N, NO, NO2, NO3, HNO3, HO2NO2, N2O5, CH3O2
