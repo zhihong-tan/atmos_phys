@@ -2049,12 +2049,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
 !------- 3d upward sw flux -------
         if (query_cmip_diag_id(ID_rsu)) then
-          used = send_cmip_data_3d (ID_rsu, ufsw(is:ie,js:je,:), Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsu, Rad_output%ufsw(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- 3d downward sw flux -------
         if (query_cmip_diag_id(ID_rsd)) then
-          used = send_cmip_data_3d (ID_rsd, dfsw(is:ie,js:je,:), Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsd, Rad_output%dfsw(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- downward sw flux surface -------
@@ -2226,12 +2226,12 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 
 !------- 3d upward sw flux -------
         if (query_cmip_diag_id(ID_rsucs)) then
-          used = send_cmip_data_3d (ID_rsucs, ufswcf(is:ie,js:je,:), Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsucs, Rad_output%ufsw_clr(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- 3d downward sw flux -------
         if (query_cmip_diag_id(ID_rsdcs)) then
-          used = send_cmip_data_3d (ID_rsdcs, dfswcf(is:ie,js:je,:), Time_diag, is, js, 1)
+          used = send_cmip_data_3d (ID_rsdcs, Rad_output%dfsw_clr(is:ie,js:je,:), Time_diag, is, js, 1)
         endif
 
 !------- downward sw flux surface -------
