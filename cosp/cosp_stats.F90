@@ -2,7 +2,7 @@
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
 ! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/cosp_stats.F90 $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/cosp_stats.F90 $
 !
 ! Redistribution and use in source and binary forms, with or without modification, are permitted
 ! provided that the following conditions are met:

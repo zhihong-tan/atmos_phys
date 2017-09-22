@@ -4,7 +4,7 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
  
-! cosp_version = 1.4.0
+! cosp_version = 1.4.1
  
 #endif
 

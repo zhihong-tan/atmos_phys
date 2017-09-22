@@ -3,7 +3,7 @@
 !   Author: Robert Pincus, Cooperative Institute for Research in the Environmental Sciences
 ! All rights reserved.
 ! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/cosp_modis_simulator.F90 $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/cosp_modis_simulator.F90 $
 ! 
 ! Redistribution and use in source and binary forms, with or without modification, are permitted 
 ! provided that the following conditions are met:
@@ -77,6 +77,9 @@ MODULE MOD_COSP_Modis_Simulator
      ! Also need the ISCCP-type optical thickness/cloud top pressure histogram
      !
      real, dimension(:, :, :), pointer :: Optical_Thickness_vs_Cloud_Top_Pressure
+     real, dimension(:, :, :), pointer :: Optical_Thickness_vs_ReffICE
+     real, dimension(:, :, :), pointer :: Optical_Thickness_vs_ReffLIQ
+
   end type COSP_MODIS 
   
 contains
@@ -141,6 +144,10 @@ contains
 
     real, dimension(nSunlit, numModisTauBins, numModisPressureBins) :: &
        jointHistogram
+    real, dimension(nSunlit, numModisTauBins, numMODISReffIceBins) :: & 
+         jointHistogram2
+    real, dimension(nSunlit, numModisTauBins, numMODISReffLiqBins) :: & 
+         jointHistogram3
 
     integer, dimension(nSunlit) :: sunlit
     integer, dimension(:), allocatable :: notSunlit
@@ -178,6 +185,11 @@ contains
         
     real, dimension(count(gridBox%sunlit(:) > 0), numModisTauBins, numModisPressureBins) :: & 
        jointHistogram
+    real, dimension(count(gridBox%sunlit(:) > 0), numModisTauBins, numMODISReffIceBins) :: & 
+         jointHistogram2
+    real, dimension(count(gridBox%sunlit(:) > 0), numModisTauBins, numMODISReffLiqBins) :: & 
+         jointHistogram3
+    
     
     integer, dimension(count(gridBox%sunlit(:) >  0)) :: sunlit
     integer, dimension(count(gridBox%sunlit(:) <= 0)) :: notSunlit
@@ -317,17 +329,27 @@ contains
                                 retrievedPhase(i, :), retrievedCloudTopPressure(i, :),      & 
                                 retrievedTau(i, :), retrievedSize(i, :))
       end do
-      call modis_L3_simulator(retrievedPhase,              &
-                              retrievedCloudTopPressure,   &
-                              retrievedTau, retrievedSize, &
-                              cfTotal,         cfLiquid,         cfIce,         &
-                              cfHigh,          cfMid,            cfLow,         &
-                              meanTauTotal,    meanTauLiquid,    meanTauIce,    &
-                              meanLogTauTotal, meanLogTauLiquid, meanLogTauIce, &
-                                               meanSizeLiquid,   meanSizeIce,   &
-                              meanCloudTopPressure,                             &
-                                               meanLiquidWaterPath, meanIceWaterPath, &
-                              jointHistogram)
+
+      ! DJS2015: Call L3 modis simulator used by cospv2.0
+     ! call modis_L3_simulator(retrievedPhase,              &
+     !                         retrievedCloudTopPressure,   &
+     !                         retrievedTau, retrievedSize, &
+     !                         cfTotal,         cfLiquid,         cfIce,         &
+     !                         cfHigh,          cfMid,            cfLow,         &
+     !                         meanTauTotal,    meanTauLiquid,    meanTauIce,    &
+     !                         meanLogTauTotal, meanLogTauLiquid, meanLogTauIce, &
+     !                         meanSizeLiquid,   meanSizeIce,   &
+     !                         meanCloudTopPressure,                             &
+     !                         meanLiquidWaterPath, meanIceWaterPath, &
+     !                         jointHistogram)
+     call modis_column(nSunlit,nSubcols,retrievedPhase,retrievedCloudTopPressure,   &
+                        retrievedTau,retrievedSize,cfTotal,cfLiquid,cfIce,cfHigh,    &
+                        cfMid,cfLow,meanTauTotal,meanTauLiquid,meanTauIce,           &
+                        meanLogTauTotal,meanLogTauLiquid,meanLogTauIce,              &
+                        meanSizeLiquid,meanSizeIce,meanCloudTopPressure,             &
+                        meanLiquidWaterPath, meanIceWaterPath,                       &
+                        jointHistogram,jointHistogram2,jointHistogram3)
+      ! DJS2015: END
       !
       ! Copy results into COSP structure
       !
@@ -363,11 +385,12 @@ contains
 
 #endif
       modisSim%Optical_Thickness_vs_Cloud_Top_Pressure(sunlit(:), 2:numModisTauBins+1, :) = jointHistogram(:, :, :)
+      modisSim%Optical_Thickness_vs_ReffICE(sunlit(:),2:numModisTauBins+1,:)              = jointHistogram2(:, :, :)
+      modisSim%Optical_Thickness_vs_ReffLIQ(sunlit(:),2:numModisTauBins+1,:)              = jointHistogram3(:, :, :)
       ! 
       ! Reorder pressure bins in joint histogram to go from surface to TOA 
       !
-      modisSim%Optical_Thickness_vs_Cloud_Top_Pressure(:,:,:) = &
-        modisSim%Optical_Thickness_vs_Cloud_Top_Pressure(:, :, numModisPressureBins:1:-1)
+      modisSim%Optical_Thickness_vs_Cloud_Top_Pressure(:,:,:) = modisSim%Optical_Thickness_vs_Cloud_Top_Pressure(:, :, numModisPressureBins:1:-1)
       if(nSunlit < nPoints) then 
         !
         ! Where it's night and we haven't done the retrievals the values are undefined
@@ -403,6 +426,8 @@ contains
 #endif
   
         modisSim%Optical_Thickness_vs_Cloud_Top_Pressure(notSunlit(:), :, :) = R_UNDEF
+        modisSim%Optical_Thickness_vs_ReffICE(notSunlit(:), :, :) = R_UNDEF
+        modisSim%Optical_Thickness_vs_ReffLIQ(notSunlit(:), :, :) = R_UNDEF
       end if 
     else
       !
@@ -440,6 +465,8 @@ contains
 #endif
 
       modisSim%Optical_Thickness_vs_Cloud_Top_Pressure(:, :, :) = R_UNDEF
+      modisSim%Optical_Thickness_vs_ReffICE(:, :, :) = R_UNDEF
+      modisSim%Optical_Thickness_vs_ReffLIQ(:, :, :) = R_UNDEF
     end if 
 
 #ifdef COSP_GFDL
@@ -508,6 +535,8 @@ contains
 #endif
       
     allocate(x%Optical_Thickness_vs_Cloud_Top_Pressure(nPoints, numModisTauBins+1, numModisPressureBins))
+    allocate(x%Optical_Thickness_vs_ReffICE(nPoints, numModisTauBins+1, numModisReffIceBins))
+    allocate(x%Optical_Thickness_vs_ReffLIQ(nPoints, numModisTauBins+1, numModisReffLiqBins))
     x%Optical_Thickness_vs_Cloud_Top_Pressure(:, :, :) = R_UNDEF
   END SUBROUTINE CONSTRUCT_COSP_MODIS
 
@@ -552,6 +581,8 @@ contains
 #endif
 
     if(associated(x%Optical_Thickness_vs_Cloud_Top_Pressure)) deallocate(x%Optical_Thickness_vs_Cloud_Top_Pressure   ) 
+    if(associated(x%Optical_Thickness_vs_ReffIce)) deallocate(x%Optical_Thickness_vs_ReffIce) 
+    if(associated(x%Optical_Thickness_vs_ReffLiq)) deallocate(x%Optical_Thickness_vs_ReffLiq) 
   END SUBROUTINE FREE_COSP_MODIS
   ! -----------------------------------------------------
 
@@ -607,6 +638,11 @@ contains
 
     copy%Optical_Thickness_vs_Cloud_Top_Pressure(copy_start:copy_end, :, :) = &
                           orig%Optical_Thickness_vs_Cloud_Top_Pressure(orig_start:orig_end, :, :)
+    copy%Optical_Thickness_vs_ReffIce(copy_start:copy_end, :, :) = &
+         orig%Optical_Thickness_vs_ReffIce(orig_start:orig_end, :, :)
+    copy%Optical_Thickness_vs_ReffLiq(copy_start:copy_end, :, :) = &
+         orig%Optical_Thickness_vs_ReffLiq(orig_start:orig_end, :, :)
+
   END SUBROUTINE COSP_MODIS_CPSECTION
   ! -----------------------------------------------------
 
