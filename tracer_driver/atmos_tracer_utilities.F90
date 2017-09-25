@@ -1982,9 +1982,10 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
        end if
     end if
  else
+    call get_tracer_names (MODEL_ATMOS, n, name = cmip_longname)
     cmip_name      = 'NULL'
-    cmip_longname  = 'NULL'
-    cmip_longname2 = 'NULL'
+    cmip_longname  = cmip_longname
+    cmip_longname2 = cmip_longname
  end if
 
 end subroutine get_cmip_param
