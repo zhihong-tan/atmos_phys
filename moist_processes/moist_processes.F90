@@ -228,7 +228,8 @@ real :: missing_value = -999.
 integer :: id_wetpoa_cmip, id_wetsoa_cmip, id_wetoa_cmip, id_wetbc_cmip, id_wetdust_cmip, &
            id_wetss_cmip, id_wetso4_cmip, id_wetso2_cmip, id_wetdms_cmip, id_wetnh4_cmip
 integer, parameter :: NCMIP_NAMES = 10
-character(len=8), dimension(NCMIP_NAMES) :: cmip_names = [character(len=8) :: "poa","soa","oa","bc","dust","ss","so4","so2","dms","nh4"]
+character(len=8), dimension(NCMIP_NAMES) :: cmip_names = &
+                       [character(len=8) :: "poa","soa","oa","bc","dust","ss","so4","so2","dms","nh4"]
 character(len=64), dimension(NCMIP_NAMES) :: cmip_longnames = &
                                   [ character(len=64) :: &
                                     "Dry Aerosol Primary Organic Matter", &
