@@ -136,9 +136,11 @@ module atmos_tracer_utilities_mod
   character(len=128), dimension(max_tracers) :: tracer_ddep_longnames = ' '
   character(len=128), dimension(max_tracers) :: tracer_dvel_longnames = ' '
   real, allocatable :: blon_out(:,:), blat_out(:,:)
+  type(cmip_diag_id_type) :: ID_so2_reevap_ls
   !----------------parameter values for the diagnostic units--------------
   real, parameter :: mw_air = WTMAIR/1000.  ! Convert from [g/mole] to [kg/mole]
   real, parameter :: mw_h2o = WTMH2O/1000.  ! Convert from [g/mole] to [kg/mole]
+  real, parameter :: mw_so4 = 96./1000.     ! Convert from [g/mole] to [kg/mole]
   real, parameter :: twopi = 2*PI
 
   type wetdep_type
@@ -454,7 +456,10 @@ contains
       'vds_atm', mass_axes(1:2), Time,               &
       'vds',                                 &
       'm/s', missing_value=-999.     )
-
+! Register in-cloud SO2 re-evaporation by large scale clouds (CMIP6)
+ ID_so2_reevap_ls = register_cmip_diag_field_3d ( mod_name,               &
+                   'pso4_aq_so2_reevap_ls', Time, 'Sulfate aerosol production by SO2 re-evaporation by lscale clouds', 'kg m-2 s-1', &
+                   standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_sulfur_dioxide_reevaporation')
 
  call write_version_number (version, tagname)
 
@@ -1637,6 +1642,15 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
     if (id_tracer_reevap_ls(n) > 0 ) then
        used = send_data ( id_tracer_reevap_ls(n), reevap_diag/diag_scale, Time ,is,js,1)
     endif
+
+    if ( wetdep(n)%is_so2 .and. wetdep(n)%so2_so4_evap ) then
+      if (query_cmip_diag_id(ID_so2_reevap_ls)) then
+         used = send_cmip_data_3d (ID_so2_reevap_ls,  &
+              reevap_diag/diag_scale * mw_so4, &
+              Time, is_in=is, js_in=js, ks_in=1)
+      endif
+    endif
+
     if (id_tracer_wdep_ls(n) > 0 ) then
        used = send_data ( id_tracer_wdep_ls(n), sum_wdep, Time, is_in =is, js_in=js )
     endif
@@ -1982,9 +1996,10 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
        end if
     end if
  else
+    call get_tracer_names (MODEL_ATMOS, n, name = cmip_longname)
     cmip_name      = 'NULL'
-    cmip_longname  = 'NULL'
-    cmip_longname2 = 'NULL'
+    cmip_longname  = cmip_longname
+    cmip_longname2 = cmip_longname
  end if
 
 end subroutine get_cmip_param
