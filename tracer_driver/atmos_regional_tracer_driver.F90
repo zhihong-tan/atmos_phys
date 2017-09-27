@@ -401,7 +401,7 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
       trind = get_tracer_index(MODEL_ATMOS, tracer_names(n))
       if (trind >0) then
          tracer_indices(n) = trind
-         write(*,30) tracer_names(n),tracer_indices(n)
+         if ( mpp_pe() == mpp_root_pe()) write(*,30) tracer_names(n),tracer_indices(n)
       else
 !<ERROR MSG="Tropospheric chemistry tracer not found in field table" STATUS="WARNING">
 !   A tropospheric chemistry tracer was not included in the field table
