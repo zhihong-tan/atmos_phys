@@ -2490,9 +2490,11 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    precip from the various convection schemes.
 !-----------------------------------------------------------------------
       used = send_data (id_ras_precip, rain_ras + snow_ras, Time, is, js)
-      used = send_data (id_don_precip, rain_don + snow_don +  &
+      if (do_donner_deep) then 
+          used = send_data (id_don_precip, rain_don + snow_don +  &
                                        rain_donmca + snow_donmca, &
                                                              Time, is, js)
+      endif
       used = send_data (id_uw_precip, rain_uw + snow_uw, Time, is, js)
       used = send_data (id_uw_snow, snow_uw, Time, is, js)
 
