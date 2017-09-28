@@ -185,17 +185,20 @@ integer, parameter    :: NCMIP_DIAG = 6
 integer, dimension(NCMIP_DIAG) :: cmip_family_mapping
 integer, dimension(NCMIP_DIAG) :: id_cmipload, id_cmipsconc, id_cmipaod
 type(cmip_diag_id_type), dimension(NCMIP_DIAG) :: id_cmipconc
-character(len=8), dimension(NCMIP_DIAG) :: cmip_names = (/"oa","poa","soa","bc","dust","ss"/)
+character(len=8), dimension(NCMIP_DIAG) :: cmip_names = &
+                      [character(len=8) ::"oa","poa","soa","bc","dust","ss"]
 character(len=64), dimension(NCMIP_DIAG) :: cmip_longnames = &
-                                  (/"Dry Aerosol Organic Matter", &
+                                   [character(len=64) :: &
+                                    "Dry Aerosol Organic Matter", &
                                     "Dry Aerosol Primary Organic Matter", &
                                     "Dry Aerosol Secondary Organic Matter", &
-                                    "Black Carbon Aerosol", "Dust", "Seasalt"/)
+                                    "Black Carbon Aerosol", "Dust", "Seasalt"]
 character(len=64), dimension(NCMIP_DIAG) :: cmip_stdnames = &
-                                  (/"particulate_organic_matter", &
+                                   [character(len=64) :: &
+                                    "particulate_organic_matter", &
                                     "primary_particulate_organic_matter", &
                                     "secondary_particulate_organic_matter", &
-                                    "black_carbon", "dust", "seasalt"/)
+                                    "black_carbon", "dust", "seasalt"]
 
 !---------------------------------------------------------------------
 !    miscellaneous variables
