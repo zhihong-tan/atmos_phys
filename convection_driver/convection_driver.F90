@@ -1,4 +1,3 @@
-
                     module convection_driver_mod
 
 !-----------------------------------------------------------------------
@@ -94,7 +93,7 @@ private
            convection_driver_time_vary, convection_driver_endts,  &
            convection_driver_end, convection_driver_restart,   &
            cape_cin_diagnostics
-  
+
    private diag_field_init, prevent_neg_precip_fluxes,  &
            compute_convective_area
 
@@ -115,7 +114,7 @@ character(len=128) :: tagname = '$Name: $'
 !                liquid or ice.
 !
 !   do_limit_uw = limit UW shallow tendencies to prevent the formation
-!                of grid points with negative total water specific 
+!                of grid points with negative total water specific
 !                humidities. This situation can occur because both
 !                shallow and deep convection operate on the same
 !                soundings without knowledge of what the other is doing
@@ -126,27 +125,27 @@ character(len=128) :: tagname = '$Name: $'
 !                iately. only available when uw shallow and donner deep
 !                are the active convective schemes
 
-!   cmt_mass_flux_source = parameterization(s) being used to supply the 
+!   cmt_mass_flux_source = parameterization(s) being used to supply the
 !                mass flux profiles seen by the cumulus momentum transport
-!                module; currently either 'ras', 'donner', 'uw', 
-!                'donner_and_ras', 'donner_and_uw', 'ras_and_uw', 
+!                module; currently either 'ras', 'donner', 'uw',
+!                'donner_and_ras', 'donner_and_uw', 'ras_and_uw',
 !                'donner_and_ras_and_uw' or 'all'
 !   do_gust_cv = switch to use convective gustiness (default = false)
-!   do_gust_cv_new = new switch to use convective gustiness    
+!   do_gust_cv_new = new switch to use convective gustiness
 !                                                    (default = false)
 !   gustmax    = maximum convective gustiness (m/s)
 !   gustconst  = precip rate which defines precip rate which begins to
 !                matter for convective gustiness (kg/m2/sec)
 !                default = 1 cm/day = 10 mm/da
 integer, public    :: id_pr_g, id_prc_g, id_prsn_g, id_prsnc, id_prrc
-logical            :: do_limit_donner =.true. 
-logical            :: do_limit_uw = .true.    
+logical            :: do_limit_donner =.true.
+logical            :: do_limit_uw = .true.
 logical            :: do_unified_convective_closure = .false.
 character(len=64)  :: cmt_mass_flux_source = 'all'
 logical            :: do_gust_cv = .false.
 logical            :: do_gust_cv_new = .false.
 real               :: gustmax = 3.         ! maximum gustiness wind (m/s)
-real               :: gustconst = 10./SECONDS_PER_DAY 
+real               :: gustconst = 10./SECONDS_PER_DAY
 logical            :: do_donner_before_uw = .true.
 logical            :: use_updated_profiles_for_uw = .false.
 logical            :: only_one_conv_scheme_per_column = .false.
@@ -221,7 +220,7 @@ integer :: id_vaporint, id_condensint, id_precipint, id_diffint
 integer :: id_vertmotion
 integer :: id_max_enthalpy_imbal_don, id_max_water_imbal_don
 integer :: id_enthint, id_lprcp, id_lcondensint, id_enthdiffint
- 
+
 integer :: id_prc, id_ci, id_ccb, id_cct
 
 integer, dimension(:), allocatable ::    &
@@ -249,8 +248,8 @@ logical :: do_ice_num
 logical :: do_cosp
 integer :: do_clubb
 logical :: do_lsc
-logical :: do_mca 
-logical :: do_ras 
+logical :: do_mca
+logical :: do_ras
 logical :: do_uw_conv
 logical :: do_donner_deep
 logical :: do_dryadj
@@ -281,18 +280,18 @@ type(cmip_diag_id_type) :: ID_tntc, ID_tnhusc, ID_mc
 subroutine convection_driver_init (id, jd, kd, axes, Time,   &
                     Physics_control, Exch_ctrl, Nml_mp, Control,   &
                      lonb, latb, pref )
- 
+
 integer,                       intent(in)    :: id, jd, kd
 integer,                       intent(in)    :: axes(4)
 type(time_type),               intent(in)    :: Time
 type(physics_control_type),    intent(in)    :: Physics_control
 type(exchange_control_type),   intent(in)    :: Exch_ctrl
 type(mp_nml_type),             intent(in)    :: Nml_mp
-type(mp_removal_control_type), intent(inout) :: Control   
+type(mp_removal_control_type), intent(inout) :: Control
 real, dimension(:,:),          intent(in)    :: lonb, latb
 real, dimension(:),            intent(in)    :: pref
- 
-      integer :: secs, days  
+
+      integer :: secs, days
       integer :: n, unit, io, ierr, logunit
       character(len=80)  :: scheme
 
@@ -342,7 +341,7 @@ real, dimension(:),            intent(in)    :: pref
       do_rh_clouds = Nml_mp%do_rh_clouds
       do_bm = Nml_mp%do_bm
       do_bmmass = Nml_mp%do_bmmass
-      do_bmomp  = Nml_mp%do_bmomp 
+      do_bmomp  = Nml_mp%do_bmomp
       do_simple = Nml_mp%do_simple
       doing_prog_clouds = Exch_ctrl%doing_prog_clouds
       nsphum = Physics_control%nsphum
@@ -402,7 +401,7 @@ real, dimension(:),            intent(in)    :: pref
 !----------------------------------------------------------------------
 !   check for inconsistent / invalid settings involving nml variables.
 !----------------------------------------------------------------------
-      if (do_donner_deep) then 
+      if (do_donner_deep) then
         if (include_donmca_in_cosp .and. (.not. do_donner_mca) ) &
           call error_mesg ('convection_driver_init', &
              'trying to include donmca in COSP when donmca is inactive', &
@@ -421,8 +420,8 @@ real, dimension(:),            intent(in)    :: pref
               'when force_donner_moist_conserv is .true., &
                 &do_donner_conservation_checks must be .true.', FATAL)
       endif
- 
-      if (use_updated_profiles_for_uw .and.   &     
+
+      if (use_updated_profiles_for_uw .and.   &
                             .not. (do_donner_before_uw) ) then
         call error_mesg ('convection_driver_init', &
          'use_updated_profiles_for_uw is only meaningful when &
@@ -435,7 +434,7 @@ real, dimension(:),            intent(in)    :: pref
           'only_one_conv_scheme_per_column is only meaningful when &
                              &do_donner_before_uw is true', FATAL)
       endif
- 
+
       if (limit_conv_cloud_frac .and.  (.not. do_donner_before_uw)) then
         call error_mesg ('convection_driver_init', &
             'when limit_conv_cloud_frac is .true., &
@@ -458,7 +457,7 @@ real, dimension(:),            intent(in)    :: pref
 
 !----------------------------------------------------------------------
 !    for each tracer, determine if it is to be transported by convect-
-!    ion, and the convection schemes that are to transport it. set a 
+!    ion, and the convection schemes that are to transport it. set a
 !    logical flag to .true. for each tracer that is to be transported by
 !    each scheme and increment the count of tracers to be transported
 !    by that scheme.
@@ -521,9 +520,9 @@ real, dimension(:),            intent(in)    :: pref
 !-----------------------------------------------------------------------
       if (do_dryadj) call dry_adj_init ()
       if (do_cmt)    call cu_mo_trans_init (axes, Time, doing_diffusive)
-      if (do_bm)     call betts_miller_init () 
+      if (do_bm)     call betts_miller_init ()
       if (do_bmmass) call bm_massflux_init()
-      if (do_bmomp)  call bm_omp_init () 
+      if (do_bmomp)  call bm_omp_init ()
 
 !-------------------------------------------------------------------------
 !   define logicals indicating which convective schemes are to be seen
@@ -662,7 +661,7 @@ real, dimension(:),            intent(in)    :: pref
           max_water_imbal_don = 0.
         endif
       endif ! (do_donner_deep)
- 
+
       if (do_ras)  then
         call ras_init (doing_prog_clouds, do_liq_num, axes, Time, Nml_mp, &
                                                     Control%tracers_in_ras)
@@ -694,7 +693,7 @@ real, dimension(:),            intent(in)    :: pref
                                              grain=CLOCK_MODULE_DRIVER )
       bm_clock         = mpp_clock_id( '   Moist Processes: Betts-Miller',&
                                              grain=CLOCK_MODULE_DRIVER )
- 
+
 !------------------------------------------------------------------------
 !   call diag_field_init to register the netcdf diagnostic fields.
 !------------------------------------------------------------------------
@@ -736,7 +735,7 @@ subroutine convection_driver   &
 !
 !       optional
 !  -----------------
-! 
+!
 !
 !
 !-----------------------------------------------------------------------
@@ -796,7 +795,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                                 f_snow_berg, prod_no, ttnd_adjustment, &
                                 available_cf_for_uw, total_cloud_area,  &
                                 rin, rh, temp_3d1, temp_3d2, &
-                                tin_orig, qin_orig, & 
+                                tin_orig, qin_orig, &
                                 t_ref, q_ref, ttnd_don, qtnd_don, &
                                 delta_temp, delta_q, delta_vapor,   &
                                 delta_qn, delta_qni, &
@@ -826,7 +825,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
    real, dimension(size(Input_mp%t,1),size(Input_mp%t,2),   &
                                Removal_mp_control%num_donner_tracers) ::  &
-                                tr_flux  
+                                tr_flux
 
    real, dimension(size(Input_mp%t,1),size(Input_mp%t,2),    &
                                          size(Input_mp%t,3),   &
@@ -875,9 +874,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !-----------------------------------------------------------------------
 !    define array dimensions.
 !-----------------------------------------------------------------------
-      ix = size(Input_mp%t,1) 
-      jx = size(Input_mp%t,2) 
-      kx = size(Input_mp%t,3) 
+      ix = size(Input_mp%t,1)
+      jx = size(Input_mp%t,2)
+      kx = size(Input_mp%t,3)
       nt = size(Output_mp%rdt,4)
 
 !-----------------------------------------------------------------------
@@ -925,7 +924,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
       m_cdet_donner = 0.
       massflux = 0.
       qtr = 0.
-     
+
       rain_uw = 0.
       snow_uw = 0.
       ttnd_uw = 0.
@@ -941,16 +940,16 @@ integer, dimension(:,:), intent(in), optional :: kbot
       delta_ql = 0.
       delta_qi = 0.
       delta_qa = 0.
- 
+
       rain_donmca  = 0.0
       snow_donmca  = 0.0
 
-      precip       = 0.0 
+      precip       = 0.0
       rain3d       = 0.0
       snow3d       = 0.0
 
 !----------------------------------------------------------------------
-!    output any requested convectively-transported tracer fields 
+!    output any requested convectively-transported tracer fields
 !    and / or their column sums before convective transport.
 !----------------------------------------------------------------------
       do n=1, num_prog_tracers
@@ -958,7 +957,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                                                         Time, is, js, 1)
         if (id_conv_tracer_col(n) > 0)  &
           call column_diag(id_conv_tracer_col(n), is, js, Time, &
-                           Input_mp%tracer(:,:,:,n), 1.0, Input_mp%pmass) 
+                           Input_mp%tracer(:,:,:,n), 1.0, Input_mp%pmass)
       end do
 
 !---------------------------------------------------------------------
@@ -975,7 +974,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !---------------------------------------------------------------------
 !    if dry adjustment is desired call subroutine dry_adj to obtain
 !    the temperature tendencies which must be applied to adjust each
-!    column to a non-superadiabatic lapse rate. 
+!    column to a non-superadiabatic lapse rate.
 !---------------------------------------------------------------------
       if (do_dryadj) then
         call dry_adj (Input_mp%tin, Input_mp%pfull, Input_mp%phalf,   &
@@ -1019,7 +1018,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 
 !---------------------------------------------------------------------
-!    if it is desired to do shallow convection before donner deep 
+!    if it is desired to do shallow convection before donner deep
 !    convection, turn on the shallowcu clock and make the call to
 !    uw_conv.
 !---------------------------------------------------------------------
@@ -1070,14 +1069,14 @@ integer, dimension(:,:), intent(in), optional :: kbot
                Removal_mp_control%tracers_in_uw,    &
                Removal_mp_control%num_uw_tracers,   &
                Moist_clouds_block%cloud_data(i_shallow),  &
-               Removal_mp%uw_wetdep, do_ice_num, detrain_ice_num)      
+               Removal_mp%uw_wetdep, do_ice_num, detrain_ice_num)
         endif  !(       do_uw_conv)
         call mpp_clock_end   (shallowcu_clock)
       else
 !----------------------------------------------------------------------
-!    save the original input values of t and q for use when uw is called 
-!    in case the option to not use updated profiles in uw is activated. 
-!    (otherwise these fields will be modified by any other calls to 
+!    save the original input values of t and q for use when uw is called
+!    in case the option to not use updated profiles in uw is activated.
+!    (otherwise these fields will be modified by any other calls to
 !    convective processes made before the uw_conv call.)
 !----------------------------------------------------------------------
         tin_orig = Input_mp%tin
@@ -1100,17 +1099,17 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !---------------------------------------------------------------------
 !    be sure the donner cloud field arguments are present.
 !---------------------------------------------------------------------
-        if (i_cell /= 0 .and. i_meso /= 0 ) then  
+        if (i_cell /= 0 .and. i_meso /= 0 ) then
         else
           call error_mesg ('convection_driver_mod',   &
                'input args for donner clouds not correct', FATAL)
         endif
 
 !--------------------------------------------------------------------
-!    if prognostic clouds are present, define the cloud liquid and 
+!    if prognostic clouds are present, define the cloud liquid and
 !    cloud ice specific humidities and cloud area associated with them,
 !    so that they may be input to donner_deep_mod. if not using prognostic
-!    clouds,  define these arrays to be zero. 
+!    clouds,  define these arrays to be zero.
 !--------------------------------------------------------------------
         if (doing_prog_clouds) then
           qlin = Input_mp%tracer(:,:,:,nql)
@@ -1127,8 +1126,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
         rin = Input_mp%qin/(1.0 - Input_mp%qin)
 
 !---------------------------------------------------------------------
-!    if any tracers are to be transported by donner convection, 
-!    check each active tracer to find those to be transported and fill 
+!    if any tracers are to be transported by donner convection,
+!    check each active tracer to find those to be transported and fill
 !    the donner_tracer array with these fields.
 !---------------------------------------------------------------------
         if (Removal_mp_control%num_donner_tracers > 0) then
@@ -1140,7 +1139,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
             endif
           end do
         else
-          donner_tracer(:,:,:,:) = 0.0  
+          donner_tracer(:,:,:,:) = 0.0
         endif
 
 !---------------------------------------------------------------------
@@ -1148,7 +1147,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !          that will have been obtained from the flux exchange module
 !          and passed on to moist_processes and then to donner_deep.
 !          FOR NOW, these values are defined herein, and given
-!          values of 0.0. Could / should be passed in appropriately 
+!          values of 0.0. Could / should be passed in appropriately
 !          from the Surf_diff variable.
 !---------------------------------------------------------------------
         sfc_sh_flux    = 0.0
@@ -1157,7 +1156,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
           nn = 1
           do n=1, num_prog_tracers
             if (Removal_mp_control%tracers_in_donner(n)) then
-              tr_flux(:,:,nn) = 0.0                                 
+              tr_flux(:,:,nn) = 0.0
               nn = nn + 1
             endif
           end do
@@ -1183,7 +1182,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         call get_time (Time, secs, days)
 
 !---------------------------------------------------------------------
-!    call donner_deep to compute the effects of deep convection on the 
+!    call donner_deep to compute the effects of deep convection on the
 !    temperature, vapor mixing ratio, tracers, cloud liquid, cloud ice
 !    cloud area and precipitation fields.
 !---------------------------------------------------------------------
@@ -1218,7 +1217,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                 Removal_mp%frz_meso,  Removal_mp%liq_meso, &
                 Removal_mp%frz_cell, Removal_mp%liq_cell, &
                 qlin, qiin, qain, delta_ql,                 &!optional
-                delta_qi, delta_qa)                          !optional  
+                delta_qi, delta_qa)                          !optional
         else
           call donner_deep    &
                (is, ie, js, je, dt, Input_mp%tin, rin, Input_mp%pfull,   &
@@ -1252,7 +1251,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 !---------------------------------------------------------------------
-!    update the current timestep tracer changes with the contributions 
+!    update the current timestep tracer changes with the contributions
 !    just obtained from donner transport.
 !---------------------------------------------------------------------
         if (Removal_mp_control%num_donner_tracers > 0) then
@@ -1267,8 +1266,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 !--------------------------------------------------------------------
-!    obtain updated vapor specific humidity (qnew) resulting from deep 
-!    convection. define the vapor specific humidity change due to deep 
+!    obtain updated vapor specific humidity (qnew) resulting from deep
+!    convection. define the vapor specific humidity change due to deep
 !    convection (qtnd).
 !--------------------------------------------------------------------
         do k=1,kx
@@ -1288,7 +1287,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !------------------------------------------------------------------------
 !    if conservation checks on the water and enthalpy changes produced
-!    within the donner deep convectuion scheme have been requested, 
+!    within the donner deep convectuion scheme have been requested,
 !    compute the needed vertical integrals here.
 !------------------------------------------------------------------------
         if (do_donner_conservation_checks) then
@@ -1298,7 +1297,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
           diffint = 0.
           enthint = 0.
           enthdiffint = 0.
-    
+
           do k=1,kx
             vaporint = vaporint + Input_mp%pmass (:,:,k)*delta_q(:,:,k)
             enthint = enthint + CP_AIR*     &
@@ -1312,11 +1311,11 @@ integer, dimension(:,:), intent(in), optional :: kbot
           diffint = (vaporint + condensint)*dtinv  + precipint
           enthdiffint = (enthint - lcondensint)*dtinv -    &
                                       lheat_precip/seconds_per_day -     &
-                                            vert_motion/seconds_per_day 
+                                            vert_motion/seconds_per_day
 
 !------------------------------------------------------------------------
 !    update the variable collecting the maximum imbalance over the entire
-!    model run, if the present imbalance value is larger than the 
+!    model run, if the present imbalance value is larger than the
 !    previously recorded.
 !------------------------------------------------------------------------
           do j=1,size(enthdiffint,2)
@@ -1364,18 +1363,18 @@ integer, dimension(:,:), intent(in), optional :: kbot
                 delta_qa, qlin, qiin, qtr, scale_donner)
         else
           scale_donner = 1.0
-        end if 
+        end if
         used = send_data (id_scale_donner, scale_donner, Time, is, js )
 
 !---------------------------------------------------------------------
 !    recalculate the precip using the delta specific humidity tenden-
-!    cies. define precip_adjustment as the change in precipitation 
+!    cies. define precip_adjustment as the change in precipitation
 !    resulting from the recalculation.
 !---------------------------------------------------------------------
         if (force_donner_moist_conserv) then
 
 !---------------------------------------------------------------------
-!    calculate the adjustment to the precipitation that would be needed 
+!    calculate the adjustment to the precipitation that would be needed
 !    in order to balance the change in water content in the column.
 !    if this is smaller than 1.e-10, ignore the imbalance. Also calculate
 !    the fraction of the returned precip that this corresponds to.
@@ -1398,8 +1397,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
 ! If precip_returned is greater than the "change in water content" balance,
 !and
 ! there is not enough water available to beg/borrow/steal from, we need to zero
-! out the various tendencies. i.e. donner_deep will not contribute to changing 
-! the column 
+! out the various tendencies. i.e. donner_deep will not contribute to changing
+! the column
 !           write (warn_mesg,'(2i4,2e12.4)') i,j,precip_adjustment(i,j), precip_returned(i,j)
 !           call error_mesg ('moist_processes_mod', 'moist_processes: &
 !                 &Change in water content does not balance precip &
@@ -1433,7 +1432,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    now adjust the temperature to balance the precip adjustment
 !    and so conserve enthalpy in the column, and  define the new values
 !    of liquid and frozen precipitation after adjustment.
-!--------------------------------------------------------------------- 
+!---------------------------------------------------------------------
           do k=1,kx
             ttnd_adjustment(:,:,k) = &
                       ((HLV*liquid_precip(:,:,k)*adjust_frac(:,:) + &
@@ -1467,13 +1466,13 @@ integer, dimension(:,:), intent(in), optional :: kbot
         end do
 
 !----------------------------------------------------------------------
-!   modify the 3d precip fluxes used by COSP to account for the 
+!   modify the 3d precip fluxes used by COSP to account for the
 !   conservation adjustment.
 !----------------------------------------------------------------------
         if (do_cosp) then
           do k=1, kx
-            do j=1,jx  
-              do i=1,ix  
+            do j=1,jx
+              do i=1,ix
                 Removal_mp%frz_meso(i,j,k) = Removal_mp%frz_meso(i,j,k)*  &
                                  Input_mp%pmass(i,j,k)*scale(i,j)* &
                                      (1.0+adjust_frac(i,j))/SECONDS_PER_DAY
@@ -1490,7 +1489,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
             end do
           end do
         endif
-    
+
 !-------------------------------------------------------------------------
 !    if the option to allow only one convective scheme per column is
 !    active, mark those columns which underwent donner convection.
@@ -1500,18 +1499,18 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 !---------------------------------------------------------------------
-!    convert the deltas in temperature, vapor specific humidity and 
-!    precipitation resulting from deep convection to time tendencies 
+!    convert the deltas in temperature, vapor specific humidity and
+!    precipitation resulting from deep convection to time tendencies
 !    of these quantities.
 !---------------------------------------------------------------------
-        ttnd_don = delta_temp*dtinv 
+        ttnd_don = delta_temp*dtinv
         ttnd_don = ttnd_don + ttnd_adjustment*dtinv
         qtnd_don = delta_q*dtinv
 
 !--------------------------------------------------------------------
 !    add the tendencies of temperature and specific humidity resulting
 !    from the deep convection component of the donner parameterization
-!    to the total convective tendency. 
+!    to the total convective tendency.
 !--------------------------------------------------------------------
         Tend_mp%ttnd_conv = Tend_mp%ttnd_conv + ttnd_don
         Tend_mp%qtnd_conv = Tend_mp%qtnd_conv + qtnd_don
@@ -1521,7 +1520,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    from the deep convection component of the donner parameterization
 !    to the total tendencies from all physics processes.
 !--------------------------------------------------------------------
-        Output_mp%tdt = Output_mp%tdt + ttnd_don 
+        Output_mp%tdt = Output_mp%tdt + ttnd_don
         Output_mp%rdt(:,:,:,1) = Output_mp%rdt(:,:,:,1) + qtnd_don
 
 !--------------------------------------------------------------------
@@ -1545,8 +1544,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
         Output_mp%fprec  = Output_mp%fprec + snow_don
 
 !--------------------------------------------------------------------
-!    output diagnostics for the time tendencies of temperature, vapor 
-!    specific humidity and large scale cloud fields, and various precip 
+!    output diagnostics for the time tendencies of temperature, vapor
+!    specific humidity and large scale cloud fields, and various precip
 !    and mass flux diagnostics due to donner deep convection.
 !--------------------------------------------------------------------
         used = send_data (id_tdt_deep_donner, ttnd_don, Time, is, js, 1)
@@ -1570,11 +1569,11 @@ integer, dimension(:,:), intent(in), optional :: kbot
         used = send_data (id_prec1_deep_donner, precip_adjustment,  &
                               Time, is, js, mask = precip_returned > 0.0)
         used = send_data (id_precret_deep_donner, precip_returned,  &
-                              Time, is, js)       
+                              Time, is, js)
 
 !------------------------------------------------------------------------
 !    if donner conservation checks have been done, output various
-!    diagnostics describing the results. 
+!    diagnostics describing the results.
 !------------------------------------------------------------------------
         if (do_donner_conservation_checks) then
           used = send_data (id_enth_donner_col2, -hlv*rain_don,    &
@@ -1592,9 +1591,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
                      call column_diag(id_enth_donner_col6, is, js, Time, &
                                  ttnd_adjustment, CP_AIR, Input_mp%pmass)
           used = send_data (id_enth_donner_col7, adjust_frac, Time, is, js)
-       
+
 !------------------------------------------------------------------------
-!    compute and output column enthalpy change due to donner deep 
+!    compute and output column enthalpy change due to donner deep
 !    convection.
 !------------------------------------------------------------------------
           temp_2d = 0.
@@ -1639,7 +1638,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    include the effects of deep convection. if mca was included in the
 !    donner deep scheme, then this update has already been done.
 !---------------------------------------------------------------------
-        if (keep_icenum_detrain_bug) then 
+        if (keep_icenum_detrain_bug) then
         else
            Input_mp%tin(:,:,:) = Input_mp%tin(:,:,:) + delta_temp(:,:,:)
            Input_mp%qin(:,:,:) = Input_mp%qin(:,:,:) + delta_q(:,:,:)
@@ -1663,12 +1662,12 @@ integer, dimension(:,:), intent(in), optional :: kbot
           call mpp_clock_begin (donner_mca_clock)
 
 !--------------------------------------------------------------------
-!    call subroutine moist_conv to handle any shallow convection present 
-!    in the grid. this call is made without the optional lsc variables so 
-!    that no convective detrainment (and corresponding change in 
-!    large-scale cloud amount and area) occurs, consistent with this call 
+!    call subroutine moist_conv to handle any shallow convection present
+!    in the grid. this call is made without the optional lsc variables so
+!    that no convective detrainment (and corresponding change in
+!    large-scale cloud amount and area) occurs, consistent with this call
 !    being intended to handle only shallow convection. The temp and vapor
-!    fields are updated with any changes from deep convection before the 
+!    fields are updated with any changes from deep convection before the
 !    routine is called.
 !--------------------------------------------------------------------
           if (keep_icenum_detrain_bug) then
@@ -1686,8 +1685,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    COSP, define the associated precip fluxes.
 !-----------------------------------------------------------------------
           if (do_cosp .and. include_donmca_in_cosp) then
-            do j=1,jx 
-              do i=1,ix 
+            do j=1,jx
+              do i=1,ix
                 if (Input_mp%coldT(i,j)) then
                   do k=1,kx
                     Removal_mp%mca_frz(i,j,k) =    &
@@ -1709,7 +1708,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
           endif
 
 !---------------------------------------------------------------------
-!    update the current tracer tendencies with the contributions 
+!    update the current tracer tendencies with the contributions
 !    just obtained from moist convective adjustment. currently there
 !    is no tracer transport by this process, so qtr will be 0.0 for all
 !    tracers.
@@ -1736,7 +1735,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !--------------------------------------------------------------------
 !    add the liquid (rain) and frozen (snow) precipitation generated by
 !    the moist convective adjustment pass of the donner parameterization
-!    on this step to the arrays accumulating precipitation from all 
+!    on this step to the arrays accumulating precipitation from all
 !    sources (lprec, fprec).
 !--------------------------------------------------------------------
           Output_mp%lprec  = Output_mp%lprec + rain_donmca
@@ -1744,7 +1743,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !--------------------------------------------------------------------
 !    output the time tendencies of temperature, vapor specific humid-
-!    ity, precipitation and snow due to the moist convective 
+!    ity, precipitation and snow due to the moist convective
 !    adjustment pass of the donner parameterization.
 !--------------------------------------------------------------------
           used = send_data (id_tdt_mca_donner, ttnd_don, Time, is, js, 1)
@@ -1755,7 +1754,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !------------------------------------------------------------------------
 !    output the column imbalances of enthalpy and water resulting from the
-!    mca component of donner convection. 
+!    mca component of donner convection.
 !------------------------------------------------------------------------
           if (id_enth_mca_donner_col > 0) then
             temp_2d = -HLV*rain_donmca -HLS*snow_donmca
@@ -1770,8 +1769,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
           endif
 
 !--------------------------------------------------------------------
-!    output the time tendencies of tracer and of column tracer 
-!    due to the moist convective adjustment pass of the donner 
+!    output the time tendencies of tracer and of column tracer
+!    due to the moist convective adjustment pass of the donner
 !    parameterization. currently moist convective adjustment does not
 !    affect the tracer fields, so these fields are always 0.0.
 !--------------------------------------------------------------------
@@ -1788,14 +1787,14 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    turn off the donner mca clock.
 !-----------------------------------------------------------------------
           call mpp_clock_end (donner_mca_clock)
-        endif !(do_donner_mca) 
+        endif !(do_donner_mca)
 
 !-----------------------------------------------------------------------
 !    if a realizability constraint is to be placed on total cloud fraction,
 !    define the area available for clouds from other schemes (usually
 !    uw shallow) after the donner cloud area has been accounted for.
-!    Note also that if the entire area at any level is taken up by donner 
-!    clouds, then uw clouds will not be allowed in the box 
+!    Note also that if the entire area at any level is taken up by donner
+!    clouds, then uw clouds will not be allowed in the box
 !    ( set conv_calc_completed = T).
 !-----------------------------------------------------------------------
         if (limit_conv_cloud_frac) then
@@ -1808,7 +1807,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !-----------------------------------------------------------------------
 !    update the largescale cloud fields and their total tendencies from
-!    physics  with the tendencies resulting from the donner deep 
+!    physics  with the tendencies resulting from the donner deep
 !    convection scheme.
 !-----------------------------------------------------------------------
         if (doing_prog_clouds) then
@@ -1830,19 +1829,19 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    a diagnostic if desired.
 !------------------------------------------------------------------------
           if (do_ice_num .and. detrain_ice_num) then
-            CALL detr_ice_num (Input_mp%tin, delta_qi, delta_qni)   
-            Input_mp%tracer(:,:,:,nqni) =  nilin  + delta_qni 
+            CALL detr_ice_num (Input_mp%tin, delta_qi, delta_qni)
+            Input_mp%tracer(:,:,:,nqni) =  nilin  + delta_qni
             Output_mp%rdt(:,:,:,nqni) = Output_mp%rdt(:,:,:,nqni) +    &
                                                     delta_qni*dtinv
             used = send_data (id_qnidt_deep_donner, delta_qni*dtinv,   &
                                                           Time, is, js, 1)
-          endif  
+          endif
 
 !-------------------------------------------------------------------------
 !    detrain liquid droplets if desired. the original code had a bug which
 !    may be preserved for test purposes with the remain_detrain_bug nml
-!    variable. assume 10 micron mean volume radius for detrained droplets. 
-!    Modify the particle number and particle number tendency from physics 
+!    variable. assume 10 micron mean volume radius for detrained droplets.
+!    Modify the particle number and particle number tendency from physics
 !    to account for this detrainment. output a diagnostic if desired.
 !-------------------------------------------------------------------------
           if (do_liq_num .and. detrain_liq_num) then
@@ -1851,7 +1850,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
             else
               delta_qn =  delta_ql/1000.*3./(4.*3.14e-15)
             endif !(        remain_detrain_bug )
-            Input_mp%tracer(:,:,:,nqn) =  nllin + delta_qn 
+            Input_mp%tracer(:,:,:,nqn) =  nllin + delta_qn
             Output_mp%rdt(:,:,:,nqn) = Output_mp%rdt(:,:,:,nqn) +   &
                                                   delta_qn*dtinv
             used = send_data (id_qndt_deep_donner,   &
@@ -1898,12 +1897,12 @@ integer, dimension(:,:), intent(in), optional :: kbot
           endif
 
 !---------------------------------------------------------------------
-!    update tracer fields with tendencies due to donner convection and 
+!    update tracer fields with tendencies due to donner convection and
 !    wet deposition by donner deep precipitation if these updated fields
 !    are what is to be seen by uw convection.
 !---------------------------------------------------------------------
-          if (use_updated_profiles_for_uw) then 
-            do n=1,nt  
+          if (use_updated_profiles_for_uw) then
+            do n=1,nt
               if (.not. cloud_tracer(n)) then
                   Input_mp%tracer(:,:,:,n) = tracer_orig(:,:,:,n) +   &
                         (Output_mp%rdt(:,:,:,n) - rdt_init(:,:,:,n)) *dt
@@ -1946,7 +1945,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                     Removal_mp%uw_wetdep, do_ice_num, detrain_ice_num)
 
 !---------------------------------------------------------------------
-!    if not using updated profiles for uw shallow, call the uw_conv 
+!    if not using updated profiles for uw shallow, call the uw_conv
 !    wrapper routine with the original input fields of t,q, and tracer.
 !---------------------------------------------------------------------
           else ! ( use_updated_profiles_for_uw)
@@ -1988,12 +1987,12 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!                B. MOIST CONVECTIVE ADJUSTMENT             
+!                B. MOIST CONVECTIVE ADJUSTMENT
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 !----------------------------------------------------------------------
-!    if moist convective adjustment is active,activate its clock and call 
+!    if moist convective adjustment is active,activate its clock and call
 !    its wrapper routine.
 !----------------------------------------------------------------------
       if (do_mca) then
@@ -2007,23 +2006,23 @@ integer, dimension(:,:), intent(in), optional :: kbot
               num_prog_tracers, Removal_mp_control%tracers_in_mca,   &
               Removal_mp_control%num_mca_tracers )
         call mpp_clock_end (mca_clock)
-      endif 
+      endif
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!           X. BETTS-MILLER CONVECTION SCHEME 
-!			
+!           X. BETTS-MILLER CONVECTION SCHEME
+!
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 !----------------------------------------------------------------------
-!    if one of the betts-miller convection schemes is active, activate 
+!    if one of the betts-miller convection schemes is active, activate
 !    its clock and call the appropriate subroutine.
 !----------------------------------------------------------------------
       if ( any((/do_bm, do_bmmass, do_bmomp/)) ) then
         call mpp_clock_begin (bm_clock)
 
 ! betts-miller cumulus param scheme
-        if (do_bm) then 
+        if (do_bm) then
           call betts_miller     &
                (dt, Input_mp%tin, Input_mp%qin, Input_mp%pfull, &
                 Input_mp%phalf, Input_mp%coldT, rain, snow, Tend_mp%ttnd, &
@@ -2032,7 +2031,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 ! betts-miller-style massflux cumulus param scheme
-        if (do_bmmass) then  
+        if (do_bmmass) then
           call bm_massflux    &
                (dt, Input_mp%tin, Input_mp%qin, Input_mp%pfull,   &
                 Input_mp%phalf, Input_mp%coldT, rain, snow, Tend_mp%ttnd, &
@@ -2041,7 +2040,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 ! olivier's betts-miller cumulus param scheme
-        if (do_bmomp) then 
+        if (do_bmomp) then
           call bm_omp    &
                (dt, Input_mp%tin, Input_mp%qin, Input_mp%pfull,  &
                 Input_mp%phalf, Input_mp%coldT, rain, snow, Tend_mp%ttnd, &
@@ -2059,7 +2058,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         snow = snow*dtinv
 
 !----------------------------------------------------------------------
-!    add tendencies and generated precipitation to arrays accumulating 
+!    add tendencies and generated precipitation to arrays accumulating
 !    tendencies from physics.
 !----------------------------------------------------------------------
         Output_mp%tdt = Output_mp%tdt + Tend_mp%ttnd
@@ -2067,16 +2066,16 @@ integer, dimension(:,:), intent(in), optional :: kbot
         Output_mp%lprec = Output_mp%lprec + rain
         Output_mp%fprec = Output_mp%fprec + snow
         precip = precip + rain + snow
-                                                                         
+
 !-------------------------------------------------------------------------
-!     compute rh clouds if they are active with betts-miller. first 
+!     compute rh clouds if they are active with betts-miller. first
 !     calculate the relative humidity, then pass it to rh_clouds_mod to be
 !     stored till needed.
 !-------------------------------------------------------------------------
         if (do_rh_clouds) then
           call rh_calc   &
              (Input_mp%pfull, Input_mp%tin, Input_mp%qin, RH, do_simple)
-          call rh_clouds_sum (is, js, RH) 
+          call rh_clouds_sum (is, js, RH)
         end if
 
 !-----------------------------------------------------------------------
@@ -2140,8 +2139,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 !---------------------------------------------------------------------
-!    now that all potential convection schemes have been processed, 
-!    calculate cumulus momentum transport, if desired. 
+!    now that all potential convection schemes have been processed,
+!    calculate cumulus momentum transport, if desired.
 !---------------------------------------------------------------------
       if (do_cmt) then
 
@@ -2165,7 +2164,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                  Output_mp%rdt, Tend_mp%ttnd_conv, dt, mc, det0,  &
                  Output_mp%diff_cu_mo, num_prog_tracers)
           endif !(cmt_uses_ras)
- 
+
           if (cmt_uses_donner) then
             call moistproc_cmt    &
                ( Time, is, js, Input_mp%tin, Input_mp%uin, Input_mp%vin, &
@@ -2175,7 +2174,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
                  Output_mp%rdt, Tend_mp%ttnd_conv, dt, m_cellup,  &
                  M_cdet_donner, Output_mp%diff_cu_mo,  num_prog_tracers)
           endif
- 
+
           if (cmt_uses_uw) then
 
 !----------------------------------------------------------------------
@@ -2196,7 +2195,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
             mc_cmt = mc_cmt + mc
           endif
           if (cmt_uses_donner) then
-            mc_cmt = mc_cmt + m_cellup 
+            mc_cmt = mc_cmt + m_cellup
           endif
           if (cmt_uses_uw) then
             do k=2,kx
@@ -2232,9 +2231,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !---------------------------------------------------------------------
 !    for each tracer for which wet deposition has been requested, call
-!    subrouitine wet_deposition to calculate the tracer tendency due to 
-!    wet deposition (wetdeptnd) caused by the convectively generated 
-!    precipitation (rain, snow). 
+!    subrouitine wet_deposition to calculate the tracer tendency due to
+!    wet deposition (wetdeptnd) caused by the convectively generated
+!    precipitation (rain, snow).
 !---------------------------------------------------------------------
       do n=1, nt
         if (.not. cloud_tracer(n)) then
@@ -2247,9 +2246,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
                Tend_mp%wetdeptnd, Time, 'convect', is, js, dt )
 
 !-----------------------------------------------------------------------
-!    add this tendency to the tracer tendency due to all physics (rdt). 
-!    save it also in an array which will be combined with any wet 
-!    deposition resulting from large-scale precip producing the total wet 
+!    add this tendency to the tracer tendency due to all physics (rdt).
+!    save it also in an array which will be combined with any wet
+!    deposition resulting from large-scale precip producing the total wet
 !    deposition for the tracer (wet_data).
 !---------------------------------------------------------------------
           Output_mp%rdt (:,:,:,n) = Output_mp%rdt(:,:,:,n) -   &
@@ -2262,14 +2261,14 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    define total convective mass flux from all sources, at both full
 !    levels and at half levels.
 !------------------------------------------------------------------------
-      C2ls_mp%mc_full(:,:,1)=0.; 
-      C2ls_mp%mc_half(:,:,1)=0.; 
-      do k=2,kx   
+      C2ls_mp%mc_full(:,:,1)=0.;
+      C2ls_mp%mc_half(:,:,1)=0.;
+      do k=2,kx
         C2ls_mp%mc_full(:,:,k) = 0.5*(mc(:,:,k) + mc(:,:,k+1)) +   &
                                  0.5*(cmf(:,:,k)+cmf(:,:,k-1)) +   &
                                  mc_donner(:,:,k)
       end do
-      do k=2,kx+1   
+      do k=2,kx+1
         C2ls_mp%mc_half(:,:,k) = mc(:,:,k) +    &
                                  cmf(:,:,k-1)+   &
                                  mc_donner_half(:,:,k)
@@ -2287,19 +2286,19 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !      used = send_data (id_mc     , C2ls_mp%mc_half, Time, is, js, 1)
 
 !---------------------------------------------------------------------
-!    total convective updraft mass flux (uw + donner cell up + 
+!    total convective updraft mass flux (uw + donner cell up +
 !    donner meso up)
 !---------------------------------------------------------------------
       if (id_mc_conv_up > 0 ) &
         used = send_data (id_mc_conv_up, cmf(:,:,:) + &
                                   mc_donner_up(:,:,:), Time, is, js, 1 )
 
-!------------------------------------------------------------------------ 
-!    define convective cloud base and cloud top. these are needed if 
-!    diagnostics defining the temporal and spatial location of convection 
-!    are desired or if tracer "no" is present, so that the nox tendency 
+!------------------------------------------------------------------------
+!    define convective cloud base and cloud top. these are needed if
+!    diagnostics defining the temporal and spatial location of convection
+!    are desired or if tracer "no" is present, so that the nox tendency
 !    due to lightning may be calculated.
-!------------------------------------------------------------------------ 
+!------------------------------------------------------------------------
       if (get_tracer_index(MODEL_ATMOS,'no') .ne. NO_TRACER &
            .or. id_conv_freq > 0 &
            .or. id_ci > 0 &
@@ -2347,7 +2346,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
       if ( id_ccb > 0 ) then
         temp_2d = CMOR_MISSING_VALUE
-        do j = 1,jx  
+        do j = 1,jx
           do i = 1,ix
             if ( cldbot(i,j) > 0 ) temp_2d(i,j) =    &
                                          Input_mp%pfull(i,j,cldbot(i,j))
@@ -2393,7 +2392,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !  conc_air
         Output_mp%rdt(:,:,:,get_tracer_index(MODEL_ATMOS,'no')) =  &
               Output_mp%rdt(:,:,:,get_tracer_index(MODEL_ATMOS,'no')) + &
-                  prod_no* ((boltz * Input_mp%t) / (10. * Input_mp%pfull)) 
+                  prod_no* ((boltz * Input_mp%t) / (10. * Input_mp%pfull))
         used = send_data(id_prod_no, prod_no, Time, is_in=is, js_in=js)
       endif
 
@@ -2417,9 +2416,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
                utnd_uw, vtnd_uw, qltnd_uw, qitnd_uw, qatnd_uw, qntnd_uw, &
                qnitnd_uw, doing_prog_clouds, do_liq_num, num_prog_tracers,&
                Removal_mp_control%tracers_in_uw, scale, do_ice_num)
-        else  
+        else
           scale = 1.0
-        endif 
+        endif
         used = send_data (id_scale_uw, scale, Time, is, js )
 
 !-------------------------------------------------------------------------
@@ -2446,8 +2445,8 @@ integer, dimension(:,:), intent(in), optional :: kbot
       endif !(uw_conv)
 
 !-----------------------------------------------------------------------
-! Note: the following two blocks of code were moved from before to after 
-! the call to moistproc_scale_uw in order to account for UW convection 
+! Note: the following two blocks of code were moved from before to after
+! the call to moistproc_scale_uw in order to account for UW convection
 ! contributions to 'precip'. This will change answers if UW is active
 ! and do_gust_cv = .true. or entrain_nml:convect_shutoff = .true. (cjg)
 !
@@ -2470,10 +2469,10 @@ integer, dimension(:,:), intent(in), optional :: kbot
       where (precip > 0.) Output_mp%convect = .true.
 
 !---------------------------------------------------------------------
-!    update tracer fields with tendencies due to convection and wet 
+!    update tracer fields with tendencies due to convection and wet
 !    deposition by convective precipitation.
 !---------------------------------------------------------------------
-      do n=1,nt                       
+      do n=1,nt
         if (.not. cloud_tracer(n)) then
           Input_mp%tracer(:,:,:,n) = tracer_orig(:,:,:,n) +   &
                           (Output_mp%rdt(:,:,:,n) - rdt_init(:,:,:,n)) *dt
@@ -2482,7 +2481,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 !
-!                   CONVECTION DIAGNOSTICS      
+!                   CONVECTION DIAGNOSTICS
 !
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -2490,9 +2489,11 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    precip from the various convection schemes.
 !-----------------------------------------------------------------------
       used = send_data (id_ras_precip, rain_ras + snow_ras, Time, is, js)
-      used = send_data (id_don_precip, rain_don + snow_don +  &
+      if (do_donner_deep) then
+          used = send_data (id_don_precip, rain_don + snow_don +  &
                                        rain_donmca + snow_donmca, &
                                                              Time, is, js)
+      endif
       used = send_data (id_uw_precip, rain_uw + snow_uw, Time, is, js)
       used = send_data (id_uw_snow, snow_uw, Time, is, js)
 
@@ -2525,13 +2526,13 @@ integer, dimension(:,:), intent(in), optional :: kbot
         call column_diag(id_wat_uw_col, is, js, Time, qtnd_uw, 1.0,  &
                qltnd_uw, 1.0, qitnd_uw, 1.0, Input_mp%pmass, temp_2d)
       endif
-        
+
 !----------------------------------------------------------------------
 !    convection scheme frequency diagnostics.
 !----------------------------------------------------------------------
       if (id_ras_freq > 0) then
         ltemp = rain_ras > 0. .or. snow_ras > 0.0
-        where (ltemp) 
+        where (ltemp)
           temp_2d = 1.
         elsewhere
           temp_2d = 0.
@@ -2542,7 +2543,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
       if (id_don_freq > 0) then
         ltemp = rain_don > 0. .or. snow_don > 0.0 .or. &
                 rain_donmca > 0. .or. snow_donmca > 0.0
-        where (ltemp) 
+        where (ltemp)
           temp_2d = 1.
         elsewhere
           temp_2d = 0.
@@ -2552,7 +2553,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
       if (id_uw_freq > 0) then
         ltemp = rain_uw > 0. .or. snow_uw > 0.0
-        where (ltemp) 
+        where (ltemp)
           temp_2d = 1.
         elsewhere
           temp_2d = 0.
@@ -2629,16 +2630,16 @@ integer, dimension(:,:), intent(in), optional :: kbot
       if (id_q_conv_col > 0)   &
            call column_diag (id_q_conv_col, is, js, Time, &
                               Tend_mp%qtnd_conv, 1.0, Input_mp%pmass)
-  
+
 !---------------------------------------------------------------------
 !    dry static energy tendency due to dry and moist convection:
 !---------------------------------------------------------------------
       if (id_t_conv_col > 0)   &
             call column_diag (id_t_conv_col, is, js, Time, &
                                Tend_mp%ttnd_conv, CP_AIR, Input_mp%pmass)
-   
+
 !---------------------------------------------------------------------
-!    define the total prognostic cloud liquid, ice, drop number, 
+!    define the total prognostic cloud liquid, ice, drop number,
 !    ice number and area tendencies due to convection.
 !---------------------------------------------------------------------
       if (doing_prog_clouds) then
@@ -2651,7 +2652,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         Tend_mp%qadt_conv = Output_mp%rdt(:,:,:,nqa) - rdt_init(:,:,:,nqa)
 
 !---------------------------------------------------------------------
-!    output diagnostics for cloud liquid tendency and liquid water path 
+!    output diagnostics for cloud liquid tendency and liquid water path
 !    tendency due to convection.
 !---------------------------------------------------------------------
         if (id_qldt_conv > 0 .or. id_ql_conv_col > 0) then
@@ -2664,7 +2665,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 !---------------------------------------------------------------------
-!    output diagnostics for cloud drop number tendency and cloud drop 
+!    output diagnostics for cloud drop number tendency and cloud drop
 !    number path tendency due to convection.
 !---------------------------------------------------------------------
         if (do_liq_num) then
@@ -2678,7 +2679,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 !---------------------------------------------------------------------
-!    output diagnostics for cloud ice tendency and cloud ice water path 
+!    output diagnostics for cloud ice tendency and cloud ice water path
 !    tendency due to convection.
 !---------------------------------------------------------------------
         if (id_qidt_conv > 0 .or. id_qi_conv_col > 0) then
@@ -2687,7 +2688,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
           if (id_qi_conv_col > 0)    &
                 call column_diag (id_qi_conv_col, is, js, Time,    &
                                   Tend_mp%qidt_conv, 1.0, Input_mp%pmass)
-        endif        
+        endif
 
 
 !---------------------------------------------------------------------
@@ -2705,7 +2706,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
         endif
 
 !---------------------------------------------------------------------
-!    output diagnostics for cloud area tendency and column integrated 
+!    output diagnostics for cloud area tendency and column integrated
 !    cloud mass tendency due to convection.
 !---------------------------------------------------------------------
         if (id_qadt_conv > 0 .or.  id_qa_conv_col > 0 ) then
@@ -2716,9 +2717,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
                                 Tend_mp%qadt_conv, 1.0, Input_mp%pmass)
         endif
       endif !(doing_prog_clouds)
-         
+
 !---------------------------------------------------------------------
-!    compute the column integrated enthalpy and total water tendencies 
+!    compute the column integrated enthalpy and total water tendencies
 !    due to convection parameterizations, if those diagnostics are desired.
 !---------------------------------------------------------------------
       if (id_enth_conv_col > 0 .or. id_wat_conv_col > 0) then
@@ -2750,9 +2751,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
             Removal_mp_control%tracers_in_ras(n) .or.  &
             Removal_mp_control%tracers_in_mca(n) .or.   &
             Removal_mp_control%tracers_in_uw(n))    then
- 
+
 !---------------------------------------------------------------------
-!    output diagnostics for tracer tendency and column integrated 
+!    output diagnostics for tracer tendency and column integrated
 !    tracer tendency due to convection.
 !---------------------------------------------------------------------
           if (id_tracerdt_conv(n) > 0 .or.    &
@@ -2765,18 +2766,18 @@ integer, dimension(:,:), intent(in), optional :: kbot
               call column_diag    &
                   (id_tracerdt_conv_col(n), is, js, Time, temp_3d1,   &
                                                       1.0, Input_mp%pmass)
-          endif        
+          endif
         endif
       end do
 
 !----------------------------------------------------------------------
-!    define the precip fluxes needed for input to the COSP simulator 
+!    define the precip fluxes needed for input to the COSP simulator
 !    package.
 !---------------------------------------------------------------------
       if (do_cosp) then
 
 !---------------------------------------------------------------------
-!    define precip fluxes from convective schemes at each layer 
+!    define precip fluxes from convective schemes at each layer
 !    interface.  (index 1 is model lid)
 !---------------------------------------------------------------------
         do k=2, size(Input_mp%t,3)+1
@@ -2806,7 +2807,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    adjust precip fluxes to account for any negative values produced.
 !    precip contribution is determined as the negative of the moisture
 !    tendency, so at top of clouds a positive moisture tendency some-
-!    times results in a negative precipitation contribution. 
+!    times results in a negative precipitation contribution.
 !----------------------------------------------------------------------
         call prevent_neg_precip_fluxes (Removal_mp%liq_mesoh)
         call prevent_neg_precip_fluxes (Removal_mp%frz_mesoh)
@@ -2822,7 +2823,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 
 !-----------------------------------------------------------------------
 !    compute the grid box area taken up by convective clouds.  If CLUBB is
-!    active, then a second call is made using slightly different inputs. 
+!    active, then a second call is made using slightly different inputs.
 !-----------------------------------------------------------------------
       if (do_clubb == 2) then
 
@@ -2870,7 +2871,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !<--- h1g, 2017-01-31
 
       endif
- 
+
       if (.not. do_lsc) then
 
 !---> h1g, 2017-01-31
@@ -2914,7 +2915,7 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !<--- h1g, 2017-01-31
 
       endif
-              
+
 !---------------------------------------------------------------------
 !    end the timing of the convection code section.
 !---------------------------------------------------------------------
@@ -2946,11 +2947,11 @@ type(time_type),     intent(in) :: Time
 
       logical :: avgbl, used
       integer :: i, j, ix, jx, kx
- 
+
 !------------------------------------------------------
 !    compute and write out CAPE and CIN.
 !------------------------------------------------------
- 
+
       if ( id_cape > 0 .or. id_cin > 0) then
         kx = size(Input_mp%tin,3)
         ix = size(Input_mp%tin,1)
@@ -2959,14 +2960,14 @@ type(time_type),     intent(in) :: Time
 !----------------------------------------------
 !    calculate mixing ratio.
 !----------------------------------------------
-        rin = Input_mp%qin/(1.0 - Input_mp%qin) 
+        rin = Input_mp%qin/(1.0 - Input_mp%qin)
 
 !-----------------------------------------------------------------------
 !    call routine to calculate cape and cin.
 !-----------------------------------------------------------------------
         avgbl = .false.
-        do j = 1,jx 
-          do i = 1,ix 
+        do j = 1,jx
+          do i = 1,ix
             call capecalcnew   &
                 ( kx, Input_mp%pfull(i,j,:), Input_mp%phalf(i,j,:),   &
                   CP_AIR, RDGAS, RVGAS, HLV, KAPPA, Input_mp%tin(i,j,:), &
@@ -3048,17 +3049,17 @@ type(mp_removal_control_type), intent(in) :: Control
                       'q_conv_col', axes(1:2), Time, &
                       'Water vapor path tendency from convection ',  &
                       'kg/m2/s' )
-   
+
       id_t_conv_col = register_diag_field ( mod_name, &
                       't_conv_col', axes(1:2), Time, &
                       'Column static energy tendency from convection ', &
                       'W/m2' )
-   
+
       id_enth_conv_col = register_diag_field ( mod_name, &
                          'enth_conv_col', axes(1:2), Time, &
                          'Column enthalpy tendency from convection',  &
                          'W/m2' )
- 
+
       id_wat_conv_col = register_diag_field ( mod_name, &
                         'wat_conv_col', axes(1:2), Time, &
                         'Column total water tendency from convection', &
@@ -3072,7 +3073,7 @@ type(mp_removal_control_type), intent(in) :: Control
       id_prc = register_cmip_diag_field_2d ( mod_name, 'prc', Time, &
                         'Convective Precipitation',   'kg m-2 s-1', &
                    standard_name = 'convective_precipitation_flux', &
-                                  interp_method = "conserve_order1" ) 
+                                  interp_method = "conserve_order1" )
 
       id_prrc = register_cmip_diag_field_2d ( mod_name, 'prrc', Time, &
                             'Convective Rainfall Rate', 'kg m-2 s-1', &
@@ -3145,23 +3146,23 @@ type(mp_removal_control_type), intent(in) :: Control
                          'ql_conv_col', axes(1:2), Time, &
                          'Liquid water path tendency from convection',  &
                          'kg/m2/s' )
-   
+
         if (do_liq_num) then
           id_qn_conv_col = register_diag_field ( mod_name, &
                            'qn_conv_col', axes(1:2), Time, &
                            'Liquid drp tendency from convection',  &
                            'kg/m2/s' )
         endif
- 
+
         id_qi_conv_col = register_diag_field ( mod_name, &
                          'qi_conv_col', axes(1:2), Time, &
                          'Ice water path tendency from convection',  &
                          'kg/m2/s' )
-   
+
         id_qa_conv_col = register_diag_field ( mod_name, &
                          'qa_conv_col', axes(1:2), Time, &
                          'Cloud mass tendency from convection', 'kg/m2/s' )
-      
+
         if (do_ice_num) then
           id_qnidt_conv = register_diag_field ( mod_name, &
                           'qnidt_conv', axes(1:3), Time, &
@@ -3217,7 +3218,7 @@ type(mp_removal_control_type), intent(in) :: Control
             'Convective Mass Flux',   'kg m-2 s-1', &
             standard_name='atmosphere_net_upward_convective_mass_flux', &
             axis="half" )
-   
+
       id_mc_conv_up = register_diag_field ( mod_name, &
                       'mc_conv_up', axes(1:3), Time, &
                       'Upward Mass Flux from convection',   'kg/m2/s', &
@@ -3260,9 +3261,9 @@ type(mp_removal_control_type), intent(in) :: Control
       id_cape = register_diag_field ( mod_name, &
                 'cape', axes(1:2), Time, &
                 'Convectively available potential energy',      'J/Kg')
-      
+
       id_cin = register_diag_field ( mod_name, &
-               'cin', axes(1:2), Time, &                       
+               'cin', axes(1:2), Time, &
                'Convective inhibition',                        'J/Kg')
 
       id_tp = register_diag_field ( mod_name, &
@@ -3338,17 +3339,17 @@ type(mp_removal_control_type), intent(in) :: Control
                               'enth_donner_col2', axes(1:2), Time, &
                               'column enthalpy tendency from Donner liq&
                               & precip','W/m2' )
- 
+
         id_enth_donner_col3 = register_diag_field ( mod_name, &
                               'enth_donner_col3', axes(1:2), Time, &
                               'Column enthalpy tendency from Donner &
                               &frzn precip','W/m2' )
- 
+
         id_enth_donner_col4 = register_diag_field ( mod_name, &
                               'enth_donner_col4', axes(1:2), Time, &
                               'Atmospheric column enthalpy tendency from&
                               & Donner convection', 'W/m2' )
- 
+
         id_enth_donner_col5 = register_diag_field ( mod_name, &
                               'enth_donner_col5', axes(1:2), Time, &
                               'Column enthalpy tendency due to condensate&
@@ -3358,7 +3359,7 @@ type(mp_removal_control_type), intent(in) :: Control
                               'enth_donner_col6', axes(1:2), Time, &
                               'Column enthalpy tendency from donner &
                               &moisture  conservation  adjustment','W/m2' )
- 
+
         id_enth_donner_col7 = register_diag_field ( mod_name, &
                               'enth_donner_col7', axes(1:2), Time, &
                               'Precip adjustment needed to balance donner&
@@ -3373,7 +3374,7 @@ type(mp_removal_control_type), intent(in) :: Control
                             'wat_donner_col', axes(1:2), Time, &
                             'Column total water tendency from Donner&
                             & convection','kg(h2o)/m2/s' )
-  
+
         id_enth_mca_donner_col = register_diag_field ( mod_name, &
                                  'enth_mca_donner_col', axes(1:2), Time, &
                                  'Column enthalpy imbalance from Donner&
@@ -3497,12 +3498,12 @@ type(mp_removal_control_type), intent(in) :: Control
                      missing_value=missing_value               )
 
         id_cell_cld_frac = register_diag_field ( mod_name, &
-                           'cell_cld_frac', axes(1:3), Time, & 
+                           'cell_cld_frac', axes(1:3), Time, &
                            'cell cloud fraction from donner',   '', &
                            missing_value=missing_value               )
 
         id_meso_cld_frac = register_diag_field ( mod_name, &
-                           'meso_cld_frac', axes(1:3), Time, & 
+                           'meso_cld_frac', axes(1:3), Time, &
                            'meso-scale cloud fraction from donner',   '', &
                            missing_value=missing_value               )
 
@@ -3602,7 +3603,7 @@ type(mp_removal_control_type), intent(in) :: Control
                          'enth_uw_col', axes(1:2), Time, &
                          'Column enthalpy tendency from UW convection', &
                          'W/m2' )
- 
+
         id_wat_uw_col = register_diag_field ( mod_name, &
                         'wat_uw_col', axes(1:2), Time, &
                         'Column total water tendency from UW convection',&
@@ -3612,7 +3613,7 @@ type(mp_removal_control_type), intent(in) :: Control
                       'scale_uw', axes(1:2), Time, &
                       'Scaling factor applied to UW convection&
                       & tendencies','1' )
-          
+
         id_tdt_uw = register_diag_field ( mod_name, &
                     'tdt_uw', axes(1:3), Time, &
                     'UW convection heating rate', 'deg K/s', &
@@ -3661,9 +3662,9 @@ type(mp_removal_control_type), intent(in) :: Control
                     missing_value=missing_value               )
 
 !---------------------------------------------------------------------
-!    allocate and initialize arrays to hold the diagnostic ids for each 
-!    active tracer. diagnostics for tendency due to convection, 
-!    column tendency due to convection, the tracer amount and tracer 
+!    allocate and initialize arrays to hold the diagnostic ids for each
+!    active tracer. diagnostics for tendency due to convection,
+!    column tendency due to convection, the tracer amount and tracer
 !    column amount are available.
 !---------------------------------------------------------------------
       allocate (id_tracerdt_conv    (num_prog_tracers))
@@ -3675,7 +3676,7 @@ type(mp_removal_control_type), intent(in) :: Control
       id_tracerdt_conv_col = NO_TRACER
       id_conv_tracer = NO_TRACER
       id_conv_tracer_col = NO_TRACER
- 
+
 !------------------------------------------------------------------------
 !    define the diagnostics names that are requested and register the
 !    diagnostics for those tracers that were specified to be affected
@@ -3706,7 +3707,7 @@ type(mp_removal_control_type), intent(in) :: Control
                          TRIM(tracer_units)//'*(kg/m2)/s',   &
                          missing_value=missing_value)
         endif
- 
+
 !----------------------------------------------------------------------
 !    output the distribution and column values of any tracer for which
 !    they are requested, even if not transported by convection.
@@ -3734,7 +3735,7 @@ type(mp_removal_control_type), intent(in) :: Control
       if (do_donner_deep) then
         allocate (id_tracerdt_mcadon  (Control%num_donner_tracers))
         allocate (id_tracerdt_mcadon_col(Control%num_donner_tracers))
- 
+
         nn = 1
         do n = 1,num_prog_tracers
           call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
@@ -3790,13 +3791,13 @@ end subroutine convection_driver_time_vary
 
 !######################################################################
 
-subroutine convection_driver_endts 
+subroutine convection_driver_endts
 
 !-----------------------------------------------------------------------
 
       if (do_donner_deep) then
         call donner_deep_endts
-      endif 
+      endif
 
 !-----------------------------------------------------------------------
 
@@ -3806,22 +3807,22 @@ end subroutine convection_driver_endts
 
 !######################################################################
 
-subroutine convection_driver_end 
+subroutine convection_driver_end
 
-!--------------------------------------------------------------------- 
+!---------------------------------------------------------------------
 !    call the destructor routines for the active convection modules.
-!--------------------------------------------------------------------- 
-      if (do_donner_deep) call donner_deep_end 
-      if (do_ras        ) call ras_end 
-      if (do_uw_conv    ) call uw_conv_end 
-      if (do_cmt        ) call cu_mo_trans_end 
-      call detr_ice_num_end 
+!---------------------------------------------------------------------
+      if (do_donner_deep) call donner_deep_end
+      if (do_ras        ) call ras_end
+      if (do_uw_conv    ) call uw_conv_end
+      if (do_cmt        ) call cu_mo_trans_end
+      call detr_ice_num_end
 
 !----------------------------------------------------------------------
 !    deallocate module variables.
 !----------------------------------------------------------------------
-      if (do_donner_deep .and. do_donner_conservation_checks) then 
-        deallocate (max_water_imbal_don) 
+      if (do_donner_deep .and. do_donner_conservation_checks) then
+        deallocate (max_water_imbal_don)
         deallocate (max_enthalpy_imbal_don)
       endif
 
@@ -3839,7 +3840,7 @@ subroutine convection_driver_end
 
 !--------------------------------------------------------------------
 
-   
+
  end subroutine convection_driver_end
 
 
@@ -3867,7 +3868,7 @@ real, dimension(:,:,:), intent(inout) :: fluxh
 
 !-----------------------------------------------------------------------
 !    move down each column looking for negative precip fluxes at each
-!    level. if found, the negative flux is eliminated by reducing the 
+!    level. if found, the negative flux is eliminated by reducing the
 !    incoming precip flux from above.
 !-----------------------------------------------------------------------
       sumneg(:,:) = 0.
@@ -3908,7 +3909,7 @@ subroutine compute_convective_area     &
 !    subroutine compute_convective_area defines the grid box area affected
 !    by the convective clouds and the ratio of the grid-box relative
 !    humidity to the humidity in the environment of the convective
-!    clouds. 
+!    clouds.
 !-------------------------------------------------------------------------
 
 real, dimension(:,:,:), intent(in)          :: t, q, pfull,   &
@@ -3939,21 +3940,21 @@ real, dimension(:,:,:), intent(in),optional :: shallow_cloud_area, &
       kx = size(t,3)
 
 !----------------------------------------------------------------------
-!    define a realizable grid box specific humidity (qrf) and the 
+!    define a realizable grid box specific humidity (qrf) and the
 !    saturation specific humidity (qs).
 !------------------------------------------------------------------
       qrf = MAX(q, 0.0)
       call compute_qs (t, pfull, qs)
 
 !----------------------------------------------------------------------
-!    define the grid box area whose humidity is affected by the 
-!    convective clouds (convective_area). define the environmental 
+!    define the grid box area whose humidity is affected by the
+!    convective clouds (convective_area). define the environmental
 !    rh (env_qv) which is the value needed in the non-convective cloud
 !    area in order to have the computed grid-box relative humidity. the
 !    convective cloud area is assumed saturated for the uw clouds, in the
 !    donner cell clouds and in the region of donner meso updraft, but is
-!    assumed subsaturated in the donner meso downdraft layer above cloud 
-!    base, with the degree of saturation given by the 
+!    assumed subsaturated in the donner meso downdraft layer above cloud
+!    base, with the degree of saturation given by the
 !    donner_humidity_factor (mesoscale area times assumed RH).
 !-------------------------------------------------------------------
       if (do_uw_conv .and. do_donner_deep) then
@@ -3976,8 +3977,8 @@ real, dimension(:,:,:), intent(in),optional :: shallow_cloud_area, &
 !    the convective environment fraction is the remainder of the box.
 !-----------------------------------------------------------------------
       do k=1, kx
-        do j=1,jx   
-          do i=1,ix  
+        do j=1,jx
+          do i=1,ix
             convective_area(i,j,k) = min (convective_area(i,j,k), &
                                                              max_cnv_frac)
             env_fraction(i,j,k) = 1.0 - convective_area(i,j,k)
@@ -3989,16 +3990,16 @@ real, dimension(:,:,:), intent(in),optional :: shallow_cloud_area, &
 !    outside of the convective clouds (env_qv > 0.).
 !----------------------------------------------------------------------
             if (qrf(i,j,k) /= 0.0 .and. env_qv(i,j,k) > 0.0) then
- 
+
 !--------------------------------------------------------------------
 !    there must also be grid box area not filled with convective clouds.
-!--------------------------------------------------------------------  
+!--------------------------------------------------------------------
               if (env_fraction(i,j,k) > 0.0) then
                 humidity_ratio(i,j,k) =    &
                    MAX (qrf(i,j,k)*env_fraction(i,j,k)/env_qv(i,j,k), 1.0)
- 
+
 !---------------------------------------------------------------------
-!    if the grid box is filled with convective clouds, set humidity ratio 
+!    if the grid box is filled with convective clouds, set humidity ratio
 !    to a flag value.
 !----------------------------------------------------------------------
               else
@@ -4006,7 +4007,7 @@ real, dimension(:,:,:), intent(in),optional :: shallow_cloud_area, &
               endif
 
 !--------------------------------------------------------------------
-!    if there either is no vapor in the gridbox or the vapor has been 
+!    if there either is no vapor in the gridbox or the vapor has been
 !    taken up by the convective clouds, set the humidity_ratio to 1.0.
 !---------------------------------------------------------------------
             else
@@ -4025,6 +4026,3 @@ end subroutine compute_convective_area
 !#######################################################################
 
 end module convection_driver_mod
-
-
-
