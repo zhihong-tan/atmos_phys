@@ -4075,11 +4075,11 @@ subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vi
          diag_climtas(i+is-1,j+js-1) = Tdaily
          diag_climfsds(i+is-1,j+js-1) = Pdaily
 
-        if( mpp_pe() == mpp_root_pe() ) then
-           print*, 'ISOPRENE: i,j = ', i,j
-           print*, 'gamT,gamL = ', fac_tmp,fac_par
-           print*, 'emis = ', emis(i,j)
-        end if
+!       if( mpp_pe() == mpp_root_pe() ) then
+!          print*, 'ISOPRENE: i,j = ', i,j
+!          print*, 'gamT,gamL = ', fac_tmp,fac_par
+!          print*, 'emis = ', emis(i,j)
+!       end if
 !           print*, 'AMF: i,j,gt,gl,emis = ', i,j,fac_tmp,fac_par, emis(i,j)
 !           print*, 'AMF: calday = ', calday
 !        endif
