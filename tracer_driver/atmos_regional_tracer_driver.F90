@@ -43,6 +43,8 @@ use          field_manager_mod, only : MODEL_ATMOS,          &
 use              constants_mod, only : WTMAIR, AVOGNO
 use           interpolator_mod, only : interpolate_type,     &
                                        interpolator_init,    &
+                                       obtain_interpolator_time_slices, &
+                                       unset_interpolator_time_flag, &
                                        interpolator_end,     &
                                        interpolator,         &
                                        query_interpolator,   &
@@ -56,8 +58,9 @@ private
 !-----------------------------------------------------------------------
 !     ... interfaces
 !-----------------------------------------------------------------------
-public  regional_tracer_driver, regional_tracer_driver_init
-
+public  regional_tracer_driver, regional_tracer_driver_init, &
+        regional_tracer_driver_time_vary, regional_tracer_driver_endts, &
+        regional_tracer_driver_end
 
 !-----------------------------------------------------------------------
 !     ... namelist
@@ -197,8 +200,8 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
 !-----------------------------------------------------------------------
 
 ! Not yet tested for OpenMP
-!$ if(omp_get_num_threads() > 1) &
-!$    call error_mesg ('Regional_tracer_driver','Code is not tested for OpenMP and omp_num_threads > 1', FATAL)
+!$ if(omp_get_num_threads() > 1 .and. mpp_pe()==mpp_root_pe()) &
+!$    call error_mesg ('Regional_tracer_driver','Code is not tested for OpenMP and omp_num_threads > 1', WARNING)
 
 !<ERROR MSG="regional_tracer_driver_init must be called first." STATUS="FATAL">
 !   Regional_tracer_driver_init needs to be called before regional_tracer_driver.
@@ -306,7 +309,7 @@ end subroutine regional_tracer_driver
 
 !#######################################################################
 
-! <FUNCTION NAME="regional_tracer_driver_init">
+! <SUBROUTINE NAME="regional_tracer_driver_init">
 !   <OVERVIEW>
 !     Initializes the regional tracer driver.
 !   </OVERVIEW>
@@ -361,7 +364,7 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
 
 ! Not yet tested for OpenMP
 !$ if(omp_get_num_threads() > 1) &
-!$    call error_mesg ('Regional_tracer_driver_init','Code is not tested for OpenMP and omp_num_threads > 1', FATAL)
+!$    call error_mesg ('Regional_tracer_driver_init','Code is not tested for OpenMP and omp_num_threads > 1', WARNING)
 !
 !-----------------------------------------------------------------------
 !
@@ -472,19 +475,43 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
 !-----------------------------------------------------------------------
       
 end subroutine regional_tracer_driver_init
-!</FUNCTION>
- 
-      
-subroutine regional_tracer_driver_end
+!</SUBROUTINE>
 
-!-----------------------------------------------------------------------
-!     ... initialize mpp clock id
-!-----------------------------------------------------------------------
+!#####################################################################
+
+subroutine regional_tracer_driver_time_vary (Time)
+
+type(time_type), intent(in) :: Time
+
+      integer :: n
+
+      do n = 1,ntracers
+         if (Lemis(n)) then
+            call obtain_interpolator_time_slices (inter_emis(n), Time)  
+         end if
+      end do
+
+end subroutine regional_tracer_driver_time_vary
+
+!######################################################################
+
+subroutine regional_tracer_driver_endts              
+
+      integer :: n
+
+      do n = 1,ntracers
+         if (Lemis(n)) then
+            call unset_interpolator_time_flag (inter_emis(n))  
+         end if
+      end do
+
+end subroutine regional_tracer_driver_endts
+
+!#######################################################################
+
+subroutine regional_tracer_driver_end
       
    module_is_initialized = .false.
-      
-      
-!-----------------------------------------------------------------------
       
 end subroutine regional_tracer_driver_end
 
