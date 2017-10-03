@@ -32,7 +32,8 @@ use                    fms_mod, only : file_exist,   &
                                        check_nml_error, &
                                        error_mesg, &
                                        FATAL, &
-                                       WARNING
+                                       WARNING, &
+                                       NOTE
 use           time_manager_mod, only : time_type
 use           diag_manager_mod, only : send_data,            &
                                        register_diag_field
@@ -199,10 +200,6 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
    integer :: omp_get_num_threads
 !-----------------------------------------------------------------------
 
-! Not yet tested for OpenMP
-!$ if(omp_get_num_threads() > 1 .and. mpp_pe()==mpp_root_pe()) &
-!$    call error_mesg ('Regional_tracer_driver','Code is not tested for OpenMP and omp_num_threads > 1', WARNING)
-
 !<ERROR MSG="regional_tracer_driver_init must be called first." STATUS="FATAL">
 !   Regional_tracer_driver_init needs to be called before regional_tracer_driver.
 !</ERROR>
@@ -364,7 +361,7 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
 
 ! Not yet tested for OpenMP
 !$ if(omp_get_num_threads() > 1) &
-!$    call error_mesg ('Regional_tracer_driver_init','Code is not tested for OpenMP and omp_num_threads > 1', WARNING)
+!$    call error_mesg ('Regional_tracer_driver_init','Code is running with OpenMP and omp_num_threads > 1', NOTE)
 !
 !-----------------------------------------------------------------------
 !
