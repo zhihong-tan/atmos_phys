@@ -998,8 +998,16 @@ integer :: n, m, nsulfate
              standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_emission')
    !----
    !---- register cmip6 fields  ----
-   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  mod_name,'pso4_aq_kg_m2_s', Time, 'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
-   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (  mod_name,'pso4_gas_kg_m2_s', Time,'Gas-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
+   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d &
+                              (  mod_name,'pso4_aq_kg_m2_s', &
+                              Time, 'Aqueous-phase Production Rate of Sulfate Aerosol', &
+                              'kg m-2 s-1', &
+   standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
+   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (&
+                              mod_name,'pso4_gas_kg_m2_s', &
+                              Time,'Gas-phase Production Rate of Sulfate Aerosol', &
+                              'kg m-2 s-1', & 
+   standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
    !----
  endif
 
