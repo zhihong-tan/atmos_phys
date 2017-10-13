@@ -1,6 +1,6 @@
 #include "cosp_defs.H"
 ! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/quickbeam/math_lib.f90 $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/quickbeam/math_lib.f90 $
 ! MATH_LIB: Mathematics procedures for F90
 ! Compiled/Modified:
 !   07/01/06  John Haynes (haynes@atmos.colostate.edu)

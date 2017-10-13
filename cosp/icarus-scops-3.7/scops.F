@@ -1,6 +1,6 @@
 #include "cosp_defs.H"
 ! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/icarus-scops-4    .1-bsd/scops.f $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/icarus-scops-4    .1-bsd/scops.f $
 
       subroutine scops(npoints,nlev,ncol,seed,cc,conv,
      &                 overlap,frac_out,ncolprint)
