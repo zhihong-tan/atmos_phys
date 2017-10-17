@@ -2032,7 +2032,7 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
     iflag=parse(chem_data,'nb_N_ox',nbt_N_ox)
     if (iflag == 0) nbt_N_ox=0
     iflag=parse(chem_data,'nb_N_red',nbt_N_red)
-    if (flag == 0) nbt_N_red=0
+    if (iflag == 0) nbt_N_red=0
     If (present(nb_N_ox))  nb_N_ox  = nbt_N_ox
     If (present(nb_N_red)) nb_N_red = nbt_N_red
     if (present(nb_N))     nb_N = nbt_N_ox+nbt_N_red
