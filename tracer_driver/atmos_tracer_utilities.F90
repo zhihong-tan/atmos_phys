@@ -1973,24 +1973,25 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
  character(len=100) :: cmip_data, cmip_scheme
  logical flag
  real :: mw
+ integer :: iflag
 
  flag = query_method('cmip',MODEL_ATMOS,n,cmip_scheme,cmip_data)
 
  if (flag) then
     if (present(cmip_name))     then
-       flag=parse(cmip_data,'cmip_name',cmip_name)
-       if (.not. flag) cmip_name='NULL'
+       iflag=parse(cmip_data,'cmip_name',cmip_name)
+       if (iflag == 0) cmip_name='NULL'
     end if
     if (present(cmip_longname)) then
-       flag=parse(cmip_data,'cmip_longname',cmip_longname)
-       if (.not. flag) then
+       iflag=parse(cmip_data,'cmip_longname',cmip_longname)
+       if (iflag == 0) then
           call get_tracer_names (MODEL_ATMOS, n, name = cmip_longname)
           cmip_longname = uppercase(cmip_longname)
        end if
     end if
     if (present(cmip_longname2)) then
-       flag=parse(cmip_data,'cmip_longname2',cmip_longname2)
-       if (.not. flag) then
+       iflag=parse(cmip_data,'cmip_longname2',cmip_longname2)
+       if (iflag == 0 ) then
           call get_tracer_names (MODEL_ATMOS, n, name = cmip_longname2)
           cmip_longname2 = uppercase(cmip_longname2)
        end if
@@ -2017,6 +2018,7 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
  logical :: is_aerosol_local
  real :: mwt,nbt_N_red,nbt_N_ox
  logical flag
+ integer :: iflag
 
  flag = query_method('chem_param',MODEL_ATMOS,n,scheme,chem_data)
 
@@ -2024,13 +2026,13 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
 
  if (flag) then
     if (present(mw))     then
-       flag=parse(chem_data,'mw',mw)
-       if (.not. flag) mw=-999.
+       iflag=parse(chem_data,'mw',mw)
+       if (iflag == 0) mw=-999.
     end if
-    flag=parse(chem_data,'nb_N_ox',nbt_N_ox)
-    if (.not. flag) nbt_N_ox=0
-    flag=parse(chem_data,'nb_N_red',nbt_N_red)
-    if (.not. flag) nbt_N_red=0
+    iflag=parse(chem_data,'nb_N_ox',nbt_N_ox)
+    if (iflag == 0) nbt_N_ox=0
+    iflag=parse(chem_data,'nb_N_red',nbt_N_red)
+    if (flag == 0) nbt_N_red=0
     If (present(nb_N_ox))  nb_N_ox  = nbt_N_ox
     If (present(nb_N_red)) nb_N_red = nbt_N_red
     if (present(nb_N))     nb_N = nbt_N_ox+nbt_N_red
@@ -2046,16 +2048,16 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
     if (present(frac_pm1).or.present(frac_pm10).or.present(frac_pm25)) then
        if (is_aerosol_local) then
           if (present(frac_pm1)) then
-             flag=parse(chem_data,'frac_pm1',frac_pm1)
-             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm1 not defined for '//trim(tracer_name), FATAL )
+             iflag=parse(chem_data,'frac_pm1',frac_pm1)
+             if (iflag == 0)        call ERROR_MESG('get_chem_param', 'frac_pm1 not defined for '//trim(tracer_name), FATAL )
           end if
           if (present(frac_pm25)) then
-             flag=parse(chem_data,'frac_pm25',frac_pm25)
-             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm25 not defined for '//trim(tracer_name), FATAL )
+             iflag=parse(chem_data,'frac_pm25',frac_pm25)
+             if (iflag == 0)        call ERROR_MESG('get_chem_param', 'frac_pm25 not defined for '//trim(tracer_name), FATAL )
           end if
           if (present(frac_pm10)) then
-             flag=parse(chem_data,'frac_pm10',frac_pm10)
-             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm10 not defined for '//trim(tracer_name), FATAL )
+             iflag=parse(chem_data,'frac_pm10',frac_pm10)
+             if (iflag == 0)        call ERROR_MESG('get_chem_param', 'frac_pm10 not defined for '//trim(tracer_name), FATAL )
           end if
        else
           if (present(frac_pm1))  frac_pm1=0.
@@ -2065,8 +2067,8 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
     end if
     if (present(conv_vmr_mmr)) then
        if (trim(tracer_units).eq."vmr") then
-          flag=parse(chem_data,'mw',mwt)
-          if (.not. flag) mwt=-999.
+          iflag=parse(chem_data,'mw',mwt)
+          if (iflag == 0) mwt=-999.
           conv_vmr_mmr = mwt/wtmair
        else
           conv_vmr_mmr = 1.
