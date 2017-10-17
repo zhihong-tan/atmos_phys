@@ -797,7 +797,8 @@ CONTAINS
   !<f1p
   subroutine setsox_init(trop_option)
 
-    integer :: flag
+    integer :: iflag
+    logical :: flag
     character (len=500) :: text_in_scheme, text_in_param
     integer :: n
     type(tropchem_opt), intent(in) :: trop_option
@@ -828,19 +829,19 @@ CONTAINS
     flag = query_method('wet_deposition',MODEL_ATMOS,&
          get_tracer_index(MODEL_ATMOS,'so4'), &
          text_in_scheme,text_in_param)
-    flag=parse(text_in_param,'frac_incloud',frac_ic_so4)
+    iflag=parse(text_in_param,'frac_incloud',frac_ic_so4)
 
-    flag=parse(text_in_param,'frac_incloud_snow',frac_ic_so4_snow)
-    if (flag == 0) then
+    iflag=parse(text_in_param,'frac_incloud_snow',frac_ic_so4_snow)
+    if (iflag == 0) then
        frac_ic_so4_snow = frac_ic_so4
     end if
 
     flag = query_method ('wet_deposition',MODEL_ATMOS,&
          get_tracer_index(MODEL_ATMOS,'nh4'), &
          text_in_scheme,text_in_param)
-    flag=parse(text_in_param,'frac_incloud',frac_ic_nh4)
-    flag=parse(text_in_param,'frac_incloud_snow',frac_ic_nh4_snow)
-    if (flag == 0) then
+    iflag=parse(text_in_param,'frac_incloud',frac_ic_nh4)
+    iflag=parse(text_in_param,'frac_incloud_snow',frac_ic_nh4_snow)
+    if (iflag == 0) then
        frac_ic_nh4_snow = frac_ic_nh4
     end if
 
@@ -848,9 +849,9 @@ CONTAINS
        flag = query_method ('wet_deposition',MODEL_ATMOS,&
             get_tracer_index(MODEL_ATMOS,'nh4no3'), &
             text_in_scheme,text_in_param)
-       flag=parse(text_in_param,'frac_incloud',frac_ic_no3)
-       flag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
-       if (flag == 0) then
+       iflag=parse(text_in_param,'frac_incloud',frac_ic_no3)
+       iflag=parse(text_in_param,'frac_incloud_snow',frac_ic_no3_snow)
+       if (iflag == 0) then
           frac_ic_no3_snow = frac_ic_no3
        end if
     else
