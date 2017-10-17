@@ -22,7 +22,7 @@
 
     end subroutine monin_obukhov_diff
 
-    _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
+    _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,             &
           & error, zeta_min, max_iter, small,                         &
           & neutral, stable_option, new_mo_option, rich_crit, zeta_trans,  &
           & drag_min_heat, drag_min_moist, drag_min_mom,              &
