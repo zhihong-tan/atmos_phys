@@ -137,8 +137,8 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
         if ( force_use_of_temp_for_seed) then
           use_temp_for_seed = .true.
           call error_mesg ('cloud_spec_init', &
-                 'Will use temp as basis for stochastic cloud seed; '// &
-                 'eed is set true', NOTE)
+           'Will use temp as basis for stochastic cloud seed; seed is set true', &
+            NOTE)
         else
           use_temp_for_seed = .false.
           call error_mesg ('cloud_spec_init', &
