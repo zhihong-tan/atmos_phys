@@ -1,8 +1,10 @@
 ! -*-f90-*-
 !#include <fms_platform.h>
 
-  interface
+! $Id$
 
+  interface
+     
      _PURE subroutine monin_obukhov_diff(vonkarm,                &
           & ustar_min,                                     &
           & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
@@ -22,15 +24,15 @@
 
     end subroutine monin_obukhov_diff
 
-    _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,             &
+    _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
           & error, zeta_min, max_iter, small,                         &
-          & neutral, stable_option, new_mo_option, rich_crit, zeta_trans,  &
-          & drag_min_heat, drag_min_moist, drag_min_mom,              &
+          & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &
+          & drag_min_heat, drag_min_moist, drag_min_mom,  &!miz
           & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
           & drag_q, u_star, b_star, lavail, avail, ier)
 
-       real   , intent(in   )                :: grav
-       real   , intent(in   )                :: vonkarm
+       real   , intent(in   )                :: grav     
+       real   , intent(in   )                :: vonkarm   
        real   , intent(in   )                :: error    ! = 1.e-04
        real   , intent(in   )                :: zeta_min ! = 1.e-06
        integer, intent(in   )                :: max_iter ! = 20
@@ -39,13 +41,13 @@
        integer, intent(in   )                :: stable_option
        logical, intent(in   )                :: new_mo_option !miz
        real   , intent(in   )                :: rich_crit, zeta_trans
-       real   , intent(in   )                :: drag_min_heat, drag_min_moist, drag_min_mom
+       real   , intent(in   )                :: drag_min_heat,drag_min_moist,drag_min_mom
        integer, intent(in   )                :: n
        real   , intent(in   ), dimension(n)  :: pt      ! potential temperature
        real   , intent(in   ), dimension(n)  :: pt0     ! reference potential temperature
        real   , intent(in   ), dimension(n)  :: z       ! height above surface
        real   , intent(in   ), dimension(n)  :: z0      ! roughness height (height at which log wind profile is zero)
-       real   , intent(in   ), dimension(n)  :: zt      !
+       real   , intent(in   ), dimension(n)  :: zt      ! 
        real   , intent(in   ), dimension(n)  :: zq
        real   , intent(in   ), dimension(n)  :: speed
        real   , intent(inout), dimension(n)  :: drag_m
@@ -54,7 +56,7 @@
        real   , intent(inout), dimension(n)  :: u_star
        real   , intent(inout), dimension(n)  :: b_star
        logical, intent(in   )                :: lavail ! whether to use provided mask or not
-       logical, intent(in   ), dimension(n)  :: avail  ! provided mask
+       logical, intent(in   ), dimension(n)  :: avail  ! provided mask 
        integer, intent(out  )                :: ier
 
      end subroutine monin_obukhov_drag_1d
@@ -90,7 +92,7 @@
        integer, intent(in   )                :: n
        real   , intent(  out), dimension(n)  :: phi_t
        real   , intent(in   ), dimension(n)  :: zeta
-       logical, intent(in   ), dimension(n)  :: mask
+       logical, intent(in   ), dimension(n)  :: mask  
        integer, intent(  out)                :: ier
      end subroutine monin_obukhov_derivative_t
 
@@ -118,7 +120,7 @@
        logical, intent(in   )                :: new_mo_option !miz
        real,    intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
-       real   , intent(  out), dimension(n)  :: psi_t, psi_q
+       real   , intent(inout), dimension(n)  :: psi_t, psi_q
        real   , intent(in)   , dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
        logical, intent(in)   , dimension(n)  :: mask
        integer, intent(  out)                :: ier
@@ -132,7 +134,7 @@
        integer, intent(in   )                :: stable_option
        real   , intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
-       real   , intent(  out), dimension(n)  :: psi_m
+       real   , intent(inout), dimension(n)  :: psi_m
        real   , intent(in)   , dimension(n)  :: zeta, zeta_0, ln_z_z0
        logical, intent(in)   , dimension(n)  :: mask
        integer, intent(out)                  :: ier
@@ -145,8 +147,8 @@
        real   , intent(in   )                 :: rich_crit, zeta_trans
        integer, intent(in   )                 :: n
        real   , intent(in   ), dimension(n)   :: rich
-       real   , intent(  out), dimension(n)   :: mix
-       integer, intent(  out)                 :: ier
+       real   , intent(  out), dimension(n)   :: mix  
+       integer, intent(  out)                 :: ier      
      end subroutine monin_obukhov_stable_mix
 
      _PURE subroutine monin_obukhov_solve_zeta(error, zeta_min, max_iter, small,  &

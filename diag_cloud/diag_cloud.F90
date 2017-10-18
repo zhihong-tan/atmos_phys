@@ -2621,8 +2621,8 @@ subroutine CLDAMT_MN (nclds,cldtop,cldbas,phalf,camt,cldamt)
 !               when nofog = true (model level index)
 !-------------------------------------------------------------------
 
- integer, intent(out), dimension(:,:,:) :: cldtop,cldbas
- integer, intent(out), dimension(:,:)  :: nclds
+ integer, intent(inout), dimension(:,:,:) :: cldtop,cldbas
+ integer, intent(inout), dimension(:,:)  :: nclds
  real, intent(in), dimension (:,:,:) ::  phalf
 
 !      NCLDS       number of (random overlapping) clouds in column and also
@@ -2775,8 +2775,9 @@ subroutine ANVIL_CIRRUS (lhighb,lmidb,nclds,cldtop,cldbas,cnvcntq,lgscldelq,  &
 !                    indicator" layer
 !-------------------------------------------------------------------
 
- integer, intent(out), dimension(:,:,:) :: cldtop,cldbas
- integer, intent(out), dimension(:,:)  ::  nclds,lhighb,lmidb
+ integer, intent(inout), dimension(:,:,:) :: cldtop,cldbas
+ integer, intent(inout), dimension(:,:)  ::  nclds,lhighb
+ integer, intent(out), dimension(:,:)  :: lmidb
  real, intent(in), dimension (:,:,:) ::  lgscldelq,cnvcntq,pfull,phalf
 
 !-------------------------------------------------------------------
