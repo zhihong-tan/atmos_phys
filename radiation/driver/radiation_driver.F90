@@ -1463,6 +1463,7 @@ subroutine radiation_driver_time_vary (Time, Time_next, gavg_rrv, &
 type(time_type),         intent(in)     :: Time, Time_next
 real, dimension(:),      intent(in)     :: gavg_rrv
 type(radiation_flux_control_type), intent(inout) :: Rad_flux_control
+type(time_type)                         :: rad_time_local
 !----------------------------------------------------------------------
 !  Call define_rad_times to obtain the time to be used in the
 !  radiation calculation (Rad_time) and to determine which, if any,
@@ -1471,9 +1472,9 @@ type(radiation_flux_control_type), intent(inout) :: Rad_flux_control
 !  lack of need for the aerosol fields, the cloud fields, the
 !  radiative gas fields, and the basic atmospheric variable fields.
 !----------------------------------------------------------------------
- 
-    call define_rad_times (Time, Time_next, Rad_time)
-
+    rad_time_local = rad_time
+    call define_rad_times (Time, Time_next, Rad_time_local)
+    rad_time = rad_time_local
     if (do_rad) then
 
 !----------------------------------------------------------------------
