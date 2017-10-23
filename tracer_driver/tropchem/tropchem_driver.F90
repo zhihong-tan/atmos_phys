@@ -968,11 +968,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    r_temp(:,:,:,:) = MAX(r_temp(:,:,:,:),small)
 
 !set CO2
-   if (nco2>0) then
-      if (mpp_pe() == mpp_root_pe()) then
-         call error_mesg ('tropchem_driver', 'CO2 is active',NOTE)
-      endif
-   else
+   if (nco2 == NO_TRACER) then
       if (co2_t%use_fix_value) then
          co2_2d(:,:) = co2_t%fixed_value
       else
@@ -1820,6 +1816,9 @@ end if
 30 format (A,' was initialized as tracer number ',i3)
 
    nco2 = get_tracer_index(MODEL_ATMOS, 'co2' )
+   if (nco2 > 0 .and. mpp_pe() == mpp_root_pe()) then
+      call error_mesg ('tropchem_driver', 'CO2 is active',NOTE)
+   endif
    cl_ndx     = get_spc_ndx('Cl')
    clo_ndx    = get_spc_ndx('ClO')
    hcl_ndx    = get_spc_ndx('HCl')
