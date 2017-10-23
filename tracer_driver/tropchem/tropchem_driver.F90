@@ -734,6 +734,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                  id_gamma_temp=id_gtemp_isop, id_gamma_light=id_glight_isop, &
                  id_climtas=id_ctas, id_climfsds=id_cfsds, id_emis_diag=id_xactive_emis(n) )
             if (has_xactive_emis(n)) then
+               emisz(:,:,n) = emisz(:,:,n) + emis(:,:)
                if (present(kbot)) then
                   do j=1,jd
                      do i=1,id

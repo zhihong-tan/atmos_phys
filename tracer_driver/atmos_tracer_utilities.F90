@@ -458,8 +458,8 @@ contains
       'm/s', missing_value=-999.     )
 ! Register in-cloud SO2 re-evaporation by large scale clouds (CMIP6)
  ID_so2_reevap_ls = register_cmip_diag_field_3d ( mod_name,               &
-                   'pso4_aq_so2_reevap_ls', Time, 'Sulfate aerosol production by SO2 re-evaporation by lscale clouds', 'kg m-2 s-1', &
-                   standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_sulfur_dioxide_reevaporation')
+      'pso4_aq_so2_reevap_ls', Time, 'Sulfate aerosol production by SO2 re-evaporation by lscale clouds', 'kg m-2 s-1', &
+      standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_sulfur_dioxide_reevaporation')
 
  call write_version_number (version, tagname)
 
