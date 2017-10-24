@@ -2995,7 +2995,7 @@ subroutine isop_xactive_init( lonb, latb, axes )
        'tas07','tas08','tas09','tas10','tas11','tas12' /)
   character(len=5) :: dswnames(nmos) = (/ 'dsw01','dsw02','dsw03','dsw04','dsw05','dsw06', &
        'dsw07','dsw08','dsw09','dsw10','dsw11','dsw12' /)
-  integer :: id_ec(npft), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
+  integer :: id_ec(nveg), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
   real, dimension(nlonin,nlatin) :: datain
   real, dimension(nlonin,nlatin,npft) :: datapft
   real, dimension(nlonin,nlatin,npft,nmos) :: datalai
@@ -3359,7 +3359,7 @@ subroutine terp_xactive_init( lonb, latb, axes )
        'tas07','tas08','tas09','tas10','tas11','tas12' /)
   character(len=5) :: dswnames(nmos) = (/ 'dsw01','dsw02','dsw03','dsw04','dsw05','dsw06', &
        'dsw07','dsw08','dsw09','dsw10','dsw11','dsw12' /)
-  integer :: id_ec(nveg), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
+  integer :: id_ec(npft), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
   real, dimension(nlonin,nlatin) :: datain
   real, dimension(nlonin,nlatin,npft) :: datapft
   real, dimension(nlonin,nlatin,npft,nmos) :: datalai
