@@ -1068,8 +1068,8 @@ subroutine aerosol_endts (Aerosol_tv)
 type(aerosol_time_vary_type), intent(inout) :: Aerosol_tv
 
      integer :: n
-
-if ( associated (Aerosol_tv%Interp) .and. do_specified_aerosol ) then
+! gnu does not support the use of .eq. and .neq. on logical operands
+if ( (associated (Aerosol_tv%Interp) .eqv. .true.) .and. (do_specified_aerosol .eqv. .true.)) then
      do n=1, size(Aerosol_tv%Interp,1)
        call unset_interpolator_time_flag (Aerosol_tv%Interp(n))
      end do
