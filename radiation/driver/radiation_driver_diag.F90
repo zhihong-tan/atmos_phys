@@ -3327,6 +3327,15 @@ real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
       integer           :: kmax
       real              :: wtlo, wthi
 
+!> initialize intent(out) variables
+ swdn_trop = 0.0
+ swup_trop = 0.0
+ swdn_trop_clr = 0.0
+ swup_trop_clr = 0.0
+ netlw_trop = 0.0
+ netlw_trop_clr = 0.0
+
+
       kmax = size(pflux,3) - 1
 
 !---------------------------------------------------------------------
