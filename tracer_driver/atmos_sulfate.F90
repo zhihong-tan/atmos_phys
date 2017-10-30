@@ -41,7 +41,11 @@ use           diag_manager_mod, only : send_data,               &
                                        register_diag_field,     &
                                        register_static_field,   &
                                        diag_manager_init, get_base_time
-use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
+use      atmos_cmip_diag_mod,   only : register_cmip_diag_field_3d, &
+                                       register_cmip_diag_field_2d, &
+                                       send_cmip_data_3d, &
+                                       cmip_diag_id_type, &
+                                       query_cmip_diag_id
 use         tracer_manager_mod, only : get_tracer_index,        &
                                        set_tracer_atts
 use          field_manager_mod, only : MODEL_ATMOS
@@ -119,6 +123,9 @@ integer ::   id_so2_ff              = 0
 integer ::   id_emidms              = 0
 integer ::   id_emiso2              = 0
 integer ::   id_emiso4              = 0
+
+!cmip6 diagnostics
+type(cmip_diag_id_type) :: ID_pso4_aq_kg_m2_s, ID_pso4_gas_kg_m2_s
 
 logical :: do_MSA=.false.
 integer :: number_SOx_tracers       = 0
@@ -388,6 +395,11 @@ integer :: n, m, nsulfate
 
 
   30   format (A,' was initialized as tracer number ',i2)
+
+   n = get_tracer_index(MODEL_ATMOS,'oh')
+   if ( n < 0 ) &
+     call error_mesg ('atmos_sulfate_mod', &
+           'OH tracer is required for simple sulfate chemistry, but is not present in field_table', FATAL)
 
 !----------------------------------------------------------------------
 !    initialize namelist entries
@@ -984,6 +996,18 @@ integer :: n, m, nsulfate
    id_emiso4 = register_cmip_diag_field_2d ( mod_name, 'emiso4', Time, &
                            'Total Emission Rate of SO4', 'kg m-2 s-1', &
              standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_emission')
+   !----
+   !---- register cmip6 fields  ----
+   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d &
+                              (  mod_name,'pso4_aq_kg_m2_s', &
+                              Time, 'Aqueous-phase Production Rate of Sulfate Aerosol', &
+                              'kg m-2 s-1', &
+   standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
+   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (&
+                              mod_name,'pso4_gas_kg_m2_s', &
+                              Time,'Gas-phase Production Rate of Sulfate Aerosol', &
+                              'kg m-2 s-1', & 
+   standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
    !----
  endif
 
@@ -1923,7 +1947,6 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       endif
 
       !---- cmip fields ----
-      ! should vertical integral be pressure-weighted?
       if (id_emiso2 > 0) then
         emis2d = 0.0
         do k = 1, size(so2_emis,3)
@@ -2497,6 +2520,18 @@ end subroutine atmos_SOx_emission
         used = send_data ( id_H2O2_chem, &
               H2O2_dt*pwt, diag_time,is_in=is,js_in=js,ks_in=1)
       endif
+
+      if (query_cmip_diag_id(ID_pso4_gas_kg_m2_s)) then
+         used = send_cmip_data_3d (ID_pso4_gas_kg_m2_s,  &
+              WTM_SO4 * SO4_oh_prod(:,:,:)*pwt(:,:,:)/WTMAIR, &
+              diag_time, is_in=is, js_in=js, ks_in=1)
+      end if
+      if (query_cmip_diag_id(ID_pso4_aq_kg_m2_s)) then
+         used = send_cmip_data_3d (ID_pso4_aq_kg_m2_s,  &
+              WTM_SO4 * (SO4_o3_prod(:,:,:)+SO4_h2o2_prod(:,:,:))*pwt(:,:,:)/WTMAIR, &
+              diag_time, is_in=is, js_in=js, ks_in=1)
+      end if
+
 end subroutine atmos_SOx_chem
 
 end module atmos_sulfate_mod

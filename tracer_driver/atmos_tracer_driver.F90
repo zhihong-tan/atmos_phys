@@ -115,13 +115,14 @@ use atmos_cmip_diag_mod,   only : register_cmip_diag_field_3d, &
                                   cmip_diag_id_type, &
                                   query_cmip_diag_id
 
-use astronomy_mod,         only : astronomy_init, diurnal_solar
+use astronomy_mod,         only : astronomy_init, diurnal_solar, universal_time
 use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_number_tracers, &
                                   get_tracer_names,   &
                                   get_tracer_indices, &
                                   adjust_positive_def, &
-                                  query_method
+                                  query_method, &
+				  NO_TRACER
 use field_manager_mod,     only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only :                      &
                                   dry_deposition,           &
@@ -132,7 +133,7 @@ use atmos_tracer_utilities_mod, only :                      &
                                   get_rh, get_w10m, get_cldf, &
                                   sjl_fillz, &
                                   get_cmip_param, get_chem_param
-use constants_mod,         only : grav, WTMAIR
+use constants_mod,         only : grav, WTMAIR, PI, AVOGNO
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
                                   atmos_radon_end
@@ -198,6 +199,9 @@ use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
                                   atmos_co2_end
+use atmos_tropopause_mod,only: &
+                                  atmos_tropopause_init, &
+                                  atmos_tropopause
 
 use interpolator_mod,      only : interpolate_type
 
@@ -250,6 +254,7 @@ integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
 integer :: co2_clock = 0
+integer :: tropopause_clock = 0
 
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
 logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
@@ -282,7 +287,8 @@ integer :: nDMS_cmip =0
 integer :: nSO2_cmip =0
 integer :: nSO4_cmip =0
 integer :: nNH3_cmip =0
-integer :: noh       =0
+integer :: nOH       =0
+integer :: nC4H10    =0
 integer :: ncodirect =0
 integer :: ne90 =0
 integer :: nsulfate  =0
@@ -317,6 +323,8 @@ integer, allocatable :: local_indices(:)
 
 !<f1p
 integer, dimension(:), allocatable :: id_tracer_diag
+integer, dimension(:,:), allocatable :: id_tracer_diag_hour
+integer :: id_ps_hour(24),id_temp_hour(24),id_local_hour
 !>
 integer :: id_landfr, id_seaicefr, id_snowfr, id_vegnfr, id_vegnlai
 integer :: id_om_ddep, id_bc_ddep, &
@@ -329,20 +337,23 @@ integer :: id_so2_cmipv2, id_dms_cmipv2
 integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
- type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC
+ type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
-            id_drynh4, id_drybc, id_drypoa, id_drysoa
+            id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa
 
 !for cmip6 (f1p)
  type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
  integer, allocatable :: id_tracer_surf_mol_mol(:),id_tracer_surf_kg_kg(:)
  integer, allocatable :: id_tracer_col_kg_m2(:)
  integer              :: id_pm25_surf, id_dust_col_kg_m2, id_seasalt_col_kg_m2, id_bc_col_kg_m2
+ integer              :: id_toz, id_tropoz
  real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:), frac_pm1(:), frac_pm10(:), frac_pm25(:)
  integer, allocatable :: id_tracer_ddep_kg_m2_s(:)
 
+ real, parameter      :: o3_column_factor = 2.687e25 ! Molecular density (molec/m3) of air at STP (T=0C, P=1atm)
+                                                     ! Used to convert from molec/m2 to equivalent depth (in m) at STP
 
 !-----------------------------------------------------------------------
 type(time_type) :: Time
@@ -504,10 +515,12 @@ real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
 real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
+real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
+integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 
-integer :: isulf, j, k, id, jd, kd, ntcheck
+integer :: isulf, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
 integer :: nql  ! index of cloud liquid specific humidity
 integer :: nqi  ! index of cloud ice water specific humidity
@@ -517,6 +530,12 @@ logical :: used
 integer, dimension(6) :: itime   ! JA's time (simpler than model time)
 
 character(len=32) :: tracer_units, tracer_name
+real    :: gmt,local_angle
+integer :: hh
+real :: local_hour_3d(size(r,1),size(r,2),size(r,3)),local_hour
+logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
+
+
 !-----------------------------------------------------------------------
 
 !   <ERROR MSG="tracer_driver_init must be called first." STATUS="FATAL">
@@ -785,6 +804,11 @@ character(len=32) :: tracer_units, tracer_name
             pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic)),  &
                                      Time_next, is_in=is, js_in=js)
       endif
+      if (id_dryoa > 0 .and. nomphilic > 0 .and. nomphobic > 0 .and. nSOA > 0) then
+        used  = send_data (id_dryoa,  &
+            pwt(:,:,kd)*(dsinku(:,:,nomphilic) + dsinku(:,:,nomphobic) + dsinku(:,:,nSOA)),  &
+                                     Time_next, is_in=is, js_in=js)
+      endif
 
       do n=1,ntp
          if (id_tracer_col_kg_m2(n).gt.0) then
@@ -1016,6 +1040,28 @@ character(len=32) :: tracer_units, tracer_name
              Time_next, is_in=is, js_in=js, ks_in=1)
      end if
 
+     if ( query_cmip_diag_id(ID_DUST) ) then
+        sumb = 0.
+        do n=1,ntp
+          if (is_dust_tracer(n)) then
+             sumb(:,:,:) = sumb(:,:,:) + tracer(:,:,:,n)
+          end if
+        end do
+        used = send_cmip_data_3d ( ID_DUST, sumb(:,:,:), &
+             Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
+     if ( query_cmip_diag_id(ID_SS) ) then
+        sumb = 0.
+        do n=1,ntp
+          if (is_seasalt_tracer(n)) then
+             sumb(:,:,:) = sumb(:,:,:) + tracer(:,:,:,n)
+          end if
+        end do
+        used = send_cmip_data_3d ( ID_SS, sumb(:,:,:), &
+             Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
      if ( query_cmip_diag_id(ID_pm25)) then
         used = send_cmip_data_3d ( ID_pm25, pm25, &
              Time_next, is_in=is, js_in=js, ks_in=1)
@@ -1031,6 +1077,36 @@ character(len=32) :: tracer_units, tracer_name
              Time_next, is_in=is, js_in=js, ks_in=1)
      end if
 
+
+!------------------------------------------------------------------------
+! Compute tropopause diagnostics
+!------------------------------------------------------------------------
+   call mpp_clock_begin (tropopause_clock)
+   call atmos_tropopause(is, ie, js, je, Time, Time_next, t, pfull, z_full,     &
+                         tropopause_ind)
+   call mpp_clock_end (tropopause_clock)
+
+      if (id_toz > 0 .and. no3 > 0) then
+        suma = 0.
+        do k=1,kd
+           suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,no3)
+        end do
+	suma = suma * AVOGNO / (WTMAIR*1.e-3 * o3_column_factor)
+        used = send_data (id_toz, suma, Time_next, is_in=is, js_in=js)
+      end if
+
+      if (id_tropoz > 0 .and. no3 > 0) then
+        suma = 0.
+	do i = 1,id
+	do j = 1,jd
+           do k=1,tropopause_ind(i,j)
+              suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,no3)
+           end do
+        end do
+        end do
+	suma = suma * AVOGNO / (WTMAIR*1.e-3 * o3_column_factor)
+        used = send_data (id_tropoz, suma, Time_next, is_in=is, js_in=js)
+      end if
 
 !------------------------------------------------------------------------
 ! Compute radon source-sink tendency
@@ -1193,7 +1269,7 @@ character(len=32) :: tracer_units, tracer_name
                                       tracer(:,:,:,nbcphilic), rtndbcphil, &
                                       tracer(:,:,:,nomphobic), rtndomphob, &
                                       tracer(:,:,:,nomphilic), rtndomphil, &
-                                      tracer(:,:,:,noh),    &
+                                      tracer(:,:,:,nOH),    &
                                       Time_next,is,ie,js,je)
       rdt(:,:,:,nbcphobic)=rdt(:,:,:,nbcphobic)+rtndbcphob(:,:,:)
       rdt(:,:,:,nbcphilic)=rdt(:,:,:,nbcphilic)+rtndbcphil(:,:,:)
@@ -1254,7 +1330,7 @@ character(len=32) :: tracer_units, tracer_name
       call atmos_SOx_chem( pwt, t, pfull, phalf, dt, lwc, fliq, cldf, &
                 jday,hour,minute,second,lat,lon,    &
                 do_tracer_sulfate, tr_sulfate, rt_sulfate, &
-                tracer(:,:,:,noh), &
+                tracer(:,:,:,nOH), &
                 Time,Time_next, is,ie,js,je,kbot)
       do isulf=1,nsulfate
         if (do_tracer_sulfate(isulf)) rdt(:,:,:,tr_nbr_sulfate(isulf))= &
@@ -1271,9 +1347,12 @@ character(len=32) :: tracer_units, tracer_name
                      'Number of tracers .lt. number for SOA', FATAL)
 
       call mpp_clock_begin (SOA_clock)
-      call atmos_SOA_chem(pwt,t,pfull,phalf,dt, &
-                jday,hour,minute,second,lat,lon,    &
-                tracer(:,:,:,nSOA),rtnd, Time,Time_next,is,ie,js,je,kbot )
+      call atmos_SOA_chem(pwt ,t, pfull, phalf, dt, &
+                jday, hour, minute, second, lat, lon,    &
+                tracer(:,:,:,nSOA), &
+		tracer(:,:,:,nOH), &
+		tracer(:,:,:,nC4H10), &
+		rtnd, Time, Time_next, is,ie,js,je,kbot )
 
       rdt(:,:,:,nSOA)=rdt(:,:,:,nSOA)+rtnd(:,:,:)
       call mpp_clock_end (SOA_clock)
@@ -1341,8 +1420,40 @@ character(len=32) :: tracer_units, tracer_name
 
 
    !save tracer diagnostics
+
+!calculate local time
+   gmt = universal_time(Time) !time of day midnight = 0
+   do j=1,jd
+      do i=1,id
+         local_angle = gmt + lon(i,j)
+         if (local_angle >= 2.*PI) local_angle = local_angle - 2*pi
+         local_hour        = local_angle *12./PI
+         local_hour_3d(i,j,:) = local_hour
+      end do
+   end do
+
+
+   do hh=1,24
+      mask_local_hour = (local_hour_3d.ge.(hh-1) .and. local_hour_3d.lt.hh)
+      if (id_temp_hour(hh).gt.0) then
+         used = send_data (id_temp_hour(hh),t,Time,is,js,1,mask=mask_local_hour)
+                 used = send_data (id_temp_hour(hh),t,Time,is,js,1,mask=mask_local_hour)
+      end if
+      if (id_ps_hour(hh).gt.0) then
+         used = send_data (id_ps_hour(hh),phalf(:,:,kd+1),Time,is_in=is,js_in=js,mask=mask_local_hour(:,:,1))
+      end if
+   end do
+
    do n=1,nt
+      do hh=1,24
+         mask_local_hour = (local_hour_3d.ge.(hh-1) .and. local_hour_3d.lt.hh)
+         if (id_tracer_diag_hour(n,hh) .gt. 0 ) then
+            used = send_data (id_tracer_diag_hour(n,hh),tracer_orig(:,:,:,n),Time,is,js,1,mask=mask_local_hour)
+         end if
+      end do
+
       if ( id_tracer_diag(n) .gt. 0 ) then
+
          call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
               units = tracer_units)
          if ( tracer_units .eq. "vmr" ) then
@@ -1417,6 +1528,8 @@ type(time_type), intent(in)                                :: Time
       integer :: unit, ierr, io, logunit, n, outunit
 !<f1p
       character(len=32) :: tracer_units, tracer_name
+      integer     :: hh
+      character*4 :: hstr
       character(len=256) :: cmip_name,cmip_longname, cmip_longname2
       logical :: cmip_is_aerosol, do_pm, do_check
       real    :: tracer_mw, sum_N_ox
@@ -1569,7 +1682,15 @@ type(time_type), intent(in)                                :: Time
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
       nSO4_cmip = get_tracer_index(MODEL_ATMOS,'so4')
       nNH3_cmip = get_tracer_index(MODEL_ATMOS,'nh3')
-      noh       = get_tracer_index(MODEL_ATMOS,'oh')
+      nOH       = get_tracer_index(MODEL_ATMOS,'oh')
+      nC4H10    = get_tracer_index(MODEL_ATMOS,'c4h10')
+! Check for presence of OH and C4H10 (diagnostic) tracers
+! If not present set index to 1 so interface calls do not fail,
+! but FATAL error will be issued by atmos_sulfate_init,
+! atmos_carbon_aerosol_init (if do_dynamic_bc or do_dynamic_om), and
+! atmos_SOA_init (if use_interactive_tracers)
+      if (nOH == NO_TRACER) nOH = 1
+      if (nC4H10 == NO_TRACER) nC4H10 = 1
       ncodirect = get_tracer_index(MODEL_ATMOS,'codirect')
       ne90      = get_tracer_index(MODEL_ATMOS,'e90')
 
@@ -1632,6 +1753,10 @@ type(time_type), intent(in)                                :: Time
       if (ncodirect > 0 .or. ne90 > 0) then
         call regional_tracer_driver_init (lonb, latb, axes, Time, mask)
       endif
+
+!tropopause diagnostics
+      call atmos_tropopause_init (Time)
+      tropopause_clock = mpp_clock_id( 'Tracer: Tropopause', grain=CLOCK_MODULE )
 
      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
@@ -1790,10 +1915,15 @@ type(time_type), intent(in)                                :: Time
       id_drysoa = register_cmip_diag_field_2d ( mod_name, &
                   'drysoa', Time, 'Dry Deposition Rate of Dry Aerosol Secondary Organic Matter', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
+
+      id_dryoa = register_cmip_diag_field_2d ( mod_name, &
+                  'dryoa', Time, 'Dry Deposition Rate of Dry Aerosol Total Organic Matter', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
       !----
 
 !<f1p: tracer diagnostics
       allocate( id_tracer_diag(nt) )
+      allocate( id_tracer_diag_hour(nt,24) )
       id_tracer_diag(:) = 0
 
       allocate( ID_tracer_mol_mol(nt) )
@@ -1820,6 +1950,14 @@ type(time_type), intent(in)                                :: Time
       ID_OM = register_cmip_diag_field_3d ( mod_name, 'fam_om_kg_kg', Time, &
              'Total organic aerosol mass mixing ratio', 'kg kg-1', &
              standard_name='mass_fraction_of_particulate_organic_matter_dry_aerosol_particles_in_air')
+
+      ID_DUST = register_cmip_diag_field_3d ( mod_name, 'fam_dust_kg_kg', Time, &
+             'Dust aerosol mass mixing ratio', 'kg kg-1', &
+             standard_name='mass_fraction_of_dust_dry_aerosol_particles_in_air')
+
+      ID_SS = register_cmip_diag_field_3d ( mod_name, 'fam_seasalt_kg_kg', Time, &
+             'Sea salt mass mixing ratio', 'kg kg-1', &
+             standard_name='mass_fraction_of_seasalt_dry_aerosol_particles_in_air')
 
       ID_pm10 = register_cmip_diag_field_3d ( mod_name, 'pm10_kg_kg', Time, &
               'PM10 mass mixing ratio',  'kg kg-1', &
@@ -1853,6 +1991,14 @@ type(time_type), intent(in)                                :: Time
                             Time, 'Load of Seasalt', 'kg m-2', &
                             standard_name='atmosphere_mass_content_of_seasalt_dry_aerosol')
 
+      id_toz = register_cmip_diag_field_2d ( mod_name, 'toz', &
+                       Time, 'Total Ozone Column', 'm', &
+                       standard_name='equivalent_thickness_at_stp_of_atmosphere_ozone_content')
+
+      id_tropoz = register_cmip_diag_field_2d ( mod_name, 'tropoz', &
+                       Time, 'Tropospheric Ozone Column', 'm', &
+                       standard_name='equivalent_thickness_at_stp_of_atmosphere_ozone_content')
+
       outunit = stdout()
 
       do n = 1,nt
@@ -1868,6 +2014,13 @@ type(time_type), intent(in)                                :: Time
                  tracer_name, axes(1:3), Time, &
                  tracer_name, 'kg/m3')
          end if
+
+         do hh=1,24
+            write(hstr,'(A1,I2.2,A1)') '_',hh-1,'h'
+            id_tracer_diag_hour(n,hh)  = register_diag_field (mod_name, &
+                 trim(tracer_name)//hstr, axes(1:3), Time, &
+                 trim(tracer_name)//hstr, tracer_units, missing_value=-999.,mask_variant = .true.)
+         end do
 
          call  get_cmip_param (n, cmip_name=cmip_name, cmip_longname=cmip_longname, cmip_longname2=cmip_longname2)
          call  get_chem_param (n, mw=tracer_mw, conv_vmr_mmr=conv_vmr_mmr(n), is_aerosol=cmip_is_aerosol, &
@@ -1925,6 +2078,16 @@ type(time_type), intent(in)                                :: Time
          if (do_check .and. conv_vmr_mmr(n) < 0.0) then
             call error_mesg ('Tracer_driver', 'mw needs to be defined for tracer: '//trim(tracer_name), FATAL)
          end if
+      end do
+
+      do hh=1,24
+         write(hstr,'(A1,I2.2,A1)') '_',hh-1,'h'
+         id_temp_hour(hh)  = register_diag_field (mod_name, &
+              'temp'//hstr, axes(1:3), Time, &
+              'temp'//hstr, 'K', missing_value=-999.,mask_variant = .true.)
+         id_ps_hour(hh)  = register_diag_field (mod_name, &
+              'ps'//hstr, axes(1:2), Time, &
+              'ps'//hstr, 'Pa', missing_value=-999.,mask_variant = .true.)
       end do
 
       id_n_ox_ddep = 0
@@ -2128,6 +2291,7 @@ integer :: logunit
       deallocate(frac_pm1)
       deallocate(frac_pm25)
       deallocate(frac_pm10)
+      deallocate( id_tracer_diag_hour )
 
       module_is_initialized = .FALSE.
 

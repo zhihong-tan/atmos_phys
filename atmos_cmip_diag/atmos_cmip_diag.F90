@@ -46,6 +46,7 @@ public :: atmos_cmip_diag_init, atmos_cmip_diag_end, &
 !    plev7h = HighResMIP (6hr time mean, 3hr synoptic)
 !    plev3  = used in CMIP5 for 6hrPlev
 !    plev23 = plev19 + (7,3,2,0.4 hPa)
+!    plev4  = used in 6hrPlev
 
 real, dimension(23) :: plev23 = &
               (/ 100000., 92500., 85000., 70000., 60000., 50000., &
@@ -62,6 +63,8 @@ real, dimension(8) :: plev8 = &
                   25000., 10000.,  5000.,  1000. /)
 real, dimension(7) :: plev7h = &
               (/  92500., 85000., 70000., 60000., 50000., 25000., 5000. /)
+real, dimension(4) :: plev4 = &
+              (/  92500., 85000., 50000., 25000. /)
 real, dimension(3) :: plev3 = &
               (/  85000., 50000., 25000. /)
 
@@ -89,7 +92,7 @@ namelist /atmos_cmip_diag_nml/ use_extra_levels, flip_cmip_levels, &
 
 !-----------------------------------------------------------------------
 
-integer, parameter :: MAXPLEVS = 6  ! max plev sets
+integer, parameter :: MAXPLEVS = 7  ! max plev sets
 integer, dimension(MAXPLEVS) :: num_pres_levs
 real,    dimension(MAXPLEVS,50) :: pressure_levels  ! max 50 levels per set
 
@@ -322,6 +325,10 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
       np = size(plev23,1)
       pressure_levels(ind,1:np) = plev23
       axis_name = 'plev23'
+    else if (ind .eq. 7) then
+      np = size(plev4,1)
+      pressure_levels(ind,1:np) = plev4
+      axis_name = 'plev4'
     endif
 
     num_pres_levs(ind) = np

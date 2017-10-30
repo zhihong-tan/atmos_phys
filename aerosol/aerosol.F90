@@ -1317,7 +1317,9 @@ logical, optional,            intent(in)    :: override_aerosols
 
 
           if ( partition_nh4 ) then
+             frac_nh4_so4 = 0.
              if ( ino3 .gt. 0 ) then
+                frac_nh4_so4 = 0.
                 where ( tracer(:,:,:,ino3) .gt. 0. .and. tracer(:,:,:,iso4) .gt.  0. ) 
                    frac_nh4_so4 = 2.*tracer(:,:,:,iso4)/(tracer(:,:,:,ino3)+2.*tracer(:,:,:,iso4))
                 elsewhere ( tracer(:,:,:,ino3) .gt. 0 ) 
@@ -1326,9 +1328,8 @@ logical, optional,            intent(in)    :: override_aerosols
                 elsewhere
                    frac_nh4_so4 = 1.
                 end where
-                frac_nh4_so4 = min(max(frac_nh4_so4,0.),1.)
-             else
-                frac_nh4_so4 = 0.
+                frac_nh4_so4 = max(frac_nh4_so4,0.)
+                frac_nh4_so4 = min(frac_nh4_so4,1.)
              end if
           end if
        

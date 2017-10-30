@@ -284,9 +284,9 @@ module AM3_FASTJX_MOD
 !-----------------------------------------------------------------------
 !      integer, parameter               ::      I_      =128            !longitude dim of CTM grid
 !      integer, parameter               ::      J_      =64             !latitude  dim of CTM grid
-      integer, parameter                ::      L_      =48             !altitude(levels) dim of CTM grid
+      integer, parameter                ::      L_      =49             !altitude(levels) dim of CTM grid
 !      integer, parameter               ::      LWE_    =37             !altitude(level) dim for trop processes (clouds, rain)
-      integer, parameter                ::      JVL_    =48             !vertical(levels) dim for J-values
+      integer, parameter                ::      JVL_    =49             !vertical(levels) dim for J-values
       integer, parameter                ::      L1_     =L_+1           !assuming another layer above the top layer
       integer, parameter                ::      L2_     =2*L_+2         !2*L1_ = 2*L_ + 2 = no. levels in the basic Fast-JX grid (mid-level_ 
 !      integer, parameter               ::      MX      =4              !no. of aerosol/cloud types supplied from CTM, no use

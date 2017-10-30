@@ -161,6 +161,7 @@ character(len=64)  :: file_dry = 'depvel.nc',         & ! NetCDF file for dry de
                       file_jval_lut = 'jvals.v5',     & ! ascii file for photolysis rate lookup table
                       file_jval_lut_min = ''            ! ascii file for photolysis rate LUT (for solar min)
 character(len=10), dimension(maxinv) :: inv_list =''    ! list of invariant (fixed) tracers
+real               :: aircraft_scale_factor = -999.     ! aircraft emissions scale factor
 real               :: lght_no_prd_factor = 1.           ! lightning NOx scale factor
 logical            :: normalize_lght_no_prd_area = .false. ! normalize lightning NOx production by grid cell area
 real               :: min_land_frac_lght = -999.        ! minimum land fraction for lightning NOx calculation
@@ -257,6 +258,7 @@ namelist /tropchem_driver_nml/    &
                                file_dry, &
                                inv_list, &
                                file_aircraft,&
+                               aircraft_scale_factor, &
                                lght_no_prd_factor, &
                                normalize_lght_no_prd_area, &
                                min_land_frac_lght, &
@@ -381,7 +383,7 @@ integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
 integer :: id_co_emis_cmip2, id_no_emis_cmip2
 integer :: id_so2_emis_cmip2, id_nh3_emis_cmip2
-integer :: id_emico, id_emino, id_emiso2, id_eminh3
+integer :: id_emico, id_eminox, id_emiso2, id_eminh3, id_emiisop
 integer :: id_glaiage, id_gtemp, id_glight, id_tsfc, id_fsds, id_ctas, id_cfsds
 integer :: isop_oldmonth = 0
 logical :: newmonth
@@ -642,6 +644,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 
    emis_source(:,:,:,:) = 0.0
    airc_emis(:,:,:,:) = 0.0
+   emisz(:,:,:) = 0.0
 
    tsfcair(:,:) = t(:,:,kd)
    pwtsfc(:,:) = t(:,:,kd)
@@ -662,35 +665,24 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
             used = send_data(id_emis(n),emis,Time_next,is_in=is,js_in=js)
          end if
 
+         emisz(:,:,n) = emis(:,:)
 
-         if (tracnam(n) == 'NO') then
-           emisz(:,:,n) = emis(:,:)
-           if (id_no_emis_cmip > 0) then
-             used = send_data(id_no_emis_cmip,emis*1.0e04*0.030/AVOGNO, &
-                                  Time_next, &
-                                                  is_in=is,js_in=js)
-           endif
+         if (tracnam(n) == 'NO' .and. id_no_emis_cmip > 0) then
+           used = send_data(id_no_emis_cmip,emis*1.0e04*0.030/AVOGNO, &
+                              Time_next, &
+                              is_in=is,js_in=js)
          endif
-         if (tracnam(n) == 'CO') then
-           emisz(:,:,n) = emis(:,:)
-           if (id_co_emis_cmip > 0) then
-             used = send_data(id_co_emis_cmip,emis*1.0e04*0.028/AVOGNO,Time_next, &
-                                                  is_in=is,js_in=js)
-           endif
+         if (tracnam(n) == 'CO' .and. id_co_emis_cmip > 0) then
+           used = send_data(id_co_emis_cmip,emis*1.0e04*0.028/AVOGNO,Time_next, &
+                              is_in=is,js_in=js)
          endif
-         if (tracnam(n) == 'SO2') then
-           emisz(:,:,n) = emis(:,:)
-           if (id_so2_emis_cmip > 0) then
-             used = send_data(id_so2_emis_cmip,emis*1.0e04*0.064/AVOGNO,Time_next, &
-                                                  is_in=is,js_in=js)
-           endif
+         if (tracnam(n) == 'SO2' .and. id_so2_emis_cmip > 0) then
+           used = send_data(id_so2_emis_cmip,emis*1.0e04*0.064/AVOGNO,Time_next, &
+                              is_in=is,js_in=js)
          endif
-         if (tracnam(n) == 'NH3') then
-           emisz(:,:,n) = emis(:,:)
-           if (id_nh3_emis_cmip > 0) then
-             used = send_data(id_nh3_emis_cmip,emis*1.0e04*0.017/AVOGNO,Time_next, &
-                                                  is_in=is,js_in=js)
-           endif
+         if (tracnam(n) == 'NH3' .and. id_nh3_emis_cmip > 0) then
+           used = send_data(id_nh3_emis_cmip,emis*1.0e04*0.017/AVOGNO,Time_next, &
+                              is_in=is,js_in=js)
          endif
 
          if (present(kbot)) then
@@ -716,32 +708,14 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 
          emis_source(:,:,:,n) = emis_source(:,:,:,n) &
                               + emis3d(:,:,:)/pwt(:,:,:) * emis_cons
-         if (tracnam(n) == 'SO2') then
-           do k=1, size(emis3d,3)
+         do k=1, size(emis3d,3)
            emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
-           end do
-         endif
-         if (tracnam(n) == 'NO') then
-           do k=1, size(emis3d,3)
-           emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
-           end do
-         endif
-         if (tracnam(n) == 'CO') then
-           do k=1, size(emis3d,3)
-           emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
-           end do
-         endif
-         if (tracnam(n) == 'NH3') then
-           do k=1, size(emis3d,3)
-           emisz(:,:,n) = emisz(:,:,n) + emis3d(:,:,k)
-           end do
-         endif
+         end do
       end if
 
 !-----------------------------------------------------------------------
 !     ... calculate interactive emissions
 !-----------------------------------------------------------------------
-!     if (has_xactive_emis(n)) then
       if ( has_xactive_emis(n) .or. id_xactive_emis(n)>0 ) then
          select case (trim(tracnam(n)))
          case ('ISOP')
@@ -755,6 +729,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                  id_tsfcair=id_tsfc, id_fsdvd=id_fsds, &
                  id_climtas=id_ctas, id_climfsds=id_cfsds, id_emis_diag=id_xactive_emis(n) )
             if (has_xactive_emis(n)) then
+               emisz(:,:,n) = emisz(:,:,n) + emis(:,:)
                if (present(kbot)) then
                   do j=1,jd
                      do i=1,id
@@ -775,6 +750,9 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                  area, land, ocn_flx_fraction,tsurf, w10m, xactive_emis, &
                  kbot=kbot, id_emis_diag=id_xactive_emis(n) )
             if (has_xactive_emis(n)) then
+               do k=1, size(emis3d,3)
+                  emisz(:,:,n) = emisz(:,:,n) + xactive_emis(:,:,k) * pwt(:,:,k) / emis_cons
+               end do
                emis_source(:,:,:,n) = emis_source(:,:,:,n) + xactive_emis(:,:,:)
             end if
          case default
@@ -790,40 +768,23 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       if(has_airc(n)) then
          call interpolator( inter_aircraft_emis(n), Time, phalf, &
                             airc_emis(:,:,:,n), trim(airc_names(n)),is,js)
+         if (aircraft_scale_factor >= 0.) airc_emis(:,:,:,n) = airc_emis(:,:,:,n) * aircraft_scale_factor
          if(id_airc(n) > 0)&
               used = send_data(id_airc(n),airc_emis(:,:,:,n),Time_next, is_in=is, js_in=js)
 
-         if (tracnam(n) == 'CO') then
-           do k=1, size(emis3d,3)
+         do k=1, size(emis3d,3)
            emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
-           end do
-         endif
-         if (tracnam(n) == 'NO') then
-           do k=1, size(emis3d,3)
-           emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
-           end do
-         endif
-         if (tracnam(n) == 'SO2') then
-           do k=1, size(emis3d,3)
-           emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
-           end do
-         endif
-         if (tracnam(n) == 'NH3') then
-           do k=1, size(emis3d,3)
-           emisz(:,:,n) = emisz(:,:,n) + airc_emis(:,:,k,n)
-           end do
-         endif
+         end do
          airc_emis(:,:,:,n) = airc_emis(:,:,:,n)/pwt(:,:,:)*emis_cons
-!     end if
       end if
          if (tracnam(n) == 'NO') then
            if (id_no_emis_cmip2 > 0) then
              used = send_data(id_no_emis_cmip2,emisz(:,:,n)*1.0e04*0.030/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
            endif
-          !if (id_emino > 0) then ! not an official cmip variable
-          !  used = send_data(id_emino, emisz(:,:,n)*1.0e04*0.030/AVOGNO, Time_next, is_in=is,js_in=js)
-          !endif
+           if (id_eminox > 0) then
+             used = send_data(id_eminox, emisz(:,:,n)*1.0e04*0.014/AVOGNO, Time_next, is_in=is,js_in=js)
+           endif
          endif
          if (tracnam(n) == 'CO') then
            if (id_co_emis_cmip2 > 0) then
@@ -850,6 +811,11 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
            endif
            if (id_eminh3 > 0) then
              used = send_data(id_eminh3, emisz(:,:,n)*1.0e04*0.017/AVOGNO, Time_next, is_in=is,js_in=js)
+           endif
+         endif
+         if (tracnam(n) == 'ISOP') then
+           if (id_emiisop > 0) then
+             used = send_data(id_emiisop, emisz(:,:,n)*1.0e04*0.068/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
    end do
@@ -2259,11 +2225,12 @@ end if
    id_eminh3 = register_cmip_diag_field_2d ( module_name, 'eminh3', Time, &
                               'Total Emission Rate of NH3', 'kg m-2 s-1', &
                 standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_emission')
-  !emino = eminox ???
-  !id_emino = register_cmip_diag_field_2d ( module_name, 'emino', Time, &
-  !                          'Total Emission Rate of NO', 'kg m-2 s-1', &
-  !            standard_name='tendency_of_atmosphere_mass_content_of_no_expressed_as_nitrogen_due_to_emission')
-   !----
+   id_eminox = register_cmip_diag_field_2d ( module_name, 'eminox', Time, &
+                              'Total Emission Rate of NOx', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_nox_expressed_as_nitrogen_due_to_emission')
+   id_emiisop = register_cmip_diag_field_2d ( module_name, 'emiisop', Time, &
+                               'Total Emission Rate of Isoprene', 'kg m-2 s-1', &
+                 standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
 
 !--for Ox(jmao,1/1/2011)
    id_prodox = register_diag_field( module_name, 'Ox_prod', axes(1:3), &
@@ -2277,8 +2244,12 @@ end if
    id_pso4_o3     = register_diag_field( module_name, 'PSO4_O3',axes(1:3), Time, 'PSO4_O3','mole/m2/s')
 
 !for cmip6
-   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, 'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
-   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (  module_name,'pso4_gas_kg_m2_s', Time,'Gas-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1', standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
+   ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, &
+                             'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1',   &
+standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_aqueous_phase_net_chemical_production')
+   ID_pso4_gas_kg_m2_s     = register_cmip_diag_field_3d (  module_name,'pso4_gas_kg_m2_s', Time,&
+                             'Gas-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1',       &
+standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_gaseous_phase_net_chemical_production')
 
    nso4 = get_spc_ndx('SO4')
 
