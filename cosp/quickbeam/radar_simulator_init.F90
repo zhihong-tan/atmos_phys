@@ -4,7 +4,7 @@
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! cosp_version = 1.4.0
+! cosp_version = 1.4.1
 
 #endif
   subroutine radar_simulator_init(freq,k2,use_gas_abs,do_ray,undef, &
