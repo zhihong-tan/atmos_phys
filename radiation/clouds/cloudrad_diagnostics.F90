@@ -3871,11 +3871,13 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
       id_reffclwtop = register_diag_field (mod_name, 'reffclwtop', axes(1:2), Time, &
                         'Cloud-top Effective Droplet Radius', 'm', &
                         standard_name='effective_radius_of_cloud_liquid_water_particle_at_liquid_water_cloud_top', &
+                        interp_method = 'conserve_order1', &
                         area=area_id, missing_value=CMOR_MISSING_VALUE )
 
       id_cldncl = register_diag_field (mod_name, 'cldncl', axes(1:2), Time, &
                         'Cloud Droplet Number Concentration of Cloud Tops', 'm-3', &
                         standard_name='number_concentration_of_cloud_liquid_water_particles_in_air_at_liquid_water_cloud_top', &
+                        interp_method = 'conserve_order1', &
                         area=area_id, missing_value=CMOR_MISSING_VALUE )
 
       id_cldnvi = register_diag_field (mod_name, 'cldnvi', axes(1:2), Time, &
