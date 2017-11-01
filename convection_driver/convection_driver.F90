@@ -3217,7 +3217,7 @@ type(mp_removal_control_type), intent(in) :: Control
       ID_mc = register_cmip_diag_field_3d ( mod_name, 'mc', Time, &
             'Convective Mass Flux',   'kg m-2 s-1', &
             standard_name='atmosphere_net_upward_convective_mass_flux', &
-            axis="half" )
+            interp_method = 'conserve_order1', axis="half" )
 
       id_mc_conv_up = register_diag_field ( mod_name, &
                       'mc_conv_up', axes(1:3), Time, &

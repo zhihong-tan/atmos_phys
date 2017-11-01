@@ -3881,6 +3881,7 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
       id_cldnvi = register_diag_field (mod_name, 'cldnvi', axes(1:2), Time, &
                         'Column Integrated Cloud Droplet Number', 'm-2', &
                         standard_name='atmosphere_number_content_of_cloud_droplets', &
+                        interp_method = 'conserve_order1', &
                         area=area_id, missing_value=CMOR_MISSING_VALUE )
 
       ! cmip low, middle, high cloud ammounts

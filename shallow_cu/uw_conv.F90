@@ -895,7 +895,8 @@ contains
          'fraction of time convection occurs from uw_conv', 'none', missing_value=mv)
     id_feq_uws = register_cmip_diag_field_2d (mod_name, 'sci_uw', Time,  &
                     'Fraction of Time Shallow Convection Occurs', '1.0', &
-                         standard_name='shallow_convection_time_fraction')
+                         standard_name='shallow_convection_time_fraction', &
+                         interp_method = 'conserve_order1' )
     id_rkm_uws = register_diag_field (mod_name, 'rkm_uws', axes(1:2), Time, &
             'lateral mixing rate parameter for shallow_plume', 'none' )
     id_frkm_uws = register_diag_field (mod_name, 'frkm_uws', axes(1:2), Time, &
