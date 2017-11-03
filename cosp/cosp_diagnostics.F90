@@ -959,7 +959,7 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
           mask_variant = .true., missing_value=missing_value)
      id_parasolrefl = register_diag_field &
       (mod_name, 'parasol_refl', cosp_axes(parasolindx), Time, &
-      'PARASOL-like mono-directional reflectance', '1.0', &
+          'PARASOL Reflectance', '1.0', &
           standard_name='toa_bidirectional_reflectance', &
           interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
@@ -1485,9 +1485,9 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      write (chvers2, '(e8.2)') reffIce_binEdges(1,n)
      write (chvers3, '(e8.2)') reffIce_binEdges(2,n)
      id_taurefficemodis(n) = register_diag_field &
-       (mod_name, 'taurefficemodis_'// trim(chvers), cosp_axes(modistauindx), &
-          Time, 'MODIS Cld Frac for clouds with icesize between ' // trim(chvers2) &
-             // ' and' // trim(chvers3) // ' Pa', '%', &
+       (mod_name, 'taurefficemodis_'// trim(chvers), cosp_axes(modistauindx), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, ice (icesize between between ' &
+          // trim(adjustl(chvers2)) // ' and ' // trim(adjustl(chvers3)) // ' Pa)', '%', &
                 standard_name='cloud_area_fraction_in_atmosphere_layer', &
                 interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
@@ -1506,11 +1506,11 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
        write (chvers2, '(e8.2)') reffIce_binEdges(1,n)
        write (chvers3, '(e8.2)') reffIce_binEdges(2,n)
        id_taurefficemodis_n(m,n) = register_diag_field &
-         (mod_name, 'taurefficemodis_'// trim(chvers4)//'_' // trim(chvers), &
-          axes(1:2), Time, 'MODIS CldFrac - tau between ' // &
-           trim(chvers5) // ' and ' // trim(chvers6) //  &
-           ' , icesize between ' // trim(chvers2) // ' and' // &
-             trim(chvers3) // ' Pa', '%', &
+         (mod_name, 'taurefficemodis_'// trim(chvers4)//'_' // trim(chvers), axes(1:2), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, ice (tau between ' // &
+           trim(adjustl(chvers5)) // ' and ' // trim(adjustl(chvers6)) //  &
+           ', icesize between ' // trim(adjustl(chvers2)) // ' and ' // &
+             trim(adjustl(chvers3)) // ' Pa)', '%', &
                 standard_name='cloud_area_fraction_in_atmosphere_layer', &
                 interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
@@ -1527,9 +1527,9 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      write (chvers2, '(e8.2)') reffLiq_binEdges(1,n)
      write (chvers3, '(e8.2)') reffLiq_binEdges(2,n)
      id_taureffliqmodis(n) = register_diag_field &
-       (mod_name, 'taureffliqmodis_'// trim(chvers), cosp_axes(modistauindx), &
-          Time, 'MODIS Cld Frac for clouds with dropsize between ' // trim(chvers2) &
-             // ' and' // trim(chvers3) // ' Pa', '%', &
+       (mod_name, 'taureffliqmodis_'// trim(chvers), cosp_axes(modistauindx), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, liquid (dropsize between ' &
+           // trim(adjustl(chvers2)) // ' and ' // trim(adjustl(chvers3)) // ' Pa)', '%', &
                 standard_name='cloud_area_fraction_in_atmosphere_layer', &
                 interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
@@ -1548,11 +1548,11 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
        write (chvers2, '(e8.2)') reffLiq_binEdges(1,n)
        write (chvers3, '(e8.2)') reffLiq_binEdges(2,n)
        id_taureffliqmodis_n(m,n) = register_diag_field &
-         (mod_name, 'taureffliqmodis_'// trim(chvers4)//'_' // trim(chvers), &
-          axes(1:2), Time, 'MODIS CldFrac - tau between ' // &
-           trim(chvers5) // ' and ' // trim(chvers6) //  &
-           ' , dropsize between ' // trim(chvers2) // ' and' // &
-             trim(chvers3) // ' Pa', '%', &
+         (mod_name, 'taureffliqmodis_'// trim(chvers4)//'_' // trim(chvers), axes(1:2), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, liquid (tau between ' &
+           // trim(adjustl(chvers5)) // ' and ' // trim(adjustl(chvers6)) //  &
+           ', dropsize between ' // trim(adjustl(chvers2)) // ' and ' // &
+             trim(adjustl(chvers3)) // ' Pa)', '%', &
                 standard_name='cloud_area_fraction_in_atmosphere_layer', &
                 interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
