@@ -39,6 +39,7 @@ private
 !-----------------------------------------------------------------------
 !----- interfaces -------
 
+public  atmos_co2_columnaverage
 public  atmos_co2_sourcesink
 public  atmos_co2_emissions
 public  atmos_co2_rad
@@ -58,6 +59,7 @@ integer, save   :: ind_co2_flux = 0
 integer, save   :: ind_co2  = 0
 integer, save   :: ind_sphum = 0
 integer         :: id_co2restore, id_pwt, id_co2_mol_emiss, id_co2_emiss_orig
+integer         :: id_XCO2
 real            :: radiation_co2_dvmr = -1
 
 !---- data for data_override ----
@@ -202,6 +204,91 @@ if (id_pwt > 0) sent = send_data (id_pwt, pwt, Time_next, is_in=is,js_in=js)
 
 
 end subroutine atmos_co2_sourcesink
+!</SUBROUTINE >
+
+
+!#######################################################################
+
+!<SUBROUTINE NAME ="atmos_co2_columaverage">
+!<OVERVIEW>
+!  A subroutine to calculate the column average dry mole fraction of
+!  carbon dioxide.
+!
+!
+!</OVERVIEW>
+!<DESCRIPTION>
+!  A subroutine to calculate the column average dry mole fraction of
+!  carbon dioxide.
+!</DESCRIPTION>
+!<TEMPLATE>
+!call atmos_co2_columnaverage(is, ie, js, je, Time, pwt, sphum, co2)
+!
+!</TEMPLATE>
+!   <IN NAME="Time" TYPE="type(time_type)">
+!     Model time.
+!   </IN>
+!   <IN NAME="pwt" TYPE="real" DIM="(:,:,:)">
+!     The pressure weighting array. = dP/grav (kg/m2)
+!   </IN>
+!   <IN NAME="sphum" TYPE="real" DIM="(:,:,:)">
+!     The array of the specific humidity mixing ratio (kg/kg)
+!   </IN>
+!   <IN NAME="co2" TYPE="real" DIM="(:,:,:)">
+!     The array of the carbon dioxide mixing ratio (kg co2/kg moist air)
+!   </IN>
+
+
+subroutine atmos_co2_columnaverage(is, ie, js, je, Time, pwt, sphum, co2)
+
+   integer, intent(in)                 :: is, ie, js, je
+   type (time_type),      intent(in)   :: Time
+   real, intent(in),  dimension(:,:,:) :: pwt          ! kg/m2
+   real, intent(in),  dimension(:,:,:) :: sphum        ! kg/kg
+   real, intent(in),  dimension(:,:,:) :: co2          ! kg/kg (moist)
+!
+!-----------------------------------------------------------------------
+!     local parameters
+!-----------------------------------------------------------------------
+!
+
+integer   :: i,j,k,id,jd,kd
+logical   :: sent
+
+real, allocatable :: XCO2(:,:)
+real, allocatable :: tmpArr(:,:,:)
+
+!-----------------------------------------------------------------------
+
+id=size(co2,1); jd=size(co2,2); kd=size(co2,3)
+
+if (id_XCO2 > 0) then
+  
+  allocate(XCO2(id,jd))
+  allocate(tmpArr(id,jd,kd))
+
+  tmpArr = 0.
+  XCO2 = 0.
+
+  ! convert moist mass mixing ratio (kg/kg)
+  ! to dry volume mixing ratio (mol/mol)
+
+  tmpArr(:,:,:) = co2(:,:,:) * ((WTMAIR/WTMCO2) / (1.0-sphum(:,:,:)))
+
+  do j=1,jd
+    do i=1,id
+      ! vertical pressure-weighted average
+      XCO2(i,j) = sum(tmpArr(i,j,:)*pwt(i,j,:))/sum(pwt(i,j,:))
+    enddo
+  enddo
+
+  sent = send_data(id_XCO2, XCO2, Time, is_in=is, js_in=js)
+
+  deallocate(XCO2)
+  deallocate(tmpArr)
+
+endif
+
+end subroutine atmos_co2_columnaverage
 !</SUBROUTINE >
 
 
@@ -639,6 +726,10 @@ if (n > 0) then
    desc = ' emission_orig'
    id_co2_emiss_orig = register_diag_field ('atmos_co2_emissions', 'co2_emissions_orig', axes(1:2), Time, &
                    'CO2'//trim(desc), 'kg C/m2/s',missing_value=missing_value)
+
+   desc = ' column average dry air molar fraction'
+   id_XCO2 = register_diag_field ( 'atmos_co2', 'XCO2', axes(1:2), Time, &
+                   'CO2'//trim(desc), 'mol mol-1', missing_value=missing_value)
 
 !
 !       get the index for sphum
