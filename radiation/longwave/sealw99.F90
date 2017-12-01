@@ -5994,7 +5994,7 @@ real, dimension(:,:,:,:),   intent(out)  ::  source_band, dsrcdp_band
 !--------------------------------------------------------------------
       ioffset = OFFSET
       nbly = 16+ioffset
-
+      sorc=0.0
 !--------------------------------------------------------------------
  !  convert press and pflux to cgs.
         do kk = 1,size(press(:,:,:),3)
