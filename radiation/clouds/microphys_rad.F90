@@ -5236,7 +5236,9 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
                        size(conc_ice,3))                    ::   &
                                                     size_i
       integer     :: n
-      integer     :: i, j,k
+      integer     :: i, j, k, ie, je, ke
+
+
       real  ::          cldextivlice, cldssalbivlice
 !     real  ::          cldasymmivlice
 
@@ -5292,6 +5294,9 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !          0.000E+00,   0.000E+00,   0.000E+00,   0.000E+00,         &
 !          0.000E+00,   0.000E+00,   0.000E+00,   0.000E+00/
 
+      ie = size(conc_ice,1)
+      je = size(conc_ice,2)
+      ke = size(conc_ice,3)
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -5326,9 +5331,9 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !      n,ni             do-loop indices
 !
 !---------------------------------------------------------------------
-      do k=1,size(conc_ice,3)
-        do j=1,size(conc_ice,2)
-          do i=1,size(conc_ice,1)
+      do k=1,ke
+        do j=1,je
+          do i=1,ie
             if (size_ice(i,j,k) < min_cld_ice_size) then        
               size_i(i,j,k) = min_cld_ice_size             
             else if(size_ice(i,j,k) > max_cld_ice_size) then    
@@ -5336,27 +5341,40 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
             else
               size_i(i,j,k) = size_ice(i,j,k)
             endif
+
+            if ( .not. dge_column(i,j,k)) then
+              if (conc_ice(i,j,k) /= 0.0) then
+                mask(i,j,k) = .true.
+              else
+                mask(i,j,k) = .false.
+                cldextbndicelw(i,j,k) = 0.0
+                cldssalbbndicelw(i,j,k) = 0.0
+!               cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
+              endif
+            else
+              mask(i,j,k) = .false.
+              cldextbndicelw(i,j,k)   = 0.0
+              cldssalbbndicelw(i,j,k) = 0.0
+!             cldasymmbndicelw(i,j,k,n) = sumasymm
+            endif
           end do
-         end do
+        end do
       end do
 
-      do k=1, size(conc_ice,3)
-        do j=1, size(conc_ice,2)
-          do i=1, size(conc_ice,1)
-            if ( .not. dge_column(i,j,k)) then
-            sumext = 0.
-            sumssalb = 0.
-            if (conc_ice(i,j,k) /= 0.0) then
-
-              mask(i,j,k) = .true.
+      do k=1, ke
+        do j=1, je
+          do i=1, ie
+            if (mask(i,j,k)) then
+              sumext = 0.
+              sumssalb = 0.
 !-----------------------------------------------------------------------
 !    calculate extinction coefficient [ km**(-1) ] over the wavenumber
 !    bands of the Fu-Liou parameterization (not the radiation code
 !    wavenumber bands).
 !-----------------------------------------------------------------------
-              do n=1,NBFL                                               
-                cldextivlice  = 1.0E+03*conc_ice(i,j,k)*        &
-                                (a0(n) +                              &
+              do n=1,NBFL
+                cldextivlice  = 1.0E+03*conc_ice(i,j,k)*            &
+                                (a0(n) +                            &
                                  a1(n)/size_i(i,j,k) +              &
                                  a2(n)/size_i(i,j,k)**2)
 
@@ -5365,13 +5383,12 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
 !    the asymmetry parameter is not currently used in the infrared 
 !    code. therefore its calculation is commented out.
 !-----------------------------------------------------------------------
-                cldssalbivlice  = 1.0E+00 -                           &
-                                  (b(n,0) +                           &
+                cldssalbivlice  = 1.0E+00 -                         &
+                                  (b(n,0) +                         &
                                    b(n,1)*size_i(i,j,k) +           &
                                    b(n,2)*size_i(i,j,k)**2 +        &
                                    b(n,3)*size_i(i,j,k)**3)
-!               cldasymmivlice  =                            &
-!                                  cpr(n,0) +                         &
+!               cldasymmivlice  =  cpr(n,0) +                       &
 !                                  cpr(n,1)*size_i(:,:,:) +         &
 !                                  cpr(n,2)*size_i(:,:,:)**2 +      &
 !                                  cpr(n,3)*size_i(:,:,:)**3
@@ -5384,29 +5401,17 @@ real, dimension (:,:,:  ), intent(out)   ::  cldextbndicelw,   &
                 sumssalb  = sumssalb + cldssalbivlice*fulwwts(nb,n )
 !               sumasymm  = sumasymm + cldasymmivlice*fulwwts(nb,n )
               end do
-            else 
-              mask(i,j,k) = .false.
-        cldextbndicelw(i,j,k) = 0.0        
-        cldssalbbndicelw(i,j,k) = 0.0          
-!       cldasymmbndicelw(:,:,:,n) = sumasymm(:,:,:)
+              cldextbndicelw(i,j,k)   = sumext
+              cldssalbbndicelw(i,j,k) = sumssalb
+!             cldasymmbndicelw(i,j,k,n) = sumasymm
             endif
-            cldextbndicelw(i,j,k)   = sumext       
-            cldssalbbndicelw(i,j,k) = sumssalb       
-!           cldasymmbndicelw(i,j,k,n) = sumasymm        
-             else
-                mask(i,j,k) = .false.
-            cldextbndicelw(i,j,k)   = 0.0          
-            cldssalbbndicelw(i,j,k) = 0.0            
-!           cldasymmbndicelw(i,j,k,n) = sumasymm        
-             endif
           end do
         end do
       end do
-
 !--------------------------------------------------------------------
- 
 
 end subroutine el
+
 
 
 !#####################################################################

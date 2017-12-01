@@ -1085,16 +1085,17 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !------------------------------------------------------------------
 !  local variables
 
-      real,    dimension (0:size(u,3)-1 ) ::       &
-                                   wv_frcng, diff_coeff, c0mu, dz,    &
-                                   fac, omc
-      integer, dimension (nc) ::   msk
+      real,    dimension (0:size(u,3)-1 ) :: wv_frcng, diff_coeff
+      logical, dimension (nc) ::   msk
       real   , dimension (nc) ::   c0mu0, B0
+      integer                 ::   iz0, i, j, k, ink, n
       real                    ::   fm, fe, Hb, alp2, Foc, c, test, rbh,&
-                                   eps, Bsum
-      integer                 ::   iz0 
-      integer                 ::   i, j, k, ink, n
-      real                    ::   ampl
+                                   c0mu, eps, Bsum, Bexp, ampl,        &
+                                   size_u1, size_u2, dz, fac, omc
+
+      size_u1 = size(u,1)
+      size_u2 = size(u,2)
+
 !------------------------------------------------------------------
 !  local variables:
 ! 
@@ -1144,8 +1145,8 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
       gwf = 0.0
       ked = 0.0
 
-      do j=1,size(u,2)
-        do i=1,size(u,1)  
+      do j=1,size_u2
+        do i=1,size_u1
 ! The following index-offsets are needed in case a physics_window is being used.
           iz0 = source_level(i+is-1,j+js-1)
           ampl= source_amp(i+is-1,j+js-1)
@@ -1172,12 +1173,11 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !    the contribution from this phase speed to the previous sum.
 !---------------------------------------------------------------------
               c = c0(n)*flag + c0mu0(n)*(1 - flag)
+              Bexp = exp(-alog(2.0)*(c/cw)**2)
               if (c0mu0(n) < 0.0) then
-                B0(n) = -1.0*(Bw*exp(-alog(2.0)*(c/cw)**2) +    &
-                              Bn*exp(-alog(2.0)*(c/cn)**2))
+                B0(n) = -(Bw*Bexp + Bn*Bexp)
               else 
-                B0(n) = (Bw*exp(-alog(2.0)*(c/cw)**2)  +  &
-                         Bn*exp(-alog(2.0)*(c/cn)**2))
+                B0(n) = (Bw*Bexp + Bn*Bexp)
               endif
               Bsum = Bsum + abs(B0(n))
             endif
@@ -1198,26 +1198,11 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !--------------------------------------------------------------------
           do ink=1,nk   ! wavelength loop
 
-!----------------------------------------------------------------------
-!    define variables needed at levels above the source level.
-!---------------------------------------------------------------------
-            do k=0,iz0
-              fac(k) = 0.5*(rho(i,j,k)/rho(i,j,iz0))*kwv(ink)/bf(i,j,k)
-            end do
-
-            do k=0,iz0 
-              dz(k) = z(i,j,k) - z(i,j,k+1)
-              Hb = -(dz(k))/alog(rho(i,j,k)/rho(i,j,k+1))
-              alp2 = 0.25/(Hb*Hb)
-              omc(k) = sqrt((bf(i,j,k)*bf(i,j,k)*k2(ink))/    &
-                            (k2(ink) + alp2))
-            end do
-
 !---------------------------------------------------------------------
 !    initialize a flag which will indicate which waves are still 
 !    propagating upwards.
 !---------------------------------------------------------------------
-            msk = 1
+            msk = .true.
 
 !----------------------------------------------------------------------
 !    integrate upwards from the source level.  define variables over 
@@ -1225,36 +1210,46 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !    from all waves breaking at a given level.
 !----------------------------------------------------------------------
             do k=iz0, 0, -1
+!----------------------------------------------------------------------
+!    define variables needed at levels above the source level.
+!---------------------------------------------------------------------
+              fac = 0.5*(rho(i,j,k)/rho(i,j,iz0))*kwv(ink)/bf(i,j,k)
+              dz = z(i,j,k) - z(i,j,k+1)
+              Hb = -dz/alog(rho(i,j,k)/rho(i,j,k+1))
+              alp2 = 0.25/(Hb*Hb)
+              omc = sqrt((bf(i,j,k)*bf(i,j,k)*k2(ink))/    &
+                            (k2(ink) + alp2))
+
               fm = 0.
               fe = 0.
               do n=1,nc     ! phase speed loop
 
 !----------------------------------------------------------------------
-!    check only those waves which are still propagating, i.e., msk = 1.
+!    check only those waves which are still propagating, i.e., msk = .true.
 !----------------------------------------------------------------------
-                if (msk(n) == 1) then
-                  c0mu(k) = c0(n) - u(i,j,k)
+                if (msk(n)) then
+                  c0mu = c0(n) - u(i,j,k)
 
 !----------------------------------------------------------------------
 !    if phase speed matches the wind speed, remove c0(n) from the 
 !    set of propagating waves.
 !----------------------------------------------------------------------
-                  if (c0mu(k) == 0.) then
-                    msk(n) = 0
+                  if (c0mu == 0.) then
+                    msk(n) = .false.
                   else
 
 !---------------------------------------------------------------------
 !    define the criterion which determines if wave is reflected at this 
 !    level (test).
 !---------------------------------------------------------------------
-                    test = abs(c0mu(k))*kwv(ink) - omc(k)
+                    test = abs(c0mu)*kwv(ink) - omc
                     if (test >= 0.0) then
 
 !---------------------------------------------------------------------
 !    wave has undergone total internal reflection. remove it from the
 !    propagating set.
 !---------------------------------------------------------------------
-                      msk(n) = 0
+                      msk(n) = .false.
                     else 
 
 !---------------------------------------------------------------------
@@ -1267,18 +1262,25 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !    set flag to remove phase speed c0(n) from the set of active waves
 !    moving upwards to the next level.
 !---------------------------------------------------------------------
-                      Foc = B0(n)/(c0mu(k) )**3 - fac(k)
-                      if ((Foc >= 0.0) .or.     &
-                              (c0mu0(n)*c0mu(k)  <= 0.0)) then
-                        msk(n) = 0
+                      if(c0mu0(n)*c0mu <= 0.0 ) then
+                        msk(n) = .false.
                         if (k  < iz0) then
                           fm = fm + B0(n)
-                          fe = fe + c0mu(k)*B0(n)
+                          fe = fe + c0mu*B0(n)
                         endif
-                      endif                      
+                      else
+                        Foc = B0(n)/(c0mu)**3 - fac
+                        if (Foc >= 0.0) then
+                          msk(n) = .false.
+                          if (k  < iz0) then
+                            fm = fm + B0(n)
+                            fe = fe + c0mu*B0(n)
+                          endif
+                        endif
+                      endif
                     endif   ! (test >= 0.0)
                   endif ! (c0mu == 0.0)
-                endif   ! (msk == 1)
+                endif   ! (msk == .true.)
               end do  ! phase speed loop
 
 
@@ -1287,9 +1289,9 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !           Dump remaining flux in the top model level. 
              if ( k == 0  )  then
                 do n= 1, nc
-                    if ( msk(n)==1 )  then
+                    if ( msk(n))  then
                           fm= fm + B0(n)
-                          fe = fe + c0mu(k)*B0(n)
+                          fe = fe + c0mu*B0(n)
                     endif
                 enddo 
              endif 
@@ -1304,9 +1306,9 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !----------------------------------------------------------------------
               if ( k < iz0) then
                 rbh = sqrt(rho(i,j,k)*rho(i,j,k+1))
-                wv_frcng(k) = ( rho(i,j,iz0)/rbh)*fm*eps/dz(k)
+                wv_frcng(k) = ( rho(i,j,iz0)/rbh)*fm*eps/dz
                 wv_frcng(k+1) =  0.5*(wv_frcng(k+1) + wv_frcng(k))
-                diff_coeff(k) = (rho(i,j,iz0)/rbh)*fe*eps/(dz(k)*   &
+                diff_coeff(k) = (rho(i,j,iz0)/rbh)*fe*eps/(dz*   &
                                  bf(i,j,k)*bf(i,j,k))
                 diff_coeff(k+1) = 0.5*(diff_coeff(k+1) +    &
                                        diff_coeff(k))
@@ -1332,7 +1334,7 @@ real,    dimension(:,:,0:),  intent(out)            :: ked
 !   optional upper boundary
 !           Dump remaining flux in the top model level. 
      k=1;
-     fm= sum( msk .*B0 ) * sqrt(rho(k)*rho(k+1))  * eps / dz(k);
+     fm= sum( INT(msk) .*B0 ) * sqrt(rho(k)*rho(k+1))  * eps / dz(k);
      wv_frcng(1)= 0.5*( fm + wv_frcng(1) );
 
      gwf(1)= 0.5* ( fm + gwf(1) );
