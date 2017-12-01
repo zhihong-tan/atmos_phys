@@ -975,11 +975,13 @@ endif
 
    ID_evu = register_cmip_diag_field_3d ( mod_name, 'evu', Time, &
                       'Eddy Viscosity Coefficient for Momentum Variables', 'm2 s-1', &
-                       standard_name='atmosphere_momentum_diffusivity', axis='half' )
+                       standard_name='atmosphere_momentum_diffusivity', &
+                       interp_method = 'conserve_order1', axis='half' )
 
    ID_edt = register_cmip_diag_field_3d ( mod_name, 'edt', Time, &
                       'Eddy Diffusivity Coefficient for Temperature Variable', 'm2 s-1', &
-                       standard_name='atmosphere_heat_diffusivity', axis='half' )
+                       standard_name='atmosphere_heat_diffusivity', &
+                       interp_method = 'conserve_order1', axis='half' )
                      
 
 if (do_shallow_conv) then
