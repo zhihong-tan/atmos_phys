@@ -1111,7 +1111,7 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
 
  integer :: i, j, k, kk, id, jd, kd, flaglw
 
- real, dimension(size(T,3)) :: conc
+ real, dimension(size(T,1),size(T,2),size(T,3)) :: conc
 
  real :: conc_rain, conc_rain_total, conc_sat
 
@@ -1448,10 +1448,10 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
           if( lowercase(scheme)=='henry_below' .or. lowercase(scheme)=='henry_below_noice') then
              k_g = d_g/rain_diam * &
                   ( 2. + 0.6 * sqrt( rain_diam*rain_vterm/vk_air ) * (vk_air/d_g)**(1./3.) )
-             do i = 1,id
+             conc(:,:,:) = tracer(:,:,:) * n_air(:,:,:) / cm3_2_m3 ! Convert from VMR to molec/m3
+             do kk = 1,kd
                 do j = 1,jd
-                   conc(:) = tracer(i,j,:) * n_air(i,j,:) / cm3_2_m3 ! Convert from VMR to molec/m3
-                   do kk = 1,kd
+                   do i = 1,id
                       stay = 1.
                       if( precip3d(i,j,kk) > 0. ) then
                          conc_rain_total = 0.
@@ -1460,23 +1460,23 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
                          do k = kk,kd
                             f_a0 = Htemp(i,j,k) * pfull(i,j,k) * xliq(i,j,kk) * n_air(i,j,kk)/n_air(i,j,k)
                             scav_factor0 = f_a0 / ( 1.+f_a0 )
-                            conc_sat = conc(k) * scav_factor0 ! molec/m3 <== (xeqca1)
+                            conc_sat = conc(i,j,k) * scav_factor0 ! molec/m3 <== (xeqca1)
                             sa_drop0 = geo_fac / rain_diam * xliq(i,j,kk) * n_air(i,j,kk) / &
                                  ( DENS_H2O * AVOGNO * cm3_2_m3 ) ! (m2 H2O) / (m3 air)
-                            fgas0 = conc(k) * k_g ! molec/m2/s
+                            fgas0 = conc(i,j,k) * k_g ! molec/m2/s
                             fall_time = zdel(i,j,k) / rain_vterm ! sec
                             conc_rain = fgas0 * sa_drop0 * fall_time ! molec/m3 <== (xca1)
                             conc_rain_total = conc_rain_total + conc_rain ! molec/m3 <== (all1)
                             if ( conc_rain_total < conc_sat ) then
-                               conc(k) = max( conc(k)-conc_rain, 0. )
+                               conc(i,j,k) = max( conc(i,j,k)-conc_rain, 0. )
                             end if
                          end do
-                         conc(kk) = conc(kk) / n_air(i,j,kk) * cm3_2_m3 ! Convert to VMR
-                         conc(kk) = tracer(i,j,kk) - conc(kk)
-                         if ( conc(kk) /= 0. .and. tracer(i,j,kk) /= 0. ) then
+                         conc(i,j,kk) = conc(i,j,kk) / n_air(i,j,kk) * cm3_2_m3 ! Convert to VMR
+                         conc(i,j,kk) = tracer(i,j,kk) - conc(i,j,kk)
+                         if ( conc(i,j,kk) /= 0. .and. tracer(i,j,kk) /= 0. ) then
                             fall_time = zdel(i,j,kk)/rain_vterm
                             bc_temp(i,j,kk) = bc_temp(i,j,kk) + &
-                                 conc(kk) / (tracer(i,j,kk) * fall_time) * stay ! 1/s
+                                 conc(i,j,kk) / (tracer(i,j,kk) * fall_time) * stay ! 1/s
                          end if
                       end if
                    end do
@@ -1486,9 +1486,9 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
           else if ( lowercase(scheme) == 'aerosol_below' .or. lowercase(scheme) == 'aerosol_below_noice') then
 
              do k=1,kd
-                fluxs = (snow3d(:,:,k+1)+snow3d(:,:,k))/2.0
-                fluxr = (rain3d(:,:,k+1)+rain3d(:,:,k))/2.0
-                bc_temp(:,:,k) = 3./4. * &
+                fluxs = (snow3d(:,:,k+1)+snow3d(:,:,k))*0.5
+                fluxr = (rain3d(:,:,k+1)+rain3d(:,:,k))*0.5
+                bc_temp(:,:,k) = 0.75 * &
                      (fluxr(:,:)*alpha_r/R_r/DENS_H2O + &
                      fluxs(:,:)*alpha_s/R_s/DENS_SNOW)
              end do
@@ -2476,3 +2476,4 @@ subroutine sjl_fillz(im, km, nq, q, dp)
 end subroutine sjl_fillz
 
 end module atmos_tracer_utilities_mod
+

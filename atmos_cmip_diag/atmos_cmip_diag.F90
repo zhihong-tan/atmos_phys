@@ -649,22 +649,23 @@ subroutine interpolate_vertical (im, jm, km, np, plev, peln, a, ap, ext)
   real,    intent(out), dimension(im,jm,np)   :: ap    ! output data on p-levels
   logical, intent(in), optional               :: ext
 
-  real    :: pm(km), logp
+  real,   dimension(km,im,jm)   :: pm
+  real    :: logp
   integer :: i, j, k, kp
   logical :: extrap
 
   extrap = .false.; if (present(ext)) extrap = ext
 
-  do kp = 1, np
-    logp = log(plev(kp))
-
+  do k = 1, km
     do j = 1, jm
       do i = 1, im
-        pm = 0.5*(peln(i,j,1:km)+peln(i,j,2:km+1))
-        include "atmos_cmip_interp.inc"
+        pm(k,i,j) = 0.5*(peln(i,j,k)+peln(i,j,k+1))
       enddo
     enddo
   enddo
+
+  include "atmos_cmip_interp.inc"
+
 
 end subroutine interpolate_vertical
 
@@ -681,22 +682,24 @@ subroutine interpolate_vertical_fv (im, jm, km, np, plev, peln, a, ap, ext)
   real,    intent(out), dimension(im,jm,np)   :: ap    ! output data on p-levels
   logical, intent(in), optional               :: ext
 
-  real    :: pm(km), logp
+  real,   dimension(km,im,jm)   :: pm
+  real    :: logp
   integer :: i, j, k, kp
   logical :: extrap
 
   extrap = .false.; if (present(ext)) extrap = ext
 
-  do kp = 1, np
-    logp = log(plev(kp))
 
-    do j = 1, jm
+  do j = 1, jm
+    do k = 1, km
       do i = 1, im
-        pm = 0.5*(peln(i,1:km,j)+peln(i,2:km+1,j))
-        include "atmos_cmip_interp.inc"
+        pm(k,i,j) = 0.5*(peln(i,k,j)+peln(i,k+1,j))
       enddo
     enddo
   enddo
+
+  include "atmos_cmip_interp.inc"
+
 
 end subroutine interpolate_vertical_fv
 
@@ -714,22 +717,23 @@ subroutine interpolate_vertical_half_fv (im, jm, km, np, plev, peln, a, ap, ext)
   real,    intent(out), dimension(im,jm,np) :: ap    ! output data on p-levels
   logical, intent(in), optional             :: ext
 
-  real    :: pm(km), logp
+  real,   dimension(km,im,jm)   :: pm
+  real    :: logp
   integer :: i, j, k, kp
   logical :: extrap
 
   extrap = .false.; if (present(ext)) extrap = ext
 
-  do kp = 1, np
-    logp = log(plev(kp))
-
-    do j = 1, jm
+  do j = 1, jm
+    do k = 1, km
       do i = 1, im
-        pm = peln(i,:,j)
-        include "atmos_cmip_interp.inc"
+        pm(k,i,j) = peln(i,k,j)
       enddo
     enddo
   enddo
+
+  include "atmos_cmip_interp.inc"
+
 
 end subroutine interpolate_vertical_half_fv
 
