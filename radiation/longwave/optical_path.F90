@@ -911,8 +911,8 @@ subroutine optical_trans_funct_from_KS (Gas_tf, to3cnt, overod,   &
 !--------------------------------------------------------------------
 
 !---------------------------------------------------------------------
-real, dimension (:,:,:), intent(out)   ::  to3cnt, overod, &
-                                           cnttaub1, cnttaub2, cnttaub3
+real, dimension (:,:,:), intent(out)   ::  to3cnt, overod
+real, dimension (:,:,:), intent(inout) ::  cnttaub1, cnttaub2, cnttaub3
 type(optical_path_type), intent(inout) ::  Optical
 type(gas_tf_type),       intent(inout) ::  Gas_tf 
 logical,                   intent(in)            :: including_aerosols  
@@ -1224,8 +1224,8 @@ subroutine optical_trans_funct_k_down (Gas_tf, k, to3cnt, overod,   &
 !---------------------------------------------------------------------
 
 integer,                 intent (in)    :: k
-real, dimension (:,:,:), intent(out)    :: to3cnt, overod, &
-                                           cnttaub1, cnttaub2, cnttaub3
+real, dimension (:,:,:), intent(out)    :: to3cnt, overod
+real, dimension (:,:,:), intent(inout)  :: cnttaub1, cnttaub2, cnttaub3
 type(optical_path_type), intent(inout)  :: Optical
 type(gas_tf_type),       intent(inout)  :: Gas_tf 
 logical,                   intent(in)            :: including_aerosols  
