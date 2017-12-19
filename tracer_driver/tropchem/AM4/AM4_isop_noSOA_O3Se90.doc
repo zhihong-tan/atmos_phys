@@ -126,6 +126,7 @@
       ( 97)  ISNOOA  
       ( 98)  ISN1    
       ( 99)  O3S        (O3)
+      (100)  O3S_E90    (O3)
   
   
      Invariant species
@@ -150,6 +151,7 @@ Class List
       (  6)  H2      
       (  7)  H2O     
       (  8)  O3S     
+      (  9)  O3S_E90 
   
  Implicit  
  --------
@@ -853,3 +855,4 @@ Extraneous prod/loss species
     d(ISN1)/dt = .7*r139*INO2*NO  + .7*r140*INO2*NO3                                                                    
                   - r144*NO3*ISN1  - r148*O3*ISN1  - r149*OH*ISN1                                                       
     d(O3S)/dt = 0                                                                                                       
+    d(O3S_E90)/dt = 0                                                                                                   
