@@ -232,8 +232,9 @@ logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! through the non-ice-covered portions of
                                ! ocean grid boxes
 
+logical  :: do_esm_nitrogen_flux = .false. !If set to .true. nitrogen fluxes will be prepared for exchange with Ocean
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -1564,6 +1565,8 @@ type(time_type), intent(in)                                :: Time
       logical :: cmip_is_aerosol, do_pm, do_check
       real    :: tracer_mw, sum_N_ox
       character(len=64), parameter    :: sub_name = 'atmos_tracer_driver_init'
+      character(len=256), parameter   :: note_header =                                &
+        '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 !>
 
 !-----------------------------------------------------------------------
@@ -2195,20 +2198,43 @@ type(time_type), intent(in)                                :: Time
   !BW end do
 !>
 
-      if (sum(nb_n)>0) then
+      module_is_initialized = .TRUE.
+
+ end subroutine atmos_tracer_driver_init
+
+!#####################################################################
+
+subroutine atmos_nitrogen_flux_init
+   character(len=64), parameter    :: sub_name = 'atmos_nitrogen_flux_init'
+   character(len=256), parameter   :: error_header =                               &
+        '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: warn_header =                                &
+        '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: note_header =                                &
+        '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+   integer :: outunit
+   outunit = stdout()
+
+   if(do_esm_nitrogen_flux) then
+      if (nnh4>0) then
+         write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nnh4
          ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4', &
               flux_type = 'air_sea_deposition', implementation = 'dry',    &
               atm_tr_index = nnh4,                                          &
               mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-         ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3', &
-              flux_type = 'air_sea_deposition', implementation = 'dry',    &
-              atm_tr_index = nhno3,                                          &
-              mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
          ind_wet_dep_nh4_flux = aof_set_coupler_flux('wet_dep_nh4', &
               flux_type = 'air_sea_deposition', implementation = 'wet',    &
               atm_tr_index = nnh4,                                          &
+              mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')  
+      endif
+      if (nhno3>0) then
+         write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nhno3
+         ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3', &
+              flux_type = 'air_sea_deposition', implementation = 'dry',    &
+              atm_tr_index = nhno3,                                          &
               mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
          ind_wet_dep_no3_flux = aof_set_coupler_flux('wet_dep_no3', &
@@ -2216,13 +2242,10 @@ type(time_type), intent(in)                                :: Time
               atm_tr_index = nhno3,                                          &
               mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-      end if
+      endif
+   endif
 
-      module_is_initialized = .TRUE.
-
- end subroutine atmos_tracer_driver_init
-
-
+end subroutine atmos_nitrogen_flux_init
 
 !#####################################################################
 
@@ -2392,6 +2415,7 @@ subroutine atmos_tracer_flux_init
 
 call atmos_co2_flux_init
 call atmos_dust_flux_init
+call atmos_nitrogen_flux_init
 
 return
 
