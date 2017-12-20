@@ -954,6 +954,15 @@ subroutine aer_ccn_act_k_end()
 
   module_is_initialized = .false.
 
+! deallocate droplets when finished so clouds do not leak...memory (yeaaaaahhhhhh!)
+  if (allocated(droplets) .eqv. .true.) then
+  	deallocate(droplets)
+  endif
+  
+  if (allocated(droplets2) .eqv. .true.) then
+  	deallocate(droplets2)
+  endif
+
 end subroutine aer_ccn_act_k_end
 
 end module aer_ccn_act_k_mod
