@@ -1651,7 +1651,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         call rh_calc (Input_mp%pfull, input_mp%tin, Input_mp%qin, RH, &
                                         .false., do_cmip=.true.)
       endif
-      used = send_cmip_data_3d (ID_hur, rh*100., Time, is, js, 1)!, rmask=mask)
+      used = send_cmip_data_3d (ID_hur, rh*100., Time, is, js, 1, phalf=log(Input_mp%phalf))
     endif
 
 !---------------------------------------------------------------------
