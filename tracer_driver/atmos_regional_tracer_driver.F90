@@ -32,7 +32,8 @@ use                    fms_mod, only : file_exist,   &
                                        check_nml_error, &
                                        error_mesg, &
                                        FATAL, &
-                                       WARNING
+                                       WARNING, &
+                                       NOTE
 use           time_manager_mod, only : time_type
 use           diag_manager_mod, only : send_data,            &
                                        register_diag_field
@@ -43,6 +44,8 @@ use          field_manager_mod, only : MODEL_ATMOS,          &
 use              constants_mod, only : WTMAIR, AVOGNO
 use           interpolator_mod, only : interpolate_type,     &
                                        interpolator_init,    &
+                                       obtain_interpolator_time_slices, &
+                                       unset_interpolator_time_flag, &
                                        interpolator_end,     &
                                        interpolator,         &
                                        query_interpolator,   &
@@ -56,8 +59,9 @@ private
 !-----------------------------------------------------------------------
 !     ... interfaces
 !-----------------------------------------------------------------------
-public  regional_tracer_driver, regional_tracer_driver_init
-
+public  regional_tracer_driver, regional_tracer_driver_init, &
+        regional_tracer_driver_time_vary, regional_tracer_driver_endts, &
+        regional_tracer_driver_end
 
 !-----------------------------------------------------------------------
 !     ... namelist
@@ -196,10 +200,6 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
    integer :: omp_get_num_threads
 !-----------------------------------------------------------------------
 
-! Not yet tested for OpenMP
-!$ if(omp_get_num_threads() > 1) &
-!$    call error_mesg ('Regional_tracer_driver','Code is not tested for OpenMP and omp_num_threads > 1', FATAL)
-
 !<ERROR MSG="regional_tracer_driver_init must be called first." STATUS="FATAL">
 !   Regional_tracer_driver_init needs to be called before regional_tracer_driver.
 !</ERROR>
@@ -306,7 +306,7 @@ end subroutine regional_tracer_driver
 
 !#######################################################################
 
-! <FUNCTION NAME="regional_tracer_driver_init">
+! <SUBROUTINE NAME="regional_tracer_driver_init">
 !   <OVERVIEW>
 !     Initializes the regional tracer driver.
 !   </OVERVIEW>
@@ -361,7 +361,7 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
 
 ! Not yet tested for OpenMP
 !$ if(omp_get_num_threads() > 1) &
-!$    call error_mesg ('Regional_tracer_driver_init','Code is not tested for OpenMP and omp_num_threads > 1', FATAL)
+!$    call error_mesg ('Regional_tracer_driver_init','Code is running with OpenMP and omp_num_threads > 1', NOTE)
 !
 !-----------------------------------------------------------------------
 !
@@ -401,7 +401,7 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
       trind = get_tracer_index(MODEL_ATMOS, tracer_names(n))
       if (trind >0) then
          tracer_indices(n) = trind
-         write(*,30) tracer_names(n),tracer_indices(n)
+         if ( mpp_pe() == mpp_root_pe()) write(*,30) tracer_names(n),tracer_indices(n)
       else
 !<ERROR MSG="Tropospheric chemistry tracer not found in field table" STATUS="WARNING">
 !   A tropospheric chemistry tracer was not included in the field table
@@ -472,19 +472,43 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
 !-----------------------------------------------------------------------
       
 end subroutine regional_tracer_driver_init
-!</FUNCTION>
- 
-      
-subroutine regional_tracer_driver_end
+!</SUBROUTINE>
 
-!-----------------------------------------------------------------------
-!     ... initialize mpp clock id
-!-----------------------------------------------------------------------
+!#####################################################################
+
+subroutine regional_tracer_driver_time_vary (Time)
+
+type(time_type), intent(in) :: Time
+
+      integer :: n
+
+      do n = 1,ntracers
+         if (Lemis(n)) then
+            call obtain_interpolator_time_slices (inter_emis(n), Time)  
+         end if
+      end do
+
+end subroutine regional_tracer_driver_time_vary
+
+!######################################################################
+
+subroutine regional_tracer_driver_endts              
+
+      integer :: n
+
+      do n = 1,ntracers
+         if (Lemis(n)) then
+            call unset_interpolator_time_flag (inter_emis(n))  
+         end if
+      end do
+
+end subroutine regional_tracer_driver_endts
+
+!#######################################################################
+
+subroutine regional_tracer_driver_end
       
    module_is_initialized = .false.
-      
-      
-!-----------------------------------------------------------------------
       
 end subroutine regional_tracer_driver_end
 

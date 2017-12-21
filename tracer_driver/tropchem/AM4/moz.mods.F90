@@ -13,8 +13,8 @@
       save
 
       integer, parameter :: &
-                pcnst = 99 +1, & ! number of advected constituents including cloud water
-                pcnstm1 = 99, & ! number of advected constituents excluding cloud water
+                pcnst = 100 +1, & ! number of advected constituents including cloud water
+                pcnstm1 = 100, & ! number of advected constituents excluding cloud water
                 plev = 1, & ! number of vertical levels
                 plevp = plev+1, & ! plev plus 1
                 plevm = plev-1, & ! plev minus 1
@@ -59,7 +59,7 @@
                             imp_nzcnt = 998, & ! number of non-zero implicit matrix entries
                             rod_nzcnt = 0, & ! number of non-zero rodas matrix entries
                             extcnt = 0, & ! number of species with external forcing
-                            clscnt1 = 8, & ! number of species in explicit class
+                            clscnt1 = 9, & ! number of species in explicit class
                             clscnt2 = 0, & ! number of species in hov class
                             clscnt3 = 0, & ! number of species in ebi class
                             clscnt4 = 91, & ! number of species in implicit class
@@ -118,7 +118,7 @@
 
       integer :: astat
 
-      explicit%clscnt = 8
+      explicit%clscnt = 9
       explicit%indprd_cnt = 56
 
       implicit%clscnt = 91
@@ -288,6 +288,7 @@
       integer, parameter :: id_ISNOOA = 97
       integer, parameter :: id_ISN1 = 98
       integer, parameter :: id_O3S = 99
+      integer, parameter :: id_O3S_E90 = 100
 
 
       end module M_SPC_ID_MOD
