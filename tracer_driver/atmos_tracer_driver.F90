@@ -1497,7 +1497,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 
 !for coupler
-   call atmos_nitrogen_drydep_flux_set(sum_n_ox_ddep,sum_n_red_ddep, is,ie,js,je)
+   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep,sum_n_ox_ddep, is,ie,js,je)
 
 
  end subroutine atmos_tracer_driver
@@ -2219,28 +2219,24 @@ subroutine atmos_nitrogen_flux_init
    if(do_esm_nitrogen_flux) then
       if (nnh4>0) then
          write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nnh4
-         ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4', &
-              flux_type = 'air_sea_deposition', implementation = 'dry',    &
-              atm_tr_index = nnh4,                                          &
-              mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
+         ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4',     &
+              flux_type = 'air_sea_deposition', implementation = 'dry', &
+              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-         ind_wet_dep_nh4_flux = aof_set_coupler_flux('wet_dep_nh4', &
-              flux_type = 'air_sea_deposition', implementation = 'wet',    &
-              atm_tr_index = nnh4,                                          &
-              mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
+         ind_wet_dep_nh4_flux = aof_set_coupler_flux('wet_dep_nh4',     &
+              flux_type = 'air_sea_deposition', implementation = 'wet', &
+              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')  
       endif
       if (nhno3>0) then
          write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nhno3
-         ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3', &
-              flux_type = 'air_sea_deposition', implementation = 'dry',    &
-              atm_tr_index = nhno3,                                          &
-              mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
+         ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3',     &
+              flux_type = 'air_sea_deposition', implementation = 'dry', &
+              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-         ind_wet_dep_no3_flux = aof_set_coupler_flux('wet_dep_no3', &
-              flux_type = 'air_sea_deposition', implementation = 'wet',    &
-              atm_tr_index = nhno3,                                          &
-              mol_wt = 1.0, param = (/ 1.0,1.0 /),                         &
+         ind_wet_dep_no3_flux = aof_set_coupler_flux('wet_dep_no3',     &
+              flux_type = 'air_sea_deposition', implementation = 'wet', &
+              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
       endif
    endif
@@ -2520,17 +2516,19 @@ subroutine atmos_nitrogen_wetdep_flux_set(array_nh4,array_no3,is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
   integer,              intent(in) :: is,ie,js,je
   if (sum(nb_n).eq.0) return ! nothing to do
-  wet_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)
-  wet_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)
+  !Convert from mol/m2/s to Kg/m2/s which is expected by the ocean 
+  !Note that this conversion factor is specified as 14.0067e-03 in COBALT code
+  wet_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)*14.e-3
+  wet_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)*14.e-3
 end subroutine atmos_nitrogen_wetdep_flux_set
 
 subroutine atmos_nitrogen_drydep_flux_set(array_nh4,array_no3,is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
   integer,              intent(in) :: is,ie,js,je
   if (sum(nb_n).eq.0) return ! nothing to do
-!input comes in kg/m2/s -> convert to mol/m2/s
-  dry_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)/14.e-3
-  dry_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)/14.e-3
+  !No conversion needed as this is already Kg/m2/s which is expected by the ocean 
+  dry_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)
+  dry_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)
 end subroutine atmos_nitrogen_drydep_flux_set
 
 
