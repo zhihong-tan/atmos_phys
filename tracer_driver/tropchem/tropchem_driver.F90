@@ -2966,7 +2966,7 @@ subroutine isop_xactive_init( lonb, latb, axes )
 !number of vegetation types for emission capacities
 
 !++amf/van updated to megan2.1 nveg = 5 types above
-! integer, parameter :: nveg=6, npft=17, nmos=12
+! integer, parameter :: nveg=5, npft=17, nmos=12
 !--amf/van
   integer, parameter :: nlonin = 720, nlatin = 360
   integer, parameter :: metlonin = 360, metlatin= 180
@@ -2995,7 +2995,7 @@ subroutine isop_xactive_init( lonb, latb, axes )
        'tas07','tas08','tas09','tas10','tas11','tas12' /)
   character(len=5) :: dswnames(nmos) = (/ 'dsw01','dsw02','dsw03','dsw04','dsw05','dsw06', &
        'dsw07','dsw08','dsw09','dsw10','dsw11','dsw12' /)
-  integer :: id_ec(npft), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
+  integer :: id_ec(nveg), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
   real, dimension(nlonin,nlatin) :: datain
   real, dimension(nlonin,nlatin,npft) :: datapft
   real, dimension(nlonin,nlatin,npft,nmos) :: datalai
@@ -3329,7 +3329,7 @@ subroutine terp_xactive_init( lonb, latb, axes )
 !number of vegetation types for emission capacities
 
 !++amf/van updated to megan2.1 nveg = 5 types above
-! integer, parameter :: nveg=6, npft=17, nmos=12
+! integer, parameter :: nveg=5, npft=17, nmos=12
 !--amf/van
   integer, parameter :: nlonin = 720, nlatin = 360
   integer, parameter :: metlonin = 360, metlatin= 180
@@ -3359,7 +3359,7 @@ subroutine terp_xactive_init( lonb, latb, axes )
        'tas07','tas08','tas09','tas10','tas11','tas12' /)
   character(len=5) :: dswnames(nmos) = (/ 'dsw01','dsw02','dsw03','dsw04','dsw05','dsw06', &
        'dsw07','dsw08','dsw09','dsw10','dsw11','dsw12' /)
-  integer :: id_ec(nveg), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
+  integer :: id_ec(npft), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
   real, dimension(nlonin,nlatin) :: datain
   real, dimension(nlonin,nlatin,npft) :: datapft
   real, dimension(nlonin,nlatin,npft,nmos) :: datalai
@@ -4281,7 +4281,7 @@ end subroutine get_terp_emis
 !   <DESCRIPTION>
 !     amf Feb 2009
 !     This subroutine calculates gamma_age and gamma_lai and applies them
-!     for each LAI and PFT, aggregating to the 6 vegetation types for the
+!     for each LAI and PFT, aggregating to the 5 vegetation types for the
 !     isoprene emission capacities, following
 !     the MEGAN PCEEA model [Guenther et al., ACP 6, 3181-3210, 2006.]
 !     as implemented in mozart4_v4.5 by J.-F. Lamarque and G. Pfister
@@ -4551,7 +4551,7 @@ end function calc_gamma_lai_age_isop
 !     Jordan Schnell August 2017 
 !     Following the procedure to calculate isoprene monthly gammas 
 !     this subroutine calculates gamma_age and gamma_lai and applies for terpenes
-!     for each LAI and PFT, aggregating to the 6 vegetation types for the
+!     for each LAI and PFT, aggregating to the 5 vegetation types for the
 !     terpene emission capacities, following
 !     the MEGAN PCEEA model [Guenther et al., ACP 6, 3181-3210, 2006.]
 !   </DESCRIPTION>
@@ -4579,11 +4579,11 @@ subroutine get_monthly_gammas_terp( lon, lat, oro, is, js, &
 !      integer                  :: pft_lu(nveg)
 !      real                     :: wrk_area
       real                     :: total_iso
-      real                     :: work_iso(nveg)    !amf/van
+      real                     :: work_iso(npft)    !amf/van
       real                     :: ts_wrk
       real                     :: total_work_gamma
 
-      real                     :: work_gamma(nveg)  ! for diagnostic
+      real                     :: work_gamma(npft)  ! for diagnostic
       real                     :: lai_fac(npft)  ! npft = 17 (mksrf files)
       real                     :: lai_work(npft,nmos)
       logical                  :: age_work(npft)
