@@ -74,6 +74,7 @@ use atmos_tracer_utilities_mod, only : get_cmip_param, get_chem_param
 use atmos_dust_mod,       only : atmos_dust_init, dust_tracers,   &
                                  n_dust_tracers, do_dust,   &
                                  atmos_dust_wetdep_flux_set
+use atmos_tracer_driver_mod, only : atmos_nitrogen_wetdep_flux_set
 use atmos_sea_salt_mod,   only : atmos_sea_salt_init, seasalt_tracers,  &
                                  n_seasalt_tracers,do_seasalt
 use atmos_cmip_diag_mod,   only: register_cmip_diag_field_2d, &
@@ -815,6 +816,11 @@ subroutine moist_processes_end ( )
       if (allocated(conv_wetdep))         deallocate(conv_wetdep)
 !--------------------------------------------------------------------
 
+      if  (allocated(nb_N))     deallocate(nb_N)
+      if  (allocated(nb_N_ox))  deallocate(nb_N_ox)
+      if  (allocated(nb_N_red)) deallocate(nb_N_red)
+
+
       module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -1001,7 +1007,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
                                      precip, temp_2d, tca2
       real, dimension   &
             (size(Output_mp%rdt,1),size(Output_mp%rdt,2))  :: &
-                              total_wetdep_dust, total_wetdep_seasalt
+                              total_wetdep_dust, total_wetdep_seasalt, total_wetdep_nox, total_wetdep_nred 
       real, dimension   &
             (size(Output_mp%rdt,1),size(Output_mp%rdt,2),  &
                                               size(Output_mp%rdt,4)) ::  &
@@ -1228,6 +1234,20 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
        if (id_wetdep_dust  > 0) used = send_data (id_wetdep_dust,  total_wetdep_dust, Time, is,js)
        if (id_wetdust_cmip > 0) used = send_data (id_wetdust_cmip, total_wetdep_dust, Time, is,js)
      endif
+
+
+     total_wetdep_nred  = 0.
+     total_wetdep_nox  = 0.
+     do n=1, size(Output_mp%rdt,4)
+        if (nb_N_red(n) > 0) then
+           total_wetdep_nred = total_wetdep_nred  + total_wetdep(:,:,n)*nb_N_red(n)
+        endif
+        if (nb_N_ox(n) > 0) then
+           total_wetdep_nox = total_wetdep_nox    + total_wetdep(:,:,n)*nb_N_ox(n)
+        endif
+     end do
+     call atmos_nitrogen_wetdep_flux_set(total_wetdep_nred, total_wetdep_nox, is,ie,js,je)
+     
 
       endif ! (wetdep_diagnostics_desired)
 
