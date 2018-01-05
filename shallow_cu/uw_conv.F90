@@ -411,7 +411,7 @@ contains
 
     integer   :: ntracers, n, nn, ierr, logunit
     logical   :: flag
-    character(len=200) :: text_in_scheme, control
+    character(len=300) :: text_in_scheme, control
     real :: frac_junk, frac_junk2
 
     integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
