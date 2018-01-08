@@ -202,6 +202,8 @@ use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
                                   atmos_co2_end
+use atmos_ch4_mod,         only : atmos_ch4_rad, &
+                                  atmos_ch4_rad_init     
 use atmos_tropopause_mod,only: &
                                   atmos_tropopause_init, &
                                   atmos_tropopause
@@ -257,6 +259,7 @@ integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
 integer :: co2_clock = 0
+integer :: ch4_clock = 0
 integer :: regional_clock = 0
 integer :: tropopause_clock = 0
 
@@ -285,6 +288,7 @@ integer :: nH2O2     =0
 integer :: nch3i     =0
 integer :: nage      =0
 integer :: nco2      =0
+integer :: nch4      =0
 integer :: nNH4NO3   =0
 integer :: nNH4      =0
 integer :: nDMS_cmip =0
@@ -1217,7 +1221,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
-
+		 
 !! RSH 4/8/04
 !! note that if there are no diagnostic tracers, that argument in the
 !! call to sourcesink should be made optional and omitted in the calls
@@ -1690,6 +1694,7 @@ type(time_type), intent(in)                                :: Time
       nsf6      = get_tracer_index(MODEL_ATMOS,'sf6')
       nch3i     = get_tracer_index(MODEL_ATMOS,'ch3i')
       nco2      = get_tracer_index(MODEL_ATMOS,'co2')
+      nch4      = get_tracer_index(MODEL_ATMOS,'ch4')
       nDMS_cmip = get_tracer_index(MODEL_ATMOS,'DMS')
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
       nSO4_cmip = get_tracer_index(MODEL_ATMOS,'so4')
@@ -1759,6 +1764,13 @@ type(time_type), intent(in)                                :: Time
       if (nco2 > 0) then
       call atmos_co2_init ( Time, size(r,1), size(r,2), axes(1:3))
         co2_clock = mpp_clock_id( 'Tracer: CO2', &
+                    grain=CLOCK_MODULE )
+      endif
+
+!ch4
+      if (nch4 > 0) then
+      call atmos_ch4_rad_init
+        ch4_clock = mpp_clock_id( 'Tracer: CH4', &
                     grain=CLOCK_MODULE )
       endif
 
