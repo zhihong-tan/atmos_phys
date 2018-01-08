@@ -312,6 +312,7 @@ logical            ::  &
 
 logical              :: time_varying_restart_bug = .false.
 logical              :: use_globally_uniform_co2 = .true.
+logical              :: use_globally_uniform_ch4 = .true.
 logical              :: do_NxCO2 = .false. !miz
 integer              :: NNN = 1            !miz
 
@@ -339,6 +340,7 @@ logical :: use_co2_10um = .false.
 namelist /radiative_gases_nml/ verbose, &
         do_NxCO2, NNN, &
         use_globally_uniform_co2, &
+	use_globally_uniform_ch4, &
         gas_printout_freq, time_varying_restart_bug, &
         co2_dataset_entry, ch4_dataset_entry, n2o_dataset_entry,  &
         f11_dataset_entry, f12_dataset_entry, f113_dataset_entry, &
@@ -506,7 +508,7 @@ real,            dimension(:), pointer :: co2_value, ch4_value,  &
 !---------------------------------------------------------------------
 logical      ::  restart_present =  .false.   
 logical      ::  module_is_initialized =  .false. 
-integer      ::  ico2
+integer      ::  ico2, ich4
 logical      ::  define_co2_for_last_tf_calc = .false.
 logical      ::  define_ch4_for_last_tf_calc = .false.
 logical      ::  define_n2o_for_last_tf_calc = .false.
@@ -1004,7 +1006,13 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
         call error_mesg('radiation_driver_mod', &
         'co2 must be a tracer when predicted co2 desired for radiation.', FATAL)
       endif
-
+      
+      ich4 = get_tracer_index(MODEL_ATMOS, 'ch4')
+      if (ich4 == NO_TRACER .and. trim(ch4_data_source) == 'predicted') then
+        call error_mesg('radiation_driver_mod', &
+        'ch4 must be a tracer when predicted ch4 desired for radiation.', FATAL)
+      endif
+      
       lw_rad_time_step_saved = lw_rad_time_step
 
 !---------------------------------------------------------------------
@@ -1167,6 +1175,22 @@ type(radiative_gases_type), intent(inout) :: Rad_gases
         endif
 
 !--------------------------------------------------------------------
+!    if time-varying ch4 is desired, and the time at which variation 
+!    was to begin has been exceeded, define the gas_name variable and
+!    call define_gas_amount to return the values of ch4 needed on this
+!    timestep.
+!--------------------------------------------------------------------
+        if (time_varying_ch4) then 
+        else
+           if (trim(ch4_data_source) == 'predicted') then
+              if (.not. use_globally_uniform_ch4) then    
+! if predicted, not globally uniform ch4 for radiation is desired, then
+! rrvch4 will have become an array and will be filled here:
+!               rrvch4(:,:,:) = Atmos_input%tracer_ch4(is:ie,js:je,:)  
+              endif
+           endif
+        endif
+!--------------------------------------------------------------------
 !    fill the contents of the radiative_gases_type variable which
 !    will be returned to the calling routine.  values of the gas mixing
 !    ratio at the current time and a flag indicating if the gas is time-
@@ -1322,9 +1346,20 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
             ch4_tf_offset = 0.0
           endif   ! (Rad_time > Ch4_time)
         else
-          ch4_for_last_tf_calc = rrvch4
+           if (trim(ch4_data_source) == 'predicted') then
+              if (use_globally_uniform_ch4) then    
+                 rrvch4 = gavg_rrv(ich4)
+              else
+!    if 3d ch4 distribution desired for radiation, it will be defined in
+!    define_radiative_gases.
+              endif
+           else !trim(ch4_data_source) == 'predicted')
+              ch4_for_last_tf_calc = rrvch4
+           endif  !(trim(ch4_data_source) == 'predicted')
         endif  ! (time_varying_ch4)
-
+      if (mpp_pe() == mpp_root_pe()) then
+         write(*,*) 'VAN:radiative_gases.F90, radiative_gases_time_vary, rrvch4', rrvch4 
+      end if
 !--------------------------------------------------------------------
 !    if time-varying n2o is desired, and the time at which variation 
 !    was to begin has been exceeded, define the gas_name variable and
@@ -1621,6 +1656,15 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
          Rad_gases_tv%use_model_supplied_co2 = .false.
       endif
 
+!    define value for the new variable Rad_gases%use_model_supplied_ch4, .true. for
+!    ch4_data_source = 'predicted', .false. otherwise.
+
+      if (trim(ch4_data_source) == 'predicted') then
+         Rad_gases_tv%use_model_supplied_ch4 = .true.
+      else
+         Rad_gases_tv%use_model_supplied_ch4 = .false.
+      endif
+      
       Rad_gases_tv%co2_for_last_tf_calc = co2_for_last_tf_calc
       Rad_gases_tv%ch4_for_last_tf_calc = ch4_for_last_tf_calc
       Rad_gases_tv%n2o_for_last_tf_calc = n2o_for_last_tf_calc
@@ -2346,14 +2390,16 @@ character(len=8)     :: gas_name ! name associated with current
 !    not present, the value of ch4 is obtained from the namelist
 !    variable ch4_base_value.
 !    Current, predicted values of ch4 can not be used in radiation.
+! VAN 1/2/2018 code has been modified to suppport the use of predicted 
+! global mean values of ch4
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
           rch4 = ch4_base_value
         endif
-        call error_mesg ( 'radiative_gases_mod', &
-          'ch4 data_source = "predicted" is currently not supported', &
-           FATAL)
+!        call error_mesg ( 'radiative_gases_mod', &
+!          'ch4 data_source = "predicted" is currently not supported', &
+!           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of ch4 is obtained
