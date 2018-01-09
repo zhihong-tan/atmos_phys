@@ -1763,7 +1763,7 @@ trop_option%frac_aerosol_incloud = frac_aerosol_incloud
 trop_option%time_varying_solarflux = time_varying_solarflux
 
 trop_option%gSO2                     = gSO2
-if(mpp_pe() == mpp_root_pe()) write(*,*) 'gso2=',trop_option%gSO2
+if(mpp_pe() == mpp_root_pe()) write(*,*) 'gSO2: ',trop_option%gSO2
 if (trim(gso2_dynamic).eq.'none') then
    trop_option%gSO2_dynamic             = -1
 else if (trim(gso2_dynamic).eq.'wang2014') then
@@ -1773,7 +1773,7 @@ else if (trim(gso2_dynamic).eq.'zheng2015') then
    trop_option%gSO2_dynamic             = 2
 !   http://www.atmos-chem-phys.net/15/2031/2015/
 end if
-if(mpp_pe() == mpp_root_pe()) write(*,*) 'gso2_dynamic=',trop_option%gSO2_dynamic
+if(mpp_pe() == mpp_root_pe()) write(*,*) 'gso2_dynamic case:',trop_option%gSO2_dynamic
 
 !aerosol thermo
 if    ( trim(aerosol_thermo_method)   == 'legacy' ) then
