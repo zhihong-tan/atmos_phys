@@ -34,7 +34,7 @@ use tracer_manager_mod,    only: get_tracer_index,&
                                  get_tracer_names, &
                                  NO_TRACER
 use constants_mod,         only: CP_AIR, GRAV, HLV, HLS, HLF, &
-                                 TFREEZE, WTMAIR, SECONDS_PER_DAY
+                                 TFREEZE, WTMAIR, SECONDS_PER_DAY,MW_N
 ! atmos_param modules
 use physics_types_mod,    only : physics_control_type,    &
                                  physics_tendency_block_type, &
@@ -213,7 +213,8 @@ integer :: id_prsn, id_pr, id_prw, id_prrc, id_prra, id_prsnc, &
 integer :: id_max_enthalpy_imbal, id_max_water_imbal
 integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
-           id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust
+           id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust, &
+           id_n_ox_wdep, id_n_red_wdep
 
 type(cmip_diag_id_type) :: ID_cl, ID_clw, ID_cli, ID_hur
 
@@ -1247,7 +1248,8 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         endif
      end do
      call atmos_nitrogen_wetdep_flux_set(total_wetdep_nred, total_wetdep_nox, is,ie,js,je)
-     
+     if (id_n_ox_wdep>0 .and. sum(nb_N_ox)>0)     used = send_data ( id_n_ox_wdep, total_wetdep_nox*mw_n/1000., Time, is, js)
+     if (id_n_red_wdep>0 .and. sum(nb_N_red)>0)   used = send_data ( id_n_red_wdep, total_wetdep_nred*mw_n/1000., Time, is, js)
 
       endif ! (wetdep_diagnostics_desired)
 
@@ -2433,6 +2435,16 @@ integer                     :: id_wetdep_cmip
       if (id_wetdep_dust > 0) wetdep_diagnostics_desired = .true.
 
 
+      id_n_ox_wdep = register_cmip_diag_field_2d ( mod_name, 'fam_noy_wetdep_kg_m2_s', Time,  &
+           'wet deposition of noy incl aerosol nitrate', 'kg m-2 s-1', &
+           standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_wet_deposition' )
+
+      !this is not requested
+      id_n_red_wdep = register_cmip_diag_field_2d ( mod_name, 'fam_nhx_wetdep_kg_m2_s', Time,  &
+           'wet deposition of nhx', 'kg m-2 s-1', &
+           standard_name='tendency_of_atmosphere_mass_content_of_nhx_expressed_as_nitrogen_due_to_wet_deposition' )
+ 
+
      !-------- cmip wet deposition fields  ---------
       do ic = 1, size(cmip_names,1)
         if (TRIM(cmip_names(ic)) .eq. 'nh4' .and. (nNH4NO3 .eq. NO_TRACER .or. nNH4 .eq. NO_TRACER)) then
@@ -2490,7 +2502,7 @@ integer                     :: id_wetdep_cmip
             id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                                trim(tracer_name)//'_wetdep_kg_m2_s', Time, &
                                'Wet Deposition Rate of '//TRIM(cmip_longname2), 'kg m-2 s-1', &
-                   standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_dry_aerosol_due_to_wet_deposition')
+                   standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_dry_aerosol_particles_due_to_wet_deposition')
         else
             id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                                trim(tracer_name)//'_wetdep_kg_m2_s', Time, &
