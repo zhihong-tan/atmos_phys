@@ -133,7 +133,7 @@ use atmos_tracer_utilities_mod, only :                      &
                                   get_rh, get_w10m, get_cldf, &
                                   sjl_fillz, &
                                   get_cmip_param, get_chem_param
-use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, MW_N
+use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, wtmn
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
                                   atmos_radon_end
@@ -739,11 +739,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
             end if
 
             if (nb_n(n).gt.0) &
-                 sum_n_ddep     = sum_n_ddep + pwt(:,:,kd)*dsinku(:,:,n)*MW_N/wtmair*nb_n(n)
+                 sum_n_ddep     = sum_n_ddep + pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n(n)
             if (nb_n_ox(n).gt.0) &
-                 sum_n_ox_ddep  = sum_n_ox_ddep + pwt(:,:,kd)*dsinku(:,:,n)*MW_N/wtmair*nb_n_ox(n)
+                 sum_n_ox_ddep  = sum_n_ox_ddep + pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n_ox(n)
             if (nb_n_red(n).gt.0) &
-                 sum_n_red_ddep = sum_n_red_ddep + pwt(:,:,kd)*dsinku(:,:,n)*MW_N/wtmair*nb_n_red(n)
+                 sum_n_red_ddep = sum_n_red_ddep + pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n_red(n)
 
             if (id_tracer_ddep_kg_m2_s(n)>0) then
                used = send_data ( id_tracer_ddep_kg_m2_s(n), dsinku(:,:,n)*pwt(:,:,kd)*conv_vmr_mmr(n), Time_next, is_in=is,js_in=js)
@@ -2518,8 +2518,8 @@ subroutine atmos_nitrogen_wetdep_flux_set(array_nh4,array_no3,is,ie,js,je)
   if (sum(nb_n).eq.0) return ! nothing to do
   !Convert from mol/m2/s to Kg/m2/s which is expected by the ocean 
   !Note that this conversion factor is specified as 14.0067e-03 in COBALT code
-  wet_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)*MW_N/1000.
-  wet_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)*MW_N/1000.
+  wet_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)*WTMN/1000.
+  wet_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)*WTMN/1000.
 end subroutine atmos_nitrogen_wetdep_flux_set
 
 subroutine atmos_nitrogen_drydep_flux_set(array_nh4,array_no3,is,ie,js,je)
