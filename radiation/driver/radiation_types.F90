@@ -138,11 +138,11 @@ contains
       elseif (trim(tracer_units) == "vmr") then
         conv_moist_dry = WTMH2O/WTMAIR  
       else 
-	write(*,*) trim(tracer_name), ' tracer units =',trim(tracer_units), &
-	 'it should be either mmr or vmr!'
-        call error_mesg('compute_g_avg', 'Unsupported tracer units, units must &
-	    be either VMR or MMR to calculate global mean avg for radiation  &
-	    calculation', FATAL )
+       write(*,*) trim(tracer_name), ' tracer units =',trim(tracer_units), &
+        'it should be either mmr or vmr!'
+        call error_mesg('compute_g_avg', 'Unsupported tracer units, units must' // &
+            'be either VMR or MMR to calculate global mean avg for radiation' //  &
+            'calculation', FATAL )
       endif
     endif
 
