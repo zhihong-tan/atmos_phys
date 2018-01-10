@@ -34,7 +34,7 @@ use tracer_manager_mod,    only: get_tracer_index,&
                                  get_tracer_names, &
                                  NO_TRACER
 use constants_mod,         only: CP_AIR, GRAV, HLV, HLS, HLF, &
-                                 TFREEZE, WTMAIR, SECONDS_PER_DAY,MW_N
+                                 TFREEZE, WTMAIR, SECONDS_PER_DAY,WTMN
 ! atmos_param modules
 use physics_types_mod,    only : physics_control_type,    &
                                  physics_tendency_block_type, &
@@ -1248,8 +1248,8 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         endif
      end do
      call atmos_nitrogen_wetdep_flux_set(total_wetdep_nred, total_wetdep_nox, is,ie,js,je)
-     if (id_n_ox_wdep>0 .and. sum(nb_N_ox)>0)     used = send_data ( id_n_ox_wdep, total_wetdep_nox*mw_n/1000., Time, is, js)
-     if (id_n_red_wdep>0 .and. sum(nb_N_red)>0)   used = send_data ( id_n_red_wdep, total_wetdep_nred*mw_n/1000., Time, is, js)
+     if (id_n_ox_wdep>0 .and. sum(nb_N_ox)>0)     used = send_data ( id_n_ox_wdep, total_wetdep_nox*wtmn/1000., Time, is, js)
+     if (id_n_red_wdep>0 .and. sum(nb_N_red)>0)   used = send_data ( id_n_red_wdep, total_wetdep_nred*wtmn/1000., Time, is, js)
 
       endif ! (wetdep_diagnostics_desired)
 
