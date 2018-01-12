@@ -142,9 +142,10 @@ contains
         conv_moist_dry = WTMH2O/WTMAIR  
       else 
        write(*,*) trim(tracer_name), ' tracer units =',trim(tracer_units), &
-        'it should be either mmr or vmr!'
+        'it should be either mmr or vmr for non-co2 tracers or kg/kg for co2!'
         call error_mesg('compute_g_avg', 'Unsupported tracer units, units must' // &
-            'be either VMR or MMR to calculate global mean avg for radiation' //  &
+            'be either VMR or MMR for non-co2 tracers or kg/kg for co2 to ' // &
+	    'calculate global mean avg for radiation' //  &
             'calculation', FATAL )
       endif
     endif
