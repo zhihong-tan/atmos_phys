@@ -79,7 +79,7 @@ contains
     integer :: nb, ibs, ibe, jbs, jbe
     integer :: j, i, k, jb, ib, idx, npz
     logical :: esm2_bugs_local
-    character(len=32) :: tracer_units, foo
+    character(len=32) :: tracer_units, tname
 
 !---the following is needed in order to allow ESM2 to reproduce a bug that
 !---existed in the fv-latlon core (atmos_fv_dynamics::fv_physics.F90)
@@ -128,12 +128,15 @@ contains
 !------------------------------------------------------------------------
 !---set the value of conv_moist_dry depending on whether the tracer is in
 !---units of vmr (e.g., non-co2 tracer such as ch4) or mmr (e.g., CO2)
+!---Units of co2 are in kg/kg in the field table, therefore additional test  
+!---is added to ensure backward compatibility with code/xml using co2 tracer.  
 !------------------------------------------------------------------------
     idx = get_tracer_index(MODEL_ATMOS, trim(tracer_name))
     if (idx /= NO_TRACER) then
-      call get_tracer_names(MODEL_ATMOS, idx, name=foo, &
+      call get_tracer_names(MODEL_ATMOS, idx, name=tname, &
               units=tracer_units)
-      if (trim(tracer_units) == "mmr") then
+      if (trim(tracer_units) == "mmr".or.(trim(tracer_name).eq.'co2' &
+                                .and. trim(tracer_units) == "kg/kg")) then
         conv_moist_dry = 1.0
       elseif (trim(tracer_units) == "vmr") then
         conv_moist_dry = WTMH2O/WTMAIR  
