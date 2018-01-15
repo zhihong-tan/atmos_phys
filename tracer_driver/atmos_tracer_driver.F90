@@ -233,8 +233,9 @@ logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! ocean grid boxes
 
 logical  :: do_esm_nitrogen_flux = .false. !If set to .true. nitrogen fluxes will be prepared for exchange with Ocean
+logical  :: do_nh3_atm_ocean_exchange = .false.
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux,do_nh3_atm_ocean_exchange
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -295,6 +296,7 @@ integer :: nSO2_cmip =0
 integer :: nSO4_cmip =0
 integer :: nNH3_cmip =0
 integer :: nOH       =0
+integer :: nNH3      =0
 integer :: nC4H10    =0
 integer :: ncodirect =0
 integer :: ne90 =0
@@ -528,7 +530,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
 real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
-real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
+real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep, nh3_ddep
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
@@ -721,6 +723,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
      sum_n_ddep(:,:) = 0.
      sum_n_ox_ddep(:,:) = 0.
      sum_n_red_ddep(:,:) = 0.
+     nh3_ddep(:,:) = 0.
 
       do n=1,ntp
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
@@ -733,6 +736,12 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                  drydep_data(n))!, frland, frice, frsnow, &
 !                                 vegn_cover, vegn_lai, &
 !                                 b_star, z_pbl, rough_mom)
+
+            if (do_esm_nitrogen_flux .and. n.eq.nNH3) then !f1p: scale by ocean fraction
+               dsinku(:,:,n) = dsinku(:,:,n)*land
+               nh3_ddep   = pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair
+            end if
+
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
             if ( step_update_tracer ) then
                tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
@@ -1228,7 +1237,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                             area, w10m_ocean, &
                             flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
                             half_day, &
-                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), kbot)
+                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), kbot, do_nh3_atm_ocean_exchange)
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
@@ -1497,7 +1506,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 
 !for coupler
-   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep,sum_n_ox_ddep, is,ie,js,je)
+   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep-nh3_ddep,sum_n_ox_ddep, is,ie,js,je)
 
 
  end subroutine atmos_tracer_driver
@@ -1719,6 +1728,7 @@ type(time_type), intent(in)                                :: Time
       nNH3_cmip = get_tracer_index(MODEL_ATMOS,'nh3')
       nOH       = get_tracer_index(MODEL_ATMOS,'oh')
       nC4H10    = get_tracer_index(MODEL_ATMOS,'c4h10')
+      nNH3      = get_tracer_index(MODEL_ATMOS,'nh3')
 ! Check for presence of OH and C4H10 (diagnostic) tracers
 ! If not present set index to 1 so interface calls do not fail,
 ! but FATAL error will be issued by atmos_sulfate_init,

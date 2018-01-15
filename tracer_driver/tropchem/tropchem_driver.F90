@@ -550,7 +550,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                             z_half, z_full, q, tsurf, albedo, coszen, rrsun, &
                             area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
                             half_day, &
-                            Time_next, rdiag,  kbot )
+                            Time_next, rdiag,  kbot, do_nh3_atm_ocean_exchange )
 
 !-----------------------------------------------------------------------
    real, intent(in),    dimension(:,:)            :: lon, lat
@@ -617,6 +617,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    !trop diag arrays
    real, dimension(size(r,1),size(r,2),size(r,3),trop_diag%nb_diag) :: trop_diag_array
    type(time_type) :: co2_time
+
+   logical, intent(in) :: do_nh3_atm_ocean_exchange
 !-----------------------------------------------------------------------
 
 !<ERROR MSG="tropchem_driver_init must be called first." STATUS="FATAL">
@@ -658,10 +660,17 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 !     ... read in the surface emissions, using interpolator
 !-----------------------------------------------------------------------
       if (has_emis(n)) then
-         call read_2D_emis_data( inter_emis(n), emis, Time, Time_next, &
-                                 emis_field_names(n)%field_names, &
-                                 diurnal_emis(n), coszen, half_day, lon, &
-                                 is, js, has_xactive_emis(n))
+         if (do_nh3_atm_ocean_exchange .and. tracnam(n).eq.'NH3') then
+            call read_2D_emis_data( inter_emis(n), emis, Time, Time_next, &
+                 emis_field_names(n)%field_names, &
+                 diurnal_emis(n), coszen, half_day, lon, &
+                 is, js, has_xactive_emis(n),'ocean')
+         else
+            call read_2D_emis_data( inter_emis(n), emis, Time, Time_next, &
+                 emis_field_names(n)%field_names, &
+                 diurnal_emis(n), coszen, half_day, lon, &
+                 is, js, has_xactive_emis(n))
+         end if
          if ( land_does_emission(n) ) then
             emis = emis * ( 1. - land )
          end if
@@ -2629,12 +2638,13 @@ end subroutine tropchem_driver_end
 subroutine read_2D_emis_data( emis_type, emis, Time, Time_next, &
                               field_names, &
                               Ldiurnal, coszen, half_day, lon, &
-                              is, js, skip_biogenic_emis )
+                              is, js, skip_biogenic_emis, skip_field )
 
    type(interpolate_type),intent(inout) :: emis_type
    real, dimension(:,:),intent(out) :: emis
    type(time_type),intent(in) :: Time, Time_next
    character(len=*),dimension(:), intent(in) :: field_names
+   character(len=*), intent(in), optional :: skip_field
    logical, intent(in) :: Ldiurnal
    real, dimension(:,:), intent(in) :: coszen, half_day, lon
    integer, intent(in) :: is, js
@@ -2650,9 +2660,13 @@ subroutine read_2D_emis_data( emis_type, emis, Time, Time_next, &
    temp_data(:,:) = 0.
    do k = 1,size(field_names)
       if (skip_biogenic_emis .and. field_names(k) .eq. "biogenic") then
-          temp_data(:,:) = 0.
+          temp_data(:,:) = 0.          
       else
-          call interpolator(emis_type,Time,temp_data,field_names(k),is,js)
+         if (present(skip_field) .and. trim(field_names(k)).eq.trim(skip_field)) then
+            temp_data(:,:) = 0.                      
+         else
+            call interpolator(emis_type,Time,temp_data,field_names(k),is,js)
+         end if
       end if
       emis(:,:) = emis(:,:) + temp_data(:,:)
    end do
