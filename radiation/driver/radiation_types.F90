@@ -96,8 +96,6 @@ contains
 
     npz = Atm_block%npz
 
-    Radiation%glbl_qty%gavg_q = 0.
-
 !------------------------------------------------------------------------
 !---compute global mean atmospheric mass to be used later in diagnostics
 !------------------------------------------------------------------------
@@ -153,9 +151,9 @@ contains
 !------------------------------------------------------------------------
 !---check to override predicted global pressure-weighted rad co2 and ch4
 !------------------------------------------------------------------------	      
-    if(idx /= NO_TRACER .and. co2_radiation_override) then
+    if(idx /= NO_TRACER .and. trim(tracer_name).eq.'co2' .and. co2_radiation_override) then
       call atmos_co2_rad(Time, Radiation%glbl_qty%gavg_q(idx))
-    elseif (idx /= NO_TRACER .and. ch4_radiation_override) then
+    elseif (idx /= NO_TRACER .and. trim(tracer_name).eq.'ch4' .and. ch4_radiation_override) then
       call atmos_ch4_rad(Time, Radiation%glbl_qty%gavg_q(idx))
     elseif (idx /= NO_TRACER) then
 
