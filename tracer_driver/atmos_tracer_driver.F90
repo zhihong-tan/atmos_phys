@@ -133,7 +133,7 @@ use atmos_tracer_utilities_mod, only :                      &
                                   get_rh, get_w10m, get_cldf, &
                                   sjl_fillz, &
                                   get_cmip_param, get_chem_param
-use constants_mod,         only : grav, WTMAIR, PI, AVOGNO
+use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, wtmn
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
                                   atmos_radon_end
@@ -209,7 +209,7 @@ use atmos_tropopause_mod,only: &
                                   atmos_tropopause
 
 use interpolator_mod,      only : interpolate_type
-
+use atmos_ocean_fluxes_mod, only: aof_set_coupler_flux
 implicit none
 private
 !-----------------------------------------------------------------------
@@ -224,7 +224,8 @@ public  atmos_tracer_driver,            &
         atmos_tracer_driver_gather_data, &
         atmos_tracer_driver_gather_data_down, &
         atmos_tracer_has_surf_setl_flux, &
-        get_atmos_tracer_surf_setl_flux
+        get_atmos_tracer_surf_setl_flux, &
+        atmos_nitrogen_wetdep_flux_set,atmos_nitrogen_drydep_flux_set 
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -233,8 +234,9 @@ logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! through the non-ice-covered portions of
                                ! ocean grid boxes
 
+logical  :: do_esm_nitrogen_flux = .false. !If set to .true. nitrogen fluxes will be prepared for exchange with Ocean
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -290,6 +292,7 @@ integer :: nage      =0
 integer :: nco2      =0
 integer :: nch4      =0
 integer :: nNH4NO3   =0
+integer :: nHNO3     =0
 integer :: nNH4      =0
 integer :: nDMS_cmip =0
 integer :: nSO2_cmip =0
@@ -362,6 +365,14 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  real, parameter      :: o3_column_factor = 2.687e25 ! Molecular density (molec/m3) of air at STP (T=0C, P=1atm)
                                                      ! Used to convert from molec/m2 to equivalent depth (in m) at STP
+
+
+ real, allocatable     :: dry_dep_no3_flux(:,:), wet_dep_no3_flux(:,:), dry_dep_nh4_flux(:,:), wet_dep_nh4_flux(:,:)
+integer   :: ind_dry_dep_nh4_flux = 0
+integer   :: ind_wet_dep_nh4_flux = 0
+integer   :: ind_dry_dep_no3_flux = 0
+integer   :: ind_wet_dep_no3_flux = 0
+
 
 !-----------------------------------------------------------------------
 type(time_type) :: Time
@@ -730,9 +741,13 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
             if ( step_update_tracer ) then
                tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
             end if
-            if (id_n_ddep>0) sum_n_ddep = sum_n_ddep + pwt(:,:,kd)*dsinku(:,:,n)*14./wtmair*nb_n(n)
-            if (id_n_ox_ddep>0) sum_n_ox_ddep = sum_n_ox_ddep + pwt(:,:,kd)*dsinku(:,:,n)*14./wtmair*nb_n_ox(n)
-            if (id_n_red_ddep>0) sum_n_red_ddep = sum_n_red_ddep + pwt(:,:,kd)*dsinku(:,:,n)*14./wtmair*nb_n_red(n)
+
+            if (nb_n(n).gt.0) &
+                 sum_n_ddep     = sum_n_ddep + pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n(n)
+            if (nb_n_ox(n).gt.0) &
+                 sum_n_ox_ddep  = sum_n_ox_ddep + pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n_ox(n)
+            if (nb_n_red(n).gt.0) &
+                 sum_n_red_ddep = sum_n_red_ddep + pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n_red(n)
 
             if (id_tracer_ddep_kg_m2_s(n)>0) then
                used = send_data ( id_tracer_ddep_kg_m2_s(n), dsinku(:,:,n)*pwt(:,:,kd)*conv_vmr_mmr(n), Time_next, is_in=is,js_in=js)
@@ -1485,6 +1500,10 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
    end do
 
 
+!for coupler
+   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep,sum_n_ox_ddep, is,ie,js,je)
+
+
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
 
@@ -1549,6 +1568,9 @@ type(time_type), intent(in)                                :: Time
       character(len=256) :: cmip_name,cmip_longname, cmip_longname2
       logical :: cmip_is_aerosol, do_pm, do_check
       real    :: tracer_mw, sum_N_ox
+      character(len=64), parameter    :: sub_name = 'atmos_tracer_driver_init'
+      character(len=256), parameter   :: note_header =                                &
+        '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 !>
 
 !-----------------------------------------------------------------------
@@ -1688,6 +1710,7 @@ type(time_type), intent(in)                                :: Time
         tr_nbr_sulfate(5)=nMSA
         do_tracer_sulfate(5)=.true.
       endif
+      nHNO3     = get_tracer_index(MODEL_ATMOS,'hno3') 
       nNH4NO3   = get_tracer_index(MODEL_ATMOS,'nh4no3')
       nNH4      = get_tracer_index(MODEL_ATMOS,'nh4')
       nSOA      = get_tracer_index(MODEL_ATMOS,'SOA')
@@ -1970,6 +1993,12 @@ type(time_type), intent(in)                                :: Time
       allocate(frac_pm10(nt))
       allocate(frac_pm25(nt))
 
+      allocate(dry_dep_nh4_flux(size(lonb)-1,size(latb)-1)); dry_dep_nh4_flux=0.0
+      allocate(wet_dep_nh4_flux(size(lonb)-1,size(latb)-1)); wet_dep_nh4_flux=0.0
+      allocate(dry_dep_no3_flux(size(lonb)-1,size(latb)-1)); dry_dep_no3_flux=0.0
+      allocate(wet_dep_no3_flux(size(lonb)-1,size(latb)-1)); wet_dep_no3_flux=0.0
+
+
       ID_BC = register_cmip_diag_field_3d ( mod_name, 'fam_bc_kg_kg', Time, &
              'Elemental carbon mass mixing ratio', 'kg kg-1', &
              standard_name='mass_fraction_of_elemental_carbon_dry_aerosol_particles_in_air')
@@ -2185,7 +2214,46 @@ type(time_type), intent(in)                                :: Time
 
  end subroutine atmos_tracer_driver_init
 
+!#####################################################################
 
+subroutine atmos_nitrogen_flux_init
+   character(len=64), parameter    :: sub_name = 'atmos_nitrogen_flux_init'
+   character(len=256), parameter   :: error_header =                               &
+        '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: warn_header =                                &
+        '==>Warning from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+   character(len=256), parameter   :: note_header =                                &
+        '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+   integer :: outunit
+   outunit = stdout()
+
+   if(do_esm_nitrogen_flux) then
+      if (nnh4>0) then
+         write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nnh4
+         ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4',     &
+              flux_type = 'air_sea_deposition', implementation = 'dry', &
+              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+         ind_wet_dep_nh4_flux = aof_set_coupler_flux('wet_dep_nh4',     &
+              flux_type = 'air_sea_deposition', implementation = 'wet', &
+              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')  
+      endif
+      if (nhno3>0) then
+         write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nhno3
+         ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3',     &
+              flux_type = 'air_sea_deposition', implementation = 'dry', &
+              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+         ind_wet_dep_no3_flux = aof_set_coupler_flux('wet_dep_no3',     &
+              flux_type = 'air_sea_deposition', implementation = 'wet', &
+              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+      endif
+   endif
+
+end subroutine atmos_nitrogen_flux_init
 
 !#####################################################################
 
@@ -2330,6 +2398,11 @@ integer :: logunit
       deallocate(frac_pm10)
       deallocate( id_tracer_diag_hour )
 
+      deallocate(dry_dep_nh4_flux)
+      deallocate(dry_dep_no3_flux)
+      deallocate(wet_dep_nh4_flux)
+      deallocate(wet_dep_no3_flux)
+
       module_is_initialized = .FALSE.
 
 !-----------------------------------------------------------------------
@@ -2350,6 +2423,7 @@ subroutine atmos_tracer_flux_init
 
 call atmos_co2_flux_init
 call atmos_dust_flux_init
+call atmos_nitrogen_flux_init
 
 return
 
@@ -2385,7 +2459,7 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 
  subroutine atmos_tracer_driver_gather_data_down(gas_fields, tr_bot)
 
-use coupler_types_mod, only: coupler_2d_bc_type
+use coupler_types_mod, only: coupler_2d_bc_type, ind_pcair
 
 type(coupler_2d_bc_type), intent(inout) :: gas_fields
 real, dimension(:,:,:), intent(in)      :: tr_bot
@@ -2395,6 +2469,24 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
   call atmos_dust_gather_data(gas_fields, tr_bot)
 
 !-----------------------------------------------------------------------
+
+!nitrogen
+if (ind_dry_dep_no3_flux .gt. 0) then
+  gas_fields%bc(ind_dry_dep_no3_flux)%field(ind_pcair)%values(:,:) = -dry_dep_no3_flux(:,:)!sign flip
+endif
+
+if (ind_wet_dep_no3_flux .gt. 0) then
+  gas_fields%bc(ind_wet_dep_no3_flux)%field(ind_pcair)%values(:,:) = wet_dep_no3_flux(:,:)
+endif
+if (ind_dry_dep_nh4_flux .gt. 0) then
+  gas_fields%bc(ind_dry_dep_nh4_flux)%field(ind_pcair)%values(:,:) = -dry_dep_nh4_flux(:,:)!sign flip
+endif
+
+if (ind_wet_dep_nh4_flux .gt. 0) then
+  gas_fields%bc(ind_wet_dep_nh4_flux)%field(ind_pcair)%values(:,:) = wet_dep_nh4_flux(:,:)
+endif
+
+
 
  end subroutine atmos_tracer_driver_gather_data_down
 ! </SUBROUTINE>
@@ -2431,6 +2523,25 @@ subroutine get_atmos_tracer_surf_setl_flux(tr, setl_flux, dsetl_dtr)
   !   call get_seasalt_surf_setl_flux(tr, setl_flux, dsetl_dtr)
 end subroutine get_atmos_tracer_surf_setl_flux
 !######################################################################
+
+subroutine atmos_nitrogen_wetdep_flux_set(array_nh4,array_no3,is,ie,js,je)
+  real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
+  integer,              intent(in) :: is,ie,js,je
+  if (sum(nb_n).eq.0) return ! nothing to do
+  !Convert from mol/m2/s to Kg/m2/s which is expected by the ocean 
+  !Note that this conversion factor is specified as 14.0067e-03 in COBALT code
+  wet_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)*WTMN/1000.
+  wet_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)*WTMN/1000.
+end subroutine atmos_nitrogen_wetdep_flux_set
+
+subroutine atmos_nitrogen_drydep_flux_set(array_nh4,array_no3,is,ie,js,je)
+  real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
+  integer,              intent(in) :: is,ie,js,je
+  if (sum(nb_n).eq.0) return ! nothing to do
+  !No conversion needed as this is already Kg/m2/s which is expected by the ocean 
+  dry_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)
+  dry_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)
+end subroutine atmos_nitrogen_drydep_flux_set
 
 
 end module atmos_tracer_driver_mod

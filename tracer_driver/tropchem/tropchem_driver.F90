@@ -226,7 +226,6 @@ real               :: gN2O5                 = 0.1
 real               :: gNO2                  = 1e-4
 real               :: gSO2                  = 0.
 real               :: gSO2_dust             = 0.
-integer            :: gSO2_dynamic          = 0
 real               :: gNH3                  = 0.05
 real               :: gHNO3_dust            = 0.
 real               :: gNO3_dust             = 0.
@@ -240,7 +239,7 @@ real               :: gHO2                  = 1.
 
 character(len=128) :: sim_data_filename = 'sim.dat'      ! Input file for chemistry pre-processor
 
-
+character(len=64)  :: gso2_dynamic          = 'none'
 
 type(tropchem_diag),  save :: trop_diag
 type(tropchem_opt),   save :: trop_option
@@ -309,7 +308,7 @@ namelist /tropchem_driver_nml/    &
                                cloud_pH, &
                                frac_dust_incloud, frac_aerosol_incloud, &
                                max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &
-                               sim_data_filename,time_varying_solarflux
+                               sim_data_filename,time_varying_solarflux, gso2_dynamic
 
 integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
@@ -379,7 +378,7 @@ integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_ub, id_lb, id_airc
 !new diagnostics (f1p)
 integer, dimension(pcnstm1) :: id_prod_mol, id_loss_mol
-integer :: id_ch, id_lwc,id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d
+integer :: id_ch, id_lwc,id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d, id_gso2
 !
 integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
@@ -1278,6 +1277,9 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    if (id_ghno3_d>0) then
       used = send_data(id_ghno3_d,trop_diag_array(:,:,:,trop_diag%ind_ghno3_d),Time_next,is_in=is,js_in=js)
    end if
+   if (id_gso2>0) then
+      used = send_data(id_gso2,trop_diag_array(:,:,:,trop_diag%ind_gso2),Time_next,is_in=is,js_in=js)
+   end if
    if (id_phno3_g_d>0) then
       used = send_data(id_phno3_g_d,trop_diag_array(:,:,:,trop_diag%ind_phno3_g_d)*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
    end if
@@ -1760,6 +1762,18 @@ trop_option%limit_no3      = limit_no3
 trop_option%frac_aerosol_incloud = frac_aerosol_incloud
 trop_option%time_varying_solarflux = time_varying_solarflux
 
+trop_option%gSO2                     = gSO2
+if(mpp_pe() == mpp_root_pe()) write(*,*) 'gSO2: ',trop_option%gSO2
+if (trim(gso2_dynamic).eq.'none') then
+   trop_option%gSO2_dynamic             = -1
+else if (trim(gso2_dynamic).eq.'wang2014') then
+   trop_option%gSO2_dynamic             = 1   
+   !http://onlinelibrary.wiley.com/doi/10.1002/2013JD021426/full  
+else if (trim(gso2_dynamic).eq.'zheng2015') then
+   trop_option%gSO2_dynamic             = 2
+!   http://www.atmos-chem-phys.net/15/2031/2015/
+end if
+if(mpp_pe() == mpp_root_pe()) write(*,*) 'gso2_dynamic case:',trop_option%gSO2_dynamic
 
 !aerosol thermo
 if    ( trim(aerosol_thermo_method)   == 'legacy' ) then
@@ -2282,6 +2296,8 @@ end if
    id_pso4_h2o2   = register_diag_field( module_name, 'PSO4_H2O2',axes(1:3), Time, 'PSO4_H2O2','mole/m2/s')
    id_pso4_o3     = register_diag_field( module_name, 'PSO4_O3',axes(1:3), Time, 'PSO4_O3','mole/m2/s')
 
+   id_gso2        = register_diag_field( module_name, 'gamma_so2',axes(1:3), Time, 'gamma_so2','unitless')
+
 !for cmip6
    ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, &
                              'Aqueous-phase Production Rate of Sulfate Aerosol', 'kg m-2 s-1',  &
@@ -2442,6 +2458,11 @@ end if
          trop_diag%ind_pso4_d(i)   = trop_diag%nb_diag
       end if
    end do
+   if ( id_gso2 > 0 ) then
+      trop_diag%nb_diag       = trop_diag%nb_diag + 1
+      trop_diag%ind_gso2      = trop_diag%nb_diag
+   end if
+
 
    module_is_initialized = .true.
 
