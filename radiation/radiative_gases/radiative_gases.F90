@@ -1357,9 +1357,6 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
               ch4_for_last_tf_calc = rrvch4
            endif  !(trim(ch4_data_source) == 'predicted')
         endif  ! (time_varying_ch4)
-!      if (mpp_pe() == mpp_root_pe()) then
-!         write(*,*) 'VAN:radiative_gases.F90, radiative_gases_time_vary, rrvch4', rrvch4 
-!      end if
 !--------------------------------------------------------------------
 !    if time-varying n2o is desired, and the time at which variation 
 !    was to begin has been exceeded, define the gas_name variable and
@@ -2397,9 +2394,6 @@ character(len=8)     :: gas_name ! name associated with current
         if (.not. restart_present) then
           rch4 = ch4_base_value
         endif
-!        call error_mesg ( 'radiative_gases_mod', &
-!          'ch4 data_source = "predicted" is currently not supported', &
-!           FATAL)
 
 !-------------------------------------------------------------------
 !    when the data_source is 'namelist', the value of ch4 is obtained
