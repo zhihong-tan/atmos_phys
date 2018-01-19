@@ -6,13 +6,16 @@ use mpp_mod, only: mpp_pe
 
 !---- module data ----
 use atmos_co2_mod,      only: atmos_co2_rad, co2_radiation_override
+use atmos_ch4_mod,      only: atmos_ch4_rad, ch4_radiation_override
 use block_control_mod,  only: block_control_type
-use constants_mod,      only: WTMAIR, WTMCO2
+use constants_mod,      only: WTMAIR, WTMCO2, WTMCH4, WTMH2O
 use field_manager_mod,  only: MODEL_ATMOS
 use mpp_domains_mod,    only: mpp_global_sum, domain2D, &
                               NON_BITWISE_EXACT_SUM, BITWISE_EXACT_SUM
 use time_manager_mod,   only: time_type
-use tracer_manager_mod, only: get_number_tracers, get_tracer_index, NO_TRACER
+use tracer_manager_mod, only: get_number_tracers, get_tracer_index, NO_TRACER, &
+                              get_tracer_names
+use fms_mod,            only: error_mesg, FATAL
 
 !---- public data ----
 !---
@@ -72,10 +75,11 @@ contains
 !------------------------------------------------------------
     real, dimension(Atm_block%iec-Atm_block%isc+1, &
                     Atm_block%jec-Atm_block%jsc+1) :: psfc_sum, qp_sum
-    real :: qp, s1, bug_mult
+    real :: qp, s1, bug_mult, conv_moist_dry
     integer :: nb, ibs, ibe, jbs, jbe
     integer :: j, i, k, jb, ib, idx, npz
     logical :: esm2_bugs_local
+    character(len=32) :: tracer_units, tname
 
 !---the following is needed in order to allow ESM2 to reproduce a bug that
 !---existed in the fv-latlon core (atmos_fv_dynamics::fv_physics.F90)
@@ -91,8 +95,6 @@ contains
       endif
 
     npz = Atm_block%npz
-
-    Radiation%glbl_qty%gavg_q = 0.
 
 !------------------------------------------------------------------------
 !---compute global mean atmospheric mass to be used later in diagnostics
@@ -122,11 +124,37 @@ contains
     endif
 
 !------------------------------------------------------------------------
-!---check to override predicted global pressure-weighted rad co2
+!---set the value of conv_moist_dry depending on whether the tracer is in
+!---units of vmr (e.g., non-co2 tracer such as ch4) or mmr (e.g., CO2)
+!---Units of co2 are in kg/kg in the field table, therefore additional test  
+!---is added to ensure backward compatibility with code/xml using co2 tracer.  
 !------------------------------------------------------------------------
     idx = get_tracer_index(MODEL_ATMOS, trim(tracer_name))
-    if(idx /= NO_TRACER .and. co2_radiation_override) then
+    if (idx /= NO_TRACER) then
+      call get_tracer_names(MODEL_ATMOS, idx, name=tname, &
+              units=tracer_units)
+      if (trim(tracer_units) == "mmr".or.(trim(tracer_name).eq.'co2' &
+                                .and. trim(tracer_units) == "kg/kg")) then
+        conv_moist_dry = 1.0
+      elseif (trim(tracer_units) == "vmr") then
+        conv_moist_dry = WTMH2O/WTMAIR  
+      else 
+       write(*,*) trim(tracer_name), ' tracer units =',trim(tracer_units), &
+        'it should be either mmr or vmr for non-co2 tracers or kg/kg for co2!'
+        call error_mesg('compute_g_avg', 'Unsupported tracer units, units must' // &
+            'be either VMR or MMR for non-co2 tracers or kg/kg for co2 to ' // &
+	    'calculate global mean avg for radiation' //  &
+            'calculation', FATAL )
+      endif
+    endif
+
+!------------------------------------------------------------------------
+!---check to override predicted global pressure-weighted rad co2 and ch4
+!------------------------------------------------------------------------	      
+    if(idx /= NO_TRACER .and. trim(tracer_name).eq.'co2' .and. co2_radiation_override) then
       call atmos_co2_rad(Time, Radiation%glbl_qty%gavg_q(idx))
+    elseif (idx /= NO_TRACER .and. trim(tracer_name).eq.'ch4' .and. ch4_radiation_override) then
+      call atmos_ch4_rad(Time, Radiation%glbl_qty%gavg_q(idx))
     elseif (idx /= NO_TRACER) then
 
       npz = Atm_block%npz
@@ -147,12 +175,15 @@ contains
 !  ratio for tracer idx. assumption is that the tracer field q
 !  is a moist mass mixing ratio. convert to dry mass mixing ratio by
 !  dividing by (1 - qh2o).
+!++VAN if the tracer is in moist volume mixing ratio (all chemistry tracers
+!  except co2 are), divide by (1-mwh2o/mwair * q) to convert to 
+!  dry mixing ratio
 !---------------------------------------------------------------------
             qp = 0.0
             do k=1,npz
               qp = qp + Radiation%block(nb)%q(ib,jb,k,idx)* &
                         (Radiation%block(nb)%pe(ib,k+1,jb)-Radiation%block(nb)%pe(ib,k,jb)) &
-                        /(1.-bug_mult*Radiation%block(nb)%q(ib,jb,k,Radiation%control%sphum))
+                        /(1.-bug_mult*conv_moist_dry*Radiation%block(nb)%q(ib,jb,k,Radiation%control%sphum))
             enddo
             qp_sum(i,j) = qp * Radiation%glbl_qty%area(i,j)
            enddo
@@ -164,9 +195,11 @@ contains
          s1 = REAL(mpp_global_sum(Radiation%control%domain, qp_sum, flags=NON_BITWISE_EXACT_SUM),KIND=4)
        endif
        Radiation%glbl_qty%gavg_q(idx) = s1 / Radiation%glbl_qty%atm_mass
+       
 !---------------------------------------------------------------------
 !    convert the tracer dry mass mixing ratio to the dry volume
-!    mixing ratio.
+!    mixing ratio. This is not necessary for any chemistry tracers (e.g. CH4)
+!    as they are already in volume mixing ratio
 !---------------------------------------------------------------------
        if (trim(tracer_name).eq.'co2') then
           Radiation%glbl_qty%gavg_q(idx) = Radiation%glbl_qty%gavg_q(idx)*WTMAIR/WTMCO2

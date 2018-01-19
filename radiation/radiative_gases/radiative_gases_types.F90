@@ -54,7 +54,8 @@ type radiative_gases_type
                                         use_ch4_for_tf_calc, &
                                         use_n2o_for_tf_calc, &
                                         use_co2_for_tf_calc, &
-                                        use_model_supplied_co2
+                                        use_model_supplied_co2, &
+					use_model_supplied_ch4
      type(time_type)                 :: Co2_time, Ch4_time, N2o_time
      contains
         procedure :: alloc => radiative_gases_alloc
@@ -160,6 +161,7 @@ type(radiative_gases_type), intent(in)    :: Rad_gases_in
       Rad_gases_out%Ch4_time = Rad_gases_in%Ch4_time
       Rad_gases_out%N2o_time = Rad_gases_in%N2o_time
       Rad_gases_out%use_model_supplied_co2 = Rad_gases_in%use_model_supplied_co2
+      Rad_gases_out%use_model_supplied_ch4 = Rad_gases_in%use_model_supplied_ch4
 
       Rad_gases_out%co2_for_last_tf_calc = Rad_gases_in%co2_for_last_tf_calc
       Rad_gases_out%ch4_for_last_tf_calc = Rad_gases_in%ch4_for_last_tf_calc
