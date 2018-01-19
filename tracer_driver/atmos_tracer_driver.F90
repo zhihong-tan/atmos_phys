@@ -188,7 +188,10 @@ use tropchem_driver_mod,   only : tropchem_driver, &
                                   tropchem_driver_endts, &
                                   tropchem_driver_init
 use atmos_regional_tracer_driver_mod,only : regional_tracer_driver, &
-                                            regional_tracer_driver_init
+                                            regional_tracer_driver_init, &
+                                            regional_tracer_driver_time_vary, &
+                                            regional_tracer_driver_endts, &
+                                            regional_tracer_driver_end
 use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
 use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
@@ -199,6 +202,8 @@ use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
                                   atmos_co2_end
+use atmos_ch4_mod,         only : atmos_ch4_rad, &
+                                  atmos_ch4_rad_init     
 use atmos_tropopause_mod,only: &
                                   atmos_tropopause_init, &
                                   atmos_tropopause
@@ -254,6 +259,8 @@ integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
 integer :: co2_clock = 0
+integer :: ch4_clock = 0
+integer :: regional_clock = 0
 integer :: tropopause_clock = 0
 
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
@@ -281,6 +288,7 @@ integer :: nH2O2     =0
 integer :: nch3i     =0
 integer :: nage      =0
 integer :: nco2      =0
+integer :: nch4      =0
 integer :: nNH4NO3   =0
 integer :: nNH4      =0
 integer :: nDMS_cmip =0
@@ -1213,7 +1221,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
-
+		 
 !! RSH 4/8/04
 !! note that if there are no diagnostic tracers, that argument in the
 !! call to sourcesink should be made optional and omitted in the calls
@@ -1372,6 +1380,9 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          call mpp_clock_end (sf6_clock)
    endif
 
+!------------------------------------------------------------------------
+! Methyl iodide (CH3I)
+!------------------------------------------------------------------------
    if (nch3i > 0) then
          if (nch3i > ntp ) call error_mesg ('Tracer_driver', &
                             'Number of tracers < number for ch3i', FATAL)
@@ -1403,12 +1414,17 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          call mpp_clock_end (co2_clock)
    endif
 
+!------------------------------------------------------------------------
+! Regional tracer driver
+!------------------------------------------------------------------------
    if (ncodirect > 0 .or. ne90 > 0) then
       if (ncodirect > ntp .or. ne90 > ntp) call error_mesg ('Tracer_driver', &
                          'Number of tracers < number for codirect', FATAL)
+      call mpp_clock_begin (regional_clock)
       call regional_tracer_driver( lon, lat, pwt, tracer, chem_tend, &
                                    Time, phalf, is, js, kbot)
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
+      call mpp_clock_end (regional_clock)
    endif
 
 !------------------------------------------------------------------------
@@ -1678,6 +1694,7 @@ type(time_type), intent(in)                                :: Time
       nsf6      = get_tracer_index(MODEL_ATMOS,'sf6')
       nch3i     = get_tracer_index(MODEL_ATMOS,'ch3i')
       nco2      = get_tracer_index(MODEL_ATMOS,'co2')
+      nch4      = get_tracer_index(MODEL_ATMOS,'ch4')
       nDMS_cmip = get_tracer_index(MODEL_ATMOS,'DMS')
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
       nSO4_cmip = get_tracer_index(MODEL_ATMOS,'so4')
@@ -1750,8 +1767,18 @@ type(time_type), intent(in)                                :: Time
                     grain=CLOCK_MODULE )
       endif
 
+!ch4
+      if (nch4 > 0) then
+      call atmos_ch4_rad_init
+        ch4_clock = mpp_clock_id( 'Tracer: CH4', &
+                    grain=CLOCK_MODULE )
+      endif
+
+! regional tracer driver
       if (ncodirect > 0 .or. ne90 > 0) then
         call regional_tracer_driver_init (lonb, latb, axes, Time, mask)
+        regional_clock = mpp_clock_id( 'Tracer: Regional', &
+                         grain=CLOCK_MODULE )
       endif
 
 !tropopause diagnostics
@@ -2192,6 +2219,10 @@ type(time_type), intent(in) :: Time
         call atmos_co2_time_vary (Time)
       endif
 
+      if (ncodirect > 0 .or. ne90 > 0) then
+        call regional_tracer_driver_time_vary (Time)
+      endif
+
       call dry_deposition_time_vary (drydep_data, Time)
 
       if (do_tropchem) then
@@ -2226,6 +2257,9 @@ subroutine atmos_tracer_driver_endts
       if (nDMS > 0 .or. nSO2 > 0 .or. nSO4 > 0 &
                    .or. nMSA > 0 .or. nH2O2 > 0 ) then
         call atmos_sulfate_endts
+      endif
+      if (ncodirect > 0 .or. ne90 > 0) then
+        call regional_tracer_driver_endts
       endif
       call dry_deposition_endts (drydep_data)
 
@@ -2271,6 +2305,9 @@ integer :: logunit
       call atmos_carbon_aerosol_end
       if (nch3i > 0) then
         call atmos_ch3i_end
+      endif
+      if (ncodirect > 0 .or. ne90 > 0) then
+        call regional_tracer_driver_end
       endif
       call atmos_age_tracer_end
       call atmos_co2_end
