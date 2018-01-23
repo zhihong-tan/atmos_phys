@@ -370,6 +370,7 @@ integer   :: ind_dry_dep_nh4_flux = 0
 integer   :: ind_wet_dep_nh4_flux = 0
 integer   :: ind_dry_dep_no3_flux = 0
 integer   :: ind_wet_dep_no3_flux = 0
+integer   :: ind_nh3_flux = 0
 
 
 !-----------------------------------------------------------------------
@@ -2249,7 +2250,18 @@ subroutine atmos_nitrogen_flux_init
               atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
       endif
+
    endif
+
+!should be in previous if statement
+      if (do_nh3_atm_ocean_exchange .and. nnh3.gt.0) then
+         ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
+              flux_type = 'air_sea_gas_flux', implementation = 'ocmip2_test',       &
+              atm_tr_index = nnh3,                                          &
+              mol_wt = WTMN, param = (/ 9.36e-07, 9.7561e-06 /),              &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+      end if
+
 
 end subroutine atmos_nitrogen_flux_init
 
@@ -2442,7 +2454,7 @@ end subroutine atmos_tracer_flux_init
 !   </TEMPLATE>
  subroutine atmos_tracer_driver_gather_data(gas_fields, tr_bot)
 
-use coupler_types_mod, only: coupler_2d_bc_type
+use coupler_types_mod, only: coupler_2d_bc_type, ind_pcair
 
 type(coupler_2d_bc_type), intent(inout) :: gas_fields
 real, dimension(:,:,:), intent(in)      :: tr_bot
@@ -2451,6 +2463,13 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 
   call atmos_co2_gather_data(gas_fields, tr_bot)
 
+  if (ind_nh3_flux .gt. 0) then
+     if (mpp_root_pe().eq.mpp_pe()) then
+        write(*,*) 'tr_bot(nh3) min/max=',minval(tr_bot(:,:,nnh3)),maxval(tr_bot(:,:,nnh3))
+     end if
+     gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3)
+  end if
+  
 !-----------------------------------------------------------------------
 
  end subroutine atmos_tracer_driver_gather_data
@@ -2483,7 +2502,6 @@ endif
 if (ind_wet_dep_nh4_flux .gt. 0) then
   gas_fields%bc(ind_wet_dep_nh4_flux)%field(ind_pcair)%values(:,:) = wet_dep_nh4_flux(:,:)
 endif
-
 
 
  end subroutine atmos_tracer_driver_gather_data_down

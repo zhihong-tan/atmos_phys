@@ -133,7 +133,7 @@ integer :: number_SOx_tracers       = 0
 type(interpolate_type),save         ::  gas_conc_interp
 type(interpolate_type),save         ::  aerocom_emission_interp
 type(interpolate_type),save         ::  gocart_emission_interp
-type(interpolate_type),save         ::  dms_emission_interp
+type(interpolate_type),save         ::  dms_sw_interp
 type(interpolate_type),save         ::  anthro_emission_interp
 type(interpolate_type),save         ::  biobur_emission_interp
 type(interpolate_type),save         ::  ship_emission_interp
@@ -181,7 +181,7 @@ real             :: critical_sea_fraction = 0.5 ! DMS flux from sea occurs
 character(len=80)  :: runtype = 'default'
 
 character(len=80)  :: gocart_emission_filename = 'gocart_emission.nc'
-character(len=80)  :: dms_emission_filename = 'gocart_emission.nc'
+character(len=80)  :: dms_sw_filename = 'gocart_emission.nc'
 character(len=80), dimension(6) :: gocart_emission_name
 data gocart_emission_name/'DMSo','SO2_GEIA1','SO2_GEIA2', &
                        'SO4_GEIA1','SO4_GEIA2','SO2_biobur'/
@@ -263,7 +263,7 @@ namelist /simple_sulfate_nml/  &
       runtype,                         &
       aerocom_emission_filename, aerocom_emission_name,  &
       gocart_emission_filename, gocart_emission_name, &
-      gas_conc_source, gas_conc_name, gas_conc_filename, dms_emission_filename, & 
+      gas_conc_source, gas_conc_name, gas_conc_filename, dms_sw_filename, & 
         gas_conc_time_dependency_type, gas_conc_dataset_entry, &
       anthro_source, anthro_emission_name, anthro_filename,        &
         anthro_time_dependency_type, anthro_dataset_entry, &
@@ -445,8 +445,8 @@ integer :: n, m, nsulfate
                              data_out_of_bounds=  (/CONSTANT/), &
                              data_names = gocart_emission_name, &
                              vert_interp=(/INTERP_WEIGHTED_P/) )
-       call interpolator_init (dms_emission_interp, &
-                             trim(dms_emission_filename),  &
+       call interpolator_init (dms_sw_interp, &
+                             trim(dms_sw_filename),  &
                              lonb, latb,&
                              data_out_of_bounds=  (/CONSTANT/), &
                              vert_interp=(/INTERP_WEIGHTED_P/) )
@@ -1040,7 +1040,7 @@ type(time_type), intent(in) :: model_time
       call obtain_interpolator_time_slices (gocart_emission_interp, &
                                                            model_time)
 
-      call obtain_interpolator_time_slices (dms_emission_interp, &
+      call obtain_interpolator_time_slices (dms_sw_interp, &
                                                            model_time)
 
       call obtain_interpolator_time_slices (aerocom_emission_interp, &
@@ -1225,7 +1225,7 @@ subroutine atmos_sulfate_endts
 
       call unset_interpolator_time_flag (gocart_emission_interp)
 
-      call unset_interpolator_time_flag (dms_emission_interp)
+      call unset_interpolator_time_flag (dms_sw_interp)
 
       call unset_interpolator_time_flag (aerocom_emission_interp)
 
@@ -1331,7 +1331,7 @@ subroutine atmos_DMS_emission (lon, lat, area, ocn_flx_fraction, t_surf_rad, w10
       dms_dt(:,:,:) =0.0
 
       DMSo(:,:)=0.0
-      call interpolator(dms_emission_interp, Time, DMSo, &
+      call interpolator(dms_sw_interp, Time, DMSo, &
                        trim(gocart_emission_name(1)), is, js)
 ! --- Send the DMS data to the diag_manager for output.
       if (id_DMSo > 0 ) &
