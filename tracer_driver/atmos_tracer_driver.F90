@@ -2251,9 +2251,6 @@ subroutine atmos_nitrogen_flux_init
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
       endif
 
-   endif
-
-!should be in previous if statement
       if (do_nh3_atm_ocean_exchange .and. nnh3.gt.0) then
          ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
               flux_type = 'air_sea_gas_flux', implementation = 'ocmip2_test',       &
@@ -2261,6 +2258,8 @@ subroutine atmos_nitrogen_flux_init
               mol_wt = WTMN, param = (/ 9.36e-07, 9.7561e-06 /),              &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
       end if
+   endif
+
 
 
 end subroutine atmos_nitrogen_flux_init
