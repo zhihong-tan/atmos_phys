@@ -2464,7 +2464,7 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 
   if (ind_nh3_flux .gt. 0) then
      if (mpp_root_pe().eq.mpp_pe()) then
-        write(*,*) 'tr_bot(nh3) min/max=',minval(tr_bot(:,:,nnh3)),maxval(tr_bot(:,:,nnh3))
+!        write(*,*) 'tr_bot(nh3) min/max=',minval(tr_bot(:,:,nnh3)),maxval(tr_bot(:,:,nnh3))
      end if
      gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3)
   end if
