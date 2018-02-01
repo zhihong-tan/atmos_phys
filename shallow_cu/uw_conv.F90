@@ -1673,18 +1673,26 @@ contains
           end do
         end if
       end do
+
       do k=1,kmax
         do j = 1, jmax
           do i=1, imax
             am2(i,j,k)=am2(i,j,k)+am3(i,j,k)+am4(i,j,k)
             amx(i,j,k,2)=amx(i,j,k,2)+amx(i,j,k,3)+amx(i,j,k,4)
-            if(.not. use_sub_seasalt) then
-              am3(i,j,k)=am3(i,j,k)+am5(i,j,k)
-              amx(i,j,k,3)=amx(i,j,k,3)+amx(i,j,k,5)
-            end if
           end do
         end do
       end do
+
+      if(use_sub_seasalt) then
+        do k=1,kmax
+          do j = 1, jmax
+            do i=1, imax
+              am3(i,j,k)=am3(i,j,k)+am5(i,j,k)
+              amx(i,j,k,3)=amx(i,j,k,3)+amx(i,j,k,5)
+            end do
+          end do
+        end do
+      end if
     else ! use_online_aerosol
       do k=1,kmax
       !am1(:) = 0.; am2(:) = 0.; am3(:) = 0.; am4(:) = 0.; am5(:) = 0.;
