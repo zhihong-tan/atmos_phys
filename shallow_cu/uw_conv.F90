@@ -476,7 +476,7 @@ contains
        unit = OPEN_NAMELIST_FILE ()
        io = 1
        do while ( io .ne. 0 )
-          READ( unit, nml = idealized_forcing_nml, iostat = io, end = 40 )
+          READ( unit, nml = idealized_forcing_nml, iostat = io, end = 50 ) ! Should 'end' really be 40 or is that a bug?
           ierr = check_nml_error(io,'idealized_forcing_nml')
        end do
 50     call close_file ( unit )
@@ -1590,6 +1590,14 @@ contains
       enddo
     end if
 
+    do k=1,kmax
+       do j = 1, jmax
+          do i=1, imax
+             pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
+          enddo
+       enddo
+    enddo
+
     do j = 1, jmax
        do i=1, imax
 
@@ -2259,8 +2267,8 @@ contains
                                     (vb(:,:,:) + half_delt*vten(:,:,:))*vten(:,:,:))*cp_inv
         !tten(:,:,:) = tten(:,:,:) + dissipative_heat(:,:,:)
     else
-        uten=0.;
-        vten=0.;
+        uten=0.
+        vten=0.
     end if
 
     if ( prevent_unreasonable ) then
@@ -2380,22 +2388,27 @@ contains
       dgz_conv_int(:,:,:)= Uw_p%grav*(zmid_n(:,:,:)-zmid(:,:,:))/delt * pmass(:,:,:)
       tdt_conv_int(:,:,:)= Uw_p%cp_air * tten(:,:,:) * pmass(:,:,:)
       qdt_conv_int(:,:,:)=(Uw_p%HLv*qvten(:,:,:) - Uw_p%HLf*qiten(:,:,:)) * pmass(:,:,:)
-      do k=2, kmax
-        dgz_conv_int(:,:,k)= dgz_conv_int(:,:,k)+dgz_conv_int(:,:,k-1)
-        tdt_conv_int(:,:,k)= tdt_conv_int(:,:,k)+tdt_conv_int(:,:,k-1)
-        qdt_conv_int(:,:,k)= qdt_conv_int(:,:,k)+qdt_conv_int(:,:,k-1)
+      do k=1, kmax-1
+        dgz_conv_int(:,:,k+1)= dgz_conv_int(:,:,k+1)+dgz_conv_int(:,:,k)
+        tdt_conv_int(:,:,k+1)= tdt_conv_int(:,:,k+1)+tdt_conv_int(:,:,k)
+        qdt_conv_int(:,:,k+1)= qdt_conv_int(:,:,k+1)+qdt_conv_int(:,:,k)
       end do
       hdt_conv_int(:,:,:) = tdt_conv_int(:,:,:)+qdt_conv_int(:,:,:)+dgz_conv_int(:,:,:)
     endif !do_mse_budget
 
-    do i=1,imax
-       do j=1,jmax
-          cush(i,j) = cush_s(i,j)
-          if (cush_s(i,j) .gt. 0) feq_s(i,j)=1.;
-          if (cush_d(i,j) .gt. 0) feq_d(i,j)=1.;
-          do k=1,kmax
-             cfq_s(i,j,k) = 0.
-             cfq_d(i,j,k) = 0.
+    cush(:,:) = cush_s(:,:)
+    do j = 1,jmax
+       do i = 1,imax
+          if (cush_s(i,j) .gt. 0) feq_s(i,j)=1.
+          if (cush_d(i,j) .gt. 0) feq_d(i,j)=1.
+       enddo
+    enddo
+
+    cfq_s(:,:,:) = 0.
+    cfq_d(:,:,:) = 0.
+    do k = 1,kmax
+       do j = 1,jmax
+          do i = 1,imax
              if (cmf_s(i,j,k) .gt. 0.) cfq_s(i,j,k) = 1.
              if (cmf_d(i,j,k) .gt. 0.) cfq_d(i,j,k) = 1.
           enddo
@@ -2404,16 +2417,16 @@ contains
 
     if (do_imposing_rad_cooling) then
       tten_rad(:,:,:) = 0.0
-      do j = 1,jmax
-         do i=1,imax
-           do k = 1,kmax
-              if (tb(i,j,k) .gt. t_thresh) then
-                tten_rad (i,j,k) = cooling_rate/86400.
-              else
-                tten_rad (i,j,k) = (t_strato-tb(i,j,k))/(tau_rad*86400.)
-              end if
-           enddo
-         enddo
+      do k = 1,kmax
+        do j = 1,jmax
+          do i=1,imax
+            if (tb(i,j,k) .gt. t_thresh) then
+              tten_rad (i,j,k) = cooling_rate/86400.
+            else
+              tten_rad (i,j,k) = (t_strato-tb(i,j,k))/(tau_rad*86400.)
+            end if
+          enddo
+        enddo
       enddo
 !      used = send_data( id_tten_rad_uwc,tten_rad*aday,Time, is, js, 1)
     end if
@@ -2421,34 +2434,39 @@ contains
     if (do_imposing_forcing) then
       tten_forc(:,:,:) = 0.0
       qten_forc(:,:,:) = 0.0
-      do j = 1,jmax
-        do i=1,imax
-           tten_forc(i,j,:)=0;
-           qten_forc(i,j,:)=0;
-           if (use_klevel) then
-             k = klevel
-             tten_forc(i,j,k)=tdt_rate/86400.
-             qten_forc(i,j,k)=qdt_rate/86400.
-           else
-             kbot_tmp=1;
-             ktop_tmp=kmax;
-             do k=1,kmax
-               if (pmid(i,j,k)>=7500) then
-                 ktop_tmp=k
-               end if
-               if (pmid(i,j,k)>=85000) then
-                 kbot_tmp=k
-               end if
-             enddo
-             do k = kbot_tmp,ktop_tmp
-                if (pmid(i,j,k)>pres_min .and. pmid(i,j,k)<=pres_max) then
-                   tten_forc(i,j,k)=tdt_rate/86400.
-                   qten_forc(i,j,k)=qdt_rate/86400.
-                end if
-             enddo
-           end if
+      if (use_klevel) then
+        k = klevel
+        do j = 1,jmax
+          do i=1,imax
+            tten_forc(i,j,k)=tdt_rate/86400.
+            qten_forc(i,j,k)=qdt_rate/86400.
+          enddo
         enddo
-      enddo
+      else
+        ! Strided memory accesses here, but k depends on i and j
+        do j = 1,jmax
+          do i=1,imax
+            kbot_tmp = 1
+            ktop_tmp = kmax
+            do k=1,kmax
+              if (pmid(i,j,k)>=7500) then
+                ktop_tmp = k
+              end if
+              if (pmid(i,j,k)>=85000) then
+                kbot_tmp = k
+              end if
+            enddo
+            do k = kbot_tmp,ktop_tmp
+              if (pmid(i,j,k)>pres_min .and. pmid(i,j,k)<=pres_max) then
+                tten_forc(i,j,k)=tdt_rate/86400.
+                qten_forc(i,j,k)=qdt_rate/86400.
+              end if
+            enddo
+          enddo
+        enddo
+      end if
+
+
       used = send_data( id_tdt_forc_uwc,tten_forc*aday,Time, is, js, 1)
       used = send_data( id_qdt_forc_uwc,qten_forc*aday,Time, is, js, 1)
     end if
@@ -2814,28 +2832,20 @@ contains
     end if
 
     if (do_imposing_rad_cooling) then
-      do j = 1,jmax
-         do i=1,imax
-           tten(i,j,:) = tten (i,j,:) + tten_rad (i,j,:)
-         enddo
-       enddo
+       tten(:,:,:) = tten (:,:,:) + tten_rad (:,:,:)
     end if
 
     if (do_imposing_forcing) then
-       do j = 1,jmax
-          do i=1,imax
-             tten (i,j,:) = tten (i,j,:) + tten_forc(i,j,:)
-             qvten(i,j,:) = qvten(i,j,:) + qten_forc(i,j,:)
-          enddo
-        enddo
+       tten (:,:,:) = tten (:,:,:) + tten_forc(:,:,:)
+       qvten(:,:,:) = qvten(:,:,:) + qten_forc(:,:,:)
     end if
 
     if (do_mse_budget) then
-      do j = 1,jmax
-        do i=1,imax
-          hten(i,j)=0
-          do k=1,kmax
-             hten(i,j)=hten(i,j)+(cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
+      hten(:,:) = 0
+      do k = 1,kmax
+        do j = 1,jmax
+          do i = 1,imax
+            hten(i,j) = hten(i,j) + (cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
           enddo
         enddo
       enddo
