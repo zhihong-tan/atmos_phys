@@ -2360,14 +2360,27 @@ contains
               qiten(i,j,k)  = scale_uw(i,j) * qiten(i,j,k)
               qaten(i,j,k)  = scale_uw(i,j) * qaten(i,j,k)
               if (do_qn) qnten(i,j,k) = scale_uw(i,j) * qnten(i,j,k)
-              if (k.eq.kmax) then
-                rain(i,j) = scale_uw(i,j) * rain(i,j)
-                snow(i,j) = scale_uw(i,j) * snow(i,j)
-                rain_d(i,j)=scale_uw(i,j) * rain_d(i,j)
-                snow_d(i,j)=scale_uw(i,j) * snow_d(i,j)
-                cpool(i,j)= scale_uw(i,j) * cpool(i,j)
-              endif
             end do
+          end do
+        end do
+
+        if (do_qn) then
+          do k=1,kmax
+            do j=1,jmax
+              do i=1,imax
+                qnten(i,j,k) = scale_uw(i,j) * qnten(i,j,k)
+              end do
+            end do
+          end do
+        endif
+
+        do j=1,jmax
+          do i=1,imax
+            rain(i,j) = scale_uw(i,j) * rain(i,j)
+            snow(i,j) = scale_uw(i,j) * snow(i,j)
+            rain_d(i,j)=scale_uw(i,j) * rain_d(i,j)
+            snow_d(i,j)=scale_uw(i,j) * snow_d(i,j)
+            cpool(i,j)= scale_uw(i,j) * cpool(i,j)
           end do
         end do
       end if
