@@ -2231,18 +2231,20 @@ contains
 200       if (do_prog_gust) then
              gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
           endif
-
-!subtract parameterized convective mass flux
-          do k = 1,kmax
-             tmp=cmf(i,j,k)*Uw_p%grav;
-             if ((-omega_up(i,j,k).gt.tmp) .and. (tmp.gt.0)) then
-                omgmc_up(i,j,k) = omega_up(i,j,k)+tmp;
-             else
-                omgmc_up(i,j,k) = omega_up(i,j,k);
-             endif
-          enddo
-
        enddo
+    enddo
+!subtract parameterized convective mass flux
+    do k = 1,kmax
+      do j = 1,jmax
+        do i = 1,imax
+          tmp=cmf(i,j,k)*Uw_p%grav;
+          if ((-omega_up(i,j,k).gt.tmp) .and. (tmp.gt.0)) then
+            omgmc_up(i,j,k) = omega_up(i,j,k)+tmp
+          else
+            omgmc_up(i,j,k) = omega_up(i,j,k)
+          endif
+        enddo
+      enddo
     enddo
 
     call sd_end_k(sd)
