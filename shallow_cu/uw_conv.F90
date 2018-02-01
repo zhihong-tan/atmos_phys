@@ -1307,8 +1307,9 @@ contains
     integer :: seedperm = 0
  !========Option for deep convection=======================================
 
-    real, dimension(size(tb,3)) :: am1, am2, am3, am4, am5, qntmp
-    real, dimension(size(tb,3),5) :: amx
+    real, dimension(size(tb,3)) :: qntmp
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: am1, am2, am3, am4, am5
+    real, dimension(size(tb,1),size(tb,2),size(tb,3),5) :: amx
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: pmass    ! layer mass (kg/m2)
     real, dimension(size(tb,1),size(tb,2))            :: tempdiag ! temporary diagnostic variable
@@ -1527,7 +1528,7 @@ contains
 
     cqa  =0.; cql  =0.; cqi  =0.; cqn  =0.;
     cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
-    hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.; amx=0.;
+    hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.; am5=0.; amx=0.;
     tten_pevap=0.; qvten_pevap=0.; temp=0.;
     ice_pflx = 0. ; liq_pflx = 0.; qtflx_up=0.; qtflx_dn=0.;
     omega_up=0.; omega_dn=0.; omgmc_up=0.;
@@ -1598,6 +1599,115 @@ contains
        enddo
     enddo
 
+
+    if(use_online_aerosol) then
+      do na = 1,naer
+        if(asol%aerosol_names(na) == 'so4' .or. &
+           asol%aerosol_names(na) == 'so4_anthro' .or. &
+           asol%aerosol_names(na) == 'so4_natural') then     !aerosol unit: kg/m2
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp1=1./pmass(i,j,k)
+                am1(i,j,k)=am1(i,j,k)+asol%aerosol(i,j,k,na)*tmp  !am1 unit: g/cm3
+                amx(i,j,k,1)=amx(i,j,k,1)+asol%aerosol(i,j,k,na)*tmp1  !amx unit: kg/kg
+              end do
+            end do
+          end do
+        else if(asol%aerosol_names(na) == 'omphilic' .or. &
+                asol%aerosol_names(na) == 'omphobic') then
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp1=1./pmass(i,j,k)
+                am4(i,j,k)=am4(i,j,k)+asol%aerosol(i,j,k,na)*tmp
+                amx(i,j,k,4)=amx(i,j,k,4)+asol%aerosol(i,j,k,na)*tmp1
+              end do
+            end do
+          end do
+        else if(asol%aerosol_names(na) == 'bcphilic' .or. &
+                asol%aerosol_names(na) == 'bcphobic' .or. &
+                asol%aerosol_names(na) == 'dust1' .or. &
+                asol%aerosol_names(na) == 'dust2' .or. &
+                asol%aerosol_names(na) == 'dust3' .or. &
+                asol%aerosol_names(na) == 'dust_mode1_of_2') then   !h1g, 2015-09-19
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp1=1./pmass(i,j,k)
+                am2(i,j,k)=am2(i,j,k)+asol%aerosol(i,j,k,na)*tmp
+                amx(i,j,k,2)=amx(i,j,k,2)+asol%aerosol(i,j,k,na)*tmp1
+              end do
+            end do
+          end do
+        else if(asol%aerosol_names(na) == 'seasalt1' .or. &
+                asol%aerosol_names(na) == 'seasalt2' .or. &
+                asol%aerosol_names(na) == 'seasalt_aitken' .or. &   !h1g, 2015-09-19
+                asol%aerosol_names(na) == 'seasalt_fine'  ) then    !h1g, 2015-09-19
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp1=1./pmass(i,j,k)
+                am3(i,j,k)=am3(i,j,k)+asol%aerosol(i,j,k,na)*tmp
+                amx(i,j,k,3)=amx(i,j,k,3)+asol%aerosol(i,j,k,na)*tmp1
+              end do
+            end do
+          end do
+        else if(asol%aerosol_names(na) == 'seasalt3' .or. &
+                asol%aerosol_names(na) == 'seasalt4' .or. &
+                asol%aerosol_names(na) == 'seasalt5' .or. &
+                asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp1=1./pmass(i,j,k)
+                am5(i,j,k)=am5(i,j,k)+asol%aerosol(i,j,k,na)*tmp
+                amx(i,j,k,5)=amx(i,j,k,5)+asol%aerosol(i,j,k,na)*tmp1
+              end do
+            end do
+          end do
+        end if
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            am2(i,j,k)=am2(i,j,k)+am3(i,j,k)+am4(i,j,k)
+            amx(i,j,k,2)=amx(i,j,k,2)+amx(i,j,k,3)+amx(i,j,k,4)
+            if(.not. use_sub_seasalt) then
+              am3(i,j,k)=am3(i,j,k)+am5(i,j,k)
+              amx(i,j,k,3)=amx(i,j,k,3)+amx(i,j,k,5)
+            end if
+          end do
+        end do
+      end do
+    else ! use_online_aerosol
+      do k=1,kmax
+      !am1(:) = 0.; am2(:) = 0.; am3(:) = 0.; am4(:) = 0.; am5(:) = 0.;
+      !amx(:,:)=0. !amx contains mixing ratio (kg/kg)
+        do j = 1, jmax
+          do i=1, imax
+            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+            tmp1=1./pmass(i,j,k)
+
+            am1(i,j,k)= asol%aerosol(i,j,k,2)*tmp
+            am2(i,j,k)= asol%aerosol(i,j,k,1)*tmp
+            am3(i,j,k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
+            am4(i,j,k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp
+            amx(i,j,k,1)= asol%aerosol(i,j,k,2)*tmp1
+            amx(i,j,k,2)= asol%aerosol(i,j,k,1)*tmp1
+            amx(i,j,k,3)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp1
+            amx(i,j,k,4)= om_to_oc*asol%aerosol(i,j,k,3)*tmp1
+          end do
+        end do
+      end do
+    endif
+
+
     do j = 1, jmax
        do i=1, imax
 
@@ -1640,62 +1750,6 @@ contains
           cush(i,j) = -1.;
           if(cc%scaleh.le.0.0) cc%scaleh=1000.
 
-          am1(:) = 0.; am2(:) = 0.; am3(:) = 0.; am4(:) = 0.; am5(:) = 0.;
-          amx(:,:)=0. !amx contains mixing ratio (kg/kg)
-
-          do k=1,kmax
-            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
-            tmp1=1./pmass(i,j,k)
-            if(use_online_aerosol) then
-              do na = 1,naer
-                if(asol%aerosol_names(na) == 'so4' .or. &
-                   asol%aerosol_names(na) == 'so4_anthro' .or. &
-                   asol%aerosol_names(na) == 'so4_natural') then     !aerosol unit: kg/m2
-                           am1(k)=am1(k)+asol%aerosol(i,j,k,na)*tmp  !am1 unit: g/cm3
-                           amx(k,1)=amx(k,1)+asol%aerosol(i,j,k,na)*tmp1  !am1 unit: kg/kg
-                else if(asol%aerosol_names(na) == 'omphilic' .or. &
-                        asol%aerosol_names(na) == 'omphobic') then
-                           am4(k)=am4(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,4)=amx(k,4)+asol%aerosol(i,j,k,na)*tmp1
-                else if(asol%aerosol_names(na) == 'bcphilic' .or. &
-                        asol%aerosol_names(na) == 'bcphobic' .or. &
-                        asol%aerosol_names(na) == 'dust1' .or. &
-                        asol%aerosol_names(na) == 'dust2' .or. &
-                        asol%aerosol_names(na) == 'dust3' .or. &
-                        asol%aerosol_names(na) == 'dust_mode1_of_2') then   !h1g, 2015-09-19
-                           am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,2)=amx(k,2)+asol%aerosol(i,j,k,na)*tmp1
-                else if(asol%aerosol_names(na) == 'seasalt1' .or. &
-                        asol%aerosol_names(na) == 'seasalt2' .or. &
-                        asol%aerosol_names(na) == 'seasalt_aitken' .or. &   !h1g, 2015-09-19
-                        asol%aerosol_names(na) == 'seasalt_fine'  ) then    !h1g, 2015-09-19
-                           am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,3)=amx(k,3)+asol%aerosol(i,j,k,na)*tmp1
-                else if(asol%aerosol_names(na) == 'seasalt3' .or. &
-                        asol%aerosol_names(na) == 'seasalt4' .or. &
-                        asol%aerosol_names(na) == 'seasalt5' .or. &
-                        asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
-                           am5(k)=am5(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,5)=amx(k,5)+asol%aerosol(i,j,k,na)*tmp1
-                end if
-              end do
-              am2(k)=am2(k)+am3(k)+am4(k)
-              amx(k,2)=amx(k,2)+amx(k,3)+amx(k,4)
-              if(.not. use_sub_seasalt) then
-                am3(k)=am3(k)+am5(k)
-                amx(k,3)=amx(k,3)+amx(k,5)
-              end if
-            else
-              am1(k)= asol%aerosol(i,j,k,2)*tmp
-              am2(k)= asol%aerosol(i,j,k,1)*tmp
-              am3(k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
-              am4(k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp
-              amx(k,1)= asol%aerosol(i,j,k,2)*tmp1
-              amx(k,2)= asol%aerosol(i,j,k,1)*tmp1
-              amx(k,3)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp1
-              amx(k,4)= om_to_oc*asol%aerosol(i,j,k,3)*tmp1
-            endif
-          end do
 
 !========Pack column properties into a sounding structure====================
 
@@ -1709,7 +1763,7 @@ contains
           call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),    &
           zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), omega(i,j,:), tb(i,j,:), &
           qv(i,j,:), qtr(i,j,:,nql), qtr(i,j,:,nqi), qtr(i,j,:,nqa), qntmp,        &
-          am1(:), am2(:), am3(:), am4(:), amx(:,:), tracers(i,j,:,:), src_choice,  &
+          am1(i,j,:), am2(i,j,:), am3(i,j,:), am4(i,j,:), amx(i,j,:,:), tracers(i,j,:,:), src_choice,  &
           tdt_rad(i,j,:), tdt_dyn(i,j,:), qvdt_dyn(i,j,:), qidt_dyn(i,j,:),        &
           dgz_dyn(i,j,:), ddp_dyn(i,j,:), tdt_dif(i,j,:), dgz_phy(i,j,:),          &
           qvdt_dif(i,j,:), qidt_dif(i,j,:), sd, Uw_p)
