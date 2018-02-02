@@ -1731,29 +1731,33 @@ contains
     endif ! use_online_aerosol
 
 
-    do j = 1, jmax
-       do i=1, imax
-
-         trtend_t=0.; trwet_t=0.;
     !relaxation TKE back to 0 with time-scale of disscale
     !tkeavg = ustar(i,j)*bstar(i,j)*disscale
     !dissipate tke with length-scale of disscale
     !tkeavg=(ustar(i,j)*bstar(i,j)*disscale)**(2./3.)
     !below following Holtslag and Boville 1993
+    do j = 1, jmax
+       do i=1, imax
+        if (pblht(i,j).lt.0.) then
+          temp_1=0.0
+        elseif (pblht(i,j).gt.5000.) then
+          temp_1=5000.
+        else
+          temp_1=pblht(i,j)
+        endif
 
-         if (pblht(i,j).lt.0.) then
-            temp_1=0.0
-         elseif (pblht(i,j).gt.5000.) then
-            temp_1=5000.
-         else
-            temp_1=pblht(i,j)
-         endif
+!        bflux(i,j) = 0.5*(0.6*ustar(i,j)*bstar(i,j)*temp_1)**(2./3.)
+        temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
+        if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
+        tkeo(i,j) = MAX (tkemin, temp_1)
+      end do
+    end do
 
-!         bflux(i,j) = 0.5*(0.6*ustar(i,j)*bstar(i,j)*temp_1)**(2./3.)
-         temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
-         if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
-         tkeo(i,j) = MAX (tkemin, temp_1)
 
+    do j = 1, jmax
+       do i=1, imax
+
+         trtend_t=0.; trwet_t=0.;
          cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
            ocode(i,j) = 6
