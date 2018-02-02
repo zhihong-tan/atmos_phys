@@ -1720,9 +1720,6 @@ contains
        do i=1, imax
 
          trtend_t=0.; trwet_t=0.;
-         do k=1,kmax
-           pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
-         enddo
     !relaxation TKE back to 0 with time-scale of disscale
     !tkeavg = ustar(i,j)*bstar(i,j)*disscale
     !dissipate tke with length-scale of disscale
