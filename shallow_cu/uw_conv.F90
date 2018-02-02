@@ -2451,7 +2451,6 @@ contains
               qlten(i,j,k)  = scale_uw(i,j) * qlten(i,j,k)
               qiten(i,j,k)  = scale_uw(i,j) * qiten(i,j,k)
               qaten(i,j,k)  = scale_uw(i,j) * qaten(i,j,k)
-              if (do_qn) qnten(i,j,k) = scale_uw(i,j) * qnten(i,j,k)
             end do
           end do
         end do
