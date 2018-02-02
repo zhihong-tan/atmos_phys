@@ -1326,6 +1326,7 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: dissipative_heat
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tdt_dif
     real  :: latx, lonx, lat1b, lat1e, lon1b, lon1e, lat2b, lat2e, lon2b, lon2e
+    logical, dimension(size(tb,1),size(tb,2))         :: skip_to_200 ! flag to replace 'goto 200'
 
     logical used
     type(sounding)          :: sd, sd1
@@ -1973,7 +1974,8 @@ contains
           end if
           if (do_eis_limitn) then
              if (sd%eis .gt. eis_max) then
-               ocode(i,j)=10; cbmf_shallow=0.; cycle
+               ocode(i,j)=10; cbmf_shallow=0.;
+               skip_to_200(i,j) = .true.; cycle
              end if
           end if
           if (do_lts_limit) then
@@ -1983,7 +1985,8 @@ contains
           end if
           if (do_lts_limitn) then
              if (sd%lts .gt. eis_max) then
-               ocode(i,j)=10; cbmf_shallow=0.; cycle
+               ocode(i,j)=10; cbmf_shallow=0.;
+               skip_to_200(i,j) = .true.; cycle
              end if
           end if
 
@@ -2239,9 +2242,9 @@ contains
 !                                              cp1%tr, trtend_t, trwet_t)
              call check_tracer_realizability (kmax, size(trtend,4), delt, &
                                               cp1%tr, trtend_t, trwet_t, pmass(i,j,:), tracer_check_type, rn = rn    )
-             do k = 1,kmax!cp1%ltop
-               nk = kmax+1-k
-               do n = 1, size(trtend,4)
+             do n = 1, size(trtend,4)
+               do k = 1,kmax!cp1%ltop
+                 nk = kmax+1-k
                  trtend(i,j,nk,n) = trtend_t(k,n) + trwet_t(k,n)
                  trwet(i,j,nk,n)  = trwet_t(k,n)
 !f1p
@@ -2251,86 +2254,107 @@ contains
                enddo
              enddo
 
-             uten  (i,j,:) = uten  (i,j,:) + uten_d  (i,j,:)
-             vten  (i,j,:) = vten  (i,j,:) + vten_d  (i,j,:)
-             qlten (i,j,:) = qlten (i,j,:) + qlten_d (i,j,:)
-             qiten (i,j,:) = qiten (i,j,:) + qiten_d (i,j,:)
-             qaten (i,j,:) = qaten (i,j,:) + qaten_d (i,j,:)
-             qnten (i,j,:) = qnten (i,j,:) + qnten_d (i,j,:)
-             qvten (i,j,:) = qvten (i,j,:) + qvten_d (i,j,:)
-             tten  (i,j,:) = tten  (i,j,:) + tten_d  (i,j,:)
-             pflx  (i,j,:) = pflx  (i,j,:) + pflx_d  (i,j,:)
-             hlflx (i,j,:) = hlflx (i,j,:) + hlflx_d (i,j,:)
-             qtflx (i,j,:) = qtflx (i,j,:) + qtflx_d (i,j,:)
-             nqtflx(i,j,:) = nqtflx(i,j,:) + nqtflx_d(i,j,:)
-             cmf   (i,j,:) = cmf_s (i,j,:) + cmf_d   (i,j,:)
-             tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:)
-             qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:)
-
-             if (do_new_convcld) then
-                cqa(kmax+1)=0.; cql(kmax+1)=0.; cqi(kmax+1)=0.; cqn(kmax+1)=0.;
-                do k = 1,kmax
-                   cqa(k) =cqa_s(i,j,k)+cqa_d(i,j,k)
-                   if (cqa(k).ne.0.) then
-                      cql(k)=(cql_s(i,j,k)*cqa_s(i,j,k)+cql_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
-                      cqi(k)=(cqi_s(i,j,k)*cqa_s(i,j,k)+cqi_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
-                      cqn(k)=(cqn_s(i,j,k)*cqa_s(i,j,k)+cqn_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
-                   else
-                      cql(k)=0.
-                      cqi(k)=0.
-                      cqn(k)=0.
-                   end if
-                   cqa(k) = min(cqa(k),1.0)
-                end do
-                do k = 1,kmax
-                   cldqa(i,j,k)=(cqa(k)+cqa(k+1))*0.5
-                   cldql(i,j,k)=(cql(k)+cql(k+1))*0.5
-                   cldqi(i,j,k)=(cqi(k)+cqi(k+1))*0.5
-                   cldqn(i,j,k)=(cqn(k)+cqn(k+1))*0.5
-                end do
-
-                do k = 1,kmax
-                   cltc (i,j) = max(cltc(i,j),cldqa(i,j,k)) !assuming maximum overlap
-                end do
-             end if
-
-             snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
-             rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
-             denth (i,j)  = denth (i,j) + denth_d (i,j)
-             dting (i,j)  = dting (i,j) + dting_d (i,j)
-             dqtmp (i,j)  = dqtmp (i,j) + dqtmp_d (i,j)
              cpool (i,j)  = cpool (i,j) + ct1%cpool
-
-             feq_c (i,j)  = max(feq_s(i,j), feq_d(i,j))
-             pcb_c (i,j)  = max(pcb_s(i,j), pcb_d(i,j))
-             pct_c (i,j)  = min(max(pct_s(i,j),0.), max(pct_d(i,j),0.))
              !cbmfo (i,j)  = cc%cbmf
              !cwfno (i,j)  = cc%cwfn
           end if
         enddo
       enddo
+
+      if (do_deep) then
+        do k = 1,kmax
+          do j = 1,jmax
+            do i = 1,imax
+              if(skip_to_200(i,j) .eq. .true.) cycle
+              uten  (i,j,k) = uten  (i,j,k) + uten_d  (i,j,k)
+              vten  (i,j,k) = vten  (i,j,k) + vten_d  (i,j,k)
+              qlten (i,j,k) = qlten (i,j,k) + qlten_d (i,j,k)
+              qiten (i,j,k) = qiten (i,j,k) + qiten_d (i,j,k)
+              qaten (i,j,k) = qaten (i,j,k) + qaten_d (i,j,k)
+              qnten (i,j,k) = qnten (i,j,k) + qnten_d (i,j,k)
+              qvten (i,j,k) = qvten (i,j,k) + qvten_d (i,j,k)
+              tten  (i,j,k) = tten  (i,j,k) + tten_d  (i,j,k)
+              pflx  (i,j,k) = pflx  (i,j,k) + pflx_d  (i,j,k)
+              hlflx (i,j,k) = hlflx (i,j,k) + hlflx_d (i,j,k)
+              qtflx (i,j,k) = qtflx (i,j,k) + qtflx_d (i,j,k)
+              nqtflx(i,j,k) = nqtflx(i,j,k) + nqtflx_d(i,j,k)
+              cmf   (i,j,k) = cmf_s (i,j,k) + cmf_d   (i,j,k)
+              tten_pevap (i,j,k)=tten_pevap (i,j,k) + tten_pevap_d (i,j,k)
+              qvten_pevap(i,j,k)=qvten_pevap(i,j,k) + qvten_pevap_d(i,j,k)
+            enddo
+          enddo
+        enddo
+
+        do j = 1,jmax
+          do i = 1,imax
+            if(skip_to_200(i,j) .eq. .true.) cycle
+            snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
+            rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
+            denth (i,j)  = denth (i,j) + denth_d (i,j)
+            dting (i,j)  = dting (i,j) + dting_d (i,j)
+            dqtmp (i,j)  = dqtmp (i,j) + dqtmp_d (i,j)
+
+            feq_c (i,j)  = max(feq_s(i,j), feq_d(i,j))
+            pcb_c (i,j)  = max(pcb_s(i,j), pcb_d(i,j))
+            pct_c (i,j)  = min(max(pct_s(i,j),0.), max(pct_d(i,j),0.))
+          enddo
+        enddo
+
+        if (do_new_convcld) then
+          do j = 1,jmax
+            do i = 1,imax
+              if(skip_to_200(i,j) .eq. .true.) cycle
+              cqa(kmax+1)=0.; cql(kmax+1)=0.; cqi(kmax+1)=0.; cqn(kmax+1)=0.;
+              do k = 1,kmax
+                cqa(k) =cqa_s(i,j,k)+cqa_d(i,j,k)
+                if (cqa(k).ne.0.) then
+                  cql(k)=(cql_s(i,j,k)*cqa_s(i,j,k)+cql_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+                  cqi(k)=(cqi_s(i,j,k)*cqa_s(i,j,k)+cqi_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+                  cqn(k)=(cqn_s(i,j,k)*cqa_s(i,j,k)+cqn_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+                else
+                  cql(k)=0.
+                  cqi(k)=0.
+                  cqn(k)=0.
+                end if
+                cqa(k) = min(cqa(k),1.0)
+              end do
+              do k = 1,kmax
+                cldqa(i,j,k)=(cqa(k)+cqa(k+1))*0.5
+                cldql(i,j,k)=(cql(k)+cql(k+1))*0.5
+                cldqi(i,j,k)=(cqi(k)+cqi(k+1))*0.5
+                cldqn(i,j,k)=(cqn(k)+cqn(k+1))*0.5
+              end do
+
+              do k = 1,kmax
+                cltc (i,j) = max(cltc(i,j),cldqa(i,j,k)) !assuming maximum overlap
+              end do
+            enddo
+          enddo
+        end if
+      end if
 !========End of do_deep, Option for deep convection=======================================
 
-    if (do_prog_gust) then
-      do j = 1,jmax
-        do i = 1,imax
-          gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
+!200
+      if (do_prog_gust) then
+        do j = 1,jmax
+          do i = 1,imax
+            gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
+          enddo
         enddo
-      enddo
-    endif
+      endif
 !subtract parameterized convective mass flux
-    do k = 1,kmax
-      do j = 1,jmax
-        do i = 1,imax
-          tmp=cmf(i,j,k)*Uw_p%grav;
-          if ((-omega_up(i,j,k).gt.tmp) .and. (tmp.gt.0)) then
-            omgmc_up(i,j,k) = omega_up(i,j,k)+tmp
-          else
-            omgmc_up(i,j,k) = omega_up(i,j,k)
-          endif
+      do k = 1,kmax
+        do j = 1,jmax
+          do i = 1,imax
+            tmp=cmf(i,j,k)*Uw_p%grav;
+            if ((-omega_up(i,j,k).gt.tmp) .and. (tmp.gt.0)) then
+              omgmc_up(i,j,k) = omega_up(i,j,k)+tmp
+            else
+              omgmc_up(i,j,k) = omega_up(i,j,k)
+            endif
+          enddo
         enddo
       enddo
-    enddo
 
     call sd_end_k(sd)
     call sd_end_k(sd1)
