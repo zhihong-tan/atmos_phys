@@ -84,13 +84,14 @@ logical :: ulm_ssalt_deposition=.false.  ! Ulm backward compatibility flag
 
 logical :: do_sst_seasalt = .false. !turn on Jaeglye sst dependence of seasalt emissions
 !Jaegle, L., Quinn, P. K., Bates, T. S., Alexander, B., and Lin, J.-T.: Global distribution of sea salt aerosols: new constraints from in situ and remote sensing observations, Atmos. Chem. Phys., 11, 3137-3157, https://doi.org/10.5194/acp-11-3137-2011, 2011.
+real    :: min_tc_scale = 0.,max_tc_scale=30.
 
 logical            :: ssalt_debug = .false.
 integer            :: logunit
 namelist /ssalt_nml/  scheme, coef_emis1, coef_emis2, &
                       coef_emis_fine, coef_emis_coarse, &
                       critical_sea_fraction, ulm_ssalt_deposition, &
-                      use_sj_sedimentation_solver, ssalt_debug, do_sst_seasalt
+                      use_sj_sedimentation_solver, ssalt_debug, do_sst_seasalt,min_tc_scale,max_tc_scale
 
 !-----------------------------------------------------------------------
 integer, parameter :: nrh= 65   ! number of RH in look-up table
@@ -366,7 +367,7 @@ subroutine atmos_seasalt_sourcesink1 ( &
                    else
                       kb=kd
                    endif
-                   sst = max(min(t(i,j,kb)-273.15,30.),0.)
+                   sst = max(min(t(i,j,kb)-273.15,max_tc_scale),min_tc_scale)
                    scale_sst(i,j)    = 0.329+0.0904*sst-0.00717*sst**2 + 0.000207*sst**3
                    seasalt_emis(i,j) = seasalt_emis(i,j)*scale_sst(i,j)
                 end if
