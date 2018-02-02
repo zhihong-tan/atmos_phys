@@ -1973,7 +1973,7 @@ contains
           end if
           if (do_eis_limitn) then
              if (sd%eis .gt. eis_max) then
-               ocode(i,j)=10; cbmf_shallow=0.; goto 200
+               ocode(i,j)=10; cbmf_shallow=0.; cycle
              end if
           end if
           if (do_lts_limit) then
@@ -1983,7 +1983,7 @@ contains
           end if
           if (do_lts_limitn) then
              if (sd%lts .gt. eis_max) then
-               ocode(i,j)=10; cbmf_shallow=0.; goto 200
+               ocode(i,j)=10; cbmf_shallow=0.; cycle
              end if
           end if
 
@@ -2307,13 +2307,17 @@ contains
              !cbmfo (i,j)  = cc%cbmf
              !cwfno (i,j)  = cc%cwfn
           end if
+        enddo
+      enddo
 !========End of do_deep, Option for deep convection=======================================
 
-200       if (do_prog_gust) then
-             gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
-          endif
-       enddo
-    enddo
+    if (do_prog_gust) then
+      do j = 1,jmax
+        do i = 1,imax
+          gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
+        enddo
+      enddo
+    endif
 !subtract parameterized convective mass flux
     do k = 1,kmax
       do j = 1,jmax
