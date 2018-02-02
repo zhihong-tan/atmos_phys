@@ -1599,7 +1599,7 @@ contains
        enddo
     enddo
 
-
+    ! Fix amx memory access pattern
     if(use_online_aerosol) then
       do na = 1,naer
         if(asol%aerosol_names(na) == 'so4' .or. &
@@ -1608,7 +1608,7 @@ contains
           do k=1,kmax
             do j = 1, jmax
               do i=1, imax
-                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am1(i,j,k)=am1(i,j,k)+asol%aerosol(i,j,k,na)*tmp  !am1 unit: g/cm3
                 amx(i,j,k,1)=amx(i,j,k,1)+asol%aerosol(i,j,k,na)*tmp1  !amx unit: kg/kg
@@ -1620,7 +1620,7 @@ contains
           do k=1,kmax
             do j = 1, jmax
               do i=1, imax
-                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am4(i,j,k)=am4(i,j,k)+asol%aerosol(i,j,k,na)*tmp
                 amx(i,j,k,4)=amx(i,j,k,4)+asol%aerosol(i,j,k,na)*tmp1
@@ -1636,7 +1636,7 @@ contains
           do k=1,kmax
             do j = 1, jmax
               do i=1, imax
-                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am2(i,j,k)=am2(i,j,k)+asol%aerosol(i,j,k,na)*tmp
                 amx(i,j,k,2)=amx(i,j,k,2)+asol%aerosol(i,j,k,na)*tmp1
@@ -1650,7 +1650,7 @@ contains
           do k=1,kmax
             do j = 1, jmax
               do i=1, imax
-                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am3(i,j,k)=am3(i,j,k)+asol%aerosol(i,j,k,na)*tmp
                 amx(i,j,k,3)=amx(i,j,k,3)+asol%aerosol(i,j,k,na)*tmp1
@@ -1664,7 +1664,7 @@ contains
           do k=1,kmax
             do j = 1, jmax
               do i=1, imax
-                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+                tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am5(i,j,k)=am5(i,j,k)+asol%aerosol(i,j,k,na)*tmp
                 amx(i,j,k,5)=amx(i,j,k,5)+asol%aerosol(i,j,k,na)*tmp1
@@ -1683,7 +1683,7 @@ contains
         end do
       end do
 
-      if(use_sub_seasalt) then
+      if(.not. use_sub_seasalt) then
         do k=1,kmax
           do j = 1, jmax
             do i=1, imax
@@ -1699,7 +1699,7 @@ contains
       !amx(:,:)=0. !amx contains mixing ratio (kg/kg)
         do j = 1, jmax
           do i=1, imax
-            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
+            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
             tmp1=1./pmass(i,j,k)
 
             am1(i,j,k)= asol%aerosol(i,j,k,2)*tmp
