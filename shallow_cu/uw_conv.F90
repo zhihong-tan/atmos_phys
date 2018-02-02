@@ -2068,9 +2068,9 @@ contains
 !                                           cp%tr, ct%trten, ct%trwet)
              call check_tracer_realizability (kmax, size(trtend,4), delt, &
                                            cp%tr, ct%trten, ct%trwet, pmass(i,j,:), tracer_check_type, rn = rn )
-            do k = 1,cp%ltop
-              nk = kmax+1-k
-              do n = 1, size(trtend,4)
+            do n = 1, size(trtend,4)
+              do k = 1,cp%ltop
+                nk = kmax+1-k
                 trtend(i,j,nk,n) = ct%trten(k,n) + ct%trwet(k,n)
                 trwet(i,j,nk,n)  = ct%trwet(k,n)
                 rn_diag(i,j,nk,n) = rn(k,n)
