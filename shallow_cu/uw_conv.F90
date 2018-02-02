@@ -1309,7 +1309,7 @@ contains
 
     real, dimension(size(tb,3)) :: qntmp
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: am1, am2, am3, am4, am5
-    real, dimension(size(tb,1),size(tb,2),size(tb,3),5) :: amx
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: amx1, amx2, amx3, amx4, amx5
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: pmass    ! layer mass (kg/m2)
     real, dimension(size(tb,1),size(tb,2))            :: tempdiag ! temporary diagnostic variable
@@ -1528,7 +1528,9 @@ contains
 
     cqa  =0.; cql  =0.; cqi  =0.; cqn  =0.;
     cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
-    hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.; am5=0.; amx=0.;
+    hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.;
+    am1=0.; am2=0.; am3=0.; am4=0.; am5=0.;
+    amx1=0.; amx2=0.; amx3=0.; amx4=0.; amx5=0.;
     tten_pevap=0.; qvten_pevap=0.; temp=0.;
     ice_pflx = 0. ; liq_pflx = 0.; qtflx_up=0.; qtflx_dn=0.;
     omega_up=0.; omega_dn=0.; omgmc_up=0.;
@@ -1611,7 +1613,7 @@ contains
                 tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am1(i,j,k)=am1(i,j,k)+asol%aerosol(i,j,k,na)*tmp  !am1 unit: g/cm3
-                amx(i,j,k,1)=amx(i,j,k,1)+asol%aerosol(i,j,k,na)*tmp1  !amx unit: kg/kg
+                amx1(i,j,k)=amx1(i,j,k)+asol%aerosol(i,j,k,na)*tmp1  !amx unit: kg/kg
               end do
             end do
           end do
@@ -1623,7 +1625,7 @@ contains
                 tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am4(i,j,k)=am4(i,j,k)+asol%aerosol(i,j,k,na)*tmp
-                amx(i,j,k,4)=amx(i,j,k,4)+asol%aerosol(i,j,k,na)*tmp1
+                amx4(i,j,k)=amx4(i,j,k)+asol%aerosol(i,j,k,na)*tmp1
               end do
             end do
           end do
@@ -1639,7 +1641,7 @@ contains
                 tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am2(i,j,k)=am2(i,j,k)+asol%aerosol(i,j,k,na)*tmp
-                amx(i,j,k,2)=amx(i,j,k,2)+asol%aerosol(i,j,k,na)*tmp1
+                amx2(i,j,k)=amx2(i,j,k)+asol%aerosol(i,j,k,na)*tmp1
               end do
             end do
           end do
@@ -1653,7 +1655,7 @@ contains
                 tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am3(i,j,k)=am3(i,j,k)+asol%aerosol(i,j,k,na)*tmp
-                amx(i,j,k,3)=amx(i,j,k,3)+asol%aerosol(i,j,k,na)*tmp1
+                amx3(i,j,k)=amx3(i,j,k)+asol%aerosol(i,j,k,na)*tmp1
               end do
             end do
           end do
@@ -1667,7 +1669,7 @@ contains
                 tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
                 tmp1=1./pmass(i,j,k)
                 am5(i,j,k)=am5(i,j,k)+asol%aerosol(i,j,k,na)*tmp
-                amx(i,j,k,5)=amx(i,j,k,5)+asol%aerosol(i,j,k,na)*tmp1
+                amx5(i,j,k)=amx5(i,j,k)+asol%aerosol(i,j,k,na)*tmp1
               end do
             end do
           end do
@@ -1678,7 +1680,7 @@ contains
         do j = 1, jmax
           do i=1, imax
             am2(i,j,k)=am2(i,j,k)+am3(i,j,k)+am4(i,j,k)
-            amx(i,j,k,2)=amx(i,j,k,2)+amx(i,j,k,3)+amx(i,j,k,4)
+            amx2(i,j,k)=amx2(i,j,k)+amx3(i,j,k)+amx4(i,j,k)
           end do
         end do
       end do
@@ -1688,28 +1690,53 @@ contains
           do j = 1, jmax
             do i=1, imax
               am3(i,j,k)=am3(i,j,k)+am5(i,j,k)
-              amx(i,j,k,3)=amx(i,j,k,3)+amx(i,j,k,5)
+              amx3(i,j,k)=amx3(i,j,k)+amx5(i,j,k)
             end do
           end do
         end do
       end if
     else ! use_online_aerosol
       do k=1,kmax
-      !am1(:) = 0.; am2(:) = 0.; am3(:) = 0.; am4(:) = 0.; am5(:) = 0.;
-      !amx(:,:)=0. !amx contains mixing ratio (kg/kg)
         do j = 1, jmax
           do i=1, imax
             tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
             tmp1=1./pmass(i,j,k)
 
-            am1(i,j,k)= asol%aerosol(i,j,k,2)*tmp
-            am2(i,j,k)= asol%aerosol(i,j,k,1)*tmp
-            am3(i,j,k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
-            am4(i,j,k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp
-            amx(i,j,k,1)= asol%aerosol(i,j,k,2)*tmp1
-            amx(i,j,k,2)= asol%aerosol(i,j,k,1)*tmp1
-            amx(i,j,k,3)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp1
-            amx(i,j,k,4)= om_to_oc*asol%aerosol(i,j,k,3)*tmp1
+            am1(i,j,k) = asol%aerosol(i,j,k,2)*tmp
+            amx1(i,j,k)= asol%aerosol(i,j,k,2)*tmp1
+          end do
+        end do
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
+            tmp1=1./pmass(i,j,k)
+
+            am2(i,j,k) = asol%aerosol(i,j,k,1)*tmp
+            amx2(i,j,k)= asol%aerosol(i,j,k,1)*tmp1
+          end do
+        end do
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
+            tmp1=1./pmass(i,j,k)
+
+            am3(i,j,k) = sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
+            amx3(i,j,k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp1
+          end do
+        end do
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
+            tmp1=1./pmass(i,j,k)
+
+            am4(i,j,k) = om_to_oc*asol%aerosol(i,j,k,3)*tmp
+            amx4(i,j,k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp1
           end do
         end do
       end do
@@ -1768,7 +1795,9 @@ contains
           call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),    &
           zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), omega(i,j,:), tb(i,j,:), &
           qv(i,j,:), qtr(i,j,:,nql), qtr(i,j,:,nqi), qtr(i,j,:,nqa), qntmp,        &
-          am1(i,j,:), am2(i,j,:), am3(i,j,:), am4(i,j,:), amx(i,j,:,:), tracers(i,j,:,:), src_choice,  &
+          am1(i,j,:),  am2(i,j,:),  am3(i,j,:),  am4(i,j,:),                       &
+          amx1(i,j,:), amx2(i,j,:), amx3(i,j,:), amx4(i,j,:),                      &
+          tracers(i,j,:,:), src_choice,                                            &
           tdt_rad(i,j,:), tdt_dyn(i,j,:), qvdt_dyn(i,j,:), qidt_dyn(i,j,:),        &
           dgz_dyn(i,j,:), ddp_dyn(i,j,:), tdt_dif(i,j,:), dgz_phy(i,j,:),          &
           qvdt_dif(i,j,:), qidt_dif(i,j,:), sd, Uw_p)

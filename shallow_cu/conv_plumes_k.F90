@@ -543,7 +543,10 @@ contains
     !     yim's CONVECTIVE NUCLEATION
     !==================================================
     ptmp=(sd%dp(krel-1)/Uw_p%grav)/sd%dz(krel-1)*1.0e-3
-    totalmass1(:)=sd%amx(krel-1,1:4)*ptmp !convert mixing ratio kg/kg to g/cm3
+    totalmass1(1)=sd%amx1(krel-1)*ptmp !convert mixing ratio kg/kg to g/cm3
+    totalmass1(2)=sd%amx2(krel-1)*ptmp !convert mixing ratio kg/kg to g/cm3
+    totalmass1(3)=sd%amx3(krel-1)*ptmp !convert mixing ratio kg/kg to g/cm3
+    totalmass1(4)=sd%amx4(krel-1)*ptmp !convert mixing ratio kg/kg to g/cm3
 
     if (cpn%do_new_qnact) then
       totalmass = totalmass1
@@ -774,7 +777,10 @@ contains
        if (cpn%do_new_qnact) then
         if(cpn%do_2nd_act) then
          emass=cp%fer(k)*cp%dp(k) !entrained ambient air mass (kg) per unit kg of updraft air mass
-         totalmass(:)=sd%amx(k,1:4)*emass; !entrained aerosol mass per unit kg of updraft air mass
+         totalmass(1)=sd%amx1(k)*emass; !entrained aerosol mass per unit kg of updraft air mass
+         totalmass(2)=sd%amx2(k)*emass; !entrained aerosol mass per unit kg of updraft air mass
+         totalmass(3)=sd%amx3(k)*emass; !entrained aerosol mass per unit kg of updraft air mass
+         totalmass(4)=sd%amx4(k)*emass; !entrained aerosol mass per unit kg of updraft air mass
          totalmass(:)=totalmass(:)*sd%rho(k)*1.0e-3 !convert mixing ratio kg/kg to g/cm3
 
          wlev = cp%wu(k-1)
