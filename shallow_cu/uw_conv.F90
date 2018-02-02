@@ -1595,23 +1595,15 @@ contains
     end if
 
     do k=1,kmax
-       do j = 1, jmax
-          do i=1, imax
-             pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
-          enddo
-       enddo
+      pmass(:,:,k) = (pint(:,:,k+1) - pint(:,:,k))/GRAV
     enddo
 
 
     if(use_online_aerosol) then
 
       do k=1,kmax
-        do j = 1, jmax
-          do i=1, imax
-            am_tmp(i,j,k)  = 1./(zint(i,j,k)-zint(i,j,k+1)) * 1.0e-3
-            amx_tmp(i,j,k) = 1./pmass(i,j,k)
-          end do
-        end do
+        am_tmp(:,:,k)  = 1./(zint(:,:,k)-zint(:,:,k+1)) * 1.0e-3
+        amx_tmp(:,:,k) = 1./pmass(:,:,k)
       end do
 
       do na = 1,naer
@@ -1662,49 +1654,30 @@ contains
               end do
             end do
           end do
-        else if(asol%aerosol_names(na) == 'seasalt3' .or. &
+        else if(.not. use_sub_seasalt) then
+          if(asol%aerosol_names(na) == 'seasalt3' .or. &
                 asol%aerosol_names(na) == 'seasalt4' .or. &
                 asol%aerosol_names(na) == 'seasalt5' .or. &
                 asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
-          do k=1,kmax
-            do j = 1, jmax
-              do i=1, imax
-                am5(i,j,k)=am5(i,j,k)+asol%aerosol(i,j,k,na)*am_tmp(i,j,k)
-                amx5(i,j,k)=amx5(i,j,k)+asol%aerosol(i,j,k,na)*amx_tmp(i,j,k)
+            do k=1,kmax
+              do j = 1, jmax
+                do i=1, imax
+                  am5(i,j,k)=am5(i,j,k)+asol%aerosol(i,j,k,na)*am_tmp(i,j,k)
+                  amx5(i,j,k)=amx5(i,j,k)+asol%aerosol(i,j,k,na)*amx_tmp(i,j,k)
+                end do
               end do
             end do
-          end do
+          end if
         end if
       end do
 
-      do k=1,kmax
-        do j = 1, jmax
-          do i=1, imax
-            am2(i,j,k)=am2(i,j,k)+am3(i,j,k)+am4(i,j,k)
-            amx2(i,j,k)=amx2(i,j,k)+amx3(i,j,k)+amx4(i,j,k)
-          end do
-        end do
-      end do
-
+      am2(:,:,:) =am2(:,:,:) +am3(:,:,:) +am4(:,:,:)
+      amx2(:,:,:)=amx2(:,:,:)+amx3(:,:,:)+amx4(:,:,:)
       if(.not. use_sub_seasalt) then
-        do k=1,kmax
-          do j = 1, jmax
-            do i=1, imax
-              am3(i,j,k)=am3(i,j,k)+am5(i,j,k)
-              amx3(i,j,k)=amx3(i,j,k)+amx5(i,j,k)
-            end do
-          end do
-        end do
+        am3(:,:,:)=am3(:,:,:)+am5(:,:,:)
+        amx3(:,:,:)=amx3(:,:,:)+amx5(:,:,:)
       end if
     else ! use_online_aerosol
-      do k=1,kmax
-        do j = 1, jmax
-          do i=1, imax
-            am1(i,j,k) = asol%aerosol(i,j,k,2)*am_tmp(i,j,k)
-            amx1(i,j,k)= asol%aerosol(i,j,k,2)*amx_tmp(i,j,k)
-          end do
-        end do
-      end do
       do k=1,kmax
         do j = 1, jmax
           do i=1, imax
@@ -1716,8 +1689,8 @@ contains
       do k=1,kmax
         do j = 1, jmax
           do i=1, imax
-            am3(i,j,k) = sea_salt_scale*asol%aerosol(i,j,k,5)*am_tmp(i,j,k)
-            amx3(i,j,k)= sea_salt_scale*asol%aerosol(i,j,k,5)*amx_tmp(i,j,k)
+            am1(i,j,k) = asol%aerosol(i,j,k,2)*am_tmp(i,j,k)
+            amx1(i,j,k)= asol%aerosol(i,j,k,2)*amx_tmp(i,j,k)
           end do
         end do
       end do
@@ -1726,6 +1699,14 @@ contains
           do i=1, imax
             am4(i,j,k) = om_to_oc*asol%aerosol(i,j,k,3)*am_tmp(i,j,k)
             amx4(i,j,k)= om_to_oc*asol%aerosol(i,j,k,3)*amx_tmp(i,j,k)
+          end do
+        end do
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            am3(i,j,k) = sea_salt_scale*asol%aerosol(i,j,k,5)*am_tmp(i,j,k)
+            amx3(i,j,k)= sea_salt_scale*asol%aerosol(i,j,k,5)*amx_tmp(i,j,k)
           end do
         end do
       end do
