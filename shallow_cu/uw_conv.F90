@@ -2040,11 +2040,15 @@ contains
              fero_s(i,j,nk) = cp%fer(k)
              fdro_s(i,j,nk) = cp%fdr(k)
              fdrso_s(i,j,nk)= cp%fdrsat(k)*cp%fdr(k)!*cp%umf(k)
-
-             do n = 1, size(trtend,4)
-              trevp_s(i,j,nk,n) = ct%trevp(k,n)
-             enddo
           enddo
+
+          do n = 1, size(trtend,4)
+            do k = 1,cp%ltop
+              nk = kmax+1-k
+              trevp_s(i,j,nk,n) = ct%trevp(k,n)
+            enddo
+          enddo
+
           cush_s(i,j)  = cp%cush
           snow  (i,j)  = ct%snow
           rain  (i,j)  = ct%rain
@@ -2196,10 +2200,15 @@ contains
                 fero_d  (i,j,nk) = cp1%fer(k)
                 fdro_d  (i,j,nk) = cp1%fdr(k)
                 fdrso_d (i,j,nk) = cp1%fdrsat(k)*cp1%fdr(k)!*cp1%umf(k)
-                do n = 1, size(trtend,4)
+             enddo
+
+             do n = 1, size(trtend,4)
+                do k = 1,kmax !cp1%ltop
+                   nk = kmax+1-k
                    trevp_d(i,j,nk,n) = ct1%trevp(k,n)
                 enddo
              enddo
+
              snow_d  (i,j)  = ct1%snow
              rain_d  (i,j)  = ct1%rain
              cbmf_d  (i,j)  = cbmf_deep
