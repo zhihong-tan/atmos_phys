@@ -731,7 +731,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
-                                 land, dsinku(:,:,n), dt, &
+                                 land, frac_open_sea, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n))!, frland, frice, frsnow, &

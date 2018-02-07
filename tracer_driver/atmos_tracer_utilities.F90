@@ -591,7 +591,7 @@ end subroutine write_namelist_values
 !
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
-    u_star, landfrac, dsinku, dt, tracer, Time, &
+    u_star, landfrac, frac_open_sea,dsinku, dt, tracer, Time, &
     Time_next, lon, half_day, drydep_data)
   ! When formulation of dry deposition is resolved perhaps use the following?
   !                           landfr, seaice_cn, snow_area, &
@@ -697,7 +697,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  integer, intent(in)                 :: n, is, js
  real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
  real, intent(in), dimension(:,:)    :: lon, half_day
- real, intent(in), dimension(:,:)    :: landfrac
+ real, intent(in), dimension(:,:)    :: landfrac,frac_open_sea
  ! When formulation of dry deposition is resolved perhaps use the following?
  !real, intent(in), dimension(:,:)    :: landfr, z_pbl, b_star, rough_mom
  !real, intent(in), dimension(:,:)    :: seaice_cn, snow_area, vegn_cover,  &
@@ -707,7 +707,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  real, intent(in)                   :: dt
  real, intent(out), dimension(:,:)   :: dsinku
 
- real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel
+ real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel,ka,kss,kbs,km,vd_ocean,A,B,alpha
  !real,dimension(size(u,1),size(u,2))   :: mo_length_inv, vds, rs, k1, k2
  integer :: i,j, flagsr, id, jd
  real    :: land_dry_dep_vel, sea_dry_dep_vel, ice_dry_dep_vel,  &
@@ -739,6 +739,36 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 
 
  select case(lowercase(scheme))
+
+ case ('williams_wind_driven')
+
+!https://www.sciencedirect.com/science/article/pii/0004698182904644?via%3Dihub
+!https://www.sciencedirect.com/science/article/pii/S1352231098000478?via%3Dihub
+
+    flagsr=parse(control,'surfr',surfr)
+
+    hwindv=sqrt(u**2+v**2)
+    frictv=u_star
+    resisa=hwindv/(u_star*u_star)
+    ka=1/resisa
+
+    where (frictv .lt. 0.1) frictv=0.1
+
+    alpha = min(1.7e-6*hwindv**3.75,1.) !WU 1979
+    kss   = surfr/frictv
+    kbs   = 10 !set to very high value
+    km    = hwindv !lateral transport
+
+    A = km*ka+(1.-alpha)*ka*alpha*(ka+kbs)
+    B = km*((1.-alpha)*(ka+kss)+alpha*(ka+kbs))+(1.-alpha)*(ka+kss)*alpha*(ka+kbs)
+    
+    vd_ocean = A/B*((1.-alpha)*kss &
+         + km * alpha * kbs/(km + alpha*(ka+kbs)) &
+         + alpha * kbs * alpha * ka / (km+alpha*(ka+kbs)))
+
+    drydep_vel(:,:) = (1./(surfr/frictv + resisa)) * (1.-frac_open_sea) &
+         +     frac_open_sea * vd_ocean
+    dsinku = drydep_vel(:,:)/dz(:,:)
 
  case('wind_driven')
     ! Calculate horizontal wind velocity and aerodynamic resistance:
@@ -1725,6 +1755,9 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep
 
  if(lowercase(trim(text_in_scheme(1:4))).eq.'wind') then
     scheme                  = 'Wind_driven'
+ endif
+ if(lowercase(trim(text_in_scheme(1:8))).eq.'williams') then
+    scheme                  = 'williams_wind_driven'
  endif
 
  !if(lowercase(trim(text_in_scheme(1:15))).eq.'sfc_dependent_w') then
