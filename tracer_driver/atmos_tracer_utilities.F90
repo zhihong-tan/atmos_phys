@@ -372,6 +372,7 @@ contains
          trim(tracer_dvel_names(n)), mass_axes(1:2), Time,               &
          trim(tracer_dvel_longnames(n)),                                 &
          'm/s', missing_value=-999.     )
+
     ! Register the wet deposition of the n tracers by large scale clouds
     id_tracer_wdep_ls(n) = register_diag_field ( mod_name,                 &
          trim(tracer_wdep_names(n))//'_ls', mass_axes(1:2), Time,        &
@@ -753,9 +754,9 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     resisa=hwindv/(u_star*u_star)
     ka=1/resisa
 
-    alpha = min(1.7e-6*hwindv**3.75,1.) !WU 1979
+    alpha = max(min(1.7e-6*hwindv**3.75,1.),0.) !WU 1979
     kss   = frictv/surfr
-    kbs   = .10 !set to very high value
+    kbs   = 10 !set to very high value
     km    = hwindv !lateral transport
 
     A = km*ka+(1.-alpha)*ka*alpha*(ka+kbs)
@@ -767,6 +768,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 
     drydep_vel(:,:) = (1./(surfr/frictv + resisa)) * (1.-frac_open_sea) &
          +     frac_open_sea * vd_ocean
+
     dsinku = drydep_vel(:,:)/dz(:,:)
 
  case('wind_driven')
@@ -994,6 +996,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     used = send_data ( id_tracer_dvel(n), drydep_vel, Time_next, &
          is_in =is,js_in=js)
  end if
+
 end subroutine dry_deposition
 !</SUBROUTINE>
 !
