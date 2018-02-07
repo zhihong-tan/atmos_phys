@@ -746,17 +746,16 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !https://www.sciencedirect.com/science/article/pii/S1352231098000478?via%3Dihub
 
     flagsr=parse(control,'surfr',surfr)
+    frictv=u_star
+    where (frictv .lt. 0.1) frictv=0.1
 
     hwindv=sqrt(u**2+v**2)
-    frictv=u_star
     resisa=hwindv/(u_star*u_star)
     ka=1/resisa
 
-    where (frictv .lt. 0.1) frictv=0.1
-
     alpha = min(1.7e-6*hwindv**3.75,1.) !WU 1979
-    kss   = surfr/frictv
-    kbs   = 10 !set to very high value
+    kss   = frictv/surfr
+    kbs   = .10 !set to very high value
     km    = hwindv !lateral transport
 
     A = km*ka+(1.-alpha)*ka*alpha*(ka+kbs)
