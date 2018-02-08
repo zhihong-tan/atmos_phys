@@ -13,8 +13,8 @@
       save
 
       integer, parameter :: &
-                pcnst = 99 +1, & ! number of advected constituents including cloud water
-                pcnstm1 = 99, & ! number of advected constituents excluding cloud water
+                pcnst = 100 +1, & ! number of advected constituents including cloud water
+                pcnstm1 = 100, & ! number of advected constituents excluding cloud water
                 plev = 1, & ! number of vertical levels
                 plevp = plev+1, & ! plev plus 1
                 plevm = plev-1, & ! plev minus 1
@@ -51,15 +51,15 @@
 
       integer, parameter :: hetcnt = 0, & ! number of heterogeneous processes
                             phtcnt = 43, & ! number of photo processes
-                            rxntot = 247, & ! number of total reactions
-                            gascnt = 204, & ! number of gas phase reactions
+                            rxntot = 248, & ! number of total reactions
+                            gascnt = 205, & ! number of gas phase reactions
                             nfs = 3, & ! number of "fixed" species
                             relcnt = 0, & ! number of relationship species
                             grpcnt = 0, & ! number of group members
                             imp_nzcnt = 998, & ! number of non-zero implicit matrix entries
                             rod_nzcnt = 0, & ! number of non-zero rodas matrix entries
                             extcnt = 0, & ! number of species with external forcing
-                            clscnt1 = 8, & ! number of species in explicit class
+                            clscnt1 = 9, & ! number of species in explicit class
                             clscnt2 = 0, & ! number of species in hov class
                             clscnt3 = 0, & ! number of species in ebi class
                             clscnt4 = 91, & ! number of species in implicit class
@@ -118,11 +118,11 @@
 
       integer :: astat
 
-      explicit%clscnt = 8
+      explicit%clscnt = 9
       explicit%indprd_cnt = 56
 
       implicit%clscnt = 91
-      implicit%lin_rxt_cnt = 76
+      implicit%lin_rxt_cnt = 77
       implicit%nln_rxt_cnt = 168
       implicit%indprd_cnt = 3
       implicit%iter_max = 11
@@ -288,6 +288,7 @@
       integer, parameter :: id_ISNOOA = 97
       integer, parameter :: id_ISN1 = 98
       integer, parameter :: id_O3S = 99
+      integer, parameter :: id_O3S_E90 = 100
 
 
       end module M_SPC_ID_MOD
@@ -389,48 +390,49 @@
       integer, parameter :: rid_no3h = 198
       integer, parameter :: rid_ho2h = 199
       integer, parameter :: rid_no2h = 200
-      integer, parameter :: rid_uoh_dms = 203
-      integer, parameter :: rid_nh3h = 205
-      integer, parameter :: rid_strat13 = 207
-      integer, parameter :: rid_strat14 = 208
-      integer, parameter :: rid_strat20 = 209
-      integer, parameter :: rid_strat21 = 210
-      integer, parameter :: rid_strat22 = 211
-      integer, parameter :: rid_strat23 = 212
-      integer, parameter :: rid_strat24 = 213
-      integer, parameter :: rid_strat25 = 214
-      integer, parameter :: rid_strat26 = 215
-      integer, parameter :: rid_strat27 = 216
-      integer, parameter :: rid_strat28 = 217
-      integer, parameter :: rid_strat29 = 218
-      integer, parameter :: rid_strat33 = 219
-      integer, parameter :: rid_strat35 = 220
-      integer, parameter :: rid_strat37 = 221
-      integer, parameter :: rid_strat38 = 222
-      integer, parameter :: rid_strat39 = 223
-      integer, parameter :: rid_strat40 = 224
-      integer, parameter :: rid_strat41 = 225
-      integer, parameter :: rid_strat42 = 226
-      integer, parameter :: rid_strat43 = 227
-      integer, parameter :: rid_strat44 = 228
-      integer, parameter :: rid_strat45 = 229
-      integer, parameter :: rid_strat46 = 230
-      integer, parameter :: rid_strat47 = 231
-      integer, parameter :: rid_strat48 = 232
-      integer, parameter :: rid_strat69 = 233
-      integer, parameter :: rid_strat58 = 234
-      integer, parameter :: rid_strat59 = 235
-      integer, parameter :: rid_strat64 = 236
-      integer, parameter :: rid_strat71 = 237
-      integer, parameter :: rid_strat72 = 238
-      integer, parameter :: rid_strat73 = 239
-      integer, parameter :: rid_strat74 = 240
-      integer, parameter :: rid_strat75 = 241
-      integer, parameter :: rid_strat76 = 242
-      integer, parameter :: rid_strat77 = 243
-      integer, parameter :: rid_strat78 = 244
-      integer, parameter :: rid_strat79 = 245
-      integer, parameter :: rid_strat80 = 246
+      integer, parameter :: rid_so2h = 201
+      integer, parameter :: rid_uoh_dms = 204
+      integer, parameter :: rid_nh3h = 206
+      integer, parameter :: rid_strat13 = 208
+      integer, parameter :: rid_strat14 = 209
+      integer, parameter :: rid_strat20 = 210
+      integer, parameter :: rid_strat21 = 211
+      integer, parameter :: rid_strat22 = 212
+      integer, parameter :: rid_strat23 = 213
+      integer, parameter :: rid_strat24 = 214
+      integer, parameter :: rid_strat25 = 215
+      integer, parameter :: rid_strat26 = 216
+      integer, parameter :: rid_strat27 = 217
+      integer, parameter :: rid_strat28 = 218
+      integer, parameter :: rid_strat29 = 219
+      integer, parameter :: rid_strat33 = 220
+      integer, parameter :: rid_strat35 = 221
+      integer, parameter :: rid_strat37 = 222
+      integer, parameter :: rid_strat38 = 223
+      integer, parameter :: rid_strat39 = 224
+      integer, parameter :: rid_strat40 = 225
+      integer, parameter :: rid_strat41 = 226
+      integer, parameter :: rid_strat42 = 227
+      integer, parameter :: rid_strat43 = 228
+      integer, parameter :: rid_strat44 = 229
+      integer, parameter :: rid_strat45 = 230
+      integer, parameter :: rid_strat46 = 231
+      integer, parameter :: rid_strat47 = 232
+      integer, parameter :: rid_strat48 = 233
+      integer, parameter :: rid_strat69 = 234
+      integer, parameter :: rid_strat58 = 235
+      integer, parameter :: rid_strat59 = 236
+      integer, parameter :: rid_strat64 = 237
+      integer, parameter :: rid_strat71 = 238
+      integer, parameter :: rid_strat72 = 239
+      integer, parameter :: rid_strat73 = 240
+      integer, parameter :: rid_strat74 = 241
+      integer, parameter :: rid_strat75 = 242
+      integer, parameter :: rid_strat76 = 243
+      integer, parameter :: rid_strat77 = 244
+      integer, parameter :: rid_strat78 = 245
+      integer, parameter :: rid_strat79 = 246
+      integer, parameter :: rid_strat80 = 247
 
       integer, parameter :: rid_r0045 = 45
       integer, parameter :: rid_r0046 = 46
@@ -539,11 +541,11 @@
       integer, parameter :: rid_r0193 = 193
       integer, parameter :: rid_r0194 = 194
       integer, parameter :: rid_r0196 = 196
-      integer, parameter :: rid_r0201 = 201
       integer, parameter :: rid_r0202 = 202
-      integer, parameter :: rid_r0204 = 204
-      integer, parameter :: rid_r0206 = 206
-      integer, parameter :: rid_r0247 = 247
+      integer, parameter :: rid_r0203 = 203
+      integer, parameter :: rid_r0205 = 205
+      integer, parameter :: rid_r0207 = 207
+      integer, parameter :: rid_r0248 = 248
 
       end module M_RXT_ID_MOD
 
