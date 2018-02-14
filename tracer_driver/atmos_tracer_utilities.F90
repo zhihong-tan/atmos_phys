@@ -592,7 +592,7 @@ end subroutine write_namelist_values
 !
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
-    u_star, landfrac, frac_open_sea,dsinku, dt, tracer, Time, &
+    u_star, con_atm,  landfrac, frac_open_sea,dsinku, dt, tracer, Time, &
     Time_next, lon, half_day, drydep_data)
   ! When formulation of dry deposition is resolved perhaps use the following?
   !                           landfr, seaice_cn, snow_area, &
@@ -696,7 +696,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
   !  </OUT>
   !
  integer, intent(in)                 :: n, is, js
- real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
+ real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz, con_atm
  real, intent(in), dimension(:,:)    :: lon, half_day
  real, intent(in), dimension(:,:)    :: landfrac,frac_open_sea
  ! When formulation of dry deposition is resolved perhaps use the following?
@@ -751,8 +751,9 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     where (frictv .lt. 0.1) frictv=0.1
 
     hwindv=sqrt(u**2+v**2)
-    resisa=hwindv/(u_star*u_star)
-    ka=1/resisa
+!    resisa=hwindv/(u_star*u_star)
+    resisa = 1/max(con_atm,1.e-25)
+    ka=con_atm!1./resisa
 
     alpha = max(min(1.7e-6*hwindv**3.75,1.),0.) !WU 1979
     kss   = frictv/surfr
