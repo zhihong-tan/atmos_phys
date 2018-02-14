@@ -1663,7 +1663,7 @@ subroutine physics_driver_down (is, ie, js, je, npz,              &
                                 albedo,                           &
                                 t_surf_rad, u_ref, v_ref,         & !bqx+ u_ref, v_ref
                                 t_ref, q_ref,                     &
-                                u_star,    b_star, q_star,        &
+                                u_star,    b_star, q_star, con_atm, &
                                 dtau_du, dtau_dv,  tau_x,  tau_y, &
                                 Physics_tendency_block,           &
                                 Surf_diff,                        &
@@ -1688,7 +1688,7 @@ real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    albedo, t_surf_rad, &
                                                    u_ref, v_ref, & !bqx+
                                                    t_ref, q_ref, &  ! cjg: PBL depth mods
-                                                   u_star, b_star,    &
+                                                   u_star, b_star, con_atm,    &
                                                    q_star, dtau_du,   &
                                                    dtau_dv, frac_open_sea
 real,dimension(:,:),     intent(inout)          :: tau_x,  tau_y
@@ -1969,7 +1969,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                 frac_open_sea, frac_land, &
                                 p_half, p_full,  &
                                 u, v, t, r(:,:,:,1), r, rm, rdt, rdiag, dt, &
-                                u_star, b_star, q_star, z_half, z_full, &
+                                u_star, b_star, q_star, con_atm, z_half, z_full, &
                                 t_surf_rad, albedo, Time_next, &
                                 Rad_flux_block%flux_sw_down_vis_dir, &
                                 Rad_flux_block%flux_sw_down_vis_dif)
