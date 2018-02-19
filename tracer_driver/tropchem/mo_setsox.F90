@@ -23,6 +23,12 @@ module MO_SETSOX_MOD
 
   !<f1p
   integer    ::      ox_ndx, hno3_ndx, h2o2_ndx, so2_ndx, so4_ndx, nh3_ndx, nh4no3_ndx
+  integer    ::      nh3_tag1_ndx, nh4_tag1_ndx
+  integer    ::      nh3_tag2_ndx, nh4_tag2_ndx
+  integer    ::      nh3_tag3_ndx, nh4_tag3_ndx
+  integer    ::      nh3_tag4_ndx, nh4_tag4_ndx
+  logical    ::      do_nh3_tag
+
   integer    ::      ho2_ndx, nh4_ndx, co2_ndx, hcooh_ndx, ch3cooh_ndx, n2o5_ndx
   real       ::      frac_ic_so4, frac_ic_no3, frac_ic_nh4
   real       ::      frac_ic_so4_snow, frac_ic_no3_snow, frac_ic_nh4_snow
@@ -133,6 +139,8 @@ CONTAINS
          xnh4,xalk,               &
          heo3, xho2,              &            ! henry law const for nh3
          xH, xhcooh, xch3cooh
+
+    real, dimension(size(tfld,1)) :: TN, f_aero ! for nh3 tag tracers
 
     real, dimension(size(tfld,1),size(tfld,2))       :: frac_ic_no3_eff, frac_ic_nh4_eff, frac_ic_so4_eff
     real, dimension(plonl)  :: t_fac
@@ -738,6 +746,7 @@ CONTAINS
           call aerosol_thermo( trop_option%aerosol_thermo, min(rh,trop_option%max_rh_aerosol), tz, press(i,k), xso4(i,k), xnh3(i,k), xnh4(i,k), xhno3(i,k), xant(i,k))
           call mpp_clock_end(isoropia_clock_id)
 
+
           if ( trop_option%limit_no3 .and. trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
              if (  (xnh4(i,k)+xant(i,k) .gt. small_value) .and. xant(i,k) / ( xnh4(i,k) + xant(i,k)) .gt. 0.75 ) then
                 !force xant to be no more than xnh4
@@ -790,6 +799,34 @@ CONTAINS
        if( ox_ndx > 0 .and. trop_option%cloud_chem .ne. cloud_chem_legacy ) then
           qin(:,k,ox_ndx) =  MAX( xo3(:,k), small_value )
        end if
+
+       if (do_nh3_tag) then
+          f_aero = qin(:,k,nh4_ndx)/(qin(:,k,nh3_ndx)+qin(:,k,nh4_ndx))
+
+          if (nh3_tag1_ndx.gt.0.and.nh4_tag1_ndx.gt.0) then
+             TN = max(qin(:,k,nh3_tag1_ndx)+qin(:,k,nh4_tag1_ndx),small_value)
+             qin(:,k,nh4_tag1_ndx) = max(TN * f_aero,small_value)
+             qin(:,k,nh3_tag1_ndx) = max(TN -  qin(:,k,nh4_tag1_ndx),small_value)
+          end if
+          if (nh3_tag2_ndx.gt.0.and.nh4_tag2_ndx.gt.0) then
+             TN = max(qin(:,k,nh3_tag2_ndx)+qin(:,k,nh4_tag2_ndx),small_value)
+             qin(:,k,nh4_tag2_ndx) = max(TN * f_aero,small_value)
+             qin(:,k,nh3_tag2_ndx) = max(TN -  qin(:,k,nh4_tag2_ndx),small_value)
+          end if
+          if (nh3_tag3_ndx.gt.0.and.nh4_tag3_ndx.gt.0) then
+             TN = max(qin(:,k,nh3_tag3_ndx)+qin(:,k,nh4_tag3_ndx),small_value)
+             qin(:,k,nh4_tag3_ndx) = max(TN * f_aero,small_value)
+             qin(:,k,nh3_tag3_ndx) = max(TN -  qin(:,k,nh4_tag3_ndx),small_value)
+          end if
+          if (nh3_tag4_ndx.gt.0.and.nh4_tag4_ndx.gt.0) then
+             TN = max(qin(:,k,nh3_tag4_ndx)+qin(:,k,nh4_tag4_ndx),small_value)
+             qin(:,k,nh4_tag4_ndx) = max(TN * f_aero,small_value)
+             qin(:,k,nh3_tag4_ndx) = max(TN -  qin(:,k,nh4_tag4_ndx),small_value)
+          end if
+
+       end if
+
+
     end do
 
   end subroutine SETSOX
@@ -820,6 +857,16 @@ CONTAINS
     nh4_ndx     = get_spc_ndx( 'NH4' )
     n2o5_ndx    = get_spc_ndx( 'N2O5' )
     nh4no3_ndx  = get_spc_ndx( 'NH4NO3' )
+
+
+    nh4_tag1_ndx = get_spc_ndx( 'NH4_TAG1' )
+    nh3_tag1_ndx = get_spc_ndx( 'NH3_TAG1' )
+    nh4_tag2_ndx = get_spc_ndx( 'NH4_TAG2' )
+    nh3_tag2_ndx = get_spc_ndx( 'NH3_TAG2' )
+    nh4_tag3_ndx = get_spc_ndx( 'NH4_TAG3' )
+    nh3_tag3_ndx = get_spc_ndx( 'NH3_TAG3' )
+    nh4_tag4_ndx = get_spc_ndx( 'NH4_TAG4' )
+    nh3_tag4_ndx = get_spc_ndx( 'NH3_TAG4' )
 
     frac_ic_nh4     = 0.
     frac_ic_no3     = 0.
@@ -874,12 +921,21 @@ CONTAINS
     end if
 
 
+    do_nh3_tag=.false.
+    if (nh3_tag1_ndx.gt.0.and.nh4_tag1_ndx.gt.0) do_nh3_tag=.true.
+    if (nh3_tag2_ndx.gt.0.and.nh4_tag2_ndx.gt.0) do_nh3_tag=.true.
+    if (nh3_tag3_ndx.gt.0.and.nh4_tag3_ndx.gt.0) do_nh3_tag=.true.
+    if (nh3_tag4_ndx.gt.0.and.nh4_tag4_ndx.gt.0) do_nh3_tag=.true.
+
+
     if (mpp_root_pe() .eq. mpp_pe()) then
        write(*,'(a,2e18.3)') 'frac_ic_nh4',frac_ic_nh4,frac_ic_nh4_snow
        write(*,'(a,2e18.3)') 'frac_ic_no3',frac_ic_no3,frac_ic_no3_snow
        write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
-    endif
 
+       write(*,*) 'nh3,nh4,nh3_tag1,nh4_tag1',nh3_ndx,nh4_ndx,nh3_tag1_ndx,nh4_tag1_ndx,nh3_tag2_ndx,nh4_tag2_ndx,nh3_tag3_ndx,nh4_tag3_ndx,nh3_tag4_ndx,nh4_tag4_ndx
+       write(*,*) 'do_nh3_tag',do_nh3_tag
+    endif
 
  ! ELSEIF ( trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
 !        nh4no3_ndx  = get_spc_ndx( 'ANO3' )
