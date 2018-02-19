@@ -755,9 +755,12 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     resisa = 1/max(con_atm,1.e-25)
     ka=con_atm!1./resisa
 
-    alpha = max(min(1.7e-6*hwindv**3.75,1.),0.) !WU 1979
+    !alpha = max(min(1.7e-6*hwindv**3.75,1.),0.) !WU 1979
+    !alpha = max(min(1.e-6*u_star**3,0.) !Wu 1988, variations of whitecap coverage with wind stress and water temperature
+    alpha = max(min(2.81e-5*(hwindv-3.87)**2.76,1.),0.) !Observations of whitecap coverage and the relation to wind stress, wave slope, and turbulent dissipation, Schwendeman and Thomson, 2016, JGR ocean
+
     kss   = frictv/surfr
-    kbs   = 10 !set to very high value
+    kbs   = 50. !set to very high value
     km    = hwindv !lateral transport
 
     A = km*ka+(1.-alpha)*ka*alpha*(ka+kbs)
@@ -1222,7 +1225,7 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
  Lgas    = Wetdep(n)%Lgas
  Laerosol = Wetdep(n)%Laerosol
  Lice    = Wetdep(n)%Lice
-
+ 
  rho_air(:,:,:) = pfull(:,:,:) / ( T(:,:,:)*RDGAS ) ! kg/m3
  !   Lice = .not. (scheme=='henry_noice' .or. scheme=='henry_below_noice' .or. &
  !                 scheme=='aerosol_noice' .or. scheme=='aerosol_below_noice' )
