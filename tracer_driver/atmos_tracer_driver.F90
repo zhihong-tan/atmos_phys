@@ -303,7 +303,11 @@ integer :: ne90 =0
 integer :: nsulfate  =0
 
 
-integer :: nnh3_tag1,nnh3_tag2,nnh3_tag3,nnh3_tag4
+integer :: nnh3_tag1 =0
+integer :: nnh3_tag2 =0
+integer :: nnh3_tag3 =0
+integer :: nnh3_tag4 =0
+integer :: nnh3_tag5 =0
 
 integer, dimension(5) :: tr_nbr_sulfate=0
 logical, dimension(5) :: do_tracer_sulfate=.false.
@@ -381,6 +385,7 @@ integer   :: ind_nh3_tag1_flux = 0
 integer   :: ind_nh3_tag2_flux = 0
 integer   :: ind_nh3_tag3_flux = 0
 integer   :: ind_nh3_tag4_flux = 0
+integer   :: ind_nh3_tag5_flux = 0
 
 
 !-----------------------------------------------------------------------
@@ -1746,6 +1751,7 @@ type(time_type), intent(in)                                :: Time
       nNH3_tag2 = get_tracer_index(MODEL_ATMOS,'nh3_tag2')
       nNH3_tag3 = get_tracer_index(MODEL_ATMOS,'nh3_tag3')
       nNH3_tag4 = get_tracer_index(MODEL_ATMOS,'nh3_tag4')
+      nNH3_tag5 = get_tracer_index(MODEL_ATMOS,'nh3_tag5')
 ! Check for presence of OH and C4H10 (diagnostic) tracers
 ! If not present set index to 1 so interface calls do not fail,
 ! but FATAL error will be issued by atmos_sulfate_init,
@@ -2306,6 +2312,13 @@ subroutine atmos_nitrogen_flux_init
                  mol_wt = WTMN, param = (/ 1.0 /),              &
                  caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
          end if
+         if (nnh3_tag5.gt.0) then
+            ind_nh3_tag5_flux = aof_set_coupler_flux('nh3_tag5_flux',                       &
+                 flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
+                 atm_tr_index = nnh3_tag5,                                          &
+                 mol_wt = WTMN, param = (/ 1.0 /),              &
+                 caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+         end if
       end if
    endif
 
@@ -2525,6 +2538,9 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
   end if
   if (ind_nh3_tag4_flux .gt. 0) then
      gas_fields%bc(ind_nh3_tag4_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3_tag4)
+  end if
+  if (ind_nh3_tag5_flux .gt. 0) then
+     gas_fields%bc(ind_nh3_tag5_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3_tag5)
   end if
   
 !-----------------------------------------------------------------------

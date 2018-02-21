@@ -27,6 +27,7 @@ module MO_SETSOX_MOD
   integer    ::      nh3_tag2_ndx, nh4_tag2_ndx
   integer    ::      nh3_tag3_ndx, nh4_tag3_ndx
   integer    ::      nh3_tag4_ndx, nh4_tag4_ndx
+  integer    ::      nh3_tag5_ndx, nh4_tag5_ndx
   logical    ::      do_nh3_tag
 
   integer    ::      ho2_ndx, nh4_ndx, co2_ndx, hcooh_ndx, ch3cooh_ndx, n2o5_ndx
@@ -823,6 +824,11 @@ CONTAINS
              qin(:,k,nh4_tag4_ndx) = max(TN * f_aero,small_value)
              qin(:,k,nh3_tag4_ndx) = max(TN -  qin(:,k,nh4_tag4_ndx),small_value)
           end if
+          if (nh3_tag5_ndx.gt.0.and.nh4_tag5_ndx.gt.0) then
+             TN = max(qin(:,k,nh3_tag5_ndx)+qin(:,k,nh4_tag5_ndx),small_value)
+             qin(:,k,nh4_tag5_ndx) = max(TN * f_aero,small_value)
+             qin(:,k,nh3_tag5_ndx) = max(TN -  qin(:,k,nh4_tag5_ndx),small_value)
+          end if
 
        end if
 
@@ -867,6 +873,8 @@ CONTAINS
     nh3_tag3_ndx = get_spc_ndx( 'NH3_TAG3' )
     nh4_tag4_ndx = get_spc_ndx( 'NH4_TAG4' )
     nh3_tag4_ndx = get_spc_ndx( 'NH3_TAG4' )
+    nh4_tag5_ndx = get_spc_ndx( 'NH4_TAG5' )
+    nh3_tag5_ndx = get_spc_ndx( 'NH3_TAG5' )
 
     frac_ic_nh4     = 0.
     frac_ic_no3     = 0.
@@ -926,6 +934,7 @@ CONTAINS
     if (nh3_tag2_ndx.gt.0.and.nh4_tag2_ndx.gt.0) do_nh3_tag=.true.
     if (nh3_tag3_ndx.gt.0.and.nh4_tag3_ndx.gt.0) do_nh3_tag=.true.
     if (nh3_tag4_ndx.gt.0.and.nh4_tag4_ndx.gt.0) do_nh3_tag=.true.
+    if (nh3_tag5_ndx.gt.0.and.nh4_tag5_ndx.gt.0) do_nh3_tag=.true.
 
 
     if (mpp_root_pe() .eq. mpp_pe()) then
@@ -933,7 +942,7 @@ CONTAINS
        write(*,'(a,2e18.3)') 'frac_ic_no3',frac_ic_no3,frac_ic_no3_snow
        write(*,'(a,2e18.3)') 'frac_ic_so4',frac_ic_so4,frac_ic_so4_snow
 
-       write(*,*) 'nh3,nh4,nh3_tag1,nh4_tag1',nh3_ndx,nh4_ndx,nh3_tag1_ndx,nh4_tag1_ndx,nh3_tag2_ndx,nh4_tag2_ndx,nh3_tag3_ndx,nh4_tag3_ndx,nh3_tag4_ndx,nh4_tag4_ndx
+       write(*,*) 'nh3,nh4,nh3_tag1,nh4_tag1',nh3_ndx,nh4_ndx,nh3_tag1_ndx,nh4_tag1_ndx,nh3_tag2_ndx,nh4_tag2_ndx,nh3_tag3_ndx,nh4_tag3_ndx,nh3_tag4_ndx,nh4_tag4_ndx,nh3_tag5_ndx,nh4_tag5_ndx
        write(*,*) 'do_nh3_tag',do_nh3_tag
     endif
 
