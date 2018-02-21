@@ -708,12 +708,12 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  real, intent(in)                   :: dt
  real, intent(out), dimension(:,:)   :: dsinku
 
- real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel,ka,kss,kbs,km,vd_ocean,A,B,alpha
+ real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel,ka,kss,kbs,km,vd_ocean,A,B,alpha,landr2
  !real,dimension(size(u,1),size(u,2))   :: mo_length_inv, vds, rs, k1, k2
  integer :: i,j, flagsr, id, jd
  real    :: land_dry_dep_vel, sea_dry_dep_vel, ice_dry_dep_vel,  &
       snow_dry_dep_vel, vegn_dry_dep_vel,   &
-      surfr, sear, icer,  snowr, vegnr
+      surfr, sear, icer,  snowr, vegnr, landr
  real    :: diag_scale
  real    :: factor_tmp, gmt, dv_on, dv_off, dayfrac, vd_night, vd_day, loc_angle
  logical :: used, diurnal
@@ -746,7 +746,20 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !https://www.sciencedirect.com/science/article/pii/0004698182904644?via%3Dihub
 !https://www.sciencedirect.com/science/article/pii/S1352231098000478?via%3Dihub
 
-    flagsr=parse(control,'surfr',surfr)
+    flagsr=parse(control,'surfr',surfr)    
+    flagsr=parse(control,'sear',sear)
+    if(flagsr == 0) sear=surfr    
+    flagsr=parse(control,'land',landr)
+    if(flagsr == 0) landr=surfr
+    flagsr=parse(control,'icer',icer)
+    if(flagsr == 0) icer=landr
+
+    where(T.lt.263.15)
+       landr2=icer
+    elsewhere
+       landr2=landr
+    endwhere
+
     frictv=u_star
     where (frictv .lt. 0.1) frictv=0.1
 
@@ -759,7 +772,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     !alpha = max(min(1.e-6*u_star**3,0.) !Wu 1988, variations of whitecap coverage with wind stress and water temperature
     alpha = max(min(2.81e-5*(hwindv-3.87)**2.76,1.),0.) !Observations of whitecap coverage and the relation to wind stress, wave slope, and turbulent dissipation, Schwendeman and Thomson, 2016, JGR ocean
 
-    kss   = frictv/surfr
+    kss   = frictv/sear
     kbs   = 50. !set to very high value
     km    = hwindv !lateral transport
 
@@ -770,7 +783,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
          + km * alpha * kbs/(km + alpha*(ka+kbs)) &
          + alpha * kbs * alpha * ka / (km+alpha*(ka+kbs)))
 
-    drydep_vel(:,:) = (1./(surfr/frictv + resisa)) * (1.-frac_open_sea) &
+    drydep_vel(:,:) = (1./(landr2/frictv + resisa)) * (1.-frac_open_sea) &
          +     frac_open_sea * vd_ocean
 
     dsinku = drydep_vel(:,:)/dz(:,:)
