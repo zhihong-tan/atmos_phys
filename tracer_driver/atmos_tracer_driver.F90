@@ -196,12 +196,15 @@ use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
 use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
 use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
+                                  atmos_co2_columnaverage,      &
                                   atmos_co2_emissions,          &
                                   atmos_co2_time_vary,          &
                                   atmos_co2_gather_data,        &
                                   atmos_co2_flux_init,          &
                                   atmos_co2_init,               &
                                   atmos_co2_end
+use atmos_ch4_mod,         only : atmos_ch4_rad, &
+                                  atmos_ch4_rad_init     
 use atmos_tropopause_mod,only: &
                                   atmos_tropopause_init, &
                                   atmos_tropopause
@@ -260,6 +263,7 @@ integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
 integer :: co2_clock = 0
+integer :: ch4_clock = 0
 integer :: regional_clock = 0
 integer :: tropopause_clock = 0
 
@@ -288,6 +292,7 @@ integer :: nH2O2     =0
 integer :: nch3i     =0
 integer :: nage      =0
 integer :: nco2      =0
+integer :: nch4      =0
 integer :: nNH4NO3   =0
 integer :: nHNO3     =0
 integer :: nNH4      =0
@@ -1259,7 +1264,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
-
+		 
 !! RSH 4/8/04
 !! note that if there are no diagnostic tracers, that argument in the
 !! call to sourcesink should be made optional and omitted in the calls
@@ -1449,6 +1454,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          call atmos_co2_sourcesink (is, ie, js, je, Time, Time_next, dt, pwt, tracer(:,:,:,nco2),     &
                                     tracer(:,:,:,nsphum), rtndco2)
          rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2(:,:,:)
+         call atmos_co2_columnaverage(is, ie, js, je, Time_next, pwt, tracer(:,:,:,nsphum), &
+                                  (tracer(:,:,:,nco2)+rdt(:,:,:,nco2)))
          call mpp_clock_end (co2_clock)
    endif
 
@@ -1525,7 +1532,6 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 !for coupler
    call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep-nh3_ddep,sum_n_ox_ddep, is,ie,js,je)
-
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
@@ -1740,6 +1746,7 @@ type(time_type), intent(in)                                :: Time
       nsf6      = get_tracer_index(MODEL_ATMOS,'sf6')
       nch3i     = get_tracer_index(MODEL_ATMOS,'ch3i')
       nco2      = get_tracer_index(MODEL_ATMOS,'co2')
+      nch4      = get_tracer_index(MODEL_ATMOS,'ch4')
       nDMS_cmip = get_tracer_index(MODEL_ATMOS,'DMS')
       nSO2_cmip = get_tracer_index(MODEL_ATMOS,'so2')
       nSO4_cmip = get_tracer_index(MODEL_ATMOS,'so4')
@@ -1815,6 +1822,13 @@ type(time_type), intent(in)                                :: Time
       if (nco2 > 0) then
       call atmos_co2_init ( Time, size(r,1), size(r,2), axes(1:3))
         co2_clock = mpp_clock_id( 'Tracer: CO2', &
+                    grain=CLOCK_MODULE )
+      endif
+
+!ch4
+      if (nch4 > 0) then
+      call atmos_ch4_rad_init
+        ch4_clock = mpp_clock_id( 'Tracer: CH4', &
                     grain=CLOCK_MODULE )
       endif
 

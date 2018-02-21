@@ -2066,7 +2066,8 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
  real, intent(out), optional :: mw,nb_N,nb_N_ox,nb_N_red,conv_vmr_mmr
  real, intent(out), optional :: frac_pm1,frac_pm10,frac_pm25
  logical, intent(out), optional :: is_aerosol
- character(len=100) :: chem_data, scheme, chem_type, tracer_name, tracer_units, name
+ character(len=100) :: scheme, chem_type, tracer_name, tracer_units, name
+ character(len=150) :: chem_data
  logical :: is_aerosol_local
  real :: mwt,nbt_N_red,nbt_N_ox
  logical flag

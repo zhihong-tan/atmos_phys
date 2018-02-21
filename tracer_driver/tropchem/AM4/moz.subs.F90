@@ -228,11 +228,11 @@
       itemp(:,:) = 300. * itemp(:,:)
 
       ko(:,:) = 5.9e-33 * itemp(:,:)**1.4
-      kinf(:,:) = 1.1e-12 * itemp(:,:)**-1.3
+      kinf(:,:) = 1.1e-12 * itemp(:,:)**(-1.3)
       call jpl( rate(1,1,48), m, .6, ko, kinf, plnplv )
 
-      ko(:,:) = 1.5e-13 * itemp(:,:)**-0.6
-      kinf(:,:) = 2.1e9 * itemp(:,:)**-6.1
+      ko(:,:) = 1.5e-13 * itemp(:,:)**(-0.6)
+      kinf(:,:) = 2.1e9 * itemp(:,:)**(-6.1)
       call jpl( rate(1,1,49), m, .6, ko, kinf, plnplv )
 
       ko(:,:) = 2.e-30 * itemp(:,:)**4.4
