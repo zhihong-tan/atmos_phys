@@ -1790,7 +1790,7 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep
  flag=parse(text_in_param,'surfr',surfr)    
  flag=parse(text_in_param,'sear',sear)
  if(flag == 0) sear=surfr
- flag=parse(text_in_param,'land',landr)
+ flag=parse(text_in_param,'landr',landr)
  if(flag == 0) landr=surfr
  flag=parse(text_in_param,'icer',snowr)
  if(flag == 0) snowr=landr
