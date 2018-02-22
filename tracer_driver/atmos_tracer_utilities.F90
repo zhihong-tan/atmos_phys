@@ -168,6 +168,7 @@ module atmos_tracer_utilities_mod
      ! over land surfaces and therefore this module should scale down the deposition
      ! it calculates by 1 - fraction of land
      logical :: Ldrydep
+     real    :: surfr,snowr,landr,sear
   end type drydep_type
 
   type(drydep_type), dimension(:), allocatable :: Drydep
@@ -338,7 +339,8 @@ contains
 
     call get_drydep_param(Drydep(n)%name,Drydep(n)%control,  &
          Drydep(n)%scheme, Drydep(n)%land_does_drydep, &
-         Drydep(n)%land_dry_dep_vel, Drydep(n)%sea_dry_dep_vel)
+         Drydep(n)%land_dry_dep_vel, Drydep(n)%sea_dry_dep_vel, &
+         Drydep(n)%surfr,Drydep(n)%landr,Drydep(n)%snowr,Drydep(n)%sear)
     ! check that the corresonding land tracer is present in the land if the
     ! dry deposition is done on the land side
     if (Drydep(n)%land_does_drydep) then
@@ -349,6 +351,16 @@ contains
                FATAL)
        endif
     endif
+
+    if (mpp_root_pe().eq.mpp_pe()) then
+       write(*,*) 'name: ',trim(tracer_names(n))
+       write(*,*) 'scheme: ',trim(Drydep(n)%scheme)
+       write(*,*) 'land does drydep: ',Drydep(n)%land_does_drydep
+       write(*,*) 'land dvel: ',Drydep(n)%land_dry_dep_vel
+       write(*,*) 'sea dvel: ',Drydep(n)%sea_dry_dep_vel
+       write(*,*) 'surfr,landr,snowr,sear: ',Drydep(n)%surfr,Drydep(n)%landr,Drydep(n)%snowr,Drydep(n)%sear
+    end if
+
     ! When formulation of dry deposition is resolved perhaps use the following?
     !      call get_drydep_param    &
     !           (Drydep(n)%name, Drydep(n)%control, Drydep(n)%scheme,  &
@@ -713,7 +725,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  integer :: i,j, flagsr, id, jd
  real    :: land_dry_dep_vel, sea_dry_dep_vel, ice_dry_dep_vel,  &
       snow_dry_dep_vel, vegn_dry_dep_vel,   &
-      surfr, sear, icer,  snowr, vegnr, landr
+      surfr, sear,  snowr, vegnr, landr
  real    :: diag_scale
  real    :: factor_tmp, gmt, dv_on, dv_off, dayfrac, vd_night, vd_day, loc_angle
  logical :: used, diurnal
@@ -738,7 +750,11 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  !dz(:,:) = pwt(:,:)*rdgas*T(:,:)/pfull(:,:)
  id=size(pfull,1); jd=size(pfull,2)
 
-
+ surfr=Drydep(n)%surfr
+ snowr=Drydep(n)%snowr
+ landr=Drydep(n)%landr
+ sear=Drydep(n)%sear
+ 
  select case(lowercase(scheme))
 
  case ('williams_wind_driven')
@@ -746,16 +762,8 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 !https://www.sciencedirect.com/science/article/pii/0004698182904644?via%3Dihub
 !https://www.sciencedirect.com/science/article/pii/S1352231098000478?via%3Dihub
 
-    flagsr=parse(control,'surfr',surfr)    
-    flagsr=parse(control,'sear',sear)
-    if(flagsr == 0) sear=surfr    
-    flagsr=parse(control,'land',landr)
-    if(flagsr == 0) landr=surfr
-    flagsr=parse(control,'icer',icer)
-    if(flagsr == 0) icer=landr
-
     where(T.lt.263.15)
-       landr2=icer
+       landr2=snowr
     elsewhere
        landr2=landr
     endwhere
@@ -795,8 +803,6 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     !
     !****  Compute dry sinks (loss frequency, need modification when
     !****    different vdep values are to be used for species)
-    flagsr=parse(control,'surfr',surfr)
-    if(flagsr == 0) surfr=500.
     hwindv=sqrt(u**2+v**2)
     frictv=u_star
     resisa=hwindv/(u_star*u_star)
@@ -1734,7 +1740,7 @@ end subroutine wet_deposition
 !#######################################################################
 !
 subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep, &
-    land_dry_dep_vel,sea_dry_dep_vel)
+    land_dry_dep_vel,sea_dry_dep_vel,surfr,landr,snowr,sear)
   !subroutine get_drydep_param(text_in_scheme, text_in_param, scheme,  &
   !                            land_dry_dep_vel, sea_dry_dep_vel, &
   !                            ice_dry_dep_vel, snow_dry_dep_vel,  &
@@ -1761,6 +1767,7 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep
  real, intent(out)               :: land_dry_dep_vel, sea_dry_dep_vel!, &
  !                                   ice_dry_dep_vel, snow_dry_dep_vel, &
  !                                   vegn_dry_dep_vel
+ real, intent(out)               :: surfr,snowr,landr,sear
 
  integer :: flag
 
@@ -1768,10 +1775,11 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep
  scheme                  = 'None'
  land_dry_dep_vel=0.0
  sea_dry_dep_vel=0.0
- !ice_dry_dep_vel=0.0
- !snow_dry_dep_vel=0.0
- !vegn_dry_dep_vel=0.0
-
+ surfr=500.
+ snowr=500.
+ landr=500.
+ sear=500.
+ 
  if(lowercase(trim(text_in_scheme(1:4))).eq.'wind') then
     scheme                  = 'Wind_driven'
  endif
@@ -1779,37 +1787,19 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep
     scheme                  = 'williams_wind_driven'
  endif
 
- !if(lowercase(trim(text_in_scheme(1:15))).eq.'sfc_dependent_w') then
- !scheme                 = 'sfc_dependent_wind_driven'
- !endif
- !
- !if(lowercase(trim(text_in_scheme(1:6))).eq.'sfc_bl') then
- !scheme                 = 'sfc_BL_dependent_wind_driven'
- !endif
+ flag=parse(text_in_param,'surfr',surfr)    
+ flag=parse(text_in_param,'sear',sear)
+ if(flag == 0) sear=surfr
+ flag=parse(text_in_param,'land',landr)
+ if(flag == 0) landr=surfr
+ flag=parse(text_in_param,'icer',snowr)
+ if(flag == 0) snowr=landr
 
  if(lowercase(trim(text_in_scheme(1:5))).eq.'fixed') then
     scheme                 = 'fixed'
     flag=parse(text_in_param,'land',land_dry_dep_vel)
     flag=parse(text_in_param,'sea', sea_dry_dep_vel)
  endif
-
- !if(lowercase(trim(text_in_scheme(1:15))).eq.'sfc_dependent_f') then
- !scheme                 = 'sfc_dependent_fixed'
- !flag=parse(text_in_param,'land',land_dry_dep_vel)
- !flag=parse(text_in_param,'sea', sea_dry_dep_vel)
- !flag=parse(text_in_param,'ice', ice_dry_dep_vel)
- !if (flag == 0) then
- !   ice_dry_dep_vel = sea_dry_dep_vel
- !end if
- !flag=parse(text_in_param,'snow', snow_dry_dep_vel)
- !if (flag == 0) then
- !   snow_dry_dep_vel = land_dry_dep_vel
- !end if
- !flag=parse(text_in_param,'vegn', vegn_dry_dep_vel)
- !if (flag == 0) then
- !   vegn_dry_dep_vel = land_dry_dep_vel
- !end if
- !endif
 
  if(lowercase(trim(text_in_scheme(1:4))).eq.'file') then
     scheme = 'file'
