@@ -196,6 +196,7 @@ use strat_chem_driver_mod, only : strat_chem, strat_chem_driver_init
 use atmos_age_tracer_mod,  only : atmos_age_tracer_init, atmos_age_tracer, &
                                   atmos_age_tracer_end
 use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
+                                  atmos_co2_columnaverage,      &
                                   atmos_co2_emissions,          &
                                   atmos_co2_time_vary,          &
                                   atmos_co2_gather_data,        &
@@ -1426,6 +1427,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          call atmos_co2_sourcesink (is, ie, js, je, Time, Time_next, dt, pwt, tracer(:,:,:,nco2),     &
                                     tracer(:,:,:,nsphum), rtndco2)
          rdt(:,:,:,nco2)=rdt(:,:,:,nco2)+rtndco2(:,:,:)
+         call atmos_co2_columnaverage(is, ie, js, je, Time_next, pwt, tracer(:,:,:,nsphum), &
+                                  (tracer(:,:,:,nco2)+rdt(:,:,:,nco2)))
          call mpp_clock_end (co2_clock)
    endif
 
@@ -1502,7 +1505,6 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 !for coupler
    call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep,sum_n_ox_ddep, is,ie,js,je)
-
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
