@@ -346,6 +346,9 @@ integer, allocatable :: local_indices(:)
 !<f1p
 integer, dimension(:), allocatable :: id_tracer_diag
 integer, dimension(:,:), allocatable :: id_tracer_diag_hour
+
+logical, dimension(:), allocatable ::  is_nh3_tag(:)
+
 integer :: id_ps_hour(24),id_temp_hour(24),id_local_hour
 !>
 integer :: id_landfr, id_seaicefr, id_snowfr, id_vegnfr, id_vegnlai
@@ -760,9 +763,9 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !                                 vegn_cover, vegn_lai, &
 !                                 b_star, z_pbl, rough_mom)
 
-            if (do_esm_nitrogen_flux .and. n.eq.nNH3) then !f1p: scale by ocean fraction
+            if (do_esm_nitrogen_flux .and. (n.eq.nNH3 .or. is_nh3_tag(n))) then !f1p: scale by ocean fraction
                dsinku(:,:,n) = dsinku(:,:,n)*land
-               nh3_ddep   = pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair
+               if (n.eq.nNH3) nh3_ddep   = pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair
             end if
 
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
@@ -2011,6 +2014,11 @@ type(time_type), intent(in)                                :: Time
                   standard_name='tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
       !----
 
+
+!nh3
+      allocate(is_nh3_tag(nt))
+      is_nh3_tag(:) = .false.
+
 !<f1p: tracer diagnostics
       allocate( id_tracer_diag(nt) )
       allocate( id_tracer_diag_hour(nt,24) )
@@ -2304,6 +2312,8 @@ subroutine atmos_nitrogen_flux_init
                  atm_tr_index = nnh3_tag1,                                          &
                  mol_wt = WTMN, param = (/ 1.0 /),              &
                  caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+
+            is_nh3_tag(nnh3_tag1) = .true.
          end if
          if (nnh3_tag2.gt.0) then
             ind_nh3_tag2_flux = aof_set_coupler_flux('nh3_tag2_flux',                       &
@@ -2311,6 +2321,8 @@ subroutine atmos_nitrogen_flux_init
                  atm_tr_index = nnh3_tag2,                                          &
                  mol_wt = WTMN, param = (/ 1.0 /),              &
                  caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+
+            is_nh3_tag(nnh3_tag2) = .true.
          end if
          if (nnh3_tag3.gt.0) then
             ind_nh3_tag3_flux = aof_set_coupler_flux('nh3_tag3_flux',                       &
@@ -2318,6 +2330,8 @@ subroutine atmos_nitrogen_flux_init
                  atm_tr_index = nnh3_tag3,                                          &
                  mol_wt = WTMN, param = (/ 1.0 /),              &
                  caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+
+            is_nh3_tag(nnh3_tag3) = .true.
          end if
          if (nnh3_tag4.gt.0) then
             ind_nh3_tag4_flux = aof_set_coupler_flux('nh3_tag4_flux',                       &
@@ -2325,6 +2339,8 @@ subroutine atmos_nitrogen_flux_init
                  atm_tr_index = nnh3_tag4,                                          &
                  mol_wt = WTMN, param = (/ 1.0 /),              &
                  caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+
+            is_nh3_tag(nnh3_tag4) = .true.
          end if
          if (nnh3_tag5.gt.0) then
             ind_nh3_tag5_flux = aof_set_coupler_flux('nh3_tag5_flux',                       &
@@ -2332,6 +2348,8 @@ subroutine atmos_nitrogen_flux_init
                  atm_tr_index = nnh3_tag5,                                          &
                  mol_wt = WTMN, param = (/ 1.0 /),              &
                  caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+
+            is_nh3_tag(nnh3_tag5) = .true.
          end if
       end if
    endif
@@ -2482,11 +2500,15 @@ integer :: logunit
       deallocate(frac_pm25)
       deallocate(frac_pm10)
       deallocate( id_tracer_diag_hour )
+!
 
       deallocate(dry_dep_nh4_flux)
       deallocate(dry_dep_no3_flux)
       deallocate(wet_dep_nh4_flux)
       deallocate(wet_dep_no3_flux)
+
+!nh3
+      deallocate(is_nh3_tag)
 
       module_is_initialized = .FALSE.
 

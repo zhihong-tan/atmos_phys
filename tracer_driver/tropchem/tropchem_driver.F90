@@ -660,7 +660,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 !     ... read in the surface emissions, using interpolator
 !-----------------------------------------------------------------------
       if (has_emis(n)) then
-         if (do_nh3_atm_ocean_exchange .and. tracnam(n).eq.'NH3') then
+         if (do_nh3_atm_ocean_exchange .and. tracnam(n)(1:3).eq.'NH3') then
             call read_2D_emis_data( inter_emis(n), emis, Time, Time_next, &
                  emis_field_names(n)%field_names, &
                  diurnal_emis(n), coszen, half_day, lon, &
