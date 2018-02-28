@@ -361,8 +361,6 @@ integer :: id_so2_cmip, id_dms_cmip
 integer :: id_so2_cmipv2, id_dms_cmipv2
 integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
-integer :: id_con_atm
-
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
  type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
 
@@ -496,7 +494,7 @@ contains
                            phalf, pfull,           &
                            u, v, t, q, r,          &
                            rm, rdt, rdiag, dt,            &
-                           u_star, b_star, q_star, con_atm, &
+                           u_star, b_star, q_star, &
                            z_half, z_full,         &
                            t_surf_rad, albedo,     &
                            Time_next,              &
@@ -509,7 +507,7 @@ contains
 integer, intent(in)                           :: is, ie, js, je
 type(time_type), intent(in)                   :: Time
 real, intent(in),    dimension(:,:)           :: lon, lat
-real, intent(in),    dimension(:,:)           :: u_star, b_star, q_star, con_atm
+real, intent(in),    dimension(:,:)           :: u_star, b_star, q_star
 real, intent(in),    dimension(:,:)           :: land
 real, intent(in),    dimension(:,:)           :: area, z_pbl, rough_mom
 real, intent(in),    dimension(:,:)           :: frac_open_sea
@@ -735,7 +733,6 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
    used = send_data ( id_landfr, frland, Time_next, is_in =is,js_in=js)
    used = send_data ( id_landfr, frland, Time_next, is_in =is,js_in=js)
    used = send_data ( id_seaicefr, frice, Time_next, is_in =is,js_in=js)
-   used = send_data ( id_con_atm, con_atm, Time_next, is_in =is,js_in=js)
 !   used = send_data ( id_snowfr, frsnow, Time_next, is_in =is,js_in=js)
 !   used = send_data ( id_vegnfr, vegn_cover, Time_next, is_in =is,js_in=js)
 !   used = send_data ( id_vegnlai, vegn_lai, Time_next, is_in =is,js_in=js)
@@ -755,7 +752,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
-                                 z_half(:,:,kd)-z_half(:,:,kd+1), u_star,con_atm,  &
+                                 z_half(:,:,kd)-z_half(:,:,kd+1), u_star,  &
                                  land, frac_open_sea, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
@@ -1848,11 +1845,6 @@ type(time_type), intent(in)                                :: Time
 
      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
-
-     id_con_atm = register_diag_field ( mod_name,                    &
-            'con_atm', axes(1:2), Time,               &
-            'con atm',                                 &
-            'm/s', missing_value=-999.     )
 
      id_landfr = register_diag_field ( mod_name,                    &
             'landfr_atm', axes(1:2), Time,               &

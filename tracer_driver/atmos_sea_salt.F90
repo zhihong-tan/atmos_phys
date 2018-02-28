@@ -664,7 +664,7 @@ subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
      seasalt_tracers(i)%tr   = tr
      call set_tracer_atts(MODEL_ATMOS,tr_name,longname,'mmr')
      method=' '
-     if(query_method('scheme', MODEL_ATMOS, tr, method, parameters) .and. (.not. do_sst_seasalt)) then
+     if(query_method('scheme', MODEL_ATMOS, tr, method, parameters)) then
         seasalt_tracers(i)%seasaltscheme=trim(method)
      else
         seasalt_tracers(i)%seasaltscheme='Monahan'
