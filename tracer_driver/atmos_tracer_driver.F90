@@ -226,7 +226,8 @@ public  atmos_tracer_driver,            &
         atmos_tracer_driver_gather_data_down, &
         atmos_tracer_has_surf_setl_flux, &
         get_atmos_tracer_surf_setl_flux, &
-        atmos_nitrogen_wetdep_flux_set,atmos_nitrogen_drydep_flux_set 
+        atmos_nitrogen_wetdep_flux_set, &
+        atmos_nitrogen_drydep_flux_set 
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -539,6 +540,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
+real, dimension(size(r,1),size(r,2),2)         :: xbvoc !xactive isop (1), terp (2), emis for xactive SOA 
 
 integer :: isulf, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
@@ -1233,7 +1235,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                             area, w10m_ocean, &
                             flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
                             half_day, &
-                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), kbot)
+                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), & 
+                            xbvoc, kbot)
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
@@ -1374,9 +1377,10 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       call atmos_SOA_chem(pwt ,t, pfull, phalf, dt, &
                 jday, hour, minute, second, lat, lon,    &
                 tracer(:,:,:,nSOA), &
-		tracer(:,:,:,nOH), &
-		tracer(:,:,:,nC4H10), &
-		rtnd, Time, Time_next, is,ie,js,je,kbot )
+                tracer(:,:,:,nOH), &
+                tracer(:,:,:,nC4H10), &
+                xbvoc, &
+                rtnd, Time, Time_next, is,ie,js,je,kbot )
 
       rdt(:,:,:,nSOA)=rdt(:,:,:,nSOA)+rtnd(:,:,:)
       call mpp_clock_end (SOA_clock)
@@ -1453,7 +1457,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
    end if
 
 
-   !save tracer diagnostics
+!save tracer diagnostics
 
 !calculate local time
    gmt = universal_time(Time) !time of day midnight = 0

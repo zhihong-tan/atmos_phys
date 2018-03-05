@@ -550,7 +550,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                             z_half, z_full, q, tsurf, albedo, coszen, rrsun, &
                             area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
                             half_day, &
-                            Time_next, rdiag,  kbot )
+                            Time_next, rdiag,  xbvoc, kbot )
 
 !-----------------------------------------------------------------------
    real, intent(in),    dimension(:,:)            :: lon, lat
@@ -576,6 +576,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real, intent(in), dimension(:,:)               :: flux_sw_down_vis_dif !W/m2 diffuse visible sfc flux
    real, intent(in), dimension(:,:)               :: half_day! half-day length (0 to pi)
    real, intent(inout), dimension(:,:,:,:)        :: rdiag   ! diagnostic tracer concentrations
+   real, intent(out), dimension(:,:,:)            :: xbvoc
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
    real, dimension(size(r,1),size(r,2),size(r,3)) :: sulfate_data
@@ -650,9 +651,11 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    emis_source(:,:,:,:) = 0.0
    airc_emis(:,:,:,:) = 0.0
    emisz(:,:,:) = 0.0
+   xbvoc(:,:,:) = 0.0
 
    tsfcair(:,:) = t(:,:,kd)
    pwtsfc(:,:) = t(:,:,kd)
+
    do n = 1, pcnstm1
 !-----------------------------------------------------------------------
 !     ... read in the surface emissions, using interpolator
@@ -732,6 +735,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                  coszen, emis, id_gamma_lai_age=id_glaiage_isop, &
                  id_gamma_temp=id_gtemp_isop, id_gamma_light=id_glight_isop, &
                  id_climtas=id_ctas, id_climfsds=id_cfsds, id_emis_diag=id_xactive_emis(n) )
+            xbvoc(:,:,1) = emis 
             if (has_xactive_emis(n)) then
                emisz(:,:,n) = emisz(:,:,n) + emis(:,:)
                if (present(kbot)) then
@@ -758,6 +762,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                  coszen, emis, id_gamma_lai_age=id_glaiage_terp, &
                  id_gamma_temp=id_gtemp_terp, id_gamma_light=id_glight_terp, &
                  id_emis_diag=id_xactive_emis(n) )
+            xbvoc(:,:,2) = emis 
             if (has_xactive_emis(n)) then
                emisz(:,:,n) = emisz(:,:,n) + emis(:,:)
                if (present(kbot)) then
