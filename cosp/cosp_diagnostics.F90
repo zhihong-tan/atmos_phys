@@ -1518,7 +1518,7 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    end do
 
 !taureffliqmodis
-   do n=numPressureHistogramBins,1,-1
+   do n=numMODISReffLiqBins,1,-1
        if (n <=9) then
        write (chvers, '(i1)') n
        else
