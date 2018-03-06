@@ -517,7 +517,10 @@ pnorm_perp_tot(:,:)=0
 
       DO k= nlev-1, 1, -1
         tautot_lay_ice(:) = tautot_ice(:,k)-tautot_ice(:,k+1)
-        WHERE (tautot_lay_ice(:).GT.0.)
+        where (tautot_ice(:,k+1).gt.120) !! hard-coded value for quick fix of large values in tautot_ice(:,k+1)
+         beta_perp_ice(:,k) = pnorm_perp_ice(:,k)/ EXP(-2.0*120.0) * (2.*tautot_lay_ice(:)) &
+            & / (1.-exp(-2.0*tautot_lay_ice(:)))
+        elseWHERE (tautot_lay_ice(:).GT.0.)
          beta_perp_ice(:,k) = pnorm_perp_ice(:,k)/ EXP(-2.0*tautot_ice(:,k+1)) * (2.*tautot_lay_ice(:)) &
             & / (1.-exp(-2.0*tautot_lay_ice(:)))
 
