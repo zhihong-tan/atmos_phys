@@ -504,59 +504,80 @@ contains
                                            - Cloud_Fraction_Low_Mean(1:nPoints)
 
 !! UPDATE 03/2018 TER: check for (cloud_fraction == 0) FIRST because otherwise dividing by 0
+! ########################################################################################
+! Compute mean optical thickness.
+! ########################################################################################
+  Optical_Thickness_Total_Mean(1:nPoints) = sum(optical_thickness, mask = cloudMask,dim = 2)
+  Optical_Thickness_Water_Mean(1:nPoints) = sum(optical_thickness,mask=waterCloudMask,dim=2)
+  Optical_Thickness_Ice_Mean(1:nPoints) = sum(optical_thickness,mask=iceCloudMask,dim=2)
+  ! ########################################################################################
+  ! We take the absolute value of optical thickness here to satisfy compilers that complains
+  ! when we evaluate the logarithm of a negative number, even though it's not included in
+  ! the sum.
+  ! ########################################################################################
+  Optical_Thickness_Total_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = cloudMask, &
+                    dim = 2)
+  Optical_Thickness_Water_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = waterCloudMask,&
+                    dim = 2)
+  Optical_Thickness_Ice_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = iceCloudMask,&
+                    dim = 2)
+  Cloud_Particle_Size_Water_Mean(1:nPoints) = sum(particle_size, mask = waterCloudMask, dim = 2)
+  Liquid_Water_Path_Mean(1:nPoints) = LWP_conversion*sum(particle_size*optical_thickness, &
+                    mask=waterCloudMask,dim=2)
+  Cloud_Particle_Size_Ice_Mean(1:nPoints) = sum(particle_size, mask = iceCloudMask,   dim = 2)
+  Ice_Water_Path_Mean(1:nPoints) = LWP_conversion * ice_density*sum(particle_size*optical_thickness,&
+                    mask=iceCloudMask,dim = 2)
+
+!Divide by the means if the mean is not 0, otherwise set to undefined value
 ot_and_cf: do i = 1,nPoints
- if (Cloud_Fraction_Total_Mean(i) == 0) then
+!Total
+ if (Cloud_Fraction_Total_Mean (i) == 0) then
    Optical_Thickness_Total_Mean (i)     = R_UNDEF
    Optical_Thickness_Total_MeanLog10 (i) = R_UNDEF
    Cloud_Top_Pressure_Total_Mean (i)    = R_UNDEF
  else
-  Optical_Thickness_Total_Mean(i) = sum(optical_thickness, mask = cloudMask,      dim = 2) / &
-                                            Cloud_Fraction_Total_Mean(i)
-  Optical_Thickness_Total_MeanLog10(i) = sum(log10(abs(optical_thickness)), mask = cloudMask, &
-                                            dim = 2) / Cloud_Fraction_Total_Mean(i)
-  Cloud_Top_Pressure_Total_Mean(i) = sum(cloud_top_pressure, mask = cloudMask, dim = 2) / &
-                                            max(1, count(cloudMask, dim = 2))
- endif
- if (Cloud_Fraction_Water_Mean(i) == 0) then
-   Optical_Thickness_Water_Mean(i)      = R_UNDEF
-   Optical_Thickness_Water_MeanLog10(i) = R_UNDEF
-   Cloud_Particle_Size_Water_Mean(i)    = R_UNDEF
-   Liquid_Water_Path_Mean(i)            = R_UNDEF
- else
-   Optical_Thickness_Water_Mean(1:nPoints) = sum(optical_thickness, mask = waterCloudMask, dim = 2) / &
-                    Cloud_Fraction_Water_Mean(1:nPoints)
-   Optical_Thickness_Water_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = waterCloudMask,&
-                    dim = 2) / Cloud_Fraction_Water_Mean(1:nPoints)
-   Cloud_Particle_Size_Water_Mean(1:nPoints) = sum(particle_size, mask = waterCloudMask, dim = 2) / &
-                    Cloud_Fraction_Water_Mean(1:nPoints)
-   Liquid_Water_Path_Mean(1:nPoints) = LWP_conversion*sum(particle_size*optical_thickness, &
-                    mask=waterCloudMask,dim=2)/Cloud_Fraction_Water_Mean(1:nPoints)
- endif
- if (Cloud_Fraction_Ice_Mean == 0) then
-   Optical_Thickness_Ice_Mean        = R_UNDEF
-   Optical_Thickness_Ice_MeanLog10   = R_UNDEF
-   Cloud_Particle_Size_Ice_Mean      = R_UNDEF
-   Ice_Water_Path_Mean               = R_UNDEF
- else
-   ! ########################################################################################
-   ! Compute mean optical thickness.
-   ! ########################################################################################
-   Optical_Thickness_Ice_Mean(1:nPoints)   = sum(optical_thickness, mask = iceCloudMask,   dim = 2) / &
-                                             Cloud_Fraction_Ice_Mean(1:nPoints)
-   ! ########################################################################################
-   ! We take the absolute value of optical thickness here to satisfy compilers that complains
-   ! when we evaluate the logarithm of a negative number, even though it's not included in
-   ! the sum.
-   ! ########################################################################################
-   Optical_Thickness_Ice_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = iceCloudMask,&
-        dim = 2) / Cloud_Fraction_Ice_Mean(1:nPoints)
+  Optical_Thickness_Total_Mean (i) =      Optical_Thickness_Total_Mean(i) / &
+                                          Cloud_Fraction_Total_Mean(i)
+  Optical_Thickness_Total_MeanLog10 (i) = Optical_Thickness_Total_MeanLog10(i)/ &
+                                          Cloud_Fraction_Total_Mean(i)
 
-   Cloud_Particle_Size_Ice_Mean(1:nPoints) = sum(particle_size, mask = iceCloudMask,   dim = 2) / &
-        Cloud_Fraction_Ice_Mean(1:nPoints)
-   Ice_Water_Path_Mean(1:nPoints) = LWP_conversion * ice_density*sum(particle_size*optical_thickness,&
-        mask=iceCloudMask,dim = 2) /Cloud_Fraction_Ice_Mean(1:nPoints)
+ endif
+! water
+ if (Cloud_Fraction_Water_Mean (i) == 0) then
+   Optical_Thickness_Water_Mean (i)      = R_UNDEF
+   Optical_Thickness_Water_MeanLog10 (i) = R_UNDEF
+   Cloud_Particle_Size_Water_Mean (i)    = R_UNDEF
+   Liquid_Water_Path_Mean (i)            = R_UNDEF
+ else
+   Optical_Thickness_Water_Mean (i) =    Optical_Thickness_Water_Mean (i)/ &
+                                         Cloud_Fraction_Water_Mean(i)
+   Optical_Thickness_Water_MeanLog10(i)= Optical_Thickness_Water_MeanLog10(i)/&
+                                         Cloud_Fraction_Water_Mean(i)
+   Cloud_Particle_Size_Water_Mean(i) =   Cloud_Particle_Size_Water_Mean(i)/ &
+                                         Cloud_Fraction_Water_Mean(i)
+   Liquid_Water_Path_Mean(i) =           Liquid_Water_Path_Mean(i)/&
+                                         Cloud_Fraction_Water_Mean(i)
+ endif
+! ice
+ if (Cloud_Fraction_Ice_Mean(i) == 0) then
+   Optical_Thickness_Ice_Mean(i)        = R_UNDEF
+   Optical_Thickness_Ice_MeanLog10(i)   = R_UNDEF
+   Cloud_Particle_Size_Ice_Mean(i)      = R_UNDEF
+   Ice_Water_Path_Mean(i)               = R_UNDEF
+ else
+   Optical_Thickness_Ice_Mean(i)   =    Optical_Thickness_Ice_Mean(i)/ &
+                                        Cloud_Fraction_Ice_Mean(i)
+   Optical_Thickness_Ice_MeanLog10(i) = Optical_Thickness_Ice_MeanLog10(i)/ &
+                                        Cloud_Fraction_Ice_Mean(i)
+   Cloud_Particle_Size_Ice_Mean(i) =    Cloud_Particle_Size_Ice_Mean(i)/ &
+                                        Cloud_Fraction_Ice_Mean(i)
+   Ice_Water_Path_Mean(i) =             Ice_Water_Path_Mean(i)/&
+                                        Cloud_Fraction_Ice_Mean(i)
  endif
 enddo ot_and_cf
+
+Cloud_Top_Pressure_Total_Mean(1:nPoints) = sum(cloud_top_pressure, mask = cloudMask, dim = 2) / &
+                                          max(1, count(cloudMask, dim = 2))
     ! ########################################################################################
     ! Normalize pixel counts to fraction.
     ! ########################################################################################
