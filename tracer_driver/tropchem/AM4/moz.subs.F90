@@ -57,7 +57,7 @@
       rate(:,:,183) = 2.30E-12
       rate(:,:,188) = 4.00E-12
       rate(:,:,193) = 1.6e-12
-      rate(:,:,253) = 3.17e-8
+      rate(:,:,248) = 3.17e-8
       itemp(:,:) = 1. / temp(:,:)
       rate(:,:,45) = 8e-12 * exp( -2060. * itemp(:,:) )
       rate(:,:,46) = 1.5e-11 * exp( -3600. * itemp(:,:) )
@@ -80,7 +80,7 @@
       rate(:,:,172) = 2.66e-12 * exp_fac(:,:)
       rate(:,:,173) = 1.14e-12 * exp_fac(:,:)
       rate(:,:,186) = 5.18E-12 * exp_fac(:,:)
-      rate(:,:,237) = 5.5e-12 * exp_fac(:,:)
+      rate(:,:,232) = 5.5e-12 * exp_fac(:,:)
       rate(:,:,53) = 1.7e-12 * exp( -940. * itemp(:,:) )
       rate(:,:,54) = 1e-14 * exp( -490. * itemp(:,:) )
       rate(:,:,57) = 4.8e-11 * exp( 250. * itemp(:,:) )
@@ -94,15 +94,15 @@
       exp_fac(:,:) = exp( 270. * itemp(:,:) )
       rate(:,:,65) = 3.3e-12 * exp_fac(:,:)
       rate(:,:,101) = 8.1e-12 * exp_fac(:,:)
-      rate(:,:,224) = 7.4e-12 * exp_fac(:,:)
+      rate(:,:,219) = 7.4e-12 * exp_fac(:,:)
       rate(:,:,66) = 3e-12 * exp( -1500. * itemp(:,:) )
       rate(:,:,67) = 5.1e-12 * exp( 210. * itemp(:,:) )
       exp_fac(:,:) = exp( -2450. * itemp(:,:) )
       rate(:,:,68) = 1.2e-13 * exp_fac(:,:)
-      rate(:,:,241) = 8.5e-13 * exp_fac(:,:)
+      rate(:,:,236) = 8.5e-13 * exp_fac(:,:)
       exp_fac(:,:) = exp( 170. * itemp(:,:) )
       rate(:,:,75) = 1.5e-11 * exp_fac(:,:)
-      rate(:,:,222) = 1.8e-11 * exp_fac(:,:)
+      rate(:,:,217) = 1.8e-11 * exp_fac(:,:)
       exp_fac(:,:) = exp( 380. * itemp(:,:) )
       rate(:,:,77) = 1.3e-12 * exp_fac(:,:)
       rate(:,:,130) = 3.61E-12 * exp_fac(:,:)
@@ -193,37 +193,31 @@
       rate(:,:,196) = 1.2e-12 * exp( 490. * itemp(:,:) )
       rate(:,:,203) = 1.2e-11 * exp( -280. * itemp(:,:) )
       rate(:,:,205) = 1.90e-13 * exp( 530. * itemp(:,:) )
-      exp_fac(:,:) = exp( -710. * itemp(:,:) )
-      rate(:,:,207) = 1.7e-12 * exp_fac(:,:)
-      rate(:,:,208) = 1.7e-12 * exp_fac(:,:)
-      rate(:,:,209) = 1.7e-12 * exp_fac(:,:)
-      rate(:,:,210) = 1.7e-12 * exp_fac(:,:)
-      rate(:,:,211) = 1.7e-12 * exp_fac(:,:)
-      rate(:,:,212) = 1.7e-12 * exp_fac(:,:)
-      rate(:,:,213) = 1.4e-10 * exp( -470. * itemp(:,:) )
-      rate(:,:,215) = 2.3e-11 * exp( -200. * itemp(:,:) )
-      rate(:,:,216) = 2.8e-11 * exp( 85. * itemp(:,:) )
+      rate(:,:,207) = 1.7e-12 * exp( -710. * itemp(:,:) )
+      rate(:,:,208) = 1.4e-10 * exp( -470. * itemp(:,:) )
+      rate(:,:,210) = 2.3e-11 * exp( -200. * itemp(:,:) )
+      rate(:,:,211) = 2.8e-11 * exp( 85. * itemp(:,:) )
       exp_fac(:,:) = exp( 290. * itemp(:,:) )
-      rate(:,:,217) = 6.4e-12 * exp_fac(:,:)
-      rate(:,:,238) = 4.1e-13 * exp_fac(:,:)
+      rate(:,:,212) = 6.4e-12 * exp_fac(:,:)
+      rate(:,:,233) = 4.1e-13 * exp_fac(:,:)
       exp_fac(:,:) = exp( -800. * itemp(:,:) )
-      rate(:,:,219) = 2.9e-12 * exp_fac(:,:)
-      rate(:,:,229) = 1.7e-11 * exp_fac(:,:)
-      rate(:,:,236) = 1.7e-11 * exp_fac(:,:)
-      rate(:,:,220) = 7.3e-12 * exp( -1280. * itemp(:,:) )
-      rate(:,:,221) = 2.6e-12 * exp( -350. * itemp(:,:) )
+      rate(:,:,214) = 2.9e-12 * exp_fac(:,:)
+      rate(:,:,224) = 1.7e-11 * exp_fac(:,:)
+      rate(:,:,231) = 1.7e-11 * exp_fac(:,:)
+      rate(:,:,215) = 7.3e-12 * exp( -1280. * itemp(:,:) )
+      rate(:,:,216) = 2.6e-12 * exp( -350. * itemp(:,:) )
       exp_fac(:,:) = exp( 220. * itemp(:,:) )
-      rate(:,:,223) = 2.7e-12 * exp_fac(:,:)
-      rate(:,:,243) = 5.8e-12 * exp_fac(:,:)
-      rate(:,:,225) = 8.1e-11 * exp( -30. * itemp(:,:) )
+      rate(:,:,218) = 2.7e-12 * exp_fac(:,:)
+      rate(:,:,238) = 5.8e-12 * exp_fac(:,:)
+      rate(:,:,220) = 8.1e-11 * exp( -30. * itemp(:,:) )
       exp_fac(:,:) = exp( 260. * itemp(:,:) )
-      rate(:,:,231) = 2.3e-12 * exp_fac(:,:)
-      rate(:,:,233) = 8.8e-12 * exp_fac(:,:)
-      rate(:,:,232) = 4.5e-12 * exp( 460. * itemp(:,:) )
-      rate(:,:,234) = 1.2e-10 * exp( -430. * itemp(:,:) )
-      rate(:,:,235) = 4.8e-12 * exp( -310. * itemp(:,:) )
-      rate(:,:,239) = 6.0e-13 * exp( 230. * itemp(:,:) )
-      rate(:,:,240) = 4.5e-14 * exp( -1260. * itemp(:,:) )
+      rate(:,:,226) = 2.3e-12 * exp_fac(:,:)
+      rate(:,:,228) = 8.8e-12 * exp_fac(:,:)
+      rate(:,:,227) = 4.5e-12 * exp( 460. * itemp(:,:) )
+      rate(:,:,229) = 1.2e-10 * exp( -430. * itemp(:,:) )
+      rate(:,:,230) = 4.8e-12 * exp( -310. * itemp(:,:) )
+      rate(:,:,234) = 6.0e-13 * exp( 230. * itemp(:,:) )
+      rate(:,:,235) = 4.5e-14 * exp( -1260. * itemp(:,:) )
 
       itemp(:,:) = 300. * itemp(:,:)
 
@@ -269,27 +263,27 @@
 
       ko(:,:) = 4.4e-32 * itemp(:,:)**1.3
       kinf(:,:) = 4.7e-11 * itemp(:,:)**0.2
-      call jpl( rate(1,1,214), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,209), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 1.8e-31 * itemp(:,:)**3.4
       kinf(:,:) = 1.5e-11 * itemp(:,:)**1.9
-      call jpl( rate(1,1,218), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,213), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 6.9e-31 * itemp(:,:)**1.0
       kinf(:,:) = 2.6e-11
-      call jpl( rate(1,1,226), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,221), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 1.6e-32 * itemp(:,:)**4.5
       kinf(:,:) = 2.0e-12 * itemp(:,:)**2.4
-      call jpl( rate(1,1,227), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,222), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 5.2e-31 * itemp(:,:)**3.2
       kinf(:,:) = 6.9e-12 * itemp(:,:)**2.9
-      call jpl( rate(1,1,230), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,225), m, 0.6, ko, kinf, plnplv )
 
       ko(:,:) = 9.0e-32 * itemp(:,:)**1.5
       kinf(:,:) = 3.0e-11
-      call jpl( rate(1,1,242), m, 0.6, ko, kinf, plnplv )
+      call jpl( rate(1,1,237), m, 0.6, ko, kinf, plnplv )
 
       end subroutine setrxt
 
@@ -337,14 +331,14 @@
       rate(:,106) = rate(:,106) * inv(:, 1)
       rate(:,162) = rate(:,162) * inv(:, 1)
       rate(:,202) = rate(:,202) * inv(:, 1)
-      rate(:,218) = rate(:,218) * inv(:, 1)
-      rate(:,226) = rate(:,226) * inv(:, 1)
-      rate(:,227) = rate(:,227) * inv(:, 1)
-      rate(:,228) = rate(:,228) * inv(:, 1)
-      rate(:,230) = rate(:,230) * inv(:, 1)
-      rate(:,242) = rate(:,242) * inv(:, 1)
+      rate(:,213) = rate(:,213) * inv(:, 1)
+      rate(:,221) = rate(:,221) * inv(:, 1)
+      rate(:,222) = rate(:,222) * inv(:, 1)
+      rate(:,223) = rate(:,223) * inv(:, 1)
+      rate(:,225) = rate(:,225) * inv(:, 1)
+      rate(:,237) = rate(:,237) * inv(:, 1)
       rate(:, 44) = rate(:, 44) * inv(:, 3) * inv(:, 1)
-      rate(:,214) = rate(:,214) * inv(:, 3) * inv(:, 1)
+      rate(:,209) = rate(:,209) * inv(:, 3) * inv(:, 1)
       rate(:, 45) = rate(:, 45) * m(:)
       rate(:, 47) = rate(:, 47) * m(:)
       rate(:, 48) = rate(:, 48) * m(:)
@@ -492,11 +486,11 @@
       rate(:,205) = rate(:,205) * m(:)
       rate(:,207) = rate(:,207) * m(:)
       rate(:,208) = rate(:,208) * m(:)
-      rate(:,209) = rate(:,209) * m(:)
       rate(:,210) = rate(:,210) * m(:)
       rate(:,211) = rate(:,211) * m(:)
       rate(:,212) = rate(:,212) * m(:)
       rate(:,213) = rate(:,213) * m(:)
+      rate(:,214) = rate(:,214) * m(:)
       rate(:,215) = rate(:,215) * m(:)
       rate(:,216) = rate(:,216) * m(:)
       rate(:,217) = rate(:,217) * m(:)
@@ -505,11 +499,11 @@
       rate(:,220) = rate(:,220) * m(:)
       rate(:,221) = rate(:,221) * m(:)
       rate(:,222) = rate(:,222) * m(:)
-      rate(:,223) = rate(:,223) * m(:)
       rate(:,224) = rate(:,224) * m(:)
       rate(:,225) = rate(:,225) * m(:)
       rate(:,226) = rate(:,226) * m(:)
       rate(:,227) = rate(:,227) * m(:)
+      rate(:,228) = rate(:,228) * m(:)
       rate(:,229) = rate(:,229) * m(:)
       rate(:,230) = rate(:,230) * m(:)
       rate(:,231) = rate(:,231) * m(:)
@@ -529,11 +523,6 @@
       rate(:,245) = rate(:,245) * m(:)
       rate(:,246) = rate(:,246) * m(:)
       rate(:,247) = rate(:,247) * m(:)
-      rate(:,248) = rate(:,248) * m(:)
-      rate(:,249) = rate(:,249) * m(:)
-      rate(:,250) = rate(:,250) * m(:)
-      rate(:,251) = rate(:,251) * m(:)
-      rate(:,252) = rate(:,252) * m(:)
 
       end subroutine adjrxt
 
