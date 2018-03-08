@@ -605,7 +605,7 @@ end subroutine write_namelist_values
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     u_star, landfrac, frac_open_sea,dsinku, dt, tracer, Time, &
-    Time_next, lon, half_day, drydep_data)
+    Time_next, lon, half_day, drydep_data, con_atm)
   ! When formulation of dry deposition is resolved perhaps use the following?
   !                           landfr, seaice_cn, snow_area, &
   !                           vegn_cover, vegn_lai, &
@@ -711,6 +711,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
  real, intent(in), dimension(:,:)    :: lon, half_day
  real, intent(in), dimension(:,:)    :: landfrac,frac_open_sea
+ real, intent(in), dimension(:,:), optional    :: con_atm
  ! When formulation of dry deposition is resolved perhaps use the following?
  !real, intent(in), dimension(:,:)    :: landfr, z_pbl, b_star, rough_mom
  !real, intent(in), dimension(:,:)    :: seaice_cn, snow_area, vegn_cover,  &
@@ -759,10 +760,6 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 
  case ('williams_wind_driven')
 
-!f1p
-!https://www.sciencedirect.com/science/article/pii/0004698182904644?via%3Dihub
-!https://www.sciencedirect.com/science/article/pii/S1352231098000478?via%3Dihub
-
     where(T.lt.263.15)
        landr2=snowr
     elsewhere
@@ -773,10 +770,16 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     where (frictv .lt. 0.1) frictv=0.1
 
     hwindv=sqrt(u**2+v**2)
-    resisa=hwindv/(u_star*u_star)
-!    resisa = 1/max(con_atm,1.e-25)
-    ka=1./max(resisa,1.e-25)
 
+    if (present(con_atm)) then
+       ka = con_atm
+       resisa = 1/max(con_atm,1.e-25)
+    else
+       resisa=hwindv/(u_star*u_star)
+       ka=1./max(resisa,1.e-25)
+    end if
+
+    !f1p
     !alpha = max(min(1.7e-6*hwindv**3.75,1.),0.) !WU 1979
     !alpha = max(min(1.e-6*u_star**3,0.) !Wu 1988, variations of whitecap coverage with wind stress and water temperature
     alpha = max(min(2.81e-5*(hwindv-3.87)**2.76,1.),0.) !Observations of whitecap coverage and the relation to wind stress, wave slope, and turbulent dissipation, Schwendeman and Thomson, 2016, JGR ocean

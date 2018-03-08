@@ -501,7 +501,7 @@ contains
                            flux_sw_down_vis_dir,   &
                            flux_sw_down_vis_dif,   &
                            mask,                   &
-                           kbot)
+                           kbot, con_atm)
 
 !-----------------------------------------------------------------------
 integer, intent(in)                           :: is, ie, js, je
@@ -527,6 +527,7 @@ real, intent(in), dimension(:,:)              :: flux_sw_down_vis_dif
 type(time_type), intent(in)                   :: Time_next
 integer, intent(in), dimension(:,:), optional :: kbot
 real, intent(in), dimension(:,:,:),  optional :: mask
+real, intent(in), dimension(:,:),    optional :: con_atm
 
 !-----------------------------------------------------------------------
 ! Local variables
@@ -754,10 +755,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                  land, frac_open_sea, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
-                                 drydep_data(n))!, frland, frice, frsnow, &
-!                                 vegn_cover, vegn_lai, &
-!                                 b_star, z_pbl, rough_mom)
-
+                                 drydep_data(n),con_atm)
             if (do_esm_nitrogen_flux .and. (n.eq.nNH3 .or. is_nh3_tag(n))) then !f1p: scale by ocean fraction
                dsinku(:,:,n) = dsinku(:,:,n)*(1.-frac_open_sea)
             end if
