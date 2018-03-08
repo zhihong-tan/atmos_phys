@@ -1969,10 +1969,11 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                 frac_open_sea, frac_land, &
                                 p_half, p_full,  &
                                 u, v, t, r(:,:,:,1), r, rm, rdt, rdiag, dt, &
-                                u_star, b_star, q_star, con_atm, z_half, z_full, &
+                                u_star, b_star, q_star, z_half, z_full, &
                                 t_surf_rad, albedo, Time_next, &
                                 Rad_flux_block%flux_sw_down_vis_dir, &
-                                Rad_flux_block%flux_sw_down_vis_dif)
+                                Rad_flux_block%flux_sw_down_vis_dif, &
+                                con_atm)
       call mpp_clock_end ( tracer_clock )
 
 !-----------------------------------------------------------------------
