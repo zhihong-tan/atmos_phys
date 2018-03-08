@@ -297,6 +297,10 @@ logical :: use_co2_tracer_field = .false.
                                       !  obtain co2 field for use by 
                                       !  radiation package from co2
                                       !  tracer field ?
+logical :: use_ch4_tracer_field = .false.
+                                      !  obtain ch4 field for use by 
+                                      !  radiation package from ch4
+                                      !  tracer field ?
 logical :: use_uniform_solar_input = .false.
                                       !  the (lat,lon) values used to
                                       !  calculate zenith angle are
@@ -417,6 +421,9 @@ logical :: do_conserve_energy = .false.
 !  <DATA NAME="use_co2_tracer_field" UNITS="" TYPE="logical" DIM="" DEFAULT="">
 !use co2 value from co2 tracer field?
 !  </DATA>
+!  <DATA NAME="use_ch4_tracer_field" UNITS="" TYPE="logical" DIM="" DEFAULT="">
+!use ch4 value from ch4 tracer field?
+!  </DATA>
 !  <DATA NAME="always_calculate" UNITS="" TYPE="logical" DIM="" DEFAULT="">
 !  calculate radiative fluxes and heating rates on every call to 
 !  radiation_driver ?
@@ -456,6 +463,7 @@ namelist /radiation_driver_nml/ do_radiation, &
                                 overriding_clouds, overriding_albedo, &
                                 overriding_aerosol, &
                                 use_co2_tracer_field, &
+                                use_ch4_tracer_field, &
                                 treat_sfc_refl_dir_as_dif, &
                                 always_calculate,  &
                                 use_uniform_solar_input, &
@@ -855,7 +863,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       integer           ::   kmax 
       integer           ::   nyr, nv, nband
       integer           ::   yr, month, year, dum
-      integer           ::   ico2
+      integer           ::   ico2, ich4
       integer           ::   num_sw_bands, num_lw_bands
 
 
@@ -1024,6 +1032,20 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
                  'co2 must be present as a tracer when use_co2_tracer_field is .true.', FATAL)
          endif
       endif
+!VAN
+!VAN: Get CH4 from tracer array if use_ch4_tracer_field is true. If not, call 
+!VAN error_msg and abort execution
+!VAN
+
+      if(use_ch4_tracer_field) then
+         if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiation_driver_mod: ', &
+        'use_ch4_tracer_field is .true., using interactive ch4 tracer for radiation calculations', NOTE)
+	 ich4 = get_tracer_index(MODEL_ATMOS, 'ch4')
+         if(ich4 == NO_TRACER) then
+            call error_mesg('radiation_driver_mod', &
+                 'ch4 must be present as a tracer when use_ch4_tracer_field is .true.', FATAL)
+         endif
+      endif      
 
 !--------------------------------------------------------------------
 !    set logical variables defining how the solar zenith angle is to
@@ -2628,7 +2650,7 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
       integer :: kmax
       logical :: override
       type(time_type)  :: Data_time
-      integer                  :: ico2
+      integer                  :: ico2, ich4
 
 !---------------------------------------------------------------------
 !  local variables
@@ -2802,6 +2824,20 @@ real, dimension(:,:,:),  intent(in), optional, target :: cloudtemp,    &
          endif
       endif
 
+!VAN
+!VAN: Define the values of Atmos_input%tracer_ch4
+!VAN
+      if (use_ch4_tracer_field ) then
+         allocate ( Atmos_input%tracer_ch4(size(t,1), size(t,2), kmax) )
+         ich4 = get_tracer_index(MODEL_ATMOS, 'ch4')
+         if(ich4 /= NO_TRACER) then
+            Atmos_input%tracer_ch4(:,:,:) = r(:,:,:,ich4)
+            Atmos_input%g_rrvch4 = gavg_rrv(ich4)
+         else
+            call error_mesg('radiation_driver', &
+              'ich4 cannot be NO_TRACER when use_ch4_tracer_field is .true.', FATAL)
+         endif
+       endif
 
 !----------------------------------------------------------------------
 
@@ -3158,6 +3194,7 @@ type(atmos_input_type), intent(inout) :: Atmos_input
       deallocate (Atmos_input%aerosolrelhum)
 
       if (ASSOCIATED(Atmos_input%tracer_co2)) deallocate(Atmos_input%tracer_co2)
+      if (ASSOCIATED(Atmos_input%tracer_ch4)) deallocate(Atmos_input%tracer_ch4)
 !--------------------------------------------------------------------
 
 

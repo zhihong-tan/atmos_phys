@@ -1008,7 +1008,8 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
                                      precip, temp_2d, tca2
       real, dimension   &
             (size(Output_mp%rdt,1),size(Output_mp%rdt,2))  :: &
-                              total_wetdep_dust, total_wetdep_seasalt, total_wetdep_nox, total_wetdep_nred 
+                              total_wetdep_dust, total_wetdep_seasalt, &
+                              total_wetdep_nox, total_wetdep_nred 
       real, dimension   &
             (size(Output_mp%rdt,1),size(Output_mp%rdt,2),  &
                                               size(Output_mp%rdt,4)) ::  &
@@ -1248,8 +1249,12 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         endif
      end do
      call atmos_nitrogen_wetdep_flux_set(total_wetdep_nred, total_wetdep_nox, is,ie,js,je)
-     if (id_n_ox_wdep>0 .and. sum(nb_N_ox)>0)     used = send_data ( id_n_ox_wdep, total_wetdep_nox*wtmn/1000., Time, is, js)
-     if (id_n_red_wdep>0 .and. sum(nb_N_red)>0)   used = send_data ( id_n_red_wdep, total_wetdep_nred*wtmn/1000., Time, is, js)
+     if (id_n_ox_wdep>0 .and. sum(nb_N_ox)>0) then
+         used = send_data ( id_n_ox_wdep, total_wetdep_nox*wtmn/1000., Time, is, js)
+     endif
+     if (id_n_red_wdep>0 .and. sum(nb_N_red)>0) then
+         used = send_data ( id_n_red_wdep, total_wetdep_nred*wtmn/1000., Time, is, js)
+     endif
 
       endif ! (wetdep_diagnostics_desired)
 
