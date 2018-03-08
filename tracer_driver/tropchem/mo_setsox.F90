@@ -5,7 +5,6 @@ module MO_SETSOX_MOD
   use fms_mod, only :  mpp_pe, mpp_root_pe, FATAL, error_mesg
   use cloud_chem, only : cloud_pH, cloud_so2_chem, cloud_nb_diag 
   use field_manager_mod,  only : MODEL_ATMOS
-  use tracer_manager_mod, only : get_tracer_index        
   use tracer_manager_mod,    only: get_tracer_index,  query_method
   use field_manager_mod,     only: parse
 
@@ -805,27 +804,27 @@ CONTAINS
           f_aero = qin(:,k,nh4_ndx)/(qin(:,k,nh3_ndx)+qin(:,k,nh4_ndx))
 
           if (nh3_tag1_ndx.gt.0.and.nh4_tag1_ndx.gt.0) then
-             TN = max(qin(:,k,nh3_tag1_ndx)+qin(:,k,nh4_tag1_ndx),small_value)
+             TN = qin(:,k,nh3_tag1_ndx)+qin(:,k,nh4_tag1_ndx)
              qin(:,k,nh4_tag1_ndx) = max(TN * f_aero,small_value)
              qin(:,k,nh3_tag1_ndx) = max(TN -  qin(:,k,nh4_tag1_ndx),small_value)
           end if
           if (nh3_tag2_ndx.gt.0.and.nh4_tag2_ndx.gt.0) then
-             TN = max(qin(:,k,nh3_tag2_ndx)+qin(:,k,nh4_tag2_ndx),small_value)
+             TN = qin(:,k,nh3_tag2_ndx)+qin(:,k,nh4_tag2_ndx)
              qin(:,k,nh4_tag2_ndx) = max(TN * f_aero,small_value)
              qin(:,k,nh3_tag2_ndx) = max(TN -  qin(:,k,nh4_tag2_ndx),small_value)
           end if
           if (nh3_tag3_ndx.gt.0.and.nh4_tag3_ndx.gt.0) then
-             TN = max(qin(:,k,nh3_tag3_ndx)+qin(:,k,nh4_tag3_ndx),small_value)
+             TN = qin(:,k,nh3_tag3_ndx)+qin(:,k,nh4_tag3_ndx)
              qin(:,k,nh4_tag3_ndx) = max(TN * f_aero,small_value)
              qin(:,k,nh3_tag3_ndx) = max(TN -  qin(:,k,nh4_tag3_ndx),small_value)
           end if
           if (nh3_tag4_ndx.gt.0.and.nh4_tag4_ndx.gt.0) then
-             TN = max(qin(:,k,nh3_tag4_ndx)+qin(:,k,nh4_tag4_ndx),small_value)
+             TN = qin(:,k,nh3_tag4_ndx)+qin(:,k,nh4_tag4_ndx)
              qin(:,k,nh4_tag4_ndx) = max(TN * f_aero,small_value)
              qin(:,k,nh3_tag4_ndx) = max(TN -  qin(:,k,nh4_tag4_ndx),small_value)
           end if
           if (nh3_tag5_ndx.gt.0.and.nh4_tag5_ndx.gt.0) then
-             TN = max(qin(:,k,nh3_tag5_ndx)+qin(:,k,nh4_tag5_ndx),small_value)
+             TN = qin(:,k,nh3_tag5_ndx)+qin(:,k,nh4_tag5_ndx)
              qin(:,k,nh4_tag5_ndx) = max(TN * f_aero,small_value)
              qin(:,k,nh3_tag5_ndx) = max(TN -  qin(:,k,nh4_tag5_ndx),small_value)
           end if

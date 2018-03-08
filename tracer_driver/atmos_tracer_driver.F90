@@ -552,7 +552,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
 real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
-real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep, nh3_ddep
+real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
 real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
 real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
@@ -731,7 +731,6 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !    output land fraction information, if desired.
 !------------------------------------------------------------------------
    used = send_data ( id_landfr, frland, Time_next, is_in =is,js_in=js)
-   used = send_data ( id_landfr, frland, Time_next, is_in =is,js_in=js)
    used = send_data ( id_seaicefr, frice, Time_next, is_in =is,js_in=js)
 !   used = send_data ( id_snowfr, frsnow, Time_next, is_in =is,js_in=js)
 !   used = send_data ( id_vegnfr, vegn_cover, Time_next, is_in =is,js_in=js)
@@ -746,7 +745,6 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
      sum_n_ddep(:,:) = 0.
      sum_n_ox_ddep(:,:) = 0.
      sum_n_red_ddep(:,:) = 0.
-     nh3_ddep(:,:) = 0.
 
       do n=1,ntp
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
@@ -761,8 +759,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !                                 b_star, z_pbl, rough_mom)
 
             if (do_esm_nitrogen_flux .and. (n.eq.nNH3 .or. is_nh3_tag(n))) then !f1p: scale by ocean fraction
-               dsinku(:,:,n) = dsinku(:,:,n)*land
-               if (n.eq.nNH3) nh3_ddep   = pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair
+               dsinku(:,:,n) = dsinku(:,:,n)*(1.-frac_open_sea)
             end if
 
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
@@ -1531,7 +1528,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 
 !for coupler
-   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep-nh3_ddep,sum_n_ox_ddep, is,ie,js,je)
+   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep,sum_n_ox_ddep, is,ie,js,je)
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
