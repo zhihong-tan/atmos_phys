@@ -89,7 +89,7 @@ SUBROUTINE COSP_PRECIP_MXRATIO(Npoints,Nlevels,Ncolumns,p,T,prec_frac,prec_type,
                         mxratio(i,j,k)=(flux(i,k)*((rho/rho0)**g_x)*sigma)**one_over_xip1
                         mxratio(i,j,k)=mxratio(i,j,k)/rho
                         ! Compute effective radius
-                        if ((reff(i,j,k) <= 0.0).and.(flux(i,k) /= 0.0)) then
+                        if ((reff(i,j,k) <= 0.0).and.(abs(flux(i,k)) > 10.0**(-100))) then !! trap added for values close to but not quite 0
                            lambda_x = (a_x*c_x*((rho0/rho)**g_x)*n_ax*gamma1/flux(i,k))**(1./delta)
                            reff(i,j,k) = gamma_4_3_2/lambda_x
                         endif

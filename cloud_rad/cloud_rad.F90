@@ -1645,7 +1645,7 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
       do k=1,size(ql,3)
         do j=1,size(ql,2)
           do i=1,size(ql,1)
-            if (qa(i,j,k) > qmin ) then
+            if (qa(i,j,k) .gt. qmin ) then
                
 !---------------------------------------------------------------------
 !    when cloud is found, increment the cloud column counter.
@@ -1662,89 +1662,76 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !    if cloud ice is present (> qmin) compute cloud ice path and 
 !    if a microphysics-based scheme is active, the ice concentration.
 !---------------------------------------------------------------------
-      do k=1,size(ql,3)
-        do j=1,size(ql,2)
-          do i=1,size(ql,1)
-            if (ql(i,j,k) > qmin) then
-
+      if(want_microphysics) then
+        do k=1,size(ql,3)
+          do j=1,size(ql,2)
+            do i=1,size(ql,1)
 !---------------------------------------------------------------------
-!    compute the liquid water path. 
+!    if liquid water is present, compute the liquid water path. 
 !---------------------------------------------------------------------
-              lwp(i,j,k) = ql(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
-                                                            GRAV/qa(i,j,k)
-
+              if (ql(i,j,k) .gt. qmin) then
+                lwp(i,j,k) = ql(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                              GRAV/qa(i,j,k)
 !----------------------------------------------------------------------
-!    calculate the droplet concentration. units of concentration are 
-!    g / m**3.
+!    if microphysical properties are desired, calculate the droplet
+!    concentration. units of concentration are g / m**3.
 !----------------------------------------------------------------------
-              if (want_microphysics) then
                 conc_drop_org(i,j,k) =     &
                       1000.*ql(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/&
                       RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/  &
                       MAX(phalf(i,j,k), pfull(i,j,1)))/qa(i,j,k)
-              endif  
-            else
-              lwp(i,j,k) = 0.
-              if (want_microphysics) conc_drop_org(i,j,k) = 0.
-            endif
-
+              else
+                lwp(i,j,k) = 0.
+                conc_drop_org(i,j,k) = 0.
+              endif
 !---------------------------------------------------------------------
 !    if ice is present, compute the ice water path.
 !---------------------------------------------------------------------
-            if (qi(i,j,k) .gt. qmin) then
-              iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
-                                                           GRAV/qa(i,j,k)
-                          
+              if (qi(i,j,k) .gt. qmin) then
+                iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                             GRAV/qa(i,j,k)
 !----------------------------------------------------------------------
-!    if microphysical properties are desired, calculate the ice con-
-!    centration. units of concentration are in g / m**3.
+!    if microphysical properties are desired, calculate the ice
+!    concentration. units of concentration are in g / m**3.
 !----------------------------------------------------------------------
-              if (want_microphysics) then
                 conc_ice_org (i,j,k) =     &
                       1000.*qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
                       RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
                       MAX(phalf(i,j,k), pfull(i,j,1)))/ qa(i,j,k)
-              end if  
-            else
-              iwp(i,j,k) = 0.
-              if (want_microphysics)  conc_ice_org(i,j,k) = 0.
-            endif            
+              else
+                iwp(i,j,k) = 0.
+                conc_ice_org(i,j,k) = 0.
+              endif            
+            end do
           end do
         end do
-      end do
 
 !------------------------------------------------------------------------
 !    call define_liquid_particle_size to compute the effective radius 
 !    and /or the effective drop size diameter to be used by the radiation 
 !    code.
 !------------------------------------------------------------------------
-      do k=1,size(ql,3)
-        do j=1,size(ql,2)
-          do i=1,size(ql,1)
-            if (ql(i,j,k) > qmin) then
-              call define_liquid_particle_size (k,  ql(i,j,k),   &
-                   pfull(i,j,k), k_ratio(i,j), qa(i,j,:), tkel(i,j,k), &
-                                          N_drop(i,j,k),  reff_liq(i,j,k))
-!             if (want_microphysics)  size_drop_org(i,j,k) =    &
-!                                            2.*reff_liq(i,j,k)
-
+        do k=1,size(ql,3)
+          do j=1,size(ql,2)
+            do i=1,size(ql,1)
+              if (ql(i,j,k) .gt. qmin) then
+                call define_liquid_particle_size (k,  ql(i,j,k),   &
+                     pfull(i,j,k), k_ratio(i,j), qa(i,j,:), tkel(i,j,k), &
+                                            N_drop(i,j,k),  reff_liq(i,j,k))
+!               size_drop_org(i,j,k) = 2.*reff_liq(i,j,k)
 !-------------------------------------------------------------------------
 !    if ql is not present (or below qmin), set the output fields to
 !    appropriate values.
 !-------------------------------------------------------------------------
-            else
-              reff_liq(i,j,k) = 10.
-!             if(want_microphysics) size_drop_org(i,j,k) = 20.
-            endif  ! (ql > qmin)
+              else
+                reff_liq(i,j,k) = 10.
+!               size_drop_org(i,j,k) = 20.
+              endif  ! (ql > qmin)
+            end do
           end do
         end do
-      end do
 
-!------------------------------------------------------------------------
-!    convert to drop diameter.
-!------------------------------------------------------------------------
-      if (want_microphysics)  size_drop_org = 2.*reff_liq
-
+        size_drop_org = 2.*reff_liq
 
 #ifdef SKIP
 !---------------------------------------------------------------------
@@ -1752,34 +1739,32 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !    crystal size, and, if a microphysics-based scheme is active, the 
 !    ice concentration and mean crystal size.
 !---------------------------------------------------------------------
-      do k=1,size(ql,3)
-        do j=1,size(ql,2)
-          do i=1,size(ql,1)
-            if (qi(i,j,k) .gt. qmin) then
+        do k=1,size(ql,3)
+          do j=1,size(ql,2)
+            do i=1,size(ql,1)
+              if (qi(i,j,k) .gt. qmin) then
 
 !---------------------------------------------------------------------
 !    if ice is present, compute the ice water path.
 !---------------------------------------------------------------------
-              iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
-                                                           GRAV/qa(i,j,k)
+                iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                             GRAV/qa(i,j,k)
                           
 !----------------------------------------------------------------------
 !    if microphysical properties are desired, calculate the ice con-
 !    centration. units of concentration are in g / m**3.
 !----------------------------------------------------------------------
-              if (want_microphysics) then
                 conc_ice_org (i,j,k) =     &
                       1000.*qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
                       RDGAS/tkel(i,j,k)/log(phalf(i,j,k+1)/   &
                       MAX(phalf(i,j,k), pfull(i,j,1)))/ qa(i,j,k)
-              end if  
-            else
-              iwp(i,j,k) = 0.
-              if (want_microphysics)  conc_ice_org(i,j,k) = 0.
-            endif            
+              else
+                iwp(i,j,k) = 0.
+                conc_ice_org(i,j,k) = 0.
+              endif            
+            end do
           end do
         end do
-      end do
 #endif
 
 !------------------------------------------------------------------------
@@ -1787,6 +1772,74 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
 !    and /or the effective crystal size to be used by the radiation 
 !    code.
 !------------------------------------------------------------------------
+        do k=1,size(ql,3)
+          do j=1,size(ql,2)
+            do i=1,size(ql,1)
+              if (qi(i,j,k) .gt. qmin) then
+                call define_ice_particle_size (want_microphysics,   &
+                    use_fu2007, qi(i,j,k), qa(i,j,k), qni(i,j,k),   &
+                    tkel(i,j,k), reff_ice(i,j,k), size_ice_org(i,j,k))
+
+!-----------------------------------------------------------------------
+!    if insufficient ice is present, set output fields to appropriate
+!    values.
+!-----------------------------------------------------------------------
+              else  ! (qi > qmin)
+                reff_ice(i,j,k) = 30.
+                size_ice_org(i,j,k) = 60.
+              end if ! (qi > qmin)                    
+            end do
+          end do
+        end do
+      else ! want_microphysics
+        do k=1,size(ql,3)
+          do j=1,size(ql,2)
+            do i=1,size(ql,1)
+              if (ql(i,j,k) .gt. qmin) then
+                lwp(i,j,k) = ql(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                              GRAV/qa(i,j,k) 
+              else
+                lwp(i,j,k) = 0.
+              endif
+              if (qi(i,j,k) .gt. qmin) then
+                iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                             GRAV/qa(i,j,k)
+              else
+                iwp(i,j,k) = 0.
+              endif            
+            end do
+          end do
+        end do
+
+        do k=1,size(ql,3)
+          do j=1,size(ql,2)
+            do i=1,size(ql,1)
+              if (ql(i,j,k) .gt. qmin) then
+                call define_liquid_particle_size (k,  ql(i,j,k),   &
+                     pfull(i,j,k), k_ratio(i,j), qa(i,j,:), tkel(i,j,k), &
+                                            N_drop(i,j,k),  reff_liq(i,j,k))
+              else
+                reff_liq(i,j,k) = 10.
+              endif  ! (ql > qmin)
+            end do
+          end do
+        end do
+
+#ifdef SKIP
+      do k=1,size(ql,3)
+        do j=1,size(ql,2)
+          do i=1,size(ql,1)
+            if (qi(i,j,k) .gt. qmin) then
+              iwp(i,j,k) = qi(i,j,k)*(phalf(i,j,k+1) - phalf(i,j,k))/ &
+                                                           GRAV/qa(i,j,k)
+            else
+              iwp(i,j,k) = 0.
+            endif            
+          end do
+        end do
+      end do
+#endif
+
       do k=1,size(ql,3)
         do j=1,size(ql,2)
           do i=1,size(ql,1)
@@ -1794,22 +1847,16 @@ real,    dimension(:,:,:), intent(out), optional  :: conc_drop_org,  &
               call define_ice_particle_size (want_microphysics,   &
                   use_fu2007, qi(i,j,k), qa(i,j,k), qni(i,j,k),   &
                   tkel(i,j,k), reff_ice(i,j,k), size_ice_org(i,j,k))
-
-!-----------------------------------------------------------------------
-!    if insufficient ice is present, set output fields to appropriate
-!    values.
-!-----------------------------------------------------------------------
             else  ! (qi > qmin)
               reff_ice(i,j,k) = 30.
-              if(want_microphysics) size_ice_org(i,j,k) = 60.
-            end if ! (qi > qmin)                    
+            end if ! (qi > qmin)
           end do
         end do
       end do
-
+    endif ! want_microphysics
 
 !-------------------------------------------------------------------
-    
+
 end subroutine rnd_overlap   
 
 
@@ -5120,6 +5167,4 @@ REAL, DIMENSION(SIZE(LWP,1),SIZE(LWP,2),SIZE(LWP,3))   :: k_liq,k_ice
 END SUBROUTINE CLOUD_OPTICAL_PROPERTIES
 
                   end module cloud_rad_mod
-
-      
 
