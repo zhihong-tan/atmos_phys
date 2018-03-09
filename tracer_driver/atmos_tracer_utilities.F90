@@ -1111,7 +1111,7 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
 
  integer :: i, j, k, kk, id, jd, kd, flaglw
 
- real, dimension(size(T,3)) :: conc
+ real, dimension(size(T,1),size(T,2),size(T,3)) :: conc
 
  real :: conc_rain, conc_rain_total, conc_sat
 
@@ -1448,10 +1448,10 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
           if( lowercase(scheme)=='henry_below' .or. lowercase(scheme)=='henry_below_noice') then
              k_g = d_g/rain_diam * &
                   ( 2. + 0.6 * sqrt( rain_diam*rain_vterm/vk_air ) * (vk_air/d_g)**(1./3.) )
-             do i = 1,id
+             conc(:,:,:) = tracer(:,:,:) * n_air(:,:,:) / cm3_2_m3 ! Convert from VMR to molec/m3
+             do kk = 1,kd
                 do j = 1,jd
-                   conc(:) = tracer(i,j,:) * n_air(i,j,:) / cm3_2_m3 ! Convert from VMR to molec/m3
-                   do kk = 1,kd
+                   do i = 1,id
                       stay = 1.
                       if( precip3d(i,j,kk) > 0. ) then
                          conc_rain_total = 0.
@@ -1460,23 +1460,23 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
                          do k = kk,kd
                             f_a0 = Htemp(i,j,k) * pfull(i,j,k) * xliq(i,j,kk) * n_air(i,j,kk)/n_air(i,j,k)
                             scav_factor0 = f_a0 / ( 1.+f_a0 )
-                            conc_sat = conc(k) * scav_factor0 ! molec/m3 <== (xeqca1)
+                            conc_sat = conc(i,j,k) * scav_factor0 ! molec/m3 <== (xeqca1)
                             sa_drop0 = geo_fac / rain_diam * xliq(i,j,kk) * n_air(i,j,kk) / &
                                  ( DENS_H2O * AVOGNO * cm3_2_m3 ) ! (m2 H2O) / (m3 air)
-                            fgas0 = conc(k) * k_g ! molec/m2/s
+                            fgas0 = conc(i,j,k) * k_g ! molec/m2/s
                             fall_time = zdel(i,j,k) / rain_vterm ! sec
                             conc_rain = fgas0 * sa_drop0 * fall_time ! molec/m3 <== (xca1)
                             conc_rain_total = conc_rain_total + conc_rain ! molec/m3 <== (all1)
                             if ( conc_rain_total < conc_sat ) then
-                               conc(k) = max( conc(k)-conc_rain, 0. )
+                               conc(i,j,k) = max( conc(i,j,k)-conc_rain, 0. )
                             end if
                          end do
-                         conc(kk) = conc(kk) / n_air(i,j,kk) * cm3_2_m3 ! Convert to VMR
-                         conc(kk) = tracer(i,j,kk) - conc(kk)
-                         if ( conc(kk) /= 0. .and. tracer(i,j,kk) /= 0. ) then
+                         conc(i,j,kk) = conc(i,j,kk) / n_air(i,j,kk) * cm3_2_m3 ! Convert to VMR
+                         conc(i,j,kk) = tracer(i,j,kk) - conc(i,j,kk)
+                         if ( conc(i,j,kk) /= 0. .and. tracer(i,j,kk) /= 0. ) then
                             fall_time = zdel(i,j,kk)/rain_vterm
                             bc_temp(i,j,kk) = bc_temp(i,j,kk) + &
-                                 conc(kk) / (tracer(i,j,kk) * fall_time) * stay ! 1/s
+                                 conc(i,j,kk) / (tracer(i,j,kk) * fall_time) * stay ! 1/s
                          end if
                       end if
                    end do
@@ -1486,9 +1486,9 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
           else if ( lowercase(scheme) == 'aerosol_below' .or. lowercase(scheme) == 'aerosol_below_noice') then
 
              do k=1,kd
-                fluxs = (snow3d(:,:,k+1)+snow3d(:,:,k))/2.0
-                fluxr = (rain3d(:,:,k+1)+rain3d(:,:,k))/2.0
-                bc_temp(:,:,k) = 3./4. * &
+                fluxs = (snow3d(:,:,k+1)+snow3d(:,:,k))*0.5
+                fluxr = (rain3d(:,:,k+1)+rain3d(:,:,k))*0.5
+                bc_temp(:,:,k) = 0.75 * &
                      (fluxr(:,:)*alpha_r/R_r/DENS_H2O + &
                      fluxs(:,:)*alpha_s/R_s/DENS_SNOW)
              end do
@@ -1973,24 +1973,25 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
  character(len=100) :: cmip_data, cmip_scheme
  logical flag
  real :: mw
+ integer :: iflag
 
  flag = query_method('cmip',MODEL_ATMOS,n,cmip_scheme,cmip_data)
 
  if (flag) then
     if (present(cmip_name))     then
-       flag=parse(cmip_data,'cmip_name',cmip_name)
-       if (.not. flag) cmip_name='NULL'
+       iflag=parse(cmip_data,'cmip_name',cmip_name)
+       if (iflag == 0) cmip_name='NULL'
     end if
     if (present(cmip_longname)) then
-       flag=parse(cmip_data,'cmip_longname',cmip_longname)
-       if (.not. flag) then
+       iflag=parse(cmip_data,'cmip_longname',cmip_longname)
+       if (iflag == 0) then
           call get_tracer_names (MODEL_ATMOS, n, name = cmip_longname)
           cmip_longname = uppercase(cmip_longname)
        end if
     end if
     if (present(cmip_longname2)) then
-       flag=parse(cmip_data,'cmip_longname2',cmip_longname2)
-       if (.not. flag) then
+       iflag=parse(cmip_data,'cmip_longname2',cmip_longname2)
+       if (iflag == 0 ) then
           call get_tracer_names (MODEL_ATMOS, n, name = cmip_longname2)
           cmip_longname2 = uppercase(cmip_longname2)
        end if
@@ -2013,10 +2014,12 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
  real, intent(out), optional :: mw,nb_N,nb_N_ox,nb_N_red,conv_vmr_mmr
  real, intent(out), optional :: frac_pm1,frac_pm10,frac_pm25
  logical, intent(out), optional :: is_aerosol
- character(len=100) :: chem_data, scheme, chem_type, tracer_name, tracer_units, name
+ character(len=100) :: scheme, chem_type, tracer_name, tracer_units, name
+ character(len=150) :: chem_data
  logical :: is_aerosol_local
  real :: mwt,nbt_N_red,nbt_N_ox
  logical flag
+ integer :: iflag
 
  flag = query_method('chem_param',MODEL_ATMOS,n,scheme,chem_data)
 
@@ -2024,13 +2027,13 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
 
  if (flag) then
     if (present(mw))     then
-       flag=parse(chem_data,'mw',mw)
-       if (.not. flag) mw=-999.
+       iflag=parse(chem_data,'mw',mw)
+       if (iflag == 0) mw=-999.
     end if
-    flag=parse(chem_data,'nb_N_ox',nbt_N_ox)
-    if (.not. flag) nbt_N_ox=0
-    flag=parse(chem_data,'nb_N_red',nbt_N_red)
-    if (.not. flag) nbt_N_red=0
+    iflag=parse(chem_data,'nb_N_ox',nbt_N_ox)
+    if (iflag == 0) nbt_N_ox=0
+    iflag=parse(chem_data,'nb_N_red',nbt_N_red)
+    if (iflag == 0) nbt_N_red=0
     If (present(nb_N_ox))  nb_N_ox  = nbt_N_ox
     If (present(nb_N_red)) nb_N_red = nbt_N_red
     if (present(nb_N))     nb_N = nbt_N_ox+nbt_N_red
@@ -2046,16 +2049,16 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
     if (present(frac_pm1).or.present(frac_pm10).or.present(frac_pm25)) then
        if (is_aerosol_local) then
           if (present(frac_pm1)) then
-             flag=parse(chem_data,'frac_pm1',frac_pm1)
-             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm1 not defined for '//trim(tracer_name), FATAL )
+             iflag=parse(chem_data,'frac_pm1',frac_pm1)
+             if (iflag == 0)        call ERROR_MESG('get_chem_param', 'frac_pm1 not defined for '//trim(tracer_name), FATAL )
           end if
           if (present(frac_pm25)) then
-             flag=parse(chem_data,'frac_pm25',frac_pm25)
-             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm25 not defined for '//trim(tracer_name), FATAL )
+             iflag=parse(chem_data,'frac_pm25',frac_pm25)
+             if (iflag == 0)        call ERROR_MESG('get_chem_param', 'frac_pm25 not defined for '//trim(tracer_name), FATAL )
           end if
           if (present(frac_pm10)) then
-             flag=parse(chem_data,'frac_pm10',frac_pm10)
-             if (.not. flag)        call ERROR_MESG('get_chem_param', 'frac_pm10 not defined for '//trim(tracer_name), FATAL )
+             iflag=parse(chem_data,'frac_pm10',frac_pm10)
+             if (iflag == 0)        call ERROR_MESG('get_chem_param', 'frac_pm10 not defined for '//trim(tracer_name), FATAL )
           end if
        else
           if (present(frac_pm1))  frac_pm1=0.
@@ -2065,8 +2068,8 @@ subroutine get_chem_param (n, mw, nb_N, nb_N_ox, nb_N_red, is_aerosol, conv_vmr_
     end if
     if (present(conv_vmr_mmr)) then
        if (trim(tracer_units).eq."vmr") then
-          flag=parse(chem_data,'mw',mwt)
-          if (.not. flag) mwt=-999.
+          iflag=parse(chem_data,'mw',mwt)
+          if (iflag == 0) mwt=-999.
           conv_vmr_mmr = mwt/wtmair
        else
           conv_vmr_mmr = 1.
@@ -2474,3 +2477,4 @@ subroutine sjl_fillz(im, km, nq, q, dp)
 end subroutine sjl_fillz
 
 end module atmos_tracer_utilities_mod
+

@@ -1069,9 +1069,12 @@ type(aerosol_time_vary_type), intent(inout) :: Aerosol_tv
 
      integer :: n
 
-     do n=1, size(Aerosol_tv%Interp,1)
-       call unset_interpolator_time_flag (Aerosol_tv%Interp(n))
-     end do
+     ! gnu does not support the use of .eq. and .neq. on logical operands
+     if ( (associated (Aerosol_tv%Interp) .eqv. .true.) .and. (do_specified_aerosol .eqv. .true.)) then
+         do n=1, size(Aerosol_tv%Interp,1)
+             call unset_interpolator_time_flag (Aerosol_tv%Interp(n))
+         end do
+     endif
   
      Aerosol_tv%override_counter = Aerosol_tv%override_counter + 1
      if (Aerosol_tv%override_counter == 2) then

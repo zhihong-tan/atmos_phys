@@ -21,7 +21,7 @@ implicit none
       integer :: uo_o2_ndx, uno2_no3_ndx, un2o5_ndx, uoh_hno3_ndx, uho2_no2_ndx, uhno4_ndx,&
                  uco_oha_ndx, uho2_ho2_ndx, upan_f_ndx, upan_b_ndx, umpan_f_ndx, umpan_b_ndx, &
                  n2o5h_ndx, no3h_ndx, ho2h_ndx, no2h_ndx, nh3h_ndx, uoh_xooh_ndx, uoh_acet_ndx, &
-                 uoh_dms_ndx,&
+                 uoh_dms_ndx, so2h_ndx, &
                  so4_ndx, bc1_ndx, bc2_ndx, oc1_ndx, oc2_ndx, soa_ndx,nh4_ndx,nh4no3_ndx,&
                  ssa_ndx(5), dust_ndx(5),&
                  h2o_ndx, hcl_ndx, clono2_ndx, hbr_ndx, &
@@ -71,6 +71,7 @@ logical                       :: module_is_initialized = .false.
       uo_o2_ndx = get_rxt_ndx( 'uo_o2' )
       uno2_no3_ndx = get_rxt_ndx( 'uno2_no3' )
       un2o5_ndx = get_rxt_ndx( 'un2o5' )
+      un2o5_ndx = get_rxt_ndx( 'un2o5' )
       uoh_hno3_ndx = get_rxt_ndx( 'uoh_hno3' )
       uho2_no2_ndx = get_rxt_ndx( 'uho2_no2' )
       uhno4_ndx = get_rxt_ndx( 'uhno4' )
@@ -81,6 +82,7 @@ logical                       :: module_is_initialized = .false.
       umpan_f_ndx = get_rxt_ndx( 'umpan_f' )
       umpan_b_ndx = get_rxt_ndx( 'umpan_b' )
       n2o5h_ndx = get_rxt_ndx( 'n2o5h' )
+      so2h_ndx = get_rxt_ndx( 'so2h' )      
       no3h_ndx = get_rxt_ndx( 'no3h' )
       ho2h_ndx = get_rxt_ndx( 'ho2h' )
       no2h_ndx = get_rxt_ndx( 'no2h' )
@@ -268,10 +270,11 @@ end if
       real, parameter :: mw_no3 = 62.
       real, parameter :: mw_no2 = 46.
       real, parameter :: mw_nh3 = 17.
+      real, parameter :: mw_so2 = 64.
       real, dimension(size(qin,1), naero_het)::drymass_het,&
                                         rd_het,re_het,sfca_het
       real :: uptk_het
-      real :: gam_n2o5, gam_no3, gam_nh3
+      real :: gam_n2o5, gam_no3, gam_nh3, gam_so2
 
       plev = SIZE(temp,2)
       ilev = SIZE(temp,1)
@@ -569,21 +572,50 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
                end if
             end if
 
+            if ( so2h_ndx > 0) then
+               rxt(i,k,so2h_ndx)=0.             
+               !http://onlinelibrary.wiley.com/doi/10.1002/2013JD021426/full          
+               if ( trop_option%gSO2_dynamic .eq. 1) then
+                  gam_SO2 = max(1e-3+(1e-2-1e-3)*(relhum(i,k)-.5)/.5,0.)
+               elseif ( trop_option%gSO2_dynamic .eq. 2) then
+                  !http://www.atmos-chem-phys.net/15/2031/2015/acp-15-2031-2015.pdf
+                  gam_SO2 = max(2e-5+(5e-5-2e-5)*(relhum(i,k)-.5)/.5,2.e-5)
+               else
+                  gam_SO2 = trop_option%gSO2
+               end if
+               if (gam_SO2 .gt. 0.) then
+                 do n=1, naero_het
+                     uptk_het = 0.
+                  ! we need to make sure the effective radius unit is cm.
+                     call calc_hetrate(sfca_het(i,n),re_het(i,n)*1.D-4,m(i,k),gam_SO2, &
+                          sqrt( temp(i,k)),sqrt(mw_so2),uptk_het)
+                     rxt(i,k,so2h_ndx) = rxt(i,k,so2h_ndx) + uptk_het
+                  end do
+               end if
+               
+               if (trop_diag%ind_gso2 .gt. 0) then
+                  trop_diag_array(i,k,trop_diag%ind_gso2) = gam_so2
+               end if
+            end if
+
+
             !NH3+SO4->NH4SO4,(NH4)2SO4
             if( nh3h_ndx > 0 ) then
                rxt(i,k,nh3h_ndx)=0.             
                if ( trop_option%gNH3 .gt. 0. ) then
                   do n=1, naero_het
                      uptk_het = 0.
-                  ! we need to make sure the effective radius unit is cm.
+                     ! we need to make sure the effective radius unit is cm.
                      call calc_hetrate(sfca_het(i,n),re_het(i,n)*1.D-4,m(i,k),trop_option%gNH3, &
                           sqrt( temp(i,k)),sqrt(mw_nh3),uptk_het   )
                      rxt(i,k,nh3h_ndx) = rxt(i,k,nh3h_ndx) + uptk_het
                   end do
                end if
             end if
-           end do ! (ilev)
-end if ! (trop_option%het_chem)
+            
+         end do ! (ilev)
+      end if ! (trop_option%het_chem)
+
          if( strat72_ndx > 0 .or. strat73_ndx > 0 .or. strat74_ndx > 0 .or. &
              strat75_ndx > 0 .or. strat76_ndx > 0 .or. strat77_ndx > 0 .or. &
              strat78_ndx > 0 .or. strat79_ndx > 0 .or. strat80_ndx > 0 ) then

@@ -227,8 +227,10 @@ character(len=7), parameter :: mod_name = 'tracers'
       endif
   40  format (A,' was initialized as tracer number ',i2)
       if (use_interactive_tracers) then
-         write (*,*) 'atmos_soa_mod: Using interactive tracers'
-         write (logunit,*) 'atmos_soa_mod: Using interactive tracers'
+         if (mpp_pe() == mpp_root_pe()) then
+            write (*,*) 'atmos_soa_mod: Using interactive tracers'
+            write (logunit,*) 'atmos_soa_mod: Using interactive tracers'
+         end if
          if (nOH==NO_TRACER .or. nC4H10==NO_TRACER) &
            call error_mesg ('atmos_soa_mod', &
             'OH and C4H10 tracers must be present if use_interactive_tracers=T', FATAL)

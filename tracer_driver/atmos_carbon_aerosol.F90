@@ -358,8 +358,8 @@ integer, intent(in)                    :: is, ie, js, je
 !-----------------------------------------------------------------------
 
 real  dtr,bltop,z1,z2,del
-real, dimension(size(bcphob,3)) :: fa1, fa2
-real, dimension(size(bcphob,3),6) :: fbb
+real, dimension(size(bcphob,1),size(bcphob,2),size(bcphob,3)) :: fa1, fa2
+real, dimension(size(bcphob,3)) :: fbb
 integer :: lf, nlevel_fire
 real, dimension(6) :: alt_fire_min, alt_fire_max
 ! Lower altitude of injection from wild fires 
@@ -599,148 +599,197 @@ real, parameter                            :: yield_soa = 0.1
 
    endif
 !
+    fa1(:,:,:) = 0.
+    fa2(:,:,:) = 0.
     do j = 1, jd
       do i = 1, id
 
 ! --- For fosil fuel emissions, calculate the fraction of emission for
 ! --- each vertical levels
-        fa1(:) = 0.
-        fa2(:) = 0.
         do l = kd,2,-1
           Z1 = z_half(i,j,l+1)-z_half(i,j,kd+1)
           Z2 = z_half(i,j,l)-z_half(i,j,kd+1)
+          if (Z1.gt.Ze2) exit
           if (Z2.ge.0.and.Z1.lt.ze1) then
             if (Z1.gt.0) then
               if (Z2.lt.ze1) then
-                fa1(l)=(Z2-Z1)/ze1
+                fa1(i,j,l)=(Z2-Z1)/ze1
               else
-                fa1(l)=(ze1-Z1)/ze1
+                fa1(i,j,l)=(ze1-Z1)/ze1
               endif
             else
               if (Z2.le.ze1) then
-                fa1(l)=Z2/ze1
+                fa1(i,j,l)=Z2/ze1
               else
-                fa1(l)=1.
+                fa1(i,j,l)=1.
               endif
             endif
           endif
-          
+
           if (Z2.ge.ze1.and.z1.lt.ze2) then
             if (Z1.gt.Ze1) then
               if (Z2.lt.ze2) then
-                fa2(l)=(z2-z1)/(ze2-ze1)
+                fa2(i,j,l)=(z2-z1)/(ze2-ze1)
               else
-                fa2(l)=(ze2-z1)/(ze2-ze1)
+                fa2(i,j,l)=(ze2-z1)/(ze2-ze1)
               endif
             else
               if (Z2.le.ze2) then
-                fa2(l)=(z2-ze1)/(ze2-ze1)
+                fa2(i,j,l)=(z2-ze1)/(ze2-ze1)
               else
-                fa2(l)=1.
+                fa2(i,j,l)=1.
               endif
             endif
           endif
-          if (Z1.gt.Ze2) exit
         enddo
+      enddo
+    enddo
+
 !
-! Calculate fraction of emission at every levels for open fires
+! Calculate fraction of emission at every level for open fires
 !
-        fbb(:,:)=0.
-        if (.not.no_biobur_if_no_pbl .and. do_biobur_pbl_bug) fbb(kd,:)=1.
 !
 ! In case of multiple levels, which are fixed
 !
-        if (nlevel_fire .gt. 1) then
-          do l = kd,2,-1
-            Z1 = z_half(i,j,l+1)-z_half(i,j,kd+1)
-            Z2 = z_half(i,j,l)-z_half(i,j,kd+1)
-            do lf=1,nlevel_fire
-              del=alt_fire_max(lf)-alt_fire_min(lf)
+    if (nlevel_fire .gt. 1) then
+      do lf=1,nlevel_fire
+        del=alt_fire_max(lf)-alt_fire_min(lf)
+        do j = 1, jd
+          do i = 1, id
+            fbb(:)=0.
+            if (.not.no_biobur_if_no_pbl .and. do_biobur_pbl_bug) fbb(kd)=1.
+            do l = kd,2,-1
+              Z1 = z_half(i,j,l+1)-z_half(i,j,kd+1)
+              Z2 = z_half(i,j,l)-z_half(i,j,kd+1)
               if (del.gt.0. .and. &
                   Z1.lt.alt_fire_max(lf).and.Z2.gt.alt_fire_min(lf) ) then
                 if (Z1.ge.alt_fire_min(lf)) then
                   if (Z2 .lt. alt_fire_max(lf)) then
-                    fbb(l,lf)=(Z2-Z1)/del
+                    fbb(l)=(Z2-Z1)/del
                   else
-                    fbb(l,lf)=(alt_fire_max(lf)-z1)/del
+                    fbb(l)=(alt_fire_max(lf)-z1)/del
                   endif
                 else
                   if (Z2.le.alt_fire_max(lf)) then
-                    fbb(l,lf) = (Z2-alt_fire_min(lf))/del
+                    fbb(l) = (Z2-alt_fire_min(lf))/del
                   else
-                    fbb(l,lf)=1.
+                    fbb(l)=1.
                   endif
                 endif
               endif
             enddo
-          enddo
-        else
-!
-! --- Inject equally through the boundary layer -------
-!
-          if (.not. no_biobur_if_no_pbl .and. .not. do_biobur_pbl_bug) fbb(kd,1)=1.
-          bltop = z_pbl(i,j)
-          do l = kd,1,-1
-            z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
-            z2=z_half(i,j,l)-z_half(i,j,kd+1)
-            if (bltop.lt.z1) exit
-            if (bltop.ge.z2) fbb(l,1)=(z2-z1)/bltop
-            if (bltop.gt.z1.and.bltop.lt.z2) fbb(l,1) = (bltop-z1)/bltop
-          enddo
-        endif
-! Fossil fuel emission
-        bcemisff(i,j,:)=fa1(:) * bcemisff_l1(i,j) + fa2(:) * bcemisff_l2(i,j)
-        omemisff(i,j,:)=fa1(:) * omemisff_l1(i,j) + fa2(:) * omemisff_l2(i,j)
 ! Open biomass burning fires emission
-        do lf =1, nlevel_fire
-          bcemisob(i,j,:)= bcemisob(i,j,:) + fbb(:,lf)*bcemisbb(i,j,lf)
-          omemisob(i,j,:)= omemisob(i,j,:) + fbb(:,lf)*omemisbb(i,j,lf)
-        enddo
+            do l = 1, kd
+              bcemisob(i,j,l) = bcemisob(i,j,l) + fbb(l)*bcemisbb(i,j,lf)
+              omemisob(i,j,l) = omemisob(i,j,l) + fbb(l)*omemisbb(i,j,lf)
+            end do
+          end do
+        end do
+      end do
+    else
+      if (do_biobur_pbl_bug) then
+        do j = 1, jd
+          do i = 1, id
+            fbb(:)=0.
+            if (.not. no_biobur_if_no_pbl) fbb(kd)=1.
+            bltop = z_pbl(i,j)
+            do l = kd,1,-1
+              z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
+              z2=z_half(i,j,l)-z_half(i,j,kd+1)
+              if (bltop.lt.z1) exit
+              if (bltop.ge.z2) fbb(l)=(z2-z1)/bltop
+              if (bltop.gt.z1.and.bltop.lt.z2) fbb(l) = (bltop-z1)/bltop
+              bcemisob(i,j,l) = bcemisob(i,j,l) + fbb(l)*bcemisbb(i,j,1)
+              omemisob(i,j,l) = omemisob(i,j,l) + fbb(l)*omemisbb(i,j,1)
+              !do lf = 2, nlevel_fire
+              !  bcemisob(i,j,l) = bcemisob(i,j,l) + bcemisbb(i,j,lf)
+              !  omemisob(i,j,l) = omemisob(i,j,l) + omemisbb(i,j,lf)
+              !end do
+            end do
+          end do
+        end do
+      else
+        do j = 1, jd
+          do i = 1, id
+            fbb(:)=0.
+            if (.not. no_biobur_if_no_pbl) fbb(kd)=1.
+            bltop = z_pbl(i,j)
+            do l = kd,1,-1
+              z1=z_half(i,j,l+1)-z_half(i,j,kd+1)
+              z2=z_half(i,j,l)-z_half(i,j,kd+1)
+              if (bltop.lt.z1) exit
+              if (bltop.ge.z2) fbb(l)=(z2-z1)/bltop
+              if (bltop.gt.z1.and.bltop.lt.z2) fbb(l) = (bltop-z1)/bltop
+              bcemisob(i,j,l) = bcemisob(i,j,l) + fbb(l)*bcemisbb(i,j,1)
+              omemisob(i,j,l) = omemisob(i,j,l) + fbb(l)*omemisbb(i,j,1)
+            end do
+          end do
+        end do
+      endif
+    endif
+
+! Fossil fuel emission
+    do l = 1, kd
+      do j = 1, jd
+        do i = 1, id
+          bcemisff(i,j,l)=fa1(i,j,l) * bcemisff_l1(i,j) + fa2(i,j,l) * bcemisff_l2(i,j)
+          omemisff(i,j,l)=fa1(i,j,l) * omemisff_l1(i,j) + fa2(i,j,l) * omemisff_l2(i,j)
+        end do
+      end do
+    end do
+
 ! Biogenic
 ! Bio-fuel (if not included in fossil fuel inevntory)
 ! International shipping
+    do j = 1, jd
+      do i = 1, id
         omphob_emis(i,j,kd) =  omemisbf(i,j) + omemissh(i,j) + &
            omemisbg(i,j) + omemisocean(i,j)
-        omphob_emis(i,j,:)= omphob_emis(i,j,:) + omemisff(i,j,:) + &
-           omemisob(i,j,:)
+      end do
+    end do
 
-        do l=1,kd
+    do l = 1, kd
+      do j = 1, jd
+        do i = 1, id
+          omphob_emis(i,j,l) = omphob_emis(i,j,l) + omemisff(i,j,l) + omemisob(i,j,l)
           emisob(i,j) = emisob(i,j) + bcemisob(i,j,l) + omemisob(i,j,l)
           omemisob_2d(i,j) = omemisob_2d(i,j) + omemisob(i,j,l)
+          omphil_emis(i,j,l) = omphob_emis(i,j,l) * frac_om_philic/pwt(i,j,l)
+          omphob_emis(i,j,l) = omphob_emis(i,j,l) * frac_om_phobic/pwt(i,j,l)
         end do
-
-        omphil_emis(i,j,:) = omphob_emis(i,j,:) * frac_om_philic/pwt(i,j,:)
-        omphob_emis(i,j,:) = omphob_emis(i,j,:) * frac_om_phobic/pwt(i,j,:)
-!
-      enddo
-    enddo
+      end do
+    end do
 
 !------------------------------------------------------------------------
 ! if frac_bcbb_phobic .eq. frac_bc_phobic, then frac_bcbb_philic must equal
 !  frac_bc_philic, since sum must be 1.
 !------------------------------------------------------------------------
     if (frac_bcbb_phobic == frac_bc_phobic) then
-      do j = 1, jd
-        do i = 1, id
-          bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
-          bcphob_emis(i,j,:)= bcphob_emis(i,j,:) + &
-                              bc_aircraft_EI * bcemisav(i,j,:)    + &
-                              bcemisff(i,j,:) + bcemisob(i,j,:)
-          bcphil_emis(i,j,:) = bcphob_emis(i,j,:)*frac_bc_philic/pwt(i,j,:)
-          bcphob_emis(i,j,:) = bcphob_emis(i,j,:)*frac_bc_phobic/pwt(i,j,:)
+      do l = 1, kd
+        do j = 1, jd
+          do i = 1, id
+            bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
+            bcphob_emis(i,j,l)= bcphob_emis(i,j,l) + &
+                                bc_aircraft_EI * bcemisav(i,j,l)    + &
+                                bcemisff(i,j,l) + bcemisob(i,j,l)
+            bcphil_emis(i,j,l) = bcphob_emis(i,j,l)*frac_bc_philic/pwt(i,j,l)
+            bcphob_emis(i,j,l) = bcphob_emis(i,j,l)*frac_bc_phobic/pwt(i,j,l)
+          enddo
         enddo
       enddo
     else
-      do j = 1, jd
-        do i = 1, id
-          bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
-          bcphob_emis(i,j,:)= bcphob_emis(i,j,:) + &
-                              bc_aircraft_EI * bcemisav(i,j,:)    + &
-                              bcemisff(i,j,:) 
-          bcphil_emis(i,j,:) = (bcphob_emis(i,j,:)*frac_bc_philic +   &
-                               bcemisob(i,j,:)*frac_bcbb_philic)/pwt(i,j,:)
-          bcphob_emis(i,j,:) = (bcphob_emis(i,j,:)*frac_bc_phobic +   &
-                               bcemisob(i,j,:)*frac_bcbb_phobic)/pwt(i,j,:)
+      do l = 1, kd
+        do j = 1, jd
+          do i = 1, id
+            bcphob_emis(i,j,kd) =  bcemisbf(i,j) + bcemissh(i,j)
+            bcphob_emis(i,j,l)= bcphob_emis(i,j,l) + &
+                                bc_aircraft_EI * bcemisav(i,j,l)    + &
+                                bcemisff(i,j,l) 
+            bcphil_emis(i,j,l) = (bcphob_emis(i,j,l)*frac_bc_philic +   &
+                                 bcemisob(i,j,l)*frac_bcbb_philic)/pwt(i,j,l)
+            bcphob_emis(i,j,l) = (bcphob_emis(i,j,l)*frac_bc_phobic +   &
+                                 bcemisob(i,j,l)*frac_bcbb_phobic)/pwt(i,j,l)
+          enddo
         enddo
       enddo
     endif

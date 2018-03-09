@@ -1425,6 +1425,7 @@ subroutine atmos_DMS_emission (lon, lat, area, ocn_flx_fraction, t_surf_rad, w10
       endif
 
 end subroutine atmos_DMS_emission
+
 !#######################################################################
 !</SUBROUTINE>
 !<SUBROUTINE NAME="atmos_SO2_emission">
@@ -1498,8 +1499,8 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       real, dimension(size(SO2_dt,1),size(SO2_dt,2),nlevel_fire) :: &
              SO2_biobur
 ! Factors of vertical distribution of emissions
-      real, dimension(size(SO2_dt,3)) :: fbb, fa1, fa2, fcv, fev
-      real, dimension(size(SO2_dt,3),nlevel_fire) :: ff
+      real, dimension(size(SO2_dt,1),size(SO2_dt,2),size(SO2_dt,3)) :: fbb, fa1, fa2
+      real                            :: fv, ff
 ! Lower altitude of injection of SO2 from wild fires 
 ! These values correspond to the AEROCOM input data (cf. Dentener, ACPD, 2006)
       real, dimension(nlevel_fire) :: &
@@ -1515,7 +1516,7 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 ! Emission factor for SO4
       real, parameter :: fe = 0.025
 
-      real :: z1, z2, bltop, fbt, del
+      real :: z1, z2, del
       integer  :: i, j, l, id, jd, kd, il, lf, k
       integer :: ivolc_lev
 
@@ -1540,7 +1541,6 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
       SO2_Ship(:,:)=0.0
       SO4_Ship(:,:)=0.0
       SO2_Powerplants(:,:)=0.0
-      SO2_aircraft(:,:,:)=0.0
       SO2_biobur(:,:,:)=0.0
 
       SO2_cont_volc(:,:,:)=0.0
@@ -1645,129 +1645,124 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
         end do
       endif
 
-      do j = 1, jd
-      do i = 1, id
-
-! --- Assuming biomass burning emission within the PBL -------
-        fbb(:) = 0.
-        if (.not. no_biobur_if_no_pbl) fbb(kd) = 1.
-        ze1=100.
-        ze2=500.
-        fbt=0.
-        bltop = z_pbl(i,j)
-        do l = kd,1,-1
-          z1=zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-          z2=zhalf(i,j,l)-zhalf(i,j,kd+1)
-          if (bltop.lt.z1) exit
-          if (bltop.ge.z2) fbb(l)=(z2-z1)/bltop
-          if (bltop.gt.z1.and.bltop.lt.z2) fbb(l) = (bltop-z1)/bltop
-        enddo
-! --- Assuming anthropogenic source L1 emitted below Ze1, and L2
-!     emitted between Ze1 and Ze2.
-        ff(:,:)=0.
-        if (runtype.eq.'aerocom') then
-          do l = kd,2,-1
-            Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-            Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
-            do lf=1,nlevel_fire
-              del=alt_fire_max(lf)-alt_fire_min(lf)
-              if (del.gt.0. .and. &
-                  Z1.lt.alt_fire_max(lf).and.Z2.gt.alt_fire_min(lf) ) then
-                if (Z1.ge.alt_fire_min(lf)) then
-                  if (Z2 .lt. alt_fire_max(lf)) then
-                    ff(l,lf)=(Z2-Z1)/del
-                  else
-                    ff(l,lf)=(alt_fire_max(lf)-z1)/del
-                  endif
-                else
-                  if (Z2.le.alt_fire_max(lf)) then
-                    ff(l,lf) = (Z2-alt_fire_min(lf))/del
-                  else
-                    ff(l,lf)=1.
-                  endif
-                endif
-              endif
-            enddo
-          enddo
-        endif
 ! --- Volcanic SO2 source ----
 ! --- For continuous and explosive volcanoes, calculate the fraction of emission
 ! --- for each vertical level
       if (trim(cont_volc_source) == 'do_cont_volc') then
         do ivolc_lev = 1,num_volc_levels
-          fcv(:)=0.
+          del=volc_altitude_edges(ivolc_lev+1)-volc_altitude_edges(ivolc_lev)
           do l = kd,2,-1
-            Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-            Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
-            del=volc_altitude_edges(ivolc_lev+1)-volc_altitude_edges(ivolc_lev)
-            if (del>0. .and. &
-                Z1<volc_altitude_edges(ivolc_lev+1) .and. Z2>volc_altitude_edges(ivolc_lev) ) then
-              if (Z1 >= volc_altitude_edges(ivolc_lev)) then
-                if (Z2 < volc_altitude_edges(ivolc_lev+1)) then
-                  fcv(l)=(Z2-Z1)/del
-                else
-                  fcv(l)=(volc_altitude_edges(ivolc_lev+1)-Z1)/del
+            do j = 1, jd
+              do i = 1, id
+                Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+                Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
+                fv = 0.
+                if (del>0. .and. &
+                    Z1<volc_altitude_edges(ivolc_lev+1) .and. Z2>volc_altitude_edges(ivolc_lev) ) then
+                  if (Z1 >= volc_altitude_edges(ivolc_lev)) then
+                    if (Z2 < volc_altitude_edges(ivolc_lev+1)) then
+                      fv=(Z2-Z1)/del
+                    else
+                      fv=(volc_altitude_edges(ivolc_lev+1)-Z1)/del
+                    endif
+                  else
+                    if (Z2 <= volc_altitude_edges(ivolc_lev+1)) then
+                      fv=(Z2-volc_altitude_edges(ivolc_lev))/del
+                    else
+                      fv=1.
+                    endif
+                  endif
                 endif
-              else
-                if (Z2 <= volc_altitude_edges(ivolc_lev+1)) then
-                  fcv(l)=(Z2-volc_altitude_edges(ivolc_lev))/del
-                else
-                  fcv(l)=1.
-                endif
-              endif
-            endif
-          enddo
-          so2_emis_cont_volc(i,j,:) = so2_emis_cont_volc(i,j,:) + fcv(:) * SO2_cont_volc(i,j,ivolc_lev)
+                so2_emis_cont_volc(i,j,l) = so2_emis_cont_volc(i,j,l) + &
+                                            fv*SO2_cont_volc(i,j,ivolc_lev)
+              enddo
+            end do
+          end do
         end do
       endif
 ! --- For explosive volcanoes, calculate the fraction of emission for
 ! --- each vertical levels
-      if (trim(expl_volc_source) == 'do_expl_volc') then 
+      if (trim(expl_volc_source) == 'do_expl_volc') then
         do ivolc_lev = 1,num_volc_levels
-          fev(:)=0.
+          del=volc_altitude_edges(ivolc_lev+1)-volc_altitude_edges(ivolc_lev)
           do l = kd,2,-1
-            Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
-            Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
-            del=volc_altitude_edges(ivolc_lev+1)-volc_altitude_edges(ivolc_lev)
-            if (del>0. .and. &
-                Z1<volc_altitude_edges(ivolc_lev+1).and.Z2>volc_altitude_edges(ivolc_lev) ) then
-              if (Z1 >= volc_altitude_edges(ivolc_lev)) then
-                if (Z2 < volc_altitude_edges(ivolc_lev+1)) then
-                  fev(l)=(Z2-Z1)/del
-                else
-                  fev(l)=(volc_altitude_edges(ivolc_lev+1)-Z1)/del
+            do j = 1, jd
+              do i = 1, id
+                Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+                Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
+                fv = 0.
+                if (del>0. .and. &
+                    Z1<volc_altitude_edges(ivolc_lev+1).and.Z2>volc_altitude_edges(ivolc_lev) ) then
+                  if (Z1 >= volc_altitude_edges(ivolc_lev)) then
+                    if (Z2 < volc_altitude_edges(ivolc_lev+1)) then
+                      fv=(Z2-Z1)/del
+                    else
+                      fv=(volc_altitude_edges(ivolc_lev+1)-Z1)/del
+                    endif
+                  else
+                    if (Z2 <= volc_altitude_edges(ivolc_lev+1)) then
+                      fv=(Z2-volc_altitude_edges(ivolc_lev))/del
+                    else
+                      fv=1.
+                    endif
+                  endif
                 endif
-              else
-                if (Z2 <= volc_altitude_edges(ivolc_lev+1)) then
-                  fev(l)=(Z2-volc_altitude_edges(ivolc_lev))/del
-                else
-                  fev(l)=1.
-                endif
-              endif
-            endif
-          enddo
-          so2_emis_expl_volc(i,j,:) = so2_emis_expl_volc(i,j,:) + fev(:) * SO2_expl_volc(i,j,ivolc_lev)
+                so2_emis_expl_volc(i,j,l) = so2_emis_expl_volc(i,j,l) + &
+                                            fv*SO2_expl_volc(i,j,ivolc_lev)
+              end do
+            end do
+          end do
         end do
       endif
-! --- For fosil fuel emissions, calculate the fraction of emission for
+
+! SO2_emis: [kgSO2/m2/s]
+!       Assuming that 1g of SO2 is emitted from 1kg of fuel: 1.e-3
+      do l = 1, kd
+        do j = 1, jd
+          do i = 1, id
+            SO2_emis(i,j,l) = so2_aircraft_EI * SO2_aircraft(i,j,l) &
+                 + so2_emis_cont_volc(i,j,l) + so2_emis_expl_volc(i,j,l)
+          end do   ! end i loop
+        end do   ! end j loop
+      end do   ! end l loop
+!
+
+      ze1=100.
+      ze2=500.
+      fbb(:,:,:) = 0.
+      fa1(:,:,:) = 0.
+      fa2(:,:,:) = 0.
+      if (.not. no_biobur_if_no_pbl) fbb(:,:,kd) = 1.
+
+      do j = 1, jd
+      do i = 1, id
+
+! --- Assuming biomass burning emission within the PBL -------
+        do l = kd,1,-1
+          z1=zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+          z2=zhalf(i,j,l)-zhalf(i,j,kd+1)
+          if (z_pbl(i,j).lt.z1) exit
+          if (z_pbl(i,j).ge.z2) fbb(i,j,l)=(z2-z1)/z_pbl(i,j)
+          if (z_pbl(i,j).gt.z1.and.z_pbl(i,j).lt.z2) fbb(i,j,l) = (z_pbl(i,j)-z1)/z_pbl(i,j)
+        enddo
+! --- For fossil fuel emissions, calculate the fraction of emission for
 ! --- each vertical levels
-        fa1(:) = 0.
-        fa2(:) = 0.
         do l = kd,2,-1
           Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
           Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
+          if (Z1.gt.Ze2) exit
           if (Z2.ge.0.and.Z1.lt.ze1) then
             if (Z1.gt.0) then
               if (Z2.lt.ze1) then
-                fa1(l)=(Z2-Z1)/ze1
+                fa1(i,j,l)=(Z2-Z1)/ze1
               else
-                fa1(l)=(ze1-Z1)/ze1
+                fa1(i,j,l)=(ze1-Z1)/ze1
               endif
             else
               if (Z2.le.ze1) then
-                fa1(l)=Z2/ze1
+                fa1(i,j,l)=Z2/ze1
               else
-                fa1(l)=1.
+                fa1(i,j,l)=1.
               endif
             endif
           endif
@@ -1775,48 +1770,80 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
           if (Z2.ge.ze1.and.z1.lt.ze2) then
             if (Z1.gt.Ze1) then
               if (Z2.lt.ze2) then
-                fa2(l)=(z2-z1)/(ze2-ze1)
+                fa2(i,j,l)=(z2-z1)/(ze2-ze1)
               else
-                fa2(l)=(ze2-z1)/(ze2-ze1)
+                fa2(i,j,l)=(ze2-z1)/(ze2-ze1)
               endif
             else
               if (Z2.le.ze2) then
-                fa2(l)=(z2-ze1)/(ze2-ze1)
+                fa2(i,j,l)=(z2-ze1)/(ze2-ze1)
               else
-                fa2(l)=1.
+                fa2(i,j,l)=1.
               endif
             endif
           endif
-          if (Z1.gt.Ze2) exit
         enddo
-! SO2_emis: [kgSO2/m2/s]
-!       Assuming that 1g of SO2 is emitted from 1kg of fuel: 1.e-3
-        SO2_emis(i,j,:) = so2_aircraft_EI * SO2_aircraft(i,j,:) &
-             + so2_emis_cont_volc(i,j,:) + so2_emis_expl_volc(i,j,:)
-!
+
+      end do   ! end i loop
+      end do   ! end j loop
+! --- Assuming anthropogenic source L1 emitted below Ze1, and L2
+!     emitted between Ze1 and Ze2.
         select case (trim(runtype))
           case ('aerocom')
-            do lf = 1, nlevel_fire
-              so2_emis_biobur(i,j,:) = so2_emis_biobur(i,j,:) + &
-                                       ff(:,lf)*SO2_biobur(i,j,lf)
-            enddo
-            so2_emis_road(i,j,:)     = fa1(:) * SO2_RoadTransport(i,j)
-            so2_emis_off_road(i,j,:) = fa1(:) * SO2_off_Road(i,j)
-            so2_emis_domestic(i,j,:) = fa1(:) * SO2_domestic(i,j)
-            so2_emis_ship(i,j,:)     = fa1(:) * SO2_ship(i,j)
-            so2_emis_industry(i,j,:) = fa2(:) * SO2_industry(i,j)
-            so2_emis_power(i,j,:)    = fa2(:) * SO2_Powerplants(i,j)
+            do lf=1,nlevel_fire
+              del=alt_fire_max(lf)-alt_fire_min(lf)
+              do l = kd,2,-1
+                do j = 1, jd
+                  do i = 1, id
+                    Z1 = zhalf(i,j,l+1)-zhalf(i,j,kd+1)
+                    Z2 = zhalf(i,j,l)-zhalf(i,j,kd+1)
+                    ff = 0.
+                    if (del.gt.0. .and. &
+                        Z1.lt.alt_fire_max(lf).and.Z2.gt.alt_fire_min(lf) ) then
+                      if (Z1.ge.alt_fire_min(lf)) then
+                        if (Z2 .lt. alt_fire_max(lf)) then
+                          ff=(Z2-Z1)/del
+                        else
+                          ff=(alt_fire_max(lf)-z1)/del
+                        endif
+                      else
+                        if (Z2.le.alt_fire_max(lf)) then
+                          ff = (Z2-alt_fire_min(lf))/del
+                        else
+                          ff=1.
+                        endif
+                      endif
+                    endif
+                    so2_emis_biobur(i,j,l) = so2_emis_biobur(i,j,l) + &
+                                             ff*SO2_biobur(i,j,lf)
+                  end do   ! end i loop
+                end do   ! end j loop
+              end do
+            end do
 
-            SO2_emis(i,j,:) = SO2_emis(i,j,:) + so2_emis_biobur(i,j,:)
+            do l = 1, kd
+              do j = 1, jd
+                do i = 1, id
+                  so2_emis_road(i,j,l)     = fa1(i,j,l) * SO2_RoadTransport(i,j)
+                  so2_emis_off_road(i,j,l) = fa1(i,j,l) * SO2_off_Road(i,j)
+                  so2_emis_domestic(i,j,l) = fa1(i,j,l) * SO2_domestic(i,j)
+                  so2_emis_ship(i,j,l)     = fa1(i,j,l) * SO2_ship(i,j)
+                  so2_emis_industry(i,j,l) = fa2(i,j,l) * SO2_industry(i,j)
+                  so2_emis_power(i,j,l)    = fa2(i,j,l) * SO2_Powerplants(i,j)
 
-            so2_emis_ff(i,j,:) =                                  &
-                 + so2_emis_road(i,j,:)                           &
-                 + so2_emis_off_road(i,j,:)                       &
-                 + so2_emis_domestic(i,j,:)                       &
-                 + so2_emis_ship(i,j,:)                           &
-                 + so2_emis_industry(i,j,:)                       &
-                 + so2_emis_power(i,j,:)
-             SO2_emis(i,j,:) = SO2_emis(i,j,:) + so2_emis_ff(i,j,:)
+                  SO2_emis(i,j,l) = SO2_emis(i,j,l) + so2_emis_biobur(i,j,l)
+
+                  so2_emis_ff(i,j,l) =                                  &
+                       + so2_emis_road(i,j,l)                           &
+                       + so2_emis_off_road(i,j,l)                       &
+                       + so2_emis_domestic(i,j,l)                       &
+                       + so2_emis_ship(i,j,l)                           &
+                       + so2_emis_industry(i,j,l)                       &
+                       + so2_emis_power(i,j,l)
+                  SO2_emis(i,j,l) = SO2_emis(i,j,l) + so2_emis_ff(i,j,l)
+                end do   ! end i loop
+              end do   ! end j loop
+            end do   ! end l loop
           case ('gocart')
 !
 ! GOCART assumes continent based emission index for sulfate:
@@ -1824,28 +1851,37 @@ subroutine atmos_SOx_emission (lon, lat, area, frac_land, &
 !    Assuming:   Europe:      5.0% SOx emission is SO4;
 !                US + Canada: 1.4% SOx emission is SO4;
 !                The rest:    2.5% SOx emission is SO4.
-            so2_emis_ff(i,j,:)=fa1(:) * SO2_ff1(i,j) + fa2(:) * SO2_ff2(i,j)
-            so2_emis_biobur(i,j,:) = fbb(:) * SO2_biobur(i,j,1)
-            SO2_emis(i,j,:) = SO2_emis(i,j,:) &
-               + so2_emis_biobur(i,j,:)       &
-               + so2_emis_ff(i,j,:)
-            SO4_emis(i,j,:) = &
-               fa1(:) * SO4_ff1(i,j) + fa2(:) * SO4_ff2(i,j)
+            do l = 1, kd
+              do j = 1, jd
+                do i = 1, id
+                  so2_emis_ff(i,j,l)=fa1(i,j,l) * SO2_ff1(i,j) + fa2(i,j,l) * SO2_ff2(i,j)
+                  so2_emis_biobur(i,j,l) = fbb(i,j,l) * SO2_biobur(i,j,1)
+                  SO2_emis(i,j,l) = SO2_emis(i,j,l) &
+                     + so2_emis_biobur(i,j,l)       &
+                     + so2_emis_ff(i,j,l)
+                  SO4_emis(i,j,l) = &
+                     fa1(i,j,l) * SO4_ff1(i,j) + fa2(i,j,l) * SO4_ff2(i,j)
+                end do   ! end i loop
+              end do   ! end j loop
+            end do   ! end l loop
           case default
-            so2_emis_ff(i,j,:)=fa1(:) * SO2_ff1(i,j) + fa2(:) * SO2_ff2(i,j)
-            so2_emis_biobur(i,j,:) = fbb(:) * SO2_biobur(i,j,1)
-            so2_emis_ship(i,j,:)     = fa1(:) * SO2_ship(i,j)
-            SO2_emis(i,j,:) = SO2_emis(i,j,:) &
-               + so2_emis_biobur(i,j,:)       &
+            do l = 1, kd
+              do j = 1, jd
+                do i = 1, id
+                  so2_emis_ff(i,j,l)=fa1(i,j,l) * SO2_ff1(i,j) + fa2(i,j,l) * SO2_ff2(i,j)
+                  so2_emis_biobur(i,j,l) = fbb(i,j,l) * SO2_biobur(i,j,1)
+                  so2_emis_ship(i,j,l)     = fa1(i,j,l) * SO2_ship(i,j)
+                  SO2_emis(i,j,l) = SO2_emis(i,j,l) &
+                     + so2_emis_biobur(i,j,l)       &
 !++lwh
-               + so2_emis_ship(i,j,:)         &
+                     + so2_emis_ship(i,j,l)         &
 !--lwh
-               + so2_emis_ff(i,j,:)
-            SO4_emis(i,j,:) = fa1(:)*(SO4_ff1(i,j)+SO4_ship(i,j))
+                     + so2_emis_ff(i,j,l)
+                  SO4_emis(i,j,l) = fa1(i,j,l)*(SO4_ff1(i,j)+SO4_ship(i,j))
+                end do   ! end i loop
+              end do   ! end j loop
+            end do   ! end l loop
         end select
-
-      end do   ! end i loop
-      end do   ! end j loop
 !
       SO2_dt(:,:,:)= SO2_emis(:,:,:)/pwt(:,:,:)*WTMAIR/WTM_SO2
       SO4_dt(:,:,:)= SO4_emis(:,:,:)/pwt(:,:,:)*WTMAIR/WTM_SO4
