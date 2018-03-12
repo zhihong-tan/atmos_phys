@@ -307,13 +307,6 @@ integer :: ncodirect =0
 integer :: ne90 =0
 integer :: nsulfate  =0
 
-
-integer :: nnh3_tag1 =0
-integer :: nnh3_tag2 =0
-integer :: nnh3_tag3 =0
-integer :: nnh3_tag4 =0
-integer :: nnh3_tag5 =0
-
 integer, dimension(5) :: tr_nbr_sulfate=0
 logical, dimension(5) :: do_tracer_sulfate=.false.
 
@@ -346,9 +339,6 @@ integer, allocatable :: local_indices(:)
 !<f1p
 integer, dimension(:), allocatable :: id_tracer_diag
 integer, dimension(:,:), allocatable :: id_tracer_diag_hour
-
-logical, dimension(:), allocatable ::  is_nh3_tag(:)
-
 integer :: id_ps_hour(24),id_temp_hour(24),id_local_hour
 !>
 integer :: id_landfr, id_seaicefr, id_snowfr, id_vegnfr, id_vegnlai
@@ -387,11 +377,6 @@ integer   :: ind_wet_dep_nh4_flux = 0
 integer   :: ind_dry_dep_no3_flux = 0
 integer   :: ind_wet_dep_no3_flux = 0
 integer   :: ind_nh3_flux = 0
-integer   :: ind_nh3_tag1_flux = 0
-integer   :: ind_nh3_tag2_flux = 0
-integer   :: ind_nh3_tag3_flux = 0
-integer   :: ind_nh3_tag4_flux = 0
-integer   :: ind_nh3_tag5_flux = 0
 
 
 !-----------------------------------------------------------------------
@@ -756,7 +741,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n),con_atm)
-            if (do_esm_nitrogen_flux .and. (n.eq.nNH3 .or. is_nh3_tag(n))) then !f1p: scale by ocean fraction
+            if (do_nh3_atm_ocean_exchange .and. n.eq.nNH3) then !f1p: scale by ocean fraction
                dsinku(:,:,n) = dsinku(:,:,n)*(1.-frac_open_sea)
             end if
 
@@ -1749,11 +1734,7 @@ type(time_type), intent(in)                                :: Time
       nOH       = get_tracer_index(MODEL_ATMOS,'oh')
       nC4H10    = get_tracer_index(MODEL_ATMOS,'c4h10')
       nNH3      = get_tracer_index(MODEL_ATMOS,'nh3')
-      nNH3_tag1 = get_tracer_index(MODEL_ATMOS,'nh3_tag1')
-      nNH3_tag2 = get_tracer_index(MODEL_ATMOS,'nh3_tag2')
-      nNH3_tag3 = get_tracer_index(MODEL_ATMOS,'nh3_tag3')
-      nNH3_tag4 = get_tracer_index(MODEL_ATMOS,'nh3_tag4')
-      nNH3_tag5 = get_tracer_index(MODEL_ATMOS,'nh3_tag5')
+
 ! Check for presence of OH and C4H10 (diagnostic) tracers
 ! If not present set index to 1 so interface calls do not fail,
 ! but FATAL error will be issued by atmos_sulfate_init,
@@ -2000,11 +1981,6 @@ type(time_type), intent(in)                                :: Time
                   'dryoa', Time, 'Dry Deposition Rate of Dry Aerosol Total Organic Matter', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
       !----
-
-
-!nh3
-      allocate(is_nh3_tag(nt))
-      is_nh3_tag(:) = .false.
 
 !<f1p: tracer diagnostics
       allocate( id_tracer_diag(nt) )
@@ -2292,52 +2268,7 @@ subroutine atmos_nitrogen_flux_init
               flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
               atm_tr_index = nnh3,                                          &
               mol_wt = WTMN, param = (/ 1.0 /),              &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-         if (nnh3_tag1.gt.0) then
-            ind_nh3_tag1_flux = aof_set_coupler_flux('nh3_tag1_flux',                       &
-                 flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
-                 atm_tr_index = nnh3_tag1,                                          &
-                 mol_wt = WTMN, param = (/ 1.0 /),              &
-                 caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-
-            is_nh3_tag(nnh3_tag1) = .true.
-         end if
-         if (nnh3_tag2.gt.0) then
-            ind_nh3_tag2_flux = aof_set_coupler_flux('nh3_tag2_flux',                       &
-                 flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
-                 atm_tr_index = nnh3_tag2,                                          &
-                 mol_wt = WTMN, param = (/ 1.0 /),              &
-                 caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-
-            is_nh3_tag(nnh3_tag2) = .true.
-         end if
-         if (nnh3_tag3.gt.0) then
-            ind_nh3_tag3_flux = aof_set_coupler_flux('nh3_tag3_flux',                       &
-                 flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
-                 atm_tr_index = nnh3_tag3,                                          &
-                 mol_wt = WTMN, param = (/ 1.0 /),              &
-                 caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-
-            is_nh3_tag(nnh3_tag3) = .true.
-         end if
-         if (nnh3_tag4.gt.0) then
-            ind_nh3_tag4_flux = aof_set_coupler_flux('nh3_tag4_flux',                       &
-                 flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
-                 atm_tr_index = nnh3_tag4,                                          &
-                 mol_wt = WTMN, param = (/ 1.0 /),              &
-                 caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-
-            is_nh3_tag(nnh3_tag4) = .true.
-         end if
-         if (nnh3_tag5.gt.0) then
-            ind_nh3_tag5_flux = aof_set_coupler_flux('nh3_tag5_flux',                       &
-                 flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
-                 atm_tr_index = nnh3_tag5,                                          &
-                 mol_wt = WTMN, param = (/ 1.0 /),              &
-                 caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
-
-            is_nh3_tag(nnh3_tag5) = .true.
-         end if
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')                
       end if
    endif
 
@@ -2487,15 +2418,11 @@ integer :: logunit
       deallocate(frac_pm25)
       deallocate(frac_pm10)
       deallocate( id_tracer_diag_hour )
-!
 
       deallocate(dry_dep_nh4_flux)
       deallocate(dry_dep_no3_flux)
       deallocate(wet_dep_nh4_flux)
       deallocate(wet_dep_no3_flux)
-
-!nh3
-      deallocate(is_nh3_tag)
 
       module_is_initialized = .FALSE.
 
@@ -2550,22 +2477,6 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
   if (ind_nh3_flux .gt. 0) then
      gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3)
   end if
-  if (ind_nh3_tag1_flux .gt. 0) then
-     gas_fields%bc(ind_nh3_tag1_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3_tag1)
-  end if
-  if (ind_nh3_tag2_flux .gt. 0) then
-     gas_fields%bc(ind_nh3_tag2_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3_tag2)
-  end if
-  if (ind_nh3_tag3_flux .gt. 0) then
-     gas_fields%bc(ind_nh3_tag3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3_tag3)
-  end if
-  if (ind_nh3_tag4_flux .gt. 0) then
-     gas_fields%bc(ind_nh3_tag4_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3_tag4)
-  end if
-  if (ind_nh3_tag5_flux .gt. 0) then
-     gas_fields%bc(ind_nh3_tag5_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3_tag5)
-  end if
-  
 !-----------------------------------------------------------------------
 
  end subroutine atmos_tracer_driver_gather_data
@@ -2598,6 +2509,7 @@ endif
 if (ind_wet_dep_nh4_flux .gt. 0) then
   gas_fields%bc(ind_wet_dep_nh4_flux)%field(ind_pcair)%values(:,:) = wet_dep_nh4_flux(:,:)
 endif
+
 
 
  end subroutine atmos_tracer_driver_gather_data_down
