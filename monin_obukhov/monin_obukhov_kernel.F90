@@ -302,7 +302,7 @@ _PURE subroutine monin_obukhov_solve_zeta(error, zeta_min, max_iter, small,  &
        logical, intent(in   )                :: new_mo_option
        real,    intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
-       real   , intent(  out), dimension(n)  :: psi_t, psi_q
+       real   , intent(inout), dimension(n)  :: psi_t, psi_q
        real   , intent(in)   , dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
        logical, intent(in)   , dimension(n)  :: mask
        integer, intent(  out)                :: ier
@@ -316,7 +316,7 @@ _PURE subroutine monin_obukhov_solve_zeta(error, zeta_min, max_iter, small,  &
        integer, intent(in   )                :: stable_option
        real   , intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
-       real   , intent(  out), dimension(n)  :: psi_m
+       real   , intent(inout), dimension(n)  :: psi_m
        real   , intent(in)   , dimension(n)  :: zeta, zeta_0, ln_z_z0
        logical, intent(in)   , dimension(n)  :: mask
        integer, intent(out)                  :: ier
@@ -562,7 +562,7 @@ _PURE subroutine monin_obukhov_profile_1d(vonkarm, &
        logical, intent(in   )                :: new_mo_option
        real,    intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
-       real   , intent(  out), dimension(n)  :: psi_t, psi_q
+       real   , intent(inout), dimension(n)  :: psi_t, psi_q
        real   , intent(in)   , dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
        logical, intent(in)   , dimension(n)  :: mask
        integer, intent(  out)                :: ier
@@ -576,7 +576,7 @@ _PURE subroutine monin_obukhov_profile_1d(vonkarm, &
        integer, intent(in   )                :: stable_option
        real   , intent(in   )                :: rich_crit, zeta_trans
        integer, intent(in   )                :: n
-       real   , intent(  out), dimension(n)  :: psi_m
+       real   , intent(inout), dimension(n)  :: psi_m
        real   , intent(in)   , dimension(n)  :: zeta, zeta_0, ln_z_z0
        logical, intent(in)   , dimension(n)  :: mask
        integer, intent(out)                  :: ier
@@ -651,7 +651,7 @@ _PURE subroutine monin_obukhov_integral_m(stable_option, rich_crit, zeta_trans, 
   integer, intent(in   )                :: stable_option
   real   , intent(in   )                :: rich_crit, zeta_trans
   integer, intent(in   )                :: n
-  real   , intent(  out), dimension(n)  :: psi_m
+  real   , intent(inout), dimension(n)  :: psi_m
   real   , intent(in)   , dimension(n)  :: zeta, zeta_0, ln_z_z0
   logical, intent(in)   , dimension(n)  :: mask
   integer, intent(out)                  :: ier
@@ -732,7 +732,7 @@ _PURE subroutine monin_obukhov_integral_tq(stable_option, new_mo_option, rich_cr
   logical, intent(in   )                :: new_mo_option !miz
   real,    intent(in   )                :: rich_crit, zeta_trans
   integer, intent(in   )                :: n
-  real   , intent(  out), dimension(n)  :: psi_t, psi_q
+  real   , intent(inout), dimension(n)  :: psi_t, psi_q
   real   , intent(in)   , dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
   logical, intent(in)   , dimension(n)  :: mask
   integer, intent(  out)                :: ier

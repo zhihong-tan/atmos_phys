@@ -34,7 +34,7 @@ use tracer_manager_mod,    only: get_tracer_index,&
                                  get_tracer_names, &
                                  NO_TRACER
 use constants_mod,         only: CP_AIR, GRAV, HLV, HLS, HLF, &
-                                 TFREEZE, WTMAIR, SECONDS_PER_DAY
+                                 TFREEZE, WTMAIR, SECONDS_PER_DAY,WTMN
 ! atmos_param modules
 use physics_types_mod,    only : physics_control_type,    &
                                  physics_tendency_block_type, &
@@ -74,6 +74,7 @@ use atmos_tracer_utilities_mod, only : get_cmip_param, get_chem_param
 use atmos_dust_mod,       only : atmos_dust_init, dust_tracers,   &
                                  n_dust_tracers, do_dust,   &
                                  atmos_dust_wetdep_flux_set
+use atmos_tracer_driver_mod, only : atmos_nitrogen_wetdep_flux_set
 use atmos_sea_salt_mod,   only : atmos_sea_salt_init, seasalt_tracers,  &
                                  n_seasalt_tracers,do_seasalt
 use atmos_cmip_diag_mod,   only: register_cmip_diag_field_2d, &
@@ -212,7 +213,8 @@ integer :: id_prsn, id_pr, id_prw, id_prrc, id_prra, id_prsnc, &
 integer :: id_max_enthalpy_imbal, id_max_water_imbal
 integer :: id_wetdep_om, id_wetdep_SOA, id_wetdep_bc, &
            id_wetdep_so4, id_wetdep_so2, id_wetdep_DMS, &
-           id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust
+           id_wetdep_NH4NO3, id_wetdep_seasalt, id_wetdep_dust, &
+           id_n_ox_wdep, id_n_red_wdep
 
 type(cmip_diag_id_type) :: ID_cl, ID_clw, ID_cli, ID_hur
 
@@ -228,20 +230,23 @@ real :: missing_value = -999.
 integer :: id_wetpoa_cmip, id_wetsoa_cmip, id_wetoa_cmip, id_wetbc_cmip, id_wetdust_cmip, &
            id_wetss_cmip, id_wetso4_cmip, id_wetso2_cmip, id_wetdms_cmip, id_wetnh4_cmip
 integer, parameter :: NCMIP_NAMES = 10
-character(len=8), dimension(NCMIP_NAMES) :: cmip_names = (/"poa","soa","oa","bc","dust","ss","so4","so2","dms","nh4"/)
+character(len=8), dimension(NCMIP_NAMES) :: cmip_names = &
+                       [character(len=8) :: "poa","soa","oa","bc","dust","ss","so4","so2","dms","nh4"]
 character(len=64), dimension(NCMIP_NAMES) :: cmip_longnames = &
-                                  (/"Dry Aerosol Primary Organic Matter", &
+                                  [ character(len=64) :: &
+                                    "Dry Aerosol Primary Organic Matter", &
                                     "Dry Aerosol Secondary Organic Matter", &
                                     "Dry Aerosol Total Organic Matter", &
                                     "Black Carbon Aerosol Mass", &
-                                    "Dust", "Seasalt", "SO4", "SO2", "DMS", "NH4+NH3"/)
+                                    "Dust", "Seasalt", "SO4", "SO2", "DMS", "NH4+NH3"]
 character(len=64), dimension(NCMIP_NAMES) :: cmip_stdnames = &
-                                  (/"primary_particulate_organic_matter_dry_aerosol", &
+                                  [ character(len=64) :: &
+                                    "primary_particulate_organic_matter_dry_aerosol", &
                                     "secondary_particulate_organic_matter_dry_aerosol", &
                                     "particulate_organic_matter_dry_aerosol", &
                                     "elemental_carbon_dry_aerosol", "dust_dry_aerosol", &
                                     "seasalt_dry_aerosol", "sulfate_dry_aerosol", &
-                                    "sulfur_dioxide", "dimethyl_sulfide", "ammonium_dry_aerosol"/)
+                                    "sulfur_dioxide", "dimethyl_sulfide", "ammonium_dry_aerosol"]
 
 !-------------------- individual scheme tracers ------------------------
 
@@ -812,6 +817,11 @@ subroutine moist_processes_end ( )
       if (allocated(conv_wetdep))         deallocate(conv_wetdep)
 !--------------------------------------------------------------------
 
+      if  (allocated(nb_N))     deallocate(nb_N)
+      if  (allocated(nb_N_ox))  deallocate(nb_N_ox)
+      if  (allocated(nb_N_red)) deallocate(nb_N_red)
+
+
       module_is_initialized = .false.
 
 !-----------------------------------------------------------------------
@@ -998,7 +1008,8 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
                                      precip, temp_2d, tca2
       real, dimension   &
             (size(Output_mp%rdt,1),size(Output_mp%rdt,2))  :: &
-                              total_wetdep_dust, total_wetdep_seasalt
+                              total_wetdep_dust, total_wetdep_seasalt, &
+                              total_wetdep_nox, total_wetdep_nred 
       real, dimension   &
             (size(Output_mp%rdt,1),size(Output_mp%rdt,2),  &
                                               size(Output_mp%rdt,4)) ::  &
@@ -1224,6 +1235,25 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
      call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
        if (id_wetdep_dust  > 0) used = send_data (id_wetdep_dust,  total_wetdep_dust, Time, is,js)
        if (id_wetdust_cmip > 0) used = send_data (id_wetdust_cmip, total_wetdep_dust, Time, is,js)
+     endif
+
+
+     total_wetdep_nred  = 0.
+     total_wetdep_nox  = 0.
+     do n=1, size(Output_mp%rdt,4)
+        if (nb_N_red(n) > 0) then
+           total_wetdep_nred = total_wetdep_nred  + total_wetdep(:,:,n)*nb_N_red(n)
+        endif
+        if (nb_N_ox(n) > 0) then
+           total_wetdep_nox = total_wetdep_nox    + total_wetdep(:,:,n)*nb_N_ox(n)
+        endif
+     end do
+     call atmos_nitrogen_wetdep_flux_set(total_wetdep_nred, total_wetdep_nox, is,ie,js,je)
+     if (id_n_ox_wdep>0 .and. sum(nb_N_ox)>0) then
+         used = send_data ( id_n_ox_wdep, total_wetdep_nox*wtmn/1000., Time, is, js)
+     endif
+     if (id_n_red_wdep>0 .and. sum(nb_N_red)>0) then
+         used = send_data ( id_n_red_wdep, total_wetdep_nred*wtmn/1000., Time, is, js)
      endif
 
       endif ! (wetdep_diagnostics_desired)
@@ -1648,7 +1678,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         call rh_calc (Input_mp%pfull, input_mp%tin, Input_mp%qin, RH, &
                                         .false., do_cmip=.true.)
       endif
-      used = send_cmip_data_3d (ID_hur, rh*100., Time, is, js, 1)!, rmask=mask)
+      used = send_cmip_data_3d (ID_hur, rh*100., Time, is, js, 1, phalf=log(Input_mp%phalf))
     endif
 
 !---------------------------------------------------------------------
@@ -2410,6 +2440,16 @@ integer                     :: id_wetdep_cmip
       if (id_wetdep_dust > 0) wetdep_diagnostics_desired = .true.
 
 
+      id_n_ox_wdep = register_cmip_diag_field_2d ( mod_name, 'fam_noy_wetdep_kg_m2_s', Time,  &
+           'wet deposition of noy incl aerosol nitrate', 'kg m-2 s-1', &
+           standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_wet_deposition' )
+
+      !this is not requested
+      id_n_red_wdep = register_cmip_diag_field_2d ( mod_name, 'fam_nhx_wetdep_kg_m2_s', Time,  &
+           'wet deposition of nhx', 'kg m-2 s-1', &
+           standard_name='tendency_of_atmosphere_mass_content_of_nhx_expressed_as_nitrogen_due_to_wet_deposition' )
+ 
+
      !-------- cmip wet deposition fields  ---------
       do ic = 1, size(cmip_names,1)
         if (TRIM(cmip_names(ic)) .eq. 'nh4' .and. (nNH4NO3 .eq. NO_TRACER .or. nNH4 .eq. NO_TRACER)) then
@@ -2467,7 +2507,7 @@ integer                     :: id_wetdep_cmip
             id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                                trim(tracer_name)//'_wetdep_kg_m2_s', Time, &
                                'Wet Deposition Rate of '//TRIM(cmip_longname2), 'kg m-2 s-1', &
-                   standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_dry_aerosol_due_to_wet_deposition')
+                   standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_dry_aerosol_particles_due_to_wet_deposition')
         else
             id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                                trim(tracer_name)//'_wetdep_kg_m2_s', Time, &

@@ -30,7 +30,7 @@ module cosp_diagnostics_mod
 
 use mpp_mod,                  only: input_nml_file
 use fms_mod,                  only: open_namelist_file, open_file,  &
-                                    close_file, error_mesg, FATAL, &
+                                    close_file, error_mesg, FATAL, NOTE, &
                                     file_exist, mpp_pe, mpp_root_pe,   &
                                     check_nml_error, write_version_number,&
                                     stdlog
@@ -42,7 +42,8 @@ use time_manager_mod,         only: set_date, time_type, operator (+), &
                                     assignment(=), set_time
 use diag_grid_mod,            only: get_local_indexes2
 use diag_manager_mod,         only: register_diag_field, send_data,  &
-                                    diag_axis_init, register_static_field
+                                    diag_axis_init, register_static_field, &
+                                    get_diag_field_id, DIAG_FIELD_NOT_FOUND
 USE MOD_COSP_TYPES,           only: cosp_config, cosp_gridbox,   &
                                     cosp_subgrid, cosp_sgradar,  &
                                     cosp_sglidar, cosp_isccp, &
@@ -343,11 +344,21 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    integer :: id_3hrindx
    integer :: id_channelindx
    integer :: id_tempindx, id_press2indx, id_misrindx
+   integer :: area_id
    character(len=2) :: chvers, chvers4
    character(len=8) :: chvers2, chvers3, chvers5, chvers6
    type(cosp_gridbox) :: gbx_t ! Gridbox information. Input for COSP
    type(cosp_vgrid)   :: vgrid_t   ! Information on vertical grid of stats
 
+
+!---------------------------------------------------------------------
+!    retrieve the diag_manager id for the area diagnostic, needed for
+!    cmorizing various diagnostics.
+!--------------------------------------------------------------------
+      area_id = get_diag_field_id ('dynamics', 'area')
+      if (area_id .eq. DIAG_FIELD_NOT_FOUND) call error_mesg &
+         ('cosp_diagnostics_init', 'diagnostic field "dynamics",'// &
+          ' "area" is not in the diag_table', NOTE)
 
 !--------------------------------------------------------------------
 !    define the varisous axes needed for this data.
@@ -756,22 +767,30 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    if (cfg%Llidar_sim) then
      id_cltcalipso = register_diag_field &
       (mod_name, 'cltcalipso', axes(1:2), Time, &
-          'Lidar Total Cloud Fraction',  'percent', &
+          'CALIPSO Total Cloud Cover Percentage',  '%', &
+          standard_name='cloud_area_fraction', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
      id_cllcalipso = register_diag_field &
       (mod_name, 'cllcalipso', axes(1:2), Time, &
-          'Lidar Low-level Cloud Fraction',  'percent', &
+          'CALIPSO Low Level Cloud Cover Percentage',  '%', &
+          standard_name='cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
      id_clmcalipso = register_diag_field &
       (mod_name, 'clmcalipso', axes(1:2), Time, &
-          'Lidar Mid-level Cloud Fraction',  'percent', &
+          'CALIPSO Mid Level Cloud Percentage',  '%', &
+          standard_name='cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
      id_clhcalipso = register_diag_field &
       (mod_name, 'clhcalipso', axes(1:2), Time, &
-          'Lidar High-level Cloud Fraction',  'percent', &
+          'CALIPSO High Level Cloud Area Percentage',  '%', &
+          standard_name='cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
      id_cltcalipsoice = register_diag_field &
@@ -890,17 +909,23 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
 
      id_clcalipso = register_diag_field &
       (mod_name, 'clcalipso', cosp_axes(csatindx), Time, &
-       'Lidar Cloud Fraction (532 nm)', 'percent', &
+       'CALIPSO Percentage Cloud Cover (532 nm)', '%', &
+          standard_name='cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
      id_clcalipsoice = register_diag_field &
       (mod_name, 'clcalipsoice', cosp_axes(csatindx), Time, &
-       'Lidar Ice Cloud Fraction (532 nm)', 'percent', &
+       'CALIPSO Ice Cloud Fraction (532 nm)', '%', &
+          standard_name='ice_cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
      id_clcalipsoliq = register_diag_field &
       (mod_name, 'clcalipsoliq', cosp_axes(csatindx), Time, &
-       'Lidar Liquid Cloud Fraction (532 nm)', 'percent', &
+       'CALIPSO Liquid Cloud Fraction (532 nm)', '%', &
+          standard_name='liquid_cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
      id_clcalipsoun = register_diag_field &
@@ -934,7 +959,9 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
           mask_variant = .true., missing_value=missing_value)
      id_parasolrefl = register_diag_field &
       (mod_name, 'parasol_refl', cosp_axes(parasolindx), Time, &
-      'PARASOL-like mono-directional reflectance', 'fraction', &
+          'PARASOL Reflectance', '1.0', &
+          standard_name='toa_bidirectional_reflectance', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
      id_betamol532 = register_diag_field &
         (mod_name, 'betamol532', axes(1:3       ), Time, &
@@ -977,9 +1004,10 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
          id_calipsosrcfad(n) = register_diag_field &
           (mod_name, 'calipsosrcfad_' // trim(chvers),  &
             cosp_axes(csatindx ), Time, &
-              'Fractional area with Lidar 532 nm Scattering Ratio  &
-              &between' // trim(chvers2) // ' and' // trim(chvers3) // &
-                    ' -- bin' // trim(chvers),  'fraction', &
+              'CALIPSO Scattering Ratio CFAD (532nm, between ' // trim(adjustl(chvers2)) // &
+              ' and ' // trim(adjustl(chvers3)) // ', bin #' // trim(adjustl(chvers)) // ')', '1.0', &
+                    standard_name='histogram_of_backscattering_ratio_over_height_above_reference_ellipsoid', &
+                    interp_method='conserve_order1' , &
                     mask_variant = .true., missing_value=missing_value)
          if (generate_orbital_output) then
            id_calipsosrcfad_sat(n) = register_diag_field &
@@ -987,7 +1015,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
             cosp_axes(csatindx ), Time, &
               'Fractional area with Lidar 532 nm Scattering Ratio  &
               &between' // trim(chvers2) // ' and' // trim(chvers3) // &
-                    ' -- bin' // trim(chvers),  'fraction', &
+                    ' -- bin' // trim(chvers),  '1.0', &
+                    interp_method='conserve_order1' , &
                     mask_variant = .true., missing_value=missing_value)
          endif
        else
@@ -995,7 +1024,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
            (mod_name, 'calipsosrcfad_mdl_' // trim(chvers), axes(1:3), &
           Time, 'Fractional area with Lidar 532 nm Scattering Ratio  &
            &between' // trim(chvers2) // ' and' // trim(chvers3) // &
-                ' -- bin' // trim(chvers), 'fraction', &
+                ' -- bin' // trim(chvers), '1.0', &
+                interp_method='conserve_order1' , &
                 mask_variant = .true., missing_value=missing_value)
        endif
      end do
@@ -1032,9 +1062,11 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
        id_cloudsatcfad(n) = register_diag_field &
           (mod_name, 'cloudsatcfad_' // trim(chvers),   &
            cosp_axes(csatindx), Time, &
-           'Fractional area with radar reflectivity (94 GHz) between ' &
-              // trim(chvers2) //  ' and' // trim(chvers3) //  &
-               ' dbZe -- bin # '  //  trim(chvers),   'fraction', &
+           'CloudSat Radar Reflectivity CFAD (94 GHz, between ' &
+              // trim(adjustl(chvers2)) // ' and ' // trim(adjustl(chvers3)) //  &
+               ' dbZe, bin #'  //  trim(adjustl(chvers)),   '1.0', &
+                standard_name='histogram_of_equivalent_reflectivity_factor_over_height_above_reference_ellipsoid', &
+                interp_method='conserve_order1', &
                 mask_variant = .true., missing_value=missing_value)
        if (generate_orbital_output) then
          id_cloudsatcfad_sat(n) = register_diag_field &
@@ -1042,7 +1074,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
            cosp_axes(csatindx), Time, &
            'Fractional area with radar reflectivity (94 GHz) between ' &
               // trim(chvers2) //  ' and' // trim(chvers3) //  &
-               ' dbZe -- bin # '  //  trim(chvers),   'fraction', &
+               ' dbZe -- bin # '  //  trim(chvers),   '1.0', &
+                interp_method='conserve_order1', &
                 mask_variant = .true., missing_value=missing_value)
        endif
      else
@@ -1051,7 +1084,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
               Time, 'Fractional area with radar reflectivity &
              &(94 GHz) between ' // trim(chvers2) //  ' and' // &
              & trim(chvers3) //  ' dbZe -- bin # '  //  trim(chvers),  &
-             'fraction', &
+             '1.0', &
+             interp_method='conserve_order1', &
              mask_variant = .true., missing_value=missing_value)
      endif
    end do
@@ -1087,14 +1121,17 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
  if (cfg%Lisccp_sim) then
    id_tclisccp = register_diag_field &
       (mod_name, 'tclisccp', axes(1:2), Time, &
-          'Total Cloud Fraction as Calculated by the ISCCP Simulator', &
-          'percent', &
+          'ISCCP Total Cloud Cover Percentage', '%', &
+          standard_name = 'cloud_area_fraction', &
+          interp_method = 'conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
    id_ctpisccp = register_diag_field &
       (mod_name, 'ctpisccp', axes(1:2), Time, &
-       'Mean Cloud Top Pressure *CPCT as Calculated by the ISCCP Simulator', &
-         'Pa', mask_variant = .true., missing_value=missing_value)
+       'ISCCP Mean Cloud Top Pressure (*CPCT)', 'Pa', &
+          standard_name = 'air_pressure_at_cloud_top', &
+          interp_method = 'conserve_order1', area=area_id, &
+          mask_variant = .true., missing_value=missing_value)
 
    id_tbisccp = register_diag_field &
       (mod_name, 'tbisccp', axes(1:2), Time, &
@@ -1114,8 +1151,9 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
 
    id_albisccp = register_diag_field &
       (mod_name, 'albisccp', axes(1:2), Time, &
-       'Mean Cloud Albedo *CPCT as Calculated by the ISCCP Simulator', &
-         'fraction', &
+       'ISCCP Mean Cloud Albedo (*CPCT)', '1.0', &
+          standard_name = 'cloud_albedo', &
+          interp_method = 'conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
    id_boxtauisccp = register_diag_field &
       (mod_name, 'boxtauisccp', cosp_axes(columnindx), Time, &
@@ -1154,9 +1192,11 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      write (chvers2, '(i6)') INT(isccp_pc_bnds(1,n)*1.0e-02)
      write (chvers3, '(i6)') INT(isccp_pc_bnds(2,n)*1.0e-02)
      id_clisccp(n) = register_diag_field &
-       (mod_name, 'clisccp_'// trim(chvers), cosp_axes(tauindx), &
-          Time, 'ISCP Cld Frac for clouds between ' // trim(chvers2) &
-             // ' and' // trim(chvers3) // ' hPa', 'percent', &
+       (mod_name, 'clisccp_'// trim(chvers), cosp_axes(tauindx), Time, &
+          'ISCCP Cloud Area Fraction (between ' // trim(adjustl(chvers2)) &
+             // ' and ' // trim(adjustl(chvers3)) // ' hPa)', '%', &
+                  standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                  interp_method='conserve_order1', area=area_id, &
                   mask_variant = .true., missing_value=missing_value)
    end do
 
@@ -1170,10 +1210,12 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
        write (chvers3, '(i5)') INT(isccp_pc_bnds(2,n)*1.0e-02)
        id_clisccp_n(m,n) = register_diag_field &
          (mod_name, 'clisccp_'// trim(chvers4)//'_' // trim(chvers), &
-          axes(1:2), Time, 'ISCCP CldFrac - tau between ' // &
-           trim(chvers5) // ' and ' // trim(chvers6) //  &
-           ' , pr between ' // trim(chvers2) // ' and' // &
-             trim(chvers3) // ' hPa',  'percent', &
+          axes(1:2), Time, 'ISCCP Cloud Area Fraction (tau between ' // &
+           trim(adjustl(chvers5)) // ' and ' // trim(adjustl(chvers6)) //  &
+           ', pr between ' // trim(adjustl(chvers2)) // ' and ' // &
+             trim(adjustl(chvers3)) // ' hPa)',  '%', &
+               standard_name='cloud_area_fraction_in_atmosphere_layer', &
+               interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
      end do
    end do
@@ -1189,9 +1231,11 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      write (chvers2, '(f6.1)') 1.0e-03*MISR_CTH_BNDS(1,n)
      write (chvers3, '(f6.1)') 1.0E-03*MISR_CTH_BNDS(2,n)
      id_misr(n) = register_diag_field &
-       (mod_name, 'misr_'// trim(chvers), cosp_axes(tauindx), &
-          Time, 'MISR Cld Frac for clouds with top between ' // trim(chvers2) &
-             // ' and' // trim(chvers3) // ' km', 'percent', &
+       (mod_name, 'misr_'// trim(chvers), cosp_axes(tauindx),Time, &
+          'Percentage Cloud Cover as Calculated by the MISR Simulator (cloud top between ' &
+             // trim(adjustl(chvers2)) // ' and ' // trim(adjustl(chvers3)) // ' km)', '%', &
+                  standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                  interp_method='conserve_order1', area=area_id, &
                   mask_variant = .true., missing_value=missing_value)
    end do
 
@@ -1208,11 +1252,13 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
        write (chvers2, '(f6.1)') 1.0e-03*MISR_CTH_BNDS(1,n)
        write (chvers3, '(f6.1)') 1.0e-03*MISR_CTH_BNDS(2,n)
        id_misr_n(m,n) = register_diag_field &
-         (mod_name, 'misr_'// trim(chvers4)//'_' // trim(chvers), &
-          axes(1:2), Time, 'MISR CldFrac - tau between ' // &
-           trim(chvers5) // ' and ' // trim(chvers6) //  &
-           ' , top between ' // trim(chvers2) // ' and' // &
-             trim(chvers3) // ' km', 'percent', &
+         (mod_name, 'misr_'// trim(chvers4)//'_' // trim(chvers), axes(1:2), Time, &
+           'Percentage Cloud Cover as Calculated by the MISR Simulator (tau between ' // &
+           trim(adjustl(chvers5)) // ' and ' // trim(adjustl(chvers6)) //  &
+           ', cloud top between ' // trim(adjustl(chvers2)) // ' and ' // &
+             trim(adjustl(chvers3)) // ' km)', '%', &
+                standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
      end do
    end do
@@ -1222,38 +1268,50 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
 
    id_tclmodis = register_diag_field &
       (mod_name, 'tclmodis', axes(1:2), Time, &
-          'Total Cloud Fraction as Calculated by the MODIS Simulator', &
-          'percent', &
+          'MODIS Total Cloud Cover Percentage', &
+          '%', &
+          standard_name='cloud_area_fraction', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
    id_locldmodis = register_diag_field &
       (mod_name, 'locldmodis', axes(1:2), Time, &
-          'Low Cloud Fraction as Calculated by the MODIS Simulator', &
-          'percent', &
+          'MODIS Low Level Cloud Cover Percentage', &
+          '%', &
+          standard_name='cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
    id_mdcldmodis = register_diag_field &
       (mod_name, 'mdcldmodis', axes(1:2), Time, &
-          'Middle Cloud Fraction as Calculated by the MODIS Simulator', &
-          'percent', &
+          'MODIS Mid Level Cloud Cover Percentage', &
+          '%', &
+          standard_name='cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
    id_hicldmodis = register_diag_field &
       (mod_name, 'hicldmodis', axes(1:2), Time, &
-          'High Cloud Fraction as Calculated by the MODIS Simulator', &
-          'percent', &
+          'MODIS High Level Cloud Cover Percentage', &
+          '%', &
+          standard_name='cloud_area_fraction_in_atmosphere_layer', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
    id_lclmodis = register_diag_field &
       (mod_name, 'lclmodis', axes(1:2), Time, &
-          'Total Liquid Cloud Fraction as Calculated by the MODIS Simulator', &
-          'percent', &
+          'MODIS Liquid Cloud Fraction', &
+          '%', &
+          standard_name='liquid_water_cloud_area_fraction', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
    id_iclmodis = register_diag_field &
       (mod_name, 'iclmodis', axes(1:2), Time, &
-          'Total Ice Cloud Fraction as Calculated by the MODIS Simulator', &
-          'percent', &
+          'MODIS Ice Cloud Area Percentage', &
+          '%', &
+          standard_name='ice_cloud_area_fraction', &
+          interp_method='conserve_order1', area=area_id, &
           mask_variant = .true., missing_value=missing_value)
 
    id_ttaumodis = register_diag_field &
@@ -1427,10 +1485,12 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      write (chvers2, '(e8.2)') reffIce_binEdges(1,n)
      write (chvers3, '(e8.2)') reffIce_binEdges(2,n)
      id_taurefficemodis(n) = register_diag_field &
-       (mod_name, 'taurefficemodis_'// trim(chvers), cosp_axes(modistauindx), &
-          Time, 'MODIS Cld Frac for clouds with icesize between ' // trim(chvers2) &
-             // ' and' // trim(chvers3) // ' Pa', 'percent', &
-                  mask_variant = .true., missing_value=missing_value)
+       (mod_name, 'taurefficemodis_'// trim(chvers), cosp_axes(modistauindx), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, ice (icesize between between ' &
+          // trim(adjustl(chvers2)) // ' and ' // trim(adjustl(chvers3)) // ' Pa)', '%', &
+                standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                interp_method='conserve_order1', area=area_id, &
+                mask_variant = .true., missing_value=missing_value)
    end do
 
    do m=1,numTauHistogramBins
@@ -1446,11 +1506,13 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
        write (chvers2, '(e8.2)') reffIce_binEdges(1,n)
        write (chvers3, '(e8.2)') reffIce_binEdges(2,n)
        id_taurefficemodis_n(m,n) = register_diag_field &
-         (mod_name, 'taurefficemodis_'// trim(chvers4)//'_' // trim(chvers), &
-          axes(1:2), Time, 'MODIS CldFrac - tau between ' // &
-           trim(chvers5) // ' and ' // trim(chvers6) //  &
-           ' , icesize between ' // trim(chvers2) // ' and' // &
-             trim(chvers3) // ' Pa', 'percent', &
+         (mod_name, 'taurefficemodis_'// trim(chvers4)//'_' // trim(chvers), axes(1:2), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, ice (tau between ' // &
+           trim(adjustl(chvers5)) // ' and ' // trim(adjustl(chvers6)) //  &
+           ', icesize between ' // trim(adjustl(chvers2)) // ' and ' // &
+             trim(adjustl(chvers3)) // ' Pa)', '%', &
+                standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
      end do
    end do
@@ -1465,10 +1527,12 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
      write (chvers2, '(e8.2)') reffLiq_binEdges(1,n)
      write (chvers3, '(e8.2)') reffLiq_binEdges(2,n)
      id_taureffliqmodis(n) = register_diag_field &
-       (mod_name, 'taureffliqmodis_'// trim(chvers), cosp_axes(modistauindx), &
-          Time, 'MODIS Cld Frac for clouds with dropsize between ' // trim(chvers2) &
-             // ' and' // trim(chvers3) // ' Pa', 'percent', &
-                  mask_variant = .true., missing_value=missing_value)
+       (mod_name, 'taureffliqmodis_'// trim(chvers), cosp_axes(modistauindx), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, liquid (dropsize between ' &
+           // trim(adjustl(chvers2)) // ' and ' // trim(adjustl(chvers3)) // ' Pa)', '%', &
+                standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                interp_method='conserve_order1', area=area_id, &
+                mask_variant = .true., missing_value=missing_value)
    end do
 
    do m=1,numTauHistogramBins
@@ -1484,11 +1548,13 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
        write (chvers2, '(e8.2)') reffLiq_binEdges(1,n)
        write (chvers3, '(e8.2)') reffLiq_binEdges(2,n)
        id_taureffliqmodis_n(m,n) = register_diag_field &
-         (mod_name, 'taureffliqmodis_'// trim(chvers4)//'_' // trim(chvers), &
-          axes(1:2), Time, 'MODIS CldFrac - tau between ' // &
-           trim(chvers5) // ' and ' // trim(chvers6) //  &
-           ' , dropsize between ' // trim(chvers2) // ' and' // &
-             trim(chvers3) // ' Pa', 'percent', &
+         (mod_name, 'taureffliqmodis_'// trim(chvers4)//'_' // trim(chvers), axes(1:2), Time, &
+          'MODIS Optical Thickness-Particle Size joint distribution, liquid (tau between ' &
+           // trim(adjustl(chvers5)) // ' and ' // trim(adjustl(chvers6)) //  &
+           ', dropsize between ' // trim(adjustl(chvers2)) // ' and ' // &
+             trim(adjustl(chvers3)) // ' Pa)', '%', &
+                standard_name='cloud_area_fraction_in_atmosphere_layer', &
+                interp_method='conserve_order1', area=area_id, &
                 mask_variant = .true., missing_value=missing_value)
      end do
    end do
