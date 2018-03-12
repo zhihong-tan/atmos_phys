@@ -1973,7 +1973,7 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
                                 t_surf_rad, albedo, Time_next, &
                                 Rad_flux_block%flux_sw_down_vis_dir, &
                                 Rad_flux_block%flux_sw_down_vis_dif, &
-                                con_atm)
+                                con_atm=con_atm)
       call mpp_clock_end ( tracer_clock )
 
 !-----------------------------------------------------------------------
