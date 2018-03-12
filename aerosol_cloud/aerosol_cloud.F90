@@ -84,6 +84,8 @@ real    :: cf_thresh_nucl = 0.98    ! threshold cloud fraction below which
 !   minimum value of the variance in the vertical velocity pdf
 !  </DATA>
 
+logical :: treat_nitrate_as_sulfate = .false.  !temporary fix, while we develop explicit treatment of activation by nitrate aerosol
+
 real    :: var_limit = 0.0
 integer :: var_limit_opt = 1
 integer :: up_strat_opt = 1
@@ -91,7 +93,7 @@ integer :: up_strat_opt = 1
 namelist / aerosol_cloud_nml / rh_act_opt, sea_salt_scale_onl, &
                                reproduce_rk, var_limit_ice, &
                                var_limit,  var_limit_opt, up_strat_opt, &
-                               cf_thresh_nucl
+                               cf_thresh_nucl, treat_nitrate_as_sulfate
 
 
 
@@ -708,7 +710,8 @@ TYPE(diag_pt_type),                        intent(in)    :: diag_pt
           do na = 1,size(Aerosol%aerosol,4)               
             if (trim(Aerosol%aerosol_names(na)) == 'so4' .or. &
                 trim(Aerosol%aerosol_names(na)) == 'so4_anthro' .or.&
-                trim(Aerosol%aerosol_names(na)) == 'so4_natural')  then
+                trim(Aerosol%aerosol_names(na)) == 'so4_natural' .or. &
+                (trim(Aerosol%aerosol_names(na)) == 'nitrate' .and. treat_nitrate_as_sulfate))  then
               do k=1,kdim
                 do j=1,jdim
                   do i=1,idim
