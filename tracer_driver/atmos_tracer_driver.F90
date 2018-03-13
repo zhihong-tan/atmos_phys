@@ -1499,11 +1499,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
               units = tracer_units)
          if ( tracer_units .eq. "vmr" ) then
             used  = send_data (id_tracer_diag(n),     &
-                 1.e3*rho(:,:,:)/WTMAIR * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 1.e3*rho(:,:,:)/WTMAIR * (rm(:,:,:,n)+rdt(:,:,:,n)*dt), &
                  Time, is_in=is, js_in=js, ks_in=1)
          else
             used  = send_data (id_tracer_diag(n),     &
-                 rho(:,:,:) * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 rho(:,:,:) * (rm(:,:,:,n)+rdt(:,:,:,n)*dt), &
                  Time, is_in=is, js_in=js, ks_in=1)
          end if
       end if

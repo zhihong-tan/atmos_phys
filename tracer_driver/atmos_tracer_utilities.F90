@@ -106,6 +106,8 @@ module atmos_tracer_utilities_mod
 
   character(len=7), parameter :: mod_name = 'tracers'
   integer, parameter :: max_tracers = MAX_TRACER_FIELDS
+
+  real, parameter :: T_homogeneous = 233.15
   !-----------------------------------------------------------------------
   !--- identification numbers for  diagnostic fields and axes ----
   integer :: id_tracer_ddep(max_tracers), id_tracer_dvel(max_tracers), &
@@ -149,6 +151,7 @@ module atmos_tracer_utilities_mod
      real  :: Henry_variable
      real  :: frac_in_cloud
      real  :: frac_in_cloud_snow
+     real  :: frac_in_cloud_snow_homogeneous
      real  :: alpha_r
      real  :: alpha_s
      logical :: Lwetdep, Lgas, Laerosol, Lice, so2_so4_evap, is_so2
@@ -179,7 +182,8 @@ module atmos_tracer_utilities_mod
   real ::                scale_aerosol_wetdep_snow =1.0
   character(len=64)  :: file_dry = 'depvel.nc'  ! NetCDF file for dry deposition velocities
   logical :: drydep_exp = .false.
-  namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp
+  real :: T_snow_dep = 263.15
+  namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp,T_snow_dep
   ! <---h1g,
 contains
 
@@ -324,7 +328,21 @@ contains
          Wetdep(n)%alpha_r, Wetdep(n)%alpha_s, &
          Wetdep(n)%Lwetdep, Wetdep(n)%Lgas, &
          Wetdep(n)%Laerosol, Wetdep(n)%Lice, &
-         so2_so4_evap = Wetdep(n)%so2_so4_evap )
+         so2_so4_evap = Wetdep(n)%so2_so4_evap, &
+         frac_in_cloud_snow_homogeneous = Wetdep(n)%frac_in_cloud_snow_homogeneous)
+
+    if (mpp_root_pe().eq.mpp_pe()) then
+       if (Wetdep(n)%Lwetdep) then
+          write(*,*) 'name: ',trim(tracer_names(n))
+          write(*,*) 'scheme: ',trim(Wetdep(n)%scheme)
+          write(*,*) 'H:',Wetdep(n)%Henry_constant,Wetdep(n)%Henry_variable
+          write(*,*) 'frac_in_cloud', Wetdep(n)%frac_in_cloud
+          write(*,*) 'frac_in_cloud_snow', Wetdep(n)%frac_in_cloud_snow
+          write(*,*) 'frac_in_cloud_snow_homogeneous', Wetdep(n)%frac_in_cloud_snow_homogeneous
+          write(*,*) 'so2_so4_evap', Wetdep(n)%so2_so4_evap
+       end if
+    end if
+
 
     if ( lowercase(trim(tracer_names(n))) .eq. "so2" .or. lowercase(trim(tracer_names(n))) .eq. "simpleso2" ) then
        Wetdep(n)%is_so2 = .true.
@@ -760,7 +778,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
 
  case ('williams_wind_driven')
 
-    where(T.lt.263.15)
+    where(T.lt.T_snow_dep)
        landr2=snowr
     elsewhere
        landr2=landr
@@ -1198,7 +1216,7 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
       fall_time                    ! fall time through layer (s)
 
  real :: f_a0, scav_factor0, sa_drop0, fgas0
- real :: frac_in_cloud, frac_in_cloud_snow, frac_int, ph
+ real :: frac_in_cloud, frac_in_cloud_snow, frac_in_cloud_snow_homogeneous, frac_int, ph
  real , parameter :: &
       R_r = 0.001, &               ! radius of cloud-droplets for rain
       R_s = 0.001, &               ! radius of cloud-droplets for snow
@@ -1242,6 +1260,7 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
  Henry_variable = Wetdep(n)%Henry_variable
  frac_in_cloud = Wetdep(n)%frac_in_cloud
  frac_in_cloud_snow = Wetdep(n)%frac_in_cloud_snow
+ frac_in_cloud_snow_homogeneous = Wetdep(n)%frac_in_cloud_snow_homogeneous
  alpha_r = Wetdep(n)%alpha_r
  alpha_s = Wetdep(n)%alpha_s
  Lwetdep = Wetdep(n)%Lwetdep
@@ -1482,6 +1501,12 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
                 else
                    scav_factor_s(:,:) = f_snow_berg(:,:,k)*frac_in_cloud_snow +&
                         (1.-f_snow_berg(:,:,k))*frac_in_cloud
+                   if (frac_in_cloud_snow_homogeneous .ne. frac_in_cloud) then
+                      where (T(:,:,k).lt.T_homogeneous)
+                         scav_factor_s(:,:) = f_snow_berg(:,:,k)*frac_in_cloud_snow +&
+                              (1.-f_snow_berg(:,:,k))*frac_in_cloud_snow_homogeneous
+                      end where
+                   end if
                 endif
              end if
              !        where (precip3d(:,:,k) > 0.0)
@@ -1827,7 +1852,7 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
     frac_in_cloud, frac_in_cloud_snow,  &
     alpha_r,alpha_s, &
     Lwetdep, Lgas, Laerosol, Lice, &
-    frac_in_cloud_uw, frac_in_cloud_donner, so2_so4_evap)
+    frac_in_cloud_uw, frac_in_cloud_donner, so2_so4_evap, frac_in_cloud_snow_homogeneous)
   !<OVERVIEW>
   ! Routine to initialize the parameters for the wet deposition scheme.
   !</OVERVIEW>
@@ -1886,6 +1911,7 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
  logical, intent(out)            :: Lwetdep, Lgas, Laerosol, Lice
  real, intent(out), optional     :: frac_in_cloud_uw, frac_in_cloud_donner
  logical, intent(out), optional  :: so2_so4_evap
+ real, intent(out), optional     :: frac_in_cloud_snow_homogeneous
  integer :: flag
 
  !Default
@@ -1894,6 +1920,7 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
  henry_temp    = 0.
  frac_in_cloud = 0.
  frac_in_cloud_snow = 0.
+ if (present(frac_in_cloud_snow_homogeneous)) frac_in_cloud_snow_homogeneous = 0.
  alpha_r       = 0.
  alpha_s       = 0.
  Lwetdep = .false.
@@ -1955,6 +1982,13 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
     flag=parse(text_in_param,'frac_incloud_snow',frac_in_cloud_snow)
     if (flag == 0) then
        frac_in_cloud_snow = frac_in_cloud
+    end if
+    
+    if (present(frac_in_cloud_snow_homogeneous)) then    
+       flag=parse(text_in_param,'frac_incloud_snowh',frac_in_cloud_snow_homogeneous)
+       if (flag == 0) then
+          frac_in_cloud_snow_homogeneous = frac_in_cloud
+       end if
     end if
 
     ! --->h1g, add a scale factor for aerosol wet deposition by snow, 2015-03-13
