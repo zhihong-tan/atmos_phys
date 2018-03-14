@@ -350,6 +350,7 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
  type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
+ type(cmip_diag_id_type) :: ID_meanage
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
@@ -1099,6 +1100,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
      if ( query_cmip_diag_id(ID_pm10)) then
         used = send_cmip_data_3d ( ID_pm10, pm10, &
              Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
+     if ( query_cmip_diag_id(ID_meanage)) then
+        used = send_cmip_data_3d ( ID_meanage, tracer(:,:,:,nage), &
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=log(phalf))
      end if
 
 
@@ -2036,6 +2042,12 @@ type(time_type), intent(in)                                :: Time
       do_pm = .false.
       if (query_cmip_diag_id(ID_pm10) .or. query_cmip_diag_id(ID_pm1) .or. &
           query_cmip_diag_id(ID_pm25) .or. id_pm25_surf > 0) do_pm = .true.
+
+      if (nage .gt. 0) then
+        ID_meanage = register_cmip_diag_field_3d ( mod_name, 'meanage', Time, &
+                                       'Mean Age of Stratospheric Air', 'yr', &
+                                      standard_name='age_of_stratospheric_air')
+      endif
 
       id_bc_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_bc_col_kg_m2', &
                        Time, 'Load of Black Carbon Aerosol', 'kg m-2', &
