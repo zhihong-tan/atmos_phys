@@ -56,12 +56,12 @@ real, dimension(39) :: plev39 = &
                     500.,   300.,   200.,   150.,   100.,    70., &
                      50.,    40.,    30.,    20.,    15.,    10., &
                       7.,     5.,     3. /)
-real, dimension(28) :: plev28 = &
+real, dimension(27) :: plev27 = &
               (/ 100000., 92500., 85000., 70000., 60000., 50000., &
                   40000., 30000., 25000., 20000., 17000., 15000., &
                   13000., 11500., 10000.,  9000.,  8000.,  7000., &
                    5000.,  3000.,  2000.,  1500.,  1000.,   700., &
-                    500.,   300.,   200.,   150. /)
+                    500.,   300.,   200. /)
 real, dimension(23) :: plev23 = &
               (/ 100000., 92500., 85000., 70000., 60000., 50000., &
                   40000., 30000., 25000., 20000., 15000., 10000., &
@@ -344,9 +344,9 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
       pressure_levels(ind,1:np) = plev4
       axis_name = 'plev4'
     else if (ind .eq. 8) then
-      np = size(plev28,1)
-      pressure_levels(ind,1:np) = plev28
-      axis_name = 'plev28'
+      np = size(plev27,1)
+      pressure_levels(ind,1:np) = plev27
+      axis_name = 'plev27'
     else if (ind .eq. 9) then
       np = size(plev39,1)
       pressure_levels(ind,1:np) = plev39
