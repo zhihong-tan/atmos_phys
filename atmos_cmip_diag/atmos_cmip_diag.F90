@@ -94,6 +94,11 @@ logical :: flip_cmip_levels = .true.  ! flip vertical model level output
 logical :: output_modeling_realm  = .false. ! add modeling_realm attribute
                                             ! to all variables
 
+logical :: error_when_phalf_missing = .true.  ! when pressure level interp is requested
+                                              ! and log(phalf) is not supplied a fatal
+                                              ! error will result, set to false to get
+                                              ! the previous behavior (warsaw_201803).
+
 character(len=64) :: modeling_realm_default = 'atmos' ! default modeling_realm attribute
                                                       ! can be overriden in
                                                       ! register_cmip_diag
@@ -102,7 +107,7 @@ integer :: verbose = 1                ! verbose level = 0,1,2
 
 namelist /atmos_cmip_diag_nml/ use_extra_levels, flip_cmip_levels, &
                                output_modeling_realm, modeling_realm_default, &
-                               verbose
+                               error_when_phalf_missing, verbose
 
 !-----------------------------------------------------------------------
 
@@ -558,7 +563,12 @@ logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, p
       ! pressure level interpolation when ind > 0
       if (ind > 0) then
         if (.not.present(phalf)) then
-          cycle ! silently skip?
+          if (error_when_phalf_missing) then
+            call error_mesg('atmos_cmip_diag_mod', &
+                 'log(phalf) must be present for pressure level interpolation',FATAL)
+          else
+            cycle ! silently skip?
+          endif
         endif
         if (present(rmask) .or. present(mask)) call error_mesg('atmos_cmip_diag_mod', &
                                'rmask or mask not allowed with pressure interpolation',FATAL)
