@@ -1455,8 +1455,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
 
    do m=1,numTauHistogramBins
      write (chvers4, '(i1)') m + 1
-     write (chvers5, '(f6.1)') nominalTauHistogramBoundaries(1,m)
-     write (chvers6, '(f6.1)') nominalTauHistogramBoundaries(2,m)
+     write (chvers5, '(f8.1)') nominalTauHistogramBoundaries(1,m)
+     write (chvers6, '(f8.1)') nominalTauHistogramBoundaries(2,m)
      do n=numPressureHistogramBins,1,-1
        if (n <=9) then
        write (chvers, '(i1)') n
@@ -1495,8 +1495,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
 
    do m=1,numTauHistogramBins
      write (chvers4, '(i1)') m + 1
-     write (chvers5, '(f6.1)') nominalTauHistogramBoundaries(1,m)
-     write (chvers6, '(f6.1)') nominalTauHistogramBoundaries(2,m)
+     write (chvers5, '(f8.1)') nominalTauHistogramBoundaries(1,m)
+     write (chvers6, '(f8.1)') nominalTauHistogramBoundaries(2,m)
      do n=numMODISReffIceBins,1,-1
        if (n <=9) then
        write (chvers, '(i1)') n
@@ -1518,7 +1518,7 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
    end do
 
 !taureffliqmodis
-   do n=numPressureHistogramBins,1,-1
+   do n=numMODISReffLiqBins,1,-1
        if (n <=9) then
        write (chvers, '(i1)') n
        else
@@ -1537,8 +1537,8 @@ type(cosp_config), intent(in) :: cfg   ! Configuration options
 
    do m=1,numTauHistogramBins
      write (chvers4, '(i1)') m + 1
-     write (chvers5, '(f6.1)') nominalTauHistogramBoundaries(1,m)
-     write (chvers6, '(f6.1)') nominalTauHistogramBoundaries(2,m)
+     write (chvers5, '(f8.1)') nominalTauHistogramBoundaries(1,m)
+     write (chvers6, '(f8.1)') nominalTauHistogramBoundaries(2,m)
      do n=numMODISReffLiqBins,1,-1
        if (n <=9) then
        write (chvers, '(i1)') n
