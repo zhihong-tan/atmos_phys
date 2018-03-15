@@ -540,6 +540,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
+real, dimension(size(r,1),size(r,2),size(r,3)+1) :: lphalf
 
 integer :: isulf, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
@@ -963,6 +964,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                          Time_next, is_in=is, js_in=js, ks_in=1)
      endif
 
+     ! log(phalf) is needed for interpolation to pressure levels
+     ! compute here once for efficiency
+
+     lphalf = log(phalf)
+
      !---- cmip named variables ----
      if (query_cmip_diag_id(ID_airmass)) then
          used = send_cmip_data_3d (ID_airmass,  &
@@ -1033,7 +1039,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
         if ( query_cmip_diag_id(ID_tracer_mol_mol(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_mol_mol(n), tracer(:,:,:,n), &
-                Time_next, is_in=is, js_in=js, ks_in=1)
+                Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
         end if
         if ( id_tracer_surf_mol_mol(n) .gt. 0 ) then
            used = send_data ( id_tracer_surf_mol_mol(n), tracer(:,:,kd,n), &
@@ -1041,7 +1047,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
         end if
         if ( query_cmip_diag_id(ID_tracer_kg_kg(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,:,n), &
-                Time_next, is_in=is, js_in=js, ks_in=1)
+                Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
         end if
         if ( id_tracer_surf_kg_kg(n) .gt. 0 ) then
            used = send_data ( id_tracer_surf_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,kd,n), &
@@ -1104,7 +1110,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
      if ( query_cmip_diag_id(ID_meanage)) then
         used = send_cmip_data_3d ( ID_meanage, tracer(:,:,:,nage), &
-             Time_next, is_in=is, js_in=js, ks_in=1, phalf=log(phalf))
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
      end if
 
 
