@@ -2267,7 +2267,7 @@ subroutine atmos_nitrogen_flux_init
          ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
               flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
               atm_tr_index = nnh3,                                          &
-              mol_wt = WTMN, param = (/ 1.0 /),              &
+              mol_wt = WTMN, param = (/ 17. /),              &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')                
       end if
    endif
