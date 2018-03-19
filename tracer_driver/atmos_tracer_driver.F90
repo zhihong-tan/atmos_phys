@@ -237,8 +237,9 @@ logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! ocean grid boxes
 
 logical  :: do_esm_nitrogen_flux = .false. !If set to .true. nitrogen fluxes will be prepared for exchange with Ocean
+logical  :: do_nh3_atm_ocean_exchange = .false.
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux,do_nh3_atm_ocean_exchange
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -301,10 +302,12 @@ integer :: nSO2_cmip =0
 integer :: nSO4_cmip =0
 integer :: nNH3_cmip =0
 integer :: nOH       =0
+integer :: nNH3      =0
 integer :: nC4H10    =0
 integer :: ncodirect =0
 integer :: ne90 =0
 integer :: nsulfate  =0
+
 integer, dimension(5) :: tr_nbr_sulfate=0
 logical, dimension(5) :: do_tracer_sulfate=.false.
 
@@ -374,6 +377,7 @@ integer   :: ind_dry_dep_nh4_flux = 0
 integer   :: ind_wet_dep_nh4_flux = 0
 integer   :: ind_dry_dep_no3_flux = 0
 integer   :: ind_wet_dep_no3_flux = 0
+integer   :: ind_nh3_flux = 0
 
 
 !-----------------------------------------------------------------------
@@ -483,7 +487,7 @@ contains
                            flux_sw_down_vis_dir,   &
                            flux_sw_down_vis_dif,   &
                            mask,                   &
-                           kbot)
+                           kbot, con_atm)
 
 !-----------------------------------------------------------------------
 integer, intent(in)                           :: is, ie, js, je
@@ -509,6 +513,7 @@ real, intent(in), dimension(:,:)              :: flux_sw_down_vis_dif
 type(time_type), intent(in)                   :: Time_next
 integer, intent(in), dimension(:,:), optional :: kbot
 real, intent(in), dimension(:,:,:),  optional :: mask
+real, intent(in), dimension(:,:),    optional :: con_atm
 
 !-----------------------------------------------------------------------
 ! Local variables
@@ -733,13 +738,15 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
-                                 z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
-                                 land, dsinku(:,:,n), dt, &
+                                 z_half(:,:,kd)-z_half(:,:,kd+1), u_star,  &
+                                 land, frac_open_sea, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
-                                 drydep_data(n))!, frland, frice, frsnow, &
-!                                 vegn_cover, vegn_lai, &
-!                                 b_star, z_pbl, rough_mom)
+                                 drydep_data(n),con_atm)
+            if (do_nh3_atm_ocean_exchange .and. n.eq.nNH3) then !f1p: scale by ocean fraction
+               dsinku(:,:,n) = dsinku(:,:,n)*(1.-frac_open_sea)
+            end if
+
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
             if ( step_update_tracer ) then
                tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
@@ -1235,8 +1242,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                             area, w10m_ocean, &
                             flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
                             half_day, &
-                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), & 
-                            xbvoc, kbot)
+                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), &
+                            xbvoc, kbot, do_nh3_atm_ocean_exchange)
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
@@ -1496,11 +1503,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
               units = tracer_units)
          if ( tracer_units .eq. "vmr" ) then
             used  = send_data (id_tracer_diag(n),     &
-                 1.e3*rho(:,:,:)/WTMAIR * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 1.e3*rho(:,:,:)/WTMAIR * (rm(:,:,:,n)+rdt(:,:,:,n)*dt), &
                  Time, is_in=is, js_in=js, ks_in=1)
          else
             used  = send_data (id_tracer_diag(n),     &
-                 rho(:,:,:) * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 rho(:,:,:) * (rm(:,:,:,n)+rdt(:,:,:,n)*dt), &
                  Time, is_in=is, js_in=js, ks_in=1)
          end if
       end if
@@ -1730,6 +1737,8 @@ type(time_type), intent(in)                                :: Time
       nNH3_cmip = get_tracer_index(MODEL_ATMOS,'nh3')
       nOH       = get_tracer_index(MODEL_ATMOS,'oh')
       nC4H10    = get_tracer_index(MODEL_ATMOS,'c4h10')
+      nNH3      = get_tracer_index(MODEL_ATMOS,'nh3')
+
 ! Check for presence of OH and C4H10 (diagnostic) tracers
 ! If not present set index to 1 so interface calls do not fail,
 ! but FATAL error will be issued by atmos_sulfate_init,
@@ -2257,7 +2266,17 @@ subroutine atmos_nitrogen_flux_init
               atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
       endif
+
+      if (do_nh3_atm_ocean_exchange .and. nnh3.gt.0) then
+         ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
+              flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
+              atm_tr_index = nnh3,                                          &
+              mol_wt = WTMN, param = (/ 17. /),              &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')                
+      end if
    endif
+
+
 
 end subroutine atmos_nitrogen_flux_init
 
@@ -2450,7 +2469,7 @@ end subroutine atmos_tracer_flux_init
 !   </TEMPLATE>
  subroutine atmos_tracer_driver_gather_data(gas_fields, tr_bot)
 
-use coupler_types_mod, only: coupler_2d_bc_type
+use coupler_types_mod, only: coupler_2d_bc_type, ind_pcair
 
 type(coupler_2d_bc_type), intent(inout) :: gas_fields
 real, dimension(:,:,:), intent(in)      :: tr_bot
@@ -2459,6 +2478,9 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 
   call atmos_co2_gather_data(gas_fields, tr_bot)
 
+  if (ind_nh3_flux .gt. 0) then
+     gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3)
+  end if
 !-----------------------------------------------------------------------
 
  end subroutine atmos_tracer_driver_gather_data
