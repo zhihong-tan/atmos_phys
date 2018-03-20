@@ -2264,10 +2264,11 @@ subroutine atmos_nitrogen_flux_init
       endif
 
       if (do_nh3_atm_ocean_exchange .and. nnh3.gt.0) then
+         if (mpp_root_pe().eq.mpp_pe()) write(*,*) 'setting up nh3_flux (atmos)'
          ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
-              flux_type = 'air_sea_gas_flux_generic', implementation = 'duce_vmr',       &
+              flux_type = 'air_sea_gas_flux_generic', implementation = 'johnson',       &
               atm_tr_index = nnh3,                                          &
-              mol_wt = WTMN, param = (/ 17. /),              &
+              mol_wt = WTMN, param = (/ 17.,25. /),              &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')                
       end if
    endif
