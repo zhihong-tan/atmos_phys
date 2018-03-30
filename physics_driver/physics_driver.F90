@@ -1688,7 +1688,7 @@ real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    albedo, t_surf_rad, &
                                                    u_ref, v_ref, & !bqx+
                                                    t_ref, q_ref, &  ! cjg: PBL depth mods
-                                                   u_star, b_star,    &
+                                                   u_star, b_star, &
                                                    q_star, dtau_du,   &
                                                    dtau_dv, frac_open_sea
 real,dimension(:,:),     intent(inout)          :: tau_x,  tau_y
