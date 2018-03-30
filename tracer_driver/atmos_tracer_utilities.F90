@@ -106,6 +106,8 @@ module atmos_tracer_utilities_mod
 
   character(len=7), parameter :: mod_name = 'tracers'
   integer, parameter :: max_tracers = MAX_TRACER_FIELDS
+
+  real, parameter :: T_homogeneous = 233.15
   !-----------------------------------------------------------------------
   !--- identification numbers for  diagnostic fields and axes ----
   integer :: id_tracer_ddep(max_tracers), id_tracer_dvel(max_tracers), &
@@ -149,6 +151,7 @@ module atmos_tracer_utilities_mod
      real  :: Henry_variable
      real  :: frac_in_cloud
      real  :: frac_in_cloud_snow
+     real  :: frac_in_cloud_snow_homogeneous
      real  :: alpha_r
      real  :: alpha_s
      logical :: Lwetdep, Lgas, Laerosol, Lice, so2_so4_evap, is_so2
@@ -168,6 +171,7 @@ module atmos_tracer_utilities_mod
      ! over land surfaces and therefore this module should scale down the deposition
      ! it calculates by 1 - fraction of land
      logical :: Ldrydep
+     real    :: surfr,snowr,landr,sear
   end type drydep_type
 
   type(drydep_type), dimension(:), allocatable :: Drydep
@@ -178,7 +182,8 @@ module atmos_tracer_utilities_mod
   real ::                scale_aerosol_wetdep_snow =1.0
   character(len=64)  :: file_dry = 'depvel.nc'  ! NetCDF file for dry deposition velocities
   logical :: drydep_exp = .false.
-  namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp
+  real :: T_snow_dep = 263.15
+  namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp,T_snow_dep
   ! <---h1g,
 contains
 
@@ -323,7 +328,21 @@ contains
          Wetdep(n)%alpha_r, Wetdep(n)%alpha_s, &
          Wetdep(n)%Lwetdep, Wetdep(n)%Lgas, &
          Wetdep(n)%Laerosol, Wetdep(n)%Lice, &
-         so2_so4_evap = Wetdep(n)%so2_so4_evap )
+         so2_so4_evap = Wetdep(n)%so2_so4_evap, &
+         frac_in_cloud_snow_homogeneous = Wetdep(n)%frac_in_cloud_snow_homogeneous)
+
+    if (mpp_root_pe().eq.mpp_pe()) then
+       if (Wetdep(n)%Lwetdep) then
+          write(*,*) 'name: ',trim(tracer_names(n))
+          write(*,*) 'scheme: ',trim(Wetdep(n)%scheme)
+          write(*,*) 'H:',Wetdep(n)%Henry_constant,Wetdep(n)%Henry_variable
+          write(*,*) 'frac_in_cloud', Wetdep(n)%frac_in_cloud
+          write(*,*) 'frac_in_cloud_snow', Wetdep(n)%frac_in_cloud_snow
+          write(*,*) 'frac_in_cloud_snow_homogeneous', Wetdep(n)%frac_in_cloud_snow_homogeneous
+          write(*,*) 'so2_so4_evap', Wetdep(n)%so2_so4_evap
+       end if
+    end if
+
 
     if ( lowercase(trim(tracer_names(n))) .eq. "so2" .or. lowercase(trim(tracer_names(n))) .eq. "simpleso2" ) then
        Wetdep(n)%is_so2 = .true.
@@ -338,7 +357,8 @@ contains
 
     call get_drydep_param(Drydep(n)%name,Drydep(n)%control,  &
          Drydep(n)%scheme, Drydep(n)%land_does_drydep, &
-         Drydep(n)%land_dry_dep_vel, Drydep(n)%sea_dry_dep_vel)
+         Drydep(n)%land_dry_dep_vel, Drydep(n)%sea_dry_dep_vel, &
+         Drydep(n)%surfr,Drydep(n)%landr,Drydep(n)%snowr,Drydep(n)%sear)
     ! check that the corresonding land tracer is present in the land if the
     ! dry deposition is done on the land side
     if (Drydep(n)%land_does_drydep) then
@@ -349,6 +369,16 @@ contains
                FATAL)
        endif
     endif
+
+    if (mpp_root_pe().eq.mpp_pe()) then
+       write(*,*) 'name: ',trim(tracer_names(n))
+       write(*,*) 'scheme: ',trim(Drydep(n)%scheme)
+       write(*,*) 'land does drydep: ',Drydep(n)%land_does_drydep
+       write(*,*) 'land dvel: ',Drydep(n)%land_dry_dep_vel
+       write(*,*) 'sea dvel: ',Drydep(n)%sea_dry_dep_vel
+       write(*,*) 'surfr,landr,snowr,sear: ',Drydep(n)%surfr,Drydep(n)%landr,Drydep(n)%snowr,Drydep(n)%sear
+    end if
+
     ! When formulation of dry deposition is resolved perhaps use the following?
     !      call get_drydep_param    &
     !           (Drydep(n)%name, Drydep(n)%control, Drydep(n)%scheme,  &
@@ -372,6 +402,7 @@ contains
          trim(tracer_dvel_names(n)), mass_axes(1:2), Time,               &
          trim(tracer_dvel_longnames(n)),                                 &
          'm/s', missing_value=-999.     )
+
     ! Register the wet deposition of the n tracers by large scale clouds
     id_tracer_wdep_ls(n) = register_diag_field ( mod_name,                 &
          trim(tracer_wdep_names(n))//'_ls', mass_axes(1:2), Time,        &
@@ -591,8 +622,8 @@ end subroutine write_namelist_values
 !
 !<SUBROUTINE NAME = "dry_deposition">
 subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
-    u_star, landfrac, dsinku, dt, tracer, Time, &
-    Time_next, lon, half_day, drydep_data)
+    u_star, landfrac, frac_open_sea,dsinku, dt, tracer, Time, &
+    Time_next, lon, half_day, drydep_data, con_atm)
   ! When formulation of dry deposition is resolved perhaps use the following?
   !                           landfr, seaice_cn, snow_area, &
   !                           vegn_cover, vegn_lai, &
@@ -697,7 +728,8 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  integer, intent(in)                 :: n, is, js
  real, intent(in), dimension(:,:)    :: u, v, T, pwt, pfull, u_star, tracer, dz
  real, intent(in), dimension(:,:)    :: lon, half_day
- real, intent(in), dimension(:,:)    :: landfrac
+ real, intent(in), dimension(:,:)    :: landfrac,frac_open_sea
+ real, intent(in), dimension(:,:), optional    :: con_atm
  ! When formulation of dry deposition is resolved perhaps use the following?
  !real, intent(in), dimension(:,:)    :: landfr, z_pbl, b_star, rough_mom
  !real, intent(in), dimension(:,:)    :: seaice_cn, snow_area, vegn_cover,  &
@@ -707,12 +739,12 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  real, intent(in)                   :: dt
  real, intent(out), dimension(:,:)   :: dsinku
 
- real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel
+ real,dimension(size(u,1),size(u,2))   :: hwindv,frictv,resisa,drydep_vel,ka,kss,kbs,km,vd_ocean,A,B,alpha,landr2
  !real,dimension(size(u,1),size(u,2))   :: mo_length_inv, vds, rs, k1, k2
  integer :: i,j, flagsr, id, jd
  real    :: land_dry_dep_vel, sea_dry_dep_vel, ice_dry_dep_vel,  &
       snow_dry_dep_vel, vegn_dry_dep_vel,   &
-      surfr, sear, icer,  snowr, vegnr
+      surfr, sear,  snowr, vegnr, landr
  real    :: diag_scale
  real    :: factor_tmp, gmt, dv_on, dv_off, dayfrac, vd_night, vd_day, loc_angle
  logical :: used, diurnal
@@ -737,8 +769,54 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
  !dz(:,:) = pwt(:,:)*rdgas*T(:,:)/pfull(:,:)
  id=size(pfull,1); jd=size(pfull,2)
 
-
+ surfr=Drydep(n)%surfr
+ snowr=Drydep(n)%snowr
+ landr=Drydep(n)%landr
+ sear=Drydep(n)%sear
+ 
  select case(lowercase(scheme))
+
+ case ('williams_wind_driven')
+
+    where(T.lt.T_snow_dep)
+       landr2=snowr
+    elsewhere
+       landr2=landr
+    endwhere
+
+    frictv=u_star
+    where (frictv .lt. 0.1) frictv=0.1
+
+    hwindv=sqrt(u**2+v**2)
+
+    if (present(con_atm)) then
+       ka = con_atm
+       resisa = 1/max(con_atm,1.e-25)
+    else
+       resisa=hwindv/(u_star*u_star)
+       ka=1./max(resisa,1.e-25)
+    end if
+
+    !f1p
+    !alpha = max(min(1.7e-6*hwindv**3.75,1.),0.) !WU 1979
+    !alpha = max(min(1.e-6*u_star**3,0.) !Wu 1988, variations of whitecap coverage with wind stress and water temperature
+    alpha = max(min(2.81e-5*(hwindv-3.87)**2.76,1.),0.) !Observations of whitecap coverage and the relation to wind stress, wave slope, and turbulent dissipation, Schwendeman and Thomson, 2016, JGR ocean
+
+    kss   = frictv/sear
+    kbs   = 50. !set to very high value
+    km    = hwindv !lateral transport
+
+    A = km*ka+(1.-alpha)*ka*alpha*(ka+kbs)
+    B = km*((1.-alpha)*(ka+kss)+alpha*(ka+kbs))+(1.-alpha)*(ka+kss)*alpha*(ka+kbs)
+    
+    vd_ocean = A/B*((1.-alpha)*kss &
+         + km * alpha * kbs/(km + alpha*(ka+kbs)) &
+         + alpha * kbs * alpha * ka / (km+alpha*(ka+kbs)))
+
+    drydep_vel(:,:) = (1./(landr2/frictv + resisa)) * (1.-frac_open_sea) &
+         +     frac_open_sea * vd_ocean
+
+    dsinku = drydep_vel(:,:)/dz(:,:)
 
  case('wind_driven')
     ! Calculate horizontal wind velocity and aerodynamic resistance:
@@ -747,8 +825,6 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     !
     !****  Compute dry sinks (loss frequency, need modification when
     !****    different vdep values are to be used for species)
-    flagsr=parse(control,'surfr',surfr)
-    if(flagsr == 0) surfr=500.
     hwindv=sqrt(u**2+v**2)
     frictv=u_star
     resisa=hwindv/(u_star*u_star)
@@ -965,6 +1041,7 @@ subroutine dry_deposition( n, is, js, u, v, T, pwt, pfull, dz, &
     used = send_data ( id_tracer_dvel(n), drydep_vel, Time_next, &
          is_in =is,js_in=js)
  end if
+
 end subroutine dry_deposition
 !</SUBROUTINE>
 !
@@ -1139,7 +1216,7 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
       fall_time                    ! fall time through layer (s)
 
  real :: f_a0, scav_factor0, sa_drop0, fgas0
- real :: frac_in_cloud, frac_in_cloud_snow, frac_int, ph
+ real :: frac_in_cloud, frac_in_cloud_snow, frac_in_cloud_snow_homogeneous, frac_int, ph
  real , parameter :: &
       R_r = 0.001, &               ! radius of cloud-droplets for rain
       R_s = 0.001, &               ! radius of cloud-droplets for snow
@@ -1183,13 +1260,14 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
  Henry_variable = Wetdep(n)%Henry_variable
  frac_in_cloud = Wetdep(n)%frac_in_cloud
  frac_in_cloud_snow = Wetdep(n)%frac_in_cloud_snow
+ frac_in_cloud_snow_homogeneous = Wetdep(n)%frac_in_cloud_snow_homogeneous
  alpha_r = Wetdep(n)%alpha_r
  alpha_s = Wetdep(n)%alpha_s
  Lwetdep = Wetdep(n)%Lwetdep
  Lgas    = Wetdep(n)%Lgas
  Laerosol = Wetdep(n)%Laerosol
  Lice    = Wetdep(n)%Lice
-
+ 
  rho_air(:,:,:) = pfull(:,:,:) / ( T(:,:,:)*RDGAS ) ! kg/m3
  !   Lice = .not. (scheme=='henry_noice' .or. scheme=='henry_below_noice' .or. &
  !                 scheme=='aerosol_noice' .or. scheme=='aerosol_below_noice' )
@@ -1423,6 +1501,12 @@ subroutine wet_deposition( n, T, pfull, phalf, zfull, zhalf, &
                 else
                    scav_factor_s(:,:) = f_snow_berg(:,:,k)*frac_in_cloud_snow +&
                         (1.-f_snow_berg(:,:,k))*frac_in_cloud
+                   if (frac_in_cloud_snow_homogeneous .ne. frac_in_cloud) then
+                      where (T(:,:,k).lt.T_homogeneous)
+                         scav_factor_s(:,:) = f_snow_berg(:,:,k)*frac_in_cloud_snow +&
+                              (1.-f_snow_berg(:,:,k))*frac_in_cloud_snow_homogeneous
+                      end where
+                   end if
                 endif
              end if
              !        where (precip3d(:,:,k) > 0.0)
@@ -1685,7 +1769,7 @@ end subroutine wet_deposition
 !#######################################################################
 !
 subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep, &
-    land_dry_dep_vel,sea_dry_dep_vel)
+    land_dry_dep_vel,sea_dry_dep_vel,surfr,landr,snowr,sear)
   !subroutine get_drydep_param(text_in_scheme, text_in_param, scheme,  &
   !                            land_dry_dep_vel, sea_dry_dep_vel, &
   !                            ice_dry_dep_vel, snow_dry_dep_vel,  &
@@ -1712,6 +1796,7 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep
  real, intent(out)               :: land_dry_dep_vel, sea_dry_dep_vel!, &
  !                                   ice_dry_dep_vel, snow_dry_dep_vel, &
  !                                   vegn_dry_dep_vel
+ real, intent(out)               :: surfr,snowr,landr,sear
 
  integer :: flag
 
@@ -1719,45 +1804,31 @@ subroutine get_drydep_param(text_in_scheme,text_in_param,scheme,land_does_drydep
  scheme                  = 'None'
  land_dry_dep_vel=0.0
  sea_dry_dep_vel=0.0
- !ice_dry_dep_vel=0.0
- !snow_dry_dep_vel=0.0
- !vegn_dry_dep_vel=0.0
-
+ surfr=500.
+ snowr=500.
+ landr=500.
+ sear=500.
+ 
  if(lowercase(trim(text_in_scheme(1:4))).eq.'wind') then
     scheme                  = 'Wind_driven'
  endif
+ if(lowercase(trim(text_in_scheme(1:8))).eq.'williams') then
+    scheme                  = 'williams_wind_driven'
+ endif
 
- !if(lowercase(trim(text_in_scheme(1:15))).eq.'sfc_dependent_w') then
- !scheme                 = 'sfc_dependent_wind_driven'
- !endif
- !
- !if(lowercase(trim(text_in_scheme(1:6))).eq.'sfc_bl') then
- !scheme                 = 'sfc_BL_dependent_wind_driven'
- !endif
+ flag=parse(text_in_param,'surfr',surfr)    
+ flag=parse(text_in_param,'sear',sear)
+ if(flag == 0) sear=surfr
+ flag=parse(text_in_param,'landr',landr)
+ if(flag == 0) landr=surfr
+ flag=parse(text_in_param,'icer',snowr)
+ if(flag == 0) snowr=landr
 
  if(lowercase(trim(text_in_scheme(1:5))).eq.'fixed') then
     scheme                 = 'fixed'
     flag=parse(text_in_param,'land',land_dry_dep_vel)
     flag=parse(text_in_param,'sea', sea_dry_dep_vel)
  endif
-
- !if(lowercase(trim(text_in_scheme(1:15))).eq.'sfc_dependent_f') then
- !scheme                 = 'sfc_dependent_fixed'
- !flag=parse(text_in_param,'land',land_dry_dep_vel)
- !flag=parse(text_in_param,'sea', sea_dry_dep_vel)
- !flag=parse(text_in_param,'ice', ice_dry_dep_vel)
- !if (flag == 0) then
- !   ice_dry_dep_vel = sea_dry_dep_vel
- !end if
- !flag=parse(text_in_param,'snow', snow_dry_dep_vel)
- !if (flag == 0) then
- !   snow_dry_dep_vel = land_dry_dep_vel
- !end if
- !flag=parse(text_in_param,'vegn', vegn_dry_dep_vel)
- !if (flag == 0) then
- !   vegn_dry_dep_vel = land_dry_dep_vel
- !end if
- !endif
 
  if(lowercase(trim(text_in_scheme(1:4))).eq.'file') then
     scheme = 'file'
@@ -1781,7 +1852,7 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
     frac_in_cloud, frac_in_cloud_snow,  &
     alpha_r,alpha_s, &
     Lwetdep, Lgas, Laerosol, Lice, &
-    frac_in_cloud_uw, frac_in_cloud_donner, so2_so4_evap)
+    frac_in_cloud_uw, frac_in_cloud_donner, so2_so4_evap, frac_in_cloud_snow_homogeneous)
   !<OVERVIEW>
   ! Routine to initialize the parameters for the wet deposition scheme.
   !</OVERVIEW>
@@ -1840,6 +1911,7 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
  logical, intent(out)            :: Lwetdep, Lgas, Laerosol, Lice
  real, intent(out), optional     :: frac_in_cloud_uw, frac_in_cloud_donner
  logical, intent(out), optional  :: so2_so4_evap
+ real, intent(out), optional     :: frac_in_cloud_snow_homogeneous
  integer :: flag
 
  !Default
@@ -1848,6 +1920,7 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
  henry_temp    = 0.
  frac_in_cloud = 0.
  frac_in_cloud_snow = 0.
+ if (present(frac_in_cloud_snow_homogeneous)) frac_in_cloud_snow_homogeneous = 0.
  alpha_r       = 0.
  alpha_s       = 0.
  Lwetdep = .false.
@@ -1909,6 +1982,13 @@ subroutine get_wetdep_param(text_in_scheme,text_in_param,scheme,&
     flag=parse(text_in_param,'frac_incloud_snow',frac_in_cloud_snow)
     if (flag == 0) then
        frac_in_cloud_snow = frac_in_cloud
+    end if
+    
+    if (present(frac_in_cloud_snow_homogeneous)) then    
+       flag=parse(text_in_param,'frac_incloud_snowh',frac_in_cloud_snow_homogeneous)
+       if (flag == 0) then
+          frac_in_cloud_snow_homogeneous = frac_in_cloud
+       end if
     end if
 
     ! --->h1g, add a scale factor for aerosol wet deposition by snow, 2015-03-13
