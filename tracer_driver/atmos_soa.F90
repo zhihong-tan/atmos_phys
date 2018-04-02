@@ -251,12 +251,12 @@ character(len=7), parameter :: mod_name = 'tracers'
       end if
       nO3 = get_tracer_index(MODEL_ATMOS,'O3')
       if (nO3 > 0 .and. mpp_pe() == mpp_root_pe()) then
-         write (outunit,40),'O3',nO3
+         write (outunit,40) 'O3',nO3
          write (logunit,40) 'O3',nO3
       end if
       nNO3 = get_tracer_index(MODEL_ATMOS,'NO3')
       if (nNO3 > 0 .and. mpp_pe() == mpp_root_pe()) then
-         write (outunit,40),'NO3',nNO3
+         write (outunit,40) 'NO3',nNO3
          write (logunit,40) 'NO3',nNO3
       end if
   40  format (A,' was initialized as tracer number ',i2)
