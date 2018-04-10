@@ -122,7 +122,7 @@ use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_tracer_indices, &
                                   adjust_positive_def, &
                                   query_method, &
-				  NO_TRACER
+                                  NO_TRACER
 use field_manager_mod,     only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only :                      &
                                   dry_deposition,           &
@@ -133,7 +133,7 @@ use atmos_tracer_utilities_mod, only :                      &
                                   get_rh, get_w10m, get_cldf, &
                                   sjl_fillz, &
                                   get_cmip_param, get_chem_param
-use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, wtmn
+use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, WTMN
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
                                   atmos_radon_end
@@ -209,6 +209,10 @@ use atmos_tropopause_mod,only: &
                                   atmos_tropopause_init, &
                                   atmos_tropopause
 
+use xactive_bvoc_mod,      only : xactive_bvoc,           &
+                                  xactive_bvoc_end,     &
+                                  xactive_bvoc_init
+
 use interpolator_mod,      only : interpolate_type
 use atmos_ocean_fluxes_mod, only: aof_set_coupler_flux
 implicit none
@@ -260,6 +264,7 @@ integer :: carbon_clock = 0
 integer :: dust_clock = 0
 integer :: seasalt_clock = 0
 integer :: sulfur_clock = 0
+integer :: xbvoc_clock = 0
 integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
@@ -321,6 +326,7 @@ integer, dimension(:), pointer :: nconvect
 
 integer :: nt     ! number of activated tracers
 integer :: ntp    ! number of activated prognostic tracers
+integer :: nxactive   ! number of tracers with interactive (MEGAN) emissions (JLS)
 
 logical :: use_tau=.false.
 
@@ -333,6 +339,8 @@ type(interpolate_type), allocatable :: drydep_data(:)
 
 
 integer, allocatable :: local_indices(:)
+integer, allocatable :: xactive_ndx(:)   ! Loc of xactive tracers in rdt, will have dim=nxactive
+
 ! This is the array of indices for the local model.
 ! local_indices(1) = 5 implies that the first local tracer is the fifth
 ! tracer in the tracer_manager.
@@ -503,7 +511,7 @@ real, intent(in),    dimension(:,:,:,:)       :: r
 real, intent(in),    dimension(:,:,:,:)       :: rm
 real, intent(inout), dimension(:,:,:,:)       :: rdt
 real, intent(inout), dimension(:,:,:,ntp+1:)  :: rdiag
-real, intent(in)                              :: dt !timestep(used in chem_interface)
+real, intent(in)                              :: dt     !timestep(used in chem_interface)
 real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at half levels
 real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
 real, intent(in),    dimension(:,:)           :: t_surf_rad !surface temperature
@@ -538,16 +546,17 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
 real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
 real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
-real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
-real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
-real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
+real, dimension(size(r,1),size(r,2)) :: all_salt_settl, all_dust_settl
+real, dimension(size(r,1),size(r,2)) :: suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
+real, dimension(size(r,1),size(r,2)) :: frland, frsnow, frsea, frice, PPFD
 real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
-real, dimension(size(r,1),size(r,2),2)         :: xbvoc !xactive isop (1), terp (2), emis for xactive SOA 
 
-integer :: isulf, i, j, k, id, jd, kd, ntcheck
+real, dimension(size(r,1),size(r,2),nxactive) :: rtnd_xactive  !JLS
+
+integer :: isulf, ixact, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
 integer :: nql  ! index of cloud liquid specific humidity
 integer :: nqi  ! index of cloud ice water specific humidity
@@ -561,7 +570,6 @@ real    :: gmt,local_angle
 integer :: hh
 real :: local_hour_3d(size(r,1),size(r,2),size(r,3)),local_hour
 logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
-
 
 !-----------------------------------------------------------------------
 
@@ -738,7 +746,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
-                                 z_half(:,:,kd)-z_half(:,:,kd+1), u_star,  &
+                                 z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
                                  land, frac_open_sea, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
@@ -1239,11 +1247,9 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                             tracer(:,:,:,1:ntp),chem_tend, &
                             Time, phalf, pfull, t, is, ie, js, je, dt, &
                             z_half, z_full, q, t_surf_rad, albedo, coszen, rrsun, &
-                            area, w10m_ocean, &
-                            flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
-                            half_day, &
+                            area, w10m_ocean, half_day, &
                             Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), &
-                            xbvoc, kbot, do_nh3_atm_ocean_exchange)
+                            kbot, do_nh3_atm_ocean_exchange)
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
@@ -1334,6 +1340,28 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
               Time, is,ie,js,je, kbot)
    endif
    call mpp_clock_end (seasalt_clock)
+
+
+!------------------------------------------------------------------------
+!  Interactive BVOCs 
+!------------------------------------------------------------------------
+   
+   call mpp_clock_begin (xbvoc_clock)
+   if ( nxactive > 0 ) then
+! PAR [umoles/m2/s]
+      PPFD = 4.766 * (flux_sw_down_vis_dir + flux_sw_down_vis_dif)
+      call xactive_bvoc(lon, lat, land, is, ie, js, je, Time,              &
+                        Time_next, coszen, pwt(:,:,kd), t(:,:,kd),         &
+                        PPFD, w10m_land, tracer(:,:,kd,nco2),              &
+                        tracer(:,:,kd,no3), xactive_ndx, rtnd_xactive)
+! Update the tendencies based on the returned indices 
+      do ixact = 1, nxactive
+         rdt(:,:,kd,xactive_ndx(ixact)) = rdt(:,:,kd,xactive_ndx(ixact))   &
+                                          + rtnd_xactive(:,:,ixact)
+      enddo
+   endif 
+   call mpp_clock_end (xbvoc_clock)
+                         
 
 !------------------------------------------------------------------------
 ! Sulfur chemistry
@@ -1573,13 +1601,14 @@ type(time_type), intent(in)                                :: Time
 ! Local variables
 !-----------------------------------------------------------------------
       integer :: nbr_layers
-      integer :: unit, ierr, io, logunit, n, outunit
+      integer :: unit, ierr, io, logunit, n, outunit, ix
 !<f1p
+      character(len=64) :: name2, control
       character(len=32) :: tracer_units, tracer_name
       integer     :: hh
       character*4 :: hstr
       character(len=256) :: cmip_name,cmip_longname, cmip_longname2
-      logical :: cmip_is_aerosol, do_pm, do_check
+      logical :: cmip_is_aerosol, do_pm, do_check, has_xactive
       real    :: tracer_mw, sum_N_ox
       character(len=64), parameter    :: sub_name = 'atmos_tracer_driver_init'
       character(len=256), parameter   :: note_header =                                &
@@ -1811,6 +1840,31 @@ type(time_type), intent(in)                                :: Time
         ch4_clock = mpp_clock_id( 'Tracer: CH4', &
                     grain=CLOCK_MODULE )
       endif
+         
+!--------------------------------------------------------------------------------------
+! xactive bvocs (jls)
+      nxactive = 0    
+      do n = 1, ntp
+         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+              units = tracer_units) 
+         ix   = get_tracer_index( MODEL_ATMOS, tracer_name )
+         has_xactive = query_method('xactive_emissions', MODEL_ATMOS, ix, name2, control)
+         
+         if ( has_xactive ) then 
+            nxactive = nxactive + 1  
+         endif
+      enddo
+      if ( nxactive > 0 ) then
+         IF (mpp_pe() == mpp_root_pe()) THEN
+            write(*,*) 'Allocating xactive_ndx, number of xactive tracers = ', nxactive
+         ENDIF
+         ALLOCATE( xactive_ndx (nxactive) )
+         call xactive_bvoc_init(lonb, latb, Time, axes, nxactive )
+         xbvoc_clock = mpp_clock_id( 'xactive_bvocs', &
+                       grain=CLOCK_MODULE )
+      endif
+         
+!---------------------------------------------------------------------------------------     
 
 ! regional tracer driver
       if (ncodirect > 0 .or. ne90 > 0) then
