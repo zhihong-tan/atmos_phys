@@ -553,8 +553,8 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
-
-real, dimension(size(r,1),size(r,2),nxactive) :: rtnd_xactive  !JLS
+real, dimension(size(r,1),size(r,2),nxactive)  :: rtnd_xactive
+real, dimension(size(r,1),size(r,2),2)         :: xbvoc4soa    
 
 integer :: isulf, ixact, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
@@ -1353,7 +1353,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       call xactive_bvoc(lon, lat, land, is, ie, js, je, Time,              &
                         Time_next, coszen, pwt(:,:,kd), t(:,:,kd),         &
                         PPFD, w10m_land, tracer(:,:,kd,nco2),              &
-                        tracer(:,:,kd,no3), xactive_ndx, rtnd_xactive)
+                        tracer(:,:,kd,no3), xactive_ndx, rtnd_xactive,     &
+                        xbvoc4soa)
 ! Update the tendencies based on the returned indices 
       do ixact = 1, nxactive
          rdt(:,:,kd,xactive_ndx(ixact)) = rdt(:,:,kd,xactive_ndx(ixact))   &
@@ -1409,12 +1410,12 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                      'Number of tracers .lt. number for SOA', FATAL)
 
       call mpp_clock_begin (SOA_clock)
-      call atmos_SOA_chem(pwt ,t, pfull, phalf, dt, &
+      call atmos_SOA_chem(pwt ,t, pfull, phalf, dt,      &
                 jday, hour, minute, second, lat, lon,    &
-                tracer(:,:,:,nSOA), &
-                tracer(:,:,:,nOH), &
-                tracer(:,:,:,nC4H10), &
-                xbvoc, &
+                tracer(:,:,:,nSOA),                      &
+                tracer(:,:,:,nOH),                       &
+                tracer(:,:,:,nC4H10),                    &
+                xbvoc4soa,                               &
                 rtnd, Time, Time_next, is,ie,js,je,kbot )
 
       rdt(:,:,:,nSOA)=rdt(:,:,:,nSOA)+rtnd(:,:,:)

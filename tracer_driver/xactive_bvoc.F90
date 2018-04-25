@@ -419,7 +419,7 @@ contains
 !   </OUT>
 !           
 subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen, &
-                         pwtsfc, T1, P1, WS1, CO2, O3, xactive_ndx, rtnd_xactive   )
+                         pwtsfc, T1, P1, WS1, CO2, O3, xactive_ndx, rtnd_xactive, xbvoc4soa   )
 
    real, intent(in), dimension(:,:)            :: lon, lat        ! Longitude, latitude []
    real, intent(in), dimension(:,:)            :: land            ! Land fraction []
@@ -434,6 +434,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
    real, intent(in), dimension(:,:)            :: O3              ! surface O3 conc.  [VMR]
    integer, intent(out), dimension(:)          :: xactive_ndx     ! index into tracer arrary []
    real, intent(out), dimension(:,:,:)         :: rtnd_xactive    ! xactive tracer tendencies [VMR/s]
+   real, intent(out), dimension(:,:,:)         :: xbvoc4soa
 
 !-------------------------------------------------------------------------------------------------
 !-------------------------------------  Local Variables  -----------------------------------------
@@ -578,6 +579,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 !  emissions, convert to tendency to be sent back to tracer driver
 !....................................................................
    rtnd_xactive(:,:,:) = 0.
+   xbvoc4soa(:,:,:) = 0.
    DO i = 1, pcnstm1
 
       IF ( has_xactive_emis(i) ) THEN
@@ -681,6 +683,12 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 !  rdt(VMR/s) = EMIS(molec/cm2/s) * 1e4(cm2/m2) / &
 !                 ( pwt(kg/m2) / WTMAIR(g/mol) * 1e3(g/kg) * AVOGNO(molec/mole) )
            rtnd_xactive(:,:,xactive_knt) = EMIS * 10. / pwtsfc * WTMAIR / AVOGNO
+           IF ( trim(tracnam(i))=='ISOP' ) THEN
+              xbvoc4soa(:,:,1) = EMIS
+           ELSEIF ( trim(tracnam(i))=='C10H16' ) THEN
+              xbvoc4soa(:,:,2) = EMIS
+           ENDIF
+            
       ENDIF !has_xactive_emis
    ENDDO !pctnstm1
 
