@@ -204,17 +204,16 @@ use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_init,               &
                                   atmos_co2_end
 use atmos_ch4_mod,         only : atmos_ch4_rad, &
-                                  atmos_ch4_rad_init     
-use atmos_tropopause_mod,only: &
-                                  atmos_tropopause_init, &
+                                  atmos_ch4_rad_init
+use atmos_tropopause_mod,  only : atmos_tropopause_init, &
                                   atmos_tropopause
 
-use xactive_bvoc_mod,      only : xactive_bvoc,           &
-                                  xactive_bvoc_end,     &
+use xactive_bvoc_mod,      only : xactive_bvoc,          &
+                                  xactive_bvoc_end,      &
                                   xactive_bvoc_init
 
 use interpolator_mod,      only : interpolate_type
-use atmos_ocean_fluxes_mod, only: aof_set_coupler_flux
+use atmos_ocean_fluxes_mod,only : aof_set_coupler_flux
 implicit none
 private
 !-----------------------------------------------------------------------
@@ -231,7 +230,7 @@ public  atmos_tracer_driver,            &
         atmos_tracer_has_surf_setl_flux, &
         get_atmos_tracer_surf_setl_flux, &
         atmos_nitrogen_wetdep_flux_set, &
-        atmos_nitrogen_drydep_flux_set 
+        atmos_nitrogen_drydep_flux_set
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -511,7 +510,7 @@ real, intent(in),    dimension(:,:,:,:)       :: r
 real, intent(in),    dimension(:,:,:,:)       :: rm
 real, intent(inout), dimension(:,:,:,:)       :: rdt
 real, intent(inout), dimension(:,:,:,ntp+1:)  :: rdiag
-real, intent(in)                              :: dt     !timestep(used in chem_interface)
+real, intent(in)                              :: dt     !timestep (used in chem)
 real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at half levels
 real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
 real, intent(in),    dimension(:,:)           :: t_surf_rad !surface temperature
@@ -554,7 +553,7 @@ integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 real, dimension(size(r,1),size(r,2),nxactive)  :: rtnd_xactive
-real, dimension(size(r,1),size(r,2),2)         :: xbvoc4soa    
+real, dimension(size(r,1),size(r,2),2)         :: xbvoc4soa ! emis isop (1), terp (2)
 
 integer :: isulf, ixact, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
@@ -1253,7 +1252,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
-		 
+
 !! RSH 4/8/04
 !! note that if there are no diagnostic tracers, that argument in the
 !! call to sourcesink should be made optional and omitted in the calls
@@ -1343,9 +1342,9 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 
 !------------------------------------------------------------------------
-!  Interactive BVOCs 
+!  Interactive BVOCs
 !------------------------------------------------------------------------
-   
+
    call mpp_clock_begin (xbvoc_clock)
    if ( nxactive > 0 ) then
 ! PAR [umoles/m2/s]
@@ -1355,14 +1354,14 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                         PPFD, w10m_land, tracer(:,:,kd,nco2),              &
                         tracer(:,:,kd,no3), xactive_ndx, rtnd_xactive,     &
                         xbvoc4soa)
-! Update the tendencies based on the returned indices 
+! Update the tendencies based on the returned indices
       do ixact = 1, nxactive
          rdt(:,:,kd,xactive_ndx(ixact)) = rdt(:,:,kd,xactive_ndx(ixact))   &
                                           + rtnd_xactive(:,:,ixact)
       enddo
-   endif 
+   endif
    call mpp_clock_end (xbvoc_clock)
-                         
+
 
 !------------------------------------------------------------------------
 ! Sulfur chemistry
@@ -1753,7 +1752,7 @@ type(time_type), intent(in)                                :: Time
         tr_nbr_sulfate(5)=nMSA
         do_tracer_sulfate(5)=.true.
       endif
-      nHNO3     = get_tracer_index(MODEL_ATMOS,'hno3') 
+      nHNO3     = get_tracer_index(MODEL_ATMOS,'hno3')
       nNH4NO3   = get_tracer_index(MODEL_ATMOS,'nh4no3')
       nNH4      = get_tracer_index(MODEL_ATMOS,'nh4')
       nSOA      = get_tracer_index(MODEL_ATMOS,'SOA')
@@ -1841,18 +1840,18 @@ type(time_type), intent(in)                                :: Time
         ch4_clock = mpp_clock_id( 'Tracer: CH4', &
                     grain=CLOCK_MODULE )
       endif
-         
+
 !--------------------------------------------------------------------------------------
 ! xactive bvocs (jls)
-      nxactive = 0    
+      nxactive = 0
       do n = 1, ntp
          call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
-              units = tracer_units) 
+              units = tracer_units)
          ix   = get_tracer_index( MODEL_ATMOS, tracer_name )
          has_xactive = query_method('xactive_emissions', MODEL_ATMOS, ix, name2, control)
-         
-         if ( has_xactive ) then 
-            nxactive = nxactive + 1  
+
+         if ( has_xactive ) then
+            nxactive = nxactive + 1
          endif
       enddo
       if ( nxactive > 0 ) then
@@ -1864,8 +1863,8 @@ type(time_type), intent(in)                                :: Time
          xbvoc_clock = mpp_clock_id( 'xactive_bvocs', &
                        grain=CLOCK_MODULE )
       endif
-         
-!---------------------------------------------------------------------------------------     
+
+!---------------------------------------------------------------------------------------
 
 ! regional tracer driver
       if (ncodirect > 0 .or. ne90 > 0) then
@@ -2304,22 +2303,22 @@ subroutine atmos_nitrogen_flux_init
          ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4',     &
               flux_type = 'air_sea_deposition', implementation = 'dry', &
               atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
          ind_wet_dep_nh4_flux = aof_set_coupler_flux('wet_dep_nh4',     &
               flux_type = 'air_sea_deposition', implementation = 'wet', &
               atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')  
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
       if (nhno3>0) then
          write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nhno3
          ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3',     &
               flux_type = 'air_sea_deposition', implementation = 'dry', &
               atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
          ind_wet_dep_no3_flux = aof_set_coupler_flux('wet_dep_no3',     &
               flux_type = 'air_sea_deposition', implementation = 'wet', &
               atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
 
       if (do_nh3_atm_ocean_exchange .and. nnh3.gt.0) then
@@ -2328,7 +2327,7 @@ subroutine atmos_nitrogen_flux_init
               flux_type = 'air_sea_gas_flux_generic', implementation = 'johnson',       &
               atm_tr_index = nnh3,                                          &
               mol_wt = WTMN, param = (/ 17.,25. /),              &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')                
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       end if
    endif
 
@@ -2612,7 +2611,7 @@ subroutine atmos_nitrogen_wetdep_flux_set(array_nh4,array_no3,is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
   integer,              intent(in) :: is,ie,js,je
   if (sum(nb_n).eq.0) return ! nothing to do
-  !Convert from mol/m2/s to Kg/m2/s which is expected by the ocean 
+  !Convert from mol/m2/s to Kg/m2/s which is expected by the ocean
   !Note that this conversion factor is specified as 14.0067e-03 in COBALT code
   wet_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)*WTMN/1000.
   wet_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)*WTMN/1000.
@@ -2622,7 +2621,7 @@ subroutine atmos_nitrogen_drydep_flux_set(array_nh4,array_no3,is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
   integer,              intent(in) :: is,ie,js,je
   if (sum(nb_n).eq.0) return ! nothing to do
-  !No conversion needed as this is already Kg/m2/s which is expected by the ocean 
+  !No conversion needed as this is already Kg/m2/s which is expected by the ocean
   dry_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)
   dry_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)
 end subroutine atmos_nitrogen_drydep_flux_set
