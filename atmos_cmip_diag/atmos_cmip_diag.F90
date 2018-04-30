@@ -48,6 +48,20 @@ public :: atmos_cmip_diag_init, atmos_cmip_diag_end, &
 !    plev23 = plev19 + (7,3,2,0.4 hPa)
 !    plev4  = used in 6hrPlev
 
+real, dimension(39) :: plev39 = &
+              (/ 100000., 92500., 85000., 70000., 60000., 50000., &
+                  40000., 30000., 25000., 20000., 17000., 15000., &
+                  13000., 11500., 10000.,  9000.,  8000.,  7000., &
+                   5000.,  3000.,  2000.,  1500.,  1000.,   700., &
+                    500.,   300.,   200.,   150.,   100.,    70., &
+                     50.,    40.,    30.,    20.,    15.,    10., &
+                      7.,     5.,     3. /)
+real, dimension(26) :: plev26 = &
+              (/ 100000., 92500., 85000., 70000., 60000., 50000., &
+                  40000., 30000., 25000., 20000., 17000., 15000., &
+                  13000., 11500., 10000.,  9000.,  8000.,  7000., &
+                   5000.,  3000.,  2000.,  1500.,  1000.,   700., &
+                    500.,   300. /)
 real, dimension(23) :: plev23 = &
               (/ 100000., 92500., 85000., 70000., 60000., 50000., &
                   40000., 30000., 25000., 20000., 15000., 10000., &
@@ -80,6 +94,11 @@ logical :: flip_cmip_levels = .true.  ! flip vertical model level output
 logical :: output_modeling_realm  = .false. ! add modeling_realm attribute
                                             ! to all variables
 
+logical :: error_when_phalf_missing = .true.  ! when pressure level interp is requested
+                                              ! and log(phalf) is not supplied a fatal
+                                              ! error will result, set to false to get
+                                              ! the previous behavior (warsaw_201803).
+
 character(len=64) :: modeling_realm_default = 'atmos' ! default modeling_realm attribute
                                                       ! can be overriden in
                                                       ! register_cmip_diag
@@ -88,11 +107,11 @@ integer :: verbose = 1                ! verbose level = 0,1,2
 
 namelist /atmos_cmip_diag_nml/ use_extra_levels, flip_cmip_levels, &
                                output_modeling_realm, modeling_realm_default, &
-                               verbose
+                               error_when_phalf_missing, verbose
 
 !-----------------------------------------------------------------------
 
-integer, parameter :: MAXPLEVS = 7  ! max plev sets
+integer, parameter :: MAXPLEVS = 9  ! max plev sets
 integer, dimension(MAXPLEVS) :: num_pres_levs
 real,    dimension(MAXPLEVS,50) :: pressure_levels  ! max 50 levels per set
 
@@ -329,6 +348,14 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
       np = size(plev4,1)
       pressure_levels(ind,1:np) = plev4
       axis_name = 'plev4'
+    else if (ind .eq. 8) then
+      np = size(plev26,1)
+      pressure_levels(ind,1:np) = plev26
+      axis_name = 'plev26'
+    else if (ind .eq. 9) then
+      np = size(plev39,1)
+      pressure_levels(ind,1:np) = plev39
+      axis_name = 'plev39'
     endif
 
     num_pres_levs(ind) = np
@@ -536,7 +563,12 @@ logical function send_cmip_data_3d (cmip_id, field, Time, is_in, js_in, ks_in, p
       ! pressure level interpolation when ind > 0
       if (ind > 0) then
         if (.not.present(phalf)) then
-          cycle ! silently skip?
+          if (error_when_phalf_missing) then
+            call error_mesg('atmos_cmip_diag_mod', &
+                 'log(phalf) must be present for pressure level interpolation',FATAL)
+          else
+            cycle ! silently skip?
+          endif
         endif
         if (present(rmask) .or. present(mask)) call error_mesg('atmos_cmip_diag_mod', &
                                'rmask or mask not allowed with pressure interpolation',FATAL)

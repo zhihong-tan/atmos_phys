@@ -354,6 +354,7 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
  type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
+ type(cmip_diag_id_type) :: ID_meanage
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
@@ -546,6 +547,8 @@ integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 real, dimension(size(r,1),size(r,2),2)         :: xbvoc !xactive isop (1), terp (2), emis for xactive SOA 
+real, dimension(size(r,1),size(r,2),size(r,3)+1) :: lphalf
+
 
 integer :: isulf, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
@@ -971,6 +974,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                          Time_next, is_in=is, js_in=js, ks_in=1)
      endif
 
+     ! log(phalf) is needed for interpolation to pressure levels
+     ! compute here once for efficiency
+
+     lphalf = log(phalf)
+
      !---- cmip named variables ----
      if (query_cmip_diag_id(ID_airmass)) then
          used = send_cmip_data_3d (ID_airmass,  &
@@ -1041,7 +1049,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
         if ( query_cmip_diag_id(ID_tracer_mol_mol(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_mol_mol(n), tracer(:,:,:,n), &
-                Time_next, is_in=is, js_in=js, ks_in=1)
+                Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
         end if
         if ( id_tracer_surf_mol_mol(n) .gt. 0 ) then
            used = send_data ( id_tracer_surf_mol_mol(n), tracer(:,:,kd,n), &
@@ -1049,7 +1057,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
         end if
         if ( query_cmip_diag_id(ID_tracer_kg_kg(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,:,n), &
-                Time_next, is_in=is, js_in=js, ks_in=1)
+                Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
         end if
         if ( id_tracer_surf_kg_kg(n) .gt. 0 ) then
            used = send_data ( id_tracer_surf_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,kd,n), &
@@ -1108,6 +1116,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
      if ( query_cmip_diag_id(ID_pm10)) then
         used = send_cmip_data_3d ( ID_pm10, pm10, &
              Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
+     if ( query_cmip_diag_id(ID_meanage)) then
+        used = send_cmip_data_3d ( ID_meanage, tracer(:,:,:,nage), &
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
      end if
 
 
@@ -2049,6 +2062,12 @@ type(time_type), intent(in)                                :: Time
       do_pm = .false.
       if (query_cmip_diag_id(ID_pm10) .or. query_cmip_diag_id(ID_pm1) .or. &
           query_cmip_diag_id(ID_pm25) .or. id_pm25_surf > 0) do_pm = .true.
+
+      if (nage .gt. 0) then
+        ID_meanage = register_cmip_diag_field_3d ( mod_name, 'meanage', Time, &
+                                       'Mean Age of Stratospheric Air', 'yr', &
+                                      standard_name='age_of_stratospheric_air')
+      endif
 
       id_bc_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_bc_col_kg_m2', &
                        Time, 'Load of Black Carbon Aerosol', 'kg m-2', &
