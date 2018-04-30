@@ -2565,13 +2565,17 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    temperature change due to dry and moist convection:
 !---------------------------------------------------------------------
       used = send_data (id_tdt_conv, Tend_mp%ttnd_conv, Time, is, js, 1)
-      used = send_cmip_data_3d (ID_tntc, Tend_mp%ttnd_conv, Time, is, js, 1)!, rmask=mask)
+      if (query_cmip_diag_id(ID_tntc)) then
+        used = send_cmip_data_3d (ID_tntc, Tend_mp%ttnd_conv, Time, is, js, 1, phalf=log(Input_mp%phalf))!, rmask=mask)
+      endif
 
 !---------------------------------------------------------------------
 !    vapor specific humidity change due to convection:
 !---------------------------------------------------------------------
       used = send_data (id_qdt_conv, Tend_mp%qtnd_conv, Time, is, js, 1)
-      used = send_cmip_data_3d (ID_tnhusc, Tend_mp%qtnd_conv, Time, is, js, 1)!, rmask=mask)
+      if (query_cmip_diag_id(ID_tnhusc)) then
+        used = send_cmip_data_3d (ID_tnhusc, Tend_mp%qtnd_conv, Time, is, js, 1, phalf=log(Input_mp%phalf))!, rmask=mask)
+      endif
 
 !---------------------------------------------------------------------
 !    total precipitation due to convection (both FMS and CMOR standards):

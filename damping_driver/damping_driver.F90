@@ -92,7 +92,8 @@ integer :: id_udt_topo,   id_vdt_topo,    &
            id_taus_topo
 
 type(cmip_diag_id_type) :: ID_utendogw, ID_utendnogw, &
-                           ID_vtendogw, ID_vtendnogw
+                           ID_vtendogw, ID_vtendnogw, &
+                           ID_tntogw,   ID_tntnogw
 
 !----- missing value for all fields ------
 
@@ -149,6 +150,7 @@ contains
                                                          utnd_np, vtnd_np, & !bqx
                                                          ttnd, pmass, &
                                                          p2, uxv            !stg
+ real, dimension(size(udt,1),size(udt,2),size(udt,3)+1) :: lphalf
  integer :: k
  logical :: used
 
@@ -156,6 +158,12 @@ contains
 
    if (.not.module_is_initialized) call error_mesg ('damping_driver',  &
                      'damping_driver_init must be called first', FATAL)
+
+!-----------------------------------------------------------------------
+! log(phalf) may be needed for diagnostics (pressure level interp)
+! pre-compute here
+
+   lphalf = log(phalf)
 
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
@@ -248,11 +256,15 @@ contains
        !--- cmip fields (could pre-compute log(phalf) ---
        if (query_cmip_diag_id(ID_utendogw)) then
           used = send_cmip_data_3d (ID_utendogw, utnd, Time, is, js, 1, &
-                                    phalf=log(phalf), rmask=mask )
+                                    phalf=lphalf) !, rmask=mask )
        endif
        if (query_cmip_diag_id(ID_vtendogw)) then
           used = send_cmip_data_3d (ID_vtendogw, vtnd, Time, is, js, 1, &
-                                    phalf=log(phalf), rmask=mask )
+                                    phalf=lphalf) !, rmask=mask )
+       endif
+       if (query_cmip_diag_id(ID_tntogw)) then
+          used = send_cmip_data_3d (ID_tntogw, ttnd, Time, is, js, 1, &
+                                    phalf=lphalf) !, rmask=mask )
        endif
 
    endif
@@ -290,11 +302,15 @@ contains
        !--- cmip fields (could pre-compute log(phalf) ---
        if (query_cmip_diag_id(ID_utendnogw)) then
           used = send_cmip_data_3d (ID_utendnogw, utnd, Time, is, js, 1, &
-                                    phalf=log(phalf), rmask=mask )
+                                    phalf=lphalf) !, rmask=mask )
        endif
        if (query_cmip_diag_id(ID_vtendnogw)) then
           used = send_cmip_data_3d (ID_vtendnogw, vtnd, Time, is, js, 1, &
-                                    phalf=log(phalf), rmask=mask )
+                                    phalf=lphalf) !, rmask=mask )
+       endif
+       if (query_cmip_diag_id(ID_tntnogw)) then
+          used = send_cmip_data_3d (ID_tntnogw, ttnd, Time, is, js, 1, &
+                                    phalf=lphalf) !, rmask=mask )
        endif
 
    endif
@@ -375,11 +391,15 @@ contains
      !--- cmip fields (could pre-compute log(phalf) ---
      if (query_cmip_diag_id(ID_utendogw)) then
         used = send_cmip_data_3d (ID_utendogw, utnd, Time, is, js, 1, &
-                                  phalf=log(phalf), rmask=mask )
+                                  phalf=lphalf) !, rmask=mask )
      endif
      if (query_cmip_diag_id(ID_vtendogw)) then
         used = send_cmip_data_3d (ID_vtendogw, vtnd, Time, is, js, 1, &
-                                  phalf=log(phalf), rmask=mask )
+                                  phalf=lphalf) !, rmask=mask )
+     endif
+     if (query_cmip_diag_id(ID_tntogw)) then
+        used = send_cmip_data_3d (ID_tntogw, ttnd, Time, is, js, 1, &
+                                  phalf=lphalf) !, rmask=mask )
      endif
 
  endif
@@ -575,6 +595,10 @@ endif
      ID_vtendnogw = register_cmip_diag_field_3d ( mod_name, 'vtendnogw', Time, &
                            'V-tendency Nonorographic Gravity Wave Drag', 'm s-2', &
               standard_name='tendency_of_northward_wind_due_to_nonorographic_gravity_wave_drag')
+
+     ID_tntnogw = register_cmip_diag_field_3d ( mod_name, 'tntnogw', Time, &
+                           'Temperature Tendency due to Nonorographic Gravity Wave Dissipation', 'K s-1', &
+              standard_name='temperature_tendency_due_to_dissipation_nonorographic_gravity_wave_drag')
    endif
 
 !-----------------------------------------------------------------------
@@ -656,6 +680,10 @@ endif
      ID_vtendogw = register_cmip_diag_field_3d ( mod_name, 'vtendogw', Time, &
                            'V-tendency Orographic Gravity Wave Drag', 'm s-2', &
               standard_name='tendency_of_northward_wind_due_to_orographic_gravity_wave_drag')
+
+     ID_tntogw = register_cmip_diag_field_3d ( mod_name, 'tntogw', Time, &
+                           'Temperature Tendency due to Orographic Gravity Wave Dissipation', 'K s-1', &
+              standard_name='temperature_tendency_due_to_dissipation_orographic_gravity_wave_drag')
    endif
 
 !-----------------------------------------------------------------------
