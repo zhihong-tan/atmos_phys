@@ -555,6 +555,7 @@ integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
 real, dimension(size(r,1),size(r,2),nxactive)  :: rtnd_xactive
 real, dimension(size(r,1),size(r,2),2)         :: xbvoc4soa ! emis isop (1), terp (2)
+real, dimension(size(r,1),size(r,2),size(r,3)+1) :: lphalf
 
 integer :: isulf, ixact, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
