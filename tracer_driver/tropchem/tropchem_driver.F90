@@ -32,6 +32,7 @@ use                    fms_mod, only : file_exist,   &
                                        mpp_pe,  &
                                        mpp_root_pe, &
                                        lowercase,   &
+				       uppercase, &
                                        open_namelist_file, &
                                        close_file,   &
                                        stdlog, &
@@ -60,7 +61,7 @@ use         tracer_manager_mod, only : get_tracer_index,     &
                                        check_if_prognostic,  &
                                        NO_TRACER
 use          field_manager_mod, only : MODEL_ATMOS, MODEL_LAND, parse
-use atmos_tracer_utilities_mod, only : dry_deposition
+use atmos_tracer_utilities_mod, only : dry_deposition, get_chem_param
 use              constants_mod, only : grav, rdgas, WTMAIR, WTMH2O, AVOGNO, &
                                        PI, DEG_TO_RAD, SECONDS_PER_DAY
 use                    mpp_mod, only : mpp_clock_id,         &
@@ -384,7 +385,7 @@ integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
 integer :: id_co_emis_cmip2, id_no_emis_cmip2
 integer :: id_so2_emis_cmip2, id_nh3_emis_cmip2
-integer :: id_emico, id_eminox, id_emiso2, id_eminh3, id_emiisop
+integer :: id_emico, id_eminox_woL, id_emiso2, id_eminh3, id_emiisop
 integer :: id_glaiage_isop, id_glaiage_terp, id_gtemp_isop, id_gtemp_terp, id_glight_isop, id_glight_terp
 integer :: id_tsfcair, id_fsdvd, id_ctas, id_cfsds
 integer :: isop_oldmonth = 0
@@ -436,6 +437,14 @@ real, allocatable, dimension(:,:) :: diag_climtas, diag_climfsds ! climatologica
 real, allocatable, dimension(:,:,:) :: ts_avg  ! climatological monthly mean surface air T
 real, allocatable, dimension(:,:,:) :: fsds_avg  ! climat. montly mean total shortwave down (W/m2)
 
+
+!++van
+character(len=32) :: tracer_name, noytracer
+real    :: sum_N_ox
+real, allocatable    :: nb_N_Ox(:)
+integer :: totaltracer, idx
+!--van
+
 type (horiz_interp_type), save :: Interp
 
 
@@ -458,7 +467,7 @@ contains
 !     due to tropospheric chemistry. It is called from atmos_tracer_driver.
 !   </DESCRIPTION>
 !   <TEMPLATE>
-!     call tropchem_driver (lon, lat, land, pwt, r, chem_dt,           &
+!     call tropchem_driver (lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,           &
 !                           Time, phalf, pfull, t, is, ie, js, je, dt, &
 !                           z_half, z_full, q, tsurf, albedo, coszen,  &
 !                           area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
@@ -826,8 +835,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
              used = send_data(id_no_emis_cmip2,emisz(:,:,n)*1.0e04*0.030/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
            endif
-           if (id_eminox > 0) then
-             used = send_data(id_eminox, emisz(:,:,n)*1.0e04*0.014/AVOGNO, Time_next, is_in=is,js_in=js)
+           if (id_eminox_woL > 0) then
+             used = send_data(id_eminox_woL, emisz(:,:,n)*1.0e04*0.014/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
          if (tracnam(n) == 'CO') then
@@ -1401,10 +1410,6 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 !     ... Chemical families (Bry, NOy)
 !-----------------------------------------------------------------------
    bry(:,:,:) = 0.
-   noy(:,:,:) = 0.
-   if (clono2_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,clono2_ndx)
-   end if
    if (br_ndx>0) then
       bry(:,:,:) = bry(:,:,:) + r_temp(:,:,:,br_ndx)
    end if
@@ -1419,47 +1424,34 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    end if
    if (brono2_ndx>0) then
       bry(:,:,:) = bry(:,:,:) + r_temp(:,:,:,brono2_ndx)
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,brono2_ndx)
    end if
    if (brcl_ndx>0) then
       bry(:,:,:) = bry(:,:,:) + r_temp(:,:,:,brcl_ndx)
    end if
-   if (n_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,n_ndx)
-   end if
-   if (no_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,no_ndx)
-   end if
-   if (no2_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,no2_ndx)
-   end if
-   if (no3_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,no3_ndx)
-   end if
-   if (hno3_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,hno3_ndx)
-   end if
-   if (n2o5_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,n2o5_ndx)*2
-   end if
-   if (ho2no2_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,ho2no2_ndx)
-   end if
-   if (pan_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,pan_ndx)
-   end if
-   if (mpan_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,mpan_ndx)
-   end if
-   if (onit_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,onit_ndx)
-   end if
-   if (isopno3_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,isopno3_ndx)
-   end if
-   if (onitr_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,onitr_ndx)
-   end if
+   
+!++van
+   noy(:,:,:) = 0.
+! Total number of tracers because this is what get_chem_param loops over in tropchem_driver_init
+   totaltracer = size(r,4)+size(rdiag,4)  
+!   if(mpp_pe() == mpp_root_pe()) write (*,*) 'in tropchem_driver, pcnstm1, totaltracer = ', pcnstm1, totaltracer
+   do n = 1,totaltracer      
+      if ( nb_N_Ox(n) .gt. 0.) then
+        call get_tracer_names (MODEL_ATMOS, n, tracer_name)
+	if (tracer_name .eq. 'brono2') then
+	    noytracer = 'BrONO2' 
+	else if (tracer_name .eq. 'clono2') then
+	    noytracer = 'ClONO2'
+	else
+	    noytracer =  uppercase(tracer_name)
+	end if	
+	idx = get_spc_ndx(noytracer)
+        noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,idx)*nb_N_ox(n)	
+!        if(mpp_pe() == mpp_root_pe()) write (*,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
+!	if(mpp_pe() == mpp_root_pe()) write (*,*) 'idx, n ', idx, n	
+      end if	       
+   end do
+!--van
+
 
 !-----------------------------------------------------------------------
 !     ... stratospheric Cly and Bry source
@@ -1603,7 +1595,7 @@ end subroutine tropchem_driver
 !   </INOUT>
 
 function tropchem_driver_init( r, mask, axes, Time, &
-                               lonb_mod, latb_mod, phalf, &
+                               lonb_mod, latb_mod, phalf, nt, &
                                drydep_data ) result(Ltropchem)
 
 !-----------------------------------------------------------------------
@@ -1621,6 +1613,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
    real, intent(in), dimension(:,:) :: lonb_mod
    real, intent(in), dimension(:,:) :: latb_mod
    real, intent(in),dimension(:,:,:) :: phalf
+   integer, intent(in) :: nt
    type(interpolate_type), intent(out) :: drydep_data(:)
 
    real    :: small_value
@@ -1899,6 +1892,24 @@ end if
       end if
    end if
 
+!++van
+!----------------------------------------
+!     ... For calculating NOy
+!----------------------------------------
+
+    allocate(nb_N_Ox(nt)) 
+    if(mpp_pe() == mpp_root_pe()) write (*,*) 'tropchem_driver_init, nt ', nt
+    if(mpp_pe() == mpp_root_pe()) write (*,*) 'NOy is composed of :'
+    do n = 1,nt
+      call  get_chem_param (n, nb_N_Ox=nb_N_Ox(n))
+      if ( nb_N_Ox(n) .gt. 0.) then
+        call get_tracer_names (MODEL_ATMOS, n, tracer_name)
+        if(mpp_pe() == mpp_root_pe()) write (*,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
+!	if(mpp_pe() == mpp_root_pe()) write (*,*) 'n= ',n
+      end if
+    end do
+   
+!--van    
 !-----------------------------------------------------------------------
 !     ... Setup dry deposition
 !-----------------------------------------------------------------------
@@ -2292,8 +2303,8 @@ end if
    id_eminh3 = register_cmip_diag_field_2d ( module_name, 'eminh3', Time, &
                               'Total Emission Rate of NH3', 'kg m-2 s-1', &
                 standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_emission')
-   id_eminox = register_cmip_diag_field_2d ( module_name, 'eminox', Time, &
-                              'Total Emission Rate of NOx', 'kg m-2 s-1', &
+   id_eminox_woL = register_cmip_diag_field_2d ( module_name, 'eminox_woL', Time, &
+                              'Total Emission Rate of NOx without lightning NOx', 'kg m-2 s-1', &
                 standard_name='tendency_of_atmosphere_mass_content_of_nox_expressed_as_nitrogen_due_to_emission')
    id_emiisop = register_cmip_diag_field_2d ( module_name, 'emiisop', Time, &
                                'Total Emission Rate of Isoprene', 'kg m-2 s-1', &
@@ -2616,10 +2627,11 @@ subroutine tropchem_driver_end
 !-----------------------------------------------------------------------
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
-
+   
+   deallocate(nb_N_Ox)
    module_is_initialized = .false.
-
-
+   
+    
 !-----------------------------------------------------------------------
 
 end subroutine tropchem_driver_end
