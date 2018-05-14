@@ -1320,7 +1320,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
 !++van
    noy(:,:,:) = 0.
 ! Loop over total number of atmospheric tracers (nt), not just solver tracers (pcnstm1)
-   get_number_tracers(MODEL_ATMOS, num_tracers=nt)
+   call get_number_tracers(MODEL_ATMOS, num_tracers=nt)
    do n = 1,nt
       if ( nb_N_Ox(n) .gt. 0.) then
         call get_tracer_names (MODEL_ATMOS, n, tracer_name)
@@ -1782,7 +1782,7 @@ end if
 !     ... For calculating NOy
 !----------------------------------------
 
-    get_number_tracers(MODEL_ATMOS, num_tracers=nt)
+    call get_number_tracers(MODEL_ATMOS, num_tracers=nt)
     allocate(nb_N_Ox(nt)) 
     if(mpp_pe() == mpp_root_pe()) then
        write (*,*) 'NOTE: tropchem_driver_init, nt = ', nt
