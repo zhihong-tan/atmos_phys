@@ -1523,7 +1523,8 @@ function tropchem_driver_init( r, mask, axes, Time, &
    logical :: tracer_initialized
 
    integer :: unit
-   character(len=16) ::  fld
+   character(len=16) :: fld
+   character(len=32) :: tracer_name
 
    integer :: flb, series_length, year, diy
    real :: input_time
