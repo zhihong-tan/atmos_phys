@@ -437,7 +437,7 @@ contains
 !                           z_half, z_full, q, tsurf, albedo, coszen,  &
 !                           area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
 !                           half_day, &
-!                           Time_next, rdiag,  kbot)
+!                           Time_next, rdiag,  do_nh3_atm_ocean_exchange, kbot)
 !   </TEMPLATE>
 !   <IN NAME="lon" TYPE="real" DIM="(:,:)">
 !     The longitudes for the local domain.
@@ -446,7 +446,10 @@ contains
 !     The latitudes for the local domain.
 !   </IN>
 !   <IN NAME="land" TYPE="real" DIM="(:,:)">
-!     The latitudes for the local domain.
+!     Land fraction
+!   </IN>
+!   <IN NAME="ocn_flx_fraction" TYPE="real" DIM="(:,:)">
+!     Fraction of cell through which ocean flux is allowed
 !   </IN>
 !   <IN NAME="pwt" TYPE="real" DIM="(:,:,:)">
 !     Pressure weighting (air mass) for each layer (kg/m2)
@@ -499,14 +502,11 @@ contains
 !   <IN NAME="w10m" TYPE="real" DIM="(:,:)">
 !     Windspeed at 10m (m/s)
 !   </IN>
-!   <IN NAME="flux_sw_down_vis_dir" TYPE="real" DIM="(:,:)">
-!     Surface downward visible radiation (W/m2)
-!   </IN>
-!   <IN NAME="flux_sw_down_vis_dif" TYPE="real" DIM="(:,:)">
-!     Surface downward visible radiation (W/m2)
-!   </IN>
 !   <IN NAME="half_day" TYPE="real" DIM="(:,:)">
 !     Half-day length  (dimensionless; 0 to pi)
+!   </IN>
+!   <IN NAME="do_nh3_atm_ocean_exchange," TYPE="logical">
+!     Allow interactive atm-ocn exchange of NH3?
 !   </IN>
 !   <OUT NAME="chem_dt" TYPE="real" DIM="(:,:,:,:)">
 !     Tracer tendencies from tropospheric chemistry (VMR/s)
@@ -523,7 +523,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
                             Time, phalf, pfull, t, is, ie, js, je, dt,         &
                             z_half, z_full, q, tsurf, albedo, coszen, rrsun,   &
                             area, w10m, half_day,                              &
-                            Time_next, rdiag, kbot, do_nh3_atm_ocean_exchange )
+                            Time_next, rdiag, do_nh3_atm_ocean_exchange, kbot )
 
 !-----------------------------------------------------------------------
    real, intent(in),    dimension(:,:)            :: lon, lat

@@ -1260,7 +1260,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                             z_half, z_full, q, t_surf_rad, albedo, coszen, rrsun, &
                             area, w10m_ocean, half_day, &
                             Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), &
-                            kbot, do_nh3_atm_ocean_exchange)
+                            do_nh3_atm_ocean_exchange, kbot )
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
