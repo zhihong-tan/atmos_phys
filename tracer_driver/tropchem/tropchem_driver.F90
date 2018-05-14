@@ -57,6 +57,7 @@ use           diag_manager_mod, only : send_data,            &
 use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,     &
                                        get_tracer_names,     &
+				       get_number_tracers,   &
                                        query_method,         &
                                        check_if_prognostic,  &
                                        NO_TRACER
@@ -442,7 +443,7 @@ real, allocatable, dimension(:,:,:) :: fsds_avg  ! climat. montly mean total sho
 character(len=32) :: tracer_name, noytracer
 real    :: sum_N_ox
 real, allocatable    :: nb_N_Ox(:)
-integer :: totaltracer, idx
+integer :: nt, idx
 !--van
 
 type (horiz_interp_type), save :: Interp
@@ -1431,10 +1432,9 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    
 !++van
    noy(:,:,:) = 0.
-! Total number of tracers because this is what get_chem_param loops over in tropchem_driver_init
-   totaltracer = size(r,4)+size(rdiag,4)  
-!   if(mpp_pe() == mpp_root_pe()) write (*,*) 'in tropchem_driver, pcnstm1, totaltracer = ', pcnstm1, totaltracer
-   do n = 1,totaltracer      
+! Loop over total number of atmospheric tracers (nt), not just solver tracers (pcnstm1)
+   get_number_tracers(MODEL_ATMOS, num_tracers=nt)
+   do n = 1,nt
       if ( nb_N_Ox(n) .gt. 0.) then
         call get_tracer_names (MODEL_ATMOS, n, tracer_name)
 	if (tracer_name .eq. 'brono2') then
@@ -1446,8 +1446,6 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 	end if	
 	idx = get_spc_ndx(noytracer)
         noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,idx)*nb_N_ox(n)	
-!        if(mpp_pe() == mpp_root_pe()) write (*,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
-!	if(mpp_pe() == mpp_root_pe()) write (*,*) 'idx, n ', idx, n	
       end if	       
    end do
 !--van
@@ -1595,7 +1593,7 @@ end subroutine tropchem_driver
 !   </INOUT>
 
 function tropchem_driver_init( r, mask, axes, Time, &
-                               lonb_mod, latb_mod, phalf, nt, &
+                               lonb_mod, latb_mod, phalf, &
                                drydep_data ) result(Ltropchem)
 
 !-----------------------------------------------------------------------
@@ -1613,14 +1611,13 @@ function tropchem_driver_init( r, mask, axes, Time, &
    real, intent(in), dimension(:,:) :: lonb_mod
    real, intent(in), dimension(:,:) :: latb_mod
    real, intent(in),dimension(:,:,:) :: phalf
-   integer, intent(in) :: nt
    type(interpolate_type), intent(out) :: drydep_data(:)
 
    real    :: small_value
 
    logical :: Ltropchem
    integer :: flag_file, flag_spec, flag_fixed
-   integer :: n,i
+   integer :: n,i, nt
    integer :: ierr, io, logunit
    character(len=64) :: nc_file,filename,specname
    character(len=256) :: control=''
@@ -1897,15 +1894,17 @@ end if
 !     ... For calculating NOy
 !----------------------------------------
 
+    get_number_tracers(MODEL_ATMOS, num_tracers=nt)
     allocate(nb_N_Ox(nt)) 
-    if(mpp_pe() == mpp_root_pe()) write (*,*) 'tropchem_driver_init, nt ', nt
-    if(mpp_pe() == mpp_root_pe()) write (*,*) 'NOy is composed of :'
+    if(mpp_pe() == mpp_root_pe()) then
+       write (*,*) 'NOTE: tropchem_driver_init, nt = ', nt
+       write (*,*) 'NOy is composed of :'
+    end if
     do n = 1,nt
       call  get_chem_param (n, nb_N_Ox=nb_N_Ox(n))
       if ( nb_N_Ox(n) .gt. 0.) then
         call get_tracer_names (MODEL_ATMOS, n, tracer_name)
         if(mpp_pe() == mpp_root_pe()) write (*,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
-!	if(mpp_pe() == mpp_root_pe()) write (*,*) 'n= ',n
       end if
     end do
    

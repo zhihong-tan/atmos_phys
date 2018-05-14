@@ -1669,7 +1669,7 @@ type(time_type), intent(in)                                :: Time
 ! Initialize tropospheric chemistry
 !------------------------------------------------------------------------
       allocate( drydep_data(nt) )
-      do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf,nt,drydep_data)
+      do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf,drydep_data)
       if ( .not. do_tropchem ) then
           do n = 1,ntp
              call dry_deposition_init(n,lonb,latb,drydep_data(n))
