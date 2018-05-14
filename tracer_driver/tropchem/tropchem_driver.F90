@@ -30,7 +30,7 @@ use                    fms_mod, only : file_exist,   &
                                        mpp_pe,  &
                                        mpp_root_pe, &
                                        lowercase,   &
-				       uppercase, &
+                                       uppercase, &
                                        open_namelist_file, &
                                        close_file,   &
                                        stdlog, &
@@ -55,7 +55,7 @@ use           diag_manager_mod, only : send_data,            &
 use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,     &
                                        get_tracer_names,     &
-				       get_number_tracers,   &
+                                       get_number_tracers,   &
                                        query_method,         &
                                        check_if_prognostic,  &
                                        NO_TRACER
@@ -67,10 +67,10 @@ use                    mpp_mod, only : mpp_clock_id,         &
                                        mpp_clock_begin,      &
                                        mpp_clock_end
 use           interpolator_mod, only : interpolate_type,     &
-                                        interpolate_type_eq, &
+                                       interpolate_type_eq,  &
                                        interpolator_init,    &
-                                    obtain_interpolator_time_slices, &
-                                    unset_interpolator_time_flag, &
+                                       obtain_interpolator_time_slices, &
+                                       unset_interpolator_time_flag, &
                                        interpolator_end,     &
                                        interpolator,         &
                                        query_interpolator,   &
@@ -406,6 +406,10 @@ type(co2_type) :: co2_t
 type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
+!++van
+real, allocatable    :: nb_N_Ox(:)
+!--van
+
 type (horiz_interp_type), save :: Interp
 
 
@@ -428,7 +432,7 @@ contains
 !     due to tropospheric chemistry. It is called from atmos_tracer_driver.
 !   </DESCRIPTION>
 !   <TEMPLATE>
-!     call tropchem_driver (lon, lat, land, pwt, r, chem_dt,           &
+!     call tropchem_driver (lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,           &
 !                           Time, phalf, pfull, t, is, ie, js, je, dt, &
 !                           z_half, z_full, q, tsurf, albedo, coszen,  &
 !                           area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
@@ -543,10 +547,11 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
    real, intent(in),    dimension(:,:)            :: w10m    ! wind speed at 10m (m/s)
    real, intent(in), dimension(:,:)               :: half_day! half-day length (0 to pi)
    real, intent(inout), dimension(:,:,:,:)        :: rdiag   ! diagnostic tracer concentrations
+   logical, intent(in)                            :: do_nh3_atm_ocean_exchange
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
    real, dimension(size(r,1),size(r,2),size(r,3)) :: sulfate_data
-!   real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
+!  real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
    real, dimension(size(r,1),size(r,2),size(r,3),maxinv) :: inv_data
    real, dimension(size(r,1),size(r,2)) :: emis
    real, dimension(size(r,1),size(r,2), pcnstm1) :: emisz
@@ -556,7 +561,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
                                                      extinct, strat_aerosol
    real, dimension(size(r,1),size(r,2),size(r,3),3) :: psc_vmr_save, dpsc_vmr
    real, dimension(size(r,1),size(r,2)) :: tsfcair, pwtsfc, flux_sw_down_vis
-   integer :: i,j,k,n,kb,id,jd,kd,ninv,ntp, index1, index2
+   integer :: i,j,k,n,kb,id,jd,kd,ninv,nt,ntp, idx, index1, index2
 !  integer :: nno,nno2
    integer :: inv_index
    integer :: plonl
@@ -584,8 +589,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
    !trop diag arrays
    real, dimension(size(r,1),size(r,2),size(r,3),trop_diag%nb_diag) :: trop_diag_array
    type(time_type) :: co2_time
+   character(len=32) :: tracer_name, noytracer
 
-   logical, intent(in) :: do_nh3_atm_ocean_exchange
 !-----------------------------------------------------------------------
 
 !<ERROR MSG="tropchem_driver_init must be called first." STATUS="FATAL">
@@ -1319,16 +1324,16 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
    do n = 1,nt
       if ( nb_N_Ox(n) .gt. 0.) then
         call get_tracer_names (MODEL_ATMOS, n, tracer_name)
-	if (tracer_name .eq. 'brono2') then
-	    noytracer = 'BrONO2' 
-	else if (tracer_name .eq. 'clono2') then
-	    noytracer = 'ClONO2'
-	else
-	    noytracer =  uppercase(tracer_name)
-	end if	
-	idx = get_spc_ndx(noytracer)
-        noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,idx)*nb_N_ox(n)	
-      end if	       
+        if (tracer_name .eq. 'brono2') then
+            noytracer = 'BrONO2' 
+        else if (tracer_name .eq. 'clono2') then
+            noytracer = 'ClONO2'
+        else
+            noytracer =  uppercase(tracer_name)
+        end if
+        idx = get_spc_ndx(noytracer)
+        noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,idx)*nb_N_ox(n)
+      end if
    end do
 !--van
 
@@ -1499,7 +1504,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
 
    logical :: Ltropchem
    integer :: flag_file, flag_spec, flag_fixed
-   integer :: n,i, nt
+   integer :: n, i, nt
    integer :: ierr, io, logunit
    character(len=64) :: nc_file,filename,specname
    character(len=256) :: control=''
@@ -1789,8 +1794,8 @@ end if
         if(mpp_pe() == mpp_root_pe()) write (*,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
       end if
     end do
-   
 !--van    
+
 !-----------------------------------------------------------------------
 !     ... Setup dry deposition
 !-----------------------------------------------------------------------
@@ -2466,8 +2471,8 @@ subroutine tropchem_driver_end
    
    deallocate(nb_N_Ox)
    module_is_initialized = .false.
-
-
+   
+    
 !-----------------------------------------------------------------------
 
 end subroutine tropchem_driver_end
