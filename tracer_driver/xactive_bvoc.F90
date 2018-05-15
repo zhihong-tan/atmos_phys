@@ -273,6 +273,7 @@ namelist /xactive_bvoc_nml/                     &
                              T_s
 
 
+logical :: Ldebug = .true.
 logical                     :: module_is_initialized = .false.
 logical, dimension(pcnstm1) :: has_xactive_emis = .false.  ! Does the tracer have xactive emissions?
 
@@ -323,8 +324,7 @@ real, allocatable, dimension(:,:,:)       :: T24_STORE,    &  ! Array to hold ho
 ! CW provided 1948-2000; current input files take 1980-2000 average
 real, allocatable, dimension(:,:,:)       :: Tmo, Pmo        ! Monthly mean temp and par
 
-real, allocatable, dimension(:,:)         :: TMAX, TMIN,  &
-                                             WSMAX,       &
+real, allocatable, dimension(:,:)         :: WSMAX,       &
                                              AQI,         &
                                              CO2_STORE,   &
                                              SOILM, WILT
@@ -434,7 +434,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 !-------------------------------------------------------------------------------------------------
 !-------------------------------------  Local Variables  -----------------------------------------
 
-   real, dimension(size(T1,1),size(T1,2))      :: T24, P24
+   real, dimension(size(T1,1),size(T1,2))      :: T24, P24, TMAX, TMIN
    real, dimension(size(T1,1),size(T1,2))      :: EMIS, EMIS_TERP
    real, dimension(size(T1,1),size(T1,2),nPFT) :: LAIp, LAIc   ! Used in MEGAN2
    real, dimension(size(T1,1),size(T1,2))      :: LAIp3, LAIc3      ! Used in MEGAN3
@@ -461,6 +461,11 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 
    nlon = size(lon,1)
    nlat = size(lat,2)
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: nlat,nlon=', nlat,nlon
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: is,ie,js,je=', is,ie,js,je
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: lon1,lat1=', lon(1,1)*180./PI,lat(1,1)*180./PI
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: SIZE(T1)=', SIZE(T1)
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: SIZE(T24_STORE)=', SIZE(T24_STORE)
 
 ! Index for Local 8AM, the starting index for summing over O3 values
 ! to calculate the W126 Air Quality Index (8AM - 8PM)
@@ -476,10 +481,10 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 ! Update the Daily Average/Max Arrays, i.e, "___STORE"
 ! ......................................................
    IF ( do_ONLINE_TEMP ) THEN
-      T24_STORE(:,:,hr) = T1
+      T24_STORE(is:ie,js:je,hr) = T1
    ENDIF
    IF ( do_ONLINE_PPFD ) THEN
-      P24_STORE(:,:,hr) = P1
+      P24_STORE(is:ie,js:je,hr) = P1
    ENDIF
    IF ( do_ONLINE_WIND .AND. do_GAMMA_HW ) THEN
       WS_STORE(:,:,hr)  = WS1
@@ -503,19 +508,19 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
    IF ( land(i,j) > min_land_frac ) THEN
 ! Temperatures
       IF ( do_ONLINE_TEMP ) THEN
-         T24(i,j)   = SUM(T24_STORE(i,j,:))/24.
+         T24(i,j)   = SUM(T24_STORE(i+is-1,j+js-1,:))/24.
          IF ( do_GAMMA_HT ) THEN
-            TMAX(i,j)  = MAXVAL(T24_STORE(i,j,:))
+            TMAX(i,j)  = MAXVAL(T24_STORE(i+is-1,j+js-1,:))
          ENDIF
          IF ( do_GAMMA_LT ) THEN
-             TMIN(i,j)  = MINVAL(T24_STORE(i,j,:))
+             TMIN(i,j)  = MINVAL(T24_STORE(i+is-1,j+js-1,:))
          ENDIF
       ELSE
          T24(i,j) = T1(i,j)
       ENDIF
 ! PAR/PPFD
       IF ( do_ONLINE_PPFD ) THEN
-         P24(i,j)   = SUM(P24_STORE(i,j,:))/24.
+         P24(i,j)   = SUM(P24_STORE(i+is-1,j+js-1,:))/24.
       ELSE
          P24(i,j)   = P1(i,j)
       ENDIF
@@ -619,7 +624,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
                                                   lon, lat, land, coszen,       &
                                                   P1, P24, T1, T24,             &
                                                   LAIp3, LAIc3,                 &
-                                                  Tmo(is:ie,js:je,:),           &
+                                                  TMAX, TMIN, Tmo(is:ie,js:je,:), &
                                                   TERP_PARAM(:,j),              &
                                                   LDFg_TERP(:,:,j),             &
                                                   ECTERP_MEGAN3(is:ie,js:je,j), &
@@ -657,7 +662,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
             call calc_xactive_bvoc_megan3 ( Time, Time_next, is, js,         &
                                             lon, lat, land, coszen,          &
                                             P1, P24, T1, T24, LAIp3, LAIc3,  &
-                                            Tmo(is:ie,js:je,:),              &
+                                            TMAX, TMIN, Tmo(is:ie,js:je,:),  &
                                             MEGAN_PARAM(:,xactive_knt),      &
                                             LDFg(:,:,xactive_knt),           &
                                             ECBVOC_MEGAN3(ie:ie,js:je,xactive_knt), &
@@ -795,6 +800,8 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
 
    nlon = size(lonb,1) - 1
    nlat = size(latb,2) - 1
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_init: nlat,nlon=', nlat,nlon
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: lonb1,latb1=', lonb(1,1)*180./PI,latb(1,1)*180./PI
 
    IF ( module_is_initialized ) RETURN
 
@@ -899,6 +906,7 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
    xknt = 0
    DO i = 1, pcnstm1
       n = get_tracer_index(MODEL_ATMOS, tracnam(i))
+      if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_init:', TRIM(tracnam(i)),i,n
       IF ( n .le. 0 ) THEN
          IF ( mpp_pe()==mpp_root_pe()) call error_mesg('xactive_bvoc_init',       &
               trim(tracnam(i)) // ' is not found', WARNING)
@@ -1213,18 +1221,10 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
          ALLOCATE( Tmo(nlon,nlat,nMOS) )
          call temp_init_AM3( lonb, latb, axes)
       !ENDIF
-      IF ( do_GAMMA_HT ) THEN
-         ALLOCATE( TMAX(nlon,nlat) )
-      ENDIF
-      IF ( do_GAMMA_LT ) THEN
-         ALLOCATE( TMIN(nlon,nlat) )
-      ENDIF
    ELSE
       IF ( do_GAMMA_HT .or. do_GAMMA_LT ) THEN
          call error_mesg( 'xactive_bvoc_init', &
           'High/Low temperature gammas must use online temperatures', WARNING)
-         ALLOCATE( TMAX(nlon,nlat) )
-         ALLOCATE( TMIN(nlon,nlat) )
          do_ONLINE_TEMP = .TRUE.
          ALLOCATE( T24_STORE(nlon,nlat,24) )
          T24_STORE(:,:,:) = 0.
@@ -1896,7 +1896,7 @@ end subroutine calc_xactive_bvoc_megan2
 !  <TEMPLATE>
 !    call calc_xactive_bvoc_megan3 ( Time, Time_next, is, js, ,lon, lat, land,   &
 !                                 coszen,  PPFD1, PPFD24, T1, T24, LAIp, LAIc,   &
-!                                 Tclim,                                         &
+!                                 TMAX, TMIN, Tclim,                             &
 !                                 MEGAN_PARAM, LDFg_S, ECBVOC_S, month, species, &
 !                                 EMIS, id_GAMMA_TEMP, id_GAMMA_PAR,             &
 !                                 id_GAMMA_LAI, id_GAMMA_AGE, id_GAMMA_BDLAI,    &
@@ -1936,6 +1936,12 @@ end subroutine calc_xactive_bvoc_megan2
 !  <IN NAME="LAIc" TYPE="real" DIM="(:,:)">
 !    Current month's LAI
 !  </IN>
+!  <IN NAME="TMAX" TYPE="real" DIM="(:,:)">
+!    Daily max temperature
+!  </IN>
+!  <IN NAME="TMIN" TYPE="real" DIM="(:,:)">
+!    Daily min temperature
+!  </IN>
 !  <IN NAME="Tclim" TYPE="real" DIM="(:,:)">
 !    Climatological temperature
 !  </IN>
@@ -1963,7 +1969,7 @@ end subroutine calc_xactive_bvoc_megan2
 !
 subroutine calc_xactive_bvoc_megan3 ( Time, Time_next, is, js, lon, lat, land,     &
                                       coszen,  PPFD1, PPFD24, T1, T24, LAIp, LAIc, &
-                                      Tclim,                                       &
+                                      TMAX, TMIN, Tclim,                           &
                                       MEGAN_PARAM, LDFg_S, ECBVOC_S, month,        &
                                       species, EMIS,                               &
                                       id_GAMMA_TEMP, id_GAMMA_PAR, id_GAMMA_LAI,   &
@@ -1982,6 +1988,7 @@ subroutine calc_xactive_bvoc_megan3 ( Time, Time_next, is, js, lon, lat, land,  
       real, intent(in), dimension(:,:)   :: T1              ! Surf T, this timestep, [K]
       real, intent(in), dimension(:,:)   :: T24             ! Surf T (daily avg.)    [K]
       real, intent(in), dimension(:,:)   :: LAIp, LAIc      ! Previous & current LAIv [m2/m2]
+      real, intent(in), dimension(:,:)   :: TMAX, TMIN      ! Daily max/min temperature [K]
       real, intent(in), dimension(:,:,:) :: Tclim           ! Climatological temperature [K]
       real, intent(in), dimension(:)     :: MEGAN_PARAM     ! MEGAN model parameters
       real, intent(in), dimension(:,:)   :: ECBVOC_S        ! Emission capacities  [ug/m2/h]
@@ -2585,11 +2592,11 @@ end function fGAMMA_PAR_AM4
 !                      ... Response to high temperatures
 !##########################################################################
 
-   function fGAMMA_HT(TMAX, T_HT, DT_HT, C_HT)
+   function fGAMMA_HT(TMAX1, T_HT, DT_HT, C_HT)
 
    implicit none
 
-   real, intent(in) :: TMAX
+   real, intent(in) :: TMAX1
    real, intent(in) :: T_HT
    real, intent(in) :: DT_HT
    real, intent(in) :: C_HT
@@ -2600,10 +2607,10 @@ end function fGAMMA_PAR_AM4
 
    THTK = 273.15 + T_HT
    t1   = THTK + DT_HT
-   IF ( TMAX <= THTK ) THEN
+   IF ( TMAX1 <= THTK ) THEN
       fGAMMA_HT = 1.0
-   ELSE IF ( TMAX > THTK .AND. TMAX < t1 ) THEN
-      fGAMMA_HT = 1.0 + (C_HT - 1.0) * (TMAX - THTK) / DT_HT
+   ELSE IF ( TMAX1 > THTK .AND. TMAX1 < t1 ) THEN
+      fGAMMA_HT = 1.0 + (C_HT - 1.0) * (TMAX1 - THTK) / DT_HT
    ELSE
       fGAMMA_HT = C_HT
    ENDIF
@@ -2616,11 +2623,11 @@ end function fGAMMA_PAR_AM4
 !                      ... Response to low temperatures
 !##########################################################################
 
-   function fGAMMA_LT(TMIN, T_LT, DT_LT, C_LT)
+   function fGAMMA_LT(TMIN1, T_LT, DT_LT, C_LT)
 
    implicit none
 
-   real, intent(in)   :: TMIN
+   real, intent(in)   :: TMIN1
    real, intent(in)   :: T_LT
    real, intent(in)   :: DT_LT
    real, intent(in)   :: C_LT
@@ -2631,10 +2638,10 @@ end function fGAMMA_PAR_AM4
 
    TLTK = 273.15 + T_LT
    t1   = TLTK - DT_LT
-   IF ( TMIN >= TLTK ) THEN
+   IF ( TMIN1 >= TLTK ) THEN
       fGAMMA_LT = 1.0
-   ELSE IF ( TMIN < TLTK .AND. TMIN > t1 ) THEN
-      fGAMMA_LT = 1.0 + (C_LT - 1.0) * (TLTK - TMIN) / DT_LT
+   ELSE IF ( TMIN1 < TLTK .AND. TMIN1 > t1 ) THEN
+      fGAMMA_LT = 1.0 + (C_LT - 1.0) * (TLTK - TMIN1) / DT_LT
    ELSE
       fGAMMA_LT = C_LT
    ENDIF
@@ -3306,8 +3313,6 @@ subroutine xactive_bvoc_end
    IF ( ALLOCATED(O3_STORE) )                DEALLOCATE(O3_STORE)
    IF ( ALLOCATED(Tmo) )                     DEALLOCATE(Tmo)
    IF ( ALLOCATED(Pmo) )                     DEALLOCATE(Pmo)
-   IF ( ALLOCATED(TMAX) )                    DEALLOCATE(TMAX)
-   IF ( ALLOCATED(TMIN) )                    DEALLOCATE(TMIN)
    IF ( ALLOCATED(WSMAX) )                   DEALLOCATE(WSMAX)
    IF ( ALLOCATED(AQI) )                     DEALLOCATE(AQI)
    IF ( ALLOCATED(CO2_STORE) )               DEALLOCATE(CO2_STORE)
