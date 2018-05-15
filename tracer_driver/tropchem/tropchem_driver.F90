@@ -18,8 +18,6 @@ module tropchem_driver_mod
 !
 ! This module is only activated if do_tropchem=T in tropchem_driver_nml
 !
-! 201709: Was updated to include code from Jordan Schnell that calculates
-! biogenic monoterpene emissions interactively
 ! </DESCRIPTION>
 
 
@@ -32,6 +30,7 @@ use                    fms_mod, only : file_exist,   &
                                        mpp_pe,  &
                                        mpp_root_pe, &
                                        lowercase,   &
+                                       uppercase, &
                                        open_namelist_file, &
                                        close_file,   &
                                        stdlog, &
@@ -56,21 +55,22 @@ use           diag_manager_mod, only : send_data,            &
 use        atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
 use         tracer_manager_mod, only : get_tracer_index,     &
                                        get_tracer_names,     &
+                                       get_number_tracers,   &
                                        query_method,         &
                                        check_if_prognostic,  &
                                        NO_TRACER
 use          field_manager_mod, only : MODEL_ATMOS, MODEL_LAND, parse
-use atmos_tracer_utilities_mod, only : dry_deposition
+use atmos_tracer_utilities_mod, only : dry_deposition, get_chem_param
 use              constants_mod, only : grav, rdgas, WTMAIR, WTMH2O, AVOGNO, &
                                        PI, DEG_TO_RAD, SECONDS_PER_DAY
 use                    mpp_mod, only : mpp_clock_id,         &
                                        mpp_clock_begin,      &
                                        mpp_clock_end
 use           interpolator_mod, only : interpolate_type,     &
-                                        interpolate_type_eq, &
+                                       interpolate_type_eq,  &
                                        interpolator_init,    &
-                                    obtain_interpolator_time_slices, &
-                                    unset_interpolator_time_flag, &
+                                       obtain_interpolator_time_slices, &
+                                       unset_interpolator_time_flag, &
                                        interpolator_end,     &
                                        interpolator,         &
                                        query_interpolator,   &
@@ -185,15 +185,10 @@ real               :: ch4_scale_factor = 1.             ! Methane scale factor t
 character(len=64)  :: cfc_lbc_filename = 'chemlbf'      ! Input file for CFC lower boundary conditions
 logical            :: time_varying_cfc_lbc = .true.     ! Allow time variation of CFC lower boundary conditions
 integer, dimension(6) :: cfc_lbc_dataset_entry = (/ 1, 1, 1, 0, 0, 0 /) ! Entry date for CFC lower boundary condition file
-real               :: Tdaily_clim = 297.                ! climatological T for use in MEGAN gamma_age calc
-real               :: Pdaily_clim = 420.                ! climatological PPFD for MEGAN light correction
-!++amf/van
-integer, parameter :: nveg=5, npft=17, nmos=12          ! number of vegetation types, pfts, and months
-!--amf/van
 integer            :: verbose = 3                       ! level of diagnostic output
 logical            :: retain_cm3_bugs = .false.         ! retain bugs present in code used in CM3
 logical            :: do_fastjx_photo = .false.         ! use fastjx routine ?
-character(len=32)   :: clouds_in_fastjx = 'lsc_only'    ! nature of clouds seen in fastjx calculation; may currently be 'none' or 'lsc_only' (default)
+character(len=32)  :: clouds_in_fastjx = 'lsc_only'     ! nature of clouds seen in fastjx calculation; may currently be 'none' or 'lsc_only' (default)
 logical            :: check_convergence = .false.       ! if T, non-converged chem tendencies will not be used
 real               :: e90_tropopause_vmr = 9.e-8        ! e90 tropopause concentration
 logical            :: time_varying_solarflux = .false.  ! allow sloar cycle on fastjx v7.1
@@ -221,7 +216,7 @@ real               :: max_rh_aerosol             = 9999      !max rh used for ae
 logical            :: limit_no3                  = .true.   !for isorropia/stratosphere
 
 character(len=64)  :: aerosol_thermo_method = 'legacy'               ! other choice isorropia
-character(len=64)  :: het_chem_type          = 'legacy'
+character(len=64)  :: het_chem_type         = 'legacy'
 real               :: gN2O5                 = 0.1
 real               :: gNO2                  = 1e-4
 real               :: gSO2                  = 0.
@@ -287,8 +282,6 @@ namelist /tropchem_driver_nml/    &
                                cfc_lbc_filename, &
                                time_varying_cfc_lbc, &
                                cfc_lbc_dataset_entry, &
-                               Tdaily_clim, &
-                               Pdaily_clim, &
                                verbose,   &
                                retain_cm3_bugs, &
                                do_fastjx_photo, &
@@ -384,13 +377,7 @@ integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
 integer :: id_co_emis_cmip2, id_no_emis_cmip2
 integer :: id_so2_emis_cmip2, id_nh3_emis_cmip2
-integer :: id_emico, id_eminox, id_emiso2, id_eminh3, id_emiisop
-integer :: id_glaiage_isop, id_glaiage_terp, id_gtemp_isop, id_gtemp_terp, id_glight_isop, id_glight_terp
-integer :: id_tsfcair, id_fsdvd, id_ctas, id_cfsds
-integer :: isop_oldmonth = 0
-integer :: terp_oldmonth = 0
-logical :: isop_newmonth
-logical :: terp_newmonth
+integer :: id_emico, id_eminox_woL, id_emiso2, id_eminh3
 logical :: has_ts_avg = .true.   ! currently reading in from monthly mean files.
 integer, dimension(phtcnt)  :: id_jval
 integer, dimension(gascnt)  :: id_rate_const
@@ -419,22 +406,9 @@ type(co2_type) :: co2_t
 type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
-real, allocatable, dimension(:,:,:) :: ecisop, ecterp, pctpft   !emission capacities, % pft
-real, allocatable, dimension(:,:,:,:) :: mlai ! monthly lai for each pft (could eventually tie to LM3)
-real, allocatable, dimension(:,:) :: emisop_month, emterp_month !isop emissions with monthly lai & age gammas applied
-real, allocatable, dimension(:,:) :: diag_gamma_lai_age_isop, diag_gamma_lai_age_terp   ! for combined lai and age gammas
-real, allocatable, dimension(:,:) :: diag_gamma_light_isop, diag_gamma_light_terp
-real, allocatable, dimension(:,:) :: diag_gamma_temp_isop, diag_gamma_temp_terp  ! for gamma light / T
-real, allocatable, dimension(:,:) :: diag_climtas, diag_climfsds ! climatological tas and fsds
-
-!if set up to read from restart file, then these would be 2D arrays.. for now, use mm clim. values
-!real, allocatable, dimension(:,:) :: ts_avg   ! surface air T, averaged over some period (K)
-!real, allocatable, dimension(:,:) :: fsds_avg  ! avg shortwave down in visible (W/m2)
-
-!monthly mean sfc air T and sw down at surface, from C. Wiedinmyer 2/18/09 - Sheffield inputs (Princeton)
-! CW provided 1948-2000; current input files take 1980-2000 average
-real, allocatable, dimension(:,:,:) :: ts_avg  ! climatological monthly mean surface air T
-real, allocatable, dimension(:,:,:) :: fsds_avg  ! climat. montly mean total shortwave down (W/m2)
+!++van
+real, allocatable    :: nb_N_Ox(:)
+!--van
 
 type (horiz_interp_type), save :: Interp
 
@@ -458,12 +432,12 @@ contains
 !     due to tropospheric chemistry. It is called from atmos_tracer_driver.
 !   </DESCRIPTION>
 !   <TEMPLATE>
-!     call tropchem_driver (lon, lat, land, pwt, r, chem_dt,           &
+!     call tropchem_driver (lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,           &
 !                           Time, phalf, pfull, t, is, ie, js, je, dt, &
 !                           z_half, z_full, q, tsurf, albedo, coszen,  &
 !                           area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
 !                           half_day, &
-!                           Time_next, rdiag,  kbot)
+!                           Time_next, rdiag,  do_nh3_atm_ocean_exchange, kbot)
 !   </TEMPLATE>
 !   <IN NAME="lon" TYPE="real" DIM="(:,:)">
 !     The longitudes for the local domain.
@@ -472,7 +446,10 @@ contains
 !     The latitudes for the local domain.
 !   </IN>
 !   <IN NAME="land" TYPE="real" DIM="(:,:)">
-!     The latitudes for the local domain.
+!     Land fraction
+!   </IN>
+!   <IN NAME="ocn_flx_fraction" TYPE="real" DIM="(:,:)">
+!     Fraction of cell through which ocean flux is allowed
 !   </IN>
 !   <IN NAME="pwt" TYPE="real" DIM="(:,:,:)">
 !     Pressure weighting (air mass) for each layer (kg/m2)
@@ -525,14 +502,11 @@ contains
 !   <IN NAME="w10m" TYPE="real" DIM="(:,:)">
 !     Windspeed at 10m (m/s)
 !   </IN>
-!   <IN NAME="flux_sw_down_vis_dir" TYPE="real" DIM="(:,:)">
-!     Surface downward visible radiation (W/m2)
-!   </IN>
-!   <IN NAME="flux_sw_down_vis_dif" TYPE="real" DIM="(:,:)">
-!     Surface downward visible radiation (W/m2)
-!   </IN>
 !   <IN NAME="half_day" TYPE="real" DIM="(:,:)">
 !     Half-day length  (dimensionless; 0 to pi)
+!   </IN>
+!   <IN NAME="do_nh3_atm_ocean_exchange," TYPE="logical">
+!     Allow interactive atm-ocn exchange of NH3?
 !   </IN>
 !   <OUT NAME="chem_dt" TYPE="real" DIM="(:,:,:,:)">
 !     Tracer tendencies from tropospheric chemistry (VMR/s)
@@ -545,12 +519,11 @@ contains
 !     Integer array describing which model layer intercepts the surface.
 !   </IN>
 
-subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,                 &
-                            Time, phalf, pfull, t, is, ie, js, je, dt,       &
-                            z_half, z_full, q, tsurf, albedo, coszen, rrsun, &
-                            area, w10m, flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
-                            half_day, &
-                            Time_next, rdiag,  xbvoc, kbot, do_nh3_atm_ocean_exchange )
+subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
+                            Time, phalf, pfull, t, is, ie, js, je, dt,         &
+                            z_half, z_full, q, tsurf, albedo, coszen, rrsun,   &
+                            area, w10m, half_day,                              &
+                            Time_next, rdiag, do_nh3_atm_ocean_exchange, kbot )
 
 !-----------------------------------------------------------------------
    real, intent(in),    dimension(:,:)            :: lon, lat
@@ -572,15 +545,13 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    real, intent(in)                               :: rrsun   ! earth-sun distance factor (r_avg/r)^2
    real, intent(in),    dimension(:,:)            :: area    ! grid box area (m^2)
    real, intent(in),    dimension(:,:)            :: w10m    ! wind speed at 10m (m/s)
-   real, intent(in), dimension(:,:)               :: flux_sw_down_vis_dir !W/m2 direct visible sfc flux
-   real, intent(in), dimension(:,:)               :: flux_sw_down_vis_dif !W/m2 diffuse visible sfc flux
    real, intent(in), dimension(:,:)               :: half_day! half-day length (0 to pi)
    real, intent(inout), dimension(:,:,:,:)        :: rdiag   ! diagnostic tracer concentrations
-   real, intent(out), dimension(:,:,:)            :: xbvoc
+   logical, intent(in)                            :: do_nh3_atm_ocean_exchange
    integer, intent(in),  dimension(:,:), optional :: kbot
 !-----------------------------------------------------------------------
    real, dimension(size(r,1),size(r,2),size(r,3)) :: sulfate_data
-!   real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
+!  real, dimension(size(r,1),size(r,2),size(r,3)) :: ub_temp,rno
    real, dimension(size(r,1),size(r,2),size(r,3),maxinv) :: inv_data
    real, dimension(size(r,1),size(r,2)) :: emis
    real, dimension(size(r,1),size(r,2), pcnstm1) :: emisz
@@ -590,7 +561,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                                                      extinct, strat_aerosol
    real, dimension(size(r,1),size(r,2),size(r,3),3) :: psc_vmr_save, dpsc_vmr
    real, dimension(size(r,1),size(r,2)) :: tsfcair, pwtsfc, flux_sw_down_vis
-   integer :: i,j,k,n,kb,id,jd,kd,ninv,ntp, index1, index2
+   integer :: i,j,k,n,kb,id,jd,kd,ninv,nt,ntp, idx, index1, index2
 !  integer :: nno,nno2
    integer :: inv_index
    integer :: plonl
@@ -618,8 +589,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    !trop diag arrays
    real, dimension(size(r,1),size(r,2),size(r,3),trop_diag%nb_diag) :: trop_diag_array
    type(time_type) :: co2_time
+   character(len=32) :: tracer_name, noytracer
 
-   logical, intent(in) :: do_nh3_atm_ocean_exchange
 !-----------------------------------------------------------------------
 
 !<ERROR MSG="tropchem_driver_init must be called first." STATUS="FATAL">
@@ -653,7 +624,6 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    emis_source(:,:,:,:) = 0.0
    airc_emis(:,:,:,:) = 0.0
    emisz(:,:,:) = 0.0
-   xbvoc(:,:,:) = 0.0
 
    tsfcair(:,:) = t(:,:,kd)
    pwtsfc(:,:) = t(:,:,kd)
@@ -731,65 +701,10 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
       end if
 
 !-----------------------------------------------------------------------
-!     ... calculate interactive emissions
+!     ... calculate interactive (DMS only) emissions
 !-----------------------------------------------------------------------
       if ( has_xactive_emis(n) .or. id_xactive_emis(n)>0 ) then
-         select case (trim(tracnam(n)))
-         case ('ISOP')
-
-            flux_sw_down_vis = flux_sw_down_vis_dir+flux_sw_down_vis_dif
-
-            call calc_xactive_isop ( n, Time, Time_next, lon, lat, oro, pwtsfc, is, js, &
-                 area, land, tsfcair, flux_sw_down_vis, &
-                 coszen, emis, id_gamma_lai_age=id_glaiage_isop, &
-                 id_gamma_temp=id_gtemp_isop, id_gamma_light=id_glight_isop, &
-                 id_climtas=id_ctas, id_climfsds=id_cfsds, id_emis_diag=id_xactive_emis(n) )
-            xbvoc(:,:,1) = emis 
-            if (has_xactive_emis(n)) then
-               emisz(:,:,n) = emisz(:,:,n) + emis(:,:)
-               if (present(kbot)) then
-                  do j=1,jd
-                     do i=1,id
-                        kb=kbot(i,j)
-
-                        emis_source(i,j,kb,n) = emis_source(i,j,kb,n) &
-                                              + emis(i,j)/pwt(i,j,kb)*emis_cons
-
-                     end do
-                  end do
-               else
-                  emis_source(:,:,kd,n) = emis_source(:,:,kd,n) &
-                                        + emis(:,:)/pwt(:,:,kd) * emis_cons
-               end if
-            end if
-         case ('C10H16')
-
-            flux_sw_down_vis = flux_sw_down_vis_dir+flux_sw_down_vis_dif
-
-            call calc_xactive_terp ( n, Time, Time_next, lon, lat, oro, pwtsfc, is, js, &
-                 area, land, tsfcair, flux_sw_down_vis, &
-                 coszen, emis, id_gamma_lai_age=id_glaiage_terp, &
-                 id_gamma_temp=id_gtemp_terp, id_gamma_light=id_glight_terp, &
-                 id_emis_diag=id_xactive_emis(n) )
-            xbvoc(:,:,2) = emis 
-            if (has_xactive_emis(n)) then
-               emisz(:,:,n) = emisz(:,:,n) + emis(:,:)
-               if (present(kbot)) then
-                  do j=1,jd
-                     do i=1,id
-                        kb=kbot(i,j)
-
-                        emis_source(i,j,kb,n) = emis_source(i,j,kb,n) &
-                                              + emis(i,j)/pwt(i,j,kb)*emis_cons
-
-                     end do
-                  end do
-               else
-                  emis_source(:,:,kd,n) = emis_source(:,:,kd,n) &
-                                        + emis(:,:)/pwt(:,:,kd) * emis_cons
-               end if
-            end if
-         case ('DMS')
+         if (trim(tracnam(n)) .eq. "DMS") then
             call calc_xactive_emis( n, Time, Time_next,lon, lat, pwt, is, ie, js, je, &
                  area, land, ocn_flx_fraction,tsurf, w10m, xactive_emis, &
                  kbot=kbot, id_emis_diag=id_xactive_emis(n) )
@@ -799,11 +714,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
                end do
                emis_source(:,:,:,n) = emis_source(:,:,:,n) + xactive_emis(:,:,:)
             end if
-         case default
-            if (has_xactive_emis(n)) then
-            call error_mesg ('tropchem_driver','Interactive emissions not defined for species: '//trim(tracnam(n)), FATAL)
-            end if
-         end select
+         endif
       end if
 
 !-----------------------------------------------------------------------
@@ -813,7 +724,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
          call interpolator( inter_aircraft_emis(n), Time, phalf, &
                             airc_emis(:,:,:,n), trim(airc_names(n)),is,js)
          if (aircraft_scale_factor >= 0.) airc_emis(:,:,:,n) = airc_emis(:,:,:,n) * aircraft_scale_factor
-         if(id_airc(n) > 0)&
+         if(id_airc(n) > 0) &
               used = send_data(id_airc(n),airc_emis(:,:,:,n),Time_next, is_in=is, js_in=js)
 
          do k=1, size(emis3d,3)
@@ -826,8 +737,8 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
              used = send_data(id_no_emis_cmip2,emisz(:,:,n)*1.0e04*0.030/AVOGNO,Time_next, &
                                                  is_in=is,js_in=js)
            endif
-           if (id_eminox > 0) then
-             used = send_data(id_eminox, emisz(:,:,n)*1.0e04*0.014/AVOGNO, Time_next, is_in=is,js_in=js)
+           if (id_eminox_woL > 0) then
+             used = send_data(id_eminox_woL, emisz(:,:,n)*1.0e04*0.014/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
          if (tracnam(n) == 'CO') then
@@ -857,21 +768,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
              used = send_data(id_eminh3, emisz(:,:,n)*1.0e04*0.017/AVOGNO, Time_next, is_in=is,js_in=js)
            endif
          endif
-         if (tracnam(n) == 'ISOP') then
-           if (id_emiisop > 0) then
-             used = send_data(id_emiisop, emisz(:,:,n)*1.0e04*0.068/AVOGNO, Time_next, is_in=is,js_in=js)
-           endif
-         endif
    end do
-
-! also store sw visible direct at surface and surface air temperature diagnostics
-   if (id_fsdvd > 0) then
-      used = send_data( id_fsdvd, flux_sw_down_vis, Time_next, is_in=is, js_in=js)
-   end if
-
-   if (id_tsfcair > 0) then
-      used = send_data( id_tsfcair, tsfcair, Time_next, is_in=is, js_in=js)
-   end if
 
 !-----------------------------------------------------------------------
 !     ... read in the concentrations of "invariant" (i.e., prescribed)
@@ -1401,10 +1298,6 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
 !     ... Chemical families (Bry, NOy)
 !-----------------------------------------------------------------------
    bry(:,:,:) = 0.
-   noy(:,:,:) = 0.
-   if (clono2_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,clono2_ndx)
-   end if
    if (br_ndx>0) then
       bry(:,:,:) = bry(:,:,:) + r_temp(:,:,:,br_ndx)
    end if
@@ -1419,47 +1312,31 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt,  
    end if
    if (brono2_ndx>0) then
       bry(:,:,:) = bry(:,:,:) + r_temp(:,:,:,brono2_ndx)
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,brono2_ndx)
    end if
    if (brcl_ndx>0) then
       bry(:,:,:) = bry(:,:,:) + r_temp(:,:,:,brcl_ndx)
    end if
-   if (n_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,n_ndx)
-   end if
-   if (no_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,no_ndx)
-   end if
-   if (no2_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,no2_ndx)
-   end if
-   if (no3_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,no3_ndx)
-   end if
-   if (hno3_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,hno3_ndx)
-   end if
-   if (n2o5_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,n2o5_ndx)*2
-   end if
-   if (ho2no2_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,ho2no2_ndx)
-   end if
-   if (pan_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,pan_ndx)
-   end if
-   if (mpan_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,mpan_ndx)
-   end if
-   if (onit_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,onit_ndx)
-   end if
-   if (isopno3_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,isopno3_ndx)
-   end if
-   if (onitr_ndx>0) then
-      noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,onitr_ndx)
-   end if
+   
+!++van
+   noy(:,:,:) = 0.
+! Loop over total number of atmospheric tracers (nt), not just solver tracers (pcnstm1)
+   call get_number_tracers(MODEL_ATMOS, num_tracers=nt)
+   do n = 1,nt
+      if ( nb_N_Ox(n) .gt. 0.) then
+        call get_tracer_names (MODEL_ATMOS, n, tracer_name)
+        if (tracer_name .eq. 'brono2') then
+            noytracer = 'BrONO2' 
+        else if (tracer_name .eq. 'clono2') then
+            noytracer = 'ClONO2'
+        else
+            noytracer =  uppercase(tracer_name)
+        end if
+        idx = get_spc_ndx(noytracer)
+        noy(:,:,:) = noy(:,:,:) + r_temp(:,:,:,idx)*nb_N_ox(n)
+      end if
+   end do
+!--van
+
 
 !-----------------------------------------------------------------------
 !     ... stratospheric Cly and Bry source
@@ -1627,7 +1504,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
 
    logical :: Ltropchem
    integer :: flag_file, flag_spec, flag_fixed
-   integer :: n,i
+   integer :: n, i, nt
    integer :: ierr, io, logunit
    character(len=64) :: nc_file,filename,specname
    character(len=256) :: control=''
@@ -1646,7 +1523,8 @@ function tropchem_driver_init( r, mask, axes, Time, &
    logical :: tracer_initialized
 
    integer :: unit
-   character(len=16) ::  fld
+   character(len=16) :: fld
+   character(len=32) :: tracer_name
 
    integer :: flb, series_length, year, diy
    real :: input_time
@@ -1899,6 +1777,26 @@ end if
       end if
    end if
 
+!++van
+!----------------------------------------
+!     ... For calculating NOy
+!----------------------------------------
+
+    call get_number_tracers(MODEL_ATMOS, num_tracers=nt)
+    allocate(nb_N_Ox(nt)) 
+    if(mpp_pe() == mpp_root_pe()) then
+       write (*,*) 'NOTE: tropchem_driver_init, nt = ', nt
+       write (*,*) 'NOy is composed of :'
+    end if
+    do n = 1,nt
+      call  get_chem_param (n, nb_N_Ox=nb_N_Ox(n))
+      if ( nb_N_Ox(n) .gt. 0.) then
+        call get_tracer_names (MODEL_ATMOS, n, tracer_name)
+        if(mpp_pe() == mpp_root_pe()) write (*,'(2a,g14.6)') trim(tracer_name),', nb_N_ox=',nb_N_ox(n)
+      end if
+    end do
+!--van    
+
 !-----------------------------------------------------------------------
 !     ... Setup dry deposition
 !-----------------------------------------------------------------------
@@ -1949,10 +1847,11 @@ end if
 !-----------------------------------------------------------------------
 !     ... Interactive emissions
 !-----------------------------------------------------------------------
+      if ( trim(tracnam(i))=="DMS") then
       call init_xactive_emis( MODEL_ATMOS, 'xactive_emissions', indices(i), tracnam(i), &
                               axes, Time, lonb_mod, latb_mod, phalf, &
                               has_xactive_emis(i), id_xactive_emis(i), mask )
-
+      endif
 !-----------------------------------------------------------------------
 !     ... Upper boundary condition
 !-----------------------------------------------------------------------
@@ -2292,12 +2191,9 @@ end if
    id_eminh3 = register_cmip_diag_field_2d ( module_name, 'eminh3', Time, &
                               'Total Emission Rate of NH3', 'kg m-2 s-1', &
                 standard_name='tendency_of_atmosphere_mass_content_of_ammonia_due_to_emission')
-   id_eminox = register_cmip_diag_field_2d ( module_name, 'eminox', Time, &
-                              'Total Emission Rate of NOx', 'kg m-2 s-1', &
+   id_eminox_woL = register_cmip_diag_field_2d ( module_name, 'eminox_woL', Time, &
+                              'Total Emission Rate of NOx without lightning NOx', 'kg m-2 s-1', &
                 standard_name='tendency_of_atmosphere_mass_content_of_nox_expressed_as_nitrogen_due_to_emission')
-   id_emiisop = register_cmip_diag_field_2d ( module_name, 'emiisop', Time, &
-                               'Total Emission Rate of Isoprene', 'kg m-2 s-1', &
-                 standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
 
 !--for Ox(jmao,1/1/2011)
    id_prodox = register_diag_field( module_name, 'Ox_prod', axes(1:3), &
@@ -2345,27 +2241,7 @@ end if
       else
          id_emis3d(i) = 0
       end if
-!     if( has_xactive_emis(i) ) then
-         select case (trim(tracnam(i)))
-         case ('ISOP')
-               id_glaiage_isop = register_diag_field( module_name, 'gamma_lai_age_isop', axes(1:2), &
-                    Time, 'gamma_lai_age_isop', 'unitless' )
-               id_gtemp_isop = register_diag_field( module_name, 'gamma_temp_isop', axes(1:2), &
-                    Time, 'gamma_temp_isop', 'unitless' )
-               id_glight_isop = register_diag_field( module_name, 'gamma_light_isop', axes(1:2), &
-                    Time, 'gamma_light_isop', 'unitless' )
-         case ('C10H16')
-               id_glaiage_terp = register_diag_field( module_name, 'gamma_lai_age_terp', axes(1:2), &
-                    Time, 'gamma_lai_age_terp', 'unitless' )
-               id_gtemp_terp = register_diag_field( module_name, 'gamma_temp_terp', axes(1:2), &
-                    Time, 'gamma_temp_terp', 'unitless' )
-               id_glight_terp = register_diag_field( module_name, 'gamma_light_terp', axes(1:2), &
-                    Time, 'gamma_light_terp', 'unitless' )
-         case default
-         end select
-!     else
-!        id_xactive_emis(i) = 0
-!     end if
+
       if( has_ubc(i) ) then
          id_ub(i) = register_diag_field( module_name, trim(tracnam(i))//'_up', axes(1:3), &
                                          Time, trim(tracnam(i))//'_up','VMR' )
@@ -2385,15 +2261,6 @@ end if
          id_airc(i) = 0
       end if
    end do
-
-   id_fsdvd = register_diag_field( module_name, 'fsdvd', axes(1:2), &
-                                   Time, 'fsdvd', 'W/m2' )
-   id_tsfcair = register_diag_field( module_name, 'tsfcair', axes(1:2), &
-                                     Time, 'tsfcair', 'K' )
-   id_ctas = register_diag_field( module_name, 'clim_tas', axes(1:2), &
-                                  Time, 'clim_tas', 'K' )
-   id_cfsds = register_diag_field( module_name, 'clim_fsds', axes(1:2), &
-                                   Time, 'clim_fsds', 'umol/m2/s PAR' )
 
 !-----------------------------------------------------------------------
 !     ... Register diagnostic fields for photolysis rates
@@ -2542,26 +2409,12 @@ type(time_type), intent(in) :: Time
 !----------------------------------------------------------------------
       do n=1,pcnstm1
         if ( has_xactive_emis(n) .or. id_xactive_emis(n)>0 ) then
-          select case (trim(tracnam(n)))
-            case ('ISOP')
-              call get_date(Time,yr,mo,day,hr,min,sec)  !model GMT
-              isop_newmonth = ( mo /= isop_oldmonth )
-              if (isop_newmonth) then
-                isop_oldmonth = mo
-              endif
-            case ('C10H16')
-              call get_date(Time,yr,mo,day,hr,min,sec)  !model GMT
-              terp_newmonth = ( mo /= terp_oldmonth )
-              if (terp_newmonth) then
-                terp_oldmonth = mo
-              endif
-            case ('DMS')
+          if (tracnam(n) .eq. "DMS") then
               call atmos_sulfate_time_vary (Time)
-            case default
-          end select
+              exit
+          endif
         endif
       end do
-
 
 end subroutine tropchem_driver_time_vary
 
@@ -2616,10 +2469,11 @@ subroutine tropchem_driver_end
 !-----------------------------------------------------------------------
 !     ... initialize mpp clock id
 !-----------------------------------------------------------------------
-
+   
+   deallocate(nb_N_Ox)
    module_is_initialized = .false.
-
-
+   
+    
 !-----------------------------------------------------------------------
 
 end subroutine tropchem_driver_end
@@ -2665,7 +2519,7 @@ subroutine read_2D_emis_data( emis_type, emis, Time, Time_next, &
    temp_data(:,:) = 0.
    do k = 1,size(field_names)
       if (skip_biogenic_emis .and. field_names(k) .eq. "biogenic") then
-          temp_data(:,:) = 0.          
+          temp_data(:,:) = 0.
       else
          if (present(skip_field) .and. trim(field_names(k)).eq.trim(skip_field)) then
             temp_data(:,:) = 0.                      
@@ -2914,7 +2768,7 @@ end subroutine init_emis_data
 !   <TEMPLATE>
 !     call init_xactive_emis( model, method_type, index, species, &
 !                             axes, Time, lonb_mod, latb_mod, phalf, &
-!                             flag, id_xemis, mask )
+!                             flag, mask )
 !   </TEMPLATE>
 
 subroutine init_xactive_emis( model, method_type, index, species, &
@@ -2941,1890 +2795,19 @@ subroutine init_xactive_emis( model, method_type, index, species, &
 
    flag = query_method(trim(method_type),model,index,name,control)
 
-      select case (trim(species))
-         case ('DMS')
+   if (flag) then
+   if (trim(species) .eq. "DMS") then
             id_xemis = &
                register_diag_field( module_name, trim(species)//'_xactive_emis', axes(1:3), &
                                     Time, trim(species)//'_xactive_emis', 'VMR/s')
             if (flag .or. id_xemis>0) then
                call atmos_sulfate_init( lonb_mod, latb_mod, nfull, axes, Time, mask )
             end if
-         case ('ISOP')
-            id_xemis = &
-               register_diag_field( module_name, trim(species)//'_xactive_emis', axes(1:2), &
-                                    Time, trim(species)//'_xactive_emis', 'molecules/cm2/s')
-            if (flag .or. id_xemis>0) then
-               call isop_xactive_init( lonb_mod, latb_mod, axes )
-            end if
-         case ('C10H16')
-            id_xemis = &
-               register_diag_field( module_name, trim(species)//'_xactive_emis', axes(1:2), &
-                                    Time, trim(species)//'_xactive_emis', 'molecules/cm2/s')
-            if (flag .or. id_xemis>0) then
-               call terp_xactive_init( lonb_mod, latb_mod, axes )
-            end if
-         case default
-            if (flag) then
-               call error_mesg ('init_xactive_emis','Interactive emissions not defined for species: '//trim(species), FATAL)
-            else
-               id_xemis = 0
-            end if
-      end select
-
-   if (flag) then
-      call error_mesg ('init_xactive_emis','Interactive emissions are requested for species: '//trim(species)// &
-                       ', biogenic emissions from file will be skipped', NOTE)
+   endif
    end if
 
 end subroutine init_xactive_emis
 !</SUBROUTINE>
-
-!#######################################################################
-
-! <SUBROUTINE NAME="isop_xactive_init">
-!   <OVERVIEW>
-!     Initialize interactive isoprene emissions
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Initialize interactive isoprene emissions: read in emission capacities,
-!     LAI for each pft, percentage pft in each grid cell, climatological (1980-2000)
-!     monthly mean surface air temp + downward short wave radiation from
-!     Sheffield et al., J. clim, 2006  (obtained from Christine Wiedinmyer, NCAR,
-!     Feb, 2009.  Also allocate and initialize arrays needed for diagnostics, etc.
-!     Updated to MEGAN v2.1 amf/van
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     call isop_xactive_init( lonb_mod, latb_mod, axes )
-!   </TEMPLATE>
-
-subroutine isop_xactive_init( lonb, latb, axes )
-
-  real, intent(in), dimension(:,:)   :: lonb,latb
-  integer        , intent(in)  :: axes(4)
-  integer :: nlon, nlat, i, m
-!parameters for input file
-!number of vegetation types for emission capacities
-
-!++amf/van updated to megan2.1 nveg = 5 types above
-! integer, parameter :: nveg=5, npft=17, nmos=12
-!--amf/van
-  integer, parameter :: nlonin = 720, nlatin = 360
-  integer, parameter :: metlonin = 360, metlatin= 180
-  real, dimension(nlonin) :: inlon, lonpft, lonlai
-  real, dimension(nlatin) :: inlat, latpft, latlai
-  real, dimension(nlonin+1) :: inlone, lonpfte, lonlaie
-  real, dimension(nlatin+1) :: inlate, latpfte, latlaie
-  real, dimension(metlonin) :: metlon
-  real, dimension(metlatin) :: metlat
-  real, dimension(metlonin+1) :: metlone
-  real, dimension(metlatin+1) :: metlate
-  integer, dimension(npft) :: pft
-  integer, dimension(nmos) :: mos
-  real :: edgew,edges,edgen,edgee,dlon,dlat
-  character(len=19), parameter :: ecfile = 'INPUT/megan.ISOP.nc'       ! amf/van
-  character(len=25), parameter :: laifile = 'INPUT/mksrf_lai.060929.nc'
-  character(len=25), parameter :: pftfile = 'INPUT/mksrf_pft.060929.nc'
-  character(len=35), parameter :: tasfile = 'INPUT/tas_monthly_clim_1980-2000.nc'
-  character(len=37), parameter :: dswfile = 'INPUT/dswrf_monthly_clim_1980-2000.nc'
-  character(len=3) :: vegnames(nveg) = (/ 'ntr', 'btr', 'crp', 'grs', 'shr' /)    !amf/van
-  character(len=5) :: pftnames(npft) = (/ 'pft01','pft02','pft03','pft04','pft05','pft06', &
-       'pft07','pft08','pft09','pft10','pft11','pft12','pft13','pft14','pft15','pft16','pft17' /)
-  character(len=5) :: lainames(npft) = (/ 'lai01','lai02','lai03','lai04','lai05','lai06', &
-       'lai07','lai08','lai09','lai10','lai11','lai12','lai13','lai14','lai15','lai16','lai17' /)
-  character(len=5) :: tasnames(nmos) = (/ 'tas01','tas02','tas03','tas04','tas05','tas06', &
-       'tas07','tas08','tas09','tas10','tas11','tas12' /)
-  character(len=5) :: dswnames(nmos) = (/ 'dsw01','dsw02','dsw03','dsw04','dsw05','dsw06', &
-       'dsw07','dsw08','dsw09','dsw10','dsw11','dsw12' /)
-  integer :: id_ec(nveg), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
-  real, dimension(nlonin,nlatin) :: datain
-  real, dimension(nlonin,nlatin,npft) :: datapft
-  real, dimension(nlonin,nlatin,npft,nmos) :: datalai
-  real, dimension(metlonin,metlatin,nmos) :: tas, dswrf
-  logical :: used
-
-  nlon = size(lonb,1)-1
-  nlat = size(latb,2)-1
-
-!allocate dimensions of array for storing emission capacities (model grid)
-  allocate(ecisop(nlon,nlat,nveg))
-  allocate(pctpft(nlon,nlat,npft))
-  allocate(mlai(nlon,nlat,npft,nmos))      ! monthly mean LAI
-  allocate(emisop_month(nlon,nlat))        ! emission capacities adjusted w/ monthly gamma_lai and gamma_age
-  allocate(diag_gamma_lai_age_isop(nlon,nlat))
-  allocate(diag_gamma_light_isop(nlon,nlat))
-  allocate(diag_gamma_temp_isop(nlon,nlat))
-  allocate(diag_climtas(nlon,nlat))
-  allocate(diag_climfsds(nlon,nlat))
-  allocate(ts_avg(nlon,nlat,nmos))
-  allocate(fsds_avg(nlon,nlat,nmos))
-
-!Initalize arrays
-  emisop_month(:,:) = 0.
-  diag_gamma_lai_age_isop(:,:) = 0.
-  diag_gamma_light_isop(:,:) = 0.
-  diag_gamma_temp_isop(:,:) = 0.
-  diag_climtas(:,:) = 0.
-  diag_climfsds(:,:) = 0.
-! always get gamma age / gamma lai at start of run.
-! newmonth = .true.
-
-!  --- check existence of input file containing isoprene emission capacities --------
-  if (file_exist(ecfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
-          'Reading NetCDF formatted input file: megan.ISOP.nc', NOTE)
-
-! amf/van -- new file only has lat lon centers, not boundaries...
-!read in lat & lon boundaries from input file and convert to radians
-!no.domain = true tells it all fields are in one global file (as opposed to e.g., one per cube face)
-     call read_data (ecfile, 'lon', inlon, no_domain=.true.)
-     call read_data (ecfile, 'lat', inlat, no_domain=.true.)
-     inlon = inlon*DEG_TO_RAD
-     inlat = inlat*DEG_TO_RAD
-     dlat = inlat(2)-inlat(1)
-     dlon = inlon(2)-inlon(1)
-     inlone(1:nlonin) = inlon-(dlon/2.)
-     inlone(nlonin+1) = inlon(nlonin)+(dlon/2.)
-     inlate(1:nlatin) = inlat-(dlat/2.)
-     inlate(nlatin+1) = inlat(nlatin)+(dlat/2.)
-
-!     print*, 'lat,lon edges for new megan.isop.nc file: ', inlate, inlone
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, inlone, inlate, lonb, latb )
-
-! loop over vegnames
-     do i = 1, nveg
-!register diagnostic field
-        id_ec(i) = register_static_field( 'tracers', vegnames(i), axes(1:2), &
-             vegnames(i), 'molec/cm2/s')
-!read this field
-        call read_data (ecfile, vegnames(i), datain, no_domain=.true.)
-        call horiz_interp (Interp, datain, ecisop(:,:,i), verbose=verbose)
-!send data to diagnostic
-        if (id_ec(i) > 0) then
-           used = send_data(id_ec(i),ecisop(:,:,i))
-        endif
-     end do
-
-  else
-     print*, 'what is ecfile ', ecfile
-     call error_mesg ('isop_xactive_init',  &
-          'ecfile does not exist.', FATAL)
-  endif
-
-!  --- check existence of input file containing % pft --------
-  if (file_exist(pftfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
-          'Reading NetCDF formatted input file: mksrf_pft.060929.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (pftfile, 'lon', lonpft, no_domain=.true.)
-     call read_data (pftfile, 'lat', latpft, no_domain=.true.)
-     call read_data (pftfile, 'EDGEW', edgew, no_domain=.true.)
-     call read_data (pftfile, 'EDGES', edges, no_domain=.true.)
-     call read_data (pftfile, 'EDGEE', edgee, no_domain=.true.)
-     call read_data (pftfile, 'EDGEN', edgen, no_domain=.true.)
-
-     lonpfte(1) = edgew
-     latpfte(1) = edges
-     latpfte(nlatin+1) = edgen
-     lonpfte(nlonin+1) = edgee
-
-     dlon = 2.*(lonpft(1)-edgew)
-     dlat = 2.*(latpft(1)-edges)
-
-     do i = 2, nlatin
-        latpfte(i) = latpfte(i-1)+dlat
-     end do
-
-     do i = 2, nlonin
-        lonpfte(i) = lonpfte(i-1)+dlon
-     end do
-
-     lonpfte = lonpfte*DEG_TO_RAD
-     latpfte = latpfte*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, lonpfte, latpfte, lonb, latb )
-
-     call read_data (pftfile, 'pft', pft, no_domain=.true.)
-
-!read pct_pft field
-     call read_data (pftfile, 'PCT_PFT', datapft, no_domain=.true.)
-
-! loop over vegnames
-     do i = 1, npft
-!register diagnostic field
-        id_pft(i) = register_static_field( 'tracers', pftnames(i), axes(1:2), &
-             pftnames(i), 'unitless')
-        call horiz_interp (Interp, datapft(:,:,i), pctpft(:,:,i), verbose=verbose)
-!send data to diagnostic
-        if (id_pft(i) > 0) then
-           used = send_data(id_pft(i),pctpft(:,:,i))
-        endif
-     end do
-!scale pctpft from percentage to fraction
-     pctpft(:,:,:) = .01 * pctpft(:,:,:)
-
-  else
-     call error_mesg ('isop_xactive_init',  &
-          'pftfile does not exist.', FATAL)
-  endif
-
-!  --- check existence of input file containing monthly lai, for each pft --------
-  if (file_exist(laifile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
-          'Reading NetCDF formatted input file: mksrf_lai.060929.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (laifile, 'lon', lonlai, no_domain=.true.)
-     call read_data (laifile, 'lat', latlai, no_domain=.true.)
-
-! get lat/lon edges
-     lonlaie(1) = edgew
-     latlaie(1) = edges
-     latlaie(nlatin+1) = edgen
-     lonlaie(nlonin+1) = edgee
-
-     dlon = 2.*(lonlai(1)-edgew)
-     dlat = 2.*(latlai(1)-edges)
-
-     do i = 2, nlatin
-        latlaie(i) = latlaie(i-1)+dlat
-     end do
-
-     do i = 2, nlonin
-        lonlaie(i) = lonlaie(i-1)+dlon
-     end do
-
-     lonlaie = lonlaie*DEG_TO_RAD
-     latlaie = latlaie*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, lonlaie, latlaie, lonb, latb )
-
-! read in pft and time dimensions from lai file
-     call read_data (laifile, 'time', mos, no_domain=.true.)
-
-! loop over vegnames
-     do i = 1, npft
-        call read_data (laifile,lainames(i),datalai(:,:,i,:), no_domain=.true.)
-        do m = 1, nmos
-            call horiz_interp (Interp, datalai(:,:,i,m), mlai(:,:,i,m), verbose=verbose)
-!store diagnostics for one month only - choose July for now
-            if (m .eq. 7) then
-!register diagnostic field
-               id_lai(i) = register_static_field( 'tracers', lainames(i), axes(1:2), &
-                    lainames(i), 'unitless')
-!send data to diagnostic
-               if (id_lai(i) > 0) then
-                  used = send_data(id_lai(i),mlai(:,:,i,m))
-               endif
-            endif
-         end do
-      end do
-
-   else
-      call error_mesg ('isop_xactive_init',  &
-           'laifile does not exist', FATAL)
-   endif
-
-!  --- check existence of input file containing climatological (1980-2000) monthly air surface temp --------
-  if (file_exist(tasfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
-          'Reading NetCDF formatted input file: tas_monthly_clim_1980-2000.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (tasfile, 'lon', metlon, no_domain=.true.)
-     call read_data (tasfile, 'lat', metlat, no_domain=.true.)
-
-     dlon = 0.5*(metlon(1)-metlon(2))
-     dlat = 0.5*(metlat(2)-metlat(1))
-
-     do i = 1, metlatin
-        metlate(i) = metlat(i)-dlat
-     end do
-
-     metlate(metlatin+1) = metlat(metlatin)+dlat
-
-     do i = 1, metlonin
-        metlone(i) = metlon(i)-dlon
-     end do
-     metlone(metlonin+1) = metlon(metlonin)+dlon
-
-     metlone = metlone*DEG_TO_RAD
-     metlate = metlate*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
-
-     call read_data (tasfile, 'time', mos, no_domain=.true.)
-     call read_data (tasfile,'tas_clim', tas(:,:,:), no_domain=.true.)
-
-     do m = 1, nmos
-        call horiz_interp (Interp, tas(:,:,m), ts_avg(:,:,m), verbose=verbose)
-!register diagnostic field
-        id_tas(m) = register_static_field( 'tracers', tasnames(m), axes(1:2), &
-             tasnames(m), 'unitless')
-!send data to diagnostic
-        if (id_tas(m) > 0) then
-           used = send_data(id_tas(m),ts_avg(:,:,m))
-        endif
-     end do
-  else
-     call error_mesg ('isop_xactive_init',  &
-          tasfile, NOTE)
-     call error_mesg ('isop_xactive_init',  &
-          'tasfile does not exist', FATAL)
-
-  endif
-
-!  --- check existence of input file containing climatological (1980-2000) monthly surface down SW radiation --------
-  if (file_exist(dswfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('isop_xactive_init',  &
-          'Reading NetCDF formatted input file: dswrf_monthly_clim_1980-2000.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (dswfile, 'lon', metlon, no_domain=.true.)
-     call read_data (dswfile, 'lat', metlat, no_domain=.true.)
-
-     dlon = 0.5*(metlon(1)-metlon(2))
-     dlat = 0.5*(metlat(2)-metlat(1))
-
-     do i = 1, metlatin
-        metlate(i) = metlat(i)-dlat
-     end do
-
-     metlate(metlatin+1) = metlat(metlatin)+dlat
-
-     do i = 1, metlonin
-        metlone(i) = metlon(i)-dlon
-     end do
-     metlone(metlonin+1) = metlon(metlonin)+dlon
-
-     metlone = metlone*DEG_TO_RAD
-     metlate = metlate*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
-
-     call read_data (dswfile, 'time', mos, no_domain=.true.)
-     call read_data (dswfile,'dswrf_clim', dswrf(:,:,:), no_domain=.true.)
-
-     do m = 1, nmos
-        call horiz_interp (Interp, dswrf(:,:,m), fsds_avg(:,:,m), verbose=verbose)
-!register diagnostic field
-        id_dsw(m) = register_static_field( 'tracers', dswnames(m), axes(1:2), &
-             dswnames(m), 'unitless')
-!send data to diagnostic
-        if (id_dsw(m) > 0) then
-           used = send_data(id_dsw(m),fsds_avg(:,:,m))
-        endif
-     end do
-
-  else
-     call error_mesg ('isop_xactive_init',  &
-          'dswfile does not exist', FATAL)
-  endif
-
-end subroutine isop_xactive_init
-
-!</SUBROUTINE>
-
-!#######################################################################
-
-! <SUBROUTINE NAME="terp_xactive_init">
-!   <OVERVIEW>
-!     Initialize interactive terpene emissions
-!   </OVERVIEW>
-!   <DESCRIPTION>    
-!     Initialize interactive terpene emissions: read in emission capacities,
-!     LAI for each pft, percentage pft in each grid cell, climatological (1980-2000)
-!     monthly mean surface air temp + downward short wave radiation from
-!     Sheffield et al., J. clim, 2006  (obtained from Christine Wiedinmyer, NCAR,
-!     Feb, 2009.  Also allocate and initialize arrays needed for diagnostics, etc.
-!     Updated to MEGAN v2.1 amf/van
-!     Jordan Schnell August, 2017
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     call terp_xactive_init( lonb_mod, latb_mod, axes )
-!   </TEMPLATE>
-
-subroutine terp_xactive_init( lonb, latb, axes )
-
-  real, intent(in), dimension(:,:)   :: lonb,latb
-  integer        , intent(in)  :: axes(4)
-  integer :: nlon, nlat, i, m
-!parameters for input file
-!number of vegetation types for emission capacities
-
-!++amf/van updated to megan2.1 nveg = 5 types above
-! integer, parameter :: nveg=5, npft=17, nmos=12
-!--amf/van
-  integer, parameter :: nlonin = 720, nlatin = 360
-  integer, parameter :: metlonin = 360, metlatin= 180
-  real, dimension(nlonin) :: inlon, lonpft, lonlai
-  real, dimension(nlatin) :: inlat, latpft, latlai
-  real, dimension(nlonin+1) :: inlone, lonpfte, lonlaie
-  real, dimension(nlatin+1) :: inlate, latpfte, latlaie
-  real, dimension(metlonin) :: metlon
-  real, dimension(metlatin) :: metlat
-  real, dimension(metlonin+1) :: metlone
-  real, dimension(metlatin+1) :: metlate
-  integer, dimension(npft) :: pft
-  integer, dimension(nmos) :: mos
-  real :: edgew,edges,edgen,edgee,dlon,dlat
-  character(len=19), parameter :: ecfile = 'INPUT/megan.TERP.nc'       
-  character(len=25), parameter :: laifile = 'INPUT/mksrf_lai.060929.nc'
-  character(len=25), parameter :: pftfile = 'INPUT/mksrf_pft.060929.nc'
-  character(len=35), parameter :: tasfile = 'INPUT/tas_monthly_clim_1980-2000.nc'
-  character(len=37), parameter :: dswfile = 'INPUT/dswrf_monthly_clim_1980-2000.nc'
-  character(len=5) :: vegnames(npft) = (/ 'pft01','pft02','pft03','pft04','pft05','pft06', &
-       'pft07','pft08','pft09','pft10','pft11','pft12','pft13','pft14','pft15','pft16','pft17' /)
-  character(len=5) :: pftnames(npft) = (/ 'pft01','pft02','pft03','pft04','pft05','pft06', &
-       'pft07','pft08','pft09','pft10','pft11','pft12','pft13','pft14','pft15','pft16','pft17' /)
-  character(len=5) :: lainames(npft) = (/ 'lai01','lai02','lai03','lai04','lai05','lai06', &
-       'lai07','lai08','lai09','lai10','lai11','lai12','lai13','lai14','lai15','lai16','lai17' /)
-  character(len=5) :: tasnames(nmos) = (/ 'tas01','tas02','tas03','tas04','tas05','tas06', &
-       'tas07','tas08','tas09','tas10','tas11','tas12' /)
-  character(len=5) :: dswnames(nmos) = (/ 'dsw01','dsw02','dsw03','dsw04','dsw05','dsw06', &
-       'dsw07','dsw08','dsw09','dsw10','dsw11','dsw12' /)
-  integer :: id_ec(npft), id_pft(npft), id_lai(npft), id_tas(nmos), id_dsw(nmos)
-  real, dimension(nlonin,nlatin) :: datain
-  real, dimension(nlonin,nlatin,npft) :: datapft
-  real, dimension(nlonin,nlatin,npft,nmos) :: datalai
-  real, dimension(metlonin,metlatin,nmos) :: tas, dswrf
-  logical :: used
-
-  nlon = size(lonb,1)-1
-  nlat = size(latb,2)-1
-
-!allocate dimensions of array for storing emission capacities (model grid)
-  allocate(ecterp(nlon,nlat,npft))
-  !allocate(pctpft(nlon,nlat,npft))
-  !allocate(mlai(nlon,nlat,npft,nmos))      ! monthly mean LAI
-  allocate(emterp_month(nlon,nlat))        ! emission capacities adjusted w/ monthly gamma_lai and gamma_age
-  allocate(diag_gamma_lai_age_terp(nlon,nlat))
-  allocate(diag_gamma_light_terp(nlon,nlat))
-  allocate(diag_gamma_temp_terp(nlon,nlat))
-  !allocate(diag_climtas(nlon,nlat))
-  !allocate(diag_climfsds(nlon,nlat))
-  !allocate(ts_avg(nlon,nlat,nmos))
-  !allocate(fsds_avg(nlon,nlat,nmos))
-
-!Initalize arrays
-  emterp_month(:,:) = 0.
-  diag_gamma_lai_age_terp(:,:) = 0.
-  diag_gamma_light_terp(:,:) = 0.
-  diag_gamma_temp_terp(:,:) = 0.
-  diag_climtas(:,:) = 0.
-  diag_climfsds(:,:) = 0.
-! always get gamma age / gamma lai at start of run.
-! newmonth = .true.
-
-!  --- check existence of input file containing monoterpene emission capacities --------
-  if (file_exist(ecfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('terp_xactive_init',  &
-          'Reading NetCDF formatted input file: megan.TERP.nc', NOTE)
-
-! amf/van -- new file only has lat lon centers, not boundaries...
-!read in lat & lon boundaries from input file and convert to radians
-!no.domain = true tells it all fields are in one global file (as opposed to e.g., one per cube face)
-     call read_data (ecfile, 'lon', inlon, no_domain=.true.)
-     call read_data (ecfile, 'lat', inlat, no_domain=.true.)
-     inlon = inlon*DEG_TO_RAD
-     inlat = inlat*DEG_TO_RAD
-     dlat = inlat(2)-inlat(1)
-     dlon = inlon(2)-inlon(1)
-     inlone(1:nlonin) = inlon-(dlon/2.)
-     inlone(nlonin+1) = inlon(nlonin)+(dlon/2.)
-     inlate(1:nlatin) = inlat-(dlat/2.)
-     inlate(nlatin+1) = inlat(nlatin)+(dlat/2.)
-
-!     print*, 'lat,lon edges for new megan.isop.nc file: ', inlate, inlone
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, inlone, inlate, lonb, latb )
-
-! loop over vegnames
-     do i = 1, npft
-!register diagnostic field
-        id_ec(i) = register_static_field( 'tracers', vegnames(i), axes(1:2), &
-             vegnames(i), 'molec/cm2/s')
-!read this field
-        call read_data (ecfile, vegnames(i), datain, no_domain=.true.)
-        call horiz_interp (Interp, datain, ecterp(:,:,i), verbose=verbose)
-!send data to diagnostic
-        if (id_ec(i) > 0) then
-           used = send_data(id_ec(i),ecterp(:,:,i))
-        endif
-     end do
-
-  else
-     print*, 'what is ecfile ', ecfile
-     call error_mesg ('terp_xactive_init',  &
-          'ecfile does not exist.', FATAL)
-  endif
-
-!  --- check existence of input file containing % pft --------
-  if (file_exist(pftfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('terp_xactive_init',  &
-          'Reading NetCDF formatted input file: mksrf_pft.060929.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (pftfile, 'lon', lonpft, no_domain=.true.)
-     call read_data (pftfile, 'lat', latpft, no_domain=.true.)
-     call read_data (pftfile, 'EDGEW', edgew, no_domain=.true.)
-     call read_data (pftfile, 'EDGES', edges, no_domain=.true.)
-     call read_data (pftfile, 'EDGEE', edgee, no_domain=.true.)
-     call read_data (pftfile, 'EDGEN', edgen, no_domain=.true.)
-
-     lonpfte(1) = edgew
-     latpfte(1) = edges
-     latpfte(nlatin+1) = edgen
-     lonpfte(nlonin+1) = edgee
-
-     dlon = 2.*(lonpft(1)-edgew)
-     dlat = 2.*(latpft(1)-edges)
-
-     do i = 2, nlatin
-        latpfte(i) = latpfte(i-1)+dlat
-     end do
-
-     do i = 2, nlonin
-        lonpfte(i) = lonpfte(i-1)+dlon
-     end do
-
-     lonpfte = lonpfte*DEG_TO_RAD
-     latpfte = latpfte*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, lonpfte, latpfte, lonb, latb )
-
-     call read_data (pftfile, 'pft', pft, no_domain=.true.)
-
-!read pct_pft field
-     call read_data (pftfile, 'PCT_PFT', datapft, no_domain=.true.)
-
-! loop over vegnames
-     do i = 1, npft
-!register diagnostic field
-        id_pft(i) = register_static_field( 'tracers', pftnames(i), axes(1:2), &
-             pftnames(i), 'unitless')
-        call horiz_interp (Interp, datapft(:,:,i), pctpft(:,:,i), verbose=verbose)
-!send data to diagnostic
-        if (id_pft(i) > 0) then
-           used = send_data(id_pft(i),pctpft(:,:,i))
-        endif
-     end do
-!scale pctpft from percentage to fraction
-     pctpft(:,:,:) = .01 * pctpft(:,:,:)
-
-  else
-     call error_mesg ('terp_xactive_init',  &
-          'pftfile does not exist.', FATAL)
-  endif
-
-!  --- check existence of input file containing monthly lai, for each pft --------
-  if (file_exist(laifile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('terp_xactive_init',  &
-          'Reading NetCDF formatted input file: mksrf_lai.060929.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (laifile, 'lon', lonlai, no_domain=.true.)
-     call read_data (laifile, 'lat', latlai, no_domain=.true.)
-
-! get lat/lon edges
-     lonlaie(1) = edgew
-     latlaie(1) = edges
-     latlaie(nlatin+1) = edgen
-     lonlaie(nlonin+1) = edgee
-
-     dlon = 2.*(lonlai(1)-edgew)
-     dlat = 2.*(latlai(1)-edges)
-
-     do i = 2, nlatin
-        latlaie(i) = latlaie(i-1)+dlat
-     end do
-
-     do i = 2, nlonin
-        lonlaie(i) = lonlaie(i-1)+dlon
-     end do
-
-     lonlaie = lonlaie*DEG_TO_RAD
-     latlaie = latlaie*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, lonlaie, latlaie, lonb, latb )
-
-! read in pft and time dimensions from lai file
-     call read_data (laifile, 'time', mos, no_domain=.true.)
-
-! loop over vegnames
-     do i = 1, npft
-        call read_data (laifile,lainames(i),datalai(:,:,i,:), no_domain=.true.)
-        do m = 1, nmos
-            call horiz_interp (Interp, datalai(:,:,i,m), mlai(:,:,i,m), verbose=verbose)
-!store diagnostics for one month only - choose July for now
-            if (m .eq. 7) then
-!register diagnostic field
-               id_lai(i) = register_static_field( 'tracers', lainames(i), axes(1:2), &
-                    lainames(i), 'unitless')
-!send data to diagnostic
-               if (id_lai(i) > 0) then
-                  used = send_data(id_lai(i),mlai(:,:,i,m))
-               endif
-            endif
-         end do
-      end do
-
-   else
-      call error_mesg ('terp_xactive_init',  &
-           'laifile does not exist', FATAL)
-   endif
-
-!  --- check existence of input file containing climatological (1980-2000) monthly air surface temp --------
-  if (file_exist(tasfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('terp_xactive_init',  &
-          'Reading NetCDF formatted input file: tas_monthly_clim_1980-2000.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (tasfile, 'lon', metlon, no_domain=.true.)
-     call read_data (tasfile, 'lat', metlat, no_domain=.true.)
-
-     dlon = 0.5*(metlon(1)-metlon(2))
-     dlat = 0.5*(metlat(2)-metlat(1))
-
-     do i = 1, metlatin
-        metlate(i) = metlat(i)-dlat
-     end do
-
-     metlate(metlatin+1) = metlat(metlatin)+dlat
-
-     do i = 1, metlonin
-        metlone(i) = metlon(i)-dlon
-     end do
-     metlone(metlonin+1) = metlon(metlonin)+dlon
-
-     metlone = metlone*DEG_TO_RAD
-     metlate = metlate*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
-
-     call read_data (tasfile, 'time', mos, no_domain=.true.)
-     call read_data (tasfile,'tas_clim', tas(:,:,:), no_domain=.true.)
-
-     do m = 1, nmos
-        call horiz_interp (Interp, tas(:,:,m), ts_avg(:,:,m), verbose=verbose)
-!register diagnostic field
-        id_tas(m) = register_static_field( 'tracers', tasnames(m), axes(1:2), &
-             tasnames(m), 'unitless')
-!send data to diagnostic
-        if (id_tas(m) > 0) then
-           used = send_data(id_tas(m),ts_avg(:,:,m))
-        endif
-     end do
-  else
-     call error_mesg ('terp_xactive_init',  &
-          tasfile, NOTE)
-     call error_mesg ('terp_xactive_init',  &
-          'tasfile does not exist', FATAL)
-
-  endif
-
-!  --- check existence of input file containing climatological (1980-2000) monthly surface down SW radiation --------
-  if (file_exist(dswfile)) then
-
-!set up for input grid
-     if(mpp_pe() == mpp_root_pe()) call error_mesg ('terp_xactive_init',  &
-          'Reading NetCDF formatted input file: dswrf_monthly_clim_1980-2000.nc', NOTE)
-
-!read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (dswfile, 'lon', metlon, no_domain=.true.)
-     call read_data (dswfile, 'lat', metlat, no_domain=.true.)
-
-     dlon = 0.5*(metlon(1)-metlon(2))
-     dlat = 0.5*(metlat(2)-metlat(1))
-
-     do i = 1, metlatin
-        metlate(i) = metlat(i)-dlat
-     end do
-
-     metlate(metlatin+1) = metlat(metlatin)+dlat
-
-     do i = 1, metlonin
-        metlone(i) = metlon(i)-dlon
-     end do
-     metlone(metlonin+1) = metlon(metlonin)+dlon
-
-     metlone = metlone*DEG_TO_RAD
-     metlate = metlate*DEG_TO_RAD
-
-     call horiz_interp_init
-     call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
-
-     call read_data (dswfile, 'time', mos, no_domain=.true.)
-     call read_data (dswfile,'dswrf_clim', dswrf(:,:,:), no_domain=.true.)
-
-     do m = 1, nmos
-        call horiz_interp (Interp, dswrf(:,:,m), fsds_avg(:,:,m), verbose=verbose)
-!register diagnostic field
-        id_dsw(m) = register_static_field( 'tracers', dswnames(m), axes(1:2), &
-             dswnames(m), 'unitless')
-!send data to diagnostic
-        if (id_dsw(m) > 0) then
-           used = send_data(id_dsw(m),fsds_avg(:,:,m))
-        endif
-     end do
-
-  else
-     call error_mesg ('terp_xactive_init',  &
-          'dswfile does not exist', FATAL)
-  endif
-
-end subroutine terp_xactive_init
-
-!</SUBROUTINE>
-
-
-!#######################################################################
-
-! <SUBROUTINE NAME="calc_xactive_isop">
-!   <OVERVIEW>
-!     Calculates interactive isoprene emissions
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Calculates interactive isoprene emissions using algorithms from
-!      PCEEA MEGAN model in Guenther, ACP, 2006.
-!      Note - gamma soil moisture is assumed constant (at one)
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     call calc_xactive_isop( index, Time, Time_next,lon, lat, oro, pwtsfc, is, js, &
-!                             area, land, tsfcair, flux_sw_down_vis, &
-!                             coszen, emis,   id_gamma_lai_age, &
-!                             id_gamma_temp, id_gamma_light, &
-!                             id_climtas, id_climfsds, id_emis_diag )
-!   </TEMPLATE>
-
-subroutine calc_xactive_isop( index, Time, Time_next,lon, lat, oro, pwtsfc, is, js, &
-                              area, land, tsfcair, flux_sw_down_vis, &
-                              coszen, emis,   id_gamma_lai_age, &
-                              id_gamma_temp, id_gamma_light, &
-                              id_climtas, id_climfsds, id_emis_diag )
-
-   integer,intent(in) :: index
-   type(time_type),intent(in) :: Time, Time_next
-   real, intent(in), dimension(:,:) :: lon, lat
-   real, intent(in), dimension(:,:) :: pwtsfc
-   integer, intent(in) :: is, js
-   real, intent(in), dimension(:,:) :: area    ! grid box area (m^2)
-   real, intent(in), dimension(:,:) :: land    ! land fraction
-   real, intent(in), dimension(:,:) :: oro     ! land = 1; ocean = 0
-   real, intent(in), dimension(:,:) :: tsfcair   ! surface temperature (K)
-   real, intent(in), dimension(:,:) :: flux_sw_down_vis !W/m2 visible (direct+diffuse) sfc flux
-   real, intent(in), dimension(:,:) :: coszen  ! cosine of solar zenith angle
-   real, dimension(:,:),intent(out) :: emis  !
-   integer, intent(in), optional :: id_gamma_lai_age, id_gamma_temp, id_gamma_light
-   integer, intent(in), optional :: id_climtas, id_climfsds
-   integer, intent(in), optional :: id_emis_diag
-   real    :: calday
-   type(time_type) :: Year_t
-   integer :: yr, mo, day, hr, min, sec
-   logical :: used
-   integer :: ie, je
-
-   ie = is + size(land,1) -1
-   je = js + size(land,2) -1
-
-   call get_date(Time,yr,mo,day,hr,min,sec)  !model GMT
-
-!update gamma age and gamma once per month
-   if (isop_newmonth) then
-!     if( mpp_pe() == mpp_root_pe() ) then
-!        print *, 'pts_proc, oldmonth', pts_processed, isop_oldmonth
-!        print *, 'time', yr,mo,day,hr,min,sec
-!        print*, 'AMF calc_xactive_isop: calling get_monthly_gammas'
-!        print*, 'id_gamma_lai_age = ', id_gamma_lai_age
-!        print*, 'sum(diag_gamma_lai_age', sum(diag_gamma_lai_age(:,:))
-!     end if
-
-      call get_monthly_gammas_isop( lon, lat, oro, is, js, mo )
-!     if( mpp_pe() == mpp_root_pe() ) then
-!        print *, 'pts_proc, oldmonth AFTER', pts_processed, isop_oldmonth
-!        print*, 'AMF calc_xactive_isop: after call to  get_monthly_gammas'
-!        print*, 'id_gamma_lai_age = ', id_gamma_lai_age
-!        print*, 'AMF sum(diag_gamma_lai_age)', sum(diag_gamma_lai_age(:,:))
-!     end if
-
-   end if
-
-!Get Julian date (fraction) = calday
-   Year_t = set_date(yr,1,1,0,0,0)
-   calday = time_type_to_real( Time-Year_t) / SECONDS_PER_DAY
-
-!  if( mpp_pe() == mpp_root_pe() ) then
-!     print*, 'AMF: calday = ', calday
-!  end if
-
-! get isoprene emissions for this timestep
-   call get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vis, &
-                       coszen, area, pwtsfc, emis )
-
-!accumulate isoprene emissions in diagnostic - units should be molec/cm2/s
-   if (present(id_emis_diag)) then
-      if (id_emis_diag > 0) then
-         used = send_data( id_emis_diag, emis, Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-   if (present(id_gamma_light)) then
-      if (id_gamma_light > 0) then
-         used = send_data( id_gamma_light, diag_gamma_light_isop(is:ie,js:je), Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-   if (present(id_gamma_temp)) then
-      if (id_gamma_temp > 0) then
-         used = send_data( id_gamma_temp, diag_gamma_temp_isop(is:ie,js:je), Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-   if (present(id_climtas)) then
-      if (id_climtas > 0) then
-         used = send_data( id_climtas, diag_climtas(is:ie,js:je), Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-   if (present(id_climfsds)) then
-      if (id_climfsds > 0) then
-         used = send_data( id_climfsds, diag_climfsds(is:ie,js:je), Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-!store combined diagnostic of gamma_lai * gamma_age, summed over each vegetation type
-   if (present(id_gamma_lai_age)) then
-      if (id_gamma_lai_age > 0) then
-!         if( mpp_pe() == mpp_root_pe() ) then
-!            print*, 'AMF calc_xactive_isop: after call to send_data for glaiage'
-!            print*, 'id_gamma_lai_age = ', id_gamma_lai_age
-!            print*, 'sum(diag_gamma_lai_age', sum(diag_gamma_lai_age(:,:))
-!         end if
-         used = send_data( id_gamma_lai_age, diag_gamma_lai_age_isop(is:ie,js:je), Time_next, is_in=is, js_in=js)
-
-      end if
-   end if
-
-end subroutine calc_xactive_isop
-
-!</SUBROUTINE>
-
-
-!#######################################################################
-
-! <SUBROUTINE NAME="calc_xactive_terp">
-!   <OVERVIEW>
-!     Calculates interactive monoterpene emissions
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Calculates interactive monoterpene emissions using algorithms from
-!      PCEEA MEGAN model in Guenther, ACP, 2006.
-!      Note - gamma soil moisture is assumed constant (at one)
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     call calc_xactive_terp( index, Time, Time_next,lon, lat, oro, pwtsfc, is, js, &
-!                             area, land, tsfcair, flux_sw_down_vis, &
-!                             coszen, emis,   id_gamma_lai_age, &
-!                             id_gamma_temp, id_gamma_light, &
-!                             id_emis_diag )
-!   </TEMPLATE>
-
-subroutine calc_xactive_terp( index, Time, Time_next,lon, lat, oro, pwtsfc, is, js, &
-                              area, land, tsfcair, flux_sw_down_vis, &
-                              coszen, emis,   id_gamma_lai_age, &
-                              id_gamma_temp, id_gamma_light, &
-                              id_emis_diag )
-
-   integer,intent(in) :: index
-   type(time_type),intent(in) :: Time, Time_next
-   real, intent(in), dimension(:,:) :: lon, lat
-   real, intent(in), dimension(:,:) :: pwtsfc
-   integer, intent(in) :: is, js
-   real, intent(in), dimension(:,:) :: area    ! grid box area (m^2)
-   real, intent(in), dimension(:,:) :: land    ! land fraction
-   real, intent(in), dimension(:,:) :: oro     ! land = 1; ocean = 0
-   real, intent(in), dimension(:,:) :: tsfcair   ! surface temperature (K)
-   real, intent(in), dimension(:,:) :: flux_sw_down_vis !W/m2 visible (direct+diffuse) sfc flux
-   real, intent(in), dimension(:,:) :: coszen  ! cosine of solar zenith angle
-   real, dimension(:,:),intent(out) :: emis  !
-   integer, intent(in), optional :: id_gamma_lai_age, id_gamma_temp, id_gamma_light
-   integer, intent(in), optional :: id_emis_diag
-   real    :: calday
-   type(time_type) :: Year_t
-   integer :: yr, mo, day, hr, min, sec
-   logical :: used
-   integer :: ie, je
-
-   ie = is + size(land,1) -1
-   je = js + size(land,2) -1
-
-   call get_date(Time,yr,mo,day,hr,min,sec)  !model GMT
-
-!update gamma age and gamma once per month
-   if (terp_newmonth) then
-!     if( mpp_pe() == mpp_root_pe() ) then
-!        print *, 'pts_proc, oldmonth', pts_processed, terp_oldmonth
-!        print *, 'time', yr,mo,day,hr,min,sec
-!        print*, 'AMF calc_xactive_terp: calling get_monthly_gammas'
-!        print*, 'id_gamma_lai_age = ', id_gamma_lai_age
-!        print*, 'sum(diag_gamma_lai_age', sum(diag_gamma_lai_age(:,:))
-!     end if
-
-      call get_monthly_gammas_terp( lon, lat, oro, is, js, mo )
-!     if( mpp_pe() == mpp_root_pe() ) then
-!        print *, 'pts_proc, oldmonth AFTER', pts_processed, terp_oldmonth
-!        print*, 'AMF calc_xactive_terp: after call to  get_monthly_gammas'
-!        print*, 'id_gamma_lai_age = ', id_gamma_lai_age
-!        print*, 'AMF sum(diag_gamma_lai_age)', sum(diag_gamma_lai_age(:,:))
-!     end if
-
-   end if
-
-!Get Julian date (fraction) = calday
-   Year_t = set_date(yr,1,1,0,0,0)
-   calday = time_type_to_real( Time-Year_t) / SECONDS_PER_DAY
-
-!  if( mpp_pe() == mpp_root_pe() ) then
-!     print*, 'AMF: calday = ', calday
-!  end if
-
-! get monoterpene emissions for this timestep
-   call get_terp_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vis, &
-                       coszen, area, pwtsfc, emis )
-
-!accumulate monoterpene emissions in diagnostic - units should be molec/cm2/s
-   if (present(id_emis_diag)) then
-      if (id_emis_diag > 0) then
-         used = send_data( id_emis_diag, emis, Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-   if (present(id_gamma_light)) then
-      if (id_gamma_light > 0) then
-         used = send_data( id_gamma_light, diag_gamma_light_terp(is:ie,js:je), Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-   if (present(id_gamma_temp)) then
-      if (id_gamma_temp > 0) then
-         used = send_data( id_gamma_temp, diag_gamma_temp_terp(is:ie,js:je), Time_next, is_in=is, js_in=js)
-      end if
-   end if
-
-!store combined diagnostic of gamma_lai * gamma_age, summed over each vegetation type
-   if (present(id_gamma_lai_age)) then
-      if (id_gamma_lai_age > 0) then
-!         if( mpp_pe() == mpp_root_pe() ) then
-!            print*, 'AMF calc_xactive_isop: after call to send_data for glaiage'
-!            print*, 'id_gamma_lai_age = ', id_gamma_lai_age
-!            print*, 'sum(diag_gamma_lai_age', sum(diag_gamma_lai_age(:,:))
-!         end if
-         used = send_data( id_gamma_lai_age, diag_gamma_lai_age_terp(is:ie,js:je), Time_next, is_in=is, js_in=js)
-
-      end if
-   end if
-
-end subroutine calc_xactive_terp
-
-!</SUBROUTINE>
-
-
-
-!#######################################################################
-
-! <SUBROUTINE NAME="get_isop_emis">
-!   <OVERVIEW>
-!     Get isop emissions for this time step
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     amf Feb 2009
-!     This subroutine calculates isoprene emissions according to
-!     the MEGAN PCEEA model [Guenther et al., ACP 6, 3181-3210, 2006.]
-!     as implemented in mozart4_v4.5 by J.-F. Lamarque and G. Pfister
-!     (bvoc_emissions mozart routine)
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vis, &
-!                          coszen, area, pwtsfc, emis )
-!   </TEMPLATE>
-!   <IN NAME="lon" TYPE="real" DIM="(:,:)">
-!      longitude value for each i,j grid cell
-!   </IN>
-!   <IN NAME="lat" TYPE="real" DIM="(:,:)">
-!      latitude value for each i,j grid cell
-!   </IN>
-!   <IN NAME="is" TYPE="integer">
-!      beginning i for location of this group of
-!      grid cells within global grid, used in diag manager
-!   </IN>
-!   <IN NAME="js" TYPE="integer">
-!      beginning j for location of this group of
-!      grid cells within global grid, used in diag manager
-!   </IN>
-!   <IN NAME="calday" TYPE="real">
-!      Fractional Julian day of year (model GMT)
-!   </IN>
-!   <IN NAME="mo" TYPE="integer">
-!     current month
-!   </IN>
-!   <IN NAME="tsfcair" TYPE="real" DIM="(:,:)">
-!      surface air temperature (K)
-!   </IN>
-!   <IN NAME="flux_sw_down_vis" TYPE="real" DIM="(:,:)">
-!      downward visible shortwave radiation (W/m2)
-!   </IN>
-!   <IN NAME="coszen" TYPE="real" DIM="(:,:)">
-!     Cosine of the solar zenith angle
-!   </IN>
-!   <IN NAME="area" TYPE="real" DIM="(:,:)">
-!     Grid cell area (m^2)
-!   </IN>
-!   <IN NAME="pwtsfc" TYPE="real" DIM="(:,:)">
-!     kg/m2 of air in the surface layer
-!   </IN>
-!   <IN NAME="emis" TYPE="real" DIM="(:,:)">
-!     isoprene emissions for this timestep
-!     (molec/cm2/s)
-!   </IN>
-
-subroutine get_isop_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vis, &
-                          coszen, area, pwtsfc, emis )
-!-------------------------------------------------------------------------------------
-!       ... biogenic voc isoprene emissions
-!-------------------------------------------------------------------------------------
-
-      implicit none
-
-      real, intent(in), dimension(:,:) :: lon, lat
-      integer, intent(in) :: is, js, mo
-      real, intent(in)    :: calday
-      real, intent(in), dimension(:,:)  :: coszen
-      real, intent(in), dimension(:,:)  :: tsfcair        ! surface temperature
-      real, intent(in), dimension(:,:)  :: flux_sw_down_vis !W/m2 direct visible sfc flux
-      real, intent(in), dimension(:,:)  :: area      ! grid box area (m^2)
-      real, intent(in), dimension(:,:)  :: pwtsfc    ! kg/m2 air in surface layer
-      real, intent(out), dimension(:,:) :: emis      ! output emissions for this time step
-
-!-------------------------------------------------------------------------------------
-!       ... local variables
-!-------------------------------------------------------------------------------------
-      real, parameter :: ctm1   =  80.   ! p 3192 Guenther et al ACP 2006
-      real, parameter :: ctm2   = 200.   ! same as above
-      real, parameter :: const0 = 4.766    ! to convert W/m2 to micromoles/m2/s for PAR (C. Wiedinmyer, 2/18/09)
-      real, parameter :: rho_iso = 0.96  ! to account for deposition to canopy
-      real, parameter :: gamma_sm = 1.   ! soil moisture - eventually estimate as f(sm, wilting point)
-
-      integer :: i, j, nlon, nlat
-      real    :: ppfd, x, Eopt, Ptoa, phi
-      real    :: Topt
-      real    :: fac_par, fac_tmp
-      real    :: Tdaily, Pdaily
-      real    :: t_diff
-
-      nlon = size(lon,1)
-      nlat = size(lat,2)
-      do j = 1,nlat
-         do i = 1,nlon
-
-!-------------------------------------------------------------------------------------
-!       ... PAR correction
-!                Guenther et al ACP 2006 Eqns 11, 12, 13
-!           Note - this does not include separation of sunny/shady - could add.
-!-------------------------------------------------------------------------------------
-!Currently tests to see if we have read in the climatological surface air & downward shortwave
-! could eventually change to use values saved during run (e.g., previous week to month values for
-! each grid cell)
-!Note the factor of 0.5 to convert from total shortwave to PPFD
-! vs. AM3 which has visible component available.
-         if( has_ts_avg ) then
-            Pdaily =  fsds_avg(i+is-1,j+js-1,mo) * const0 * 0.5
-            Tdaily  = ts_avg(i+is-1,j+js-1,mo)
-         else
-            Pdaily = Pdaily_clim * const0 * 0.5
-            Tdaily = Tdaily_clim
-         end if
-         ppfd   = flux_sw_down_vis(i,j) * const0
-
-         Ptoa = 3000. + 99.* cos( twopi*(calday - 10.)/365. )    !Guenther et al Eqn 13
-
-
-! Guenther eqns 11a/b
-         if (coszen(i,j) <= 0.) then
-            fac_par = 0.
-         else
-            phi = ppfd / (coszen(i,j)*Ptoa)   ! Eqn 12
-
-!-------------------------------------------------------------------------------------
-!  phi can get > 1 and then fac_par gets negative with the above equation
-!  set phi=1 if phi> 1 as recommended by Alex (MZ4 code)
-!-------------------------------------------------------------------------------------
-            phi = min( phi,1. )
-            !Eqn 11b - note typo in MZ4 - 2.49 instead of 2.46
-            fac_par = coszen(i,j)*(2.46 * (1. + .0005 *(Pdaily - 400.))*phi - .9*phi*phi)
-         end if
-
-!-------------------------------------------------------------------------------------
-!       ... temperature correction  equation 14
-!           Topt from equation 8
-!           p. 3192 Guenther et al 2006
-!-------------------------------------------------------------------------------------
-         t_diff  = Tdaily - Tdaily_clim
-         Topt    = 313. + 0.6*t_diff                     !Eqn 8
-         x       = (tsfcair(i,j) - Topt)/(tsfcair(i,j)*Topt*.00831)
-         Eopt    = 1.75 * exp( .08*t_diff )
-!Eqn 14 --  gammaT
-         fac_tmp = Eopt * (ctm2 * exp( ctm1*x ))/(ctm2 - ctm1*(1. - exp( ctm2*x )))
-
-!-------------------------------------------------------------------------------------
-!     emisop_month contains regridded potential emissions including
-!                  application of gamma LAI and gamma AGE for this month
-!     ... change units from microg/m2/h to mol/cm2/s
-!      units of MZ4 input file incorrectly labled as mol/cm2/s...
-!-------------------------------------------------------------------------------------
-         emis(i,j) = emisop_month(i+is-1,j+js-1) * fac_par * fac_tmp *  2.46e8
-         diag_gamma_temp_isop(i+is-1,j+js-1) = fac_tmp
-         diag_gamma_light_isop(i+is-1,j+js-1) = fac_par
-         diag_climtas(i+is-1,j+js-1) = Tdaily
-         diag_climfsds(i+is-1,j+js-1) = Pdaily
-
-!       if( mpp_pe() == mpp_root_pe() ) then
-!          print*, 'ISOPRENE: i,j = ', i,j
-!          print*, 'gamT,gamL = ', fac_tmp,fac_par
-!          print*, 'emis = ', emis(i,j)
-!       end if
-!           print*, 'AMF: i,j,gt,gl,emis = ', i,j,fac_tmp,fac_par, emis(i,j)
-!           print*, 'AMF: calday = ', calday
-!        endif
-      end do !lon
-   end do !lat
-
-!-------------------------------------------------------------------------------------
-!        AMF - apply uniform canopy deposition and soil moisture corrections
-!              from Guenther et al 2006 - could eventually parameterize these
-!                    (neither included in MZ4)
-!-------------------------------------------------------------------------------------
-   emis(:,:) =  emis(:,:) * rho_iso * gamma_sm
-
-end subroutine get_isop_emis
-!</SUBROUTINE>
-
-!#######################################################################
-
-! <SUBROUTINE NAME="get_terp_emis">
-!   <OVERVIEW>
-!     Get monoterpene emissions for this time step
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Jordan Schnell August 2017
-!     This subroutine calculates monoterpene emissions according to
-!     the MEGAN PCEEA model [Guenther et al., ACP 6, 3181-3210, 2006.]
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     get_terp_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vis, &
-!                          coszen, area, pwtsfc, emis )
-!   </TEMPLATE>
-!   <IN NAME="lon" TYPE="real" DIM="(:,:)">
-!      longitude value for each i,j grid cell
-!   </IN>
-!   <IN NAME="lat" TYPE="real" DIM="(:,:)">
-!      latitude value for each i,j grid cell
-!   </IN>
-!   <IN NAME="is" TYPE="integer">
-!      beginning i for location of this group of
-!      grid cells within global grid, used in diag manager
-!   </IN>
-!   <IN NAME="js" TYPE="integer">
-!      beginning j for location of this group of
-!      grid cells within global grid, used in diag manager
-!   </IN>
-!   <IN NAME="calday" TYPE="real">
-!      Fractional Julian day of year (model GMT)
-!   </IN>
-!   <IN NAME="mo" TYPE="integer">
-!     current month
-!   </IN>
-!   <IN NAME="tsfcair" TYPE="real" DIM="(:,:)">
-!      surface air temperature (K)
-!   </IN>
-!   <IN NAME="flux_sw_down_vis" TYPE="real" DIM="(:,:)">
-!      downward visible shortwave radiation (W/m2)
-!   </IN>
-!   <IN NAME="coszen" TYPE="real" DIM="(:,:)">
-!     Cosine of the solar zenith angle
-!   </IN>
-!   <IN NAME="area" TYPE="real" DIM="(:,:)">
-!     Grid cell area (m^2)
-!   </IN>
-!   <IN NAME="pwtsfc" TYPE="real" DIM="(:,:)">
-!     kg/m2 of air in the surface layer
-!   </IN>
-!   <IN NAME="emis" TYPE="real" DIM="(:,:)">
-!     isoprene emissions for this timestep
-!     (molec/cm2/s)
-!   </IN>
-
-subroutine get_terp_emis( lon, lat, is, js, calday, mo, tsfcair, flux_sw_down_vis, &
-                          coszen, area, pwtsfc, emis )
-!-------------------------------------------------------------------------------------
-!       ... biogenic voc monoterpene emissions
-!-------------------------------------------------------------------------------------
-
-      implicit none
-
-      real, intent(in), dimension(:,:) :: lon, lat
-      integer, intent(in) :: is, js, mo
-      real, intent(in)    :: calday
-      real, intent(in), dimension(:,:)  :: coszen
-      real, intent(in), dimension(:,:)  :: tsfcair        ! surface temperature
-      real, intent(in), dimension(:,:)  :: flux_sw_down_vis !W/m2 direct visible sfc flux
-      real, intent(in), dimension(:,:)  :: area      ! grid box area (m^2)
-      real, intent(in), dimension(:,:)  :: pwtsfc    ! kg/m2 air in surface layer
-      real, intent(out), dimension(:,:) :: emis      ! output emissions for this time step
-
-!-------------------------------------------------------------------------------------
-!       ... local variables
-!-------------------------------------------------------------------------------------
-      real, parameter :: ctm1   =  80.   ! p 3192 Guenther et al ACP 2006
-      real, parameter :: ctm2   = 200.   ! same as above
-      real, parameter :: const0 = 4.766    ! to convert W/m2 to micromoles/m2/s for PAR (C. Wiedinmyer, 2/18/09)
-      real, parameter :: rho_iso = 0.96  ! to account for deposition to canopy
-      real, parameter :: gamma_sm = 1.   ! soil moisture - eventually estimate as f(sm, wilting point)
-      real, parameter :: LDF = 0.6       ! Light dependency factor
-      real, parameter :: BETA = 0.1      ! Coef for Light independent frac.
-
-      integer :: i, j, nlon, nlat
-      real    :: ppfd, x, Eopt, Ptoa, phi
-      real    :: Topt
-      real    :: fac_par, fac_tmp, fac_tmpI
-      real    :: Tdaily, Pdaily
-      real    :: t_diff
-
-      nlon = size(lon,1)
-      nlat = size(lat,2)
-      do j = 1,nlat
-         do i = 1,nlon
-
-!-------------------------------------------------------------------------------------
-!       ... PAR correction
-!                Guenther et al ACP 2006 Eqns 11, 12, 13
-!           Note - this does not include separation of sunny/shady - could add.
-!-------------------------------------------------------------------------------------
-!Currently tests to see if we have read in the climatological surface air & downward shortwave
-! could eventually change to use values saved during run (e.g., previous week to month values for
-! each grid cell)
-!Note the factor of 0.5 to convert from total shortwave to PPFD
-! vs. AM3 which has visible component available.
-         if( has_ts_avg ) then
-            Pdaily =  fsds_avg(i+is-1,j+js-1,mo) * const0 * 0.5
-            Tdaily  = ts_avg(i+is-1,j+js-1,mo)
-         else
-            Pdaily = Pdaily_clim * const0 * 0.5
-            Tdaily = Tdaily_clim
-         end if
-         ppfd   = flux_sw_down_vis(i,j) * const0
-
-         Ptoa = 3000. + 99.* cos( twopi*(calday - 10.)/365. )    !Guenther et al Eqn 13
-
-
-! Guenther eqns 11a/b
-         if (coszen(i,j) <= 0.) then
-            fac_par = 0.
-         else
-            phi = ppfd / (coszen(i,j)*Ptoa)   ! Eqn 12
-
-!-------------------------------------------------------------------------------------
-!  phi can get > 1 and then fac_par gets negative with the above equation
-!  set phi=1 if phi> 1 as recommended by Alex (MZ4 code)
-!-------------------------------------------------------------------------------------
-            phi = min( phi,1. )
-            !Eqn 11b - note typo in MZ4 - 2.49 instead of 2.46
-            fac_par = coszen(i,j)*(2.46 * (1. + .0005 *(Pdaily - 400.))*phi - .9*phi*phi)
-         end if
-
-!-------------------------------------------------------------------------------------
-!       ... temperature correction  equation 14
-!           Topt from equation 8
-!           p. 3192 Guenther et al 2006
-!-------------------------------------------------------------------------------------
-         t_diff  = Tdaily - Tdaily_clim
-         Topt    = 313. + 0.6*t_diff                     !Eqn 8
-         x       = (tsfcair(i,j) - Topt)/(tsfcair(i,j)*Topt*.00831)
-         Eopt    = 1.83 * exp( .08*t_diff )
-!Eqn 14 --  gammaT
-         fac_tmp  = Eopt * (ctm2 * exp( ctm1*x ))/(ctm2 - ctm1*(1. - exp( ctm2*x )))
-         fac_tmpI = exp(BETA * (tsfcair(i,j) - Tdaily_clim)) 
-
-!-------------------------------------------------------------------------------------
-!     emterp_month contains regridded potential emissions including
-!                  application of gamma LAI and gamma AGE for this month
-!     ... change units from microg/m2/h to mol/cm2/s
-!      units of MZ4 input file incorrectly labled as mol/cm2/s...
-!-------------------------------------------------------------------------------------
-         emis(i,j) = emterp_month(i+is-1,j+js-1) * ((1. - LDF) + LDF * fac_par) &
-                     * ((1. - LDF) * fac_tmpI + LDF * fac_tmp) *  1.23e8
-         diag_gamma_temp_terp(i+is-1,j+js-1) = ((1. - LDF) * fac_tmpI + LDF*fac_tmp)
-         diag_gamma_light_terp(i+is-1,j+js-1) = fac_par
-         diag_climtas(i+is-1,j+js-1) = Tdaily
-         diag_climfsds(i+is-1,j+js-1) = Pdaily
-
-!         if( mpp_pe() == mpp_root_pe() ) then
-!            print*, 'TERPENE: i,j = ', i,j
-!            print*, 'gamT,gamL = ', fac_tmp,fac_par
-!            print*, 'emis = ', emis(i,j)
-!         end if
-
-      end do !lon
-   end do !lat
-
-   emis(:,:) =  emis(:,:) * rho_iso * gamma_sm
-
-end subroutine get_terp_emis
-!</SUBROUTINE>
-
-
-
-!#######################################################################
-
-! <SUBROUTINE NAME="get_monthly_gammas_isop">
-!   <OVERVIEW>
-!     Each month, update isoprene emissions to include scaling from
-!     gamma_age and gamma_lai
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     amf Feb 2009
-!     This subroutine calculates gamma_age and gamma_lai and applies them
-!     for each LAI and PFT, aggregating to the 5 vegetation types for the
-!     isoprene emission capacities, following
-!     the MEGAN PCEEA model [Guenther et al., ACP 6, 3181-3210, 2006.]
-!     as implemented in mozart4_v4.5 by J.-F. Lamarque and G. Pfister
-!     (interp_map_bvoc mozart routine)
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     get_monthly_gammas_isop( lon, lat, oro, is, js, &
-!                                   month )
-!   </TEMPLATE>
-
-!removed fsds since not used...
-subroutine get_monthly_gammas_isop( lon, lat, oro, is, js, &
-                                   month )
-
-      implicit none
-
-      real, intent(in), dimension(:,:) :: lon, lat
-      real, intent(in), dimension(:,:) :: oro     ! land = 1; ocean = 0
-      integer, intent(in) :: is, js
-      integer, intent(in)      :: month
-
-!-------------------------------------------------------------------------------------
-!       ... local variables
-!-------------------------------------------------------------------------------------
-      integer                  :: i, j, n, nlon, nlat, nl, nu
-      integer                  :: ie, je
-      integer                  :: pft_li(nveg)
-      integer                  :: pft_lu(nveg)
-!      real                     :: wrk_area
-      real                     :: total_iso
-      real                     :: work_iso(nveg)    !amf/van
-      real                     :: ts_wrk
-      real                     :: total_work_gamma
-
-!++amf/van
-      real                     :: work_gamma(nveg)  ! for diagnostic
-      real                     :: lai_fac(npft)  ! npft = 17 (mksrf files)
-      real                     :: lai_work(npft,nmos)
-      logical                  :: age_work(npft)
-!--amf/van
-
-      nlon = size(lon,1)
-      nlat = size(lat,2)
-      ie = is + nlon -1
-      je = js + nlat -1
-
-!       if( mpp_pe() == mpp_root_pe() ) then
-!          print*, 'AMF get_monthly_gammas: made it here'
-!       end if
-
-!++amf/van
-      age_work(:) = .true.
-      age_work((/2,3,5,6,10/)) = .false.
-
-! hardwired indices for matching pfts to ecs
-! pfts 2-4   fine leaf
-! pfts 5-9   broadleaf
-! pfts 10-12 shrubs
-! pfts 13-15 grass
-! pfts 16-17 crops
-
-      pft_li(:) = (/ 2,5,10,13,16 /)
-      pft_lu(1:nveg-1) = (/ 4,9,12,15 /)
-      pft_lu(nveg) = npft
-!--amf/van
-      do j = js,je
-         do i = is,ie
-            total_iso = 0.
-            total_work_gamma = 0.
-            if (has_ts_avg) then
-              ts_wrk = ts_avg(i,j,month)
-            end if
-
-!-----------------------------------------------------------------
-!       ... no emissions for ocean grid point
-!-----------------------------------------------------------------
-            if( oro(i-is+1,j-js+1) .eq. 1 ) then
-
-!++amv/van
-            lai_work(:,:) = mlai(i,j,:,:)
-            lai_fac(:) = calc_gamma_lai_age_isop( lai_work, ts_wrk, month, age_work)
-
-            do n = 1, nveg
-              nl = pft_li(n)  !beginning index for the pfts that fall within this veg type for n types in ecisop
-              nu = pft_lu(n)  !end index
-              work_iso(n) = dot_product( lai_fac (nl:nu), pctpft(i,j,nl:nu)) * ecisop(i,j,n)
-              work_gamma(n) = dot_product( lai_fac (nl:nu), pctpft(i,j,nl:nu))
-            end do
-            total_work_gamma = total_work_gamma + sum(work_gamma)
-            total_iso = total_iso + sum(work_iso)
-
-!--amf/van
-              emisop_month(i,j) = total_iso
-              diag_gamma_lai_age_isop(i,j) = total_work_gamma
-!             if( mpp_pe() == mpp_root_pe() ) then
-!                print*, 'AMF: i,j,oro, work_iso, emis ', i,j,oro(i,j), work_iso, emisop_month(i,j)
-!             end if
-          end if ! land box
-        end do !lon
-      end do !lat
-
-end subroutine get_monthly_gammas_isop
-!</SUBROUTINE
-
-
-!#######################################################################
-
-! <FUNCTION NAME="calc_gamma_lai_age_isop">
-!   <OVERVIEW>
-!     Monthly exchange ratio from MEGAN
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     amf Feb 2009
-!     This subroutine calculates gamma_age and gamma_lai according to
-!     the MEGAN PCEEA model [Guenther et al., ACP 6, 3181-3210, 2006.]
-!     as implemented in mozart4_v4.5 by J.-F. Lamarque and G. Pfister
-!     (their fac_lai function)
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     work_iso  = calc_gamma_lai_age( clai, ts_wrk, month, doage )
-!   </TEMPLATE>
-!   <IN NAME="clai" TYPE="real" DIM="(:)">
-!      12 monthly values for lai for current grid cell
-!   </IN>
-!   <IN NAME="ts_wrk" TYPE="real">
-!     the climatological monthly mean surface T for this i, j, m (K)
-!   </IN>
-!   <IN NAME="month" TYPE="integer">
-!     current month
-!   </IN>
-!   <IN NAME="doage" TYPE="integer">
-!     1 = calculate gamma age; 0 = don't
-!   </IN>
-
-
-function calc_gamma_lai_age_isop(clai, ts_wrk, month, doage )
-
-!AMF - COULD ADD OPTION TO USE AVERAGE TS AND FSDS OVER
-! PAST MONTH /WEEKS -- would need to save to restart file
-! NOTE - MZ4 FAC_LAI DOESN"T SEEM TO USE FSDS_AVG, NOR DOES IT IN GUENTHER'S EQNS,
-! SO ELIMINATE FROM THIS FUNCTION
-
-  implicit none
-
-  logical, intent(in) :: doage(:)         !calculate gamma_age?,  amf/van
-  integer, intent(in) :: month            !current month index
-  real, intent(in) :: ts_wrk              ! currently = climatological sfc T for ea i,j,m
-  real, intent(in) :: clai(:,:)           ! monthly lai for this grid cell,   amf/van
-
-!-------------------------------------------------------------------------------------
-!       ... local variables
-!-------------------------------------------------------------------------------------
-! ggp: equations 18 and 19 from Guenther et al. include a dependence of ti and tm on temperature
-! of preceding timestep (i.e. month here); not considered here.
-! ggp/lamar: instead of using a constant ti and tm, it can be calculated based on information
-! of monthly average temperature
-!-------------------------------------------------------------------------------------
-
-!! amf: time step in days btw previous month's LAI and current month's LAI (p3192 guenther)
-      integer, parameter :: t(12) = (/ 31,31,28,31,30,31,30,31,31,30,31,30 /)
-
-      integer :: n
-      integer :: mnthm1
-      real    :: x
-      real    :: wrk
-      real    :: gamma
-      real    :: lai_n, lai_p      ! amf/van
-      real    :: Fnew
-      real    :: Fgro
-      real    :: Fmat
-      real    :: Fsen              ! amf/van
-      real    :: ti, tm  ! ti = # days btw budbreak and induction of isoprene emissions
-                         ! tm = # days btw budbreak + initiation of peak isop emissions rates
-
-!-------------------------------------------------------------------------------------
-!       ... function declarations
-!-------------------------------------------------------------------------------------
-      real    :: calc_gamma_lai_age_isop(npft)    ! amf/van
-
-      if( month > 1 ) then      ! amf/van
-         mnthm1 = month - 1
-      else
-         mnthm1 = 12
-      end if
-
-!-------------------------------------------------------------------------------------
-!       ... calculations following equations 17&18 in Guenther et al. [2006]
-!           -- getting terms needed for gamma age
-!-------------------------------------------------------------------------------------
-      if( has_ts_avg ) then
-         if( ts_wrk <= 303. ) then
-            ti = 5. + 0.7*(300. - ts_wrk)                     !eqn 18a (see corrigendum)
-         else
-            ti = 2.9                                          ! eqn 18b (corrigendum)
-         end if
-      else
-         ti = 5. + 0.7*(300. - Tdaily_clim)                   ! Tdaily_clim in tropchem_driver_nml
-      end if
-      tm = 2.3*ti                                             ! Eq 19
-
-!++amf/van
-      calc_gamma_lai_age_isop(1) = 0.
-      do n = 2, npft
-       if (doage(n)) then
-        Fnew = 0.
-        Fgro = 0.
-        Fmat = 0.
-        Fsen = 0.
-        lai_n = clai(n, month)
-        lai_p = clai(n, mnthm1)
-        if( lai_n == lai_p ) then                  !previous LAI = current LAI  - p.392 G06
-         Fmat = 0.8
-         Fsen = 0.1
-         Fgro = 0.1
-      else if( lai_p > lai_n ) then              !LAip > LAIc
-         Fsen = (lai_p - lai_n) / lai_p
-         Fmat = 1. - Fsen
-      else if( lai_p < lai_n ) then              !LAIp < LAIc
-         Fsen = 0.
-         x    = lai_p/lai_n
-!--amf/van
-         wrk  = 1. - x                                        ! = Fnew
-         if( t(month) <= tm ) then
-            Fmat =  x                                         ! Eqn 17c
-         else
-            Fmat = x + (((t(month) - tm)/t(month) ) * wrk)    ! Eqn 17d
-         end if
-         if( t(month) <= ti ) then
-            Fnew = wrk                                        ! Eqn 17a
-            Fgro = 1. - (Fnew + Fmat)                         ! Eqn 17e
-         else
-            Fnew = (ti/t(month)) * wrk                        ! Eqn 17b
-            Fgro = 1. - (Fnew + Fmat)                         ! Eqn 17e
-         end if
-      end if
-
-!-------------------------------------------------------------------------------------
-!       ... equations 15 and 16 in Guenther et al. [2006]
-!            -- get gamma age
-!-------------------------------------------------------------------------------------
-      gamma   = .05*Fnew + .6*Fgro + 1.125*Fmat + Fsen   !!  Eq 16
-      else
-        gamma   = 1.
-      end if
-
-!-------------------------------------------------------------------------------------
-!     gamma_age ("gamma" below) * gamma_lai where gamma_lai is from Eqn 15
-!-------------------------------------------------------------------------------------
-      calc_gamma_lai_age_isop(n) = gamma * .49 * clai(n,month) / sqrt( 1. + 0.2 * clai(n, month)*clai(n, month) )
-
-      end do
-
-
-end function calc_gamma_lai_age_isop
-
-!</FUNCTION>
-
-
-!#######################################################################
-
-! <SUBROUTINE NAME="get_monthly_gammas_terp">
-!   <OVERVIEW>
-!     Each month, update monoterpene emissions to include scaling from
-!     gamma_age and gamma_lai
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Jordan Schnell August 2017 
-!     Following the procedure to calculate isoprene monthly gammas 
-!     this subroutine calculates gamma_age and gamma_lai and applies for terpenes
-!     for each LAI and PFT, aggregating to the 5 vegetation types for the
-!     terpene emission capacities, following
-!     the MEGAN PCEEA model [Guenther et al., ACP 6, 3181-3210, 2006.]
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     get_monthly_gammas_terp( lon, lat, oro, is, js, &
-!       		      month )
-!   </TEMPLATE>
-
-subroutine get_monthly_gammas_terp( lon, lat, oro, is, js, &
-                                   month )
-
-      implicit none
-
-      real, intent(in), dimension(:,:) :: lon, lat
-      real, intent(in), dimension(:,:) :: oro     ! land = 1; ocean = 0
-      integer, intent(in) :: is, js
-      integer, intent(in)      :: month
-
-!-------------------------------------------------------------------------------------
-!       ... local variables
-!-------------------------------------------------------------------------------------
-      integer                  :: i, j, n, nlon, nlat, nl, nu
-      integer                  :: ie, je
-!      integer                  :: pft_li(nveg)
-!      integer                  :: pft_lu(nveg)
-!      real                     :: wrk_area
-      real                     :: total_iso
-      real                     :: work_iso(npft)    !amf/van
-      real                     :: ts_wrk
-      real                     :: total_work_gamma
-
-      real                     :: work_gamma(npft)  ! for diagnostic
-      real                     :: lai_fac(npft)  ! npft = 17 (mksrf files)
-      real                     :: lai_work(npft,nmos)
-      logical                  :: age_work(npft)
-
-      nlon = size(lon,1)
-      nlat = size(lat,2)
-      ie = is + nlon -1
-      je = js + nlat -1
-
-      age_work(:) = .true.
-      age_work((/2,3,5,6,10/)) = .false.
-
-! hardwired indices for matching pfts to ecs
-! pfts 2-4   fine leaf
-! pfts 5-9   broadleaf
-! pfts 10-12 shrubs
-! pfts 13-15 grass
-! pfts 16-17 crops
-
-!      pft_li(:) = (/ 2,5,10,13,16 /)
-!      pft_lu(1:nveg-1) = (/ 4,9,12,15 /)
-!      pft_lu(nveg) = npft
-      do j = js,je
-         do i = is,ie
-            total_iso = 0.
-            total_work_gamma = 0.
-            if (has_ts_avg) then
-              ts_wrk = ts_avg(i,j,month)
-            end if
-
-!-----------------------------------------------------------------
-!       ... no emissions for ocean grid point
-!-----------------------------------------------------------------
-            if( oro(i-is+1,j-js+1) .eq. 1 ) then
-
-            lai_work(:,:) = mlai(i,j,:,:)
-            lai_fac(:) = calc_gamma_lai_age_terp( lai_work, ts_wrk, month, age_work)
-
-            do n = 1, npft
-!              nl = pft_li(n)  !beginning index for the pfts that fall within this veg type for n types in ecisop
-!              nu = pft_lu(n)  !end index
-              work_iso(n) = lai_fac (n) * pctpft(i,j,n) * ecterp(i,j,n)
-              work_gamma(n) = lai_fac (n) * pctpft(i,j,n)
-            end do
-            total_work_gamma = total_work_gamma + sum(work_gamma)
-            total_iso = total_iso + sum(work_iso)
-
-              emterp_month(i,j) = total_iso
-              diag_gamma_lai_age_terp(i,j) = total_work_gamma
-          end if ! land box
-        end do !lon
-      end do !lat
-
-end subroutine get_monthly_gammas_terp
-!</SUBROUTINE
-
-
-!#######################################################################
-
-! <FUNCTION NAME="calc_gamma_lai_age_terp">
-!   <OVERVIEW>
-!     Monthly exchange ratio from MEGAN
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Jordan Schnell August 2017
-!     Similar to gamma_lai for isoprene, this subroutine calculates 
-!     gamma_age and gamma_lai according to the MEGAN PCEEA model 
-!    [Guenther et al., ACP 6, 3181-3210, 2006.]
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     work_iso  = calc_gamma_lai_age( clai, ts_wrk, month, doage )
-!   </TEMPLATE>
-!   <IN NAME="clai" TYPE="real" DIM="(:)">
-!      12 monthly values for lai for current grid cell
-!   </IN>
-!   <IN NAME="ts_wrk" TYPE="real">
-!     the climatological monthly mean surface T for this i, j, m (K)
-!   </IN>
-!   <IN NAME="month" TYPE="integer">
-!     current month
-!   </IN>
-!   <IN NAME="doage" TYPE="integer">
-!     1 = calculate gamma age; 0 = don't
-!   </IN>
-
-
-function calc_gamma_lai_age_terp(clai, ts_wrk, month, doage )
-
-  implicit none
-
-  logical, intent(in) :: doage(:)         !calculate gamma_age?
-  integer, intent(in) :: month            !current month index
-  real, intent(in) :: ts_wrk              ! currently = climatological sfc T for ea i,j,m
-  real, intent(in) :: clai(:,:)           ! monthly lai for this grid cell
-
-!-------------------------------------------------------------------------------------
-!       ... local variables
-!-------------------------------------------------------------------------------------
-! ggp: equations 18 and 19 from Guenther et al. include a dependence of ti and tm on temperature
-! of preceding timestep (i.e. month here); not considered here.
-! ggp/lamar: instead of using a constant ti and tm, it can be calculated based on information
-! of monthly average temperature
-!-------------------------------------------------------------------------------------
-
-!! amf: time step in days btw previous month's LAI and current month's LAI (p3192 guenther)
-      integer, parameter :: t(12) = (/ 31,31,28,31,30,31,30,31,31,30,31,30 /)
-
-      integer :: n
-      integer :: mnthm1
-      real    :: x
-      real    :: wrk
-      real    :: gamma
-      real    :: lai_n, lai_p      ! amf/van
-      real    :: Fnew
-      real    :: Fgro
-      real    :: Fmat
-      real    :: Fsen              ! amf/van
-      real    :: ti, tm  ! ti = # days btw budbreak and induction of isoprene emissions
-                         ! tm = # days btw budbreak + initiation of peak isop emissions rates
-
-!-------------------------------------------------------------------------------------
-!       ... function declarations
-!-------------------------------------------------------------------------------------
-      real    :: calc_gamma_lai_age_terp(npft)    ! amf/van
-
-      if( month > 1 ) then      ! amf/van
-         mnthm1 = month - 1
-      else
-         mnthm1 = 12
-      end if
-
-!-------------------------------------------------------------------------------------
-!       ... calculations following equations 17&18 in Guenther et al. [2006]
-!           -- getting terms needed for gamma age
-!-------------------------------------------------------------------------------------
-      if( has_ts_avg ) then
-         if( ts_wrk <= 303. ) then
-            ti = 5. + 0.7*(300. - ts_wrk)                     !eqn 18a (see corrigendum)
-         else
-            ti = 2.9                                          ! eqn 18b (corrigendum)
-         end if
-      else
-         ti = 5. + 0.7*(300. - Tdaily_clim)                   ! Tdaily_clim in tropchem_driver_nml
-      end if
-      tm = 2.3*ti                                             ! Eq 19
-
-!++amf/van
-      calc_gamma_lai_age_terp(1) = 0.
-      do n = 2, npft
-       if (doage(n)) then
-        Fnew = 0.
-        Fgro = 0.
-        Fmat = 0.
-        Fsen = 0.
-        lai_n = clai(n, month)
-        lai_p = clai(n, mnthm1)
-        if( lai_n == lai_p ) then                  !previous LAI = current LAI  - p.392 G06
-         Fmat = 0.8
-         Fsen = 0.1
-         Fgro = 0.1
-      else if( lai_p > lai_n ) then              !LAip > LAIc
-         Fsen = (lai_p - lai_n) / lai_p
-         Fmat = 1. - Fsen
-      else if( lai_p < lai_n ) then              !LAIp < LAIc
-         Fsen = 0.
-         x    = lai_p/lai_n
-!--amf/van
-         wrk  = 1. - x                                        ! = Fnew
-         if( t(month) <= tm ) then
-            Fmat =  x                                         ! Eqn 17c
-         else
-            Fmat = x + (((t(month) - tm)/t(month) ) * wrk)    ! Eqn 17d
-         end if
-         if( t(month) <= ti ) then
-            Fnew = wrk                                        ! Eqn 17a
-            Fgro = 1. - (Fnew + Fmat)                         ! Eqn 17e
-         else
-            Fnew = (ti/t(month)) * wrk                        ! Eqn 17b
-            Fgro = 1. - (Fnew + Fmat)                         ! Eqn 17e
-         end if
-      end if
-
-!-------------------------------------------------------------------------------------
-!       ... equations 15 and 16 in Guenther et al. [2006]
-!            -- get gamma age
-!-------------------------------------------------------------------------------------
-      gamma   = 2.0*Fnew + 1.8*Fgro + 1.0*Fmat + 1.05*Fsen   !!  Eq 16
-      else
-        gamma   = 1.
-      end if
-
-!-------------------------------------------------------------------------------------
-!     gamma_age ("gamma" below) * gamma_lai where gamma_lai is from Eqn 15
-!-------------------------------------------------------------------------------------
-      calc_gamma_lai_age_terp(n) = gamma * .49 * clai(n,month) / sqrt( 1. + 0.2 * clai(n, month)*clai(n, month) )
-
-      end do
-
-
-end function calc_gamma_lai_age_terp
-
 
 
 
