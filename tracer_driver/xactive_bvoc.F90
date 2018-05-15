@@ -581,7 +581,6 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 
          EMIS(:,:) = 0.
          xactive_knt = xactive_knt + 1
-         xactive_ndx(xactive_knt) = get_tracer_index(MODEL_ATMOS,trim(tracnam(i)))
 
          IF ( trim(tracnam(i))=='DMS' ) THEN
             ! SKIP - calculated in tropchem driver
