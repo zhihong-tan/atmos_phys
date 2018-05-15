@@ -544,12 +544,12 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
    ! Or for MEGAN3, LAIv = LAI/FCOVER = (lon x lat)
    ELSE
       IF ( xactive_algorithm == 'MEGAN2' .or. do_AM3_ISOP ) THEN
-         LAIc = MLAI(:,:,:,month)
-         LAIp = MLAI(:,:,:,month_p)
+         LAIc = MLAI(is:ie,js:je,:,month)
+         LAIp = MLAI(is:ie,js:je,:,month_p)
       ENDIF
       IF (xactive_algorithm == 'MEGAN3' ) THEN
-         LAIc3 = MLAI_MEGAN3(:,:,month)
-         LAIp3 = MLAI_MEGAN3(:,:,month_p)
+         LAIc3 = MLAI_MEGAN3(is:ie,js:je,month)
+         LAIp3 = MLAI_MEGAN3(is:ie,js:je,month_p)
       ENDIF
    ENDIF
 
