@@ -1364,7 +1364,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       call xactive_bvoc(lon, lat, land, is, ie, js, je, Time,              &
                         Time_next, coszen, pwt(:,:,kd), t(:,:,kd),         &
                         PPFD, w10m_land, tracer(:,:,kd,nco2),              &
-                        tracer(:,:,kd,no3), xactive_ndx, rtnd_xactive,     &
+                        tracer(:,:,kd,no3), rtnd_xactive,                  &
                         xbvoc4soa)
 ! Update the tendencies based on the returned indices
       do ixact = 1, nxactive
@@ -1871,7 +1871,7 @@ type(time_type), intent(in)                                :: Time
             write(*,*) 'Allocating xactive_ndx, number of xactive tracers = ', nxactive
          ENDIF
          ALLOCATE( xactive_ndx (nxactive) )
-         call xactive_bvoc_init(lonb, latb, Time, axes, nxactive )
+         call xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx )
          xbvoc_clock = mpp_clock_id( 'xactive_bvocs', &
                        grain=CLOCK_MODULE )
       endif
