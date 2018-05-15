@@ -1728,17 +1728,39 @@ type(radiative_gases_type),   intent(inout) :: Rad_gases_tv
 !    the calculation has been done.
 !---------------------------------------------------------------------
       else ! (time_varying_ch4)
-        if (do_ch4_lw .and. do_ch4_tf_calc ) then
-         !call ch4_time_vary (Rad_gases_tv%rrvch4)
-          Rad_gases_tv%use_ch4_for_tf_calc = .true.
-          Rad_gases_tv%ch4_for_tf_calc = Rad_gases_tv%rrvch4
-          do_ch4_tf_calc = .false.
-          do_ch4_tf_calc_init = .false.
-        else if (.not. do_ch4_lw .or. .not.do_ch4_tf_calc) then
-          Rad_gases_tv%use_ch4_for_tf_calc = .false.
-          do_ch4_tf_calc = .false.
-          do_ch4_tf_calc_init = .false.
-        endif
+! interactive ch4 mod for radiation calculation
+! here it's hardcoded to recompute ch4 TF on the 1st of each month
+         if (Rad_gases_tv%use_model_supplied_ch4) then
+            call get_date (Rad_time, year, month, day, hour, minute, second)
+            if (day == 1 .and. hour == 0 .and. minute == 0 .and.  second == 0) then
+              !call ch4_time_vary (Rad_gases_tv%rrvch4)
+               Rad_gases_tv%use_ch4_for_tf_calc = .true.
+               Rad_gases_tv%ch4_for_tf_calc = Rad_gases_tv%rrvch4
+               Rad_gases_tv%ch4_for_last_tf_calc = Rad_gases_tv%rrvch4
+               do_ch4_tf_calc_init = .false.
+            else
+               if (do_ch4_tf_calc_init) then
+                 !call ch4_time_vary (Rad_gases_tv%ch4_for_last_tf_calc)
+                  Rad_gases_tv%ch4_for_tf_calc = Rad_gases_tv%ch4_for_last_tf_calc
+                  Rad_gases_tv%use_ch4_for_tf_calc = .true.
+                  do_ch4_tf_calc_init = .false.
+               else 
+                  Rad_gases_tv%use_ch4_for_tf_calc = .false.
+               endif
+            endif
+         else  !(Rad_gases_tv%use_model_supplied_ch4)
+            if (do_ch4_lw .and. do_ch4_tf_calc) then
+              !call ch4_time_vary (Rad_gases_tv%rrvch4)
+               Rad_gases_tv%use_ch4_for_tf_calc = .true.
+               Rad_gases_tv%ch4_for_tf_calc = Rad_gases_tv%rrvch4
+               do_ch4_tf_calc = .false.
+               do_ch4_tf_calc_init = .false.
+            else if (.not. do_ch4_lw .or. .not.do_ch4_tf_calc) then
+               Rad_gases_tv%use_ch4_for_tf_calc = .false.
+               do_ch4_tf_calc = .false.
+               do_ch4_tf_calc_init = .false.
+            endif
+         endif  !(Rad_gases_tv%use_model_supplied_ch4)
       endif  ! (time_varying_ch4)
 
 !----------------------------------------------------------------------
