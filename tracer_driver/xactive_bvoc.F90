@@ -2324,11 +2324,11 @@ end function fGAMMA_TLD_AM4
 !        FUNCTION GAMMA_PAR
 !                       ...  GAMMA LIGHT CALCULATION (AM3)
 
-function fGAMMA_PAR_AM3(PPFD, coszen, Pmo, calday)
+function fGAMMA_PAR_AM3(PPFD, coszen, P_wrk, calday)
 
    implicit none
 
-   real, intent(in)   :: PPFD, coszen, Pmo, calday
+   real, intent(in)   :: PPFD, coszen, P_wrk, calday
    real               :: P_toa, PHI
    real               :: calc_GAMMA_LHT
 
@@ -2337,7 +2337,7 @@ function fGAMMA_PAR_AM3(PPFD, coszen, Pmo, calday)
    P_toa              = 3000. + 99. * cos( twopi * (calday - 10.) / 365. ) !G06, Eq. 13
    PHI                = MIN(PPFD / (coszen * P_toa), 1.)                   !G06, Eq. 12
 
-   fGAMMA_PAR_AM3     = coszen * (2.46 * (1. + 0.0005 * (Pmo - 400.))      &
+   fGAMMA_PAR_AM3     = coszen * (2.46 * (1. + 0.0005 * (P_wrk - 400.))      &
                         *  PHI - 0.9*PHI*PHI)
 
 end function fGAMMA_PAR_AM3
