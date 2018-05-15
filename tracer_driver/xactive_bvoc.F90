@@ -590,9 +590,9 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
             call calc_xactive_bvoc_AM3 ( Time, Time_next, is, js,         &
                                          lon, lat, land, coszen,          &
                                          P1, T1, LAIp, LAIc,              &
-					 Pmo(is:ie,js:je,:),              &
-					 Tmo(is:ie,js:je,:),              &
-                                         ECISOP_AM3(is:ie,js:je), month, EMIS, &
+                                         Pmo(is:ie,js:je,:),              &
+                                         Tmo(is:ie,js:je,:),              &
+                                         ECISOP_AM3(is:ie,js:je,:), month, EMIS, &
                                          id_GAMMA_TEMP=id_G_TEMP(i),      &
                                          id_GAMMA_PAR=id_G_PAR(i),        &
                                          id_GAMMA_LAI=id_G_LAI(i),        &
@@ -899,32 +899,31 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
    indices(:) = 0
    xknt = 0
    DO i = 1, pcnstm1
-      IF ( trim(tracnam(i))=='DMS' ) THEN
-         IF ( mpp_pe()==mpp_root_pe()) call error_mesg('xactive_bvoc_init',       &
-              'skipping set up for non-BVOC tracer '//trim(tracnam(i)),NOTE)
-         n = get_tracer_index(MODEL_ATMOS, tracnam(i))
-         indices(i) = n
-         has_xactive_emis(i) = query_method('xactive_emissions', MODEL_ATMOS,     &
-                                            indices(i),name,control)
-! Still need to increase the counter so everything is consisitent
-         IF (has_xactive_emis(i) ) THEN
-            xknt = xknt + 1
-            xactive_ndx(xknt) = get_tracer_index(MODEL_ATMOS,trim(tracnam(i)))
-         ENDIF
-      ELSE
       n = get_tracer_index(MODEL_ATMOS, tracnam(i))
       IF ( n .le. 0 ) THEN
          IF ( mpp_pe()==mpp_root_pe()) call error_mesg('xactive_bvoc_init',       &
               trim(tracnam(i)) // ' is not found', WARNING)
-      ELSE
+         cycle
+      ENDIF
       indices(i) = n
-! Set the necessary flags for xactive emissions
       has_xactive_emis(i) = query_method('xactive_emissions',MODEL_ATMOS,         &
                                          indices(i),name,control)
-! Register the diagnostics for emissions and all possible gammas
-      IF ( has_xactive_emis(i)) THEN
+      IF ( has_xactive_emis(i) ) THEN
+         xknt = xknt + 1
+         xactive_ndx(xknt) = get_tracer_index(MODEL_ATMOS,trim(tracnam(i)))
+      ENDIF
 
-         xknt               = xknt + 1
+      IF ( trim(tracnam(i))=='DMS' ) THEN
+         IF ( mpp_pe()==mpp_root_pe()) call error_mesg('xactive_bvoc_init',       &
+              'skipping set up for non-BVOC tracer '//trim(tracnam(i)),NOTE)
+         cycle
+      ENDIF
+
+! Register the diagnostics for emissions and all possible gammas
+      IF ( has_xactive_emis(i) ) THEN
+         IF ( mpp_pe()==mpp_root_pe()) call error_mesg('xactive_bvoc_init',       &
+              'Initializing xactive emissions for '//trim(tracnam(i)),NOTE)
+
 ! Emissions and standard gamma diagnostics for all species
          id_EMIS(i)         = register_diag_field(module_name,                    &
                               trim(tracnam(i))//'_xactive_emis', axes(1:2),       &
@@ -1022,8 +1021,8 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
          ELSE IF ( trim(tracnam(i))=='C10H16') THEN
               IF ( xactive_algorithm == 'MEGAN2' ) THEN
                  IF ( do_PARSED_TERP ) THEN
-           ! Both mono- and sesq- terpenes are included in this file,
-           ! but sesq may not be used (i.e., if do_SESQTERP = .false.')
+! Both mono- and sesq- terpenes are included in this file,
+! but sesq may not be used (i.e., if do_SESQTERP = .false.')
                        ecfile = 'INPUT/megan2.xactive.parsed_terpenes.nc'
                  ELSE
                     IF ( do_SESQTERP ) THEN
@@ -1053,8 +1052,8 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
                  ENDIF
               ELSE IF ( xactive_algorithm == 'MEGAN3' ) THEN
                  IF ( do_PARSED_TERP ) THEN
-           ! Both mono- and sesq- terpenes are included in this file,
-           ! but sesq may not be used (i.e., if do_SESQTERP = .false.')
+! Both mono- and sesq- terpenes are included in this file,
+! but sesq may not be used (i.e., if do_SESQTERP = .false.')
                     ecfile = 'INPUT/megan3.xactive.parsed_terpenes.nc'
                  ELSE
                     IF ( do_SESQTERP ) THEN
@@ -1118,9 +1117,9 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
                      call horiz_interp (Interp,MEGAN3_DATAIN,ECBVOC_MEGAN3(:,:,xknt), verbose=verbose)
                      call read_data (ecfile,'LDF',MEGAN3_DATAIN, no_domain=.true.)
                      call horiz_interp (Interp,MEGAN3_DATAIN,LDFg(:,:,xknt), verbose=verbose)
-               ENDIF !Other, megan2 or 3
-            ENDIF ! AM3 isop, terpene, other
-         ENDIF
+               ENDIF
+            ENDIF ! xactive_algorithm
+         ENDIF ! AM3 isop, terpene, other
 
 ! Read in all of the megan model parameters
 !----------------------------------------------------------------------
@@ -1191,8 +1190,6 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
             ENDDO ! j/ nparams
          ENDIF !/if do_AM3_ISOP
       ENDIF ! has_xactive
-   ENDIF ! extra flag for H20/pcnstm1 weird beheavior, need to fix
-   ENDIF ! non-bvoc skip (currently for DMS)
    ENDDO ! i/ species
 
 !----------------------------------------------------------------------------
@@ -1457,7 +1454,7 @@ end subroutine xactive_bvoc_init
 !  <IN NAME="Pclim" TYPE="real" DIM="(:,:)">
 !    Climatological PPFD
 !  </IN>
-!  <IN NAME="ECBVOC_S" TYPE="real" DIM="(:,:)">
+!  <IN NAME="ECBVOC_S" TYPE="real" DIM="(:,:,:)">
 !    Isoprene Emission capacities for each vegetation type
 !  </IN>
 !  <IN NAME="month" TYPE="integer">
@@ -1475,7 +1472,7 @@ end subroutine xactive_bvoc_init
 !
 subroutine calc_xactive_bvoc_AM3( Time, Time_next, is, js, lon, lat, land, coszen,    &
                                   PPFD1, T1, LAIp, LAIc, Pclim, Tclim,                &
-				  ECBVOC_S, month, EMIS,       &
+                                  ECBVOC_S, month, EMIS,       &
                                   id_GAMMA_TEMP, id_GAMMA_PAR, id_GAMMA_LAI,          &
                                   id_GAMMA_AGE )
 
@@ -1704,7 +1701,7 @@ end subroutine calc_xactive_bvoc_AM3
 subroutine calc_xactive_bvoc_megan2 ( Time, Time_next, is, js, lon, lat, land,     &
                                       coszen,  PPFD1, PPFD24, T1, T24, LAIp, LAIc, &
                                       Tclim,                                       &
-				      MEGAN_PARAM, ECBVOC_S, month, species, EMIS, &
+                                      MEGAN_PARAM, ECBVOC_S, month, species, EMIS, &
                                       id_GAMMA_TEMP, id_GAMMA_PAR, id_GAMMA_LAI,   &
                                       id_GAMMA_AGE, id_GAMMA_CO2, id_GAMMA_SM )
 
@@ -1968,7 +1965,7 @@ end subroutine calc_xactive_bvoc_megan2
 subroutine calc_xactive_bvoc_megan3 ( Time, Time_next, is, js, lon, lat, land,     &
                                       coszen,  PPFD1, PPFD24, T1, T24, LAIp, LAIc, &
                                       Tclim,                                       &
-				      MEGAN_PARAM, LDFg_S, ECBVOC_S, month,        &
+                                      MEGAN_PARAM, LDFg_S, ECBVOC_S, month,        &
                                       species, EMIS,                               &
                                       id_GAMMA_TEMP, id_GAMMA_PAR, id_GAMMA_LAI,   &
                                       id_GAMMA_AGE, id_GAMMA_BDLAI, id_GAMMA_CO2,  &
