@@ -150,7 +150,11 @@ use                fms_mod,  only : file_exist,            &
 
 use            MO_GRID_MOD,  only : pcnstm1
 
-use             fms_io_mod,  only : read_data
+use             fms_io_mod,  only : read_data,             &
+                                    register_restart_field,&
+				    restore_state,         &
+				    save_restart,          &
+				    restart_file_type
 
 use         M_TRACNAME_MOD,  only : tracnam
 use      tracer_manager_mod, only : get_tracer_index,      &
@@ -324,10 +328,15 @@ real, allocatable, dimension(:,:,:)       :: T24_STORE,    &  ! Array to hold ho
 ! CW provided 1948-2000; current input files take 1980-2000 average
 real, allocatable, dimension(:,:,:)       :: Tmo, Pmo        ! Monthly mean temp and par
 
-real, allocatable, dimension(:,:)         :: WSMAX,       &
-                                             AQI,         &
-                                             CO2_STORE,   &
+real, allocatable, dimension(:,:)         :: CO2_STORE,   &
                                              SOILM, WILT
+
+type(restart_file_type), pointer, save    :: Xbvoc_restart => NULL()
+type(restart_file_type), pointer, save    :: Til_restart => NULL()
+
+logical                                   :: in_different_file = .false.
+integer                                   :: vers = 1
+
 
 ! Diagnostics
 real, allocatable, dimension(:,:)         :: diag_gamma_temp, &
@@ -435,10 +444,11 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 !-------------------------------------  Local Variables  -----------------------------------------
 
    real, dimension(size(T1,1),size(T1,2))      :: T24, P24, TMAX, TMIN
+   real, dimension(size(T1,1),size(T1,2))      :: WSMAX, AQI
    real, dimension(size(T1,1),size(T1,2))      :: EMIS, EMIS_TERP
    real, dimension(size(T1,1),size(T1,2),nPFT) :: LAIp, LAIc   ! Used in MEGAN2
    real, dimension(size(T1,1),size(T1,2))      :: LAIp3, LAIc3      ! Used in MEGAN3
-   integer, dimension(size(T1,1))              :: DAY_BEGIN
+   integer, dimension(size(T1,1),size(T1,2))   :: DAY_BEGIN
    integer                                     :: yr, month, day, hr, minute, sec, month_p
    integer                                     :: nlon, nlat, i, j
    integer                                     :: xactive_knt, nTERP
@@ -470,12 +480,14 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 ! Index for Local 8AM, the starting index for summing over O3 values
 ! to calculate the W126 Air Quality Index (8AM - 8PM)
 ! ..................................................................
-   DO j = 1, nlon
-      DAY_BEGIN(j) = int(ceiling((112.5 - lon(j,1)/15.)))
-      IF ( DAY_BEGIN(j) .lt. 0 ) THEN
-         DAY_BEGIN(j) = DAY_BEGIN(j) + 24
+   DO j = 1,nlat
+   DO i = 1, nlon
+      DAY_BEGIN(i,j) = int(ceiling((112.5 - lon(i,j)/15.)))
+      IF ( DAY_BEGIN(i,j) .lt. 0 ) THEN
+         DAY_BEGIN(i,j) = DAY_BEGIN(i,j) + 24
       ENDIF
-      DAY_BEGIN(j) = DAY_BEGIN(j) + 1
+      DAY_BEGIN(i,j) = DAY_BEGIN(i,j) + 1
+   ENDDO
    ENDDO
 
 ! Update the Daily Average/Max Arrays, i.e, "___STORE"
@@ -487,14 +499,14 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
       P24_STORE(is:ie,js:je,hr) = P1
    ENDIF
    IF ( do_ONLINE_WIND .AND. do_GAMMA_HW ) THEN
-      WS_STORE(:,:,hr)  = WS1
+      WS_STORE(is:ie,js:je,hr)  = WS1
    ENDIF
    IF ( do_ONLINE_CO2 .AND. do_GAMMA_CO2) THEN
-      CO2_STORE = CO2
+      CO2_STORE(is:ie,js:je) = CO2
    ENDIF
    IF ( do_ONLINE_O3 .AND. do_GAMMA_AQ ) THEN
 ! Convert to ppm and calculate W126
-      O3_STORE(:,:,hr) = (O3 * 1.e6) *  &
+      O3_STORE(is:ie,js:je,hr) = (O3 * 1.e6) *  &
                          ( 1. / (1. + (4403. *exp(-126. * (O3*1.e6)))))
    ENDIF
 
@@ -502,6 +514,10 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 ! ...................................
    T24(:,:) = 0.
    P24(:,:) = 0.
+   TMAX(:,:) = 0.
+   TMIN(:,:) = 0.
+   WSMAX(:,:) = 0.
+   AQI(:,:) = 0.
    DO j = 1,nlat
    DO i = 1,nlon
 ! Only do for land fraction > 0.01
@@ -526,15 +542,15 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
       ENDIF
 ! Wind Speed
       IF ( do_ONLINE_WIND .AND. do_GAMMA_HW ) THEN
-         WSMAX(i,j) = MAXVAL(WS_STORE(i,j,:))
+         WSMAX(i,j) = MAXVAL(WS_STORE(i+is-1,j+js-1,:))
       ENDIF
 ! Air quality
       IF ( do_ONLINE_O3 .AND. do_GAMMA_AQ ) THEN
-         IF ( DAY_BEGIN(j) > 13 ) THEN
-           AQI(i,j) = SUM(O3_STORE(i,j,DAY_BEGIN(j):24)) +             &
-                      SUM(O3_STORE(i,j,1:(12 - (25 - DAY_BEGIN(j)))))
+         IF ( DAY_BEGIN(i,j) > 13 ) THEN
+           AQI(i,j) = SUM(O3_STORE(i+is-1,j+js-1,DAY_BEGIN(i,j):24)) +             &
+                      SUM(O3_STORE(i+is-1,j+js-1,1:(12 - (25 - DAY_BEGIN(i,j)))))
          ELSE
-           AQI(i,j) = SUM(O3_STORE(i,j,DAY_BEGIN(j):DAY_BEGIN(j)+11))
+           AQI(i,j) = SUM(O3_STORE(i+is-1,j+js-1,DAY_BEGIN(j):DAY_BEGIN(i,j)+11))
          ENDIF
       ENDIF
    ENDIF ! land fraction
@@ -626,7 +642,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
                                                   LAIp3, LAIc3,                 &
                                                   TMAX, TMIN, Tmo(is:ie,js:je,:), &
                                                   TERP_PARAM(:,j),              &
-                                                  LDFg_TERP(:,:,j),             &
+                                                  LDFg_TERP(is:ie,js:je,j),     &
                                                   ECTERP_MEGAN3(is:ie,js:je,j), &
                                                   month, tracnam(i), EMIS_TERP, &
                                                   id_GAMMA_TEMP=id_G_TEMP(i),   &
@@ -664,7 +680,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
                                             P1, P24, T1, T24, LAIp3, LAIc3,  &
                                             TMAX, TMIN, Tmo(is:ie,js:je,:),  &
                                             MEGAN_PARAM(:,xactive_knt),      &
-                                            LDFg(:,:,xactive_knt),           &
+                                            LDFg(is:ie,js:je,xactive_knt),   &
                                             ECBVOC_MEGAN3(ie:ie,js:je,xactive_knt), &
                                             month, tracnam(i), EMIS,         &
                                             id_GAMMA_TEMP=id_G_TEMP(i),      &
@@ -772,6 +788,7 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
 
    integer          :: nlon, nlat, i, j, k, n, xknt, nTERP, nxactive
    integer          :: ierr, unit, io, logunit, nPARAMS
+   integer          :: id_restart
 
    integer, parameter             :: nlonin = 720, nlatin = 360
    real, dimension(nlonin)        :: inlon
@@ -1327,8 +1344,6 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
       diag_gamma_hw(:,:) = 0.
       ALLOCATE( WS_STORE(nlon,nlat,24) )
       WS_STORE(:,:,:) = 0.
-      ALLOCATE( WSMAX(nlon,nlat) )
-      WSMAX(:,:) = 0.
       IF ( .not. do_ONLINE_WIND ) THEN
          call error_mesg( 'xactive_bvoc_init', &
          'No wind speed file available, must be calculated online', WARNING)
@@ -1371,8 +1386,6 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
    IF ( do_GAMMA_AQ ) THEN
       ALLOCATE(O3_STORE(nlon,nlat,24))
       O3_STORE(:,:,:) = 0.
-      ALLOCATE(AQI(nlon,nlat))
-      AQI(:,:) = 0.
       ALLOCATE(diag_gamma_aq(nlon,nlat))
       diag_gamma_aq(:,:) = 0.
       IF (.not. do_ONLINE_O3 ) THEN
@@ -1382,6 +1395,15 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
       ENDIF
    ENDIF
 
+   call xactive_bvoc_register_restart
+   if(file_exist('INPUT/xactive_bvoc.res.nc')) then
+      if (mpp_pe() == mpp_root_pe() ) &
+         call error_mesg ('xactive_bvoc_mod',  'xactive_bvoc_init:&
+            &Reading netCDF formatted restart file:'//trim(fname), NOTE)
+      call restore_state(Xbvoc_restart)
+      if (in_different_file) call restore_state(Til_restart)
+    endif
+   endif
 
    module_is_initialized = .TRUE.
 
@@ -2655,11 +2677,11 @@ end function fGAMMA_PAR_AM4
 !                      ... Response to high winds/storms
 !##########################################################################
 
-   function fGAMMA_HW(WSmax, T_HW, DT_HW, C_HW)
+   function fGAMMA_HW(WSmax1, T_HW, DT_HW, C_HW)
 
    implicit none
 
-   real, intent(in)   :: WSmax
+   real, intent(in)   :: WSmax1
    real, intent(in)   :: T_HW
    real, intent(in)   :: DT_HW
    real, intent(in)   :: C_HW
@@ -2669,10 +2691,10 @@ end function fGAMMA_PAR_AM4
    real               :: fGAMMA_HW
 
    t1 = T_HW + DT_HW
-   IF ( WSmax <= T_HW ) THEN
+   IF ( WSmax1 <= T_HW ) THEN
       fGAMMA_HW = 1.0
-   ELSE IF ( WSmax > T_HW .AND. WSmax < t1 ) THEN
-      fGAMMA_HW = 1.0 + (C_HW - 1.0) * (WSmax - T_HW) / DT_HW
+   ELSE IF ( WSmax1 > T_HW .AND. WSmax1 < t1 ) THEN
+      fGAMMA_HW = 1.0 + (C_HW - 1.0) * (WSmax1 - T_HW) / DT_HW
    ELSE
       fGAMMA_HW = C_HW
    ENDIF
@@ -2686,11 +2708,11 @@ end function fGAMMA_PAR_AM4
 !                      ... Response to air quality
 !##########################################################################
 
-   function fGAMMA_AQ(AQI, T_AQ, DT_AQ, C_AQ)
+   function fGAMMA_AQ(AQI1, T_AQ, DT_AQ, C_AQ)
 
    implicit none
 
-   real, intent(in)   :: AQI      ! Air quality index, W126 of O3
+   real, intent(in)   :: AQI1      ! Air quality index, W126 of O3
    real, intent(in)   :: T_AQ
    real, intent(in)   :: DT_AQ
    real, intent(in)   :: C_AQ
@@ -2700,10 +2722,10 @@ end function fGAMMA_PAR_AM4
    real               :: fGAMMA_AQ
 
    t1 = T_AQ + DT_AQ
-   IF ( AQI <= T_AQ ) THEN
+   IF ( AQI1 <= T_AQ ) THEN
       fGAMMA_AQ = 1.0
-   ELSE IF ( AQI > T_AQ .AND. AQI < t1 ) THEN
-      fGAMMA_AQ = 1.0 + (C_AQ - 1.0) * (AQI - T_AQ) / DT_AQ
+   ELSE IF ( AQI1 > T_AQ .AND. AQI1 < t1 ) THEN
+      fGAMMA_AQ = 1.0 + (C_AQ - 1.0) * (AQI1 - T_AQ) / DT_AQ
    ELSE
       fGAMMA_AQ = C_AQ
    ENDIF
@@ -3276,7 +3298,42 @@ end subroutine fcover_init_megan3
 !</SUBROUTINE>
 
 
+!#####################################################################
+! <SUBROUTINE NAME="xactive_bvoc_register_restart">
+!  <OVERVIEW>
+!    xactive_bvoc_register_restart registers restart fields
+!  </OVERVIEW>
+subroutine xactive_bvoc_register_restart
 
+  character(len=64) :: fname, fname2
+  integer           :: id_restart
+
+  fname = 'xactive_bvoc.res.nc'
+  call get_mosaic_tile_file(fname, fname2, .false. ) 
+  allocate(Xbvoc_restart)
+  if(trim(fname2) == trim(fname)) then
+     Til_restart => Xbvoc_restart
+     in_different_file = .false.
+  else
+     in_different_file = .true.
+     allocate(Til_restart)
+  endif
+
+  id_restart = register_restart_field(Xbvoc_restart, fname, 'version', vers, no_domain = .true. )
+
+  if (ALLOCATED(T24_STORE)) id_restart = &
+     register_restart_field(Xbvoc_restart, fname, 'T24_STORE', T24_STORE, mandatory=.false.)
+  if (ALLOCATED(P24_STORE)) id_restart = &
+     register_restart_field(Xbvoc_restart, fname, 'P24_STORE', P24_STORE, mandatory=.false.)
+  if (ALLOCATED(WS_STORE)) id_restart = &
+     register_restart_field(Xbvoc_restart, fname, 'WS_STORE',  WS_STORE,  mandatory=.false.)
+  if (ALLOCATED(O3_STORE)) id_restart = &
+     register_restart_field(Xbvoc_restart, fname, 'O3_STORE',  O3_STORE,  mandatory=.false.)
+  if (ALLOCATED(CO2_STORE)) id_restart = &
+     register_restart_field(Xbvoc_restart, fname, 'CO2_STORE', CO2_STORE, mandatory=.false.)
+
+end subroutine xactive_bvoc_register_restart
+! </SUBROUTINE>
 
 
 
@@ -3289,6 +3346,10 @@ end subroutine fcover_init_megan3
 !   </OVERVIEW>
 !
 subroutine xactive_bvoc_end
+
+   call save_restart(Xbvoc_restart)
+   if (in_different_file) call save_restart(Til_restart)
+
 
    IF (mpp_pe() == mpp_root_pe()) THEN
       write(*,*) 'Deallocating xactive arrays'
@@ -3313,8 +3374,6 @@ subroutine xactive_bvoc_end
    IF ( ALLOCATED(O3_STORE) )                DEALLOCATE(O3_STORE)
    IF ( ALLOCATED(Tmo) )                     DEALLOCATE(Tmo)
    IF ( ALLOCATED(Pmo) )                     DEALLOCATE(Pmo)
-   IF ( ALLOCATED(WSMAX) )                   DEALLOCATE(WSMAX)
-   IF ( ALLOCATED(AQI) )                     DEALLOCATE(AQI)
    IF ( ALLOCATED(CO2_STORE) )               DEALLOCATE(CO2_STORE)
    IF ( ALLOCATED(SOILM) )                   DEALLOCATE(SOILM)
    IF ( ALLOCATED(WILT) )                    DEALLOCATE(WILT)
