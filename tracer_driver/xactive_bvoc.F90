@@ -152,9 +152,10 @@ use            MO_GRID_MOD,  only : pcnstm1
 
 use             fms_io_mod,  only : read_data,             &
                                     register_restart_field,&
-				    restore_state,         &
-				    save_restart,          &
-				    restart_file_type
+                                    restore_state,         &
+                                    save_restart,          &
+                                    restart_file_type,     &
+                                    get_mosaic_tile_file
 
 use         M_TRACNAME_MOD,  only : tracnam
 use      tracer_manager_mod, only : get_tracer_index,      &
@@ -550,7 +551,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
            AQI(i,j) = SUM(O3_STORE(i+is-1,j+js-1,DAY_BEGIN(i,j):24)) +             &
                       SUM(O3_STORE(i+is-1,j+js-1,1:(12 - (25 - DAY_BEGIN(i,j)))))
          ELSE
-           AQI(i,j) = SUM(O3_STORE(i+is-1,j+js-1,DAY_BEGIN(j):DAY_BEGIN(i,j)+11))
+           AQI(i,j) = SUM(O3_STORE(i+is-1,j+js-1,DAY_BEGIN(i,j):DAY_BEGIN(i,j)+11))
          ENDIF
       ENDIF
    ENDIF ! land fraction
@@ -640,7 +641,8 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
                                                   lon, lat, land, coszen,       &
                                                   P1, P24, T1, T24,             &
                                                   LAIp3, LAIc3,                 &
-                                                  TMAX, TMIN, Tmo(is:ie,js:je,:), &
+                                                  TMAX, TMIN,                   &
+                                                  Tmo(is:ie,js:je,:), WSMAX, AQI, &
                                                   TERP_PARAM(:,j),              &
                                                   LDFg_TERP(is:ie,js:je,j),     &
                                                   ECTERP_MEGAN3(is:ie,js:je,j), &
@@ -677,8 +679,10 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
             ELSEIF ( xactive_algorithm == 'MEGAN3' ) THEN
             call calc_xactive_bvoc_megan3 ( Time, Time_next, is, js,         &
                                             lon, lat, land, coszen,          &
-                                            P1, P24, T1, T24, LAIp3, LAIc3,  &
-                                            TMAX, TMIN, Tmo(is:ie,js:je,:),  &
+                                            P1, P24, T1, T24,                &
+                                            LAIp3, LAIc3,                    &
+                                            TMAX, TMIN,                      &
+                                            Tmo(is:ie,js:je,:), WSMAX, AQI,  &
                                             MEGAN_PARAM(:,xactive_knt),      &
                                             LDFg(is:ie,js:je,xactive_knt),   &
                                             ECBVOC_MEGAN3(ie:ie,js:je,xactive_knt), &
@@ -1399,10 +1403,9 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
    if(file_exist('INPUT/xactive_bvoc.res.nc')) then
       if (mpp_pe() == mpp_root_pe() ) &
          call error_mesg ('xactive_bvoc_mod',  'xactive_bvoc_init:&
-            &Reading netCDF formatted restart file:'//trim(fname), NOTE)
+            &Reading netCDF formatted restart file:xactive_bvoc.res.nc', NOTE)
       call restore_state(Xbvoc_restart)
       if (in_different_file) call restore_state(Til_restart)
-    endif
    endif
 
    module_is_initialized = .TRUE.
@@ -1918,7 +1921,7 @@ end subroutine calc_xactive_bvoc_megan2
 !  <TEMPLATE>
 !    call calc_xactive_bvoc_megan3 ( Time, Time_next, is, js, ,lon, lat, land,   &
 !                                 coszen,  PPFD1, PPFD24, T1, T24, LAIp, LAIc,   &
-!                                 TMAX, TMIN, Tclim,                             &
+!                                 TMAX, TMIN, Tclim, WSMAX, AQI,                 &
 !                                 MEGAN_PARAM, LDFg_S, ECBVOC_S, month, species, &
 !                                 EMIS, id_GAMMA_TEMP, id_GAMMA_PAR,             &
 !                                 id_GAMMA_LAI, id_GAMMA_AGE, id_GAMMA_BDLAI,    &
@@ -1967,6 +1970,12 @@ end subroutine calc_xactive_bvoc_megan2
 !  <IN NAME="Tclim" TYPE="real" DIM="(:,:)">
 !    Climatological temperature
 !  </IN>
+!  <IN NAME="WSMAX" TYPE="real" DIM="(:,:)">
+!    Daily max 10-m wind speed
+!  </IN>
+!  <IN NAME="AQI" TYPE="real" DIM="(:,:)">
+!    Aiq quality index
+!  </IN>
 !  <IN NAME="MEGAN_PARAM" TYPE="real" DIM="(:,:)">
 !    Megan model parameters for this species
 !  </IN>
@@ -1991,7 +2000,7 @@ end subroutine calc_xactive_bvoc_megan2
 !
 subroutine calc_xactive_bvoc_megan3 ( Time, Time_next, is, js, lon, lat, land,     &
                                       coszen,  PPFD1, PPFD24, T1, T24, LAIp, LAIc, &
-                                      TMAX, TMIN, Tclim,                           &
+                                      TMAX, TMIN, Tclim, WSMAX, AQI,               &
                                       MEGAN_PARAM, LDFg_S, ECBVOC_S, month,        &
                                       species, EMIS,                               &
                                       id_GAMMA_TEMP, id_GAMMA_PAR, id_GAMMA_LAI,   &
@@ -2012,6 +2021,8 @@ subroutine calc_xactive_bvoc_megan3 ( Time, Time_next, is, js, lon, lat, land,  
       real, intent(in), dimension(:,:)   :: LAIp, LAIc      ! Previous & current LAIv [m2/m2]
       real, intent(in), dimension(:,:)   :: TMAX, TMIN      ! Daily max/min temperature [K]
       real, intent(in), dimension(:,:,:) :: Tclim           ! Climatological temperature [K]
+      real, intent(in), dimension(:,:)   :: WSMAX           ! Daily max 10-m wind speed [m/s]
+      real, intent(in), dimension(:,:)   :: AQI             ! Air quality index
       real, intent(in), dimension(:)     :: MEGAN_PARAM     ! MEGAN model parameters
       real, intent(in), dimension(:,:)   :: ECBVOC_S        ! Emission capacities  [ug/m2/h]
       real, intent(in), dimension(:,:)   :: LDFg_S          ! Light dependent fraction
