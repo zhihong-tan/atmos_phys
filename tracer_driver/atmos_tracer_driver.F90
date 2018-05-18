@@ -2477,6 +2477,7 @@ integer :: logunit
       endif
       call atmos_age_tracer_end
       call atmos_co2_end
+      call xactive_bvoc_end
 
 !for cmip6 (f1p)
       deallocate( id_tracer_diag )
