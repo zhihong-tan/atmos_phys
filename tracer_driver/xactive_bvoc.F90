@@ -1403,7 +1403,7 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
    if(file_exist('INPUT/xactive_bvoc.res.nc')) then
       if (mpp_pe() == mpp_root_pe() ) &
          call error_mesg ('xactive_bvoc_mod',  'xactive_bvoc_init:&
-            &Reading netCDF formatted restart file:xactive_bvoc.res.nc', NOTE)
+            &Reading netCDF formatted restart file: xactive_bvoc.res.nc', NOTE)
       call restore_state(Xbvoc_restart)
       if (in_different_file) call restore_state(Til_restart)
    endif
@@ -3332,16 +3332,14 @@ subroutine xactive_bvoc_register_restart
 
   id_restart = register_restart_field(Xbvoc_restart, fname, 'version', vers, no_domain = .true. )
 
-  if (ALLOCATED(T24_STORE)) id_restart = &
-     register_restart_field(Til_restart, fname, 'T24_STORE', T24_STORE, mandatory=.false.)
-  if (ALLOCATED(P24_STORE)) id_restart = &
-     register_restart_field(Til_restart, fname, 'P24_STORE', P24_STORE, mandatory=.false.)
-  if (ALLOCATED(WS_STORE)) id_restart = &
-     register_restart_field(Til_restart, fname, 'WS_STORE',  WS_STORE,  mandatory=.false.)
-  if (ALLOCATED(O3_STORE)) id_restart = &
-     register_restart_field(Til_restart, fname, 'O3_STORE',  O3_STORE,  mandatory=.false.)
-  if (ALLOCATED(CO2_STORE)) id_restart = &
-     register_restart_field(Til_restart, fname, 'CO2_STORE', CO2_STORE, mandatory=.false.)
+! if (ALLOCATED(T24_STORE)) id_restart = &
+!    register_restart_field(Til_restart, fname, 'T24_STORE', T24_STORE(:,:,1), mandatory=.false.)
+! if (ALLOCATED(P24_STORE)) id_restart = &
+!    register_restart_field(Til_restart, fname, 'P24_STORE', P24_STORE(:,:,1), mandatory=.false.)
+! if (ALLOCATED(WS_STORE)) id_restart = &
+!    register_restart_field(Til_restart, fname, 'WS_STORE',  WS_STORE(:,:,1),  mandatory=.false.)
+! if (ALLOCATED(O3_STORE)) id_restart = &
+!    register_restart_field(Til_restart, fname, 'O3_STORE',  O3_STORE(:,:,1),  mandatory=.false.)
 
 end subroutine xactive_bvoc_register_restart
 ! </SUBROUTINE>
@@ -3360,7 +3358,7 @@ subroutine xactive_bvoc_end
 
    if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
    call save_restart(Xbvoc_restart)
-   if (in_different_file) call save_restart(Til_restart)
+!  if (in_different_file) call save_restart(Til_restart)
 
 
    IF (mpp_pe() == mpp_root_pe()) THEN
