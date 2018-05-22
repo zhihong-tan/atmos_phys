@@ -278,7 +278,7 @@ namelist /xactive_bvoc_nml/                     &
                              T_s
 
 
-logical :: Ldebug = .true.
+logical :: Ldebug = .false.
 logical                     :: module_is_initialized = .false.
 logical, dimension(pcnstm1) :: has_xactive_emis = .false.  ! Does the tracer have xactive emissions?
 
@@ -3332,14 +3332,14 @@ subroutine xactive_bvoc_register_restart
 
   id_restart = register_restart_field(Xbvoc_restart, fname, 'version', vers, no_domain = .true. )
 
-! if (ALLOCATED(T24_STORE)) id_restart = &
-!    register_restart_field(Til_restart, fname, 'T24_STORE', T24_STORE(:,:,1), mandatory=.false.)
-! if (ALLOCATED(P24_STORE)) id_restart = &
-!    register_restart_field(Til_restart, fname, 'P24_STORE', P24_STORE(:,:,1), mandatory=.false.)
-! if (ALLOCATED(WS_STORE)) id_restart = &
-!    register_restart_field(Til_restart, fname, 'WS_STORE',  WS_STORE(:,:,1),  mandatory=.false.)
-! if (ALLOCATED(O3_STORE)) id_restart = &
-!    register_restart_field(Til_restart, fname, 'O3_STORE',  O3_STORE(:,:,1),  mandatory=.false.)
+  if (ALLOCATED(T24_STORE)) id_restart = &
+     register_restart_field(Til_restart, fname, 'T24_STORE', T24_STORE(:,:,1), mandatory=.false.)
+  if (ALLOCATED(P24_STORE)) id_restart = &
+     register_restart_field(Til_restart, fname, 'P24_STORE', P24_STORE(:,:,1), mandatory=.false.)
+  if (ALLOCATED(WS_STORE)) id_restart = &
+     register_restart_field(Til_restart, fname, 'WS_STORE',  WS_STORE(:,:,1),  mandatory=.false.)
+  if (ALLOCATED(O3_STORE)) id_restart = &
+     register_restart_field(Til_restart, fname, 'O3_STORE',  O3_STORE(:,:,1),  mandatory=.false.)
 
 end subroutine xactive_bvoc_register_restart
 ! </SUBROUTINE>
@@ -3356,8 +3356,8 @@ end subroutine xactive_bvoc_register_restart
 !
 subroutine xactive_bvoc_end
 
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
-   call save_restart(Xbvoc_restart)
+!  if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
+!  call save_restart(Xbvoc_restart)
 !  if (in_different_file) call save_restart(Til_restart)
 
 
