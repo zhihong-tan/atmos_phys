@@ -2456,7 +2456,14 @@ end subroutine atmos_tracer_driver_endts
 
 !-----------------------------------------------------------------------
 integer :: logunit
-      if (mpp_pe() /= mpp_root_pe()) return
+
+!---------------------------------------------------------------------
+!    verify that the module is initialized.
+!---------------------------------------------------------------------
+      if ( .not. module_is_initialized) then
+        call error_mesg ('atmos_tracer_driver_end',  &
+              'module has not been initialized', FATAL)
+      endif
 
       logunit=stdlog()
       write (logunit,'(/,(a))') 'Exiting tracer_driver, have a nice day ...'
@@ -2477,7 +2484,9 @@ integer :: logunit
       endif
       call atmos_age_tracer_end
       call atmos_co2_end
-      call xactive_bvoc_end
+      if ( nxactive > 0 ) then
+         call xactive_bvoc_end
+      endif
 
 !for cmip6 (f1p)
       deallocate( id_tracer_diag )
