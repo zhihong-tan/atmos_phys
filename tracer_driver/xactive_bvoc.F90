@@ -3369,15 +3369,18 @@ end subroutine xactive_bvoc_register_restart
 !
 subroutine xactive_bvoc_end
 
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
+!  if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
+   if (Ldebug) write(*,*) 'xactive_bvoc_end: calling save_restart, PE=',mpp_pe()
    call save_restart(Xbvoc_restart)
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart_Til'
+!  if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart_Til'
+   if (Ldebug) write(*,*) 'xactive_bvoc_end: calling save_restart_Til, PE=',mpp_pe()
    if (in_different_file) call save_restart(Til_restart)
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: back from save_restart_Til'
+!  if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: back from save_restart_Til'
+   if (Ldebug) write(*,*) 'xactive_bvoc_end: back from save_restart_Til, PE=',mpp_pe()
 
 
    IF (mpp_pe() == mpp_root_pe()) THEN
-      write(*,*) 'Deallocating xactive arrays'
+      write(*,*) 'xactive_bvoc_end: Deallocating xactive arrays'
    ENDIF
 
    IF ( ALLOCATED(ECISOP_AM3) )              DEALLOCATE(ECISOP_AM3)

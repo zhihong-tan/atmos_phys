@@ -2456,7 +2456,16 @@ end subroutine atmos_tracer_driver_endts
 
 !-----------------------------------------------------------------------
 integer :: logunit
-      if (mpp_pe() /= mpp_root_pe()) return
+
+!---------------------------------------------------------------------
+!    verify that the module is initialized.
+!---------------------------------------------------------------------
+      if ( .not. module_is_initialized) then
+        call error_mesg ('atmos_tracer_driver_end',  &
+              'module has not been initialized', FATAL)
+      endif
+
+!     if (mpp_pe() /= mpp_root_pe()) return
 
       logunit=stdlog()
       write (logunit,'(/,(a))') 'Exiting tracer_driver, have a nice day ...'
