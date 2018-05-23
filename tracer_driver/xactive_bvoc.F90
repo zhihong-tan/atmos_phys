@@ -278,7 +278,7 @@ namelist /xactive_bvoc_nml/                     &
                              T_s
 
 
-logical :: Ldebug = .true.
+logical                     :: Ldebug = .false.
 logical                     :: module_is_initialized = .false.
 logical, dimension(pcnstm1) :: has_xactive_emis = .false.  ! Does the tracer have xactive emissions?
 
@@ -472,11 +472,13 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 
    nlon = size(lon,1)
    nlat = size(lat,2)
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: nlat,nlon=', nlat,nlon
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: is,ie,js,je=', is,ie,js,je
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: lon1,lat1=', lon(1,1)*180./PI,lat(1,1)*180./PI
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: SIZE(T1)=', SIZE(T1)
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: SIZE(T24_STORE)=', SIZE(T24_STORE)
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) then
+      write(*,*) 'xactive_bvoc: nlat,nlon=', nlat,nlon
+      write(*,*) 'xactive_bvoc: is,ie,js,je=', is,ie,js,je
+      write(*,*) 'xactive_bvoc: lon1,lat1=', lon(1,1)*180./PI,lat(1,1)*180./PI
+      write(*,*) 'xactive_bvoc: SIZE(T1)=', SIZE(T1)
+      write(*,*) 'xactive_bvoc: SIZE(T24_STORE)=', SIZE(T24_STORE)
+   endif
 
 ! Index for Local 8AM, the starting index for summing over O3 values
 ! to calculate the W126 Air Quality Index (8AM - 8PM)
@@ -820,8 +822,10 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
 
    nlon = size(lonb,1) - 1
    nlat = size(latb,2) - 1
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_init: nlat,nlon=', nlat,nlon
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc: lonb1,latb1=', lonb(1,1)*180./PI,latb(1,1)*180./PI
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) then
+      write(*,*) 'xactive_bvoc_init: nlat,nlon=', nlat,nlon
+      write(*,*) 'xactive_bvoc: lonb1,latb1=', lonb(1,1)*180./PI,latb(1,1)*180./PI
+   endif
 
    IF ( module_is_initialized ) RETURN
 
@@ -926,7 +930,8 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
    xknt = 0
    DO i = 1, pcnstm1
       n = get_tracer_index(MODEL_ATMOS, tracnam(i))
-      if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_init:', TRIM(tracnam(i)),i,n
+      if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
+         write(*,*) 'xactive_bvoc_init:', TRIM(tracnam(i)),i,n
       IF ( n .le. 0 ) THEN
          IF ( mpp_pe()==mpp_root_pe()) call error_mesg('xactive_bvoc_init',       &
               trim(tracnam(i)) // ' is not found', WARNING)
@@ -1398,7 +1403,8 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
       ENDIF
    ENDIF
 
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_init: calling xactive_bvoc_register_restart'
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
+      write(*,*) 'xactive_bvoc_init: calling xactive_bvoc_register_restart'
    call xactive_bvoc_register_restart
    if(file_exist('INPUT/xactive_bvoc.res.nc')) then
       if (mpp_pe() == mpp_root_pe() ) &
@@ -3333,25 +3339,23 @@ subroutine xactive_bvoc_register_restart
 
   id_restart = register_restart_field(Xbvoc_restart, fname, 'version', vers, no_domain = .true. )
 
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_register_restart: ', &
-      'T24_STORE,P24_STORE,WS_STORE,O3_STORE=',ALLOCATED(T24_STORE),ALLOCATED(P24_STORE), &
-      ALLOCATED(WS_STORE), ALLOCATED(O3_STORE)
-   if (Ldebug .and. mpp_pe()==mpp_root_pe() .and. ALLOCATED(T24_STORE)) write(*,*) &
-      'xactive_bvoc_register_restart: T24_STORE', &
-      SIZE(T24_STORE,1),SIZE(T24_STORE,2),SIZE(T24_STORE,3)
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
+      write(*,*) 'xactive_bvoc_register_restart: ', &
+      'T24_STORE,P24_STORE,WS_STORE,O3_STORE=', ALLOCATED(T24_STORE), &
+      ALLOCATED(P24_STORE), ALLOCATED(WS_STORE), ALLOCATED(O3_STORE)
 
-  do ihour = 1,1 !24
+  do ihour = 1,24
      write(mon_string,'(i2.2)') ihour
-   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_register_restart: ', &
-      'register field T24_STORE_'//mon_string
+     if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
+        write(*,*) 'xactive_bvoc_register_restart: register field T24_STORE_'//mon_string
      if (ALLOCATED(T24_STORE)) id_restart = &
         register_restart_field(Til_restart, fname, 'T24_STORE_'//mon_string, T24_STORE(:,:,ihour), mandatory=.false.)
-!    if (ALLOCATED(P24_STORE)) id_restart = &
-!       register_restart_field(Til_restart, fname, 'P24_STORE_'//mon_string, P24_STORE(:,:,ihour), mandatory=.false.)
-!    if (ALLOCATED(WS_STORE)) id_restart = &
-!       register_restart_field(Til_restart, fname, 'WS_STORE_'//mon_string,  WS_STORE(:,:,ihour),  mandatory=.false.)
-!    if (ALLOCATED(O3_STORE)) id_restart = &
-!       register_restart_field(Til_restart, fname, 'O3_STORE_'//mon_string,  O3_STORE(:,:,ihour),  mandatory=.false.)
+     if (ALLOCATED(P24_STORE)) id_restart = &
+        register_restart_field(Til_restart, fname, 'P24_STORE_'//mon_string, P24_STORE(:,:,ihour), mandatory=.false.)
+     if (ALLOCATED(WS_STORE)) id_restart = &
+        register_restart_field(Til_restart, fname, 'WS_STORE_'//mon_string,  WS_STORE(:,:,ihour),  mandatory=.false.)
+     if (ALLOCATED(O3_STORE)) id_restart = &
+        register_restart_field(Til_restart, fname, 'O3_STORE_'//mon_string,  O3_STORE(:,:,ihour),  mandatory=.false.)
    end do
 
 end subroutine xactive_bvoc_register_restart
@@ -3369,15 +3373,11 @@ end subroutine xactive_bvoc_register_restart
 !
 subroutine xactive_bvoc_end
 
-!  if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
-   if (Ldebug) write(*,*) 'xactive_bvoc_end: calling save_restart, PE=',mpp_pe()
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
    call save_restart(Xbvoc_restart)
-!  if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart_Til'
-   if (Ldebug) write(*,*) 'xactive_bvoc_end: calling save_restart_Til, PE=',mpp_pe()
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart_Til'
    if (in_different_file) call save_restart(Til_restart)
-!  if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: back from save_restart_Til'
-   if (Ldebug) write(*,*) 'xactive_bvoc_end: back from save_restart_Til, PE=',mpp_pe()
-
+   if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: back from save_restart_Til'
 
    IF (mpp_pe() == mpp_root_pe()) THEN
       write(*,*) 'xactive_bvoc_end: Deallocating xactive arrays'

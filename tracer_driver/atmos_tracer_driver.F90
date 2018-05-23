@@ -2465,8 +2465,6 @@ integer :: logunit
               'module has not been initialized', FATAL)
       endif
 
-!     if (mpp_pe() /= mpp_root_pe()) return
-
       logunit=stdlog()
       write (logunit,'(/,(a))') 'Exiting tracer_driver, have a nice day ...'
 
