@@ -748,21 +748,21 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, nxactive)
    character(len=3) :: vegnames(nVEG)         =  (/ 'ntr', 'btr', 'crp', 'grs', 'shr' /)
 
    character(len=7) :: terpnames_megan3(8)    =  (/'MT_PINE', 'MT_ACYC', 'MT_CAMP',         &
-                                                   'MT_SABI', 'MT_AROM', 'MT_OXY',         &
-                                                   'SQT_HR', 'SQT_LR'/)
+                                                   'MT_SABI', 'MT_AROM', 'MT_OXY ',         &
+                                                   'SQT_HR ', 'SQT_LR '/)
 
    character(len=4) :: terpnames_megan2(11)   =  (/'MYRC','SABI','LIMO','CARE','OCIM', &
                                                     'BPIN','APIN','OMTP','FARN','CARY','OSQT'/)
 
 
-   character(len=5) :: paramnames_megan3(20)  =  (/'BETA', 'C_t1', 'C_eo', 'A_new',        &
-                                                    'A_gro', 'A_mat', 'A_old', 'C_AQ',     &
-                                                    'C_HW', 'C_HT', 'C_LT', 'T_AQ',        &
-                                                    'T_HW', 'T_HT', 'T_LT', 'DT_AQ',       &
-                                                    'DT_HW', 'DT_HT', 'DT_LT', 'mw'  /)
-   character(len=5) :: paramnames_megan2(9)   =   (/'BETA', 'LDF', 'C_t1', 'C_eo',        &
+   character(len=5) :: paramnames_megan3(20)  =  (/ 'BETA ', 'C_t1 ', 'C_eo ', 'A_new',        &
+                                                    'A_gro', 'A_mat', 'A_old', 'C_AQ ',     &
+                                                    'C_HW ', 'C_HT ', 'C_LT ', 'T_AQ ',        &
+                                                    'T_HW ', 'T_HT ', 'T_LT ', 'DT_AQ',       &
+                                                    'DT_HW', 'DT_HT', 'DT_LT', 'mw   '  /)
+   character(len=5) :: paramnames_megan2(9)   =   (/'BETA ', 'LDF  ', 'C_t1 ', 'C_eo ',        &
                                                     'A_new', 'A_gro', 'A_mat', 'A_old',    &
-                                                     'mw'/)
+                                                    'mw   '/)
 
    integer          :: nlon, nlat, i, j, k, n, xknt, nTERP
    integer          :: ierr, unit, io, logunit, nPARAMS
@@ -809,7 +809,7 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, nxactive)
 #ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=xactive_bvoc_nml, iostat=io)
       ierr = check_nml_error(io,'xactive_bvoc_nml')
-#ELSE
+#else
       unit = open_namelist_file('input.nml')
       ierr=1; do while (ierr /= 0)
       read(unit, nml = xactive_bvoc_nml, iostat=io, end=10)
