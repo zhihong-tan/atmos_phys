@@ -342,6 +342,7 @@ contains
           write(*,*) 'frac_in_cloud_snow', Wetdep(n)%frac_in_cloud_snow
           write(*,*) 'frac_in_cloud_snow_homogeneous', Wetdep(n)%frac_in_cloud_snow_homogeneous
           write(*,*) 'so2_so4_evap', Wetdep(n)%so2_so4_evap
+          write(*,*) 'alpha_r,alpha_s', Wetdep(n)%alpha_r, Wetdep(n)%alpha_s
        end if
     end if
 
