@@ -20,8 +20,10 @@
       real :: min_land_frac = -999.          ! minimum land fraction for flash frequency calculation (default=-999)
       real, parameter :: AREA_PER_STORM = 1.e10 ! m2 (100km x 100km)
       real :: vdist(16,3)                    ! vertical distribution of lightning
-      integer :: id_prod_no_col, id_flash_freq, id_prod_no_col_lght
+      integer :: id_prod_no_col, id_flash_freq, id_prod_no_col_lght, id_eminox_lght
       real :: lat25
+      real, parameter :: MW_N = 14.00674, &                 ! molecular weight of nirogen (AMU)
+                         ONE_OVER_AVO = 1.65979e-24         ! reciprocal of Avogadros number (mole)
       
 character(len=128), parameter :: version     = '$Id$'
 character(len=128), parameter :: tagname     = '$Name$'
@@ -83,6 +85,9 @@ logical                       :: module_is_initialized = .false.
                                            'prod_no_col','molec cm-2 s-1')
       id_flash_freq  = register_diag_field('tracers','flash_freq',axes(1:2),Time, &
                                            'flash_freq','cm-2 s-1')
+      id_eminox_lght = register_cmip_diag_field_2d ( module_name, 'eminox_lght', Time, &
+                              'Total Emission Rate of NOx from lightning', 'kg m-2 s-1', &
+                standard_name='tendency_of_atmosphere_mass_content_of_nox_expressed_as_nitrogen_due_to_emission')
       module_is_initialized = .true.
       
       end subroutine MOZ_HOOK_INIT
@@ -249,12 +254,11 @@ logical                       :: module_is_initialized = .false.
 		  prod_no_col(i,j) = 1.e17*flash_energy(i,j) / local_area(i,j) * factor
 !--------------------------------------------------------------------------------
 !         ... Compute global NO production rate in TgN/yr:
-!           TgN per second: * 14.00674 * 1.65979e-24 * 1.e-12
-!             NB: 1.65979e-24 = 1/AVO
+!           TgN per second: * MW_N * 1.e-12 / AVO
 !           TgN per year: * secpyr
 !--------------------------------------------------------------------------------
                   glob_prod_no_col(i,j) = 1.e17*flash_energy(i,j) &
-                                        * 14.00674 * 1.65979e-24 * 1.e-12 * secpyr * factor
+                                        * MW_N * ONE_OVER_AVO * 1.e-12 * secpyr * factor
                end if
             end do
          end do
@@ -262,6 +266,12 @@ logical                       :: module_is_initialized = .false.
             used=send_data(id_prod_no_col,glob_prod_no_col,Time,is_in=is,js_in=js)
          if(id_prod_no_col_lght >0) &
             used=send_data(id_prod_no_col_lght,prod_no_col,Time,is_in=is,js_in=js)
+!--------------------------------------------------------------------------------
+!         ... Convert from molec cm-2 s-1 to kgN m-2 s-1
+!           * (MW_N*1e-3) * (1/AVO) * 1e4
+!--------------------------------------------------------------------------------
+         if(id_eminox_lght >0) &
+            used=send_data(id_eminox_lght,prod_no_col*MW_N*ONE_OVER_AVO*10.,Time,is_in=is,js_in=js)
          if(id_flash_freq >0) &
             used=send_data(id_flash_freq,flash_freq/60./local_area,Time,is_in=is,js_in=js)
 
