@@ -1059,8 +1059,10 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
 !    in ls_wetdep. The arrays holding the wet depo removal by the various
 !    convective schemes only have entries for those tracers designated as
 !    being affected by the particular scheme,
+!
+!    Update sign convention of wet deposition diagnostics to downward
+!    positive, to match CMIP6 data request
 !--------------------------------------------------------------------
-!       total_wetdep = Removal_mp%ls_wetdep
         total_wetdep = 0.
         total_wetdep_dust(:,:) = 0.
         total_wetdep_seasalt(:,:) = 0.
@@ -1070,19 +1072,19 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         do n=1,size(Output_mp%rdt,4)
           if (Removal_mp_control%tracers_in_donner(n) .and.   &
                                                     do_donner_deep) then
-            total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
+            total_wetdep(:,:,n) = total_wetdep(:,:,n) -  &
                                             Removal_mp%donner_wetdep(:,:,m)
-            total_wetdep_donner(:,:,n) = Removal_mp%donner_wetdep(:,:,m)
-            total_wetdepc_donner(:,:,n) = Removal_mp%donner_wetdepc(:,:,m)
-            total_wetdepm_donner(:,:,n) = Removal_mp%donner_wetdepm(:,:,m)
+            total_wetdep_donner(:,:,n)  = -Removal_mp%donner_wetdep(:,:,m)
+            total_wetdepc_donner(:,:,n) = -Removal_mp%donner_wetdepc(:,:,m)
+            total_wetdepm_donner(:,:,n) = -Removal_mp%donner_wetdepm(:,:,m)
             m = m + 1
           else
             total_wetdep_donner(:,:,n) = 0.
           endif
           if (Removal_mp_control%tracers_in_uw(n) .and. do_uw_conv) then
-            total_wetdep(:,:,n) = total_wetdep(:,:,n) +  &
+            total_wetdep(:,:,n) = total_wetdep(:,:,n) -  &
                                                Removal_mp%uw_wetdep(:,:,mm)
-            total_wetdep_uw    (:,:,n) = Removal_mp%uw_wetdep(:,:,mm)
+            total_wetdep_uw    (:,:,n) = -Removal_mp%uw_wetdep(:,:,mm)
             mm = mm + 1
           else
             total_wetdep_uw    (:,:,n) = 0.
@@ -1094,7 +1096,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
 !    Add in wet dep from large-scale clouds, which already has the proper
 !    conversion.
 !------------------------------------------------------------------------
-        total_wetdep =  total_wetdep + Removal_mp%ls_wetdep
+        total_wetdep =  total_wetdep - Removal_mp%ls_wetdep
 
 !-----------------------------------------------------------------------
 !    process wet deposition removal for each tracer, if requested.
@@ -1184,7 +1186,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
        temp_2d = 0.0
        if( do_donner_deep ) temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_donner(:,:,nso4)
        if( do_uw_conv  )    temp_2d = temp_2d + (96.0/WTMAIR)*total_wetdep_uw    (:,:,nso4)
-       if( doing_prog_clouds )       temp_2d = temp_2d + 0.096*Removal_mp%ls_wetdep(:,:,nso4)
+       if( doing_prog_clouds )       temp_2d = temp_2d - 0.096*Removal_mp%ls_wetdep(:,:,nso4)
        if (id_wetdep_so4  > 0) used = send_data (id_wetdep_so4,  temp_2d, Time, is,js)
        if (id_wetso4_cmip > 0) used = send_data (id_wetso4_cmip, temp_2d, Time, is,js)
      endif
@@ -1193,7 +1195,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
        temp_2d = 0.0
        if( do_donner_deep ) temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_donner(:,:,nso2)
        if( do_uw_conv  )    temp_2d = temp_2d + (64.0/WTMAIR)*total_wetdep_uw    (:,:,nso2)
-       if( doing_prog_clouds )       temp_2d = temp_2d + 0.064*Removal_mp%ls_wetdep(:,:,nso2)
+       if( doing_prog_clouds )       temp_2d = temp_2d - 0.064*Removal_mp%ls_wetdep(:,:,nso2)
        if (id_wetdep_so2  > 0) used = send_data (id_wetdep_so2,  temp_2d, Time, is,js)
        if (id_wetso2_cmip > 0) used = send_data (id_wetso2_cmip, temp_2d, Time, is,js)
      endif
@@ -1202,7 +1204,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
        temp_2d = 0.0
        if( do_donner_deep ) temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_donner(:,:,nDMS)
        if( do_uw_conv  )    temp_2d = temp_2d + (62.0/WTMAIR)*total_wetdep_uw    (:,:,nDMS)
-       if( doing_prog_clouds )       temp_2d = temp_2d + 0.062*Removal_mp%ls_wetdep(:,:,nDMS)
+       if( doing_prog_clouds )       temp_2d = temp_2d - 0.062*Removal_mp%ls_wetdep(:,:,nDMS)
        if (id_wetdep_DMS  > 0) used = send_data (id_wetdep_DMS,  temp_2d, Time, is,js)
        if (id_wetdms_cmip > 0) used = send_data (id_wetdms_cmip, temp_2d, Time, is,js)
      endif
@@ -1213,7 +1215,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
                                                                total_wetdep_donner(:,:,nNH4) )
        if( do_uw_conv  )    temp_2d = temp_2d + (18.0/WTMAIR)*(total_wetdep_uw(:,:,nNH4NO3) + &
                                                                total_wetdep_uw(:,:,nNH4) )
-       if( doing_prog_clouds )       temp_2d = temp_2d + 0.018*(Removal_mp%ls_wetdep(:,:,nNH4NO3) + Removal_mp%ls_wetdep(:,:,nNH4))
+       if( doing_prog_clouds )       temp_2d = temp_2d - 0.018*(Removal_mp%ls_wetdep(:,:,nNH4NO3) + Removal_mp%ls_wetdep(:,:,nNH4))
        if (id_wetdep_NH4NO3 > 0) used = send_data (id_wetdep_NH4NO3, temp_2d, Time, is,js)
        if (id_wetnh4_cmip   > 0) used = send_data (id_wetnh4_cmip,   temp_2d, Time, is,js)
      endif
@@ -2442,12 +2444,12 @@ integer                     :: id_wetdep_cmip
 
       id_n_ox_wdep = register_cmip_diag_field_2d ( mod_name, 'fam_noy_wetdep_kg_m2_s', Time,  &
            'wet deposition of noy incl aerosol nitrate', 'kg m-2 s-1', &
-           standard_name='tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_wet_deposition' )
+           standard_name='minus_tendency_of_atmosphere_mass_content_of_noy_expressed_as_nitrogen_due_to_wet_deposition' )
 
       !this is not requested
       id_n_red_wdep = register_cmip_diag_field_2d ( mod_name, 'fam_nhx_wetdep_kg_m2_s', Time,  &
            'wet deposition of nhx', 'kg m-2 s-1', &
-           standard_name='tendency_of_atmosphere_mass_content_of_nhx_expressed_as_nitrogen_due_to_wet_deposition' )
+           standard_name='minus_tendency_of_atmosphere_mass_content_of_nhx_expressed_as_nitrogen_due_to_wet_deposition' )
  
 
      !-------- cmip wet deposition fields  ---------
@@ -2458,7 +2460,7 @@ integer                     :: id_wetdep_cmip
 
         id_wetdep_cmip = register_cmip_diag_field_2d ( mod_name, 'wet'//TRIM(cmip_names(ic)), Time,  &
                                   'Wet Deposition Rate of '//TRIM(cmip_longnames(ic)), 'kg m-2 s-1', &
-                    standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_particles_due_to_wet_deposition' )
+                    standard_name='minus_tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_stdnames(ic))//'_particles_due_to_wet_deposition' )
         if (TRIM(cmip_names(ic)) .eq. 'poa'  ) id_wetpoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'soa'  ) id_wetsoa_cmip  = id_wetdep_cmip
         if (TRIM(cmip_names(ic)) .eq. 'oa'  )  id_wetoa_cmip   = id_wetdep_cmip
@@ -2507,12 +2509,12 @@ integer                     :: id_wetdep_cmip
             id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                                trim(tracer_name)//'_wetdep_kg_m2_s', Time, &
                                'Wet Deposition Rate of '//TRIM(cmip_longname2), 'kg m-2 s-1', &
-                   standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_dry_aerosol_particles_due_to_wet_deposition')
+                   standard_name='minus_tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_dry_aerosol_particles_due_to_wet_deposition')
         else
             id_wetdep_kg_m2_s(n) = register_cmip_diag_field_2d ( mod_name, &
                                trim(tracer_name)//'_wetdep_kg_m2_s', Time, &
                                'Wet Deposition Rate of '//TRIM(cmip_longname2), 'kg m-2 s-1', &
-                           standard_name='tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_due_to_wet_deposition')
+                           standard_name='minus_tendency_of_atmosphere_mass_content_of_'//TRIM(cmip_name)//'_due_to_wet_deposition')
         end if
         if (id_wetdep_kg_m2_s(n) > 0) wetdep_diagnostics_desired = .true.
 
