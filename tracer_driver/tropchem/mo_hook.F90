@@ -1,6 +1,7 @@
       module MOZ_HOOK_MOD
 
       use diag_manager_mod, only : register_diag_field, send_data
+      use atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
       use time_manager_mod, only : time_type
       use constants_mod,    only : PI
 
@@ -85,7 +86,7 @@ logical                       :: module_is_initialized = .false.
                                            'prod_no_col','molec cm-2 s-1')
       id_flash_freq  = register_diag_field('tracers','flash_freq',axes(1:2),Time, &
                                            'flash_freq','cm-2 s-1')
-      id_eminox_lght = register_cmip_diag_field_2d ( module_name, 'eminox_lght', Time, &
+      id_eminox_lght = register_cmip_diag_field_2d ( 'tracers', 'eminox_lght', Time, &
                               'Total Emission Rate of NOx from lightning', 'kg m-2 s-1', &
                 standard_name='tendency_of_atmosphere_mass_content_of_nox_expressed_as_nitrogen_due_to_emission')
       module_is_initialized = .true.
