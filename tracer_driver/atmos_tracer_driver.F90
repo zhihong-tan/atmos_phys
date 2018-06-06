@@ -547,7 +547,7 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
 real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
 real, dimension(size(r,1),size(r,2)) :: all_salt_settl, all_dust_settl
-real, dimension(size(r,1),size(r,2)) :: suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
+real, dimension(size(r,1),size(r,2)) :: suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep, nh3_ddep
 real, dimension(size(r,1),size(r,2)) :: frland, frsnow, frsea, frice, PPFD
 real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
@@ -742,6 +742,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
      sum_n_ddep(:,:) = 0.
      sum_n_ox_ddep(:,:) = 0.
      sum_n_red_ddep(:,:) = 0.
+     nh3_ddep(:,:) = 0.
 
       do n=1,ntp
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
@@ -752,8 +753,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n),con_atm)
-            if (do_nh3_atm_ocean_exchange .and. n.eq.nNH3) then !f1p: scale by ocean fraction
-               dsinku(:,:,n) = dsinku(:,:,n)*(1.-frac_open_sea)
+            if (do_nh3_atm_ocean_exchange .and. n.eq.nNH3) then 
+               !f1p: scale dry deposition of nh3 by the land fraction since ocean exchange is handled separately
+               dsinku(:,:,n) = dsinku(:,:,n)*max(1.-frac_open_sea,0.) 
+               !f1p: archive the dry deposition of nh3, since it needs to be forced to 0. for the ocean
+               if (n.eq.nNH3) nh3_ddep = pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n_red(n)
             end if
 
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
@@ -1555,7 +1559,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 
 !for coupler
-   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep,sum_n_ox_ddep, is,ie,js,je)
+!f1p: remove nh3_ddep from sum_n_red_ddep if nh3 is exchanged between atmosphere and ocean
+   call atmos_nitrogen_drydep_flux_set(max(sum_n_red_ddep-nh3_ddep,0.),sum_n_ox_ddep, is,ie,js,je)
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
