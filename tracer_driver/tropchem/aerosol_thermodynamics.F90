@@ -1,6 +1,6 @@
 module aerosol_thermodynamics
 
-  use tropchem_types_mod, only : small_value
+  use tropchem_types_mod, only : small_value, missing_value
 
   private
   public :: aerosol_thermo
@@ -13,7 +13,7 @@ module aerosol_thermodynamics
 contains
 
   !do_aerosol_thermo
-  subroutine aerosol_thermo( aerosol_thermo_type, rh, TK, pres, so4, nh3, nh4, hno3, no3)
+  subroutine aerosol_thermo( aerosol_thermo_type, rh, TK, pres, so4, nh3, nh4, hno3, no3,ph)
 
     real, intent(in) :: rh   ! relative humidity (unitles)
     real, intent(in) :: TK   ! temperature (K)
@@ -24,11 +24,13 @@ contains
     real, intent(inout) :: no3  ! ammonium nitrate vmr
     real, intent(inout) :: hno3 ! nitric acid vmr
     integer, intent(in) :: aerosol_thermo_type
+    real, intent(out) :: ph !aerosol ph
 
     if (aerosol_thermo_type .eq. AERO_ISORROPIA) then
-       call isorropia_interface(rh, TK, pres, so4, nh3, nh4, hno3, no3)
+       call isorropia_interface(rh, TK, pres, so4, nh3, nh4, hno3, no3,ph)
     elseif ( aerosol_thermo_type .eq. AERO_LEGACY ) then
        call old_am3_interface(rh,TK,nh3,hno3,no3)
+       ph = missing_value
     end if
 
   end subroutine aerosol_thermo
@@ -79,7 +81,7 @@ contains
   end subroutine old_am3_interface
 
   !do_isorropia
-  subroutine isorropia_interface( rh, temp, pres, so4, nh3, nh4, hno3, no3)
+  subroutine isorropia_interface( rh, temp, pres, so4, nh3, nh4, hno3, no3, pH)
 
     real, intent(in)       :: rh   ! relative humidity (unitles)
     real, intent(in)       :: pres ! pressure in Pa
@@ -89,6 +91,7 @@ contains
     real, intent(inout)    :: no3  ! ammonium nitrate vmr
     real, intent(inout)    :: hno3 ! nitric acid
     real, intent(in)       :: temp ! K
+    real, intent(out)      :: pH   ! pH
 
 
     integer, parameter     :: nothera =  9
@@ -114,6 +117,9 @@ contains
     real                 :: cntrl(nctrla)
     real                 :: rhi
     real                 :: ratio_nhx,ratio_no3
+
+    real                 :: hplus,h2o
+
     character(len=15)    :: scasi
 
     !fwd problem only 
@@ -154,7 +160,7 @@ contains
     rhi      = min( 0.995, rhi )
 
     ! perform aerosol thermodynamic equilibrium 
-    ! isoropia can be found in isoropiaiicode.f
+    ! isorropia can be found in isoropiaiicode.f
     ! inputs are wi, rhi, tempi, cntrl
     call isoropia (wi, rhi, temp, cntrl,        &
          wt, gas, aerliq, aersld,     &
@@ -166,6 +172,19 @@ contains
        hno3     = max(min(gas(2),tno3),0.)
        no3      = max(tno3-hno3,0.)
        nh4      = max(tnh3-nh3,0.)
+
+       hplus    = aerliq(1) !mol/m3
+       h2o      = aerliq(8) !mol/m3
+
+       !calculate pH (follow Havala Pye definition)
+       if (other(1).eq.1.d0) then
+          !dry aerosol, pH is not defined
+          pH = missing_value
+       else
+          hplus = aerliq(1)/aerliq(8) * 1000./18. !mol(h+)/m3 / mol(h2o)/m3 * mol(h2o)/L
+          hplus = max(hplus,1.e-20) !to avoid issue with log calculation
+          pH    = -log10(hplus)
+       end if
 
     ! else
 

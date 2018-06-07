@@ -7,6 +7,7 @@ module tropchem_types_mod
   public
 
   real :: small_value
+  real :: missing_value = -999.
 
   type tropchem_diag
 
@@ -14,9 +15,7 @@ module tropchem_types_mod
      integer :: nb_diag
      integer :: ind_pso4_h2o2
      integer :: ind_pso4_o3
-     integer :: ind_pH     
-     integer :: ind_cH     
-     integer :: ind_lwc    
+     integer :: ind_cloud_pH, ind_aerosol_pH     
      integer :: ind_enh4,ind_ehcoo,ind_ech3coo,ind_ehco3,ind_eco3,ind_eoh,ind_eno3,ind_eso4,ind_ehso3,ind_eso3,ind_ealk
      integer :: ind_phno3_d(5), ind_phno3_g_d, ind_ghno3_d, ind_gso2
      integer :: ind_pso4_d(5), ind_pso4_g_d, ind_surfc_nh4no3, ind_surfc_isorropia

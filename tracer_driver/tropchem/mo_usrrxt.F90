@@ -779,8 +779,13 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
 !----------------------------------------------------------------   
 !        drymass(:,1) = r_(:,so4_ndx)*132.*airdensity(:)/avo     !VMR => g/cm3
 ! here to take into account nitrate aerosols.
-         drymass(:,1) = (r_(:,so4_ndx)*132.+r_(:,nh4no3_ndx)*80.) * &
+        if (trop_option%aerosol_thermo = AERO_ISORROPIA) then
+           drymass(:,1) = (r_(:,so4_ndx)*98.+r_(:,nh4no3_ndx)*63.+r_(:,nh4_ndx)*17.) *  &
                 airdensity(:)/avo     !VMR => g/cm3
+        else
+           drymass(:,1) = (r_(:,so4_ndx)*132.+r_(:,nh4no3_ndx)*80.) * &
+                airdensity(:)/avo     !VMR => g/cm3
+        end if
         irh(:)  = 0
         call find_indx(so4_rh1(:), rh_het(:), irh(:))
         aeroindx(:,1) = irh(:)

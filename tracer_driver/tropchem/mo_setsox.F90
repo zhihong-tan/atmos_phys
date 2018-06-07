@@ -138,6 +138,7 @@ CONTAINS
     real, dimension(plonl)  :: t_fac
     real    :: ediag(cloud_nb_diag)
     real    :: xso4_tmp, xnh4_tmp, xant_tmp, xnh3_tmp, xhno3_tmp
+    real    :: xpH
     logical :: converged
 
     if ( .not. module_is_initialized ) then
@@ -256,6 +257,8 @@ CONTAINS
        end do
 
     end do
+
+    if (trop_diag%ind_cloud_pH>0)  trop_diag_array(i,k,trop_diag%ind_cloud_pH)  = missing_value
 
     !-----------------------------------------------------------------
     !       ... Temperature dependent Henry constants
@@ -385,6 +388,8 @@ CONTAINS
                            100.*delta
                    end if
                 end if
+
+                if (trop_diag%ind_cloud_pH>0)  trop_diag_array(i,k,trop_diag%ind_cloud_pH)  = -log10(max(xh(i,k),1.e-20))
 
                 !-----------------------------------------------------------------
                 !         ... hno3
@@ -672,21 +677,7 @@ CONTAINS
                    xo3(i,k)   = MAX( xo3(i,k)   - ccc, small_value )                 
 
                    !<f1p diag
-                   if (trop_diag%ind_pH>0)      trop_diag_array(i,k,trop_diag%ind_pH)     =-log10(xH(i,k))*xlwc(i,k)
-                   if (trop_diag%ind_cH>0)      trop_diag_array(i,k,trop_diag%ind_cH)     = xH(i,k)*xlwc(i,k)
-                   if (trop_diag%ind_lwc>0)     trop_diag_array(i,k,trop_diag%ind_lwc)    = xlwc(i,k)
-                   if (trop_diag%ind_eno3>0)    trop_diag_array(i,k,trop_diag%ind_eno3)   = ediag(1) *xlwc(i,k)
-                   if (trop_diag%ind_ehcoo>0)   trop_diag_array(i,k,trop_diag%ind_ehcoo)  = ediag(2) *xlwc(i,k)
-                   if (trop_diag%ind_ech3coo>0) trop_diag_array(i,k,trop_diag%ind_ech3coo)= ediag(3) *xlwc(i,k)
-                   if (trop_diag%ind_ehso3>0)   trop_diag_array(i,k,trop_diag%ind_ehso3)  = ediag(4) *xlwc(i,k)
-                   if (trop_diag%ind_eso3>0)    trop_diag_array(i,k,trop_diag%ind_eso3)   = ediag(5) *xlwc(i,k)
-                   if (trop_diag%ind_ehco3>0)   trop_diag_array(i,k,trop_diag%ind_ehco3)  = ediag(6) *xlwc(i,k)
-                   if (trop_diag%ind_eco3>0)    trop_diag_array(i,k,trop_diag%ind_eco3)   = ediag(7) *xlwc(i,k)
-                   if (trop_diag%ind_eso4>0)    trop_diag_array(i,k,trop_diag%ind_eso4)   = ediag(8) *xlwc(i,k)
-                   if (trop_diag%ind_enh4>0)    trop_diag_array(i,k,trop_diag%ind_enh4)   = ediag(9) *xlwc(i,k)
-                   if (trop_diag%ind_eoh>0)     trop_diag_array(i,k,trop_diag%ind_eoh)    = ediag(10)*xlwc(i,k)
-                   if (trop_diag%ind_ealk>0)    trop_diag_array(i,k,trop_diag%ind_ealk)   = ediag(11)*xlwc(i,k)
-
+                   if (trop_diag%ind_cloud_pH>0)      trop_diag_array(i,k,trop_diag%ind_cloud_pH)  =-log10(max(xH(i,k),1.e-20))
 
                 end if
 
@@ -735,7 +726,9 @@ CONTAINS
           end if
 
           call mpp_clock_begin(isoropia_clock_id)
-          call aerosol_thermo( trop_option%aerosol_thermo, min(rh,trop_option%max_rh_aerosol), tz, press(i,k), xso4(i,k), xnh3(i,k), xnh4(i,k), xhno3(i,k), xant(i,k))
+          call aerosol_thermo( trop_option%aerosol_thermo, min(rh,trop_option%max_rh_aerosol), tz, press(i,k), xso4(i,k), xnh3(i,k), xnh4(i,k), xhno3(i,k), xant(i,k), xph)
+          if (trop_diag%ind_aerosol_pH>0) &
+               trop_diag_array(i,k,trop_diag%ind_aerosol_pH)   = xph
           call mpp_clock_end(isoropia_clock_id)
 
           if ( trop_option%limit_no3 .and. trop_option%aerosol_thermo .eq. AERO_ISORROPIA ) then
