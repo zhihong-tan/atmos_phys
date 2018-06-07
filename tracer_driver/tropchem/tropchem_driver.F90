@@ -223,8 +223,8 @@ real               :: gSO2                  = 0.
 real               :: gSO2_dust             = 0.
 real               :: gNH3                  = 0.05
 real               :: gHNO3_dust            = 0.
-real               :: gNO3_dust             = 0.
-real               :: gN2O5_dust            = 0.
+real               :: gNO3_dust             = -999.
+real               :: gN2O5_dust            = -999.
 integer            :: gHNO3_dust_dynamic    = 0
 real               :: gH2SO4_dust           = 0.
 logical            :: do_h2so4_nucleation   = .false.
@@ -372,7 +372,7 @@ integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_ub, id_lb, id_airc
 !new diagnostics (f1p)
 integer, dimension(pcnstm1) :: id_prod_mol, id_loss_mol
-integer :: id_ch, id_lwc,id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d, id_gso2, id_ph_aerosol
+integer :: id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d, id_gso2, id_aerosol_ph,id_cloud_ph
 !
 integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
@@ -1186,7 +1186,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
    if (id_gso2>0) then
       used = send_data(id_gso2,trop_diag_array(:,:,:,trop_diag%ind_gso2),Time_next,is_in=is,js_in=js)
    end if
-   if (id_aerosol_pH) then
+   if (id_aerosol_pH>0) then
       used = send_data(id_aerosol_pH,trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph),Time_next,is_in=is,js_in=js, mask = (trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph).ne.missing_value))
    end if
    if (id_cloud_ph>0) then
@@ -2309,14 +2309,6 @@ end if
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_pso4_o3   = trop_diag%nb_diag
    end if
-   if ( id_lwc > 0 ) then
-      trop_diag%nb_diag       = trop_diag%nb_diag + 1
-      trop_diag%ind_lwc       = trop_diag%nb_diag
-   end if
-   if ( id_cH > 0 ) then
-      trop_diag%nb_diag       = trop_diag%nb_diag + 1
-      trop_diag%ind_cH       = trop_diag%nb_diag
-   end if
    if ( id_phno3_g_d > 0 ) then
       trop_diag%nb_diag          = trop_diag%nb_diag + 1
       trop_diag%ind_phno3_g_d    = trop_diag%nb_diag
@@ -2345,9 +2337,13 @@ end if
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_gso2      = trop_diag%nb_diag
    end if
-   if ( id_ph_aerosol > 0 ) then
+   if ( id_aerosol_ph > 0 ) then
       trop_diag%nb_diag           = trop_diag%nb_diag + 1
-      trop_diag%ind_ph_aerosol    = trop_diag%nb_diag
+      trop_diag%ind_aerosol_ph    = trop_diag%nb_diag
+   end if
+   if ( id_cloud_ph > 0 ) then
+      trop_diag%nb_diag           = trop_diag%nb_diag + 1
+      trop_diag%ind_cloud_ph      = trop_diag%nb_diag
    end if
 
 

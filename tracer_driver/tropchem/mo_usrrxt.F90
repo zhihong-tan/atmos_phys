@@ -514,7 +514,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
 !----------------------------------------------------------------------------------------
             ! calculate surface area for each kind of aerosol (total 18)
             call set_aerosol(r(:,k,:),relhum(:,k),m(:,k),drymass_het(:,:),&
-                 rd_het(:,:),re_het(:,:),sfca_het(:,:))            
+                 rd_het(:,:),re_het(:,:),sfca_het(:,:),trop_option)            
 
 
             do i=1,ilev
@@ -710,7 +710,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
         
       end subroutine rh_calc
 
-      subroutine set_aerosol(r_,rh,airdensity,drymass, rd, re, sfc_area)
+      subroutine set_aerosol(r_,rh,airdensity,drymass, rd, re, sfc_area, trop_option)
 !----------------------------------------------------------------
 !     set aerosol information for heteorogenous calculation,
 !      including dry radius(rd), effective radius(re, with rh correction), and surface area  
@@ -720,7 +720,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
         real, intent(in)        :: rh(:),airdensity(:)  !relative humidity
         real, intent(out)       :: drymass(:,:)         !aerosol dry mass (g/cm3)
         real, intent(out)       :: rd(:,:), re(:,:), sfc_area(:,:)  !second dimension is aerosol index
- 
+        type(tropchem_opt), intent(in) :: trop_option
 !-----------------------------------------------------------------
 !     local parameter variables
 !-----------------------------------------------------------------
@@ -779,7 +779,7 @@ elseif ( trop_option%het_chem .eq. HET_CHEM_J1M) then
 !----------------------------------------------------------------   
 !        drymass(:,1) = r_(:,so4_ndx)*132.*airdensity(:)/avo     !VMR => g/cm3
 ! here to take into account nitrate aerosols.
-        if (trop_option%aerosol_thermo = AERO_ISORROPIA) then
+        if (trop_option%aerosol_thermo == AERO_ISORROPIA) then
            drymass(:,1) = (r_(:,so4_ndx)*98.+r_(:,nh4no3_ndx)*63.+r_(:,nh4_ndx)*17.) *  &
                 airdensity(:)/avo     !VMR => g/cm3
         else

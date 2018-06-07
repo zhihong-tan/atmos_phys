@@ -1,7 +1,7 @@
 module MO_SETSOX_MOD
 
   use mo_chem_utls_mod, only : get_spc_ndx
-  use tropchem_types_mod, only : tropchem_opt, tropchem_diag, small_value
+  use tropchem_types_mod, only : tropchem_opt, tropchem_diag, small_value, missing_value
   use fms_mod, only :  mpp_pe, mpp_root_pe, FATAL, error_mesg
   use cloud_chem, only : cloud_pH, cloud_so2_chem, cloud_nb_diag 
   use field_manager_mod,  only : MODEL_ATMOS
@@ -258,7 +258,7 @@ CONTAINS
 
     end do
 
-    if (trop_diag%ind_cloud_pH>0)  trop_diag_array(i,k,trop_diag%ind_cloud_pH)  = missing_value
+    if (trop_diag%ind_cloud_pH>0)  trop_diag_array(:,:,trop_diag%ind_cloud_pH)  = missing_value
 
     !-----------------------------------------------------------------
     !       ... Temperature dependent Henry constants
