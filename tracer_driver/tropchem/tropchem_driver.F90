@@ -1187,10 +1187,12 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
       used = send_data(id_gso2,trop_diag_array(:,:,:,trop_diag%ind_gso2),Time_next,is_in=is,js_in=js)
    end if
    if (id_aerosol_pH>0) then
-      used = send_data(id_aerosol_pH,trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph),Time_next,is_in=is,js_in=js, mask = (trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph).ne.missing_value))
+      used = send_data(id_aerosol_pH,trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph),Time_next,is_in=is,js_in=js, mask = & 
+           ( trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph) .gt. (missing_value + tiny(missing_value))))
    end if
    if (id_cloud_ph>0) then
-      used = send_data(id_cloud_ph,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph),Time_next,is_in=is,js_in=js, mask = (trop_diag_array(:,:,:,trop_diag%ind_cloud_ph).ne.missing_value))
+      used = send_data(id_cloud_ph,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph),Time_next,is_in=is,js_in=js, mask = &
+           (trop_diag_array(:,:,:,trop_diag%ind_cloud_ph).gt. (missing_value + tiny(missing_value))))
    end if
    if (id_phno3_g_d>0) then
       used = send_data(id_phno3_g_d,trop_diag_array(:,:,:,trop_diag%ind_phno3_g_d)*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)

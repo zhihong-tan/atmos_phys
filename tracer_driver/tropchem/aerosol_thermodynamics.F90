@@ -177,7 +177,7 @@ contains
        h2o      = aerliq(8) !mol/m3
 
        !calculate pH (follow Havala Pye definition)
-       if (other(1).eq.1.d0) then
+       if (other(1).gt.0.5) then
           !dry aerosol, pH is not defined
           pH = missing_value
        else
