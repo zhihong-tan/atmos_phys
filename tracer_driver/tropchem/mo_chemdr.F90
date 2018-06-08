@@ -750,7 +750,6 @@ logical                       :: module_is_initialized = .false.
         type(tropchem_opt), intent(in) :: trop_option        
 
         integer :: n
-        real    :: nit_scale_factor
 
         nh4no3_ndx   = get_spc_ndx('NH4NO3')
         nh4_ndx      = get_spc_ndx('NH4')

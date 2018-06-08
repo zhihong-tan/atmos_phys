@@ -20342,7 +20342,18 @@ C        MOLALR(4) = MOLAL(3)                              ! NH4HSO4
       DENO = MAX(CHI6-PSI6-PSI3, ZERO)
       PSI5 = CHI5/((A6/A5)*(DENO/PSI6) + ONE)
 !
-      PSI4 = MIN(PSI5+PSI6,CHI4)
+!      PSI4 = MIN(PSI5+PSI6,CHI4)
+!fix based on https://www.atmos-chem-phys-discuss.net/acp-2018-6/
+
+      IF(W(2).GT.TINY) THEN       ! Accounts for NH3 evaporation
+         BB   =-(CHI4 + PSI6 + PSI5 + 1.d0/A4)
+         CC   = CHI4*(PSI5+PSI6) - 2.d0*PSI2/A4
+         DD   = MAX(BB*BB-4.d0*CC,ZERO) ! Patch proposed by Uma Shankar, 19/11/01
+         PSI4 =0.5d0*(-BB - SQRT(DD))
+      ELSE
+         PSI4 = TINY
+      ENDIF
+
 !
       IF (CHI2.GT.TINY .AND. WATER.GT.TINY) THEN     
          CALL POLY3 (PSI4, PSI4*PSI4/4.D0, -A2/4.D0, PSI20, ISLV)
@@ -25753,10 +25764,20 @@ C        MOLALR(4) = MOLAL(3)                              ! NH4HSO4
       DENO = MAX(CHI6-PSI6-PSI3, ZERO)
       PSI5 = PSI6*CHI5/(A6/A5*DENO + PSI6)
       PSI5 = MIN(PSI5,CHI5)
+
 !
-      PSI4 = MIN(PSI5+PSI6,CHI4)
-!
-!
+!      PSI4 = MIN(PSI5+PSI6,CHI4)
+!fix based on https://www.atmos-chem-phys-discuss.net/acp-2018-6/
+
+      IF(W(2).GT.TINY) THEN       ! Accounts for NH3 evaporation
+         BB   =-(CHI4 + PSI6 + PSI5 + 1.d0/A4)
+         CC   = CHI4*(PSI5+PSI6) - 2.d0*PSI2/A4
+         DD   = MAX(BB*BB-4.d0*CC,ZERO) ! Patch proposed by Uma Shankar, 19/11/01
+         PSI4 =0.5d0*(-BB - SQRT(DD))
+      ELSE
+         PSI4 = TINY
+      ENDIF
+
       IF (CHI7.GT.TINY .AND. WATER.GT.TINY) THEN        ! PSI7
          CALL POLY3 (PSI2+PSI8, ZERO, -A7/4.D0, PSI7, ISLV)
          IF (ISLV.EQ.0) THEN

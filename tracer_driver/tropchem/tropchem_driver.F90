@@ -39,7 +39,7 @@ use                    fms_mod, only : file_exist,   &
                                        FATAL, &
                                        WARNING, &
                                        NOTE
-use         tropchem_types_mod, only : tropchem_opt, tropchem_diag, tropchem_types_init
+use         tropchem_types_mod, only : tropchem_opt, tropchem_diag, tropchem_types_init, missing_value
 use           time_manager_mod, only : time_type, &
                                        get_date, &
                                        set_date, &
@@ -223,8 +223,8 @@ real               :: gSO2                  = 0.
 real               :: gSO2_dust             = 0.
 real               :: gNH3                  = 0.05
 real               :: gHNO3_dust            = 0.
-real               :: gNO3_dust             = 0.
-real               :: gN2O5_dust            = 0.
+real               :: gNO3_dust             = -999.
+real               :: gN2O5_dust            = -999.
 integer            :: gHNO3_dust_dynamic    = 0
 real               :: gH2SO4_dust           = 0.
 logical            :: do_h2so4_nucleation   = .false.
@@ -303,6 +303,7 @@ namelist /tropchem_driver_nml/    &
                                max_rh_aerosol, limit_no3, cloud_ho2_h2o2, &
                                sim_data_filename,time_varying_solarflux, gso2_dynamic
 
+
 integer                     :: nco2 = 0
 character(len=7), parameter :: module_name = 'tracers'
 real, parameter :: g_to_kg    = 1.e-3,    & !conversion factor (kg/g)
@@ -371,7 +372,7 @@ integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_ub, id_lb, id_airc
 !new diagnostics (f1p)
 integer, dimension(pcnstm1) :: id_prod_mol, id_loss_mol
-integer :: id_ch, id_lwc,id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d, id_gso2
+integer :: id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d, id_gso2, id_aerosol_ph,id_cloud_ph
 !
 integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
@@ -1167,12 +1168,6 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
            mw_so4 * (trop_diag_array(:,:,:,trop_diag%ind_pso4_o3)+ trop_diag_array(:,:,:,trop_diag%ind_pso4_h2o2))*pwt(:,:,:)/(WTMAIR*1e-3), &
            Time_next, is_in=is, js_in=js, ks_in=1)
    end if
-   if (id_cH>0 .and. trop_diag%ind_cH>0) then
-      used = send_data(id_cH,trop_diag_array(:,:,:,trop_diag%ind_cH),Time_next,is_in=is,js_in=js)
-   end if
-   if (id_lwc>0 .and. trop_diag%ind_lwc>0) then
-      used = send_data(id_lwc,trop_diag_array(:,:,:,trop_diag%ind_lwc),Time_next,is_in=is,js_in=js)
-   end if
    do n=1,5
       if (id_phno3_d(n) >0) then
          !phno3_d is in VMR/s convert to mole/m2/s
@@ -1190,6 +1185,14 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
    end if
    if (id_gso2>0) then
       used = send_data(id_gso2,trop_diag_array(:,:,:,trop_diag%ind_gso2),Time_next,is_in=is,js_in=js)
+   end if
+   if (id_aerosol_pH>0) then
+      used = send_data(id_aerosol_pH,trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph),Time_next,is_in=is,js_in=js, mask = & 
+           ( trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph) .gt. (missing_value + tiny(missing_value))))
+   end if
+   if (id_cloud_ph>0) then
+      used = send_data(id_cloud_ph,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph),Time_next,is_in=is,js_in=js, mask = &
+           (trop_diag_array(:,:,:,trop_diag%ind_cloud_ph).gt. (missing_value + tiny(missing_value))))
    end if
    if (id_phno3_g_d>0) then
       used = send_data(id_phno3_g_d,trop_diag_array(:,:,:,trop_diag%ind_phno3_g_d)*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
@@ -2201,12 +2204,13 @@ end if
    id_lossox = register_diag_field( module_name, 'Ox_loss', axes(1:3), &
         Time, 'Ox_loss','VMR/s')
 !f1p
-   id_cH          = register_diag_field( module_name, 'cHw',axes(1:3), Time, 'cH x lwc','none')
-   id_lwc         = register_diag_field( module_name, 'lwc',axes(1:3), Time, 'lwc','L(water)/L(air)')
    id_pso4_h2o2   = register_diag_field( module_name, 'PSO4_H2O2',axes(1:3), Time, 'PSO4_H2O2','mole/m2/s')
    id_pso4_o3     = register_diag_field( module_name, 'PSO4_O3',axes(1:3), Time, 'PSO4_O3','mole/m2/s')
 
    id_gso2        = register_diag_field( module_name, 'gamma_so2',axes(1:3), Time, 'gamma_so2','unitless')
+
+   id_aerosol_pH  = register_diag_field( module_name, 'aerosol_pH',axes(1:3), Time, 'aerosol_ph','unitless', mask_variant = .true.,missing_value=missing_value)
+   id_cloud_pH  = register_diag_field( module_name, 'cloud_pH',axes(1:3), Time, 'cloud_ph','unitless', mask_variant = .true.,missing_value=missing_value)
 
 !for cmip6
    ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, &
@@ -2307,14 +2311,6 @@ end if
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_pso4_o3   = trop_diag%nb_diag
    end if
-   if ( id_lwc > 0 ) then
-      trop_diag%nb_diag       = trop_diag%nb_diag + 1
-      trop_diag%ind_lwc       = trop_diag%nb_diag
-   end if
-   if ( id_cH > 0 ) then
-      trop_diag%nb_diag       = trop_diag%nb_diag + 1
-      trop_diag%ind_cH       = trop_diag%nb_diag
-   end if
    if ( id_phno3_g_d > 0 ) then
       trop_diag%nb_diag          = trop_diag%nb_diag + 1
       trop_diag%ind_phno3_g_d    = trop_diag%nb_diag
@@ -2342,6 +2338,14 @@ end if
    if ( id_gso2 > 0 ) then
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_gso2      = trop_diag%nb_diag
+   end if
+   if ( id_aerosol_ph > 0 ) then
+      trop_diag%nb_diag           = trop_diag%nb_diag + 1
+      trop_diag%ind_aerosol_ph    = trop_diag%nb_diag
+   end if
+   if ( id_cloud_ph > 0 ) then
+      trop_diag%nb_diag           = trop_diag%nb_diag + 1
+      trop_diag%ind_cloud_ph      = trop_diag%nb_diag
    end if
 
 
