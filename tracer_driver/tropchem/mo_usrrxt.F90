@@ -1,5 +1,6 @@
       module mo_usrrxt_mod
 
+      use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
       use sat_vapor_pres_mod, only : compute_qs
       use constants_mod, only : rdgas, rvgas
       use strat_chem_utilities_mod, only : psc_type, strat_chem_get_gamma, &
