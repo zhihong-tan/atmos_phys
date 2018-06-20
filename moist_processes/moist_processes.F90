@@ -1234,7 +1234,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
         nbin_dust=dust_tracers(n)%tr
         total_wetdep_dust(:,:)=total_wetdep_dust(:,:)+total_wetdep(:,:,nbin_dust)
      enddo
-     call atmos_dust_wetdep_flux_set(total_wetdep_dust, is,ie,js,je)
+     call atmos_dust_wetdep_flux_set(-total_wetdep_dust, is,ie,js,je)
        if (id_wetdep_dust  > 0) used = send_data (id_wetdep_dust,  total_wetdep_dust, Time, is,js)
        if (id_wetdust_cmip > 0) used = send_data (id_wetdust_cmip, total_wetdep_dust, Time, is,js)
      endif
@@ -1250,7 +1250,7 @@ type(mp_removal_type),     intent(inout) :: Removal_mp
            total_wetdep_nox = total_wetdep_nox    + total_wetdep(:,:,n)*nb_N_ox(n)
         endif
      end do
-     call atmos_nitrogen_wetdep_flux_set(total_wetdep_nred, total_wetdep_nox, is,ie,js,je)
+     call atmos_nitrogen_wetdep_flux_set(-total_wetdep_nred, -total_wetdep_nox, is,ie,js,je)
      if (id_n_ox_wdep>0 .and. sum(nb_N_ox)>0) then
          used = send_data ( id_n_ox_wdep, total_wetdep_nox*wtmn/1000., Time, is, js)
      endif
