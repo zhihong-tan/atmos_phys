@@ -86,7 +86,9 @@ public atmos_input_type
 !    aerosolpress
 !    aerosolrelhum
 !    tracer_co2
+!    tracer_ch4
 !    g_rrvco2
+!    g_rrvch4
 !    tsfc
 !    psfc
 
@@ -107,10 +109,11 @@ type atmos_input_type
                                         aerosolvapor=>NULL(), &
                                         aerosolpress=>NULL(), &
                                         aerosolrelhum=>NULL(), &
-                                        tracer_co2 => NULL()
+                                        tracer_co2 => NULL(), &
+                                        tracer_ch4 => NULL()
      real, dimension(:,:),   pointer :: tsfc=>NULL(),   &
                                         psfc=>NULL()              
-     real                            :: g_rrvco2
+     real                            :: g_rrvco2, g_rrvch4
 end type atmos_input_type
 
 !-------------------------------------------------------------------

@@ -1720,7 +1720,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
                                                 dfsw, ufsw,  &
                                                 dfswcf, ufswcf,&
                                                 flxnet, flxnetcf, &
-                                                fsw, fswcf
+                                                fsw, fswcf, lphalf
       real, dimension (ie-is+1,je-js+1) ::      &
                                          swin_ad,     swout_ad, olr_ad,&
                               swups_ad,    swdns_ad, lwups_ad,lwdns_ad,&
@@ -1776,6 +1776,18 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
         endif
       endif
       
+!---------------------------------------------------------------------
+!   define log(phalf) for pressure level interpolation
+!   check fields that pass log(phalf) argument to send_data
+!---------------------------------------------------------------------
+      if (Rad_control%renormalize_sw_fluxes .or. Rad_control%do_sw_rad .or. &
+          Rad_control%do_lw_rad .or. all_step_diagnostics) then
+        if (query_cmip_diag_id(ID_tntrs) .or. query_cmip_diag_id(ID_tntrscs) .or. &
+            query_cmip_diag_id(ID_tntrl) .or. query_cmip_diag_id(ID_tntrlcs)) then
+               lphalf = log(phalf)
+        endif
+      endif
+
 !---------------------------------------------------------------------
 !    if sw flux renormalization is active, modify the fluxes calculated
 !    on the last radiation step by the normalization factor based on
@@ -2044,7 +2056,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- sw tendency -----------
         if (query_cmip_diag_id(ID_tntrs)) then
           used = send_cmip_data_3d (ID_tntrs, Rad_output%tdtsw(is:ie,js:je,:),  &
-                            Time_diag, is, js, 1)
+                            Time_diag, is, js, 1, phalf=lphalf)
         endif
 
 !------- 3d upward sw flux -------
@@ -2221,7 +2233,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- sw tendency -----------
           if (query_cmip_diag_id(ID_tntrscs)) then
             used = send_cmip_data_3d (ID_tntrscs, Rad_output%tdtsw_clr(is:ie,js:je,:),  &
-                              Time_diag, is, js, 1)
+                              Time_diag, is, js, 1, phalf=lphalf)
           endif
 
 !------- 3d upward sw flux -------
@@ -2812,7 +2824,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- lw tendency -----------
         if (query_cmip_diag_id(ID_tntrl)) then
           used = send_cmip_data_3d (ID_tntrl, tdtlw,    &
-                            Time_diag, is, js, 1)
+                            Time_diag, is, js, 1, phalf=lphalf)
         endif
 
 !------- downward lw flux surface -------
@@ -2932,7 +2944,7 @@ type(sw_output_type), dimension(:), intent(in), optional :: Sw_output
 !------- lw tendency -----------
         if (query_cmip_diag_id(ID_tntrlcs)) then
           used = send_cmip_data_3d (ID_tntrlcs, tdtlw_clr,    &
-                            Time_diag, is, js, 1)
+                            Time_diag, is, js, 1, phalf=lphalf)
         endif
 
 !------- downward lw flux surface -------
@@ -3326,6 +3338,15 @@ real, dimension(:,:,:),       intent(out) :: netlw_trop, netlw_trop_clr
       integer           :: ki, i
       integer           :: kmax
       real              :: wtlo, wthi
+
+      !> initialize intent(out) variables
+      swdn_trop = 0.0
+      swup_trop = 0.0
+      swdn_trop_clr = 0.0
+      swup_trop_clr = 0.0
+      netlw_trop = 0.0
+      netlw_trop_clr = 0.0
+
 
       kmax = size(pflux,3) - 1
 

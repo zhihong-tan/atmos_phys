@@ -2223,12 +2223,12 @@ contains
       end do
       if (i > 0) then
         print *, 'WARNING: tendencies larger than tten_max occurs in UW'
-        write(*,"(A6,F6.2,A6,F6.2,A6,F4.2,A6,F7.1)"),'lat=',sd%lat, ';lon=',sd%lon, ';land=',sd%land, ';zs=', sd%zs(1)
-        write(*,*), 'num=',i, 'krel=',krel, 'let=',cp%let, 'ltop=',cp%ltop
-        write(*,*), 'mixing_assumption=',cpn%mixing_assumption,'forced_lifting=',cpn%do_forcedlifting, &
+        write(*,"(A6,F6.2,A6,F6.2,A6,F4.2,A6,F7.1)") 'lat=',sd%lat, ';lon=',sd%lon, ';land=',sd%land, ';zs=', sd%zs(1)
+        write(*,*)  'num=',i, 'krel=',krel, 'let=',cp%let, 'ltop=',cp%ltop
+        write(*,*)  'mixing_assumption=',cpn%mixing_assumption,'forced_lifting=',cpn%do_forcedlifting, &
                     'do_ppen=',cpn%do_ppen
-        write(*,"(A6,F8.2,A6,F8.2)"), 'rain=',ct%rain*86400,'snow=',ct%snow*86400
-        write(*,"(15A6)"),'levl','pres','tten','buoy','Umf','Wu','ufrc','T-hl','T-qc','T-px',&
+        write(*,"(A6,F8.2,A6,F8.2)")  'rain=',ct%rain*86400,'snow=',ct%snow*86400
+        write(*,"(15A6)") 'levl','pres','tten','buoy','Umf','Wu','ufrc','T-hl','T-qc','T-px',&
                           'Tumf','Temf','hlflx','qlten','qiten','qaten','emf','rei','fer','fdr'
         do k=1,sd%kmax
            xx1 = ct%hlten(k)/Uw_p%cp_air*86400.
@@ -2236,7 +2236,7 @@ contains
            xx3 = (Uw_p%HLv*cp%pptr(k) +Uw_p%HLs*cp%ppti(k))*Uw_p%grav/sd%dp(k)/Uw_p%cp_air*86400
            x1  = -Uw_p%grav*cp%umf(k)*sd%ssthc(k)*86400
            x2  = -Uw_p%grav*cp%emf(k)*sd%ssthc(k)*86400
-           write(*,"(I5,15F8.2,4F8.5)"),k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
+           write(*,"(I5,15F8.2,4F8.5)") k,sd%p(k)*0.01,ct%tten(k)*86400,cp%buo(k),cp%umf(k),&
                                         cp%wu(k),cp%ufrc(k),xx1,xx2,xx3,x1,x2,ct%hlflx(k),  &
                                         ct%qaten(k), ct%qlten(k)*86400,ct%qiten(k)*86400,   &
                                         cp%emf(k),cp%rei(k),cp%fer(k),cp%fdr(k)

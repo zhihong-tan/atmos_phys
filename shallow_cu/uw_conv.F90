@@ -411,7 +411,7 @@ contains
 
     integer   :: ntracers, n, nn, ierr, logunit
     logical   :: flag
-    character(len=200) :: text_in_scheme, control
+    character(len=300) :: text_in_scheme, control
     real :: frac_junk, frac_junk2
 
     integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
@@ -895,7 +895,8 @@ contains
          'fraction of time convection occurs from uw_conv', 'none', missing_value=mv)
     id_feq_uws = register_cmip_diag_field_2d (mod_name, 'sci_uw', Time,  &
                     'Fraction of Time Shallow Convection Occurs', '1.0', &
-                         standard_name='shallow_convection_time_fraction')
+                         standard_name='shallow_convection_time_fraction', &
+                         interp_method = 'conserve_order1' )
     id_rkm_uws = register_diag_field (mod_name, 'rkm_uws', axes(1:2), Time, &
             'lateral mixing rate parameter for shallow_plume', 'none' )
     id_frkm_uws = register_diag_field (mod_name, 'frkm_uws', axes(1:2), Time, &
@@ -1712,7 +1713,6 @@ contains
       end do
     endif ! use_online_aerosol
 
-
     !relaxation TKE back to 0 with time-scale of disscale
     !tkeavg = ustar(i,j)*bstar(i,j)*disscale
     !dissipate tke with length-scale of disscale
@@ -2233,13 +2233,14 @@ contains
              call check_tracer_realizability (kmax, size(trtend,4), delt, &
                                               cp1%tr, trtend_t, trwet_t, pmass(i,j,:), tracer_check_type, rn = rn    )
              do n = 1, size(trtend,4)
-               do k = 1,kmax!cp1%ltop
-                 nk = kmax+1-k
-                 trtend(i,j,nk,n) = trtend_t(k,n) + trwet_t(k,n)
-                 trwet(i,j,nk,n)  = trwet_t(k,n)
+                do k = 1,kmax !cp1%ltop
+                   nk = kmax+1-k
+
+                   trtend(i,j,nk,n) = trtend_t(k,n) + trwet_t(k,n)
+                   trwet(i,j,nk,n)  = trwet_t(k,n)
 !f1p
-                 trtend_nc(i,j,nk,n) = trtend_t_nc(k,n) + trwet_t_nc(k,n)
-                 rn_diag(i,j,nk,n) = rn(k,n)
+                   trtend_nc(i,j,nk,n) = trtend_t_nc(k,n) + trwet_t_nc(k,n)
+                   rn_diag(i,j,nk,n) = rn(k,n)
 !>
                enddo
              enddo
@@ -2527,6 +2528,7 @@ contains
           enddo
        enddo
     enddo
+
 
     if (do_imposing_rad_cooling) then
       tten_rad(:,:,:) = 0.0

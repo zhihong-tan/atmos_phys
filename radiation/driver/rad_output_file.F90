@@ -1628,7 +1628,8 @@ logical,                        intent(in) :: volcanic_sw_aerosols
 
       ID_o3    = register_cmip_diag_field_3d (mod_name, 'o3', Time, &
                           'Ozone Volume Mixing Ratio', 'mol mol-1', &
-                        standard_name = 'mole_fraction_of_ozone_in_air')
+                        standard_name = 'mole_fraction_of_ozone_in_air', &
+                        interp_method = 'conserve_order1' )
               
       id_qo3_col = &
          register_diag_field (mod_name, 'qo3_col', axes(1:2), Time, &

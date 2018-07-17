@@ -3300,7 +3300,9 @@ type(mp_removal_type),   intent(inout) :: Removal_mp
 !    temperature change due to large-scale clouds:
 !---------------------------------------------------------------------
       used = send_data (id_tdt_ls, Tend_mp%ttnd(:,:,:), Time, is, js, 1)
-      used = send_cmip_data_3d (ID_tntscp, Tend_mp%ttnd, Time, is, js, 1)!, rmask=mask)
+      if (query_cmip_diag_id(ID_tntscp)) then
+        used = send_cmip_data_3d (ID_tntscp, Tend_mp%ttnd, Time, is, js, 1, phalf=log(Input_mp%phalf))!, rmask=mask)
+      endif
 
 !---------------------------------------------------------------------
 !    dry static energy tendency due to large-scale clouds:
@@ -3320,7 +3322,9 @@ type(mp_removal_type),   intent(inout) :: Removal_mp
 !    specific humidity change due to large-scale clouds:
 !---------------------------------------------------------------------
       used = send_data (id_qdt_ls, Tend_mp%qtnd(:,:,:), Time, is, js, 1)
-      used = send_cmip_data_3d (ID_tnhusscp, Tend_mp%qtnd, Time, is, js, 1)!, rmask=mask)
+      if (query_cmip_diag_id(ID_tnhusscp)) then
+        used = send_cmip_data_3d (ID_tnhusscp, Tend_mp%qtnd, Time, is, js, 1, phalf=log(Input_mp%phalf))!, rmask=mask)
+      endif
 !---------------------------------------------------------------------
 !    surface precip due to large-scale clouds:
 !---------------------------------------------------------------------

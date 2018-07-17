@@ -2565,13 +2565,17 @@ integer, dimension(:,:), intent(in), optional :: kbot
 !    temperature change due to dry and moist convection:
 !---------------------------------------------------------------------
       used = send_data (id_tdt_conv, Tend_mp%ttnd_conv, Time, is, js, 1)
-      used = send_cmip_data_3d (ID_tntc, Tend_mp%ttnd_conv, Time, is, js, 1)!, rmask=mask)
+      if (query_cmip_diag_id(ID_tntc)) then
+        used = send_cmip_data_3d (ID_tntc, Tend_mp%ttnd_conv, Time, is, js, 1, phalf=log(Input_mp%phalf))!, rmask=mask)
+      endif
 
 !---------------------------------------------------------------------
 !    vapor specific humidity change due to convection:
 !---------------------------------------------------------------------
       used = send_data (id_qdt_conv, Tend_mp%qtnd_conv, Time, is, js, 1)
-      used = send_cmip_data_3d (ID_tnhusc, Tend_mp%qtnd_conv, Time, is, js, 1)!, rmask=mask)
+      if (query_cmip_diag_id(ID_tnhusc)) then
+        used = send_cmip_data_3d (ID_tnhusc, Tend_mp%qtnd_conv, Time, is, js, 1, phalf=log(Input_mp%phalf))!, rmask=mask)
+      endif
 
 !---------------------------------------------------------------------
 !    total precipitation due to convection (both FMS and CMOR standards):
@@ -3217,7 +3221,7 @@ type(mp_removal_control_type), intent(in) :: Control
       ID_mc = register_cmip_diag_field_3d ( mod_name, 'mc', Time, &
             'Convective Mass Flux',   'kg m-2 s-1', &
             standard_name='atmosphere_net_upward_convective_mass_flux', &
-            axis="half" )
+            interp_method = 'conserve_order1', axis="half" )
 
       id_mc_conv_up = register_diag_field ( mod_name, &
                       'mc_conv_up', axes(1:3), Time, &

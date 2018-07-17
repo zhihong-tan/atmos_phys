@@ -1688,7 +1688,7 @@ real,dimension(:,:),     intent(in)             :: frac_land,   &
                                                    albedo, t_surf_rad, &
                                                    u_ref, v_ref, & !bqx+
                                                    t_ref, q_ref, &  ! cjg: PBL depth mods
-                                                   u_star, b_star,    &
+                                                   u_star, b_star, &
                                                    q_star, dtau_du,   &
                                                    dtau_dv, frac_open_sea
 real,dimension(:,:),     intent(inout)          :: tau_x,  tau_y
@@ -1769,12 +1769,13 @@ real,  dimension(:,:,:), intent(out)  ,optional :: diffm, difft
 !---------------------------------------------------------------------
 !    local variables:
 
-      real, dimension(ie-is+1,je-js+1,npz) :: diff_t_vert, diff_m_vert
-      real, dimension(ie-is+1,je-js+1,npz) :: tdt_rad, tdt_lw
-      real, dimension(ie-is+1,je-js+1)     :: z_pbl
-      integer                              :: sec, day, n, nextinct
-      real                                 :: dt, alpha, dt2
-      logical                              :: used
+      real, dimension(ie-is+1,je-js+1,npz)   :: diff_t_vert, diff_m_vert
+      real, dimension(ie-is+1,je-js+1,npz)   :: tdt_rad, tdt_lw
+      real, dimension(ie-is+1,je-js+1,npz+1) :: lphalf
+      real, dimension(ie-is+1,je-js+1)       :: z_pbl
+      integer                                :: sec, day, n, nextinct
+      real                                   :: dt, alpha, dt2
+      logical                                :: used
 
 !---> h1g, 2015-08-11
       real, dimension(ie-is+1,je-js+1) :: tke_avg
@@ -2308,7 +2309,7 @@ real,dimension(:,:),    intent(inout)             :: gust
       type (phys_mp_exch_type)         :: Phys_mp_exch
       type(aerosol_type)               :: Aerosol
       real, dimension(ie-is+1, je-js+1)          :: gust_cv
-      real, dimension(ie-is+1, je-js+1, npz+1)   :: pflux
+      real, dimension(ie-is+1, je-js+1, npz+1)   :: pflux, lphalf
       real, dimension(ie-is+1, je-js+1), target  :: tdt_shf,  qdt_lhf
       integer :: sec, day
       real    :: dt
@@ -2603,11 +2604,14 @@ real,dimension(:,:),    intent(inout)             :: gust
         if (.not. do_grey_radiation) call aerosol_dealloc (Aerosol)
 
       !------ CMIP diagnostics (tendencies due to physics) ------
+      if (query_cmip_diag_id(ID_tntmp) .or. query_cmip_diag_id(ID_tnhusmp)) then
+        lphalf = log(p_half)
+      endif
       if (query_cmip_diag_id(ID_tntmp)) then
-        used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js, 1)
+        used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js, 1, phalf=lphalf)
       endif
       if (query_cmip_diag_id(ID_tnhusmp)) then
-        used = send_cmip_data_3d (ID_tnhusmp, rdt(:,:,:,nsphum), Time_next, is, js, 1)
+        used = send_cmip_data_3d (ID_tnhusmp, rdt(:,:,:,nsphum), Time_next, is, js, 1, phalf=lphalf)
       endif
 
 

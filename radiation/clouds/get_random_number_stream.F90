@@ -137,15 +137,15 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
         if ( force_use_of_temp_for_seed) then
           use_temp_for_seed = .true.
           call error_mesg ('cloud_spec_init', &
-                 'Will use temp as basis for stochastic cloud seed; &
-                    eed is set true', NOTE)
+           'Will use temp as basis for stochastic cloud seed; seed is set true', &
+            NOTE)
         else
           use_temp_for_seed = .false.
           call error_mesg ('cloud_spec_init', &
-               ' If model resolution is above c48, it is &
-               &HIGHLY RECOMMENDED that you set cloud_spec_nml variable &
-               &force_use_of_temp_for_seed to true to assure &
-               &reproducibility across pe count and domain layout', NOTE)
+               ' If model resolution is above c48, it is '// &
+               'HIGHLY RECOMMENDED that you set cloud_spec_nml variable '// &
+               'force_use_of_temp_for_seed to true to assure '// &
+               'reproducibility across pe count and domain layout', NOTE)
           call error_mesg ('cloud_spec_init', &
                'No action is needed at or below c48 resolution.', NOTE)
         endif
