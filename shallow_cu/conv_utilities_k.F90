@@ -1,6 +1,5 @@
-#include <fms_platform.h>
-
 MODULE CONV_UTILITIES_k_MOD
+#include <fms_platform.h>
 
   use Sat_Vapor_Pres_k_Mod, ONLY: compute_qs_k
 
