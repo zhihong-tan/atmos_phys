@@ -39,12 +39,14 @@ use         tracer_manager_mod, only : get_tracer_index,        &
                                        NO_TRACER
 use          field_manager_mod, only : MODEL_ATMOS
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR, AVOGNO
-use           interpolator_mod, only:  interpolate_type,  &
-                                       interpolator_init, &
+use           interpolator_mod, only:  interpolate_type,        &
+                                       interpolator_init,       &
                                        obtain_interpolator_time_slices,&
                                        unset_interpolator_time_flag, &
                                        interpolator, interpolator_end, &
                                        CONSTANT, INTERP_WEIGHTED_P
+use           xactive_bvoc_mod, only : ind_xbvoc_ISOP,          &
+                                       ind_xbvoc_TERP
 
 implicit none
 
@@ -788,8 +790,8 @@ end subroutine atmos_SOA_endts
 
       else
 
-         isoprene_emis(:,:) = xbvoc(:,:,1)
-         terpene_emis(:,:)  = xbvoc(:,:,2)
+         isoprene_emis(:,:) = xbvoc(:,:,ind_xbvoc_ISOP)
+         terpene_emis(:,:)  = xbvoc(:,:,ind_xbvoc_TERP)
                
       endif
 

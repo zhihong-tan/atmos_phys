@@ -210,7 +210,9 @@ use atmos_tropopause_mod,  only : atmos_tropopause_init, &
 
 use xactive_bvoc_mod,      only : xactive_bvoc,          &
                                   xactive_bvoc_end,      &
-                                  xactive_bvoc_init
+                                  xactive_bvoc_init,     &
+                                  ind_xbvoc_ISOP,        &
+                                  ind_xbvoc_TERP
 
 use interpolator_mod,      only : interpolate_type
 use atmos_ocean_fluxes_mod,only : aof_set_coupler_flux
@@ -311,6 +313,7 @@ integer :: nC4H10    =0
 integer :: ncodirect =0
 integer :: ne90 =0
 integer :: nsulfate  =0
+integer :: nISOP     =0
 
 integer, dimension(5) :: tr_nbr_sulfate=0
 logical, dimension(5) :: do_tracer_sulfate=.false.
@@ -365,7 +368,8 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
-            id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa
+            id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa, &
+            id_emiisop_biogenic
 
 !for cmip6 (f1p)
  type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
@@ -1374,6 +1378,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
       do ixact = 1, nxactive
          rdt(:,:,kd,xactive_ndx(ixact)) = rdt(:,:,kd,xactive_ndx(ixact))   &
                                           + rtnd_xactive(:,:,ixact)
+         if (xactive_ndx(ixact)==nISOP .and. id_emiisop_biogenic>0) then
+           used  = send_data (id_emiisop_biogenic, &
+                 xbvoc4soa(:,:,ind_xbvoc_ISOP)*1.0e04*0.068/AVOGNO,        &
+                 Time_next, is_in=is, js_in=js)
+         endif
       enddo
    endif
    call mpp_clock_end (xbvoc_clock)
@@ -1784,6 +1793,7 @@ type(time_type), intent(in)                                :: Time
       nOH       = get_tracer_index(MODEL_ATMOS,'oh')
       nC4H10    = get_tracer_index(MODEL_ATMOS,'c4h10')
       nNH3      = get_tracer_index(MODEL_ATMOS,'nh3')
+      nISOP     = get_tracer_index(MODEL_ATMOS,'isop')
 
 ! Check for presence of OH and C4H10 (diagnostic) tracers
 ! If not present set index to 1 so interface calls do not fail,
@@ -2055,6 +2065,11 @@ type(time_type), intent(in)                                :: Time
       id_dryoa = register_cmip_diag_field_2d ( mod_name, &
                   'dryoa', Time, 'Dry Deposition Rate of Dry Aerosol Total Organic Matter', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
+ 
+      id_emiisop_biogenic = register_cmip_diag_field_2d ( mod_name, &
+                  'emiisop_biogenic', Time, 'Total Emission Rate of Isoprene from biogenic', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
+
       !----
 
 !<f1p: tracer diagnostics

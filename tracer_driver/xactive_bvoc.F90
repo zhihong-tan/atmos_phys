@@ -193,7 +193,8 @@ private
 !     ... INTERFACES ...
 !------------------------------------------------------------------------------
 
-public xactive_bvoc, xactive_bvoc_init, xactive_bvoc_end
+public xactive_bvoc, xactive_bvoc_init, xactive_bvoc_end, &
+       ind_xbvoc_ISOP, ind_xbvoc_TERP
 
 !------------------------------------------------------------------------------
 !      ... NAMELIST ...
@@ -243,6 +244,8 @@ real, parameter     :: twopi = 2.*PI
 character(len=7), parameter :: module_name = 'tracers'
 real                :: RHO_CANOPY = 1.                         ! Emisions lost in the canopy = (1 - RHO)
 
+integer, parameter  :: ind_xbvoc_ISOP = 1, &                   ! Index for isoprene emissions in xbvoc4soa
+                       ind_xbvoc_TERP = 2                      ! Index for terpene emissions in xbvoc4soa
 
 namelist /xactive_bvoc_nml/                     &
                              xactive_algorithm, &
@@ -439,7 +442,7 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
    real, intent(in), dimension(:,:)            :: CO2             ! surface CO2 conc. [VMR]
    real, intent(in), dimension(:,:)            :: O3              ! surface O3 conc.  [VMR]
    real, intent(out), dimension(:,:,:)         :: rtnd_xactive    ! xactive tracer tendencies [VMR/s]
-   real, intent(out), dimension(:,:,:)         :: xbvoc4soa
+   real, intent(out), dimension(:,:,:)         :: xbvoc4soa       ! biogenic emissions (for SOA) [molec/cm2/s]
 
 !-------------------------------------------------------------------------------------------------
 !-------------------------------------  Local Variables  -----------------------------------------
@@ -711,9 +714,9 @@ subroutine xactive_bvoc( lon, lat, land, is, ie, js, je, Time, Time_next, coszen
 !                 ( pwt(kg/m2) / WTMAIR(g/mol) * 1e3(g/kg) * AVOGNO(molec/mole) )
            rtnd_xactive(:,:,xactive_knt) = EMIS * 10. / pwtsfc * WTMAIR / AVOGNO
            IF ( trim(tracnam(i))=='ISOP' ) THEN
-              xbvoc4soa(:,:,1) = EMIS
+              xbvoc4soa(:,:,ind_xbvoc_ISOP) = EMIS
            ELSEIF ( trim(tracnam(i))=='C10H16' ) THEN
-              xbvoc4soa(:,:,2) = EMIS
+              xbvoc4soa(:,:,ind_xbvoc_TERP) = EMIS
            ENDIF
 
       ENDIF !has_xactive_emis
