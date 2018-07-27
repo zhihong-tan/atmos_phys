@@ -2299,8 +2299,7 @@ end if
                 'Photolysis Rate of NO2', 's-1',  &
                 standard_name='photolysis_rate_of_nitrogen_dioxide')
    ID_jo1d = register_cmip_diag_field_3d (  module_name,'photo1d', Time, &
-                'Photolysis Rate of Ozone (O3) to Excited Atomic Oxygen (singlet
-d: O1d)', 's-1',  &
+                'Photolysis Rate of Ozone (O3) to Excited Atomic Oxygen (singlet d: O1d)', 's-1',  &
                 standard_name='photolysis_rate_of_ozone_to_1D_oxygen_atom')
 
 !-----------------------------------------------------------------------
