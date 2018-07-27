@@ -364,7 +364,7 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
  type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
- type(cmip_diag_id_type) :: ID_meanage
+ type(cmip_diag_id_type) :: ID_meanage, ID_co2_vmr
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
@@ -1049,6 +1049,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                 Time_next, is_in=is, js_in=js, ks_in=1)
        endif
      endif
+
+     if ( query_cmip_diag_id(ID_co2_vmr) ) then
+        used = send_cmip_data_3d ( ID_co2_vmr, tracer(:,:,:,nco2)*WTMAIR/44., &
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
+     end if
 
      PM25 = 0.
      PM1  = 0.
@@ -2070,9 +2075,13 @@ type(time_type), intent(in)                                :: Time
                   'emiisop_biogenic', Time, 'Total Emission Rate of Isoprene from biogenic', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
 
-      !----
+      ID_co2_vmr = register_cmip_diag_field_3d ( mod_name, &
+                  'co2', Time, 'CO2 volume mixing ratio', 'mol mol-1', &
+                  standard_name='mole_fraction_of_carbon_dioxide_in_air')
 
-!<f1p: tracer diagnostics
+!-----------------------
+! ... tracer diagnostics
+!-----------------------
       allocate( id_tracer_diag(nt) )
       allocate( id_tracer_diag_hour(nt,24) )
       id_tracer_diag(:) = 0
