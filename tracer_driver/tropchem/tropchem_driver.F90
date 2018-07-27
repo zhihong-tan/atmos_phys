@@ -117,6 +117,7 @@ use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
                       CLOUD_CHEM_F1P_BUG, CLOUD_CHEM_F1P_BUG2, CLOUD_CHEM_LEGACY
 use aerosol_thermodynamics, only: AERO_ISORROPIA, AERO_LEGACY, NO_AERO
 use mo_usrrxt_mod, only: HET_CHEM_LEGACY, HET_CHEM_J1M
+use mo_chem_utls_mod, only : get_rxt_ndx
 
 use atmos_cmip_diag_mod,   only : register_cmip_diag_field_3d, &
                                   register_cmip_diag_field_2d, &
@@ -364,8 +365,9 @@ logical :: module_is_initialized=.false.
 logical :: use_lsc_in_fastjx
 
 !cmip6 diagnostics
-type(cmip_diag_id_type) :: ID_pso4_aq_kg_m2_s, ID_pso4_gas_kg_m2_s
-
+type(cmip_diag_id_type) :: ID_pso4_aq_kg_m2_s, ID_pso4_gas_kg_m2_s, &
+                           ID_jno2, ID_jo1d
+integer :: jno2_ndx, jo1d_ndx
 
 integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_emis, id_emis3d, id_xactive_emis, &
@@ -1397,6 +1399,14 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
          used = send_data(id_jval(n),jvals(:,:,:,n),Time_next,is_in=is,js_in=js)
       end if
    end do
+   if (query_cmip_diag_id(ID_jno2) .and. jno2_ndx>0) then
+      used = send_cmip_data_3d (ID_jno2, jvals(:,:,:,jno2_ndx), &
+           Time_next, is_in=is, js_in=js, ks_in=1)
+   end if
+   if (query_cmip_diag_id(ID_jo1d) .and. jo1d_ndx>0) then
+      used = send_cmip_data_3d (ID_jo1d, jvals(:,:,:,jo1d_ndx), &
+           Time_next, is_in=is, js_in=js, ks_in=1)
+   end if
 
 !-----------------------------------------------------------------------
 !     ... Kinetic reaction rates
@@ -1771,6 +1781,9 @@ end if
    noy_ndx     = get_tracer_index(MODEL_ATMOS, 'NOy')
    cly_ndx     = get_tracer_index(MODEL_ATMOS, 'Cly')
    bry_ndx     = get_tracer_index(MODEL_ATMOS, 'Bry')
+
+   jno2_ndx    = get_rxt_ndx( 'jno2' )
+   jo1d_ndx    = get_rxt_ndx( 'jo1d' )
 
 !-----------------------------------------------------------------------
 !     ... Check Cly settings
@@ -2282,6 +2295,13 @@ end if
       write(fld,'(''jval_'',I3.3,8x)') i
       id_jval(i) = register_diag_field( module_name, TRIM(fld), axes(1:3), Time, TRIM(fld),'1/s')
    end do
+   ID_jno2 = register_cmip_diag_field_3d (  module_name,'jno2', Time, &
+                'Photolysis Rate of NO2', 's-1',  &
+                standard_name='photolysis_rate_of_nitrogen_dioxide')
+   ID_jo1d = register_cmip_diag_field_3d (  module_name,'photo1d', Time, &
+                'Photolysis Rate of Ozone (O3) to Excited Atomic Oxygen (singlet
+d: O1d)', 's-1',  &
+                standard_name='photolysis_rate_of_ozone_to_1D_oxygen_atom')
 
 !-----------------------------------------------------------------------
 !     ... Register diagnostic fields for kinetic rate constants
