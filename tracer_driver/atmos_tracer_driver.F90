@@ -133,7 +133,7 @@ use atmos_tracer_utilities_mod, only :                      &
                                   get_rh, get_w10m, get_cldf, &
                                   sjl_fillz, &
                                   get_cmip_param, get_chem_param
-use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, WTMN
+use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, WTMN, WTMCO2
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
                                   atmos_radon_end
@@ -1051,7 +1051,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
      endif
 
      if ( query_cmip_diag_id(ID_co2_vmr) ) then
-        used = send_cmip_data_3d ( ID_co2_vmr, tracer(:,:,:,nco2)*WTMAIR/44., &
+        used = send_cmip_data_3d ( ID_co2_vmr, tracer(:,:,:,nco2)*WTMAIR/WTMCO2, &
              Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
      end if
 
