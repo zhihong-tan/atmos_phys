@@ -41,7 +41,8 @@ use         tracer_manager_mod, only : get_tracer_index,     &
                                        query_method
 use          field_manager_mod, only : MODEL_ATMOS,          &
                                        parse
-use              constants_mod, only : WTMAIR, AVOGNO
+use              constants_mod, only : WTMAIR, AVOGNO,       &
+                                       DEG_TO_RAD
 use           interpolator_mod, only : interpolate_type,     &
                                        interpolator_init,    &
                                        obtain_interpolator_time_slices, &
@@ -79,6 +80,12 @@ real                          :: co_yield_from_avoc = 0.7, &
                                  co_yield_from_bvoc = 0.4, &
                                  co_yield_from_ch4  = 0.86,&
                                  tch4_vmr = 0.
+real, parameter :: sec_per_day = 86400., &
+                   age_relax_time = 1., & ! timescale for relaxation to zero (days)
+                   k_relax_aoanh = 1./(age_relax_time*sec_per_day), & ! (1/sec)
+                   days_per_year = 365.25, &
+                   k_aging = 1./(days_per_year*sec_per_day), & ! increase age at 1 yr/yr (convert to yr/sec)
+                   lat_min_aoanh=30., lat_max_aoanh=50. ! tagged latitude (deg) for aoanh tracer
 character(len=16), dimension(max_ntracers) :: tracer_names = " "
  
 namelist /regional_tracer_driver_nml/     &
@@ -123,7 +130,8 @@ integer, dimension(max_ntracers) :: id_prod, id_loss, id_chem_tend, id_emiss
 !     ... tracer numbers
 !-----------------------------------------------------------------------
 integer :: id_tch4=0, id_avoc=0, id_bvoc=0, &
-           id_cofromch4=0, id_cofromavoc=0, id_cofrombvoc=0
+           id_cofromch4=0, id_cofromavoc=0, id_cofrombvoc=0, &
+           id_aoanh
 
 !---- version number ---------------------------------------------------
 character(len=128), parameter :: version     = ''
@@ -190,7 +198,7 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
 !-----------------------------------------------------------------------
    real, dimension(size(r,1),size(r,2)) :: emis
    real, dimension(size(r,1),size(r,2),ntracers) :: emis_save
-   integer :: i,j,n,kb,id,jd,kd,trind
+   integer :: i,j,k,n,kb,id,jd,kd,trind
    integer :: nt, ntp
    logical :: used
    real, dimension(size(r,1),size(r,2),size(r,3),ntracers) :: emis_source
@@ -265,6 +273,15 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
    end if
    if (id_bvoc>0 .and. id_cofrombvoc>0) then
       prod(:,:,:,id_cofrombvoc) = co_yield_from_bvoc * loss(:,:,:,id_bvoc)
+   end if
+   if (id_aoanh>0) then
+      do k = 1,kd
+         where (lat(:,:)>=lat_min_aoanh*DEG_TO_RAD .and. lat(:,:)<=lat_max_aoanh*DEG_TO_RAD)
+            prod(:,:,k,id_aoanh) = k_aging
+         elsewhere
+            loss(:,:,k,id_aoanh) = k_relax_aoanh * r(:,:,k,id_aoanh)
+         endwhere
+      end do
    end if
 
    do n = 1, ntracers
@@ -429,6 +446,8 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
             id_cofromavoc = n
          case('cofrombvoc')
             id_cofrombvoc = n
+         case('aoanh')
+            id_aoanh = n
       end select
    end do
 
