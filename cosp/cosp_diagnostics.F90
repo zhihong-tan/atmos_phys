@@ -1809,15 +1809,15 @@ endif
    call map_point_to_ll (Nlon, Nlat, geomode, x2=gbx%reff(:,:,i_lscliq),&
                                                              y3 = y3)
    call flip_vert_index    (y3, nlevels,y3a )
-   used = send_data (id_reff_lsclliq , 0.5*y3a, Time_diag, is, js, 1, &
+   used = send_data (id_reff_lsclliq , y3a, Time_diag, is, js, 1, &
                    mask = y31 > 0.0 )
-   used = send_data (id_reff_lsclliq_cmip , 0.5*y3a*(y35-y36) , Time_diag, is, js, 1, &
+   used = send_data (id_reff_lsclliq_cmip , y3a*(y35-y36) , Time_diag, is, js, 1, &
                    mask = y31 > 0.0 )
 
    call map_point_to_ll (Nlon, Nlat, geomode, x2=gbx%reff(:,:,i_lscice),&
                                                                y3 = y3)
    call flip_vert_index    (y3, nlevels,y3a   )
-   used = send_data (id_reff_lsclice , 0.5*y3a, Time_diag, is, js, 1 , &
+   used = send_data (id_reff_lsclice , y3a, Time_diag, is, js, 1 , &
                    mask = y32 > 0.0)
 
    call map_point_to_ll (Nlon, Nlat, geomode, x2=gbx%reff(:,:,i_lsrain),&
@@ -1833,15 +1833,15 @@ endif
    call map_point_to_ll (Nlon, Nlat, geomode, x2=gbx%reff(:,:,i_cvcliq),&
                                                                y3 = y3)
    call flip_vert_index    (y3, nlevels,y3a   )
-   used = send_data (id_reff_ccclliq , 0.5*y3a, Time_diag, is, js, 1 , &
+   used = send_data (id_reff_ccclliq , y3a, Time_diag, is, js, 1 , &
                    mask = y33 > 0.0)
-   used = send_data (id_reff_ccclliq_cmip , 0.5*y3a*y36 , Time_diag, is, js, 1 , &
+   used = send_data (id_reff_ccclliq_cmip , y3a*y36 , Time_diag, is, js, 1 , &
                    mask = y33 > 0.0)
 
    call map_point_to_ll (Nlon, Nlat, geomode, x2=gbx%reff(:,:,i_cvcice),&
                                                                 y3 = y3)
    call flip_vert_index    (y3, nlevels,y3a   )
-   used = send_data (id_reff_ccclice , 0.5*y3a, Time_diag, is, js, 1 , &
+   used = send_data (id_reff_ccclice , y3a, Time_diag, is, js, 1 , &
                    mask = y34 > 0.0)
 
    call map_point_to_ll (Nlon, Nlat, geomode, x2=gbx%reff(:,:,i_cvrain),&
