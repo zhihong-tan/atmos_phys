@@ -1164,8 +1164,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
         suma = 0.
 	do i = 1,id
 	do j = 1,jd
-           do k=1,tropopause_ind(i,j)
-              suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,no3)
+           do k=tropopause_ind(i,j),kd
+              suma(i,j) = suma(i,j) + pwt(i,j,k)*tracer(i,j,k,no3)
            end do
         end do
         end do
@@ -2076,7 +2076,7 @@ type(time_type), intent(in)                                :: Time
                   standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
 
       ID_co2_vmr = register_cmip_diag_field_3d ( mod_name, &
-                  'co2', Time, 'CO2 volume mixing ratio', 'mol mol-1', &
+                  'co2_vmr', Time, 'CO2 volume mixing ratio', 'mol mol-1', &
                   standard_name='mole_fraction_of_carbon_dioxide_in_air')
 
 !-----------------------
