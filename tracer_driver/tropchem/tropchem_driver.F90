@@ -631,7 +631,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
 
    tsfcair(:,:) = t(:,:,kd)
    pwtsfc(:,:) = t(:,:,kd)
-   dz(:,:,:) = zint(:,:,2:(kd+1)) - zint(:,:,1:kd)
+   dz(:,:,:) = z_half(:,:,2:(kd+1)) - z_half(:,:,1:kd)
 
    do n = 1, pcnstm1
 !-----------------------------------------------------------------------
