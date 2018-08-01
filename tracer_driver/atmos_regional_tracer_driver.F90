@@ -275,13 +275,11 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
       prod(:,:,:,id_cofrombvoc) = co_yield_from_bvoc * loss(:,:,:,id_bvoc)
    end if
    if (id_aoanh>0) then
-      do k = 1,kd
-         where (lat(:,:)>=lat_min_aoanh*DEG_TO_RAD .and. lat(:,:)<=lat_max_aoanh*DEG_TO_RAD)
-            prod(:,:,k,id_aoanh) = k_aging
-         elsewhere
-            loss(:,:,k,id_aoanh) = k_relax_aoanh * r(:,:,k,id_aoanh)
-         endwhere
-      end do
+      prod(:,:,:,id_aoanh) = k_aging
+      where (lat(:,:)<lat_min_aoanh*DEG_TO_RAD .or. lat(:,:)>lat_max_aoanh*DEG_TO_RAD)
+         loss(:,:,kd,id_aoanh) = k_relax_aoanh * r(:,:,kd,id_aoanh)
+         prod(:,:,kd,id_aoanh) = 0.
+      endwhere
    end if
 
    do n = 1, ntracers
