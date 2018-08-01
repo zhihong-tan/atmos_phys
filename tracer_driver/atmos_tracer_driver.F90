@@ -298,6 +298,7 @@ integer :: nSOA      =0
 integer :: nH2O2     =0
 integer :: nch3i     =0
 integer :: nage      =0
+integer :: naoanh    =0
 integer :: nco2      =0
 integer :: nch4      =0
 integer :: nNH4NO3   =0
@@ -364,7 +365,7 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
  type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
  type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
- type(cmip_diag_id_type) :: ID_meanage, ID_co2_vmr
+ type(cmip_diag_id_type) :: ID_meanage, ID_co2_vmr, ID_aoanh
 
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
@@ -1142,6 +1143,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
              Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
      end if
 
+     if ( query_cmip_diag_id(ID_aoanh)) then
+        used = send_cmip_data_3d ( ID_aoanh, tracer(:,:,:,naoanh), &
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
+     end if
+
 
 !------------------------------------------------------------------------
 ! Compute tropopause diagnostics
@@ -1809,6 +1815,7 @@ type(time_type), intent(in)                                :: Time
       if (nC4H10 == NO_TRACER) nC4H10 = 1
       ncodirect = get_tracer_index(MODEL_ATMOS,'codirect')
       ne90      = get_tracer_index(MODEL_ATMOS,'e90')
+      naoanh    = get_tracer_index(MODEL_ATMOS,'aoanh')
 
 ! Number of vertical layers
       nbr_layers=size(r,3)
@@ -2145,10 +2152,16 @@ type(time_type), intent(in)                                :: Time
       if (query_cmip_diag_id(ID_pm10) .or. query_cmip_diag_id(ID_pm1) .or. &
           query_cmip_diag_id(ID_pm25) .or. id_pm25_surf > 0) do_pm = .true.
 
-      if (nage .gt. 0) then
+      if (nage > 0) then
         ID_meanage = register_cmip_diag_field_3d ( mod_name, 'meanage', Time, &
                                        'Mean Age of Stratospheric Air', 'yr', &
                                       standard_name='age_of_stratospheric_air')
+      endif
+
+      if (naoanh > 0) then
+        ID_aoanh = register_cmip_diag_field_3d ( mod_name, 'aoanh_cmip', Time, &
+                                       'Northern Hemisphere Tracer Lifetime', 'yr', &
+                                      standard_name='tracer_lifetime')
       endif
 
       id_bc_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_bc_col_kg_m2', &
