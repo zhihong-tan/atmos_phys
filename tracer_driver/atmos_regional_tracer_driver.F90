@@ -80,12 +80,14 @@ real                          :: co_yield_from_avoc = 0.7, &
                                  co_yield_from_bvoc = 0.4, &
                                  co_yield_from_ch4  = 0.86,&
                                  tch4_vmr = 0.
-real, parameter :: sec_per_day = 86400., &
-                   age_relax_time = 1., & ! timescale for relaxation to zero (days)
-                   k_relax_aoanh = 1./(age_relax_time*sec_per_day), & ! (1/sec)
-                   days_per_year = 365.25, &
-                   k_aging = 1./(days_per_year*sec_per_day), & ! increase age at 1 yr/yr (convert to yr/sec)
-                   lat_min_aoanh=30., lat_max_aoanh=50. ! tagged latitude (deg) for aoanh tracer
+real, parameter :: sec_per_day    = 86400., &
+                   age_relax_time = 0.04166, & ! timescale for relaxation to zero (days)
+                   k_relax_aoanh  = 1./(age_relax_time*sec_per_day), & ! (1/sec)
+                   k_relax_nh50   = 1./(age_relax_time*sec_per_day), & ! (1/sec)
+                   days_per_year  = 365.25, &
+                   k_aging        = 1./(days_per_year*sec_per_day), & ! increase age at 1 yr/yr (convert to yr/sec)
+                   lat30=30.*DEG_TO_RAD, lat50=50.*DEG_TO_RAD, & ! tagged latitude (deg) for aoanh/nh50 tracers
+                   nh50_fixed_val = 100.e-9 ! prescribed VMR of NH50 tracer (in surface layer, 30-50N)
 character(len=16), dimension(max_ntracers) :: tracer_names = " "
  
 namelist /regional_tracer_driver_nml/     &
@@ -131,7 +133,7 @@ integer, dimension(max_ntracers) :: id_prod, id_loss, id_chem_tend, id_emiss
 !-----------------------------------------------------------------------
 integer :: id_tch4=0, id_avoc=0, id_bvoc=0, &
            id_cofromch4=0, id_cofromavoc=0, id_cofrombvoc=0, &
-           id_aoanh
+           id_aoanh, id_nh50
 
 !---- version number ---------------------------------------------------
 character(len=128), parameter :: version     = ''
@@ -276,9 +278,14 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
    end if
    if (id_aoanh>0) then
       prod(:,:,:,id_aoanh) = k_aging
-      where (lat(:,:)>=lat_min_aoanh*DEG_TO_RAD .and. lat(:,:)<=lat_max_aoanh*DEG_TO_RAD)
+      where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
          loss(:,:,kd,id_aoanh) = k_relax_aoanh * r(:,:,kd,id_aoanh)
          prod(:,:,kd,id_aoanh) = 0.
+      endwhere
+   end if
+   if (id_nh50>0) then
+      where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
+         prod(:,:,kd,id_nh50) = k_relax_nh50 * (nh50_fixed_val-r(:,:,kd,id_nh50))
       endwhere
    end if
 
@@ -446,6 +453,8 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
             id_cofrombvoc = n
          case('aoanh')
             id_aoanh = n
+         case('nh50')
+            id_nh50 = n
       end select
    end do
 
