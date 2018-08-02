@@ -370,7 +370,7 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
  integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
             id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa, &
-            id_emiisop_biogenic
+            id_emiisop_biogenic, id_emibvoc
 
 !for cmip6 (f1p)
  type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
@@ -1395,6 +1395,12 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                  Time_next, is_in=is, js_in=js)
          endif
       enddo
+      if (id_emibvoc>0) then
+        used  = send_data (id_emibvoc, &
+              (xbvoc4soa(:,:,ind_xbvoc_ISOP)*0.060 + &
+               xbvoc4soa(:,:,ind_xbvoc_TERP)*0.120)*1.0e04/AVOGNO,        &
+              Time_next, is_in=is, js_in=js)
+      endif
    endif
    call mpp_clock_end (xbvoc_clock)
 
@@ -2081,6 +2087,10 @@ type(time_type), intent(in)                                :: Time
       id_emiisop_biogenic = register_cmip_diag_field_2d ( mod_name, &
                   'emiisop_biogenic', Time, 'Total Emission Rate of Isoprene from biogenic', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
+
+      id_emibvoc = register_cmip_diag_field_2d ( mod_name, &
+                  'emibvoc', Time, 'Total Emission Rate of Biogenic nmvoc', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_biogenic_nmvoc_expressed_as_carbon_due_to_emission')
 
       ID_co2_vmr = register_cmip_diag_field_3d ( mod_name, &
                   'co2_vmr', Time, 'CO2 volume mixing ratio', 'mol mol-1', &
