@@ -864,7 +864,7 @@ subroutine atmos_dust_solFe_frac_set(array, is,ie,js,je)
   !So, the final flux of soluble iron to the ocean is:
   !flux_iron = frac_fe_dust*frac_sol_fe*flux_dust
 
-  atmos_dust_solFe_frac(is:ie,js:je) = 0.035 * 0.031 / ((array(is:ie,js:je)*1.E9 + epsilon) )**0.26
+  atmos_dust_solFe_frac(is:ie,js:je) = 0.035 * 0.031 / (max(array(is:ie,js:je)*1.E9,epsilon))**0.26
 end subroutine atmos_dust_solFe_frac_set
 
 
