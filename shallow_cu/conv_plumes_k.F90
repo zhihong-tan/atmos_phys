@@ -1,5 +1,5 @@
-#include <fms_platform.h>
 MODULE CONV_PLUMES_k_MOD
+#include <fms_platform.h>
 
   use  aer_ccn_act_k_mod,   only: aer_ccn_act_k
   use  conv_utilities_k_mod,only: findt_k, exn_k, qsat_k, adicloud, sounding, uw_params

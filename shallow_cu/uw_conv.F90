@@ -1,5 +1,5 @@
-#include <fms_platform.h>
 MODULE UW_CONV_MOD
+#include <fms_platform.h>
 
   use           mpp_mod, only : mpp_pe, mpp_root_pe, stdlog
   use      Constants_Mod, ONLY: tfreeze,HLv,HLf,HLs,CP_AIR,GRAV,Kappa,rdgas,rvgas
