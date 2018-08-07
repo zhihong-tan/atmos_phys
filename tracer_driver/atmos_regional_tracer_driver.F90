@@ -291,7 +291,7 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
       end if
    end if
    if (id_nh50 > 0) then
-      trind = tracer_indices(id_aoanh)
+      trind = tracer_indices(id_nh50)
       if (trind > 0) then
          where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
             prod(:,:,kd,id_nh50) = k_relax_nh50 * (nh50_fixed_val-r(:,:,kd,trind))
