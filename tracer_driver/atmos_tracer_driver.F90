@@ -396,6 +396,8 @@ character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
 
+logical :: read_nml = .true.
+
 contains
 
 !#######################################################################
@@ -1618,7 +1620,7 @@ type(time_type), intent(in)                                :: Time
 ! Local variables
 !-----------------------------------------------------------------------
       integer :: nbr_layers
-      integer :: unit, ierr, io, logunit, n, outunit, ix
+      integer :: n, outunit, ix
 !<f1p
       character(len=64) :: name2, control
       character(len=32) :: tracer_units, tracer_name
@@ -1643,25 +1645,7 @@ type(time_type), intent(in)                                :: Time
 !------------------------------------------------------------------------
 !   read namelist.
 !------------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
-        read (input_nml_file, nml=atmos_tracer_driver_nml, iostat=io)
-        ierr = check_nml_error(io,'atmos_tracer_driver_nml')
-#else
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=atmos_tracer_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error(io, 'atmos_tracer_driver_nml')
-        end do
-10      call close_file (unit)
-#endif
-      endif
-!--------- write version and namelist to standard log ------------
-      call write_version_number (version, tagname)
-      logunit=stdlog()
-      if ( mpp_pe() == mpp_root_pe() ) &
-                         write ( logunit, nml=atmos_tracer_driver_nml )
-
+      call read_nml_file()
 !---------------------------------------------------------------------
 !  make sure that astronomy_mod has been initialized (if radiation
 !  not being called in this run, it will not have previously been
@@ -2321,6 +2305,8 @@ subroutine atmos_nitrogen_flux_init
    outunit = stdout()
 
    if(do_esm_nitrogen_flux) then
+
+      nnh4 = get_tracer_index(MODEL_ATMOS,'nh4')
       if (nnh4>0) then
          write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nnh4
          ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4',     &
@@ -2332,6 +2318,8 @@ subroutine atmos_nitrogen_flux_init
               atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
+
+      nhno3 = get_tracer_index(MODEL_ATMOS,'hno3')
       if (nhno3>0) then
          write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nhno3
          ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3',     &
@@ -2344,6 +2332,7 @@ subroutine atmos_nitrogen_flux_init
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
 
+      nnh3 = get_tracer_index(MODEL_ATMOS,'nh3')
       if (do_nh3_atm_ocean_exchange .and. nnh3.gt.0) then
          if (mpp_root_pe().eq.mpp_pe()) write(*,*) 'setting up nh3_flux (atmos)'
          ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
@@ -2353,7 +2342,6 @@ subroutine atmos_nitrogen_flux_init
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       end if
    endif
-
 
 
 end subroutine atmos_nitrogen_flux_init
@@ -2534,6 +2522,7 @@ integer :: logunit
 
 subroutine atmos_tracer_flux_init
 
+call read_nml_file()
 call atmos_co2_flux_init
 call atmos_dust_flux_init
 call atmos_nitrogen_flux_init
@@ -2658,6 +2647,37 @@ subroutine atmos_nitrogen_drydep_flux_set(array_nh4,array_no3,is,ie,js,je)
   dry_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)
   dry_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)
 end subroutine atmos_nitrogen_drydep_flux_set
+
+
+subroutine read_nml_file()
+    integer :: io
+    integer :: ierr
+    integer :: funit
+    integer :: logunit
+    if (read_nml) then
+        if (file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+            read(input_nml_file,nml=atmos_tracer_driver_nml,iostat=io)
+            ierr = check_nml_error(io,'atmos_tracer_driver_nml')
+#else
+            funit = open_namelist_file()
+            ierr = 1
+            do while (ierr .ne. 0)
+                read(funit,nml=atmos_tracer_driver_nml,iostat=io,end=10)
+                ierr = check_nml_error(io,'atmos_tracer_driver_nml')
+            enddo
+10          call close_file(funit)
+#endif
+        endif
+!--------- write version and namelist to standard log ------------
+        call write_version_number(version,tagname)
+        logunit = stdlog()
+        if (mpp_pe() .eq. mpp_root_pe()) then
+            write(logunit,nml=atmos_tracer_driver_nml)
+        endif
+        read_nml = .false.
+    endif
+end subroutine read_nml_file
 
 
 end module atmos_tracer_driver_mod
