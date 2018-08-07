@@ -261,19 +261,6 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
          loss(:,:,:,n) = 0.
       end if
 
-      if (n == id_aoanh .and. trind > 0) then
-         prod(:,:,:,n) = k_aging
-         where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
-            loss(:,:,kd,n) = k_relax_aoanh * r(:,:,kd,trind)
-            prod(:,:,kd,n) = 0.
-         endwhere
-      end if
-      if (n == id_nh50 .and. trind > 0) then
-         where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
-            prod(:,:,kd,n) = k_relax_nh50 * (nh50_fixed_val-r(:,:,kd,trind))
-         endwhere
-      end if
-
    end do
 
 !-----------------------------------------------------------------------
@@ -289,6 +276,29 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
    if (id_bvoc>0 .and. id_cofrombvoc>0) then
       prod(:,:,:,id_cofrombvoc) = co_yield_from_bvoc * loss(:,:,:,id_bvoc)
    end if
+
+!-----------------------------------------------------------------------
+!     ... modify prod and loss for NH CMIP tracers
+!-----------------------------------------------------------------------
+   if (id_aoanh > 0) then
+      trind = tracer_indices(id_aoanh)
+      if (trind > 0) then
+         prod(:,:,:,id_aoanh) = k_aging
+         where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
+            loss(:,:,kd,id_aoanh) = k_relax_aoanh * r(:,:,kd,trind)
+            prod(:,:,kd,id_aoanh) = 0.
+         endwhere
+      end if
+   end if
+   if (id_nh50 > 0) then
+      trind = tracer_indices(id_aoanh)
+      if (trind > 0) then
+         where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
+            prod(:,:,kd,id_nh50) = k_relax_nh50 * (nh50_fixed_val-r(:,:,kd,trind))
+         endwhere
+      end if
+   end if
+
 
    do n = 1, ntracers
       trind = tracer_indices(n)
