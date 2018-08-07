@@ -2009,21 +2009,21 @@ type(time_type), intent(in)                                :: Time
                     standard_name='mole_fraction_of_dimethyl_sulfide_in_air')
 
       if (nNH4NO3 > 0 .and. nNH4 > 0) then
-        ID_concnh4 = register_cmip_diag_field_3d ( mod_name, &
-                   'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
-                   standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+        ID_concnh4  = register_cmip_diag_field_3d ( mod_name, &
+                    'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
+                    standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
 
         id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, &
-                  'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
-                  standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+                    'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
+                    standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
 
-        id_loadnh4 = register_cmip_diag_field_2d ( mod_name, &
-                   'loadnh4', Time, 'Load of NH4', 'kg m-2', &
-                   standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
+        id_loadnh4  = register_cmip_diag_field_2d ( mod_name, &
+                    'loadnh4', Time, 'Load of NH4', 'kg m-2', &
+                    standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
 
-         id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
-                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_particles_due_to_dry_deposition')
+        id_drynh4   = register_cmip_diag_field_2d ( mod_name, &
+                    'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
+                    standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_particles_due_to_dry_deposition')
       else
         id_sconcnh4 = 0
         id_loadnh4 = 0
