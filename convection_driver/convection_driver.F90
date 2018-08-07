@@ -36,7 +36,7 @@ use tracer_manager_mod,    only: get_tracer_index,&
                                  query_method, &
                                  NO_TRACER
 use constants_mod,         only: CP_AIR, HLV, HLS, HLF, RDGAS, RVGAS, &
-                                 SECONDS_PER_DAY, KAPPA
+                                 SECONDS_PER_DAY, KAPPA, AVOGNO
 ! atmos_param modules
 use physics_types_mod,     only: physics_control_type, phys_mp_exch_type
 use vert_diff_driver_mod,  only: surf_diff_type
@@ -269,7 +269,7 @@ logical, dimension(:), allocatable :: cloud_tracer
 logical :: cmt_uses_donner, cmt_uses_ras, cmt_uses_uw
 logical :: module_is_initialized = .false.
 
-type(cmip_diag_id_type) :: ID_tntc, ID_tnhusc, ID_mc
+type(cmip_diag_id_type) :: ID_tntc, ID_tnhusc, ID_mc, ID_emilnox_area
 
 
                              contains
@@ -2394,6 +2394,9 @@ integer, dimension(:,:), intent(in), optional :: kbot
               Output_mp%rdt(:,:,:,get_tracer_index(MODEL_ATMOS,'no')) + &
                   prod_no* ((boltz * Input_mp%t) / (10. * Input_mp%pfull))
         used = send_data(id_prod_no, prod_no, Time, is_in=is, js_in=js)
+        used = send_cmip_data_3d (ID_emilnox_area, & ! convert molec/cm3/s to mol/m2/s
+                                  prod_no*1.e6*(Input_mp%zhalf(:,:,1:kx)-Input_mp%zhalf(:,:,2:kx+1))/AVOGNO, &
+                                  Time, is, js, 1, phalf=log(Input_mp%phalf))
       endif
 
 !-----------------------------------------------------------------------
@@ -3231,10 +3234,14 @@ type(mp_removal_control_type), intent(in) :: Control
 !---------------------------------------------------------------------
 !    register diagnostics for lightning NOx.
 !---------------------------------------------------------------------
-      if (get_tracer_index(MODEL_ATMOS,'no') > 0) &
+      if (get_tracer_index(MODEL_ATMOS,'no') > 0) then
         id_prod_no = register_diag_field ( 'tracers', &
                      'hook_no', axes(1:3), Time, &
                      'hook_no',   'molec/cm3/s')
+        ID_emilnox_area = register_cmip_diag_field_3d ( mod_name, 'emilnox_area', Time, &
+                  'Layer-integrated Lightning Production of NOx', 'mol m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_moles_of_nox_expressed_as_nitrogen')
+      end if
 
 !-------------------------------------------------------------------------
 !    register diagnostics specific to the Betts-Miller experiments.
