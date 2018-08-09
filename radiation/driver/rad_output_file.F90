@@ -25,7 +25,7 @@ use fms_mod,           only: open_namelist_file, fms_init, &
 use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
-			     diag_field_add_attribute, &
+                             diag_field_add_attribute, &
                              DIAG_FIELD_NOT_FOUND
 use diag_axis_mod,     only: get_axis_num
 use diag_data_mod,     only: CMOR_MISSING_VALUE
@@ -1663,7 +1663,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
 
         nso4 = 0
         nsoa = 0
-	nno3 = 0
+        nno3 = 0
         do n = 1, naerosol                           
           aerosol_column_names(n) = TRIM(names(n) ) // "_col"
           if (lowercase(TRIM(names(n))) == 'so4')      nso4 = n
@@ -1906,7 +1906,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
 
         !---- register cmip fields ----
         id_od550aer = 0; id_abs550aer = 0; id_od550lt1aer = 0; id_od870aer = 0
-	id_od550so4 = 0; id_od550soa = 0; id_od550no3 = 0
+        id_od550so4 = 0; id_od550soa = 0; id_od550no3 = 0
         if (naero > 0 .and. nvis > 0) then
           id_od550aer = register_cmip_diag_field_2d (mod_name, 'od550aer', Time, &
                             'Ambient Aerosol Optical Thickness at 550 nm', '1.0', &
