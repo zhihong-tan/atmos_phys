@@ -177,7 +177,7 @@ integer                            :: id_radswp, id_radp, id_temp, &
 type(cmip_diag_id_type)  :: ID_o3, ID_ec550aer, ID_concso4, ID_concsoa
 integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, &
                             id_od550aer, id_od550lt1aer, id_abs550aer, id_od870aer, &
-                            id_od440aer, id_o3_col, id_od550so4, id_od550soa
+                            id_od440aer, id_o3_col, id_od550so4, id_od550soa, id_od550no3
 
 ! cmip names for select tracer families
 ! also partial long_names and standard_names
@@ -203,7 +203,7 @@ character(len=64), dimension(NCMIP_DIAG) :: cmip_stdnames = &
 !---------------------------------------------------------------------
 !    miscellaneous variables
 !---------------------------------------------------------------------
-integer :: nso4, nsoa, naero, npm25, nvis, n870, n440
+integer :: nso4, nsoa, nno3, naero, npm25, nvis, n870, n440
 integer :: naerosol=0                      ! number of active aerosols
 logical :: module_is_initialized= .false.  ! module initialized ?
 integer, parameter              :: N_DIAG_BANDS = 10
@@ -1142,6 +1142,9 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
             if (id_od550soa > 0) then
               used = send_data (id_od550soa, extopdep_col(:,:,nsoa,nvis), Time_diag, is, js)
             endif
+            if (id_od550no3 > 0) then
+              used = send_data (id_od550no3, extopdep_col(:,:,nno3,nvis), Time_diag, is, js)
+            endif
           end do
           if (Aerosolrad_control%volcanic_lw_aerosols) then
 !           co_indx = size(Aerosolrad_diags%lw_ext,4)
@@ -1660,10 +1663,12 @@ logical,                        intent(in) :: volcanic_sw_aerosols
 
         nso4 = 0
         nsoa = 0
+	nno3 = 0
         do n = 1, naerosol                           
           aerosol_column_names(n) = TRIM(names(n) ) // "_col"
           if (lowercase(TRIM(names(n))) == 'so4')      nso4 = n
           if (lowercase(TRIM(names(n))) == 'omphilic') nsoa = n
+          if (lowercase(TRIM(names(n))) == 'nitrate')  nno3 = n
           ! DEBUG
          !call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(n)))//', nsoa='//TRIM(string(nsoa)),NOTE)
         end do
@@ -1802,8 +1807,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           ncmip = 0
           if (TRIM(family_names(n)) .eq. 'organic_carbon') ncmip = 1
           if (TRIM(family_names(n)) .eq. 'POA')            ncmip = 2
-          if (TRIM(family_names(n)) .eq. 'SOA' .and. &
-                               nsoa .eq. 0 )               ncmip = 3
+          if (TRIM(family_names(n)) .eq. 'SOA' .and. nsoa .eq. 0 ) ncmip = 3
           if (TRIM(family_names(n)) .eq. 'black_carbon')   ncmip = 4
           if (TRIM(family_names(n)) .eq. 'dust')           ncmip = 5
           if (TRIM(family_names(n)) .eq. 'sea_salt')       ncmip = 6
@@ -1901,7 +1905,8 @@ logical,                        intent(in) :: volcanic_sw_aerosols
    end do
 
         !---- register cmip fields ----
-        id_od550aer = 0; id_abs550aer = 0; id_od550lt1aer = 0; id_od870aer = 0; id_od550so4 = 0; id_od550soa = 0
+        id_od550aer = 0; id_abs550aer = 0; id_od550lt1aer = 0; id_od870aer = 0
+	id_od550so4 = 0; id_od550soa = 0; id_od550no3
         if (naero > 0 .and. nvis > 0) then
           id_od550aer = register_cmip_diag_field_2d (mod_name, 'od550aer', Time, &
                             'Ambient Aerosol Optical Thickness at 550 nm', '1.0', &
@@ -1944,6 +1949,12 @@ logical,                        intent(in) :: volcanic_sw_aerosols
                             'SOA aod at 550 nm', '1.0', &
                             standard_name='atmosphere_optical_thickness_due_to_particulate_organic_matter_ambient_aerosol')
           call diag_field_add_attribute ( id_od550soa, 'comment', 'wavelength: 550 nm')
+        endif
+        if (nno3 > 0 .and. nvis > 0) then
+          id_od550no3 = register_cmip_diag_field_2d (mod_name, 'od550no3', Time, &
+                            'Nitrate Aerosol OPtical Depth at 550nm', '1.0', &
+                            standard_name='atmosphere_optical_thickness_due_to_nitrate_ambient_aerosol_particles')
+          call diag_field_add_attribute ( id_od550no3, 'comment', 'wavelength: 550 nm')
         endif
         !----
 
