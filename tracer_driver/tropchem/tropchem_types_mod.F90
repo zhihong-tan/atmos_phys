@@ -15,7 +15,7 @@ module tropchem_types_mod
      integer :: nb_diag
      integer :: ind_pso4_h2o2
      integer :: ind_pso4_o3
-     integer :: ind_cloud_pH, ind_aerosol_pH     
+     integer :: ind_cloud_pH, ind_cloud_pHw, ind_aerosol_pH     
      integer :: ind_phno3_d(5), ind_phno3_g_d, ind_ghno3_d, ind_gso2
      integer :: ind_pso4_d(5), ind_pso4_g_d
 
@@ -71,8 +71,9 @@ module tropchem_types_mod
     trop_diag%nb_diag        = 0
     trop_diag%ind_pso4_h2o2  = 0
     trop_diag%ind_pso4_o3    = 0
-    trop_diag%ind_aerosol_ph = 0
-    trop_diag%ind_cloud_ph   = 0
+    trop_diag%ind_aerosol_pH = 0
+    trop_diag%ind_cloud_pH   = 0
+    trop_diag%ind_cloud_pHw  = 0
     trop_diag%ind_phno3_d    = 0
     trop_diag%ind_phno3_g_d  = 0
     trop_diag%ind_ghno3_d    = 0

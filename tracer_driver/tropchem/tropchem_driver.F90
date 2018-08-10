@@ -374,8 +374,9 @@ integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
                                id_ub, id_lb, id_airc
 !new diagnostics (f1p)
 integer, dimension(pcnstm1) :: id_prod_mol, id_loss_mol
-integer :: id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), id_pso4_g_d, id_gso2, id_aerosol_ph,id_cloud_ph
-!
+integer :: id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), &
+           id_pso4_g_d, id_gso2, id_aerosol_pH, id_cloud_pH, id_cloud_pHw
+
 integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
 integer :: id_co_emis_cmip2, id_no_emis_cmip2
@@ -1224,11 +1225,15 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
       used = send_data(id_gso2,trop_diag_array(:,:,:,trop_diag%ind_gso2),Time_next,is_in=is,js_in=js)
    end if
    if (id_aerosol_pH>0) then
-      used = send_data(id_aerosol_pH,trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph),Time_next,is_in=is,js_in=js, mask = & 
-           ( trop_diag_array(:,:,:,trop_diag%ind_aerosol_ph) .gt. (missing_value + tiny(missing_value))))
+      used = send_data(id_aerosol_pH,trop_diag_array(:,:,:,trop_diag%ind_aerosol_pH),Time_next,is_in=is,js_in=js, mask = & 
+           ( trop_diag_array(:,:,:,trop_diag%ind_aerosol_pH) .gt. (missing_value + tiny(missing_value))))
    end if
-   if (id_cloud_ph>0) then
-      used = send_data(id_cloud_ph,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph),Time_next,is_in=is,js_in=js, mask = &
+   if (id_cloud_pH>0) then
+      used = send_data(id_cloud_pH,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph),Time_next,is_in=is,js_in=js, mask = &
+           (trop_diag_array(:,:,:,trop_diag%ind_cloud_ph).gt. (missing_value + tiny(missing_value))))
+   end if
+   if (id_cloud_pHw>0) then
+      used = send_data(id_cloud_pHw,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph)*r(:,:,:,inqa),Time_next,is_in=is,js_in=js, mask = &
            (trop_diag_array(:,:,:,trop_diag%ind_cloud_ph).gt. (missing_value + tiny(missing_value))))
    end if
    if (id_phno3_g_d>0) then
@@ -2265,6 +2270,8 @@ end if
 
    id_aerosol_pH  = register_diag_field( module_name, 'aerosol_pH',axes(1:3), Time, 'aerosol_ph','unitless', mask_variant = .true.,missing_value=missing_value)
    id_cloud_pH  = register_diag_field( module_name, 'cloud_pH',axes(1:3), Time, 'cloud_ph','unitless', mask_variant = .true.,missing_value=missing_value)
+   id_cloud_pHw  = register_diag_field( module_name, 'cloud_pHw',axes(1:3), Time, 'cloud_ph weighted by cloud fraction','unitless', mask_variant = .true.,missing_value=missing_value)
+
 
 !for cmip6
    ID_pso4_aq_kg_m2_s      = register_cmip_diag_field_3d (  module_name,'pso4_aq_kg_m2_s', Time, &
@@ -2414,13 +2421,17 @@ end if
       trop_diag%nb_diag       = trop_diag%nb_diag + 1
       trop_diag%ind_gso2      = trop_diag%nb_diag
    end if
-   if ( id_aerosol_ph > 0 ) then
+   if ( id_aerosol_pH > 0 ) then
       trop_diag%nb_diag           = trop_diag%nb_diag + 1
-      trop_diag%ind_aerosol_ph    = trop_diag%nb_diag
+      trop_diag%ind_aerosol_pH    = trop_diag%nb_diag
    end if
-   if ( id_cloud_ph > 0 ) then
+   if ( id_cloud_pH > 0 ) then
       trop_diag%nb_diag           = trop_diag%nb_diag + 1
       trop_diag%ind_cloud_ph      = trop_diag%nb_diag
+   end if
+   if ( id_cloud_pHw > 0 ) then
+      trop_diag%nb_diag           = trop_diag%nb_diag + 1
+      trop_diag%ind_cloud_phw     = trop_diag%nb_diag
    end if
 
 
