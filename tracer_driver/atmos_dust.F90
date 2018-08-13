@@ -107,7 +107,7 @@ namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis,
 character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
-
+logical :: read_nml = .true.
 
 !-----------------------------------------------------------------------
 
@@ -435,7 +435,7 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   real, optional,   intent(in) :: mask(:,:,:)
 
   ! ---- local vars
-  integer :: outunit, unit, ierr, io
+  integer :: ierr, outunit
   integer :: n_atm_tracers ! number of prognostic atmos tracers
   integer :: tr ! atmos tracer iterator
   integer :: i  ! running index of dust tracers
@@ -448,29 +448,11 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   
   if (module_is_initialized) return
 
+  call read_nml_file()
   call write_version_number (version, tagname)
   logunit = stdlog()
   outunit = stdout()
 
-  ! read namelist.
-  if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
-    read (input_nml_file, nml=dust_nml, iostat=io)
-    ierr = check_nml_error(io,'dust_nml')
-#else
-    unit =  open_namelist_file ( )
-    ierr=1; do while (ierr /= 0)
-       read (unit, nml=dust_nml, iostat=io, end=10)
-       ierr = check_nml_error(io, 'dust_nml')
-    end do
-10  call close_file (unit)
-#endif
-  endif
- 
-  ! write namelist to the log file
-  if (mpp_pe() == mpp_root_pe()) then
-     write (logunit, nml=dust_nml)
-  endif
 
   if (uthresh .le. -990) then
     u_ts = 0.
@@ -676,6 +658,8 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
         '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
    integer :: outunit
+
+   call read_nml_file()
    outunit = stdout()
    
    if(do_esm_dust_flux) then
@@ -893,5 +877,37 @@ end subroutine atmos_dust_solFe_frac_set
     deallocate(atmos_dust_solFe_frac)
  end subroutine atmos_dust_end
 !</SUBROUTINE>
+
+
+subroutine read_nml_file()
+    integer :: io
+    integer :: ierr
+    integer :: funit
+    integer :: logunit
+    if (read_nml) then
+        !read namelist.
+        if (file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+            read (input_nml_file,nml=dust_nml,iostat=io)
+            ierr = check_nml_error(io,'dust_nml')
+#else
+            funit = open_namelist_file()
+            ierr = 1
+            do while (ierr .ne. 0)
+                read(funit,nml=dust_nml,iostat=io,end=10)
+                ierr = check_nml_error(io,'dust_nml')
+            enddo
+10          call close_file(funit)
+#endif
+        endif
+        !write namelist to the log file
+        if (mpp_pe() .eq. mpp_root_pe()) then
+            logunit = stdlog()
+            write (logunit, nml=dust_nml)
+        endif
+        read_nml = .false.
+    endif
+end subroutine read_nml_file
+
 
 end module atmos_dust_mod
