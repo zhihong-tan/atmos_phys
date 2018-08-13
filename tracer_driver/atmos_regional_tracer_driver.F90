@@ -133,7 +133,7 @@ integer, dimension(max_ntracers) :: id_prod, id_loss, id_chem_tend, id_emiss
 !-----------------------------------------------------------------------
 integer :: id_tch4=0, id_avoc=0, id_bvoc=0, &
            id_cofromch4=0, id_cofromavoc=0, id_cofrombvoc=0, &
-           id_aoanh, id_nh50
+           id_aoanh=0, id_nh50=0
 
 !---- version number ---------------------------------------------------
 character(len=128), parameter :: version     = ''
