@@ -341,7 +341,7 @@ integer :: sphum_ndx=0, cl_ndx=0, clo_ndx=0, hcl_ndx=0, hocl_ndx=0, clono2_ndx=0
            no_ndx=0, no2_ndx=0, no3_ndx=0, n_ndx=0, n2o5_ndx=0, ho2no2_ndx=0, &
            pan_ndx=0, onit_ndx=0, mpan_ndx=0, isopno3_ndx=0, onitr_ndx=0, &
            extinct_ndx=0, noy_ndx=0, cly_ndx=0, bry_ndx=0, ch4_ndx=0, &
-           dms_ndx=0, so4_ndx=0, co_ndx=0, n2o_ndx
+           dms_ndx=0, so4_ndx=0, co_ndx=0, n2o_ndx=0
 
 integer :: o3s_ndx=0
 integer :: o3s_e90_ndx=0

@@ -2353,38 +2353,38 @@ subroutine atmos_nitrogen_flux_init
 
    if(do_esm_nitrogen_flux) then
 
-      nnh4 = get_tracer_index(MODEL_ATMOS,'nh4')
-      if (nnh4>0) then
-         write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nnh4
+      nNH4 = get_tracer_index(MODEL_ATMOS,'nh4')
+      if (nNH4>0) then
+         write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nNH4
          ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4',     &
               flux_type = 'air_sea_deposition', implementation = 'dry', &
-              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
+              atm_tr_index = nNH4, mol_wt = 1.0, param = (/ 1.0 /),     &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
          ind_wet_dep_nh4_flux = aof_set_coupler_flux('wet_dep_nh4',     &
               flux_type = 'air_sea_deposition', implementation = 'wet', &
-              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
+              atm_tr_index = nNH4, mol_wt = 1.0, param = (/ 1.0 /),     &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
 
-      nhno3 = get_tracer_index(MODEL_ATMOS,'hno3')
-      if (nhno3>0) then
-         write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nhno3
+      nHNO3 = get_tracer_index(MODEL_ATMOS,'hno3')
+      if (nHNO3>0) then
+         write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nHNO3
          ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3',     &
               flux_type = 'air_sea_deposition', implementation = 'dry', &
-              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
+              atm_tr_index = nHNO3, mol_wt = 1.0, param = (/ 1.0 /),    &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
          ind_wet_dep_no3_flux = aof_set_coupler_flux('wet_dep_no3',     &
               flux_type = 'air_sea_deposition', implementation = 'wet', &
-              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
+              atm_tr_index = nHNO3, mol_wt = 1.0, param = (/ 1.0 /),    &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
 
-      nnh3 = get_tracer_index(MODEL_ATMOS,'nh3')
-      if (do_nh3_atm_ocean_exchange .and. nnh3.gt.0) then
+      nNH3 = get_tracer_index(MODEL_ATMOS,'nh3')
+      if (do_nh3_atm_ocean_exchange .and. nNH3.gt.0) then
          if (mpp_root_pe().eq.mpp_pe()) write(*,*) 'setting up nh3_flux (atmos)'
          ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
               flux_type = 'air_sea_gas_flux_generic', implementation = 'johnson',       &
-              atm_tr_index = nnh3,                                          &
+              atm_tr_index = nNH3,                                          &
               mol_wt = WTMN, param = (/ 17.,25. /),              &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       end if
@@ -2603,7 +2603,7 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
   call atmos_co2_gather_data(gas_fields, tr_bot)
 
   if (ind_nh3_flux .gt. 0) then
-     gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nnh3)
+     gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nNH3)
   end if
 !-----------------------------------------------------------------------
 
