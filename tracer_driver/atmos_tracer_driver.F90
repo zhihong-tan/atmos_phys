@@ -2120,10 +2120,10 @@ type(time_type), intent(in)                                :: Time
       allocate(frac_pm10(nt))
       allocate(frac_pm25(nt))
 
-      allocate(dry_dep_nh4_flux(size(lonb)-1,size(latb)-1)); dry_dep_nh4_flux=0.0
-      allocate(wet_dep_nh4_flux(size(lonb)-1,size(latb)-1)); wet_dep_nh4_flux=0.0
-      allocate(dry_dep_no3_flux(size(lonb)-1,size(latb)-1)); dry_dep_no3_flux=0.0
-      allocate(wet_dep_no3_flux(size(lonb)-1,size(latb)-1)); wet_dep_no3_flux=0.0
+      allocate(dry_dep_nh4_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_nh4_flux=0.0
+      allocate(wet_dep_nh4_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_nh4_flux=0.0
+      allocate(dry_dep_no3_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_no3_flux=0.0
+      allocate(wet_dep_no3_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_no3_flux=0.0
 
 
       ID_BC = register_cmip_diag_field_3d ( mod_name, 'fam_bc_kg_kg', Time, &
