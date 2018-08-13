@@ -440,7 +440,7 @@ if (ind_co2 > 0 .and. do_co2_emissions) then
                  co2_emiss_dt(:,:,kd)*pwt(:,:,kd)/(WTMCO2*1.e-3), Time_next, is_in=is,js_in=js)
 
 ! CMIP6 disgnostic fco2fos in kg/m2/sec 
-  if (id_fcosfos > 0) sent = send_data (id_fcosfos,   &
+  if (id_fco2fos > 0) sent = send_data (id_fco2fos,   &
                  co2_emiss_dt(:,:,kd)*pwt(:,:,kd)*WTMC/WTMCO2, Time_next, is_in=is,js_in=js)
 
 endif
