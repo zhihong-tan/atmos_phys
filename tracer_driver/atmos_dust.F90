@@ -836,7 +836,7 @@ subroutine atmos_dust_solFe_frac_set(array, is,ie,js,je)
   !based on an emiprical relation with the total dust concentration at the bottom of the atmosphere
   real, dimension(is:ie,js:je), intent(in) :: array ! total dust concentration at the bottom of the atmosphere
   integer,                      intent(in) :: is,ie,js,je
-  real, parameter :: epsilon=1.E-10
+  real, parameter :: epsilon=1.E-5 ! this value allows max soluble Fe fraction = 0.62
   if (n_dust_tracers == 0) return ! nothing to do
 
   !cas:
