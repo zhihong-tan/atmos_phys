@@ -1237,7 +1237,7 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
                        mask = (trop_diag_array(:,:,:,trop_diag%ind_cloud_pH).gt. (missing_value + tiny(missing_value))))
    end if
    if (id_cld_amt_chem>0) then
-      used = send_data(id_cld_amt_chem,max(r(:,:,:,inqa),0.),Time_next,is_in=is,js_in=js, 
+      used = send_data(id_cld_amt_chem,max(r(:,:,:,inqa),0.),Time_next,is_in=is,js_in=js, &
                        mask = (trop_diag_array(:,:,:,trop_diag%ind_cloud_pH).gt. (missing_value + tiny(missing_value))))
    end if
    if (id_phno3_g_d>0) then
