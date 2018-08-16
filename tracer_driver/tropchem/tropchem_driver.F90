@@ -375,7 +375,7 @@ integer, dimension(pcnstm1) :: indices, id_prod, id_loss, id_chem_tend, &
 !new diagnostics (f1p)
 integer, dimension(pcnstm1) :: id_prod_mol, id_loss_mol
 integer :: id_pso4_h2o2,id_pso4_o3,id_ghno3_d,id_phno3_d(5), id_phno3_g_d, id_pso4_d(5), &
-           id_pso4_g_d, id_gso2, id_aerosol_pH, id_cloud_pH, id_cloud_pHw
+           id_pso4_g_d, id_gso2, id_aerosol_pH, id_cloud_pH, id_cloud_pHw, id_cld_amt_chem
 
 integer :: id_so2_emis_cmip, id_nh3_emis_cmip
 integer :: id_co_emis_cmip, id_no_emis_cmip
@@ -1229,12 +1229,16 @@ subroutine tropchem_driver( lon, lat, land, ocn_flx_fraction, pwt, r, chem_dt, &
            ( trop_diag_array(:,:,:,trop_diag%ind_aerosol_pH) .gt. (missing_value + tiny(missing_value))))
    end if
    if (id_cloud_pH>0) then
-      used = send_data(id_cloud_pH,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph),Time_next,is_in=is,js_in=js, mask = &
-           (trop_diag_array(:,:,:,trop_diag%ind_cloud_ph).gt. (missing_value + tiny(missing_value))))
+      used = send_data(id_cloud_pH,trop_diag_array(:,:,:,trop_diag%ind_cloud_pH),Time_next,is_in=is,js_in=js, mask = &
+           (trop_diag_array(:,:,:,trop_diag%ind_cloud_pH).gt. (missing_value + tiny(missing_value))))
    end if
    if (id_cloud_pHw>0) then
-      used = send_data(id_cloud_pHw,trop_diag_array(:,:,:,trop_diag%ind_cloud_ph)*r(:,:,:,inqa),Time_next,is_in=is,js_in=js, mask = &
-           (trop_diag_array(:,:,:,trop_diag%ind_cloud_ph).gt. (missing_value + tiny(missing_value))))
+      used = send_data(id_cloud_pHw,trop_diag_array(:,:,:,trop_diag%ind_cloud_pH)*max(r(:,:,:,inqa),0.),Time_next,is_in=is,js_in=js, &
+                       mask = (trop_diag_array(:,:,:,trop_diag%ind_cloud_pH).gt. (missing_value + tiny(missing_value))))
+   end if
+   if (id_cld_amt_chem>0) then
+      used = send_data(id_cld_amt_chem,max(r(:,:,:,inqa),0.),Time_next,is_in=is,js_in=js, 
+                       mask = (trop_diag_array(:,:,:,trop_diag%ind_cloud_pH).gt. (missing_value + tiny(missing_value))))
    end if
    if (id_phno3_g_d>0) then
       used = send_data(id_phno3_g_d,trop_diag_array(:,:,:,trop_diag%ind_phno3_g_d)*pwt(:,:,:)*1.e3/WTMAIR,Time_next,is_in=is,js_in=js)
@@ -2271,6 +2275,12 @@ end if
    id_aerosol_pH  = register_diag_field( module_name, 'aerosol_pH',axes(1:3), Time, 'aerosol_ph','unitless', mask_variant = .true.,missing_value=missing_value)
    id_cloud_pH  = register_diag_field( module_name, 'cloud_pH',axes(1:3), Time, 'cloud_ph','unitless', mask_variant = .true.,missing_value=missing_value)
    id_cloud_pHw  = register_diag_field( module_name, 'cloud_pHw',axes(1:3), Time, 'cloud_ph weighted by cloud fraction','unitless', mask_variant = .true.,missing_value=missing_value)
+   id_cld_amt_chem  = register_diag_field( module_name, 'cld_amt_chem',axes(1:3), Time, 'cloud fraction for chemistry','unitless', mask_variant = .true.,missing_value=missing_value)
+
+   if (id_cloud_pHw .gt. 0 .and. id_cld_amt_chem.le.0) then
+      call error_mesg ('tropchem_driver_init', &
+           'cld_amt_chem needs to be archived if cloud_pHw is requested', FATAL)
+   end if
 
 
 !for cmip6
@@ -2425,15 +2435,10 @@ end if
       trop_diag%nb_diag           = trop_diag%nb_diag + 1
       trop_diag%ind_aerosol_pH    = trop_diag%nb_diag
    end if
-   if ( id_cloud_pH > 0 ) then
+   if ( id_cloud_pH > 0 .or. id_cloud_pHw > 0) then
       trop_diag%nb_diag           = trop_diag%nb_diag + 1
-      trop_diag%ind_cloud_ph      = trop_diag%nb_diag
+      trop_diag%ind_cloud_pH      = trop_diag%nb_diag
    end if
-   if ( id_cloud_pHw > 0 ) then
-      trop_diag%nb_diag           = trop_diag%nb_diag + 1
-      trop_diag%ind_cloud_phw     = trop_diag%nb_diag
-   end if
-
 
    module_is_initialized = .true.
 
