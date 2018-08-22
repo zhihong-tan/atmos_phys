@@ -1669,9 +1669,10 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           if (lowercase(TRIM(names(n))) == 'so4')      nso4 = n
           if (lowercase(TRIM(names(n))) == 'omphilic') nsoa = n
           if (lowercase(TRIM(names(n))) == 'nitrate')  nno3 = n
-          ! DEBUG
-         !call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(n)))//', nsoa='//TRIM(string(nsoa)),NOTE)
         end do
+        call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nsoa)))//', nsoa='//TRIM(string(nsoa)),NOTE)
+        call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nso4)))//', nso4='//TRIM(string(nso4)),NOTE)
+        call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nno3)))//', nno3='//TRIM(string(nno3)),NOTE)
 
         ! register cmip named fields
         if (nso4 > 0) then
