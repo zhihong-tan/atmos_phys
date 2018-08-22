@@ -376,7 +376,8 @@ integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
  type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
  integer, allocatable :: id_tracer_surf_mol_mol(:),id_tracer_surf_kg_kg(:)
  integer, allocatable :: id_tracer_col_kg_m2(:)
- integer              :: id_pm25_surf, id_dust_col_kg_m2, id_seasalt_col_kg_m2, id_bc_col_kg_m2
+ integer              :: id_pm25_surf, id_dust_col_kg_m2, id_seasalt_col_kg_m2, id_bc_col_kg_m2, &
+                         id_oa_col_kg_m2, id_poa_col_kg_m2
  integer              :: id_toz, id_tropoz
  real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:), frac_pm1(:), frac_pm10(:), frac_pm25(:)
  integer, allocatable :: id_tracer_ddep_kg_m2_s(:)
@@ -874,12 +875,29 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          end if
       end do
 
-      if (id_bc_col_kg_m2.gt.0 .and. nomphilic.gt.0 .and. nomphobic.gt.0) then
+      if (id_bc_col_kg_m2.gt.0 .and. nbcphilic.gt.0 .and. nbcphobic.gt.0) then
         suma = 0.
         do k=1,kd
            suma(:,:) = suma(:,:) + pwt(:,:,k)*(tracer(:,:,k,nbcphilic)+tracer(:,:,k,nbcphobic))
         end do
         used = send_data (id_bc_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+      end if
+
+      if (id_oa_col_kg_m2.gt.0 .and. nomphilic.gt.0 .and. nomphobic.gt.0 .and. nSOA.gt.0) then
+        suma = 0.
+        do k=1,kd
+           suma(:,:) = suma(:,:) + &
+                       pwt(:,:,k)*(tracer(:,:,k,nomphilic)+tracer(:,:,k,nomphobic)+tracer(:,:,k,nSOA))
+        end do
+        used = send_data (id_oa_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+      end if
+
+      if (id_poa_col_kg_m2.gt.0 .and. nomphilic.gt.0 .and. nomphobic.gt.0) then
+        suma = 0.
+        do k=1,kd
+           suma(:,:) = suma(:,:) + pwt(:,:,k)*(tracer(:,:,k,nomphilic)+tracer(:,:,k,nomphobic))
+        end do
+        used = send_data (id_poa_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
       end if
 
       if (id_dust_col_kg_m2.gt.0) then
@@ -909,7 +927,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !----------------------------------------------------------------------
 !   output the nh4no3 and nh4 loads.
 !----------------------------------------------------------------------
-!THIS IS WRRONG IN AM4
+!CAUTION!! THIS IS WRONG IN AM4
       if (nNH4NO3 > 0 .and. nNH4 > 0) then
         if (id_nh4_col > 0 .or. id_loadnh4 > 0) then
           suma = 0.
@@ -1995,15 +2013,15 @@ type(time_type), intent(in)                                :: Time
       if (nNH4NO3 > 0 .and. nNH4 > 0) then
         ID_concnh4  = register_cmip_diag_field_3d ( mod_name, &
                     'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
-                    standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+                    standard_name='mass_concentration_of_ammonium_dry_aerosol_particles_in_air')
 
         id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, &
                     'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
-                    standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+                    standard_name='mass_concentration_of_ammonium_dry_aerosol_particles_in_air')
 
         id_loadnh4  = register_cmip_diag_field_2d ( mod_name, &
                     'loadnh4', Time, 'Load of NH4', 'kg m-2', &
-                    standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
+                    standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol_particles')
 
         id_drynh4   = register_cmip_diag_field_2d ( mod_name, &
                     'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
@@ -2022,15 +2040,15 @@ type(time_type), intent(in)                                :: Time
       if (nNH4NO3 > 0) then
         ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
                    'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
-                   standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+                   standard_name='mass_concentration_of_nitrate_dry_aerosol_particles_in_air')
 
         id_sconcno3 = register_cmip_diag_field_2d ( mod_name, &
                   'sconcno3', Time, 'Surface Concentration of NO3', 'kg m-3', &
-                  standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+                  standard_name='mass_concentration_of_nitrate_dry_aerosol_particles_in_air')
 
         id_loadno3 = register_cmip_diag_field_2d ( mod_name, &
                    'loadno3', Time, 'Load of NO3', 'kg m-2', &
-                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol')
+                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol_particles')
       else
         id_sconcno3 = 0
         id_loadno3 = 0
@@ -2038,11 +2056,11 @@ type(time_type), intent(in)                                :: Time
 
       id_dryso2 = register_cmip_diag_field_2d ( mod_name, &
                      'dryso2', Time, 'Dry Deposition Rate of SO2', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_dry_deposition')
+                     standard_name='minus_tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_dry_deposition')
 
       id_dryso4 = register_cmip_diag_field_2d ( mod_name, &
                     'dryso4', Time, 'Dry Deposition Rate of SO4', 'kg m-2 s-1', &
-                    standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_dry_deposition')
+                    standard_name='minus_tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_dry_deposition')
 
       id_drydms = register_cmip_diag_field_2d ( mod_name, &
                     'drydms', Time, 'Dry Deposition Rate of DMS', 'kg m-2 s-1', &
@@ -2160,15 +2178,23 @@ type(time_type), intent(in)                                :: Time
 
       id_bc_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_bc_col_kg_m2', &
                        Time, 'Load of Black Carbon Aerosol', 'kg m-2', &
-                       standard_name='atmosphere_mass_content_of_black_carbon_dry_aerosol')
+                       standard_name='atmosphere_mass_content_of_elemental_carbon_dry_aerosol_particles')
+
+      id_oa_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_om_col_kg_m2', &
+                       Time, 'Load of Dry Aerosol Organic Matter', 'kg m-2', &
+                       standard_name='atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles')
+
+      id_poa_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_poa_col_kg_m2', &
+                       Time, 'Load of Dry Aerosol Primary Organic Matter', 'kg m-2', &
+                       standard_name='atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles')
 
       id_dust_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_dust_col_kg_m2', &
                          Time, 'Load of Dust', 'kg m-2', &
-                         standard_name='atmosphere_mass_content_of_dust_dry_aerosol')
+                         standard_name='atmosphere_mass_content_of_dust_dry_aerosol_particles')
 
       id_seasalt_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_seasalt_col_kg_m2', &
                             Time, 'Load of Seasalt', 'kg m-2', &
-                            standard_name='atmosphere_mass_content_of_seasalt_dry_aerosol')
+                            standard_name='atmosphere_mass_content_of_seasalt_dry_aerosol_particles')
 
       id_toz = register_cmip_diag_field_2d ( mod_name, 'toz', &
                        Time, 'Total Ozone Column', 'm', &
