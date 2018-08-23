@@ -174,8 +174,8 @@ integer                            :: id_radswp, id_radp, id_temp, &
                                       id_dphalf, id_dpflux, &
                                       id_ptop
 
-type(cmip_diag_id_type)  :: ID_o3, ID_ec550aer, ID_concso4, ID_concsoa
-integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, &
+type(cmip_diag_id_type)  :: ID_o3, ID_ec550aer, ID_concso4, ID_concsoa, ID_concno3
+integer                  :: id_loadso4, id_sconcso4, id_loadsoa, id_sconcsoa, id_loadno3, id_sconcno3, &
                             id_od550aer, id_od550lt1aer, id_abs550aer, id_od870aer, &
                             id_od440aer, id_o3_col, id_od550so4, id_od550soa, id_od550no3
 
@@ -1090,6 +1090,18 @@ type(aerosolrad_diag_type),   intent(in), optional  ::  Aerosolrad_diags
               endif
               if (id_sconcsoa > 0) then
                 used = send_data (id_sconcsoa, Aerosol%aerosol(:,:,kerad,nsoa)/deltaz(:,:,kerad), Time_diag, is, js)
+              endif
+            endif
+
+            if (nno3 > 0) then ! units = mmr
+              if (id_loadno3 > 0) then
+                used = send_data (id_loadno3, aerosol_col(:,:,nno3), Time_diag, is, js)
+              endif
+              if (query_cmip_diag_id(ID_concno3)) then
+                used = send_cmip_data_3d (ID_concno3, Aerosol%aerosol(:,:,:,nno3)/deltaz(:,:,:), Time_diag, is, js, 1)
+              endif
+              if (id_sconcno3 > 0) then
+                used = send_data (id_sconcno3, Aerosol%aerosol(:,:,kerad,nno3)/deltaz(:,:,kerad), Time_diag, is, js)
               endif
             endif
             !----
