@@ -1667,43 +1667,15 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         do n = 1, naerosol                           
           aerosol_column_names(n) = TRIM(names(n) ) // "_col"
           if (lowercase(TRIM(names(n))) == 'so4')      nso4 = n
-          if (lowercase(TRIM(names(n))) == 'omphilic') nsoa = n
+!         if (lowercase(TRIM(names(n))) == 'omphilic') nsoa = n ! ERROR: this is incorrect in default AM3/AM4.0/AM4.1 configurations
+          if (lowercase(TRIM(names(n))) == 'omphilic' .and. nsoa==0) nsoa = n
           if (lowercase(TRIM(names(n))) == 'nitrate')  nno3 = n
         end do
         call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nsoa)))//', nsoa='//TRIM(string(nsoa)),NOTE)
         call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nso4)))//', nso4='//TRIM(string(nso4)),NOTE)
         call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nno3)))//', nno3='//TRIM(string(nno3)),NOTE)
 
-        ! register cmip named fields
-        if (nso4 > 0) then
-          id_loadso4 = register_cmip_diag_field_2d (mod_name, 'loadso4',  &
-                                         Time, 'Load of SO4', 'kg m-2', &
-                        standard_name='atmosphere_mass_content_of_sulfate_dry_aerosol')
-          ID_concso4 = register_cmip_diag_field_3d (mod_name, 'concso4', Time, &
-                            'Concentration of SO4', 'kg m-3', &
-                        standard_name='mass_concentration_of_sulfate_dry_aerosol_in_air')
-          id_sconcso4 = register_cmip_diag_field_2d (mod_name, 'sconcso4', Time, &
-                                     'Surface Concentration of SO4', 'kg m-3', &
-                        standard_name='mass_concentration_of_sulfate_dry_aerosol_in_air')
-        else
-          id_loadso4 = 0
-          id_sconcso4 = 0
-        endif
-
-        if (nsoa > 0) then
-          id_loadsoa = register_cmip_diag_field_2d (mod_name, 'loadsoa', Time,  &
-                                    'Load of Dry Aerosol Secondary Organic Matter', 'kg m-2', &
-                    standard_name='atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol')
-          id_sconcsoa = register_cmip_diag_field_2d (mod_name, 'sconcsoa', Time,  &
-                               'Surface Concentration of Dry Aerosol Secondary Organic Matter', 'kg m-3', &
-                          standard_name='mass_concentration_of_secondary_particulate_organic_matter_dry_aerosol_in_air')
-          ID_concsoa  = register_cmip_diag_field_3d (mod_name, 'concsoa', Time,  &
-                               'Concentration of Dry Aerosol Secondary Organic Matter', 'kg m-3', &
-                          standard_name='mass_concentration_of_secondary_particulate_organic_matter_dry_aerosol_in_air')
-        else
-          id_loadsoa = 0
-          id_sconcsoa = 0
-        endif
+        ! register cmip named fields (moved below, after CMIP family diagnostics, in case SOA family is defined)
 
         !---- register tracer/aerosol diagnostics ----
         do n = 1,naerosol
@@ -1808,7 +1780,13 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           ncmip = 0
           if (TRIM(family_names(n)) .eq. 'organic_carbon') ncmip = 1
           if (TRIM(family_names(n)) .eq. 'POA')            ncmip = 2
-          if (TRIM(family_names(n)) .eq. 'SOA' .and. nsoa .eq. 0 ) ncmip = 3
+!++lwh
+!         if (TRIM(family_names(n)) .eq. 'SOA' .and. nsoa .eq. 0 ) ncmip = 3
+          if (TRIM(family_names(n)) .eq. 'SOA') then
+             ncmip = 3
+             nsoa = 0
+          end if
+!--lwh
           if (TRIM(family_names(n)) .eq. 'black_carbon')   ncmip = 4
           if (TRIM(family_names(n)) .eq. 'dust')           ncmip = 5
           if (TRIM(family_names(n)) .eq. 'sea_salt')       ncmip = 6
@@ -1833,6 +1811,52 @@ logical,                        intent(in) :: volcanic_sw_aerosols
 
         end do
         deallocate (aerosol_fam_column_names)
+
+        ! register cmip named fields (moved from above)
+        if (nso4 > 0) then
+          id_loadso4 = register_cmip_diag_field_2d (mod_name, 'loadso4',  &
+                                         Time, 'Load of SO4', 'kg m-2', &
+                        standard_name='atmosphere_mass_content_of_sulfate_dry_aerosol_particles')
+          ID_concso4 = register_cmip_diag_field_3d (mod_name, 'concso4', Time, &
+                            'Concentration of SO4', 'kg m-3', &
+                        standard_name='mass_concentration_of_sulfate_dry_aerosol_particles_in_air')
+          id_sconcso4 = register_cmip_diag_field_2d (mod_name, 'sconcso4', Time, &
+                                     'Surface Concentration of SO4', 'kg m-3', &
+                        standard_name='mass_concentration_of_sulfate_dry_aerosol_particles_in_air')
+        else
+          id_loadso4 = 0
+          id_sconcso4 = 0
+        endif
+
+        if (nsoa > 0) then
+          id_loadsoa = register_cmip_diag_field_2d (mod_name, 'loadsoa', Time,  &
+                                    'Load of Dry Aerosol Secondary Organic Matter', 'kg m-2', &
+                    standard_name='atmosphere_mass_content_of_secondary_particulate_organic_matter_dry_aerosol_particles')
+          id_sconcsoa = register_cmip_diag_field_2d (mod_name, 'sconcsoa', Time,  &
+                               'Surface Concentration of Dry Aerosol Secondary Organic Matter', 'kg m-3', &
+                          standard_name='mass_concentration_of_secondary_particulate_organic_matter_dry_aerosol_particles_in_air')
+          ID_concsoa  = register_cmip_diag_field_3d (mod_name, 'concsoa', Time,  &
+                               'Concentration of Dry Aerosol Secondary Organic Matter', 'kg m-3', &
+                          standard_name='mass_concentration_of_secondary_particulate_organic_matter_dry_aerosol_particles_in_air')
+        else
+          id_loadsoa = 0
+          id_sconcsoa = 0
+        endif
+
+        if (nno3 > 0) then
+          id_loadsoa = register_cmip_diag_field_2d (mod_name, 'loadno3', Time,  &
+                                    'Load of NO3', 'kg m-2', &
+                    standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol_particles')
+          id_sconcno3 = register_cmip_diag_field_2d (mod_name, 'sconcno3', Time,  &
+                               'Surface Concentration of NO3', 'kg m-3', &
+                          standard_name='mass_concentration_of_nitrate_dry_aerosol_particles_in_air')
+          ID_concno3  = register_cmip_diag_field_3d (mod_name, 'concno3', Time,  &
+                               'Concentration of NO3', 'kg m-3', &
+                          standard_name='mass_concentration_of_nitrate_dry_aerosol_particles_in_air')
+        else
+          id_loadno3 = 0
+          id_sconcno3 = 0
+        endif
 
         allocate (id_extopdep_fam(nfamilies, N_DIAG_BANDS))
         allocate (id_extopdep_fam_column(nfamilies, N_DIAG_BANDS))
