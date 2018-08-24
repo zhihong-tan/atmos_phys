@@ -1856,7 +1856,7 @@ logical,                        intent(in) :: volcanic_sw_aerosols
         endif
 
         if (nno3 > 0) then
-          id_loadsoa = register_cmip_diag_field_2d (mod_name, 'loadno3', Time,  &
+          id_loadno3 = register_cmip_diag_field_2d (mod_name, 'loadno3', Time,  &
                                     'Load of NO3', 'kg m-2', &
                     standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol_particles')
           id_sconcno3 = register_cmip_diag_field_2d (mod_name, 'sconcno3', Time,  &
