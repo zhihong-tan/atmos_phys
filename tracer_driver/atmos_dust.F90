@@ -498,8 +498,8 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
      call set_tracer_atts(MODEL_ATMOS,tr_name,longname,'mmr')
      ! allocate space to store dust sedimentation flux for exchange with land.
      ! sizes of lonb and latb are used to get the size of the compute domain  
-     allocate(dust_tracers(i)%dust_setl(size(lonb)-1,size(latb)-1))
-     allocate(dust_tracers(i)%dsetl_dtr(size(lonb)-1,size(latb)-1))
+     allocate(dust_tracers(i)%dust_setl(size(lonb,1)-1,size(latb,2)-1))
+     allocate(dust_tracers(i)%dsetl_dtr(size(lonb,1)-1,size(latb,2)-1))
 
      method = ''; parameters = ''
      if(query_method('parameters', MODEL_ATMOS, tr, method, parameters)) then
@@ -603,11 +603,11 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   endif
 
   !Allocate the array to contain the total dust flux and bottom concentration for ESM
-  allocate(dry_dep_lith_dust_flux(size(lonb)-1,size(latb)-1)); dry_dep_lith_dust_flux=0.0
-  allocate(wet_dep_lith_dust_flux(size(lonb)-1,size(latb)-1)); wet_dep_lith_dust_flux=0.0
-  allocate(dry_dep_solubleFe_flux(size(lonb)-1,size(latb)-1)); dry_dep_solubleFe_flux=0.0
-  allocate(wet_dep_solubleFe_flux(size(lonb)-1,size(latb)-1)); wet_dep_solubleFe_flux=0.0
-  allocate(atmos_dust_solFe_frac(size(lonb)-1,size(latb)-1)); atmos_dust_solFe_frac=0.0
+  allocate(dry_dep_lith_dust_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_lith_dust_flux=0.0
+  allocate(wet_dep_lith_dust_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_lith_dust_flux=0.0
+  allocate(dry_dep_solubleFe_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_solubleFe_flux=0.0
+  allocate(wet_dep_solubleFe_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_solubleFe_flux=0.0
+  allocate(atmos_dust_solFe_frac( size(lonb,1)-1,size(latb,2)-1)); atmos_dust_solFe_frac=0.0
 
 
   do_dust = .TRUE.
@@ -836,7 +836,7 @@ subroutine atmos_dust_solFe_frac_set(array, is,ie,js,je)
   !based on an emiprical relation with the total dust concentration at the bottom of the atmosphere
   real, dimension(is:ie,js:je), intent(in) :: array ! total dust concentration at the bottom of the atmosphere
   integer,                      intent(in) :: is,ie,js,je
-  real, parameter :: epsilon=1.E-10
+  real, parameter :: epsilon=1.E-5 ! this value allows max soluble Fe fraction = 0.62
   if (n_dust_tracers == 0) return ! nothing to do
 
   !cas:

@@ -58,7 +58,7 @@ character(len=48), parameter    :: mod_name = 'atmos_co2_mod'
 integer, save   :: ind_co2_flux = 0
 integer, save   :: ind_co2  = 0
 integer, save   :: ind_sphum = 0
-integer         :: id_co2restore, id_pwt, id_co2_mol_emiss, id_co2_emiss_orig
+integer         :: id_co2restore, id_pwt, id_co2_mol_emiss, id_co2_emiss_orig, id_fco2fos
 integer         :: id_XCO2
 real            :: radiation_co2_dvmr = -1
 
@@ -439,6 +439,10 @@ if (ind_co2 > 0 .and. do_co2_emissions) then
   if (id_co2_mol_emiss > 0) sent = send_data (id_co2_mol_emiss,   &
                  co2_emiss_dt(:,:,kd)*pwt(:,:,kd)/(WTMCO2*1.e-3), Time_next, is_in=is,js_in=js)
 
+! CMIP6 disgnostic fco2fos in kg/m2/sec 
+  if (id_fco2fos > 0) sent = send_data (id_fco2fos,   &
+                 co2_emiss_dt(:,:,kd)*pwt(:,:,kd)*WTMC/WTMCO2, Time_next, is_in=is,js_in=js)
+
 endif
 
 
@@ -731,6 +735,9 @@ if (n > 0) then
    id_XCO2 = register_diag_field ( 'atmos_co2', 'XCO2', axes(1:2), Time, &
                    'CO2'//trim(desc), 'mol mol-1', missing_value=missing_value)
 
+   desc = 'Carbon Mass Flux into Atmosphere Due to Fossil Fuel Emissions of CO2'
+   id_fco2fos = register_diag_field ('atmos_co2_emissions', 'fco2fos', axes(1:2), Time, &
+                      trim(desc), 'kg m-2 s-1',missing_value=missing_value)
 !
 !       get the index for sphum
 !
