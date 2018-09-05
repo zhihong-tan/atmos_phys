@@ -363,11 +363,12 @@ integer :: id_so2_cmip, id_dms_cmip
 integer :: id_so2_cmipv2, id_dms_cmipv2
 integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
- type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
+ type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms, ID_concdust
  type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
  type(cmip_diag_id_type) :: ID_meanage, ID_co2_vmr, ID_aoanh
 
- integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
+ integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4, &
+            id_sconcso4, id_sconcss, id_sconcdust, id_co2s
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
             id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa, &
             id_emiisop_biogenic, id_emibvoc
@@ -717,6 +718,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 !------------------------------------------------------------------------
 ! Get air mass in layer (in kg/m2), equal to dP/g
+! Get air density in layer (in kg/m3), equal to dP/(g*dz)
 !------------------------------------------------------------------------
       do k=1,kd
          pwt(:,:,k)=(phalf(:,:,k+1)-phalf(:,:,k))/grav
@@ -1052,6 +1054,19 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
        endif
      endif
 
+     ! surface concentration (lowest level)
+     if (id_sconcso4 > 0) then
+       if (nSO4_cmip > 0) then
+         used = send_data (id_sconcso4, &
+             0.096*1.0e03*rho(:,:,kd)*tracer(:,:,kd,nSO4_cmip) /WTMAIR,  &
+                                 Time_next, is_in=is, js_in=js)
+       else if (nSO4 > 0) then
+         used = send_data (id_sconcso4, &
+             0.096*1.0e03*rho(:,:,kd)*tracer(:,:,kd,nSO4) /WTMAIR,  &
+                                 Time_next, is_in=is, js_in=js)
+       endif
+     endif
+
      if (query_cmip_diag_id(ID_concso2)) then
        if (nSO2_cmip > 0) then
          used = send_cmip_data_3d ( ID_concso2, tracer(:,:,:,nSO2_cmip), &
@@ -1071,9 +1086,49 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
        endif
      endif
 
-     if ( query_cmip_diag_id(ID_co2_vmr) ) then
+     if (id_sconcss > 0) then
+       suma = 0.
+       do n=1,ntp
+         if (is_seasalt_tracer(n)) then
+            do k=1,kd
+               suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,k,n)
+            end do
+         end if
+       end do
+       used = send_data (id_seasalt_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+     end if
+
+     if (id_sconcdust > 0) then
+       suma = 0.
+       do n=1,ntp
+         if (is_dust_tracer(n)) then
+            do k=1,kd
+               suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,kd,n)
+            end do
+         end if
+       end do
+       used = send_data (id_sconcdust, suma, Time_next, is_in=is, js_in=js)
+     end if
+
+     if ( query_cmip_diag_id(ID_concdust) ) then
+        sumb = 0.
+        do n=1,ntp
+          if (is_dust_tracer(n)) then
+             sumb(:,:,:) = sumb(:,:,:) + rho(:,:,:)*tracer(:,:,:,n)
+          end if
+        end do
+        used = send_cmip_data_3d ( ID_concdust, sumb(:,:,:), &
+             Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
+     if ( query_cmip_diag_id(ID_co2_vmr) .and. nco2 > 0) then
         used = send_cmip_data_3d ( ID_co2_vmr, tracer(:,:,:,nco2)*WTMAIR/WTMCO2, &
              Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
+     end if
+
+     if (id_co2s > 0 .and. nco2 > 0) then
+        used = send_data (id_co2s, tracer(:,:,kd,nco2)*WTMAIR/WTMCO2*1.e6,  &
+             Time_next, is_in=is, js_in=js)
      end if
 
      PM25 = 0.
@@ -2054,6 +2109,22 @@ type(time_type), intent(in)                                :: Time
         id_loadno3 = 0
       endif
 
+      id_sconcso4 = register_cmip_diag_field_2d ( mod_name, &
+                'sconcso4', Time, 'Surface Concentration of SO4', 'kg m-3', &
+                standard_name='mass_concentration_of_sulfate_dry_aerosol_particles_in_air')
+
+      id_sconcss = register_cmip_diag_field_2d ( mod_name, &
+                'sconcss', Time, 'Surface Concentration of Seasalt', 'kg m-3', &
+                standard_name='mass_concentration_of_sea_salt_dry_aerosol_particles_in_air')
+
+      ID_concdust = register_cmip_diag_field_3d ( mod_name, &
+                'concdust', Time, 'Concentration of Dust', 'kg m-3', &
+                standard_name='mass_concentration_of_dust_dry_aerosol_particles_in_air')
+
+      id_sconcdust = register_cmip_diag_field_2d ( mod_name, &
+                'sconcdust', Time, 'Surface Concentration of Dust', 'kg m-3', &
+                standard_name='mass_concentration_of_dust_dry_aerosol_particles_in_air')
+
       id_dryso2 = register_cmip_diag_field_2d ( mod_name, &
                      'dryso2', Time, 'Dry Deposition Rate of SO2', 'kg m-2 s-1', &
                      standard_name='minus_tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_dry_deposition')
@@ -2096,6 +2167,10 @@ type(time_type), intent(in)                                :: Time
 
       ID_co2_vmr = register_cmip_diag_field_3d ( mod_name, &
                   'co2_vmr', Time, 'CO2 volume mixing ratio', 'mol mol-1', &
+                  standard_name='mole_fraction_of_carbon_dioxide_in_air')
+
+      id_co2s   = register_cmip_diag_field_2d ( mod_name, &
+                  'co2', Time, 'Atmosphere CO2', '1e-06', &
                   standard_name='mole_fraction_of_carbon_dioxide_in_air')
 
 !-----------------------
