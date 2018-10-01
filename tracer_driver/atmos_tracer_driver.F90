@@ -1090,21 +1090,17 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
        suma = 0.
        do n=1,ntp
          if (is_seasalt_tracer(n)) then
-            do k=1,kd
-               suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,k,n)
-            end do
+            suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,kd,n)
          end if
        end do
-       used = send_data (id_seasalt_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+       used = send_data (id_sconcss, suma, Time_next, is_in=is, js_in=js)
      end if
 
      if (id_sconcdust > 0) then
        suma = 0.
        do n=1,ntp
          if (is_dust_tracer(n)) then
-            do k=1,kd
-               suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,kd,n)
-            end do
+            suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,kd,n)
          end if
        end do
        used = send_data (id_sconcdust, suma, Time_next, is_in=is, js_in=js)
