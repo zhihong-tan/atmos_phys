@@ -2170,7 +2170,7 @@ type(time_type), intent(in)                                :: Time
                   standard_name='mole_fraction_of_carbon_dioxide_in_air')
 
       id_co2s   = register_cmip_diag_field_2d ( mod_name, &
-                  'co2', Time, 'Atmosphere CO2', '1e-06', &
+                  'co2s', Time, 'Atmosphere CO2', '1e-06', &
                   standard_name='mole_fraction_of_carbon_dioxide_in_air')
 
 !-----------------------
