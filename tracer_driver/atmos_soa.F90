@@ -22,7 +22,7 @@ use                    fms_mod, only : file_exist,              &
                                        mpp_pe,                  &
                                        mpp_root_pE,             &
                                        close_file,              &
-                                       stdlog,                  &
+                                       stdout, stdlog,          &
                                        check_nml_error, error_mesg, &
                                        open_namelist_file, FATAL, NOTE
 use           time_manager_mod, only : time_type,               &
@@ -39,12 +39,14 @@ use         tracer_manager_mod, only : get_tracer_index,        &
                                        NO_TRACER
 use          field_manager_mod, only : MODEL_ATMOS
 use              constants_mod, only : PI, GRAV, RDGAS, WTMAIR, AVOGNO
-use           interpolator_mod, only:  interpolate_type,  &
-                                       interpolator_init, &
+use           interpolator_mod, only:  interpolate_type,        &
+                                       interpolator_init,       &
                                        obtain_interpolator_time_slices,&
                                        unset_interpolator_time_flag, &
                                        interpolator, interpolator_end, &
                                        CONSTANT, INTERP_WEIGHTED_P
+use           xactive_bvoc_mod, only : ind_xbvoc_ISOP,          &
+                                       ind_xbvoc_TERP
 
 implicit none
 
@@ -62,10 +64,15 @@ character(len=6), parameter :: module_name = 'tracer'
 integer :: nSOA    = 0  ! tracer number for Secondary Organic Aerosol
 integer :: nOH     = 0  ! tracer number for OH
 integer :: nC4H10  = 0  ! tracer number for C4H10
-
+integer :: nISOP   = 0  ! tracer number for isoprene
+integer :: nTERP   = 0  ! tracer number for terpenes (currently monoterpenes)
+integer :: nO3     = 0  ! tracer number for ozone
+integer :: nNO3    = 0  ! tracer number for NO3
 !--- identification numbers for  diagnostic fields and axes ----
 integer ::   id_OH_conc            = 0
 integer ::   id_C4H10_conc         = 0
+integer ::   id_ISOP_conc          = 0
+integer ::   id_TERP_conc          = 0
 integer ::   id_SOA_chem           = 0
 integer ::   id_SOA_chem_col       = 0
 integer ::   id_chepsoa            = 0 ! cmip field
@@ -103,7 +110,7 @@ real, parameter       :: om_oc_ratio = 1.5
 real, parameter       :: isoprene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_isoprene * om_oc_ratio
 real, parameter       :: terpene_factor = cm2_per_m2 / AVOGNO * wtm_C * kg_per_g * carbon_per_terpene * om_oc_ratio
 integer, parameter    :: TS_CONSTANT=1, TS_FIXED=2, TS_VARYING=3
-real, parameter :: boltz = 1.38044e-16      ! Boltzmann's Constant (erg/K)
+real, parameter       :: boltz = 1.38044e-16      ! Boltzmann's Constant (erg/K)
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -124,9 +131,18 @@ character(len=80)     :: isoprene_time_dependency_type = 'constant'
 character(len=80)     :: terpene_time_dependency_type  = 'constant'
 real                  :: isoprene_SOA_yield = 0.05
 real                  :: terpene_SOA_yield  = 0.05
-logical               :: use_interactive_tracers = .false.
+
+!real                  :: ISOP_OH_SOA_yield = 0.05
+!real                  :: TERP_OH_SOA_yield  = 0.05
+!real                  :: ISOP_NO3_SOA_yield = 0.05
+!real                  :: TERP_NO3_SOA_yield  = 0.05
+
+
+logical               :: use_interactive_tracers = .false., &
+                         use_interactive_BVOC_emis = .false.
 namelist /secondary_organics_nml/ gas_conc_filename, gas_conc_name, &
                                   use_interactive_tracers, &
+                                  use_interactive_BVOC_emis, &
                                   isoprene_source, &
                                   isoprene_filename, &
                                   isoprene_input_name, &
@@ -168,7 +184,7 @@ character(len=7), parameter :: mod_name = 'tracers'
 !
 !-----------------------------------------------------------------------
 !
-      integer  unit,io,ierr, logunit
+      integer  unit,io,ierr, logunit, outunit
       character(len=3) :: SOA_tracer
 !
       data SOA_tracer/'SOA'/
@@ -195,7 +211,8 @@ character(len=7), parameter :: mod_name = 'tracers'
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
-      logunit=stdlog()
+      outunit = stdout()
+      logunit = stdlog()
       if (mpp_pe() == mpp_root_pe() ) &
                           write (logunit, nml=secondary_organics_nml)
 
@@ -205,11 +222,10 @@ character(len=7), parameter :: mod_name = 'tracers'
       if (nSOA > 0) then
          call set_tracer_atts(MODEL_ATMOS,'SOA','SOA','mmr')
          if (nSOA > 0 .and. mpp_pe() == mpp_root_pe()) &
-                 write (*,30) SOA_tracer,nsoa
+                 write (outunit,30) SOA_tracer,nsoa
          if (nSOA > 0 .and. mpp_pe() == mpp_root_pe()) &
                  write (logunit,30) SOA_tracer,nsoa
       endif
-
 
   30   format (A,' was initialized as tracer number ',i2)
 
@@ -217,32 +233,56 @@ character(len=7), parameter :: mod_name = 'tracers'
 
       nOH = get_tracer_index(MODEL_ATMOS,'OH')
       if (nOH > 0 .and. mpp_pe() == mpp_root_pe()) then
-         write (*,40) 'OH',nOH
+         write (outunit,40) 'OH',nOH
          write (logunit,40) 'OH',nOH
       endif
       nC4H10 = get_tracer_index(MODEL_ATMOS,'C4H10')
       if (nC4H10 > 0 .and. mpp_pe() == mpp_root_pe()) then
-         write (*,40) 'C4H10',nC4H10
+         write (outunit,40) 'C4H10',nC4H10
          write (logunit,40) 'C4H10',nC4H10
       endif
+      nISOP = get_tracer_index(MODEL_ATMOS,'ISOP')
+      if (nISOP > 0 .and. mpp_pe() == mpp_root_pe()) then
+         write (outunit,40) 'ISOP',nISOP
+         write (logunit,40) 'ISOP',nISOP
+      end if
+      nTERP = get_tracer_index(MODEL_ATMOS,'C10H16')
+      if (nTERP > 0 .and. mpp_pe() == mpp_root_pe()) then
+         write (outunit,40) 'TERP',nTERP
+         write (logunit,40) 'TERP',nTERP
+      end if
+      nO3 = get_tracer_index(MODEL_ATMOS,'O3')
+      if (nO3 > 0 .and. mpp_pe() == mpp_root_pe()) then
+         write (outunit,40) 'O3',nO3
+         write (logunit,40) 'O3',nO3
+      end if
+      nNO3 = get_tracer_index(MODEL_ATMOS,'NO3')
+      if (nNO3 > 0 .and. mpp_pe() == mpp_root_pe()) then
+         write (outunit,40) 'NO3',nNO3
+         write (logunit,40) 'NO3',nNO3
+      end if
   40  format (A,' was initialized as tracer number ',i2)
       if (use_interactive_tracers) then
          if (mpp_pe() == mpp_root_pe()) then
-            write (*,*) 'atmos_soa_mod: Using interactive tracers'
+            write (outunit,*) 'atmos_soa_mod: Using interactive tracers'
             write (logunit,*) 'atmos_soa_mod: Using interactive tracers'
          end if
          if (nOH==NO_TRACER .or. nC4H10==NO_TRACER) &
            call error_mesg ('atmos_soa_mod', &
             'OH and C4H10 tracers must be present if use_interactive_tracers=T', FATAL)
       endif
-
+      if (use_interactive_BVOC_emis) then
+         if (mpp_pe() == mpp_root_pe()) then
+            write (outunit,*) 'atmos_soa_mod: Using interactive BVOC emissions'
+            write (logunit,*) 'atmos_soa_mod: Using interactive BVOC emissions'
+         endif
+      endif
+     
      call interpolator_init (gas_conc_interp, trim(gas_conc_filename),  &
                              lonb, latb,&        
                              data_out_of_bounds=  (/CONSTANT/), &
                              data_names = gas_conc_name, & 
                              vert_interp=(/INTERP_WEIGHTED_P/) )
-
-
 
 !----------------------------------------------------------------------
 !    define the model base time  (defined in diag_table)
@@ -414,9 +454,6 @@ character(len=7), parameter :: mod_name = 'tracers'
        data_names=terpene_input_name,vert_interp=(/INTERP_WEIGHTED_P/))
    endif
 
-
-
-
       if (id_OH_conc .eq. 0 ) &
         id_OH_conc    = register_diag_field ( mod_name,           &
                       'OH_SOA_conc',axes(1:3),Time,                        &
@@ -427,6 +464,10 @@ character(len=7), parameter :: mod_name = 'tracers'
                       'C4H10_mmr',axes(1:3),Time,                        &
                       'nButane concentration',           &
                       'mmr')
+
+      !------------------------------------------------------------!
+      !------- ADD id_ISOP/TERP_conc here? ------------------------!
+      !------------------------------------------------------------!
 
       id_SOA_chem    = register_diag_field ( mod_name,       &
                       'SOA_chem',axes(1:3),Time,            &
@@ -591,19 +632,20 @@ end subroutine atmos_SOA_endts
 
 !</SUBROUTINE>
 !-----------------------------------------------------------------------
-      SUBROUTINE atmos_SOA_chem(pwt,temp,pfull, phalf, dt, &
-                          jday,hour,minute,second,lat,lon, &
-                          SOA, OH, C4H10, SOA_dt, &
-			  Time,Time_next,is,ie,js,je,kbot)
+      SUBROUTINE atmos_SOA_chem(pwt,temp,pfull, phalf, dt,     &
+                          jday,hour,minute,second,lat,lon,     &
+                          SOA, OH, C4H10, xbvoc, &
+                          SOA_dt, Time,Time_next,is,ie,js,je,kbot)
 
 ! ****************************************************************************
       real, intent(in),    dimension(:,:,:)          :: pwt
       real, intent(in),    dimension(:,:,:)          :: temp,pfull,phalf
       real, intent(in)                               :: dt
       integer, intent(in)                            :: jday, hour,minute,second
-      real, intent(in),  dimension(:,:)              :: lat, lon  ! [radian]
+      real, intent(in),    dimension(:,:)            :: lat, lon  ! [radian]
       real, intent(in),    dimension(:,:,:)          :: SOA, OH, C4H10
-      real, intent(out),   dimension(:,:,:)          :: SOA_dt
+      real, intent(in),    dimension(:,:,:)          :: xbvoc
+      real, intent(out),   dimension(:,:,:)          :: SOA_dt 
       type(time_type), intent(in)                    :: Time, Time_next
       integer, intent(in),  dimension(:,:), optional :: kbot
       integer, intent(in)                            :: is,ie,js,je
@@ -625,13 +667,32 @@ end subroutine atmos_SOA_endts
       real, parameter                            :: B3 = 0.000148
       real, parameter                            :: A_C4H10_OH = 1.55E-11
       real, parameter                            :: B_C4H10_OH = 540.
+
+      real, parameter                            :: A_ISOP_OH  = 3.1E-11
+      real, parameter                            :: B_ISOP_OH  = 350.
+      real, parameter                            :: A_TERP_OH  = 1.2E-11
+      real, parameter                            :: B_TERP_OH  = 440.
+      real, parameter                            :: A_ISOP_O3  = 1.0E-14
+      real, parameter                            :: B_ISOP_O3  = -1970.
+      real, parameter                            :: A_TERP_O3  = 5.3E-16
+      real, parameter                            :: B_TERP_O3  = -530.
+      real, parameter                            :: A_ISOP_NO3 = 3.3E-12
+      real, parameter                            :: B_ISOP_NO3 = -450.
+      real, parameter                            :: A_TERP_NO3 = 1.2E-12
+      real, parameter                            :: B_TERP_NO3 = 490.
+   
       real                                       :: decl, hd, x
-      integer :: i,j,k,id,jd,kd
+      integer                                    :: i,j,k,id,jd,kd,logunit
       integer                                    :: istep, nstep
       real                                       :: air_dens
+
+      
 ! Local grid sizes
       id=size(SOA,1); jd=size(SOA,2); kd=size(SOA,3)
 
+      isoprene_emis(:,:)    = 0.0
+      terpene_emis(:,:)    = 0.0
+!----------------------------------------------------------------------------!
       if (.not. use_interactive_tracers) then
          OH_conc(:,:,:)=0.  ! molec/cm3
          call interpolator(gas_conc_interp, Time, phalf, OH_conc, &
@@ -651,7 +712,7 @@ end subroutine atmos_SOA_endts
          where ( xu >= 1 ) dayl = 0.
 !   Calculate normalization factors for OH and NO3 such that
 !   the diurnal average respect the monthly input values.
-         hd=0.
+         hd = 0.
          fact_OH(:,:)  = 0.
          nstep = int(24.*3600./dt)
          do istep=1,nstep
@@ -704,6 +765,7 @@ end subroutine atmos_SOA_endts
          enddo
          enddo
 
+           SOA_dt(:,:,kd) = SOA_dt(:,:,kd) +  (isoprene_emis(:,:) + terpene_emis(:,:))/ pwt(:,:,kd) 
       endif
 
       SOA_chem(:,:,:)=SOA_dt(:,:,:)*pwt(:,:,:)
@@ -712,18 +774,31 @@ end subroutine atmos_SOA_endts
 !    Pseudo-emission of SOA from biogenic VOCs,
 !    ... add to SOA_dt (in lowest model layer)
 !----------------------------------------------------------------------
-      isoprene_emis(:,:)    = 0.0
-      if ( trim(isoprene_source).ne. ' ') then
-        call interpolator(isoprene_interp, isoprene_time, isoprene_emis, &
-                          trim(isoprene_input_name(1)), is, js)
-      endif
-      isoprene_emis(:,:) = isoprene_emis(:,:) * isoprene_factor * isoprene_SOA_yield
+      if (.not. use_interactive_BVOC_emis) then
 
-      terpene_emis(:,:)    = 0.0
-      if ( trim(terpene_source).ne. ' ') then
-        call interpolator(terpene_interp, terpene_time, terpene_emis, &
-                          trim(terpene_input_name(1)), is, js)
+         isoprene_emis(:,:)    = 0.0
+         if ( trim(isoprene_source).ne. ' ') then
+           call interpolator(isoprene_interp, isoprene_time, isoprene_emis, &
+                             trim(isoprene_input_name(1)), is, js)
+         endif
+
+         terpene_emis(:,:)    = 0.0
+         if ( trim(terpene_source).ne. ' ') then
+           call interpolator(terpene_interp, terpene_time, terpene_emis, &
+                             trim(terpene_input_name(1)), is, js)
+         endif
+
+      else
+
+         isoprene_emis(:,:) = xbvoc(:,:,ind_xbvoc_ISOP)
+         terpene_emis(:,:)  = xbvoc(:,:,ind_xbvoc_TERP)
+               
       endif
+
+!----------------------------------------------------------------------
+!    Scale from BVOC emissions to SOA pseudo-emission
+!----------------------------------------------------------------------
+      isoprene_emis(:,:) = isoprene_emis(:,:) * isoprene_factor * isoprene_SOA_yield
       terpene_emis(:,:) = terpene_emis(:,:) * terpene_factor * terpene_SOA_yield
 
       SOA_dt(:,:,kd) = SOA_dt(:,:,kd) &

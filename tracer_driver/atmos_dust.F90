@@ -107,7 +107,7 @@ namelist /dust_nml/  dust_source_filename, dust_source_name, uthresh, coef_emis,
 character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
-
+logical :: read_nml = .true.
 
 !-----------------------------------------------------------------------
 
@@ -435,7 +435,7 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   real, optional,   intent(in) :: mask(:,:,:)
 
   ! ---- local vars
-  integer :: outunit, unit, ierr, io
+  integer :: ierr, outunit
   integer :: n_atm_tracers ! number of prognostic atmos tracers
   integer :: tr ! atmos tracer iterator
   integer :: i  ! running index of dust tracers
@@ -448,29 +448,11 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   
   if (module_is_initialized) return
 
+  call read_nml_file()
   call write_version_number (version, tagname)
   logunit = stdlog()
   outunit = stdout()
 
-  ! read namelist.
-  if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
-    read (input_nml_file, nml=dust_nml, iostat=io)
-    ierr = check_nml_error(io,'dust_nml')
-#else
-    unit =  open_namelist_file ( )
-    ierr=1; do while (ierr /= 0)
-       read (unit, nml=dust_nml, iostat=io, end=10)
-       ierr = check_nml_error(io, 'dust_nml')
-    end do
-10  call close_file (unit)
-#endif
-  endif
- 
-  ! write namelist to the log file
-  if (mpp_pe() == mpp_root_pe()) then
-     write (logunit, nml=dust_nml)
-  endif
 
   if (uthresh .le. -990) then
     u_ts = 0.
@@ -516,8 +498,8 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
      call set_tracer_atts(MODEL_ATMOS,tr_name,longname,'mmr')
      ! allocate space to store dust sedimentation flux for exchange with land.
      ! sizes of lonb and latb are used to get the size of the compute domain  
-     allocate(dust_tracers(i)%dust_setl(size(lonb)-1,size(latb)-1))
-     allocate(dust_tracers(i)%dsetl_dtr(size(lonb)-1,size(latb)-1))
+     allocate(dust_tracers(i)%dust_setl(size(lonb,1)-1,size(latb,2)-1))
+     allocate(dust_tracers(i)%dsetl_dtr(size(lonb,1)-1,size(latb,2)-1))
 
      method = ''; parameters = ''
      if(query_method('parameters', MODEL_ATMOS, tr, method, parameters)) then
@@ -621,11 +603,11 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
   endif
 
   !Allocate the array to contain the total dust flux and bottom concentration for ESM
-  allocate(dry_dep_lith_dust_flux(size(lonb)-1,size(latb)-1)); dry_dep_lith_dust_flux=0.0
-  allocate(wet_dep_lith_dust_flux(size(lonb)-1,size(latb)-1)); wet_dep_lith_dust_flux=0.0
-  allocate(dry_dep_solubleFe_flux(size(lonb)-1,size(latb)-1)); dry_dep_solubleFe_flux=0.0
-  allocate(wet_dep_solubleFe_flux(size(lonb)-1,size(latb)-1)); wet_dep_solubleFe_flux=0.0
-  allocate(atmos_dust_solFe_frac(size(lonb)-1,size(latb)-1)); atmos_dust_solFe_frac=0.0
+  allocate(dry_dep_lith_dust_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_lith_dust_flux=0.0
+  allocate(wet_dep_lith_dust_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_lith_dust_flux=0.0
+  allocate(dry_dep_solubleFe_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_solubleFe_flux=0.0
+  allocate(wet_dep_solubleFe_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_solubleFe_flux=0.0
+  allocate(atmos_dust_solFe_frac( size(lonb,1)-1,size(latb,2)-1)); atmos_dust_solFe_frac=0.0
 
 
   do_dust = .TRUE.
@@ -676,6 +658,8 @@ subroutine atmos_dust_init (lonb, latb, axes, Time, mask)
         '==>Note from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
 
    integer :: outunit
+
+   call read_nml_file()
    outunit = stdout()
    
    if(do_esm_dust_flux) then
@@ -852,7 +836,7 @@ subroutine atmos_dust_solFe_frac_set(array, is,ie,js,je)
   !based on an emiprical relation with the total dust concentration at the bottom of the atmosphere
   real, dimension(is:ie,js:je), intent(in) :: array ! total dust concentration at the bottom of the atmosphere
   integer,                      intent(in) :: is,ie,js,je
-  real, parameter :: epsilon=1.E-10
+  real, parameter :: epsilon=1.E-5 ! this value allows max soluble Fe fraction = 0.62
   if (n_dust_tracers == 0) return ! nothing to do
 
   !cas:
@@ -864,7 +848,7 @@ subroutine atmos_dust_solFe_frac_set(array, is,ie,js,je)
   !So, the final flux of soluble iron to the ocean is:
   !flux_iron = frac_fe_dust*frac_sol_fe*flux_dust
 
-  atmos_dust_solFe_frac(is:ie,js:je) = 0.035 * 0.031 / ((array(is:ie,js:je)*1.E9 + epsilon) )**0.26
+  atmos_dust_solFe_frac(is:ie,js:je) = 0.035 * 0.031 / (max(array(is:ie,js:je)*1.E9,epsilon))**0.26
 end subroutine atmos_dust_solFe_frac_set
 
 
@@ -893,5 +877,37 @@ end subroutine atmos_dust_solFe_frac_set
     deallocate(atmos_dust_solFe_frac)
  end subroutine atmos_dust_end
 !</SUBROUTINE>
+
+
+subroutine read_nml_file()
+    integer :: io
+    integer :: ierr
+    integer :: funit
+    integer :: logunit
+    if (read_nml) then
+        !read namelist.
+        if (file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+            read (input_nml_file,nml=dust_nml,iostat=io)
+            ierr = check_nml_error(io,'dust_nml')
+#else
+            funit = open_namelist_file()
+            ierr = 1
+            do while (ierr .ne. 0)
+                read(funit,nml=dust_nml,iostat=io,end=10)
+                ierr = check_nml_error(io,'dust_nml')
+            enddo
+10          call close_file(funit)
+#endif
+        endif
+        !write namelist to the log file
+        if (mpp_pe() .eq. mpp_root_pe()) then
+            logunit = stdlog()
+            write (logunit, nml=dust_nml)
+        endif
+        read_nml = .false.
+    endif
+end subroutine read_nml_file
+
 
 end module atmos_dust_mod

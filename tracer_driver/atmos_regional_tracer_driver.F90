@@ -41,7 +41,8 @@ use         tracer_manager_mod, only : get_tracer_index,     &
                                        query_method
 use          field_manager_mod, only : MODEL_ATMOS,          &
                                        parse
-use              constants_mod, only : WTMAIR, AVOGNO
+use              constants_mod, only : WTMAIR, AVOGNO,       &
+                                       DEG_TO_RAD
 use           interpolator_mod, only : interpolate_type,     &
                                        interpolator_init,    &
                                        obtain_interpolator_time_slices, &
@@ -79,6 +80,14 @@ real                          :: co_yield_from_avoc = 0.7, &
                                  co_yield_from_bvoc = 0.4, &
                                  co_yield_from_ch4  = 0.86,&
                                  tch4_vmr = 0.
+real, parameter :: sec_per_day    = 86400., &
+                   age_relax_time = 0.04166, & ! timescale for relaxation to zero (days)
+                   k_relax_aoanh  = 1./(age_relax_time*sec_per_day), & ! (1/sec)
+                   k_relax_nh50   = 1./(age_relax_time*sec_per_day), & ! (1/sec)
+                   days_per_year  = 365.25, &
+                   k_aging        = 1./(days_per_year*sec_per_day), & ! increase age at 1 yr/yr (convert to yr/sec)
+                   lat30=30.*DEG_TO_RAD, lat50=50.*DEG_TO_RAD, & ! tagged latitude (deg) for aoanh/nh50 tracers
+                   nh50_fixed_val = 100.e-9 ! prescribed VMR of NH50 tracer (in surface layer, 30-50N)
 character(len=16), dimension(max_ntracers) :: tracer_names = " "
  
 namelist /regional_tracer_driver_nml/     &
@@ -123,7 +132,8 @@ integer, dimension(max_ntracers) :: id_prod, id_loss, id_chem_tend, id_emiss
 !     ... tracer numbers
 !-----------------------------------------------------------------------
 integer :: id_tch4=0, id_avoc=0, id_bvoc=0, &
-           id_cofromch4=0, id_cofromavoc=0, id_cofrombvoc=0
+           id_cofromch4=0, id_cofromavoc=0, id_cofrombvoc=0, &
+           id_aoanh=0, id_nh50=0
 
 !---- version number ---------------------------------------------------
 character(len=128), parameter :: version     = ''
@@ -190,7 +200,7 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
 !-----------------------------------------------------------------------
    real, dimension(size(r,1),size(r,2)) :: emis
    real, dimension(size(r,1),size(r,2),ntracers) :: emis_save
-   integer :: i,j,n,kb,id,jd,kd,trind
+   integer :: i,j,k,n,kb,id,jd,kd,trind
    integer :: nt, ntp
    logical :: used
    real, dimension(size(r,1),size(r,2),size(r,3),ntracers) :: emis_source
@@ -266,6 +276,29 @@ subroutine regional_tracer_driver( lon, lat, pwt, r, chem_dt, &
    if (id_bvoc>0 .and. id_cofrombvoc>0) then
       prod(:,:,:,id_cofrombvoc) = co_yield_from_bvoc * loss(:,:,:,id_bvoc)
    end if
+
+!-----------------------------------------------------------------------
+!     ... modify prod and loss for NH CMIP tracers
+!-----------------------------------------------------------------------
+   if (id_aoanh > 0) then
+      trind = tracer_indices(id_aoanh)
+      if (trind > 0) then
+         prod(:,:,:,id_aoanh) = k_aging
+         where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
+            loss(:,:,kd,id_aoanh) = k_relax_aoanh * r(:,:,kd,trind)
+            prod(:,:,kd,id_aoanh) = 0.
+         endwhere
+      end if
+   end if
+   if (id_nh50 > 0) then
+      trind = tracer_indices(id_nh50)
+      if (trind > 0) then
+         where (lat(:,:)>=lat30 .and. lat(:,:)<=lat50)
+            prod(:,:,kd,id_nh50) = k_relax_nh50 * (nh50_fixed_val-r(:,:,kd,trind))
+         endwhere
+      end if
+   end if
+
 
    do n = 1, ntracers
       trind = tracer_indices(n)
@@ -429,6 +462,10 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
             id_cofromavoc = n
          case('cofrombvoc')
             id_cofrombvoc = n
+         case('aoanh')
+            id_aoanh = n
+         case('nh50')
+            id_nh50 = n
       end select
    end do
 

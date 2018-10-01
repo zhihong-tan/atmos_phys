@@ -59,7 +59,7 @@ logical :: module_is_initialized = .FALSE.
 integer :: n_seasalt_tracers = 0 ! number of seasalt tracers
 type(seasalt_data_type), allocatable :: seasalt_tracers(:) ! parameters for specific seasalt tracers
 ! ---- identification numbers for diagnostic fields ----
-integer :: id_seasalt_emis, id_seasalt_ddep
+integer :: id_seasalt_emis, id_seasalt_ddep, id_scale_sst_emis
 integer :: id_emiss, id_dryss ! cmip
 
 !---------------------------------------------------------------------
@@ -80,12 +80,19 @@ real :: critical_sea_fraction = 0.0   ! sea-salt aerosol production
 logical :: ulm_ssalt_deposition=.false.  ! Ulm backward compatibility flag
                                          ! to be removed at Verona
 
+
+
+logical :: do_sst_seasalt = .false. !turn on Jaeglye sst dependence of seasalt emissions
+!Jaegle, L., Quinn, P. K., Bates, T. S., Alexander, B., and Lin, J.-T.: Global distribution of sea salt aerosols: new constraints from in situ and remote sensing observations, Atmos. Chem. Phys., 11, 3137-3157, https://doi.org/10.5194/acp-11-3137-2011, 2011.
+real    :: min_tc_scale = 0.,max_tc_scale=30., t_crit=278.15,frac_crit=0.25
+
 logical            :: ssalt_debug = .false.
 integer            :: logunit
 namelist /ssalt_nml/  scheme, coef_emis1, coef_emis2, &
                       coef_emis_fine, coef_emis_coarse, &
                       critical_sea_fraction, ulm_ssalt_deposition, &
-                      use_sj_sedimentation_solver, ssalt_debug
+                      use_sj_sedimentation_solver, ssalt_debug, do_sst_seasalt,min_tc_scale,max_tc_scale, &
+                      t_crit,frac_crit
 
 !-----------------------------------------------------------------------
 integer, parameter :: nrh= 65   ! number of RH in look-up table
@@ -148,7 +155,8 @@ subroutine atmos_sea_salt_sourcesink ( lon, lat, ocn_flx_fraction, pwt, &
      seasalt_setl, &     ! seasalt sedimentation at the bottom of the atmos
      all_seasalt_setl, & ! total seasalt sedimentation flux at the bottom of the atmos
      seasalt_emis, &     ! seasalt emission flux at the bottom of the atmos
-     all_seasalt_emis    ! total seasalt emission flux at the bottom of the atmos
+     all_seasalt_emis, &    ! total seasalt emission flux at the bottom of the atmos
+     scale_sst_emis
   real, dimension(size(tracer,1),size(tracer,2),size(tracer,3)) :: &
      seasalt_dt           ! calculated seasalt tendency
 
@@ -173,7 +181,7 @@ subroutine atmos_sea_salt_sourcesink ( lon, lat, ocn_flx_fraction, pwt, &
         seasalt_tracers(i)%seasaltscheme, &
         zhalf, pfull, w10m, t, rh, &
         tracer(:,:,:,nseasalt), seasalt_dt, seasalt_emis, seasalt_setl, dt, &
-        is,ie,js,je, kbot)
+        is,ie,js,je, kbot,scale_sst_emis)
      ! update seasalt tendencies
      rdt(:,:,:,nseasalt)=rdt(:,:,:,nseasalt)+seasalt_dt(:,:,:)
      
@@ -204,6 +212,9 @@ subroutine atmos_sea_salt_sourcesink ( lon, lat, ocn_flx_fraction, pwt, &
   if (id_seasalt_emis > 0) then
      used = send_data (id_seasalt_emis, all_seasalt_emis(:,:), Time, is_in=is, js_in=js)
   endif
+  if (id_scale_sst_emis > 0) then
+     used = send_data (id_scale_sst_emis, scale_sst_emis(:,:), Time, is_in=is, js_in=js)
+  endif
 
   ! cmip variables
   if (id_dryss > 0) then
@@ -223,7 +234,7 @@ subroutine atmos_seasalt_sourcesink1 ( &
        ocn_flx_fraction, pwt, &
        seasaltden, seasaltref, seasaltra, seasaltrb,seasalt_scheme, &
        zhalf, pfull, w10m, t, rh, &
-       seasalt, seasalt_dt, seasalt_emis, seasalt_setl, dt, is,ie,js,je,kbot)
+       seasalt, seasalt_dt, seasalt_emis, seasalt_setl, dt, is,ie,js,je,kbot,scale_sst)
 
   real, intent(in),  dimension(:,:)   :: ocn_flx_fraction
   real, intent(in) :: seasaltref ! effective radius of the dry seasalt particles, m
@@ -239,6 +250,7 @@ subroutine atmos_seasalt_sourcesink1 ( &
   integer, intent(in)  :: is, ie, js, je
   real, intent(out), dimension(:,:,:) :: seasalt_dt
   real, intent(out) :: seasalt_emis(:,:) ! seasalt emission
+  real, intent(out) :: scale_sst(:,:) ! seasalt emission
   real, intent(out) :: seasalt_setl(:,:) ! grav. sedimentation flux at the atmos bottom 
 
   ! ---- local vars
@@ -256,10 +268,12 @@ subroutine atmos_seasalt_sourcesink1 ( &
   real :: a1, a2, Bcoef, r, dr, rmid
   real, dimension(size(pfull,3))  :: vdep, seasalt_conc0, seasalt_conc1
   real, dimension(size(pfull,3))  :: dz, air_dens, qn, qn1
+  real :: sst
   integer :: istep, nstep
 
   id=size(seasalt,1); jd=size(seasalt,2); kd=size(seasalt,3)
 
+  scale_sst(:,:) = 1.
   seasalt_emis(:,:) = 0.0
   seasalt_setl(:,:) = 0.0
   seasalt_dt(:,:,:) = 0.0
@@ -342,11 +356,27 @@ subroutine atmos_seasalt_sourcesink1 ( &
                (1.+0.057*(betha*rmid)**1.05)*dr*      &
                10**(1.19*exp(-(Bcoef**2)))
           enddo
+
           do j=1,jd
             do i=1,id
               if (ocn_flx_fraction (i,j).gt.critical_sea_fraction) then
                 seasalt_emis(i,j) = seasalt_flux*(ocn_flx_fraction (i,j))*   &
                                                            w10m(i,j)**3.41
+                if (do_sst_seasalt) then
+                   if (present(kbot)) then
+                      kb=kbot(i,j)
+                   else
+                      kb=kd
+                   endif
+                   if (t(i,j,kb).lt.t_crit) then
+                      scale_sst(i,j)    = frac_crit
+                   else
+                      sst = max(min(t(i,j,kb)-273.15,max_tc_scale),min_tc_scale)
+                      scale_sst(i,j)    = 0.329+0.0904*sst-0.00717*sst**2 + 0.000207*sst**3
+                   end if
+                   seasalt_emis(i,j) = seasalt_emis(i,j)*scale_sst(i,j)
+                end if
+
               endif
             enddo
           enddo
@@ -686,6 +716,10 @@ subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
   id_seasalt_emis = register_diag_field ( module_name, &
       'seasalt_emis', axes(1:2), Time, &
       'total emission of seasalt', 'kg/m2/s')
+
+  id_scale_sst_emis = register_diag_field ( module_name, &
+      'scale_salt_emis', axes(1:2), Time, &
+      'scale salt emis','unitless')
 
   ! cmip variables
   id_dryss = register_cmip_diag_field_2d ( module_name, 'dryss', Time, &

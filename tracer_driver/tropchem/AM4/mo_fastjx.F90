@@ -3374,7 +3374,9 @@ module MO_FASTJX_MOD
             VALJ(J) = VALJ(J) + QQQT*FFF(K,L)
 !            write(logunit,*) 'LI==> ', J, K, 'VALJ(J) ', VALJ(J)
             if(VALJ(J) .gt. 1.0d0) then
-               write(*,*) 'Problems ', J, K, 'VALJ(J) ', VALJ(J), QQQT, FFF(K,L)
+!              write(*,*) 'Problems ', J, K, 'VALJ(J) ', VALJ(J), QQQT, FFF(K,L)
+               write(*,'(a,f10.4,a,2i4,1p2e10.3)') 'WARNING from MO_FASTJX_MOD: JVALJ', &
+                  VALJ(J),'>1 at J, K, QQQT, FFFF=', J, K, QQQT, FFF(K,L)
             endif
          enddo
         enddo

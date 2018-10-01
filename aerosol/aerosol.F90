@@ -326,8 +326,8 @@ character(len=64), dimension(:), optional, pointer :: aerosol_family_names
                               ! predicted aerosol names to be 
                               ! seen by radiation code
       logical :: flag,rad_forc_online, single_year_file
-      character(len=80)       ::tr_rad_name, tr_clim_name
-      character(len=80)       :: name,control
+      character(len=256)       ::tr_rad_name, tr_clim_name
+      character(len=256)       :: name,control
       real                    ::tr_rad_scale_factor
       integer   ::   unit, ierr, io, logunit
       integer   ::   ntrace

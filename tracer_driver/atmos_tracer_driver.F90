@@ -122,7 +122,7 @@ use tracer_manager_mod,    only : get_tracer_index,   &
                                   get_tracer_indices, &
                                   adjust_positive_def, &
                                   query_method, &
-				  NO_TRACER
+                                  NO_TRACER
 use field_manager_mod,     only : MODEL_ATMOS
 use atmos_tracer_utilities_mod, only :                      &
                                   dry_deposition,           &
@@ -133,7 +133,7 @@ use atmos_tracer_utilities_mod, only :                      &
                                   get_rh, get_w10m, get_cldf, &
                                   sjl_fillz, &
                                   get_cmip_param, get_chem_param
-use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, wtmn
+use constants_mod,         only : grav, WTMAIR, PI, AVOGNO, WTMN, WTMCO2
 use atmos_radon_mod,       only : atmos_radon_sourcesink,   &
                                   atmos_radon_init,         &
                                   atmos_radon_end
@@ -204,13 +204,18 @@ use atmos_co2_mod,         only : atmos_co2_sourcesink,   &
                                   atmos_co2_init,               &
                                   atmos_co2_end
 use atmos_ch4_mod,         only : atmos_ch4_rad, &
-                                  atmos_ch4_rad_init     
-use atmos_tropopause_mod,only: &
-                                  atmos_tropopause_init, &
+                                  atmos_ch4_rad_init
+use atmos_tropopause_mod,  only : atmos_tropopause_init, &
                                   atmos_tropopause
 
+use xactive_bvoc_mod,      only : xactive_bvoc,          &
+                                  xactive_bvoc_end,      &
+                                  xactive_bvoc_init,     &
+                                  ind_xbvoc_ISOP,        &
+                                  ind_xbvoc_TERP
+
 use interpolator_mod,      only : interpolate_type
-use atmos_ocean_fluxes_mod, only: aof_set_coupler_flux
+use atmos_ocean_fluxes_mod,only : aof_set_coupler_flux
 implicit none
 private
 !-----------------------------------------------------------------------
@@ -226,7 +231,8 @@ public  atmos_tracer_driver,            &
         atmos_tracer_driver_gather_data_down, &
         atmos_tracer_has_surf_setl_flux, &
         get_atmos_tracer_surf_setl_flux, &
-        atmos_nitrogen_wetdep_flux_set,atmos_nitrogen_drydep_flux_set 
+        atmos_nitrogen_wetdep_flux_set, &
+        atmos_nitrogen_drydep_flux_set
 
 !-----------------------------------------------------------------------
 !----------- namelist -------------------
@@ -236,8 +242,9 @@ logical :: prevent_flux_through_ice = .false.  , step_update_tracer = .false.
                                ! ocean grid boxes
 
 logical  :: do_esm_nitrogen_flux = .false. !If set to .true. nitrogen fluxes will be prepared for exchange with Ocean
+logical  :: do_nh3_atm_ocean_exchange = .false.
+namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux,do_nh3_atm_ocean_exchange
 
-namelist /atmos_tracer_driver_nml / prevent_flux_through_ice, step_update_tracer, do_esm_nitrogen_flux
 !-----------------------------------------------------------------------
 !
 !  When initializing additional tracers, the user needs to make the
@@ -258,6 +265,7 @@ integer :: carbon_clock = 0
 integer :: dust_clock = 0
 integer :: seasalt_clock = 0
 integer :: sulfur_clock = 0
+integer :: xbvoc_clock = 0
 integer :: SOA_clock = 0
 integer :: sf6_clock = 0
 integer :: ch3i_clock = 0
@@ -290,6 +298,7 @@ integer :: nSOA      =0
 integer :: nH2O2     =0
 integer :: nch3i     =0
 integer :: nage      =0
+integer :: naoanh    =0
 integer :: nco2      =0
 integer :: nch4      =0
 integer :: nNH4NO3   =0
@@ -300,10 +309,13 @@ integer :: nSO2_cmip =0
 integer :: nSO4_cmip =0
 integer :: nNH3_cmip =0
 integer :: nOH       =0
+integer :: nNH3      =0
 integer :: nC4H10    =0
 integer :: ncodirect =0
 integer :: ne90 =0
 integer :: nsulfate  =0
+integer :: nISOP     =0
+
 integer, dimension(5) :: tr_nbr_sulfate=0
 logical, dimension(5) :: do_tracer_sulfate=.false.
 
@@ -317,6 +329,7 @@ integer, dimension(:), pointer :: nconvect
 
 integer :: nt     ! number of activated tracers
 integer :: ntp    ! number of activated prognostic tracers
+integer :: nxactive   ! number of tracers with interactive (MEGAN) emissions (JLS)
 
 logical :: use_tau=.false.
 
@@ -329,6 +342,8 @@ type(interpolate_type), allocatable :: drydep_data(:)
 
 
 integer, allocatable :: local_indices(:)
+integer, allocatable :: xactive_ndx(:)   ! Loc of xactive tracers in rdt, will have dim=nxactive
+
 ! This is the array of indices for the local model.
 ! local_indices(1) = 5 implies that the first local tracer is the fifth
 ! tracer in the tracer_manager.
@@ -348,18 +363,22 @@ integer :: id_so2_cmip, id_dms_cmip
 integer :: id_so2_cmipv2, id_dms_cmipv2
 integer :: id_n_ddep, id_n_ox_ddep, id_n_red_ddep
 
- type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms
+ type(cmip_diag_id_type) :: ID_concno3, ID_concnh4, ID_concso2, ID_concdms, ID_concdust
  type(cmip_diag_id_type) :: ID_airmass, ID_pm1, ID_pm10, ID_pm25, ID_OM, ID_BC, ID_DUST, ID_SS
+ type(cmip_diag_id_type) :: ID_meanage, ID_co2_vmr, ID_aoanh
 
- integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4
+ integer :: id_sconcno3, id_sconcnh4, id_loadno3, id_loadnh4, &
+            id_sconcso4, id_sconcss, id_sconcdust, id_co2s
  integer :: id_dryso2, id_dryso4, id_drydms, id_drynh3, &
-            id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa
+            id_drynh4, id_drybc, id_drypoa, id_drysoa, id_dryoa, &
+            id_emiisop_biogenic, id_emibvoc
 
 !for cmip6 (f1p)
  type(cmip_diag_id_type), allocatable :: ID_tracer_mol_mol(:),ID_tracer_kg_kg(:)
  integer, allocatable :: id_tracer_surf_mol_mol(:),id_tracer_surf_kg_kg(:)
  integer, allocatable :: id_tracer_col_kg_m2(:)
- integer              :: id_pm25_surf, id_dust_col_kg_m2, id_seasalt_col_kg_m2, id_bc_col_kg_m2
+ integer              :: id_pm25_surf, id_dust_col_kg_m2, id_seasalt_col_kg_m2, id_bc_col_kg_m2, &
+                         id_oa_col_kg_m2, id_poa_col_kg_m2
  integer              :: id_toz, id_tropoz
  real, allocatable    :: conv_vmr_mmr(:), nb_N(:),nb_N_ox(:),nb_N_red(:), frac_pm1(:), frac_pm10(:), frac_pm25(:)
  integer, allocatable :: id_tracer_ddep_kg_m2_s(:)
@@ -373,6 +392,7 @@ integer   :: ind_dry_dep_nh4_flux = 0
 integer   :: ind_wet_dep_nh4_flux = 0
 integer   :: ind_dry_dep_no3_flux = 0
 integer   :: ind_wet_dep_no3_flux = 0
+integer   :: ind_nh3_flux = 0
 
 
 !-----------------------------------------------------------------------
@@ -382,6 +402,8 @@ type(time_type) :: Time
 character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
 !-----------------------------------------------------------------------
+
+logical :: read_nml = .true.
 
 contains
 
@@ -482,7 +504,7 @@ contains
                            flux_sw_down_vis_dir,   &
                            flux_sw_down_vis_dif,   &
                            mask,                   &
-                           kbot)
+                           kbot, con_atm)
 
 !-----------------------------------------------------------------------
 integer, intent(in)                           :: is, ie, js, je
@@ -498,7 +520,7 @@ real, intent(in),    dimension(:,:,:,:)       :: r
 real, intent(in),    dimension(:,:,:,:)       :: rm
 real, intent(inout), dimension(:,:,:,:)       :: rdt
 real, intent(inout), dimension(:,:,:,ntp+1:)  :: rdiag
-real, intent(in)                              :: dt !timestep(used in chem_interface)
+real, intent(in)                              :: dt     !timestep (used in chem)
 real, intent(in),    dimension(:,:,:)         :: z_half !height in meters at half levels
 real, intent(in),    dimension(:,:,:)         :: z_full !height in meters at full levels
 real, intent(in),    dimension(:,:)           :: t_surf_rad !surface temperature
@@ -508,6 +530,7 @@ real, intent(in), dimension(:,:)              :: flux_sw_down_vis_dif
 type(time_type), intent(in)                   :: Time_next
 integer, intent(in), dimension(:,:), optional :: kbot
 real, intent(in), dimension(:,:,:),  optional :: mask
+real, intent(in), dimension(:,:),    optional :: con_atm
 
 !-----------------------------------------------------------------------
 ! Local variables
@@ -532,15 +555,18 @@ real, dimension(size(r,1),size(r,2),size(r,3)) :: lwc ! liq water content
 real, dimension(size(r,1),size(r,2),size(r,3)) :: fliq! liq/lwc (f1p)
 real, dimension(size(r,1),size(r,2),size(r,3),nt) :: tracer, tracer_orig
 real, dimension(size(r,1),size(r,3)) :: dp, temp
-real, dimension(size(r,1),size(r,2)) ::  all_salt_settl, all_dust_settl
-real, dimension(size(r,1),size(r,2)) ::  suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep
-real, dimension(size(r,1),size(r,2)) ::  frland, frsnow, frsea, frice
+real, dimension(size(r,1),size(r,2)) :: all_salt_settl, all_dust_settl
+real, dimension(size(r,1),size(r,2)) :: suma, ocn_flx_fraction, sum_n_ddep, sum_n_red_ddep, sum_n_ox_ddep, nh3_ddep
+real, dimension(size(r,1),size(r,2)) :: frland, frsnow, frsea, frice, PPFD
 real, dimension(size(r,1),size(r,2),size(r,3)) :: sumb
 integer, dimension(size(r,1),size(r,2)) ::  tropopause_ind
 
 real, dimension(size(r,1),size(r,2),size(r,3)) :: PM1, PM25, PM10
+real, dimension(size(r,1),size(r,2),nxactive)  :: rtnd_xactive
+real, dimension(size(r,1),size(r,2),2)         :: xbvoc4soa ! emis isop (1), terp (2)
+real, dimension(size(r,1),size(r,2),size(r,3)+1) :: lphalf
 
-integer :: isulf, i, j, k, id, jd, kd, ntcheck
+integer :: isulf, ixact, i, j, k, id, jd, kd, ntcheck
 integer :: nqq  ! index of specific humidity
 integer :: nql  ! index of cloud liquid specific humidity
 integer :: nqi  ! index of cloud ice water specific humidity
@@ -554,7 +580,6 @@ real    :: gmt,local_angle
 integer :: hh
 real :: local_hour_3d(size(r,1),size(r,2),size(r,3)),local_hour
 logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
-
 
 !-----------------------------------------------------------------------
 
@@ -693,6 +718,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 !------------------------------------------------------------------------
 ! Get air mass in layer (in kg/m2), equal to dP/g
+! Get air density in layer (in kg/m3), equal to dP/(g*dz)
 !------------------------------------------------------------------------
       do k=1,kd
          pwt(:,:,k)=(phalf(:,:,k+1)-phalf(:,:,k))/grav
@@ -726,18 +752,24 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
      sum_n_ddep(:,:) = 0.
      sum_n_ox_ddep(:,:) = 0.
      sum_n_red_ddep(:,:) = 0.
+     nh3_ddep(:,:) = 0.
 
       do n=1,ntp
          if (n /= nqq .and. n/=nqa .and. n/=nqi .and. n/=nql) then
             call dry_deposition( n, is, js, u(:,:,kd), v(:,:,kd), t(:,:,kd), &
                                  pwt(:,:,kd), pfull(:,:,kd), &
                                  z_half(:,:,kd)-z_half(:,:,kd+1), u_star, &
-                                 land, dsinku(:,:,n), dt, &
+                                 land, frac_open_sea, dsinku(:,:,n), dt, &
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
-                                 drydep_data(n))!, frland, frice, frsnow, &
-!                                 vegn_cover, vegn_lai, &
-!                                 b_star, z_pbl, rough_mom)
+                                 drydep_data(n),con_atm)
+            if (do_nh3_atm_ocean_exchange .and. n.eq.nNH3) then 
+               !f1p: scale dry deposition of nh3 by the land fraction since ocean exchange is handled separately
+               dsinku(:,:,n) = dsinku(:,:,n)*max(1.-frac_open_sea,0.) 
+               !f1p: archive the dry deposition of nh3, since it needs to be forced to 0. for the ocean
+               if (n.eq.nNH3) nh3_ddep = pwt(:,:,kd)*dsinku(:,:,n)*WTMN/wtmair*nb_n_red(n)
+            end if
+
             rdt(:,:,kd,n) = rdt(:,:,kd,n) - dsinku(:,:,n)
             if ( step_update_tracer ) then
                tracer(:,:,kd,n) = tracer(:,:,kd,n) - dsinku(:,:,n)*dt
@@ -845,12 +877,29 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
          end if
       end do
 
-      if (id_bc_col_kg_m2.gt.0 .and. nomphilic.gt.0 .and. nomphobic.gt.0) then
+      if (id_bc_col_kg_m2.gt.0 .and. nbcphilic.gt.0 .and. nbcphobic.gt.0) then
         suma = 0.
         do k=1,kd
            suma(:,:) = suma(:,:) + pwt(:,:,k)*(tracer(:,:,k,nbcphilic)+tracer(:,:,k,nbcphobic))
         end do
         used = send_data (id_bc_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+      end if
+
+      if (id_oa_col_kg_m2.gt.0 .and. nomphilic.gt.0 .and. nomphobic.gt.0 .and. nSOA.gt.0) then
+        suma = 0.
+        do k=1,kd
+           suma(:,:) = suma(:,:) + &
+                       pwt(:,:,k)*(tracer(:,:,k,nomphilic)+tracer(:,:,k,nomphobic)+tracer(:,:,k,nSOA))
+        end do
+        used = send_data (id_oa_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+      end if
+
+      if (id_poa_col_kg_m2.gt.0 .and. nomphilic.gt.0 .and. nomphobic.gt.0) then
+        suma = 0.
+        do k=1,kd
+           suma(:,:) = suma(:,:) + pwt(:,:,k)*(tracer(:,:,k,nomphilic)+tracer(:,:,k,nomphobic))
+        end do
+        used = send_data (id_poa_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
       end if
 
       if (id_dust_col_kg_m2.gt.0) then
@@ -880,7 +929,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !----------------------------------------------------------------------
 !   output the nh4no3 and nh4 loads.
 !----------------------------------------------------------------------
-!THIS IS WRRONG IN AM4
+!CAUTION!! THIS IS WRONG IN AM4
       if (nNH4NO3 > 0 .and. nNH4 > 0) then
         if (id_nh4_col > 0 .or. id_loadnh4 > 0) then
           suma = 0.
@@ -962,6 +1011,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                          Time_next, is_in=is, js_in=js, ks_in=1)
      endif
 
+     ! log(phalf) is needed for interpolation to pressure levels
+     ! compute here once for efficiency
+
+     lphalf = log(phalf)
+
      !---- cmip named variables ----
      if (query_cmip_diag_id(ID_airmass)) then
          used = send_cmip_data_3d (ID_airmass,  &
@@ -1000,6 +1054,19 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
        endif
      endif
 
+     ! surface concentration (lowest level)
+     if (id_sconcso4 > 0) then
+       if (nSO4_cmip > 0) then
+         used = send_data (id_sconcso4, &
+             0.096*1.0e03*rho(:,:,kd)*tracer(:,:,kd,nSO4_cmip) /WTMAIR,  &
+                                 Time_next, is_in=is, js_in=js)
+       else if (nSO4 > 0) then
+         used = send_data (id_sconcso4, &
+             0.096*1.0e03*rho(:,:,kd)*tracer(:,:,kd,nSO4) /WTMAIR,  &
+                                 Time_next, is_in=is, js_in=js)
+       endif
+     endif
+
      if (query_cmip_diag_id(ID_concso2)) then
        if (nSO2_cmip > 0) then
          used = send_cmip_data_3d ( ID_concso2, tracer(:,:,:,nSO2_cmip), &
@@ -1019,6 +1086,51 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
        endif
      endif
 
+     if (id_sconcss > 0) then
+       suma = 0.
+       do n=1,ntp
+         if (is_seasalt_tracer(n)) then
+            do k=1,kd
+               suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,k,n)
+            end do
+         end if
+       end do
+       used = send_data (id_seasalt_col_kg_m2, suma, Time_next, is_in=is, js_in=js)
+     end if
+
+     if (id_sconcdust > 0) then
+       suma = 0.
+       do n=1,ntp
+         if (is_dust_tracer(n)) then
+            do k=1,kd
+               suma(:,:) = suma(:,:) + rho(:,:,kd)*tracer(:,:,kd,n)
+            end do
+         end if
+       end do
+       used = send_data (id_sconcdust, suma, Time_next, is_in=is, js_in=js)
+     end if
+
+     if ( query_cmip_diag_id(ID_concdust) ) then
+        sumb = 0.
+        do n=1,ntp
+          if (is_dust_tracer(n)) then
+             sumb(:,:,:) = sumb(:,:,:) + rho(:,:,:)*tracer(:,:,:,n)
+          end if
+        end do
+        used = send_cmip_data_3d ( ID_concdust, sumb(:,:,:), &
+             Time_next, is_in=is, js_in=js, ks_in=1)
+     end if
+
+     if ( query_cmip_diag_id(ID_co2_vmr) .and. nco2 > 0) then
+        used = send_cmip_data_3d ( ID_co2_vmr, tracer(:,:,:,nco2)*WTMAIR/WTMCO2, &
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
+     end if
+
+     if (id_co2s > 0 .and. nco2 > 0) then
+        used = send_data (id_co2s, tracer(:,:,kd,nco2)*WTMAIR/WTMCO2*1.e6,  &
+             Time_next, is_in=is, js_in=js)
+     end if
+
      PM25 = 0.
      PM1  = 0.
      PM10 = 0.
@@ -1032,7 +1144,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
         if ( query_cmip_diag_id(ID_tracer_mol_mol(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_mol_mol(n), tracer(:,:,:,n), &
-                Time_next, is_in=is, js_in=js, ks_in=1)
+                Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
         end if
         if ( id_tracer_surf_mol_mol(n) .gt. 0 ) then
            used = send_data ( id_tracer_surf_mol_mol(n), tracer(:,:,kd,n), &
@@ -1040,7 +1152,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
         end if
         if ( query_cmip_diag_id(ID_tracer_kg_kg(n)) ) then
            used = send_cmip_data_3d ( ID_tracer_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,:,n), &
-                Time_next, is_in=is, js_in=js, ks_in=1)
+                Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
         end if
         if ( id_tracer_surf_kg_kg(n) .gt. 0 ) then
            used = send_data ( id_tracer_surf_kg_kg(n), conv_vmr_mmr(n)*tracer(:,:,kd,n), &
@@ -1101,6 +1213,16 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
              Time_next, is_in=is, js_in=js, ks_in=1)
      end if
 
+     if ( query_cmip_diag_id(ID_meanage)) then
+        used = send_cmip_data_3d ( ID_meanage, tracer(:,:,:,nage), &
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
+     end if
+
+     if ( query_cmip_diag_id(ID_aoanh)) then
+        used = send_cmip_data_3d ( ID_aoanh, tracer(:,:,:,naoanh), &
+             Time_next, is_in=is, js_in=js, ks_in=1, phalf=lphalf)
+     end if
+
 
 !------------------------------------------------------------------------
 ! Compute tropopause diagnostics
@@ -1123,8 +1245,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
         suma = 0.
 	do i = 1,id
 	do j = 1,jd
-           do k=1,tropopause_ind(i,j)
-              suma(:,:) = suma(:,:) + pwt(:,:,k)*tracer(:,:,k,no3)
+           do k=tropopause_ind(i,j),kd
+              suma(i,j) = suma(i,j) + pwt(i,j,k)*tracer(i,j,k,no3)
            end do
         end do
         end do
@@ -1230,14 +1352,13 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                             tracer(:,:,:,1:ntp),chem_tend, &
                             Time, phalf, pfull, t, is, ie, js, je, dt, &
                             z_half, z_full, q, t_surf_rad, albedo, coszen, rrsun, &
-                            area, w10m_ocean, &
-                            flux_sw_down_vis_dir, flux_sw_down_vis_dif, &
-                            half_day, &
-                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), kbot)
+                            area, w10m_ocean, half_day, &
+                            Time_next, tracer(:,:,:,MIN(ntp+1,nt):nt), &
+                            do_nh3_atm_ocean_exchange, kbot )
       rdt(:,:,:,:) = rdt(:,:,:,:) + chem_tend(:,:,:,:)
       call mpp_clock_end (tropchem_clock)
    endif
-		 
+
 !! RSH 4/8/04
 !! note that if there are no diagnostic tracers, that argument in the
 !! call to sourcesink should be made optional and omitted in the calls
@@ -1325,6 +1446,40 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
    endif
    call mpp_clock_end (seasalt_clock)
 
+
+!------------------------------------------------------------------------
+!  Interactive BVOCs
+!------------------------------------------------------------------------
+
+   call mpp_clock_begin (xbvoc_clock)
+   if ( nxactive > 0 ) then
+! PAR [umoles/m2/s]
+      PPFD = 4.766 * (flux_sw_down_vis_dir + flux_sw_down_vis_dif)
+      call xactive_bvoc(lon, lat, land, is, ie, js, je, Time,              &
+                        Time_next, coszen, pwt(:,:,kd), t(:,:,kd),         &
+                        PPFD, w10m_land, tracer(:,:,kd,nco2),              &
+                        tracer(:,:,kd,no3), rtnd_xactive,                  &
+                        xbvoc4soa)
+! Update the tendencies based on the returned indices
+      do ixact = 1, nxactive
+         rdt(:,:,kd,xactive_ndx(ixact)) = rdt(:,:,kd,xactive_ndx(ixact))   &
+                                          + rtnd_xactive(:,:,ixact)
+         if (xactive_ndx(ixact)==nISOP .and. id_emiisop_biogenic>0) then
+           used  = send_data (id_emiisop_biogenic, &
+                 xbvoc4soa(:,:,ind_xbvoc_ISOP)*1.0e04*0.068/AVOGNO,        &
+                 Time_next, is_in=is, js_in=js)
+         endif
+      enddo
+      if (id_emibvoc>0) then
+        used  = send_data (id_emibvoc, &
+              (xbvoc4soa(:,:,ind_xbvoc_ISOP)*0.060 + &
+               xbvoc4soa(:,:,ind_xbvoc_TERP)*0.120)*1.0e04/AVOGNO,        &
+              Time_next, is_in=is, js_in=js)
+      endif
+   endif
+   call mpp_clock_end (xbvoc_clock)
+
+
 !------------------------------------------------------------------------
 ! Sulfur chemistry
 !------------------------------------------------------------------------
@@ -1371,12 +1526,13 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                      'Number of tracers .lt. number for SOA', FATAL)
 
       call mpp_clock_begin (SOA_clock)
-      call atmos_SOA_chem(pwt ,t, pfull, phalf, dt, &
+      call atmos_SOA_chem(pwt ,t, pfull, phalf, dt,      &
                 jday, hour, minute, second, lat, lon,    &
-                tracer(:,:,:,nSOA), &
-		tracer(:,:,:,nOH), &
-		tracer(:,:,:,nC4H10), &
-		rtnd, Time, Time_next, is,ie,js,je,kbot )
+                tracer(:,:,:,nSOA),                      &
+                tracer(:,:,:,nOH),                       &
+                tracer(:,:,:,nC4H10),                    &
+                xbvoc4soa,                               &
+                rtnd, Time, Time_next, is,ie,js,je,kbot )
 
       rdt(:,:,:,nSOA)=rdt(:,:,:,nSOA)+rtnd(:,:,:)
       call mpp_clock_end (SOA_clock)
@@ -1453,7 +1609,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
    end if
 
 
-   !save tracer diagnostics
+!save tracer diagnostics
 
 !calculate local time
    gmt = universal_time(Time) !time of day midnight = 0
@@ -1492,11 +1648,11 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
               units = tracer_units)
          if ( tracer_units .eq. "vmr" ) then
             used  = send_data (id_tracer_diag(n),     &
-                 1.e3*rho(:,:,:)/WTMAIR * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 1.e3*rho(:,:,:)/WTMAIR * (rm(:,:,:,n)+rdt(:,:,:,n)*dt), &
                  Time, is_in=is, js_in=js, ks_in=1)
          else
             used  = send_data (id_tracer_diag(n),     &
-                 rho(:,:,:) * (tracer_orig(:,:,:,n)+rdt(:,:,:,n)), &
+                 rho(:,:,:) * (rm(:,:,:,n)+rdt(:,:,:,n)*dt), &
                  Time, is_in=is, js_in=js, ks_in=1)
          end if
       end if
@@ -1504,7 +1660,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
 
 !for coupler
-   call atmos_nitrogen_drydep_flux_set(sum_n_red_ddep,sum_n_ox_ddep, is,ie,js,je)
+!f1p: remove nh3_ddep from sum_n_red_ddep if nh3 is exchanged between atmosphere and ocean
+   call atmos_nitrogen_drydep_flux_set(max(sum_n_red_ddep-nh3_ddep,0.),sum_n_ox_ddep, is,ie,js,je)
 
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
@@ -1562,13 +1719,14 @@ type(time_type), intent(in)                                :: Time
 ! Local variables
 !-----------------------------------------------------------------------
       integer :: nbr_layers
-      integer :: unit, ierr, io, logunit, n, outunit
+      integer :: n, outunit, ix
 !<f1p
+      character(len=64) :: name2, control
       character(len=32) :: tracer_units, tracer_name
       integer     :: hh
       character*4 :: hstr
       character(len=256) :: cmip_name,cmip_longname, cmip_longname2
-      logical :: cmip_is_aerosol, do_pm, do_check
+      logical :: cmip_is_aerosol, do_pm, do_check, has_xactive
       real    :: tracer_mw, sum_N_ox
       character(len=64), parameter    :: sub_name = 'atmos_tracer_driver_init'
       character(len=256), parameter   :: note_header =                                &
@@ -1586,25 +1744,7 @@ type(time_type), intent(in)                                :: Time
 !------------------------------------------------------------------------
 !   read namelist.
 !------------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
-        read (input_nml_file, nml=atmos_tracer_driver_nml, iostat=io)
-        ierr = check_nml_error(io,'atmos_tracer_driver_nml')
-#else
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=atmos_tracer_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error(io, 'atmos_tracer_driver_nml')
-        end do
-10      call close_file (unit)
-#endif
-      endif
-!--------- write version and namelist to standard log ------------
-      call write_version_number (version, tagname)
-      logunit=stdlog()
-      if ( mpp_pe() == mpp_root_pe() ) &
-                         write ( logunit, nml=atmos_tracer_driver_nml )
-
+      call read_nml_file()
 !---------------------------------------------------------------------
 !  make sure that astronomy_mod has been initialized (if radiation
 !  not being called in this run, it will not have previously been
@@ -1712,7 +1852,7 @@ type(time_type), intent(in)                                :: Time
         tr_nbr_sulfate(5)=nMSA
         do_tracer_sulfate(5)=.true.
       endif
-      nHNO3     = get_tracer_index(MODEL_ATMOS,'hno3') 
+      nHNO3     = get_tracer_index(MODEL_ATMOS,'hno3')
       nNH4NO3   = get_tracer_index(MODEL_ATMOS,'nh4no3')
       nNH4      = get_tracer_index(MODEL_ATMOS,'nh4')
       nSOA      = get_tracer_index(MODEL_ATMOS,'SOA')
@@ -1726,6 +1866,9 @@ type(time_type), intent(in)                                :: Time
       nNH3_cmip = get_tracer_index(MODEL_ATMOS,'nh3')
       nOH       = get_tracer_index(MODEL_ATMOS,'oh')
       nC4H10    = get_tracer_index(MODEL_ATMOS,'c4h10')
+      nNH3      = get_tracer_index(MODEL_ATMOS,'nh3')
+      nISOP     = get_tracer_index(MODEL_ATMOS,'isop')
+
 ! Check for presence of OH and C4H10 (diagnostic) tracers
 ! If not present set index to 1 so interface calls do not fail,
 ! but FATAL error will be issued by atmos_sulfate_init,
@@ -1735,6 +1878,7 @@ type(time_type), intent(in)                                :: Time
       if (nC4H10 == NO_TRACER) nC4H10 = 1
       ncodirect = get_tracer_index(MODEL_ATMOS,'codirect')
       ne90      = get_tracer_index(MODEL_ATMOS,'e90')
+      naoanh    = get_tracer_index(MODEL_ATMOS,'aoanh')
 
 ! Number of vertical layers
       nbr_layers=size(r,3)
@@ -1798,6 +1942,31 @@ type(time_type), intent(in)                                :: Time
         ch4_clock = mpp_clock_id( 'Tracer: CH4', &
                     grain=CLOCK_MODULE )
       endif
+
+!--------------------------------------------------------------------------------------
+! xactive bvocs (jls)
+      nxactive = 0
+      do n = 1, ntp
+         call get_tracer_names (MODEL_ATMOS, n, name = tracer_name,  &
+              units = tracer_units)
+         ix   = get_tracer_index( MODEL_ATMOS, tracer_name )
+         has_xactive = query_method('xactive_emissions', MODEL_ATMOS, ix, name2, control)
+
+         if ( has_xactive ) then
+            nxactive = nxactive + 1
+         endif
+      enddo
+      if ( nxactive > 0 ) then
+         IF (mpp_pe() == mpp_root_pe()) THEN
+            write(*,*) 'Allocating xactive_ndx, number of xactive tracers = ', nxactive
+         ENDIF
+         ALLOCATE( xactive_ndx (nxactive) )
+         call xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx )
+         xbvoc_clock = mpp_clock_id( 'xactive_bvocs', &
+                       grain=CLOCK_MODULE )
+      endif
+
+!---------------------------------------------------------------------------------------
 
 ! regional tracer driver
       if (ncodirect > 0 .or. ne90 > 0) then
@@ -1897,21 +2066,21 @@ type(time_type), intent(in)                                :: Time
                     standard_name='mole_fraction_of_dimethyl_sulfide_in_air')
 
       if (nNH4NO3 > 0 .and. nNH4 > 0) then
-        ID_concnh4 = register_cmip_diag_field_3d ( mod_name, &
-                   'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
-                   standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+        ID_concnh4  = register_cmip_diag_field_3d ( mod_name, &
+                    'concnh4', Time, 'Concentration of NH4', 'kg m-3', &
+                    standard_name='mass_concentration_of_ammonium_dry_aerosol_particles_in_air')
 
         id_sconcnh4 = register_cmip_diag_field_2d ( mod_name, &
-                  'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
-                  standard_name='mass_concentration_of_ammonium_dry_aerosol_in_air')
+                    'sconcnh4', Time, 'Surface Concentration of NH4', 'kg m-3', &
+                    standard_name='mass_concentration_of_ammonium_dry_aerosol_particles_in_air')
 
-        id_loadnh4 = register_cmip_diag_field_2d ( mod_name, &
-                   'loadnh4', Time, 'Load of NH4', 'kg m-2', &
-                   standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol')
+        id_loadnh4  = register_cmip_diag_field_2d ( mod_name, &
+                    'loadnh4', Time, 'Load of NH4', 'kg m-2', &
+                    standard_name='atmosphere_mass_content_of_ammonium_dry_aerosol_particles')
 
-         id_drynh4 = register_cmip_diag_field_2d ( mod_name, &
-                  'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
-                  standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_particles_due_to_dry_deposition')
+        id_drynh4   = register_cmip_diag_field_2d ( mod_name, &
+                    'drynh4', Time, 'Dry Deposition Rate of NH4', 'kg m-2 s-1', &
+                    standard_name='tendency_of_atmosphere_mass_content_of_ammonium_dry_aerosol_particles_due_to_dry_deposition')
       else
         id_sconcnh4 = 0
         id_loadnh4 = 0
@@ -1926,27 +2095,43 @@ type(time_type), intent(in)                                :: Time
       if (nNH4NO3 > 0) then
         ID_concno3 = register_cmip_diag_field_3d ( mod_name, &
                    'concno3', Time, 'Concentration of NO3 Aerosol', 'kg m-3', &
-                   standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+                   standard_name='mass_concentration_of_nitrate_dry_aerosol_particles_in_air')
 
         id_sconcno3 = register_cmip_diag_field_2d ( mod_name, &
                   'sconcno3', Time, 'Surface Concentration of NO3', 'kg m-3', &
-                  standard_name='mass_concentration_of_nitrate_dry_aerosol_in_air')
+                  standard_name='mass_concentration_of_nitrate_dry_aerosol_particles_in_air')
 
         id_loadno3 = register_cmip_diag_field_2d ( mod_name, &
                    'loadno3', Time, 'Load of NO3', 'kg m-2', &
-                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol')
+                   standard_name='atmosphere_mass_content_of_nitrate_dry_aerosol_particles')
       else
         id_sconcno3 = 0
         id_loadno3 = 0
       endif
 
+      id_sconcso4 = register_cmip_diag_field_2d ( mod_name, &
+                'sconcso4', Time, 'Surface Concentration of SO4', 'kg m-3', &
+                standard_name='mass_concentration_of_sulfate_dry_aerosol_particles_in_air')
+
+      id_sconcss = register_cmip_diag_field_2d ( mod_name, &
+                'sconcss', Time, 'Surface Concentration of Seasalt', 'kg m-3', &
+                standard_name='mass_concentration_of_sea_salt_dry_aerosol_particles_in_air')
+
+      ID_concdust = register_cmip_diag_field_3d ( mod_name, &
+                'concdust', Time, 'Concentration of Dust', 'kg m-3', &
+                standard_name='mass_concentration_of_dust_dry_aerosol_particles_in_air')
+
+      id_sconcdust = register_cmip_diag_field_2d ( mod_name, &
+                'sconcdust', Time, 'Surface Concentration of Dust', 'kg m-3', &
+                standard_name='mass_concentration_of_dust_dry_aerosol_particles_in_air')
+
       id_dryso2 = register_cmip_diag_field_2d ( mod_name, &
                      'dryso2', Time, 'Dry Deposition Rate of SO2', 'kg m-2 s-1', &
-                     standard_name='tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_dry_deposition')
+                     standard_name='minus_tendency_of_atmosphere_mass_content_of_sulfur_dioxide_due_to_dry_deposition')
 
       id_dryso4 = register_cmip_diag_field_2d ( mod_name, &
                     'dryso4', Time, 'Dry Deposition Rate of SO4', 'kg m-2 s-1', &
-                    standard_name='tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_due_to_dry_deposition')
+                    standard_name='minus_tendency_of_atmosphere_mass_content_of_sulfate_dry_aerosol_particles_due_to_dry_deposition')
 
       id_drydms = register_cmip_diag_field_2d ( mod_name, &
                     'drydms', Time, 'Dry Deposition Rate of DMS', 'kg m-2 s-1', &
@@ -1971,9 +2156,26 @@ type(time_type), intent(in)                                :: Time
       id_dryoa = register_cmip_diag_field_2d ( mod_name, &
                   'dryoa', Time, 'Dry Deposition Rate of Dry Aerosol Total Organic Matter', 'kg m-2 s-1', &
                   standard_name='tendency_of_atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles_due_to_dry_deposition')
-      !----
+ 
+      id_emiisop_biogenic = register_cmip_diag_field_2d ( mod_name, &
+                  'emiisop_biogenic', Time, 'Total Emission Rate of Isoprene from biogenic', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_isoprene_due_to_emission')
 
-!<f1p: tracer diagnostics
+      id_emibvoc = register_cmip_diag_field_2d ( mod_name, &
+                  'emibvoc', Time, 'Total Emission Rate of Biogenic nmvoc', 'kg m-2 s-1', &
+                  standard_name='tendency_of_atmosphere_mass_content_of_biogenic_nmvoc_expressed_as_carbon_due_to_emission')
+
+      ID_co2_vmr = register_cmip_diag_field_3d ( mod_name, &
+                  'co2_vmr', Time, 'CO2 volume mixing ratio', 'mol mol-1', &
+                  standard_name='mole_fraction_of_carbon_dioxide_in_air')
+
+      id_co2s   = register_cmip_diag_field_2d ( mod_name, &
+                  'co2s', Time, 'Atmosphere CO2', '1e-06', &
+                  standard_name='mole_fraction_of_carbon_dioxide_in_air')
+
+!-----------------------
+! ... tracer diagnostics
+!-----------------------
       allocate( id_tracer_diag(nt) )
       allocate( id_tracer_diag_hour(nt,24) )
       id_tracer_diag(:) = 0
@@ -1995,10 +2197,10 @@ type(time_type), intent(in)                                :: Time
       allocate(frac_pm10(nt))
       allocate(frac_pm25(nt))
 
-      allocate(dry_dep_nh4_flux(size(lonb)-1,size(latb)-1)); dry_dep_nh4_flux=0.0
-      allocate(wet_dep_nh4_flux(size(lonb)-1,size(latb)-1)); wet_dep_nh4_flux=0.0
-      allocate(dry_dep_no3_flux(size(lonb)-1,size(latb)-1)); dry_dep_no3_flux=0.0
-      allocate(wet_dep_no3_flux(size(lonb)-1,size(latb)-1)); wet_dep_no3_flux=0.0
+      allocate(dry_dep_nh4_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_nh4_flux=0.0
+      allocate(wet_dep_nh4_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_nh4_flux=0.0
+      allocate(dry_dep_no3_flux(size(lonb,1)-1,size(latb,2)-1)); dry_dep_no3_flux=0.0
+      allocate(wet_dep_no3_flux(size(lonb,1)-1,size(latb,2)-1)); wet_dep_no3_flux=0.0
 
 
       ID_BC = register_cmip_diag_field_3d ( mod_name, 'fam_bc_kg_kg', Time, &
@@ -2037,17 +2239,37 @@ type(time_type), intent(in)                                :: Time
       if (query_cmip_diag_id(ID_pm10) .or. query_cmip_diag_id(ID_pm1) .or. &
           query_cmip_diag_id(ID_pm25) .or. id_pm25_surf > 0) do_pm = .true.
 
+      if (nage > 0) then
+        ID_meanage = register_cmip_diag_field_3d ( mod_name, 'meanage', Time, &
+                                       'Mean Age of Stratospheric Air', 'yr', &
+                                      standard_name='age_of_stratospheric_air')
+      endif
+
+      if (naoanh > 0) then
+        ID_aoanh = register_cmip_diag_field_3d ( mod_name, 'aoanh_cmip', Time, &
+                                       'Northern Hemisphere Tracer Lifetime', 'yr', &
+                                      standard_name='tracer_lifetime')
+      endif
+
       id_bc_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_bc_col_kg_m2', &
                        Time, 'Load of Black Carbon Aerosol', 'kg m-2', &
-                       standard_name='atmosphere_mass_content_of_black_carbon_dry_aerosol')
+                       standard_name='atmosphere_mass_content_of_elemental_carbon_dry_aerosol_particles')
+
+      id_oa_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_om_col_kg_m2', &
+                       Time, 'Load of Dry Aerosol Organic Matter', 'kg m-2', &
+                       standard_name='atmosphere_mass_content_of_particulate_organic_matter_dry_aerosol_particles')
+
+      id_poa_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_poa_col_kg_m2', &
+                       Time, 'Load of Dry Aerosol Primary Organic Matter', 'kg m-2', &
+                       standard_name='atmosphere_mass_content_of_primary_particulate_organic_matter_dry_aerosol_particles')
 
       id_dust_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_dust_col_kg_m2', &
                          Time, 'Load of Dust', 'kg m-2', &
-                         standard_name='atmosphere_mass_content_of_dust_dry_aerosol')
+                         standard_name='atmosphere_mass_content_of_dust_dry_aerosol_particles')
 
       id_seasalt_col_kg_m2 = register_cmip_diag_field_2d ( mod_name, 'fam_seasalt_col_kg_m2', &
                             Time, 'Load of Seasalt', 'kg m-2', &
-                            standard_name='atmosphere_mass_content_of_seasalt_dry_aerosol')
+                            standard_name='atmosphere_mass_content_of_seasalt_dry_aerosol_particles')
 
       id_toz = register_cmip_diag_field_2d ( mod_name, 'toz', &
                        Time, 'Total Ozone Column', 'm', &
@@ -2231,29 +2453,44 @@ subroutine atmos_nitrogen_flux_init
    outunit = stdout()
 
    if(do_esm_nitrogen_flux) then
-      if (nnh4>0) then
-         write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nnh4
+
+      nNH4 = get_tracer_index(MODEL_ATMOS,'nh4')
+      if (nNH4>0) then
+         write (outunit,*) trim(note_header), ' NH4 was initialized as tracer number ', nNH4
          ind_dry_dep_nh4_flux = aof_set_coupler_flux('dry_dep_nh4',     &
               flux_type = 'air_sea_deposition', implementation = 'dry', &
-              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+              atm_tr_index = nNH4, mol_wt = 1.0, param = (/ 1.0 /),     &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
          ind_wet_dep_nh4_flux = aof_set_coupler_flux('wet_dep_nh4',     &
               flux_type = 'air_sea_deposition', implementation = 'wet', &
-              atm_tr_index = nnh4, mol_wt = 1.0, param = (/ 1.0 /),     &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')  
+              atm_tr_index = nNH4, mol_wt = 1.0, param = (/ 1.0 /),     &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
-      if (nhno3>0) then
-         write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nhno3
+
+      nHNO3 = get_tracer_index(MODEL_ATMOS,'hno3')
+      if (nHNO3>0) then
+         write (outunit,*) trim(note_header), ' NO3 was initialized as tracer number ', nHNO3
          ind_dry_dep_no3_flux = aof_set_coupler_flux('dry_dep_no3',     &
               flux_type = 'air_sea_deposition', implementation = 'dry', &
-              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+              atm_tr_index = nHNO3, mol_wt = 1.0, param = (/ 1.0 /),    &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
          ind_wet_dep_no3_flux = aof_set_coupler_flux('wet_dep_no3',     &
               flux_type = 'air_sea_deposition', implementation = 'wet', &
-              atm_tr_index = nhno3, mol_wt = 1.0, param = (/ 1.0 /),    &
-              caller = trim(mod_name) // '(' // trim(sub_name) // ')')         
+              atm_tr_index = nHNO3, mol_wt = 1.0, param = (/ 1.0 /),    &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
       endif
+
+      nNH3 = get_tracer_index(MODEL_ATMOS,'nh3')
+      if (do_nh3_atm_ocean_exchange .and. nNH3.gt.0) then
+         if (mpp_root_pe().eq.mpp_pe()) write(*,*) 'setting up nh3_flux (atmos)'
+         ind_nh3_flux = aof_set_coupler_flux('nh3_flux',                       &
+              flux_type = 'air_sea_gas_flux_generic', implementation = 'johnson',       &
+              atm_tr_index = nNH3,                                          &
+              mol_wt = WTMN, param = (/ 17.,25. /),              &
+              caller = trim(mod_name) // '(' // trim(sub_name) // ')')
+      end if
    endif
+
 
 end subroutine atmos_nitrogen_flux_init
 
@@ -2360,7 +2597,14 @@ end subroutine atmos_tracer_driver_endts
 
 !-----------------------------------------------------------------------
 integer :: logunit
-      if (mpp_pe() /= mpp_root_pe()) return
+
+!---------------------------------------------------------------------
+!    verify that the module is initialized.
+!---------------------------------------------------------------------
+      if ( .not. module_is_initialized) then
+        call error_mesg ('atmos_tracer_driver_end',  &
+              'module has not been initialized', FATAL)
+      endif
 
       logunit=stdlog()
       write (logunit,'(/,(a))') 'Exiting tracer_driver, have a nice day ...'
@@ -2381,6 +2625,9 @@ integer :: logunit
       endif
       call atmos_age_tracer_end
       call atmos_co2_end
+      if ( nxactive > 0 ) then
+         call xactive_bvoc_end
+      endif
 
 !for cmip6 (f1p)
       deallocate( id_tracer_diag )
@@ -2423,6 +2670,7 @@ integer :: logunit
 
 subroutine atmos_tracer_flux_init
 
+call read_nml_file()
 call atmos_co2_flux_init
 call atmos_dust_flux_init
 call atmos_nitrogen_flux_init
@@ -2446,7 +2694,7 @@ end subroutine atmos_tracer_flux_init
 !   </TEMPLATE>
  subroutine atmos_tracer_driver_gather_data(gas_fields, tr_bot)
 
-use coupler_types_mod, only: coupler_2d_bc_type
+use coupler_types_mod, only: coupler_2d_bc_type, ind_pcair
 
 type(coupler_2d_bc_type), intent(inout) :: gas_fields
 real, dimension(:,:,:), intent(in)      :: tr_bot
@@ -2455,6 +2703,9 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
 
   call atmos_co2_gather_data(gas_fields, tr_bot)
 
+  if (ind_nh3_flux .gt. 0) then
+     gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nNH3)
+  end if
 !-----------------------------------------------------------------------
 
  end subroutine atmos_tracer_driver_gather_data
@@ -2530,7 +2781,7 @@ subroutine atmos_nitrogen_wetdep_flux_set(array_nh4,array_no3,is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
   integer,              intent(in) :: is,ie,js,je
   if (sum(nb_n).eq.0) return ! nothing to do
-  !Convert from mol/m2/s to Kg/m2/s which is expected by the ocean 
+  !Convert from mol/m2/s to Kg/m2/s which is expected by the ocean
   !Note that this conversion factor is specified as 14.0067e-03 in COBALT code
   wet_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)*WTMN/1000.
   wet_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)*WTMN/1000.
@@ -2540,10 +2791,41 @@ subroutine atmos_nitrogen_drydep_flux_set(array_nh4,array_no3,is,ie,js,je)
   real, dimension(is:ie,js:je), intent(in) :: array_nh4,array_no3
   integer,              intent(in) :: is,ie,js,je
   if (sum(nb_n).eq.0) return ! nothing to do
-  !No conversion needed as this is already Kg/m2/s which is expected by the ocean 
+  !No conversion needed as this is already Kg/m2/s which is expected by the ocean
   dry_dep_nh4_flux(is:ie,js:je) = array_nh4(is:ie,js:je)
   dry_dep_no3_flux(is:ie,js:je) = array_no3(is:ie,js:je)
 end subroutine atmos_nitrogen_drydep_flux_set
+
+
+subroutine read_nml_file()
+    integer :: io
+    integer :: ierr
+    integer :: funit
+    integer :: logunit
+    if (read_nml) then
+        if (file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+            read(input_nml_file,nml=atmos_tracer_driver_nml,iostat=io)
+            ierr = check_nml_error(io,'atmos_tracer_driver_nml')
+#else
+            funit = open_namelist_file()
+            ierr = 1
+            do while (ierr .ne. 0)
+                read(funit,nml=atmos_tracer_driver_nml,iostat=io,end=10)
+                ierr = check_nml_error(io,'atmos_tracer_driver_nml')
+            enddo
+10          call close_file(funit)
+#endif
+        endif
+!--------- write version and namelist to standard log ------------
+        call write_version_number(version,tagname)
+        logunit = stdlog()
+        if (mpp_pe() .eq. mpp_root_pe()) then
+            write(logunit,nml=atmos_tracer_driver_nml)
+        endif
+        read_nml = .false.
+    endif
+end subroutine read_nml_file
 
 
 end module atmos_tracer_driver_mod
