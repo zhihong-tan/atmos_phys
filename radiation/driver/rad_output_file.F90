@@ -1683,9 +1683,9 @@ logical,                        intent(in) :: volcanic_sw_aerosols
           if (lowercase(TRIM(names(n))) == 'omphilic' .and. nsoa==0) nsoa = n
           if (lowercase(TRIM(names(n))) == 'nitrate')  nno3 = n
         end do
-        call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nsoa)))//', nsoa='//TRIM(string(nsoa)),NOTE)
-        call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nso4)))//', nso4='//TRIM(string(nso4)),NOTE)
-        call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nno3)))//', nno3='//TRIM(string(nno3)),NOTE)
+        if (nsoa>0) call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nsoa)))//', nsoa='//TRIM(string(nsoa)),NOTE)
+        if (nso4>0) call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nso4)))//', nso4='//TRIM(string(nso4)),NOTE)
+        if (nno3>0) call error_mesg('rad_output_file_mod','tracer_name='//lowercase(TRIM(names(nno3)))//', nno3='//TRIM(string(nno3)),NOTE)
 
         ! register cmip named fields (moved below, after CMIP family diagnostics, in case SOA family is defined)
 
