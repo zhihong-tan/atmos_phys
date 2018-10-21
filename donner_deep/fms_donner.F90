@@ -426,7 +426,8 @@ type(donner_save_type), intent(inout)      :: Don_save
 
         integer :: nn, n
       logical                             :: flag
-      character(len=200)                  :: method_name, method_control
+!RSH  character(len=200)                  :: method_name, method_control
+      character(len=300)                  :: method_name, method_control
       real                                :: frac_junk, frac_junk2
 
         Initialized%do_donner_tracer = .true.
