@@ -1,4 +1,5 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 #ifdef COSP_GFDL
  
 !---------------------------------------------------------------------
@@ -6,7 +7,6 @@
  
 ! $Id$
 ! $Name$
-! cosp_version = 1.4.1
  
 #endif
 

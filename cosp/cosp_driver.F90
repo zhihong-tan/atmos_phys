@@ -1,4 +1,5 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 
 module cosp_driver_mod
 
@@ -105,7 +106,6 @@ public cosp_driver, cosp_driver_init, cosp_driver_end, cosp_driver_endts, &
 !---------------------------------------------------------------------
 !----------- version number for this module --------------------------
 
-! cosp_version = 1.4.1
 character(len=128)  :: version =  '$Id$'
 character(len=128)  :: tagname =  '$Name$'
 

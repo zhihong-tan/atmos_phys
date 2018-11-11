@@ -1,4 +1,5 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
 ! 
@@ -39,7 +40,7 @@
 MODULE MOD_COSP_CONSTANTS
     IMPLICIT NONE
 
-    character(len=32) :: COSP_VERSION='COSP v1.4.1'
+    character(len=32) :: COSP_VERSION='COSP v1.4'
 
     ! Indices to address arrays of LS and CONV hydrometeors
     integer,parameter :: I_LSCLIQ = 1

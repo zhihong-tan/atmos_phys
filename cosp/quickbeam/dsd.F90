@@ -1,10 +1,10 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 #ifdef COSP_GFDL
 
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! cosp_version = 1.4.1
 
 #endif
   subroutine dsd(Q,Re,Np,D,N,nsizes,dtype,rho_a,tk, &
