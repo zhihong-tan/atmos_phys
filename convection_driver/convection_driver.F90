@@ -480,6 +480,7 @@ integer :: id_ras_precip, id_ras_freq
  
 
 character(len=5) :: mod_name = 'moist'
+character(len=8) :: mod_name2 = 'moist_tr'
 real             :: missing_value = -999.
 
 
@@ -2342,12 +2343,30 @@ type(mp_removal_control_type), intent(in) :: Control
 !    they are requested, even if not transported by convection.
 !----------------------------------------------------------------------
         diaglname = trim(tracer_name)
-        id_conv_tracer(n) =    &
+
+!---------------------------------------------------------------------
+!    RSH:
+!    temporary get-around for the fact that 'cl' may be both a tracer 
+!    variable (full chemistry) and a CMIP6 cloud diagnostic variable 
+!    in module 'moist', and so they need to be registered differently. 
+!    In the future, all the tracers should be registered under mod_name2,
+!    after existing scripts / experiments are replaced. 
+!---------------------------------------------------------------------
+        if (trim(diaglname) == 'cl') then
+          id_conv_tracer(n) =    &
+                        register_diag_field ( mod_name2,    &
+                        TRIM(tracer_name),  &
+                        axes(1:3), Time, trim(diaglname), &
+                        TRIM(tracer_units)      ,  &
+                        missing_value=missing_value)
+        else
+          id_conv_tracer(n) =    &
                         register_diag_field ( mod_name,    &
                         TRIM(tracer_name),  &
                         axes(1:3), Time, trim(diaglname), &
                         TRIM(tracer_units)      ,  &
                         missing_value=missing_value)
+        endif
         diaglname =  ' column integrated' // trim(tracer_name)
         id_conv_tracer_col(n) =  &
                         register_diag_field ( mod_name, &
