@@ -1791,15 +1791,13 @@ type(time_type), intent(in)                                :: Time
 
 
 !------------------------------------------------------------------------
-! Initialize tropospheric chemistry
+! Initialize tropospheric chemistry and dry deposition
 !------------------------------------------------------------------------
-      allocate( drydep_data(nt) )
-      do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf,drydep_data)
-      if ( .not. do_tropchem ) then
-          do n = 1,ntp
-             call dry_deposition_init(n,lonb,latb,drydep_data(n))
-          end do
-      end if
+      allocate( drydep_data(ntp) )
+      do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf)
+      do n = 1,ntp
+         call dry_deposition_init(n,lonb,latb,drydep_data(n))
+      end do
       tropchem_clock = mpp_clock_id( 'Tracer: Tropospheric chemistry', &
            grain=CLOCK_MODULE )
 
