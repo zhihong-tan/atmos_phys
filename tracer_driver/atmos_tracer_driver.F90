@@ -183,6 +183,15 @@ use atmos_soa_mod,         only : atmos_SOA_init, &
                                   atmos_SOA_endts, &
                                   atmos_SOA_end, &
                                   atmos_SOA_chem
+use atmos_nh3_tag_mod,     only : atmos_nh3_tag_init, &
+     atmos_nh3_tag_time_vary,  &
+     atmos_nh3_tag_end,        &
+     atmos_nh3_tag_endts,      &
+     atmos_nh3_tag_driver,     &
+     atmos_nh3_tag_flux_init,  &
+     atmos_nh3_tag_gather_data, &
+     is_nh3_tag_tracer
+
 use tropchem_driver_mod,   only : tropchem_driver, &
                                   tropchem_driver_time_vary, &
                                   tropchem_driver_endts, &
@@ -275,6 +284,7 @@ integer :: regional_clock = 0
 integer :: tropopause_clock = 0
 
 logical :: do_tropchem = .false.  ! Do tropospheric chemistry?
+logical :: do_nh3_tag = .false.
 logical :: do_coupled_stratozone = .FALSE. !Do stratospheric chemistry?
 
 integer :: nsphum  ! Specific humidity parameter
@@ -763,7 +773,7 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
                                  tracer(:,:,kd,n), Time, Time_next, &
                                  lon, half_day, &
                                  drydep_data(n),con_atm)
-            if (do_nh3_atm_ocean_exchange .and. n.eq.nNH3) then 
+            if (do_nh3_atm_ocean_exchange .and. (n.eq.nNH3.or.is_nh3_tag_tracer(n))) then 
                !f1p: scale dry deposition of nh3 by the land fraction since ocean exchange is handled separately
                dsinku(:,:,n) = dsinku(:,:,n)*max(1.-frac_open_sea,0.) 
                !f1p: archive the dry deposition of nh3, since it needs to be forced to 0. for the ocean
@@ -808,6 +818,8 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 
       !---- cmip variables ----
       if (id_n_ox_ddep > 0) used = send_data (id_n_ox_ddep, sum_n_ox_ddep, Time_next, &
+                                              is_in=is, js_in=js)
+      if (id_n_red_ddep > 0) used = send_data (id_n_red_ddep, sum_n_red_ddep, Time_next, &
                                               is_in=is, js_in=js)
 
       if (id_dryso2 > 0) then
@@ -1659,6 +1671,17 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !f1p: remove nh3_ddep from sum_n_red_ddep if nh3 is exchanged between atmosphere and ocean
    call atmos_nitrogen_drydep_flux_set(max(sum_n_red_ddep-nh3_ddep,0.),sum_n_ox_ddep, is,ie,js,je)
 
+!tag nh3
+   if (do_nh3_tag) then
+      call atmos_nh3_tag_driver( lon, lat, land, ocn_flx_fraction, pwt, &
+           tracer,rm, rdt, &
+           Time, phalf, pfull, t, is, ie, js, je, dt, &
+           z_half, z_full, coszen, &
+           half_day, &
+           Time_next,  &
+           kbot)
+   end if
+
  end subroutine atmos_tracer_driver
 ! </SUBROUTINE>
 
@@ -1975,6 +1998,9 @@ type(time_type), intent(in)                                :: Time
 
      call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
                                num_prog=ntp)
+
+!initialized nh3 tag
+     do_nh3_tag = atmos_nh3_tag_init(nt,axes,Time,lonb,latb,do_nh3_atm_ocean_exchange)     
 
      id_landfr = register_diag_field ( mod_name,                    &
             'landfr_atm', axes(1:2), Time,               &
@@ -2482,6 +2508,9 @@ subroutine atmos_nitrogen_flux_init
               atm_tr_index = nNH3,                                          &
               mol_wt = WTMN, param = (/ 17.,25. /),              &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
+
+         if (do_nh3_tag) call atmos_nh3_tag_flux_init
+
       end if
    endif
 
@@ -2530,7 +2559,9 @@ type(time_type), intent(in) :: Time
         call tropchem_driver_time_vary (Time)
       endif
 
-
+      if (do_nh3_tag) then
+         call atmos_nh3_tag_time_vary (Time)
+      end if
 
 end subroutine atmos_tracer_driver_time_vary
 
@@ -2542,6 +2573,9 @@ subroutine atmos_tracer_driver_endts
       if (do_tropchem) then
         call tropchem_driver_endts
       endif
+      if (do_nh3_tag) then
+         call atmos_nh3_tag_endts
+      end if
       if (nbcphobic > 0 .and. nbcphilic > 0 .and. &
           nomphobic > 0 .and. nomphilic > 0) then
         call atmos_carbon_aerosol_endts
@@ -2700,6 +2734,9 @@ real, dimension(:,:,:), intent(in)      :: tr_bot
   if (ind_nh3_flux .gt. 0) then
      gas_fields%bc(ind_nh3_flux)%field(ind_pcair)%values(:,:) = tr_bot(:,:,nNH3)
   end if
+
+  if (do_nh3_tag) call atmos_nh3_tag_gather_data(gas_fields,tr_bot)
+
 !-----------------------------------------------------------------------
 
  end subroutine atmos_tracer_driver_gather_data
