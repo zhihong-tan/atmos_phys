@@ -484,7 +484,7 @@ contains
              call data_override('ATM', trim(emis_field_names(n)%mask_name), mask_emis(:,:,n), time, override=used)
           end if
           if (emis3d_field_names(n)%do_mask_emis) then
-             call data_override('ATM', trim(emis_field_names(n)%mask_name), mask_emis3d(:,:,n), time, override=used)
+             call data_override('ATM', trim(emis3d_field_names(n)%mask_name), mask_emis3d(:,:,n), time, override=used)
           end if
        end do
        first=.false.
