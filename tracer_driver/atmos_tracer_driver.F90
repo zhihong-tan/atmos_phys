@@ -1763,7 +1763,7 @@ type(time_type), intent(in)                                :: Time
 !------------------------------------------------------------------------
 !   read namelist.
 !------------------------------------------------------------------------
-      call read_nml_file()
+
 !---------------------------------------------------------------------
 !  make sure that astronomy_mod has been initialized (if radiation
 !  not being called in this run, it will not have previously been
@@ -2509,7 +2509,9 @@ subroutine atmos_nitrogen_flux_init
               mol_wt = WTMN, param = (/ 17.,25. /),              &
               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
 
-         if (do_nh3_tag) call atmos_nh3_tag_flux_init
+!         if (do_nh3_tag) call atmos_nh3_tag_flux_init
+!do_nh3_tag is not set up at this stage any more so call routine all the time
+         call atmos_nh3_tag_flux_init
 
       end if
    endif

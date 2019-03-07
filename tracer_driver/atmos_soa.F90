@@ -227,7 +227,7 @@ character(len=7), parameter :: mod_name = 'tracers'
                  write (logunit,30) SOA_tracer,nsoa
       endif
 
-  30   format (A,' was initialized as tracer number ',i2)
+  30   format (A,' was initialized as tracer number ',i3)
 
 !----- check for other required tracers ------------
 
