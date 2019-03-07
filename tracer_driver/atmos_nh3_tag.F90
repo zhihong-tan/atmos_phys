@@ -72,6 +72,12 @@ module atmos_nh3_tag_mod
   character(len=80)     :: file_emis3d  = ' '
   logical               :: debug        = .true.
   integer               :: nb_tag_max   = 10 
+  logical               :: read_nml = .true.
+
+!---- version number -----
+  character(len=128) :: version = '$Id$'
+  character(len=128) :: tagname = '$Name$'
+
 
   namelist /atmos_nh3_tag_nml/ &
        file_emis,file_emis3d,  &
@@ -304,20 +310,7 @@ contains
     !-----------------------------------------------------------------------
     !     ... read namelist
     !-----------------------------------------------------------------------
-    if(file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
-       read (input_nml_file, nml=atmos_nh3_tag_nml, iostat=io)
-       ierr = check_nml_error(io,'atmos_nh3_tag_nml')
-#else
-       unit = open_namelist_file('input.nml')
-       ierr=1
-       do while (ierr /= 0)
-          read(unit, nml = atmos_nh3_tag_nml, iostat=io, end=10)
-          ierr = check_nml_error (io, 'atmos_nh3_tag_nml')
-       end do
-10     call close_file(unit)
-#endif
-    end if
+    call read_nml_file()
 
     nNH4      = get_tracer_index(MODEL_ATMOS,'nh4')
     nNH3      = get_tracer_index(MODEL_ATMOS,'nh3')
@@ -371,11 +364,9 @@ contains
           allocate(id_emis_tag(nb_tag))
           allocate(mask_emis(size(lonb_mod,1)-1,size(latb_mod,2)-1,nb_tag))
           allocate(mask_emis3d(size(lonb_mod,1)-1,size(latb_mod,2)-1,nb_tag))
-          allocate(ind_nh3_flux(nb_tag))
 
           mask_emis    = 0.
           mask_emis3d  = 0.
-          ind_nh3_flux = 0
 
           do i = 1,nb_tag
 
@@ -439,6 +430,7 @@ contains
     if (allocated(nnh4_tag))           deallocate(nnh4_tag)
     if (allocated(mask_emis))          deallocate(mask_emis)
     if (allocated(mask_emis3d))        deallocate(mask_emis3d) 
+    if (allocated(ind_nh3_flux))       deallocate(ind_nh3_flux)
 
     module_is_initialized = .false.
 
@@ -744,20 +736,59 @@ contains
   subroutine atmos_nh3_tag_flux_init
 
     integer             :: n
+    integer             :: nnh3_tag_for_flux
     character*14        :: fld !nh3_tag01
 
     if (mpp_root_pe().eq.mpp_pe()) write(*,*) 'setting up nh3_tag_flux (atmos)'
-    do n=1,nb_tag
-       write(fld,'(A7,I2.2,A5)') 'nh3_tag',n,'_flux'
-       ind_nh3_flux(n) = aof_set_coupler_flux(fld,                                    &
-            flux_type = 'air_sea_gas_flux_generic', implementation = 'johnson',       &
-            atm_tr_index = nnh3_tag(n),                                               &
-            mol_wt = WTMN, param = (/ 17.,25. /),                                     &
-            caller = trim(mod_name) // '(' // trim(sub_name) // ')')
-    end do
 
+    call read_nml_file()
+    allocate(ind_nh3_flux(nb_tag_max))
+    ind_nh3_flux = 0
+
+    do n=1,nb_tag_max
+       write(fld,'(A7,I2.2)') 'nh3_tag',n
+       nnh3_tag_for_flux = get_tracer_index(MODEL_ATMOS,fld)
+       if (nnh3_tag_for_flux.gt.0) then
+          write(fld,'(A7,I2.2,A5)') 'nh3_tag',n,'_flux'
+          ind_nh3_flux(n) = aof_set_coupler_flux(fld,                                    &
+               flux_type = 'air_sea_gas_flux_generic', implementation = 'johnson',       &
+               atm_tr_index = nnh3_tag_for_flux,                                               &
+               mol_wt = WTMN, param = (/ 17.,25. /),                                     &
+               caller = trim(mod_name) // '(' // trim(sub_name) // ')')
+       end if
+    end do
+       
   end subroutine atmos_nh3_tag_flux_init
 
+  subroutine read_nml_file()
+    integer :: io
+    integer :: ierr
+    integer :: funit
+    integer :: logunit
+    if (read_nml) then
+       if (file_exist('input.nml')) then
+#ifdef INTERNAL_FILE_NML
+          read (input_nml_file, nml=atmos_nh3_tag_nml, iostat=io)
+          ierr = check_nml_error(io,'atmos_nh3_tag_nml')
+#else
+          unit = open_namelist_file('input.nml')
+          ierr=1
+          do while (ierr /= 0)
+             read(unit, nml = atmos_nh3_tag_nml, iostat=io, end=10)
+             ierr = check_nml_error (io, 'atmos_nh3_tag_nml')
+          end do
+10        call close_file(unit)
+#endif
+       endif
+       !--------- write version and namelist to standard log ------------
+       call write_version_number(version,tagname)
+       logunit = stdlog()
+       if (mpp_pe() .eq. mpp_root_pe()) then
+          write(logunit,nml=atmos_nh3_tag_nml)
+       endif
+       read_nml = .false.
+    endif
+  end subroutine read_nml_file
 
 end module atmos_nh3_tag_mod
 
