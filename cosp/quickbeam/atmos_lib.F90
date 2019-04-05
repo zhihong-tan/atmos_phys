@@ -1,6 +1,7 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 ! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/quickbeam/atmos_lib.f90 $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/quickbeam/atmos_lib.f90 $
 ! ATMOS_LIB: Atmospheric science procedures for F90
 ! Compiled/Modified:
 !   07/01/06  John Haynes (haynes@atmos.colostate.edu)
