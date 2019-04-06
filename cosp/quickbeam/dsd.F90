@@ -68,7 +68,8 @@
   
   integer, intent(in) :: nsizes
   integer, intent(in) :: dtype
-  real*8, intent(in)  :: Q,Re,Np,D(nsizes)
+  real*8, intent(in)  :: Q,Np,D(nsizes)
+  real*8, intent(inout)  :: Re
   real*8, intent(in)  :: rho_a,tk,dmin,dmax,rho_c,p1,p2,p3
     
   real*8, intent(inout) :: apm,bpm  
