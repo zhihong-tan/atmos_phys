@@ -1,6 +1,7 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 ! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/icarus-scops-     4.1-bsd/icarus.f $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/icarus-scops-     4.1-bsd/icarus.f $
 
 #ifdef COSP_GFDL
       SUBROUTINE ICARUS(          &

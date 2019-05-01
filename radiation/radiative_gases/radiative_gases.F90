@@ -2532,7 +2532,7 @@ character(len=8)     :: gas_name ! name associated with current
                                     N2o_time_list, time_varying_n2o, &
                                     n2o_dataset_entry, rn2o)   
         else if (trim(n2o_specification_type) == 'base_and_trend') then
-          rn2o = ch4_base_value
+          rn2o = n2o_base_value
         else
           call error_mesg ( 'radiative_gases_mod', &
                             'invalid n2o specification_type', FATAL)
@@ -2559,7 +2559,7 @@ character(len=8)     :: gas_name ! name associated with current
 !--------------------------------------------------------------------
       else if (trim(data_source) == 'predicted') then
         if (.not. restart_present) then
-          rn2o = ch4_base_value
+          rn2o = n2o_base_value
         endif
         call error_mesg ( 'radiative_gases_mod', &
           'n2o data_source = "predicted" is currently not supported', &
