@@ -241,7 +241,7 @@ character(len=128) :: tagname = '$Name: $'
 !                perform the calculation, whereas in the
 !                corrected code, all fields are updated before uw 
 !                convection is calculated.  (default = F).
-!   obtain_warsaw_results = setting this to T will reproduce legacy 
+!   reproduce_AM4 = setting this to T will reproduce legacy 
 !                (warsaw) results because the model will use temperature 
 !                and tracer fields that have not been updated with the uw 
 !                convective tendency for the calculation of cu_mo_trans 
@@ -275,7 +275,7 @@ logical            :: detrain_ice_num = .false.
 real               :: conv_frac_max = 0.99
 logical            :: remain_detrain_bug = .false.
 logical            :: keep_icenum_detrain_bug = .false.
-logical            :: obtain_warsaw_results = .false.
+logical            :: reproduce_AM4 = .true.
 
 
 namelist /convection_driver_nml/    &
@@ -291,7 +291,7 @@ namelist /convection_driver_nml/    &
               detrain_liq_num, detrain_ice_num, &
               conv_frac_max,   &
               remain_detrain_bug, keep_icenum_detrain_bug, &
-              obtain_warsaw_results
+              reproduce_AM4
 
 
 !------------------- other global variables  ------------------------
@@ -2657,7 +2657,7 @@ type(phys_mp_exch_type),  intent(inout) :: Phys_mp_exch
 !------------------------------------------------------------------------
 !    update the current temp and rdt tendencies with the contributions 
 !    obtained from uw transport (tin_tentative, rdt_tentative), if  
-!    obtain_warsaw_results was set true. otherwise these fields have 
+!    reproduce_AM4 was set true. otherwise these fields have 
 !    already been updated, and the _tentative fields contain 0.0.
 !------------------------------------------------------------------------
       Input_mp%tin = Input_mp%tin + Input_mp%tin_tentative
@@ -5517,7 +5517,7 @@ type(mp_tendency_type), intent(inout) :: Tend_mp
 !    preserve an error / bug in the warsaw code. diagnostic output changes
 !    for the post-warsaw case, reflecting the bugfix.
 !-----------------------------------------------------------------------
-      if (obtain_warsaw_results) then
+      if (reproduce_AM4) then
         Tend_mp%ttnd_conv = 0.
         Tend_mp%qtnd_conv = 0.
       endif
@@ -5804,9 +5804,9 @@ type(mp_conv2ls_type),               intent(inout) :: C2ls_mp
 !----------------------------------------------------------------------
 !    if not using updated fields for donner, execute the following.  
 !    this path will also reproduce results obtained using base warsaw
-!    code if nml variable obtain_warsaw_results is set to .true., using
+!    code if nml variable reproduce_AM4 is set to .true., using
 !    some inconsistent values in the cmt calculation;  if
-!    obtain_warsaw_results is set .false., then consistent (unupdated)
+!    reproduce_AM4 is set .false., then consistent (unupdated)
 !    values will be used in the cmt and other calculations.
 !----------------------------------------------------------------------
       else    ! ORIG2 and ORIG5
@@ -6299,7 +6299,7 @@ type(mp_output_type),     intent(inout) :: Output_mp
 !    the variables xxx_tentative, so that they may be applied at a
 !    later time. 
 !-----------------------------------------------------------------------
-      if (obtain_warsaw_results) then
+      if (reproduce_AM4) then
         Input_mp%tin_tentative = Uw_tend%ttnd*dt 
 
 !------------------------------------------------------------------------
@@ -7252,7 +7252,7 @@ real, dimension(:,:,:,:),  intent(inout)  :: qtr
 !    number tendencies.
 !RSH 7/28/18: SHOULD PROBABLY AFFECT QN AND QNI, ALSO PRECIP WHICH NOT
 !    MODIFIED HERE. CHECK THESE OUT AFTER COMPLETE BENCHMARK TESTING.
-!    MAY USE OBTAIN_WARSAW_RESULTS TO MAINTAIN PREVIOUS ANSWERS.
+!    MAY USE REPRODUCE_AM4 TO MAINTAIN PREVIOUS ANSWERS.
 !-------------------------------------------------------------------------
               do k=1,kx
                 Output_conv%delta_temp(i,j,k)  =    &

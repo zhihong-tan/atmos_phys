@@ -1327,7 +1327,6 @@ contains
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: dissipative_heat
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: tdt_dif
     real  :: latx, lonx, lat1b, lat1e, lon1b, lon1e, lat2b, lat2e, lon2b, lon2e
-    logical, dimension(size(tb,1),size(tb,2))         :: skip_to_200 ! flag to replace 'goto 200'
 
     logical used
     type(sounding)          :: sd, sd1
@@ -1956,7 +1955,7 @@ contains
           if (do_eis_limitn) then
              if (sd%eis .gt. eis_max) then
                ocode(i,j)=10; cbmf_shallow=0.;
-               skip_to_200(i,j) = .true.; cycle
+               goto 200
              end if
           end if
           if (do_lts_limit) then
@@ -1967,7 +1966,7 @@ contains
           if (do_lts_limitn) then
              if (sd%lts .gt. eis_max) then
                ocode(i,j)=10; cbmf_shallow=0.;
-               skip_to_200(i,j) = .true.; cycle
+               goto 200  
              end if
           end if
 
@@ -2256,7 +2255,6 @@ contains
         do k = 1,kmax
           do j = 1,jmax
             do i = 1,imax
-              if(skip_to_200(i,j) .eq. .true.) cycle
               uten  (i,j,k) = uten  (i,j,k) + uten_d  (i,j,k)
               vten  (i,j,k) = vten  (i,j,k) + vten_d  (i,j,k)
               qlten (i,j,k) = qlten (i,j,k) + qlten_d (i,j,k)
@@ -2278,7 +2276,6 @@ contains
 
         do j = 1,jmax
           do i = 1,imax
-            if(skip_to_200(i,j) .eq. .true.) cycle
             snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
             rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
             denth (i,j)  = denth (i,j) + denth_d (i,j)
@@ -2294,7 +2291,6 @@ contains
         if (do_new_convcld) then
           do j = 1,jmax
             do i = 1,imax
-              if(skip_to_200(i,j) .eq. .true.) cycle
               cqa(kmax+1)=0.; cql(kmax+1)=0.; cqi(kmax+1)=0.; cqn(kmax+1)=0.;
               do k = 1,kmax
                 cqa(k) =cqa_s(i,j,k)+cqa_d(i,j,k)
@@ -2325,8 +2321,7 @@ contains
       end if
 !========End of do_deep, Option for deep convection=======================================
 
-!200
-      if (do_prog_gust) then
+200      if (do_prog_gust) then
         do j = 1,jmax
           do i = 1,imax
             gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
