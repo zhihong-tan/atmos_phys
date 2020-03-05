@@ -1,9 +1,10 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 ! (c) 2009-2010, Regents of the Unversity of Colorado
 !   Author: Robert Pincus, Cooperative Institute for Research in the Environmental Sciences
 ! All rights reserved.
 ! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/MODIS_simulator/modis_simulator.F90 $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/MODIS_simulator/modis_simulator.F90 $
 !
 ! Redistribution and use in source and binary forms, with or without modification, are permitted
 ! provided that the following conditions are met:
@@ -503,105 +504,59 @@ contains
     Cloud_Fraction_Mid_Mean(1:nPoints)   = Cloud_Fraction_Total_Mean(1:nPoints) - Cloud_Fraction_High_Mean(1:nPoints)&
                                            - Cloud_Fraction_Low_Mean(1:nPoints)
 
-!! UPDATE 03/2018 TER: check for (cloud_fraction == 0) FIRST because otherwise dividing by 0
-! ########################################################################################
-! Compute mean optical thickness.
-! ########################################################################################
-  Optical_Thickness_Total_Mean(1:nPoints) = sum(optical_thickness, mask = cloudMask,dim = 2)
-  Optical_Thickness_Water_Mean(1:nPoints) = sum(optical_thickness,mask=waterCloudMask,dim=2)
-  Optical_Thickness_Ice_Mean(1:nPoints) = sum(optical_thickness,mask=iceCloudMask,dim=2)
-  ! ########################################################################################
-  ! We take the absolute value of optical thickness here to satisfy compilers that complains
-  ! when we evaluate the logarithm of a negative number, even though it's not included in
-  ! the sum.
-  ! ########################################################################################
-  Optical_Thickness_Total_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = cloudMask, &
-                    dim = 2)
-  Optical_Thickness_Water_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = waterCloudMask,&
-                    dim = 2)
-  Optical_Thickness_Ice_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = iceCloudMask,&
-                    dim = 2)
-  Cloud_Particle_Size_Water_Mean(1:nPoints) = sum(particle_size, mask = waterCloudMask, dim = 2)
-  Liquid_Water_Path_Mean(1:nPoints) = LWP_conversion*sum(particle_size*optical_thickness, &
-                    mask=waterCloudMask,dim=2)
-  Cloud_Particle_Size_Ice_Mean(1:nPoints) = sum(particle_size, mask = iceCloudMask,   dim = 2)
-  Ice_Water_Path_Mean(1:nPoints) = LWP_conversion * ice_density*sum(particle_size*optical_thickness,&
-                    mask=iceCloudMask,dim = 2)
 
-!Divide by the means if the mean is not 0, otherwise set to undefined value
-ot_and_cf: do i = 1,nPoints
-!Total
- if (Cloud_Fraction_Total_Mean (i) == 0) then
-   Optical_Thickness_Total_Mean (i)     = R_UNDEF
-   Optical_Thickness_Total_MeanLog10 (i) = R_UNDEF
-   Cloud_Top_Pressure_Total_Mean (i)    = R_UNDEF
- else
-  Optical_Thickness_Total_Mean (i) =      Optical_Thickness_Total_Mean(i) / &
-                                          Cloud_Fraction_Total_Mean(i)
-  Optical_Thickness_Total_MeanLog10 (i) = Optical_Thickness_Total_MeanLog10(i)/ &
-                                          Cloud_Fraction_Total_Mean(i)
+   where(Cloud_Fraction_Total_Mean(1:nPoints) > 0)
+       Optical_Thickness_Total_Mean(1:nPoints) = sum(optical_thickness, mask = cloudMask,      dim = 2) / &
+            Cloud_Fraction_Total_Mean(1:nPoints)
+       Optical_Thickness_Total_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = cloudMask, &
+            dim = 2) / Cloud_Fraction_Total_Mean(1:nPoints)
+    elsewhere
+       Optical_Thickness_Total_Mean      = 0.
+       Optical_Thickness_Total_MeanLog10 = 0.
+    endwhere
+    where(Cloud_Fraction_Water_Mean(1:nPoints) > 0)
+       Optical_Thickness_Water_Mean(1:nPoints) = sum(optical_thickness, mask = waterCloudMask, dim = 2) / &
+            Cloud_Fraction_Water_Mean(1:nPoints)
+       Liquid_Water_Path_Mean(1:nPoints) = LWP_conversion*sum(particle_size*optical_thickness, &
+            mask=waterCloudMask,dim=2)/Cloud_Fraction_Water_Mean(1:nPoints)
+       Optical_Thickness_Water_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = waterCloudMask,&
+            dim = 2) / Cloud_Fraction_Water_Mean(1:nPoints)
+       Cloud_Particle_Size_Water_Mean(1:nPoints) = sum(particle_size, mask = waterCloudMask, dim = 2) / &
+            Cloud_Fraction_Water_Mean(1:nPoints)
+    elsewhere
+       Optical_Thickness_Water_Mean      = 0.
+       Optical_Thickness_Water_MeanLog10 = 0.
+       Cloud_Particle_Size_Water_Mean    = 0.
+       Liquid_Water_Path_Mean            = 0.
+    endwhere
+    where(Cloud_Fraction_Ice_Mean(1:nPoints) > 0)
+       Optical_Thickness_Ice_Mean(1:nPoints)   = sum(optical_thickness, mask = iceCloudMask,   dim = 2) / &
+            Cloud_Fraction_Ice_Mean(1:nPoints)
+       Ice_Water_Path_Mean(1:nPoints) = LWP_conversion * ice_density*sum(particle_size*optical_thickness,&
+            mask=iceCloudMask,dim = 2) /Cloud_Fraction_Ice_Mean(1:nPoints)
+       Optical_Thickness_Ice_MeanLog10(1:nPoints) = sum(log10(abs(optical_thickness)), mask = iceCloudMask,&
+            dim = 2) / Cloud_Fraction_Ice_Mean(1:nPoints)
+       Cloud_Particle_Size_Ice_Mean(1:nPoints) = sum(particle_size, mask = iceCloudMask,   dim = 2) / &
+            Cloud_Fraction_Ice_Mean(1:nPoints)
+    elsewhere
+       Optical_Thickness_Ice_Mean        = 0.
+       Optical_Thickness_Ice_MeanLog10   = 0.
+       Cloud_Particle_Size_Ice_Mean      = 0.
+       Ice_Water_Path_Mean               = 0.
+    endwhere
+    Cloud_Top_Pressure_Total_Mean  = sum(cloud_top_pressure, mask = cloudMask, dim = 2) / &
+                                     max(1, count(cloudMask, dim = 2))
 
- endif
-! water
- if (Cloud_Fraction_Water_Mean (i) == 0) then
-   Optical_Thickness_Water_Mean (i)      = R_UNDEF
-   Optical_Thickness_Water_MeanLog10 (i) = R_UNDEF
-   Cloud_Particle_Size_Water_Mean (i)    = R_UNDEF
-   Liquid_Water_Path_Mean (i)            = R_UNDEF
- else
-   Optical_Thickness_Water_Mean (i) =    Optical_Thickness_Water_Mean (i)/ &
-                                         Cloud_Fraction_Water_Mean(i)
-   Optical_Thickness_Water_MeanLog10(i)= Optical_Thickness_Water_MeanLog10(i)/&
-                                         Cloud_Fraction_Water_Mean(i)
-   Cloud_Particle_Size_Water_Mean(i) =   Cloud_Particle_Size_Water_Mean(i)/ &
-                                         Cloud_Fraction_Water_Mean(i)
-   Liquid_Water_Path_Mean(i) =           Liquid_Water_Path_Mean(i)/&
-                                         Cloud_Fraction_Water_Mean(i)
- endif
-! ice
- if (Cloud_Fraction_Ice_Mean(i) == 0) then
-   Optical_Thickness_Ice_Mean(i)        = R_UNDEF
-   Optical_Thickness_Ice_MeanLog10(i)   = R_UNDEF
-   Cloud_Particle_Size_Ice_Mean(i)      = R_UNDEF
-   Ice_Water_Path_Mean(i)               = R_UNDEF
- else
-   Optical_Thickness_Ice_Mean(i)   =    Optical_Thickness_Ice_Mean(i)/ &
-                                        Cloud_Fraction_Ice_Mean(i)
-   Optical_Thickness_Ice_MeanLog10(i) = Optical_Thickness_Ice_MeanLog10(i)/ &
-                                        Cloud_Fraction_Ice_Mean(i)
-   Cloud_Particle_Size_Ice_Mean(i) =    Cloud_Particle_Size_Ice_Mean(i)/ &
-                                        Cloud_Fraction_Ice_Mean(i)
-   Ice_Water_Path_Mean(i) =             Ice_Water_Path_Mean(i)/&
-                                        Cloud_Fraction_Ice_Mean(i)
- endif
-enddo ot_and_cf
-
-Cloud_Top_Pressure_Total_Mean(1:nPoints) = sum(cloud_top_pressure, mask = cloudMask, dim = 2) / &
-                                          max(1, count(cloudMask, dim = 2))
     ! ########################################################################################
     ! Normalize pixel counts to fraction.
     ! ########################################################################################
     Cloud_Fraction_High_Mean(1:nPoints)  = Cloud_Fraction_High_Mean(1:nPoints)  /nSubcols
     Cloud_Fraction_Mid_Mean(1:nPoints)   = Cloud_Fraction_Mid_Mean(1:nPoints)   /nSubcols
     Cloud_Fraction_Low_Mean(1:nPoints)   = Cloud_Fraction_Low_Mean(1:nPoints)   /nSubcols
-!----------------------------------------------------------------------
-!  To revert to v1.4.0, comment out the  "#ifdef v1.4.0" lines,
-!                      uncomment the "#ifdef v1.4.1" lines.
-!  To use v1.4.1, comment out the  "#ifdef v1.4.1" lines,
-!                      uncomment the "#ifdef v1.4.0" lines.
-!----------------------------------------------------------------------
-!#ifdef v1.4.1
     Cloud_Fraction_Total_Mean(1:nPoints) = Cloud_Fraction_Total_Mean(1:nPoints) /nSubcols
     Cloud_Fraction_Ice_Mean(1:nPoints)   = Cloud_Fraction_Ice_Mean(1:nPoints)   /nSubcols
     Cloud_Fraction_Water_Mean(1:nPoints) = Cloud_Fraction_Water_Mean(1:nPoints) /nSubcols
-!#endif
-#ifdef v1.4.0
-    Cloud_Fraction_Total_Mean(1:nPoints) = max(0., Cloud_Fraction_Total_Mean(1:nPoints) /nSubcols)
-    Cloud_Fraction_Ice_Mean(1:nPoints)   = max(0., Cloud_Fraction_Ice_Mean(1:nPoints)   /nSubcols)
-    Cloud_Fraction_Water_Mean(1:nPoints) = max(0., Cloud_Fraction_Water_Mean(1:nPoints) /nSubcols)
-#endif
 
-!#ifdef v1.4.1
     ! ########################################################################################
     ! Set clear-scenes to undefined
     ! ########################################################################################
@@ -622,10 +577,6 @@ Cloud_Top_Pressure_Total_Mean(1:nPoints) = sum(cloud_top_pressure, mask = cloudM
        Cloud_Particle_Size_Ice_Mean      = R_UNDEF
        Ice_Water_Path_Mean               = R_UNDEF
     endwhere
-    where (Cloud_Fraction_High_Mean == 0)  Cloud_Fraction_High_Mean = R_UNDEF
-    where (Cloud_Fraction_Mid_Mean == 0)   Cloud_Fraction_Mid_Mean = R_UNDEF
-    where (Cloud_Fraction_Low_Mean == 0)   Cloud_Fraction_Low_Mean = R_UNDEF
-!#endif
 
     ! ########################################################################################
     ! Joint histogram
@@ -1050,7 +1001,6 @@ Cloud_Top_Pressure_Total_Mean(1:nPoints) = sum(cloud_top_pressure, mask = cloudM
 
 
   end function interpolate_to_min
-!#ifdef v1.4.1
   ! --------------------------------------------
   ! Optical properties
   ! --------------------------------------------
@@ -1112,67 +1062,6 @@ Cloud_Top_Pressure_Total_Mean(1:nPoints) = sum(cloud_top_pressure, mask = cloudM
         end if
 
     end function get_ssa_nir
-!#endif
-#ifdef v1.4.0
-  elemental function get_g_nir (phase, re)
-    !
-    ! Polynomial fit for asummetry parameter g in MODIS band 7 (near IR) as a function
-    !   of size for ice and water
-    ! Fits from Steve Platnick
-    !
-
-    integer, intent(in) :: phase
-    real,    intent(in) :: re
-    real :: get_g_nir
-
-    real, dimension(3), parameter :: ice_coefficients   = (/ 0.7432,  4.5563e-3, -2.8697e-5 /), &
-                               small_water_coefficients = (/ 0.8027, -1.0496e-2,  1.7071e-3 /), &
-                                 big_water_coefficients = (/ 0.7931,  5.3087e-3, -7.4995e-5 /)
-
-    ! approx. fits from MODIS Collection 5 LUT scattering calculations
-    if(phase == phaseIsLiquid) then
-      if(re < 8.) then
-        get_g_nir = fit_to_quadratic(re, small_water_coefficients)
-        if(re < re_water_min) get_g_nir = fit_to_quadratic(re_water_min, small_water_coefficients)
-      else
-        get_g_nir = fit_to_quadratic(re,   big_water_coefficients)
-        if(re > re_water_max) get_g_nir = fit_to_quadratic(re_water_max, big_water_coefficients)
-      end if
-    else
-      get_g_nir = fit_to_quadratic(re, ice_coefficients)
-      if(re < re_ice_min) get_g_nir = fit_to_quadratic(re_ice_min, ice_coefficients)
-      if(re > re_ice_max) get_g_nir = fit_to_quadratic(re_ice_max, ice_coefficients)
-    end if
-
-  end function get_g_nir
-
-  ! --------------------------------------------
-    elemental function get_ssa_nir (phase, re)
-        integer, intent(in) :: phase
-        real,    intent(in) :: re
-        real                :: get_ssa_nir
-        !
-        ! Polynomial fit for single scattering albedo in MODIS band 7 (near IR) as a function
-        !   of size for ice and water
-        ! Fits from Steve Platnick
-        !
-
-        real, dimension(4), parameter :: ice_coefficients   = (/ 0.9994, -4.5199e-3, 3.9370e-5, -1.5235e-7 /)
-        real, dimension(3), parameter :: water_coefficients = (/ 1.0008, -2.5626e-3, 1.6024e-5 /)
-
-        ! approx. fits from MODIS Collection 5 LUT scattering calculations
-        if(phase == phaseIsLiquid) then
-          get_ssa_nir = fit_to_quadratic(re, water_coefficients)
-          if(re < re_water_min) get_ssa_nir = fit_to_quadratic(re_water_min, water_coefficients)
-          if(re > re_water_max) get_ssa_nir = fit_to_quadratic(re_water_max, water_coefficients)
-        else
-          get_ssa_nir = fit_to_cubic(re, ice_coefficients)
-          if(re < re_ice_min) get_ssa_nir = fit_to_cubic(re_ice_min, ice_coefficients)
-          if(re > re_ice_max) get_ssa_nir = fit_to_cubic(re_ice_max, ice_coefficients)
-        end if
-
-    end function get_ssa_nir
-#endif
    ! --------------------------------------------
   pure function fit_to_cubic(x, coefficients)
     real,               intent(in) :: x

@@ -47,6 +47,8 @@ MODULE CONV_UTILITIES_k_MOD
     real, _ALLOCATABLE :: thvtop(:)_NULL, qn   (:)_NULL, qs    (:)_NULL
     real, _ALLOCATABLE :: am1   (:)_NULL, am2  (:)_NULL, am3   (:)_NULL
     real, _ALLOCATABLE :: am4   (:)_NULL, dthvdp(:)_NULL
+    real, _ALLOCATABLE :: amx1  (:)_NULL, amx2 (:)_NULL, amx3  (:)_NULL
+    real, _ALLOCATABLE :: amx4  (:)_NULL
     real, _ALLOCATABLE :: tdt_rad(:)_NULL
     real, _ALLOCATABLE :: tdt_dyn(:)_NULL,qvdt_dyn(:)_NULL,qidt_dyn(:)_NULL
     real, _ALLOCATABLE :: tdt_dif(:)_NULL,qvdt_dif(:)_NULL,qidt_dif(:)_NULL
@@ -59,7 +61,7 @@ MODULE CONV_UTILITIES_k_MOD
     real, _ALLOCATABLE :: hf0   (:)_NULL, ddp_dyn(:)_NULL, hdp_dyn(:)_NULL
     real, _ALLOCATABLE :: hfint(:)_NULL, hfintn(:)_NULL, dpint(:)_NULL
 !++++yim     
-    real, _ALLOCATABLE :: tr    (:,:)_NULL, sstr(:,:)_NULL, amx(:,:)_NULL
+    real, _ALLOCATABLE :: tr    (:,:)_NULL, sstr(:,:)_NULL
  end type sounding
 
  public adicloud
@@ -227,7 +229,10 @@ contains
     allocate ( sd%am2   (1:kd)); sd%am2   =0.;
     allocate ( sd%am3   (1:kd)); sd%am3   =0.;
     allocate ( sd%am4   (1:kd)); sd%am4   =0.;
-    allocate ( sd%amx   (1:kd,1:5));sd%amx=0.;
+    allocate ( sd%amx1  (1:kd)); sd%amx1  =0.;
+    allocate ( sd%amx2  (1:kd)); sd%amx2  =0.;
+    allocate ( sd%amx3  (1:kd)); sd%amx3  =0.;
+    allocate ( sd%amx4  (1:kd)); sd%amx4  =0.;
     allocate ( sd%dthvdp(1:kd)); sd%dthvdp=0.;
     allocate ( sd%hl    (1:kd)); sd%hl    =0.;
     allocate ( sd%hm    (1:kd)); sd%hm    =0.;
@@ -311,7 +316,9 @@ contains
     sd1%ql    = sd%ql;   sd1%qi    =sd%qi;
     sd1%qa    = sd%qa;   sd1%qn    =sd%qn;    
     sd1%am1   = sd%am1;  sd1%am2   =sd%am2; 
-    sd1%am3   = sd%am3;  sd1%am4   =sd%am4; sd1%amx=sd%amx;
+    sd1%am3   = sd%am3;  sd1%am4   =sd%am4;
+    sd1%amx1  = sd%amx1; sd1%amx2  =sd%amx2;
+    sd1%amx3  = sd%amx3; sd1%amx4  =sd%amx4;
     sd1%hl    = sd%hl;   sd1%sshl  =sd%sshl;
     sd1%hm    = sd%hm;   sd1%hms   =sd%hms;
     sd1%omg   = sd%omg;  sd1%hf0   = sd%hf0;
@@ -328,7 +335,8 @@ contains
          sd%thv, sd%rh, sd%p, sd%z, sd%dp, sd%dz, sd%rho, sd%nu, sd%leff,     &
          sd%exner, sd%ps, sd%exners, sd%zs, sd%ssthc, sd%ssqct, sd%dudp,      &
          sd%dvdp, sd%thvbot, sd%thvtop, sd%qn, sd%am1, sd%am2, sd%am3, sd%am4,&
-         sd%qs, sd%hl, sd%hm, sd%hf0, sd%hms, sd%sshl, sd%tr, sd%sstr, sd%amx,&
+         sd%amx1, sd%amx2, sd%amx3, sd%amx4,                                  &
+         sd%qs, sd%hl, sd%hm, sd%hf0, sd%hms, sd%sshl, sd%tr, sd%sstr,        &
          sd%omg, sd%qtflx_up, sd%qtflx_dn, sd%omega_up, sd%omega_dn,          &
          sd%hdt_vadv, sd%hdt_forc )
   end subroutine sd_end_k
@@ -397,7 +405,8 @@ contains
 !#####################################################################
 
   subroutine pack_sd_k (land, coldT, delt, pmid, pint, zmid, zint,      &
-              u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4, amx,&
+              u, v, omg, t, qv, ql, qi, qa, qn, am1, am2, am3, am4,     &
+              amx1, amx2, amx3, amx4,                                   &
               tracers, src_choice, tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn,&
               dgz_dyn, ddp_dyn, tdt_dif, dgz_phy, qvdt_dif, qidt_dif, sd, Uw_p)
 
@@ -410,10 +419,11 @@ contains
     real, intent(in), dimension(:)   :: u, v, omg  !wind profile (m/s)
     real, intent(in), dimension(:)   :: t, qv      !temperature and specific humidity
     real, intent(in), dimension(:)   :: ql, qi, qa, qn      !cloud tracers
-    real, intent(in), dimension(:)   :: am1, am2, am3, am4  ! aerosal species
+    real, intent(in), dimension(:)   :: am1, am2, am3, am4            ! aerosal species
+    real, intent(in), dimension(:)   :: amx1, amx2, amx3, amx4        ! aerosal species
     real, intent(in), dimension(:)   :: tdt_rad, tdt_dyn, qvdt_dyn, qidt_dyn, dgz_dyn, ddp_dyn, dgz_phy
     real, intent(in), dimension(:)   :: tdt_dif, qvdt_dif, qidt_dif
-    real, intent(in), dimension(:,:) :: tracers, amx        !env. tracers    
+    real, intent(in), dimension(:,:) :: tracers        !env. tracers    
     type(sounding), intent(inout)    :: sd
     type(uw_params), intent(inout)    :: Uw_p
 
@@ -452,7 +462,10 @@ contains
        sd % am2  (k) = am2(nk)
        sd % am3  (k) = am3(nk)
        sd % am4  (k) = am4(nk)
-       sd % amx(k,:) = amx(nk,:)
+       sd % amx1 (k) = amx1(nk)
+       sd % amx2 (k) = amx2(nk)
+       sd % amx3 (k) = amx3(nk)
+       sd % amx4 (k) = amx4(nk)
        sd % tdt_rad (k) = tdt_rad(nk)
        sd % tdt_dyn (k) = tdt_dyn(nk)
        sd % qvdt_dyn(k) = qvdt_dyn(nk)
