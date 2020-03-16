@@ -184,7 +184,7 @@ module atmos_tracer_utilities_mod
   logical :: drydep_exp = .false.
   real :: T_snow_dep = 263.15
   real :: kbs_val   = 50. ! surface conductance of rough sea (m/s)
-  namelist /wetdep_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp, T_snow_dep, &
+  namelist /atmos_tracer_utilities_nml/  scale_aerosol_wetdep,  scale_aerosol_wetdep_snow, file_dry, drydep_exp, T_snow_dep, &
                          kbs_val
   ! <---h1g,
 contains
@@ -305,14 +305,14 @@ contains
        !    read namelist.
        !-----------------------------------------------------------------------
 #ifdef INTERNAL_FILE_NML
-       read (input_nml_file, nml=wetdep_nml, iostat=io)
-       ierr = check_nml_error(io,'wetdep_nml')
+       read (input_nml_file, nml=atmos_tracer_utilities_nml, iostat=io)
+       ierr = check_nml_error(io,'atmos_tracer_utilities_nml')
 #else
        if ( file_exist('input.nml')) then
           unit =  open_namelist_file ( )
           ierr=1; do while (ierr /= 0)
-          read  (unit, nml=wetdep_nml, iostat=io, end=10)
-          ierr = check_nml_error(io,'wetdep_nml')
+          read  (unit, nml=atmos_tracer_utilities_nml, iostat=io, end=10)
+          ierr = check_nml_error(io,'atmos_tracer_utilities_nml')
        end do
 10     call close_file (unit)
     endif
@@ -2059,7 +2059,7 @@ subroutine get_cmip_param(n,cmip_name,cmip_longname,cmip_longname2)
 
  integer, intent(in) :: n
  character(len=*), intent(out), optional :: cmip_name, cmip_longname, cmip_longname2
- character(len=100) :: cmip_data, cmip_scheme
+ character(len=200) :: cmip_data, cmip_scheme
  logical flag
  real :: mw
  integer :: iflag
