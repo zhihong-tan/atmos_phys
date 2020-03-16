@@ -1,4 +1,5 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
@@ -91,7 +92,6 @@ public cosp_diagnostics_init, output_cosp_fields, cosp_diagnostics_end, &
 
 character(len=128)  :: version =  '$Id $'
 character(len=128)  :: tagname =  '$Name $'
-!   cosp_version = 1.4.1
 
 !---------------------------------------------------------------------
 !namelist variables

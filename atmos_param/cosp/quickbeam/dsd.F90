@@ -1,10 +1,10 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 #ifdef COSP_GFDL
 
 !---------------------------------------------------------------------
 !------------ FMS version number and tagname for this file -----------
 
-! cosp_version = 1.4.1
 
 #endif
   subroutine dsd(Q,Re,Np,D,N,nsizes,dtype,rho_a,tk, &
@@ -68,7 +68,8 @@
   
   integer, intent(in) :: nsizes
   integer, intent(in) :: dtype
-  real*8, intent(in)  :: Q,Re,Np,D(nsizes)
+  real*8, intent(in)  :: Q,Np,D(nsizes)
+  real*8, intent(inout)  :: Re
   real*8, intent(in)  :: rho_a,tk,dmin,dmax,rho_c,p1,p2,p3
     
   real*8, intent(inout) :: apm,bpm  
