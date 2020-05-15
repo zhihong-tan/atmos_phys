@@ -85,7 +85,7 @@ libatmos_phys_la_SOURCES = ${top_srcdir}/atmos_param/aerosol_cloud/aerosol_cloud
     ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_radiation_module.F90 \
     ${top_srcdir}/atmos_param/convection_driver/detr_ice_num.F90 \
     ${top_srcdir}/atmos_param/convection_driver/convection_driver.F90 \
-    ${top_srcdir}/atmos_param/convection_driver/moistproc_kernels.F90 \
+    ${top_srcdir}/atmos_param/convection_driver/convection_utilities.F90 \
     ${top_srcdir}/atmos_param/cosp/cosp.F90 \
     ${top_srcdir}/atmos_param/cosp/cosp_constants.F90 \
     ${top_srcdir}/atmos_param/cosp/cosp_diagnostics.F90 \
@@ -249,6 +249,7 @@ libatmos_phys_la_SOURCES = ${top_srcdir}/atmos_param/aerosol_cloud/aerosol_cloud
     ${top_srcdir}/atmos_shared/tracer_driver/atmos_co2.F90 \
     ${top_srcdir}/atmos_shared/tracer_driver/atmos_convection_tracer.F90 \
     ${top_srcdir}/atmos_shared/tracer_driver/atmos_dust.F90 \
+    ${top_srcdir}/atmos_shared/tracer_driver/atmos_nh3_tag.F90 \
     ${top_srcdir}/atmos_shared/tracer_driver/atmos_radon.F90 \
     ${top_srcdir}/atmos_shared/tracer_driver/atmos_regional_tracer_driver.F90 \
     ${top_srcdir}/atmos_shared/tracer_driver/atmos_sea_salt.F90 \
@@ -1276,23 +1277,16 @@ ${top_srcdir}/atmos_param/convection_driver/convection_driver.lo: ${top_srcdir}/
                                                                   ${top_srcdir}/atmos_param/ras/ras.lo \
                                                                   ${top_srcdir}/atmos_param/dry_adj/dry_adj.lo \
                                                                   ${top_srcdir}/atmos_param/convection_driver/detr_ice_num.lo \
+                                                                  ${top_srcdir}/atmos_param/convection_driver/convection_utilities.lo \
                                                                   ${top_srcdir}/atmos_param/rh_clouds/rh_clouds.lo \
                                                                   ${top_srcdir}/atmos_param/cu_mo_trans/cu_mo_trans.lo \
                                                                   ${top_srcdir}/atmos_shared/tracer_driver/tropchem/mo_hook.lo \
                                                                   ${top_srcdir}/atmos_shared/aerosol/aerosol_types.lo \
                                                                   ${top_srcdir}/atmos_param/moist_processes/moist_processes_utils.lo \
-                                                                  ${top_srcdir}/atmos_param/convection_driver/moistproc_kernels.lo \
                                                                   ${top_srcdir}/atmos_shared/tracer_driver/atmos_tracer_utilities.lo \
                                                                   ${top_srcdir}/atmos_shared/atmos_cmip_diag/atmos_global_diag.lo \
                                                                   ${top_srcdir}/atmos_shared/atmos_cmip_diag/atmos_cmip_diag.lo
-${top_srcdir}/atmos_param/convection_driver/moistproc_kernels.lo: ${top_srcdir}/atmos_param/convection_driver/moistproc_kernels.F90 \
-                                                                  ${top_srcdir}/atmos_param/moist_conv/moist_conv.lo \
-                                                                  ${top_srcdir}/atmos_param/shallow_cu/uw_conv.lo \
-                                                                  ${top_srcdir}/atmos_param/ras/ras.lo \
-                                                                  ${top_srcdir}/atmos_param/cu_mo_trans/cu_mo_trans.lo \
-                                                                  ${top_srcdir}/atmos_shared/aerosol/aerosol_types.lo \
-                                                                  ${top_srcdir}/atmos_param/convection_driver/detr_ice_num.lo \
-                                                                  ${top_srcdir}/atmos_param/physics_radiation_exch/physics_radiation_exch.lo
+${top_srcdir}/atmos_param/convection_driver/convection_utilities.lo: ${top_srcdir}/atmos_param/convection_driver/convection_utilities.F90
 ${top_srcdir}/atmos_param/cosp/cosp.lo: ${top_srcdir}/atmos_param/cosp/cosp.F90 \
                                         ${top_srcdir}/atmos_param/cosp/cosp_types.lo \
                                         ${top_srcdir}/atmos_param/cosp/cosp_simulator.lo \
@@ -1419,7 +1413,9 @@ ${top_srcdir}/atmos_param/cosp/quickbeam/scale_LUTs_io.lo: ${top_srcdir}/atmos_p
 ${top_srcdir}/atmos_param/cosp/quickbeam/zeff.lo: ${top_srcdir}/atmos_param/cosp/quickbeam/zeff.F90 \
                                                   ${top_srcdir}/atmos_param/cosp/quickbeam/math_lib.lo \
                                                   ${top_srcdir}/atmos_param/cosp/quickbeam/optics_lib.lo
-${top_srcdir}/atmos_param/cu_mo_trans/cu_mo_trans.lo: ${top_srcdir}/atmos_param/cu_mo_trans/cu_mo_trans.F90
+${top_srcdir}/atmos_param/cu_mo_trans/cu_mo_trans.lo: ${top_srcdir}/atmos_param/cu_mo_trans/cu_mo_trans.F90 \
+                                                      ${top_srcdir}/atmos_param/convection_driver/convection_utilities.lo \
+                                                      ${top_srcdir}/atmos_param/moist_processes/moist_processes_utils.lo
 ${top_srcdir}/atmos_param/damping_driver/damping_driver.lo: ${top_srcdir}/atmos_param/damping_driver/damping_driver.F90 \
                                                             ${top_srcdir}/atmos_param/mg_drag/mg_drag.lo \
                                                             ${top_srcdir}/atmos_param/cg_drag/cg_drag.lo \
@@ -1651,6 +1647,7 @@ ${top_srcdir}/atmos_param/moist_processes/moist_processes.lo: ${top_srcdir}/atmo
                                                               ${top_srcdir}/atmos_param/physics_radiation_exch/physics_radiation_exch.lo \
                                                               ${top_srcdir}/atmos_param/lscloud_driver/lscloud_driver.lo \
                                                               ${top_srcdir}/atmos_param/convection_driver/convection_driver.lo \
+                                                              ${top_srcdir}/atmos_param/convection_driver/convection_utilities.lo \
                                                               ${top_srcdir}/atmos_shared/atmos_cmip_diag/atmos_global_diag.lo \
                                                               ${top_srcdir}/atmos_param/vert_diff_driver/vert_diff_driver.lo \
                                                               ${top_srcdir}/atmos_shared/aerosol/aerosol_types.lo \
@@ -1926,6 +1923,9 @@ ${top_srcdir}/atmos_shared/tracer_driver/atmos_convection_tracer.lo: ${top_srcdi
 ${top_srcdir}/atmos_shared/tracer_driver/atmos_dust.lo: ${top_srcdir}/atmos_shared/tracer_driver/atmos_dust.F90 \
                                                         ${top_srcdir}/atmos_shared/atmos_cmip_diag/atmos_cmip_diag.lo \
                                                         ${top_srcdir}/atmos_shared/tracer_driver/atmos_tracer_utilities.lo
+${top_srcdir}/atmos_shared/tracer_driver/atmos_nh3_tag.lo: ${top_srcdir}/atmos_shared/tracer_driver/atmos_nh3_tag.F90 \
+                                                           ${top_srcdir}/atmos_shared/atmos_cmip_diag/atmos_cmip_diag.lo \
+                                                           ${top_srcdir}/atmos_shared/tracer_driver/atmos_tracer_utilities.lo
 ${top_srcdir}/atmos_shared/tracer_driver/atmos_radon.lo: ${top_srcdir}/atmos_shared/tracer_driver/atmos_radon.F90 \
                                                          ${top_srcdir}/atmos_shared/tracer_driver/atmos_tracer_utilities.lo
 ${top_srcdir}/atmos_shared/tracer_driver/atmos_regional_tracer_driver.lo: ${top_srcdir}/atmos_shared/tracer_driver/atmos_regional_tracer_driver.F90
@@ -1962,6 +1962,7 @@ ${top_srcdir}/atmos_shared/tracer_driver/atmos_tracer_driver.lo: ${top_srcdir}/a
                                                                  ${top_srcdir}/atmos_shared/tracer_driver/atmos_ch3i.lo \
                                                                  ${top_srcdir}/atmos_shared/tracer_driver/atmos_sea_salt.lo \
                                                                  ${top_srcdir}/atmos_shared/tracer_driver/atmos_dust.lo \
+                                                                 ${top_srcdir}/atmos_shared/tracer_driver/atmos_nh3_tag.lo \
                                                                  ${top_srcdir}/atmos_shared/tracer_driver/atmos_sulfate.lo \
                                                                  ${top_srcdir}/atmos_shared/tracer_driver/atmos_soa.lo \
                                                                  ${top_srcdir}/atmos_shared/tracer_driver/tropchem_driver.lo \
@@ -2130,7 +2131,6 @@ math_lib.mod: ${top_srcdir}/atmos_param/cosp/quickbeam/math_lib.lo
 am3_mo_setrxt_mod.mod: ${top_srcdir}/atmos_shared/tracer_driver/tropchem/AM3_chem/AM3.subs.lo
 saturation.mod: ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.lo
 optics_lib.mod: ${top_srcdir}/atmos_param/cosp/quickbeam/optics_lib.lo
-moistproc_kernels_mod.mod: ${top_srcdir}/atmos_param/convection_driver/moistproc_kernels.lo
 donner_deep_mod.mod: ${top_srcdir}/atmos_param/donner_deep/donner_deep.lo
 surface_varnce_module.mod: ${top_srcdir}/atmos_param/clubb/CLUBB_core/surface_varnce_module.lo
 am3_mo_grid_mod.mod: ${top_srcdir}/atmos_shared/tracer_driver/tropchem/AM3_chem/AM3.mods.lo
@@ -2172,6 +2172,7 @@ topo_drag_mod.mod: ${top_srcdir}/atmos_param/topo_drag/topo_drag.lo
 cloud_rad_mod.mod: ${top_srcdir}/atmos_param/cloud_rad/cloud_rad.lo
 mod_cosp_rttov_simulator.mod: ${top_srcdir}/atmos_param/cosp/cosp_rttov_simulator.lo
 convection_driver_mod.mod: ${top_srcdir}/atmos_param/convection_driver/convection_driver.lo
+convection_utilities_mod.mod: ${top_srcdir}/atmos_param/convection_driver/convection_utilities.lo
 alt_cloud_mod.mod: ${top_srcdir}/atmos_param/clubb/alt_cloud.lo
 mg_drag_mod.mod: ${top_srcdir}/atmos_param/mg_drag/mg_drag.lo
 donner_deep_clouds_w_mod.mod: ${top_srcdir}/atmos_param/radiation/clouds/donner_deep_clouds_W.lo
@@ -2377,6 +2378,7 @@ diffusivity_mod.mod: ${top_srcdir}/atmos_param/diffusivity/diffusivity.lo
 mo_imp_nln_matrix_mod.mod: ${top_srcdir}/atmos_shared/tracer_driver/tropchem/AM4_chem/moz.mat.lo
 physics_radiation_exch_mod.mod: ${top_srcdir}/atmos_param/physics_radiation_exch/physics_radiation_exch.lo
 atmos_dust_mod.mod: ${top_srcdir}/atmos_shared/tracer_driver/atmos_dust.lo
+atmos_nh3_tag_mod.mod: ${top_srcdir}/atmos_shared/tracer_driver/atmos_nh3_tag.lo
 numerical_check.mod: ${top_srcdir}/atmos_param/clubb/CLUBB_core/numerical_check.lo
 aer_ccn_act_k_mod.mod: ${top_srcdir}/atmos_shared/tracer_driver/aer_ccn_act/aer_ccn_act_k.lo
 mo_imp_prod_loss_mod.mod: ${top_srcdir}/atmos_shared/tracer_driver/tropchem/AM4_chem/moz.mat.lo
@@ -2470,6 +2472,7 @@ include_HEADERS = aer_ccn_act_k_mod.mod \
                   atmos_co2_mod.mod \
                   atmos_convection_tracer_mod.mod \
                   atmos_dust_mod.mod \
+                  atmos_nh3_tag_mod.mod \
                   atmos_global_diag_mod.mod \
                   atmos_lib.mod \
                   atmos_nudge_mod.mod \
@@ -2505,6 +2508,7 @@ include_HEADERS = aer_ccn_act_k_mod.mod \
                   clubb_driver_mod.mod \
                   conv_closures_mod.mod \
                   convection_driver_mod.mod \
+                  convection_utilities_mod.mod \
                   conv_plumes_k_mod.mod \
                   conv_plumes_mod.mod \
                   conv_utilities_k_mod.mod \
@@ -2592,7 +2596,6 @@ include_HEADERS = aer_ccn_act_k_mod.mod \
                   mo_indprd_mod.mod \
                   moist_conv_mod.mod \
                   moist_processes_mod.mod \
-                  moistproc_kernels_mod.mod \
                   moist_proc_utils_mod.mod \
                   mo_jpl_mod.mod \
                   mo_make_grp_vmr_mod.mod \
