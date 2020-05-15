@@ -549,6 +549,7 @@ type (clouds_from_moist_block_type) :: Restart
 
 type(precip_flux_type)              :: Precip_flux
 
+integer :: i_cell, i_meso, i_shallow
 
                             contains
 
@@ -1065,6 +1066,13 @@ real,    dimension(:,:,:),    intent(out),  optional :: diffm, difft
 
      call alloc_clouds_from_moist_type(Moist_clouds, Exch_ctrl, Atm_block)
 
+!------------------------------------------------------------------------
+!    save convective cloud indices to be passed to convection_driver_mod.
+!------------------------------------------------------------------------
+     i_shallow = Moist_clouds(1)%block(1)%index_uw_conv
+     i_cell    = Moist_clouds(1)%block(1)%index_donner_cell
+     i_meso    = Moist_clouds(1)%block(1)%index_donner_meso
+
 !--------------------------------------------------------------------
 !    call physics_driver_read_restart to obtain initial values for the module
 !    variables. Also register restart fields to be ready for intermediate 
@@ -1457,7 +1465,7 @@ logical,                 intent(in)             :: step_to_call_cosp_in
 !    call moist_processes_time_vary to pass needed time-dependent fields 
 !    to subordinate modules.
 !----------------------------------------------------------------------
-      call moist_processes_time_vary (dt)
+      call moist_processes_time_vary (Time_next, dt, i_cell, i_meso, i_shallow)
     endif
 !----------------------------------------------------------------------
 !    call cosp_driver_time_vary to obtain satellite location at current
@@ -2549,7 +2557,7 @@ real,dimension(:,:),    intent(inout)             :: gust
 !    and processes involving condenstion.
 !-----------------------------------------------------------------------
         call moist_processes (    &
-              is, ie, js, je, npz, Time_next, dt, frac_land, u_star,  &
+              is, ie, js, je, npz, Time_next,     frac_land, u_star,  &
               b_star, q_star, area, lon, lat, Physics_input_block,   &
               Moist_clouds_block, Physics_tendency_block, Phys_mp_exch, &
               Surf_diff, Removal_mp, shflx, lhflx,  &
@@ -2607,8 +2615,8 @@ real,dimension(:,:),    intent(inout)             :: gust
       if (query_cmip_diag_id(ID_tntmp) .or. query_cmip_diag_id(ID_tnhusmp)) then
         lphalf = log(p_half)
       endif
-      if (query_cmip_diag_id(ID_tntmp)) then
-        used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js, 1, phalf=lphalf)
+      if (query_cmip_diag_id(ID_tntmp)) then 
+         used = send_cmip_data_3d (ID_tntmp, tdt(:,:,:), Time_next, is, js,1, phalf=lphalf)
       endif
       if (query_cmip_diag_id(ID_tnhusmp)) then
         used = send_cmip_data_3d (ID_tnhusmp, rdt(:,:,:,nsphum), Time_next, is, js, 1, phalf=lphalf)

@@ -159,8 +159,7 @@ character(len=64)  :: file_sulfate = 'sulfate.nc',    & ! NetCDF file for sulfat
                       file_emis3d_1 = 'emissions3d.', & ! NetCDF file name (beginning) for 3-D emissions
                       file_emis3d_2 = '.nc',          & ! NetCDF file name (end) for 3-D emissions
                       file_ub = 'ub_vals.nc'            ! NetCDF file for chemical upper boundary conditions
-character(len=64)  :: file_dry = 'depvel.nc',         & ! NetCDF file for dry deposition velocities
-                      file_aircraft = 'aircraft.nc',  & ! NetCDF file for aircraft emissions
+character(len=64)  :: file_aircraft = 'aircraft.nc',  & ! NetCDF file for aircraft emissions
                       file_jval_lut = 'jvals.v5',     & ! ascii file for photolysis rate lookup table
                       file_jval_lut_min = ''            ! ascii file for photolysis rate LUT (for solar min)
 character(len=10), dimension(maxinv) :: inv_list =''    ! list of invariant (fixed) tracers
@@ -252,7 +251,6 @@ namelist /tropchem_driver_nml/    &
                                file_emis3d_1, &
                                file_emis3d_2, &
                                file_ub, &
-                               file_dry, &
                                inv_list, &
                                file_aircraft,&
                                aircraft_scale_factor, &
@@ -408,7 +406,6 @@ type :: co2_type
    type(time_type)                        :: fixed_entry
 end type co2_type
 type(co2_type) :: co2_t
-type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
 !++van
@@ -1504,8 +1501,7 @@ end subroutine tropchem_driver
 !   </DESCRIPTION>
 !   <TEMPLATE>
 !     Ltropchem = tropchem_driver_init( r, mask, axes, Time, &
-!                                       lonb_mod, latb_mod, phalf, &
-!                                       drydep_data )
+!                                       lonb_mod, latb_mod, phalf)
 !   </TEMPLATE>
 !   <IN NAME="mask" TYPE="real, optional" DIM="(:,:,:)">
 !      optional mask that designates which grid points
@@ -1537,8 +1533,7 @@ end subroutine tropchem_driver
 !   </INOUT>
 
 function tropchem_driver_init( r, mask, axes, Time, &
-                               lonb_mod, latb_mod, phalf, &
-                               drydep_data ) result(Ltropchem)
+                               lonb_mod, latb_mod, phalf) result(Ltropchem)
 
 !-----------------------------------------------------------------------
 !
@@ -1555,7 +1550,6 @@ function tropchem_driver_init( r, mask, axes, Time, &
    real, intent(in), dimension(:,:) :: lonb_mod
    real, intent(in), dimension(:,:) :: latb_mod
    real, intent(in),dimension(:,:,:) :: phalf
-   type(interpolate_type), intent(out) :: drydep_data(:)
 
    real    :: small_value
 
@@ -1859,13 +1853,6 @@ end if
       end if
     end do
 !--van    
-
-!-----------------------------------------------------------------------
-!     ... Setup dry deposition
-!-----------------------------------------------------------------------
-   call tropchem_drydep_init( dry_files, dry_names, &
-                              lonb_mod, latb_mod, &
-                              drydep_data )
 
 !-----------------------------------------------------------------------
 !     ... Setup upper boundary condition data
@@ -2902,77 +2889,6 @@ subroutine init_xactive_emis( model, method_type, index, species, &
    end if
 
 end subroutine init_xactive_emis
-!</SUBROUTINE>
-
-
-
-!############################################################################
-
-! <SUBROUTINE NAME="tropchem_drydep_init">
-!   <OVERVIEW>
-!     Open dry deposition file
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Opens NetCDF file of tracer dry deposition velocities for reading,
-!     and set up interpolation to model grid/time
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     call tropchem_drydep_init( dry_files, dry_names, &
-!                                lonb_mod, latb_mod, &
-!                                drydep_data )
-!   </TEMPLATE>
-
-subroutine tropchem_drydep_init( dry_files, dry_names, &
-                                 lonb_mod, latb_mod, &
-                                 drydep_data )
-
-!-----------------------------------------------------------------------
-
-   real,                   intent(in),  dimension(:,:) :: lonb_mod, latb_mod
-   character(len=64),      intent(out), dimension(:) :: dry_files, dry_names
-   type(interpolate_type), intent(out)               :: drydep_data(:)
-
-!-----------------------------------------------------------------------
-
-   integer :: i
-   integer :: flag_file, flag_spec
-   character(len=64) :: filename,specname
-   character(len=64) :: name='', control=''
-
-!-----------------------------------------------------------------------
-
-!---------- Set interpolator type for dry deposition
-   call interpolator_init( drydep_data_default, trim(file_dry), lonb_mod, latb_mod, &
-                           data_out_of_bounds=(/CONSTANT/), &
-                           vert_interp=(/INTERP_WEIGHTED_P/))
-
-   do i = 1,pcnstm1
-      dry_files(i) = ''
-      dry_names(i) = ''
-      if( query_method('dry_deposition',MODEL_ATMOS,indices(i),name,control) )then
-         if( trim(name(1:4)) == 'file' ) then
-            flag_file = parse(control, 'file',filename)
-            flag_spec = parse(control, 'name',specname)
-            if(flag_file > 0 .and. trim(filename) /= trim(file_dry)) then
-               dry_files(i) = trim(filename)
-               call interpolator_init( drydep_data(indices(i)), trim(filename), lonb_mod, latb_mod,&
-                                       data_out_of_bounds=(/CONSTANT/), &
-                                       vert_interp=(/INTERP_WEIGHTED_P/))
-            else
-               dry_files(i) = trim(file_dry)
-               drydep_data(indices(i)) = drydep_data_default
-
-            end if
-            if(flag_spec >0) then
-               dry_names(i) = trim(specname)
-            else
-               dry_names(i) = trim(lowercase(tracnam(i)))
-            end if
-         end if
-      end if
-   end do
-
-end subroutine tropchem_drydep_init
 !</SUBROUTINE>
 
 !############################################################################

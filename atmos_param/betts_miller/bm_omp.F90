@@ -1494,7 +1494,6 @@ if (k .eq. nlev) go to 11
            logunit = stdlog()
            write (logunit,nml=bm_omp_nml)
       endif
-      call close_file (unit)
 
       module_is_initialized =.true.
 

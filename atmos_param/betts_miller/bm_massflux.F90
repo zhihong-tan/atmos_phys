@@ -1585,7 +1585,6 @@ real :: prec_rev, ratio, q_src, ratio_q, ratio_T, en_acc, ratio_ml
            logunit = stdlog()
            write (logunit,nml=bm_massflux_nml)
       endif
-      call close_file (unit)
 
       module_is_initialized =.true.
 
