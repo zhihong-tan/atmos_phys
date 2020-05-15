@@ -355,7 +355,6 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_driver_SCM.lo: ${top_srcdir}/atmos_param/c
                                                      ${top_srcdir}/atmos_shared/tracer_driver/aer_ccn_act/ice_nucl.lo
 ${top_srcdir}/atmos_param/clubb/advance_sclrm_Nd_module.lo: ${top_srcdir}/atmos_param/clubb/advance_sclrm_Nd_module.F90 \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo
@@ -365,273 +364,86 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/Skw_module.lo: ${top_srcdir}/atmos_pa
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/T_in_K_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/T_in_K_module.F90 \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.F90 \
-                                                                     ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_windm_edsclrm_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_windm_edsclrm_module.F90 \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_explicit.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/sponge_layer_damping.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_wp2_wp3_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_wp2_wp3_module.F90 \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_explicit.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/csr_matrix_class_3array.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_wrap.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_cache.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/hyper_diffusion_4th_ord.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/hyper_diffusion_4th_ord.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/csr_matrix_class_3array.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_xm_wpxp_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_xm_wpxp_module.F90 \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/mono_flux_limiter.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/sponge_layer_damping.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_semi_implicit.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_semi_implicit.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/mono_flux_limiter.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/pos_definite_module.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_explicit.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
-                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_xp2_xpyp_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_xp2_xpyp_module.F90 \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_explicit.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/array_index.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_helper_module.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/anl_erf.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/anl_erf.F90
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/array_index.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/array_index.F90
@@ -639,33 +451,14 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/calendar.lo: ${top_srcdir}/atmos_para
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_explicit.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_explicit.F90 \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_semi_implicit.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_semi_implicit.F90 \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_core.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_core.F90 \
@@ -675,9 +468,6 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_core.lo: ${top_srcdir}/atmos_pa
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/numerical_check.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/advance_sclrm_Nd_module.lo \
@@ -689,57 +479,20 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_core.lo: ${top_srcdir}/atmos_pa
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_windm_edsclrm_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/advance_wp2_wp3_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/Skw_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clip_explicit.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/T_in_K_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_subs.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/sigma_sqd_w_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_prognostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/csr_matrix_class_3array.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_wrap.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_cache.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_prognostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.F90
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.F90 \
@@ -754,138 +507,59 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/csr_matrix_class_3array.lo: ${top_src
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/diffusion.F90 \
                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/endian.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/endian.F90
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.F90 \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/extrapolation.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/extrapolation.F90 \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/file_functions.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/file_functions.F90 \
-                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.F90 \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_cache.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_cache.F90 \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_wrap.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_wrap.F90 \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_cache.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/gmres_cache.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.F90 \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/file_functions.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/hydrostatic_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/hydrostatic_module.F90 \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/hyper_diffusion_4th_ord.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/hyper_diffusion_4th_ord.F90 \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                       ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/input_names.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/input_names.F90
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/input_reader.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/input_reader.F90 \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/input_names.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.F90 \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.F90 \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/matrix_operations.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/matrix_operations.F90 \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.F90 \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/mixing_length.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/mixing_length.F90 \
@@ -896,113 +570,51 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/mixing_length.lo: ${top_srcdir}/atmos
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/numerical_check.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.F90 \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/mono_flux_limiter.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/mono_flux_limiter.F90 \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/mean_adv.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/lapack_wrap.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/anl_erf.lo \
-                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/mt95.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/mt95.f90
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/numerical_check.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/numerical_check.F90 \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_prognostic_module.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_microphys.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                               ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_grads.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_grads.F90 \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/endian.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/calendar.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/calendar.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_netcdf.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_netcdf.F90 \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_microphys.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_radiation.lo \
-                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                              ${top_srcdir}/atmos_param/clubb/CLUBB_core/calendar.lo \
@@ -1011,7 +623,6 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo: ${top_srcdir}/a
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_microphys.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_microphys.F90 \
                                                                     ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.F90 \
-                                                                ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_radiation.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_radiation.F90 \
@@ -1019,20 +630,7 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_radiation.lo: ${top_srcdir
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_tunable.F90 \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameter_indices.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo
@@ -1044,8 +642,6 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_closure_module.lo: ${top_srcdir}/
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/anl_erf.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/numerical_check.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.lo \
-                                                                  ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
@@ -1059,51 +655,23 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/pos_definite_module.lo: ${top_srcdir}
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.F90 \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/model_flags.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/sigma_sqd_w_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/sigma_sqd_w_module.F90 \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                   ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/sponge_layer_damping.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/sponge_layer_damping.F90 \
-                                                                    ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                     ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                                    ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                     ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                     ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                                    ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                                     ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.F90 \
                                                                 ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_LH_zt.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_LH_zt.F90 \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_rad_zm.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_rad_zm.F90 \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                             ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_rad_zt.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_rad_zt.F90 \
@@ -1113,15 +681,8 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_rad_zt.lo: ${top_srcdir}/atmos_
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_sfc.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_sfc.F90 \
                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_subs.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_subs.F90 \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_grads.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_netcdf.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_zm.lo \
@@ -1131,74 +692,26 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_subs.lo: ${top_srcdir}/atmos_pa
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_rad_zm.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_sfc.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_microphys.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_grads.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_microphys.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_microphys.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_netcdf.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/T_in_K_module.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/interpolation.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/saturation.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/array_index.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/fill_holes.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/array_index.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/output_netcdf.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.F90 \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/stat_file_module.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
-                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/error_code.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/grid_class.lo \
                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
@@ -1208,38 +721,14 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo: ${top_srcdir}/atm
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_zm.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_zm.F90 \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_zt.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_zt.F90 \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
-                                                        ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_variables.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/stats_type.lo \
                                                         ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/surface_varnce_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/surface_varnce_module.F90 \
-                                                                     ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/numerical_check.lo \
@@ -1249,18 +738,15 @@ ${top_srcdir}/atmos_param/clubb/CLUBB_core/surface_varnce_module.lo: ${top_srcdi
                                                                      ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_diagnostic_module.F90 \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
-                                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_prognostic_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_prognostic_module.F90 \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/pdf_parameter_module.lo \
-                                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/constants_clubb.lo \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/parameters_model.lo \
                                                                            ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_radiation_module.lo: ${top_srcdir}/atmos_param/clubb/CLUBB_core/variables_radiation_module.F90 \
-                                                                          ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo \
                                                                           ${top_srcdir}/atmos_param/clubb/CLUBB_core/clubb_precision.lo
 ${top_srcdir}/atmos_param/convection_driver/detr_ice_num.lo: ${top_srcdir}/atmos_param/convection_driver/detr_ice_num.F90 \
                                                              ${top_srcdir}/atmos_param/lscloud_driver/lscloud_constants.lo
