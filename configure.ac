@@ -65,6 +65,9 @@ AC_LANG_PUSH(Fortran)
 # Check if the compiler needs special OpenMP flags
 AC_OPENMP()
 
+# Look for libFMS.
+AC_CHECK_LIB([FMS], [fms_mod_mp_fms_init], [], [AC_MSG_ERROR([Cannot find FMS library. Set LDFLAGS.])])
+
 AC_LANG_POP(Fortran)
 
 # define all their own flags.
