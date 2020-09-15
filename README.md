@@ -1,5 +1,29 @@
 # atmos_phys
 This is the repository that combines the atmosphere physics and chemistry
+## Table of contents
+* [Guidelines for Contributing](Guidelines-for-Contributing)
+* [Instructions on merging in code from atmos_param or atmos_shared](instructions-on-merging-in-code-from-atmos_param-or-atmos_shared)
+* [XML changes to checkout atmos_phys](xml-changes-to-checkout-atmos_phys)
+## Guidelines for Contributing
+If you have code you would like to contribute, you will first create a git branch.
+Your branch should be in the format of /user/**ini**/**BranchName** where **ini** 
+are your initals and **BranchName** is a name that describes the purpose of your
+branch.  Avoid using a BranchName like *bugfix* or *update* because this is not
+descritive.  
+```bash
+git checkout -b user/ini/BranchName
+```
+Second, you will commit your changes, and push them to the atmos_phys remote 
+repository.  
+```bash
+git push -u origin user/ini/BranchName
+```
+After the changes are pushed, you can share your code with others.  If your code 
+should be included in the main model development, you can submit a merge request by 
+clicking on the Merge Requests link on the gitlab page.  Please include a detailed
+description of the changes made by your branch.  You should submit the merge to the 
+main development branch (*master*).  Assign your merge request to Uriel Ramirez.
+
 ## Instructions on merging in code from atmos_param or atmos_shared
 In order to commit changes that currently exist on atmos_param or atmos_shared,
 you first have to commit and push the changes to a branch in the repository you are 
