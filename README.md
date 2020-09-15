@@ -39,3 +39,47 @@ command
 ```bash
 git remote -v
 ```
+
+## XML changes to checkout atmos_phys
+There are a few modifications to an XML in order switch to the atmos_phys code. 
+An XML will have a section in the compile experiment that looks like the following:
+```xml
+    <component name="atmos_phys" requires="fms" paths="atmos_param atmos_shared">
+      <description domainName="" communityName="" communityVersion="$(RELEASE)" communityGrid=""/>
+      <source versionControl="git" root="http://gitlab.gfdl.noaa.gov/fms">
+        <codeBase version="$(RELEASE)"> atmos_shared.git atmos_param.git </codeBase>
+          <csh><![CDATA[
+            ( cd atmos_shared && git checkout $(ATMOS_GIT_TAG) )
+            ( cd atmos_param  && git checkout $(ATMOS_GIT_TAG) )
+           ]]>
+          </csh>
+      </source>
+      <compile>
+        <cppDefs>$(F2003_FLAGS) -DCLUBB</cppDefs>
+      </compile>
+    </component>
+```
+This can be found by searching the XML for *atmos_phys* or *atmos_shared.git* or 
+*atmos_param.git*. This <component> block should be updated to the following:
+```xml
+    <component name="atmos_phys" requires="fms" paths="atmos_phys">
+      <description domainName="" communityName="" communityVersion="$(RELEASE)" communityGrid=""/>
+      <source versionControl="git" root="http://gitlab.gfdl.noaa.gov/fms">
+        <codeBase version="$(RELEASE)"> atmos_phys.git </codeBase>
+          <csh><![CDATA[
+            ( cd atmos_phys  && git checkout $(ATMOS_GIT_TAG) )
+           ]]>
+          </csh>
+      </source>
+      <compile>
+        <cppDefs>$(F2003_FLAGS) -DCLUBB</cppDefs>
+      </compile>
+    </component>
+```
+1. The **paths** has been changed from "atmos_param atmos_shared" to "atmos_phys".
+2. The **codeBase** was changed from **atmos_shared.git atmos_param.git** to **atmos_phys.git**
+3. The `csh` block was updated to only `cd` to atmos_phys
+
+NOTE: Users should switch to atmos_phys if they are checking out code that is newer 
+than xanadu.  If your model is running code older than xanadu, you should check the 
+code out from atmos_shared and atmos_param.
