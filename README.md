@@ -1,9 +1,9 @@
 # atmos_phys
 This is the repository that combines the atmosphere physics and chemistry
 ## Table of contents
-* [Guidelines for Contributing](Guidelines-for-Contributing)
-* [Instructions on merging in code from atmos_param or atmos_shared](instructions-on-merging-in-code-from-atmos_param-or-atmos_shared)
-* [XML changes to checkout atmos_phys](xml-changes-to-checkout-atmos_phys)
+* [Guidelines for Contributing](README.md#guidelines-for-contributing)
+* [Instructions on merging in code from atmos_param or atmos_shared](README.md#instructions-on-merging-in-code-from-atmos_param-or-atmos_shared)
+* [XML changes to checkout atmos_phys](README.md#xml-changes-to-checkout-atmos_phys)
 ## Guidelines for Contributing
 If you have code you would like to contribute, you will first create a git branch.
 Your branch should be in the format of /user/**ini**/**BranchName** where **ini** 
