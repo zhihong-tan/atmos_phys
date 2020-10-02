@@ -24,7 +24,8 @@ use   tracer_manager_mod, only : get_number_tracers, get_tracer_index, &
                                  get_tracer_names, set_tracer_atts, & 
                                  query_method, NO_TRACER
 use    field_manager_mod, only : parse, MODEL_ATMOS
-use atmos_tracer_utilities_mod, only : wet_deposition, dry_deposition
+use atmos_tracer_utilities_mod, only : wet_deposition, dry_deposition, &
+                                 sedimentation_velocity,sedimentation_flux
 
 implicit none
 private
@@ -267,7 +268,7 @@ subroutine atmos_seasalt_sourcesink1 ( &
   real :: rho_air
   real :: a1, a2, Bcoef, r, dr, rmid
   real, dimension(size(pfull,3))  :: vdep, seasalt_conc0, seasalt_conc1
-  real, dimension(size(pfull,3))  :: dz, air_dens, qn, qn1
+  real, dimension(size(pfull,3))  :: dz, air_dens
   real :: sst
   integer :: istep, nstep
 
@@ -422,26 +423,10 @@ subroutine atmos_seasalt_sourcesink1 ( &
         endif
       enddo
       if (use_sj_sedimentation_solver) then
-        qn(:)=seasalt(i,j,:)
-        qn1(1)=qn(1)*dz(1)/(dz(1)+dt*vdep(1))
-        do k=2,kb
-          qn1(k)=(qn(k)*dz(k)+dt*qn1(k-1)*vdep(k-1)*air_dens(k-1)/air_dens(k))/(dz(k)+dt*vdep(k))
-        enddo
-        seasalt_dt(i,j,:)=seasalt_dt(i,j,:)+(qn1(:)-qn(:))/dt
-        seasalt_setl(i,j) = qn1(kb)*air_dens(kb)/mtv*vdep(kb)
-
-!---> h1g, 2016-04-05
-       if( ssalt_debug ) then
-!$OMP CRITICAL
-
-!  if (mpp_pe()==mpp_root_pe()) then
-!      write(logunit,'("SALT ",2i5," qn(kb)=",e12.4," qn1(kb)=",e12.4," vdep(kb)=",e12.4," air_dens(kb)=",e12.4," dz(kb)=",e12.4," dt=",e12.4," dust_dt=",e12.4," setl=",e12.4)')  &
-!                i,j,qn(kb),qn1(kb),vdep(kb),air_dens(kb),dz(kb),dt,seasalt_dt(i,j,kb),seasalt_setl(i,j)
-!  endif
-!$OMP END CRITICAL  
-       end if ! ssalt_debug
-!<--- h1g, 2016-04-05
-
+        call sedimentation_flux(use_sj_sedimentation_solver,kb, &
+             dt,mtv,dz,vdep,air_dens,&
+             pwt(i,j,:),seasalt(i,j,:),seasalt_dt(i,j,:),setl)
+        seasalt_setl(i,j) = setl(kb)
       else
         do k=1,kb
           step = (zhalf(i,j,k)-zhalf(i,j,k+1)) / vdep(k) / 2.
@@ -483,24 +468,6 @@ subroutine atmos_seasalt_sourcesink1 ( &
   enddo
 
 end subroutine atmos_seasalt_sourcesink1
-
-
-!#######################################################################
-! calculates the vertical velocity of seasalt settling
-elemental real function sedimentation_velocity(T,p,rwet,rho_wet_seasalt) result(vdep)
-   real, intent(in) :: T            ! air temperature, deg K
-   real, intent(in) :: p            ! pressure, Pa
-   real, intent(in) :: rwet         ! radius of seasalt particles, m
-   real, intent(in) :: rho_wet_seasalt ! density of seasalt particles, kg/m3
- 
-   real :: viscosity, free_path, C_c
-   viscosity = 1.458E-6 * T**1.5/(T+110.4)     ! Dynamic viscosity
-   free_path = 6.6e-8*T/293.15*(PSTD_MKS/p)
-   C_c = 1.0 + free_path/rwet * &              ! Slip correction [none]
-               (1.257+0.4*exp(-1.1*rwet/free_path))
-   vdep = 2./9.*C_c*GRAV*rho_wet_seasalt*rwet**2/viscosity  ! Settling velocity [m/s]
-end function sedimentation_velocity
-
 
 !######################################################################
 ! given a tracer index, returns TRUE if this is one of seasalt tracers
