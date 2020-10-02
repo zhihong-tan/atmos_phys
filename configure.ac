@@ -21,7 +21,7 @@ AC_PREREQ([2.59])
 
 # Initialize with name, version, and support email address.
 AC_INIT([GFDL atmos_phys Library],
-  [xanadu],
+  [main],
   [gfdl.climate.model.info@noaa.gov],
   [atmos_phys],
   [https://www.gfdl.noaa.gov/atmos_phys])
@@ -43,6 +43,13 @@ AC_CONFIG_MACRO_DIR([m4])
 LT_PREREQ([2.4])
 LT_INIT()
 
+AC_ARG_ENABLE([setting-flags],
+  [AS_HELP_STRING([--enable-setting-flags],
+    [Allow configure to set some compiler flags.  Disabling this will also disable any other --with or --enable options that set flags, and will only use user-provided falgs. (Default yes)])])
+AS_IF([test ${enable_setting_flags:-yes} = yes],
+  [enable_setting_flags=yes],
+  [enable_setting_flags=no])
+
 # Find the C compiler.
 AC_PROG_CC
 AM_PROG_CC_C_O
@@ -61,16 +68,7 @@ AC_SYS_LARGEFILE
 
 # Fortran specific checks
 AC_LANG_PUSH(Fortran)
-
-# Check if the compiler needs special OpenMP flags
 AC_OPENMP()
-
-# Look for libFMS.
-AC_CHECK_LIB([FMS], [fms_mod_mp_fms_init], [], [AC_MSG_ERROR([Cannot find FMS library. Set LDFLAGS.])])
-
-AC_LANG_POP(Fortran)
-
-# define all their own flags.
 if test $enable_setting_flags = yes; then
   # Make sure the compiler is seeing this as free-formatted, not
   # fixed-formatted, fortran code.
@@ -79,7 +77,9 @@ if test $enable_setting_flags = yes; then
   # Check that long lines of Fortran code can be handled. This will add
   # necessary fortran flags.
   AC_FC_LINE_LENGTH([unlimited])
-
+  GX_FC_DEFAULT_REAL_KIND8_FLAG([dnl
+    FCFLAGS="$FCFLAGS $FC_DEFAULT_REAL_KIND8_FLAG"])
+  FFLAGS="$FFLAGS $FC_DEFAULT_REAL_KIND8_FLAG"
   # Add OpenMP flags
   if test ! -z "$OPENMP_CFLAGS"; then
     CFLAGS="$CFLAGS $OPENMP_CFLAGS"
@@ -87,8 +87,13 @@ if test $enable_setting_flags = yes; then
   fi
   if test ! -z "$OPENMP_FCFLAGS"; then
     FCFLAGS="$FCFLAGS $OPENMP_FCFLAGS"
+    FFLAGS="$FFLAGS $OPENMP_FCFLAGS"
   fi
 fi
+GX_FC_CHECK_MOD([fms_mod], [], [], [AC_MSG_ERROR([Can't find the FMS module.  Set CPPFLAGS/FCFLAGS])])
+GX_FORTRAN_SEARCH_LIBS([fms_init], [FMS], [use fms_mod], [call fms_init()], [],
+  [AC_MSG_ERROR([Can't find the FMS library.  Set LDFLAGS/LIBS])])
+AC_LANG_POP(Fortran)
 
 # Define an AM_CONDITIONAL to determine if you are on a CRAY
 AM_CONDITIONAL([CRAY], [test `env | grep CRAY | wc -l` -gt 0])
