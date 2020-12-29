@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4
-AM_CPPFLAGS = -I${top_srcdir}/atmos_param/cosp -DINTERNAL_FILE_NML
+AM_CPPFLAGS = -I${top_srcdir}/atmos_param/cosp -DCLUBB -DINTERNAL_FILE_NML
 
 lib_LTLIBRARIES = libatmos_phys.la
 libatmos_phys_la_SOURCES = ${top_srcdir}/atmos_shared/atmos_nudge/atmos_nudge.F90 \
