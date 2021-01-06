@@ -23,6 +23,7 @@ module damping_driver_mod
  use    topo_drag_mod, only:  topo_drag_init, topo_drag, topo_drag_end, &
                               topo_drag_restart
  use          mpp_mod, only:  input_nml_file
+ use  mpp_domains_mod, only:  domain2D
  use          fms_mod, only:  file_exist, mpp_pe, mpp_root_pe, stdlog, &
                               write_version_number, &
                               open_namelist_file, error_mesg, &
@@ -424,8 +425,9 @@ contains
 
 !#######################################################################
 
- subroutine damping_driver_init ( lonb, latb, pref, axes, Time, sgsmtn)
+ subroutine damping_driver_init ( domain, lonb, latb, pref, axes, Time, sgsmtn)
 
+ type(domain2D), target, intent(in)  :: domain !< Atmosphere domain
  real,            intent(in) :: lonb(:,:), latb(:,:), pref(:)
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
@@ -444,19 +446,8 @@ contains
 !-----------------------------------------------------------------------
 !----------------- namelist (read & write) -----------------------------
 
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=damping_driver_nml, iostat=io)
    ierr = check_nml_error(io,"damping_driver_nml")
-#else
-   if (file_exist('input.nml')) then
-      unit = open_namelist_file ()
-      ierr=1; do while (ierr /= 0)
-         read  (unit, nml=damping_driver_nml, iostat=io, end=10)
-         ierr = check_nml_error (io, 'damping_driver_nml')
-      enddo
- 10   call close_file (unit)
-   endif
-#endif
 
    call write_version_number(version, tagname)
    logunit = stdlog()
@@ -489,13 +480,13 @@ contains
 !-----------------------------------------------------------------------
 !----- mountain gravity wave drag -----
 
-   if (do_mg_drag) call mg_drag_init (lonb, latb, sgsmtn)
+   if (do_mg_drag) call mg_drag_init (domain, lonb, latb, sgsmtn)
 
 !--------------------------------------------------------------------
 !----- Alexander-Dunkerton gravity wave drag -----
  
    if (do_cg_drag)  then
-     call cg_drag_init (lonb, latb, pref, Time=Time, axes=axes)
+     call cg_drag_init (domain, lonb, latb, pref, Time=Time, axes=axes)
    endif
 
 !-----------------------------------------------------------------------
@@ -607,7 +598,7 @@ endif
 
 
   if (do_topo_drag) then
-          call topo_drag_init (lonb, latb)
+          call topo_drag_init (domain, lonb, latb)
           sgsmtn(:,:) = -99999.
   endif
 

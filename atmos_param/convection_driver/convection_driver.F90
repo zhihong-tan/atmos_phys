@@ -50,6 +50,7 @@ use time_manager_mod,       only: time_type, get_time, assignment(=)
 use diag_manager_mod,       only: register_diag_field, send_data, &
                                   get_diag_field_id, DIAG_FIELD_NOT_FOUND
 use diag_data_mod,          only: CMOR_MISSING_VALUE
+use mpp_domains_mod,        only: domain2D
 use mpp_mod,                only: input_nml_file
 use fms_mod,                only: error_mesg, FATAL, WARNING,NOTE,&
                                   file_exist, check_nml_error,    &
@@ -502,7 +503,7 @@ logical :: module_is_initialized = .false.
 !#######################################################################
 
 subroutine convection_driver_init       &
-             (id, jd, kd, axes, Time, Physics_control, Exch_ctrl,    &
+             (domain, id, jd, kd, axes, Time, Physics_control, Exch_ctrl,    &
                                       Nml_mp, Control, lonb, latb, pref )
  
 !---------------------------------------------------------------------
@@ -515,6 +516,7 @@ subroutine convection_driver_init       &
 !---------------------------------------------------------------------
 
 !---------------------------------------------------------------------
+type(domain2D), target,        intent(in)    :: domain !< Atmosphere domain
 integer,                       intent(in)    :: id, jd, kd
 integer,                       intent(in)    :: axes(4)
 type(time_type),               intent(in)    :: Time
@@ -804,7 +806,7 @@ real, dimension(:),            intent(in)    :: pref
 !--------------------------------------------------------------------
       if (do_donner_deep) then
         call get_time (Time, secs, days)
-        call donner_deep_init (lonb, latb, pref, axes, secs, days,  &
+        call donner_deep_init (domain, lonb, latb, pref, axes, secs, days,  &
                                Control%tracers_in_donner,  &
                                do_donner_conservation_checks, &
                                do_unified_convective_closure, &

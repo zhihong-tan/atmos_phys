@@ -55,18 +55,17 @@
 
 
 use mpp_mod,               only: input_nml_file
-use fms_mod,               only: fms_init, &
-                                 mpp_pe, mpp_root_pe, &
-                                 open_namelist_file, stdlog, stdout, &
-                                 file_exist, FATAL, WARNING, NOTE, &
-                                 close_file, &
-                                 write_version_number, check_nml_error,&
-                                 error_mesg
-use fms_io_mod,            only: restore_state, &
-                                 register_restart_field, restart_file_type, &
-                                 save_restart
+use mpp_domains_mod,       only: domain2D
+use fms_mod,               only: fms_init, mpp_pe, mpp_root_pe, stdlog, &
+                                 file_exist, FATAL, NOTE, &
+                                 write_version_number, check_nml_error, error_mesg
+use fms2_io_mod,             only: FmsNetcdfDomainFile_t, &
+                                   register_restart_field, register_axis, unlimited, &
+                                   open_file, read_restart, write_restart, close_file, &
+                                   register_field, write_data, register_variable_attribute, &
+                                   get_global_io_domain_indices
 use diag_manager_mod,      only: register_diag_field, send_data, &
-                                 diag_manager_init, get_base_time
+                                 diag_manager_init
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 use time_manager_mod,      only: time_manager_init, time_type, operator(>)
 use constants_mod,         only: constants_init, STEFAN, SECONDS_PER_DAY, &
@@ -213,8 +212,6 @@ end type diag_special_type
 !-----------------------------------------------------------------------
 !---- private data ----
 !-- for netcdf restart
-type(restart_file_type), pointer, save :: Solar_restart => NULL()
-type(restart_file_type), pointer, save :: Tile_restart => NULL()
 logical :: doing_netcdf_restart = .false.
 
 !    solar_save is used when renormalize_sw_fluxes is active, to save
@@ -315,7 +312,10 @@ logical  ::  do_swaerosol_forcing
 logical  ::  do_lwaerosol_forcing
 integer  ::  indx_swaf
 integer  ::  indx_lwaf
+integer  ::  do_totcld_forcing
+logical  ::  doing_cloud_forcing
 
+type (domain2D), pointer               :: radiation_diag_domain !< Atmosphere domain
 !-----------------------------------------------------------------------
 
 logical :: module_is_initialized = .false.
@@ -330,16 +330,19 @@ logical :: module_is_initialized = .false.
 !
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-subroutine radiation_driver_diag_init (Time, id, jd, kmax, axes, &
+subroutine radiation_driver_diag_init (domain, Time, id, jd, kmax, axes, &
                                        Rad_control, Aerosolrad_control)
 
 !--------------------------------------------------------------------
+type(domain2D), target,        intent(in) :: domain !< Atmosphere domain
 type(time_type),               intent(in) :: Time
 integer,                       intent(in) :: id, jd, kmax
 integer, dimension(4),         intent(in) :: axes
 type(radiation_control_type),  intent(in) :: Rad_control
 type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !---------------------------------------------------------------------
+type(FmsNetcdfDomainFile_t) ::  solar_interp !< Fms2io domain decomposed fileobj
+
 !   local variables
       integer           ::   unit, io, ierr, logunit
 
@@ -364,19 +367,8 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=radiation_driver_diag_nml, iostat=io)
       ierr = check_nml_error(io,'radiation_driver_diag_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=radiation_driver_diag_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'radiation_driver_diag_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -501,20 +493,20 @@ type(aerosolrad_control_type), intent(in) :: Aerosolrad_control
 
 !----------------------------------------------------------------------
       if  (Rad_control%using_restart_file) then
+        radiation_diag_domain => domain
 !----------------------------------------------------------------------
-!    Register fields to be written out to restart file.
-!    Add the solar fields needed to restart the solar interplator
-!----------------------------------------------------------------------
-        if (Rad_control%renormalize_sw_fluxes) then
-          call solar_interp_register_restart('solar_interp.res.nc', &
-                                             Rad_control%do_totcld_forcing)
 
 !-----------------------------------------------------------------------
 !    if a valid restart file exists, then read by calling restore_state
 !-----------------------------------------------------------------------
-          if ( file_exist('INPUT/solar_interp.res.nc')) then
-            call restore_state(Tile_restart)
-          endif
+        if (Rad_control%renormalize_sw_fluxes) then
+           doing_netcdf_restart = .true.
+           doing_cloud_forcing = Rad_control%do_totcld_forcing
+           if (open_file(solar_interp,"INPUT/solar_interp.res.nc",  "read", radiation_diag_domain, is_restart=.true.)) then !domain file
+             call solar_interp_register_restart(solar_interp)
+             call read_restart(solar_interp)
+             call close_file(solar_interp)
+           endif
         endif
       endif ! (using_restart_file)
 
@@ -3158,50 +3150,51 @@ end subroutine solar_flux_save_init
 
 !###################################################################
 
-subroutine solar_interp_register_restart(fname, do_totcld_forcing)
-  character(len=*), intent(in) :: fname
-  logical,          intent(in) :: do_totcld_forcing
+subroutine solar_interp_register_restart(solar_interp)
+  type(FmsNetcdfDomainFile_t), intent(inout) :: solar_interp !< Fms2io domain decomposed fileobj
+  character(len=8), dimension(4)       :: dim_names4d !< Array of dimension names
+  character(len=8), dimension(4)       :: dim_names4d2 !< Array of dimension names
+  character(len=8), dimension(3)       :: dim_names3d !< Array of dimension names
 
-  character(len=64)            :: fname2
-  integer                      :: id_restart
+   dim_names3d =  (/"xaxis_1", "yaxis_1", "Time   "/)
+   dim_names4d =  (/"xaxis_1", "yaxis_1", "zaxis_1", "Time   "/)
+   dim_names4d2 =  (/"xaxis_1", "yaxis_1", "zaxis_2", "Time   "/)
 
-   ! all data is distributed on tile files
-  !call get_mosaic_tile_file(fname, fname2, .false. ) 
-   allocate(Tile_restart)
-   doing_netcdf_restart = .true.
+  call register_axis(solar_interp, "Time", unlimited)
+  call register_axis(solar_interp, "xaxis_1", "x")
+  call register_axis(solar_interp, "yaxis_1", "y")
+  call register_axis(solar_interp, "zaxis_1", size(Sw_flux_save%sw_heating, 3))
+  call register_axis(solar_interp, "zaxis_2", size(Sw_flux_save%dfsw, 3))
 
-!  NOTE: there could a problem when restarting a model with renormalize_sw_fluxes = true
-!  if the restart file has int_renormalize_sw_fluxes = 0 (i.e., no sw fluxes saved)
-
-   id_restart = register_restart_field(Tile_restart, fname, 'solar_save', solar_save)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_surf_save', Sw_flux_save%flux_sw_surf)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_surf_dir_save', Sw_flux_save%flux_sw_surf_dir)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_surf_refl_dir_save', Sw_flux_save%flux_sw_surf_refl_dir)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_surf_dif_save', Sw_flux_save%flux_sw_surf_dif)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_vis_dir_save', Sw_flux_save%flux_sw_down_vis_dir)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_vis_dif_save', Sw_flux_save%flux_sw_down_vis_dif)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dir_save', Sw_flux_save%flux_sw_down_total_dir)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dif_save', Sw_flux_save%flux_sw_down_total_dif)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_vis_save', Sw_flux_save%flux_sw_vis)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_vis_dir_save', Sw_flux_save%flux_sw_vis_dir)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_refl_vis_dir_save', Sw_flux_save%flux_sw_refl_vis_dir)
-   id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_vis_dif_save', Sw_flux_save%flux_sw_vis_dif)
-   id_restart = register_restart_field(Tile_restart, fname, 'sw_heating_save', Sw_flux_save%sw_heating)
-   id_restart = register_restart_field(Tile_restart, fname, 'tot_heating_save', Sw_flux_save%tot_heating)
-   id_restart = register_restart_field(Tile_restart, fname, 'dfsw_save', Sw_flux_save%dfsw)
-   id_restart = register_restart_field(Tile_restart, fname, 'ufsw_save', Sw_flux_save%ufsw)
-   id_restart = register_restart_field(Tile_restart, fname, 'fsw_save', Sw_flux_save%fsw)
-   id_restart = register_restart_field(Tile_restart, fname, 'hsw_save', Sw_flux_save%hsw)
-   if (do_totcld_forcing) then
-      id_restart = register_restart_field(Tile_restart, fname, 'sw_heating_clr_save', Sw_flux_save%sw_heating_clr)
-      id_restart = register_restart_field(Tile_restart, fname, 'tot_heating_clr_save', Sw_flux_save%tot_heating_clr)
-      id_restart = register_restart_field(Tile_restart, fname, 'dfswcf_save', Sw_flux_save%dfswcf)
-      id_restart = register_restart_field(Tile_restart, fname, 'ufswcf_save', Sw_flux_save%ufswcf)
-      id_restart = register_restart_field(Tile_restart, fname, 'fswcf_save', Sw_flux_save%fswcf)
-      id_restart = register_restart_field(Tile_restart, fname, 'hswcf_save', Sw_flux_save%hswcf)
-      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dir_clr_save', Sw_flux_save%flux_sw_down_total_dir_clr)
-      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_total_dif_clr_save', Sw_flux_save%flux_sw_down_total_dif_clr)
-      id_restart = register_restart_field(Tile_restart, fname, 'flux_sw_down_vis_clr_save', Sw_flux_save%flux_sw_down_vis_clr)
+   call register_restart_field(solar_interp, 'solar_save', solar_save, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_surf_save', Sw_flux_save%flux_sw_surf, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_surf_dir_save', Sw_flux_save%flux_sw_surf_dir, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_surf_refl_dir_save', Sw_flux_save%flux_sw_surf_refl_dir, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_surf_dif_save', Sw_flux_save%flux_sw_surf_dif, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_down_vis_dir_save', Sw_flux_save%flux_sw_down_vis_dir, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_down_vis_dif_save', Sw_flux_save%flux_sw_down_vis_dif, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_down_total_dir_save', Sw_flux_save%flux_sw_down_total_dir, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_down_total_dif_save', Sw_flux_save%flux_sw_down_total_dif, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_vis_save', Sw_flux_save%flux_sw_vis, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_vis_dir_save', Sw_flux_save%flux_sw_vis_dir, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_refl_vis_dir_save', Sw_flux_save%flux_sw_refl_vis_dir, dim_names3d)
+   call register_restart_field(solar_interp, 'flux_sw_vis_dif_save', Sw_flux_save%flux_sw_vis_dif, dim_names3d)
+   call register_restart_field(solar_interp, 'sw_heating_save', Sw_flux_save%sw_heating, dim_names4d)
+   call register_restart_field(solar_interp, 'tot_heating_save', Sw_flux_save%tot_heating, dim_names4d)
+   call register_restart_field(solar_interp, 'dfsw_save', Sw_flux_save%dfsw, dim_names4d2)
+   call register_restart_field(solar_interp, 'ufsw_save', Sw_flux_save%ufsw, dim_names4d2)
+   call register_restart_field(solar_interp, 'fsw_save', Sw_flux_save%fsw, dim_names4d2)
+   call register_restart_field(solar_interp, 'hsw_save', Sw_flux_save%hsw, dim_names4d)
+   if (doing_cloud_forcing) then
+      call register_restart_field(solar_interp, 'sw_heating_clr_save', Sw_flux_save%sw_heating_clr, dim_names4d)
+      call register_restart_field(solar_interp, 'tot_heating_clr_save', Sw_flux_save%tot_heating_clr, dim_names4d)
+      call register_restart_field(solar_interp, 'dfswcf_save', Sw_flux_save%dfswcf, dim_names4d2)
+      call register_restart_field(solar_interp, 'ufswcf_save', Sw_flux_save%ufswcf, dim_names4d2)
+      call register_restart_field(solar_interp, 'fswcf_save', Sw_flux_save%fswcf, dim_names4d2)
+      call register_restart_field(solar_interp, 'hswcf_save', Sw_flux_save%hswcf, dim_names4d)
+      call register_restart_field(solar_interp, 'flux_sw_down_total_dir_clr_save', Sw_flux_save%flux_sw_down_total_dir_clr, dim_names3d)
+      call register_restart_field(solar_interp, 'flux_sw_down_total_dif_clr_save', Sw_flux_save%flux_sw_down_total_dif_clr, dim_names3d)
+      call register_restart_field(solar_interp, 'flux_sw_down_vis_clr_save', Sw_flux_save%flux_sw_down_vis_clr, dim_names3d)
    endif
 
 end subroutine solar_interp_register_restart
@@ -3209,7 +3202,11 @@ end subroutine solar_interp_register_restart
 !###################################################################
 
 subroutine write_solar_interp_restart_nc (timestamp)
-character(len=*), intent(in), optional :: timestamp
+
+  character(len=*), intent(in), optional :: timestamp
+  character(len=128) :: filename !< Restart filename
+
+  type(FmsNetcdfDomainFile_t) :: solar_interp !< Fms2io domain decomposed fileobj
 
       if (.not.doing_netcdf_restart) return
 !---------------------------------------------------------------------
@@ -3227,7 +3224,17 @@ character(len=*), intent(in), optional :: timestamp
 !---------------------------------------------------------------------
 
 ! Make sure that the restart_versions variable is up to date.
-      call save_restart(Tile_restart, timestamp)
+      if (present(timestamp)) then
+         filename = "RESTART/"//trim(timestamp)//".solar_interp.res.nc"
+      else
+         filename = "RESTART/solar_interp.res.nc"
+      endif
+
+      if (open_file(solar_interp,filename,  "overwrite", radiation_diag_domain, is_restart=.true.)) then !domain file
+         call solar_interp_register_restart(solar_interp)
+         call write_restart(solar_interp)
+         call close_file(solar_interp)
+      endif
 
 end subroutine write_solar_interp_restart_nc
 

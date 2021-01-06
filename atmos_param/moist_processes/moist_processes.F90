@@ -20,6 +20,7 @@ use diag_manager_mod,      only: register_diag_field, send_data, &
 use diag_axis_mod,         only: get_axis_num
 use diag_data_mod,         only: CMOR_MISSING_VALUE
 
+use mpp_domains_mod,       only: domain2D
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
                                  file_exist, check_nml_error,    &
@@ -308,11 +309,12 @@ real    :: dt
 
 !########################################################################
 
-subroutine moist_processes_init ( id, jd, kd, lonb, latb, &
+subroutine moist_processes_init ( domain, id, jd, kd, lonb, latb, &
                                  lon, lat, phalf, pref,  axes, Time, &
                                  Physics_control, Exch_ctrl)
 
 !-----------------------------------------------------------------------
+type(domain2D), target,   intent(in)    :: domain !< Atmosphere domain
 integer,                  intent(in)    :: id, jd, kd, axes(4)
 real, dimension(:,:),     intent(in)    :: lonb, latb
 real,dimension(:,:),      intent(in)    :: lon,  lat    ! h1g
@@ -510,14 +512,14 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
 !-----------------------------------------------------------------------
 !    call convection_driver_init to initialize the convection scheme(s).
 !-----------------------------------------------------------------------
-      call convection_driver_init (id, jd, kd, axes, Time, &
+      call convection_driver_init (domain, id, jd, kd, axes, Time, &
                           Physics_control, Exch_ctrl, Nml_mp,   &
                           Removal_mp_control, lonb, latb, pref)
 
 !-----------------------------------------------------------------------
 !    call lscloud_driver_init to initialize the large-scale cloud scheme.
 !-----------------------------------------------------------------------
-      call lscloud_driver_init (id,jd,kd, axes, Time, Exch_ctrl, Nml_mp, &
+      call lscloud_driver_init (domain, id,jd,kd, axes, Time, Exch_ctrl, Nml_mp, &
                                  Physics_control, lon, lat, phalf, pref)
  
 !-----------------------------------------------------------------------

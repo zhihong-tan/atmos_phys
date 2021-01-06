@@ -1,14 +1,16 @@
 module cg_drag_mod
 
-use mpp_mod,                only:  input_nml_file
-use fms_mod,                only:  fms_init, mpp_pe, mpp_root_pe,  &
-                                   file_exist, check_nml_error,  &
-                                   error_mesg,  FATAL, WARNING, NOTE, &
-                                   close_file, open_namelist_file, &
-                                   stdlog, write_version_number, &
-                                   read_data, write_data
-use fms_io_mod,             only:  register_restart_field, restart_file_type
-use fms_io_mod,             only:  save_restart, restore_state, get_mosaic_tile_file
+use mpp_mod,                only:  input_nml_file, mpp_get_current_pelist
+use mpp_domains_mod,        only:  domain2D, mpp_get_ntile_count
+use fms_mod,                only:  fms_init, mpp_pe, mpp_root_pe, mpp_npes, &
+                                   check_nml_error,  &
+                                   error_mesg,  FATAL, NOTE, &
+                                   stdlog, write_version_number
+use fms2_io_mod,            only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                   register_restart_field, register_axis, unlimited, &
+                                   open_file, read_restart, write_restart, close_file, &
+                                   register_field, write_data, get_global_io_domain_indices, &
+                                   register_variable_attribute
 use time_manager_mod,       only:  time_manager_init, time_type
 use diag_manager_mod,       only:  diag_manager_init,   &
                                    register_diag_field, send_data
@@ -53,9 +55,7 @@ public    cg_drag_init, cg_drag_calc, cg_drag_end, cg_drag_restart, &
 private   read_nc_restart_file, gwfc
 
 !--- for netcdf restart
-type(restart_file_type), pointer, save :: Cg_restart => NULL()
-type(restart_file_type), pointer, save :: Til_restart => NULL()
-logical                                :: in_different_file = .false.
+type (domain2D), pointer               :: cg_domain !< Atmosphere domain
 integer                                :: vers, old_time_step
 
 !wfc++ Addition for regular use
@@ -259,13 +259,14 @@ logical          :: module_is_initialized=.false.
 
 !####################################################################
 
-subroutine cg_drag_init (lonb, latb, pref, Time, axes)
+subroutine cg_drag_init (domain, lonb, latb, pref, Time, axes)
 
 !-------------------------------------------------------------------
 !   cg_drag_init is the constructor for cg_drag_mod.
 !-------------------------------------------------------------------
 
 !-------------------------------------------------------------------
+type(domain2D), target,  intent(in)      :: domain !< Atmosphere domain
 real,    dimension(:,:), intent(in)      :: lonb, latb
 real,    dimension(:),   intent(in)      :: pref
 integer, dimension(4),   intent(in)      :: axes
@@ -328,19 +329,8 @@ type(time_type),         intent(in)      :: Time
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cg_drag_nml, iostat=io)
       ierr = check_nml_error(io,"cg_drag_nml")
-#else
-      if (file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read (unit, nml=cg_drag_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'cg_drag_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -488,31 +478,11 @@ type(time_type),         intent(in)      :: Time
 !--------------------------------------------------------------------
 !    if present, read the restart data file.
 !---------------------------------------------------------------------
-      if (size(restart_versions(:)) .gt. 2 ) then
-        call cg_drag_register_restart
-      endif
 
-      if (file_exist('INPUT/cg_drag.res.nc')) then
-        call read_nc_restart_file
+      cg_domain => domain
+      vers = 3 ! NetCDF version
+      call read_nc_restart_file
 
-      elseif (file_exist('INPUT/cg_drag.res')) then
-        call error_mesg ( 'cg_drag_mod', 'Native restart capability has been removed.', &
-                                         FATAL)
-!-------------------------------------------------------------------
-!    if no restart file is present, initialize the gwd field to zero.
-!    define the time remaining until the next cg_drag calculation from
-!    the namelist inputs.
-!-------------------------------------------------------------------
-      else
-        gwd_u(:,:,:) = 0.0
-        gwd_v(:,:,:) = 0.0
-        if (cg_drag_offset > 0) then
-          cgdrag_alarm = cg_drag_offset
-        else 
-          cgdrag_alarm = cg_drag_freq
-        endif
-      endif
-      vers = restart_versions(size(restart_versions(:)))
       old_time_step = cgdrag_alarm 
 !---------------------------------------------------------------------
 !    mark the module as initialized.
@@ -925,6 +895,9 @@ subroutine read_nc_restart_file
 
       character(len=64)     :: fname='INPUT/cg_drag.res.nc'
       character(len=8)      :: chvers
+      type(FmsNetcdfFile_t)       :: Cg_restart !< Fms2io fileobj
+      type(FmsNetcdfDomainFile_t) :: Til_restart !< Fms2io domain fileobj
+      integer, allocatable, dimension(:) :: pes !< Array of the pes in the current pelist
 
 !---------------------------------------------------------------------
 !   local variables:
@@ -941,47 +914,62 @@ subroutine read_nc_restart_file
              &Reading netCDF formatted restart file:'//trim(fname), NOTE)
       endif
 
-!-------------------------------------------------------------------
-!    read the values of gwd_u and gwd_v
-!-------------------------------------------------------------------
-      if (size(restart_versions(:)) .le. 2 ) then
-         call error_mesg ('cg_drag_mod',  'read_restart_nc: restart file format is netcdf, ' // &
-              'restart_versions is not netcdf file version', FATAL)
-      endif
-      call restore_state(Cg_restart)
-      if(in_different_file) call restore_state(Til_restart)
-      if (.not. any(vers == restart_versions) ) then
-        write (chvers, '(i4)') vers
-        call error_mesg ('cg_drag_init', &
-               'restart version '//chvers//' cannot be read &
-               &by this module version', FATAL)
-      endif
-      vers = restart_versions(size(restart_versions(:)))
+      !< Get the current pelist
+      allocate(pes(mpp_npes()))
+      call mpp_get_current_pelist(pes)
 
-!--------------------------------------------------------------------
-!    if current cg_drag calling frequency differs from that previously 
-!    used, adjust the time remaining before the next calculation. 
-!--------------------------------------------------------------------
-      if (cg_drag_freq /= old_time_step) then
-        cgdrag_alarm = cgdrag_alarm - old_time_step + cg_drag_freq
-        if (mpp_pe() == mpp_root_pe() ) then
-          call error_mesg ('cg_drag_mod',   &
-                'cgdrag time step has changed, &
-                &next cgdrag time also changed', NOTE)
+      !< Open the scalar file with the current pelist, so that only the root pe opens and reads the file and
+      !! distributes the data to the other pes
+      !> read the values of gwd_u and gwd_v
+      if (open_file(Cg_restart, fname, "read", is_restart = .true., pelist=pes)) then
+        call cg_drag_register_restart(Cg_restart)
+        call read_restart(Cg_restart)
+        call close_file(Cg_restart)
+
+        !> if current cg_drag calling frequency differs from that previously
+        !! used, adjust the time remaining before the next calculation.
+        if (cg_drag_freq /= old_time_step) then
+          cgdrag_alarm = cgdrag_alarm - old_time_step + cg_drag_freq
+          if (mpp_pe() == mpp_root_pe() ) then
+            call error_mesg ('cg_drag_mod',   &
+                  'cgdrag time step has changed, &
+                  &next cgdrag time also changed', NOTE)
+          endif
+          old_time_step = cg_drag_freq
         endif
-        old_time_step = cg_drag_freq
-      endif
 
-!--------------------------------------------------------------------
-!    if cg_drag_offset is specified and is smaller than the time remain-
-!    ing until the next calculation, modify the time remaining to be 
-!    that offset time. the assumption is made that the restart was
-!    written at 00Z.
-!--------------------------------------------------------------------
-      if (cg_drag_offset /= 0) then
-        if (cgdrag_alarm > cg_drag_offset) then
+        !> if cg_drag_offset is specified and is smaller than the time remaining
+        !! until the next calculation, modify the time remaining to be
+        !! that offset time. the assumption is made that the restart was
+        !! written at 00Z.
+        if (cg_drag_offset /= 0) then
+          if (cgdrag_alarm > cg_drag_offset) then
+            cgdrag_alarm = cg_drag_offset
+          endif
+        endif
+      else
+
+        !> if no restart file is present, initialize the gwd field to zero.
+        !! define the time remaining until the next cg_drag calculation from
+        !! the namelist inputs.
+        if (cg_drag_offset > 0) then
           cgdrag_alarm = cg_drag_offset
+        else
+          cgdrag_alarm = cg_drag_freq
         endif
+      endif
+      deallocate(pes)
+
+      if (open_file(Til_restart, fname, "read", cg_domain, is_restart = .true.)) then
+        call cg_drag_register_tile_restart(Til_restart)
+        call read_restart(Til_restart)
+        call close_file(Til_restart)
+      else
+        !> if no restart file is present, initialize the gwd field to zero.
+        !! define the time remaining until the next cg_drag calculation from
+        !! the namelist inputs.
+        gwd_u(:,:,:) = 0.0
+        gwd_v(:,:,:) = 0.0
       endif
 
 !---------------------------------------------------------------------
@@ -989,31 +977,39 @@ end subroutine read_nc_restart_file
 
 !####################################################################
 ! register restart field to be read and written through save_restart and restore_state.
-subroutine cg_drag_register_restart
+subroutine cg_drag_register_restart(Cg_restart)
 
-  character(len=64) :: fname = 'cg_drag.res.nc'    ! name of restart file
-  character(len=64) :: fname2 
-  integer           :: id_restart
+  type(FmsNetcdfFile_t), intent(inout) :: Cg_restart !< Fms2io file obj
+  character(len=8), dimension(1)       :: dim_names !< Array of dimension names
 
-  call get_mosaic_tile_file(fname, fname2, .false. ) 
-  allocate(Cg_restart)
-  if(trim(fname2) == trim(fname)) then
-     Til_restart => Cg_restart
-     in_different_file = .false.
-  else
-     in_different_file = .true.
-     allocate(Til_restart)
-  endif
-
-  id_restart = register_restart_field(Cg_restart, fname, 'restart_version', vers, no_domain = .true. )
-  id_restart = register_restart_field(Cg_restart, fname, 'cgdrag_alarm', cgdrag_alarm, no_domain = .true. )
-  id_restart = register_restart_field(Cg_restart, fname, 'cg_drag_freq', old_time_step, no_domain = .true. )
-  id_restart = register_restart_field(Til_restart, fname, 'gwd_u', gwd_u)
-  id_restart = register_restart_field(Til_restart, fname, 'gwd_v', gwd_v)
-
-  return
+  dim_names(1) = "Time"
+  call register_axis(Cg_restart, dim_names(1), unlimited)
+  call register_restart_field(Cg_restart, "restart_version", vers, dim_names)
+  call register_restart_field(Cg_restart, "cgdrag_alarm", cgdrag_alarm, dim_names)
+  call register_restart_field(Cg_restart, "cg_drag_freq", old_time_step, dim_names)
 
 end subroutine cg_drag_register_restart
+
+!> \brief register restart field to be read and written through save_restart and restore_state.
+subroutine cg_drag_register_tile_restart (Til_restart)
+
+  type(FmsNetcdfDomainFile_t), intent(inout) :: Til_restart !< Fms2io domain file obj
+  character(len=8), dimension(4)             :: dim_names !< Array of dimension names
+
+  dim_names(1) = "xaxis_1"
+  dim_names(2) = "yaxis_1"
+  dim_names(3) = "zaxis_1"
+  dim_names(4) = "Time"
+
+  call register_axis(Til_restart, dim_names(1), "x")
+  call register_axis(Til_restart, dim_names(2), "y")
+  call register_axis(Til_restart, dim_names(3), size(gwd_u, 3))
+  if (.not. Til_restart%mode_is_append)  call register_axis(Til_restart, dim_names(4), unlimited)
+
+  call register_restart_field(Til_restart, "gwd_u", gwd_u, dim_names)
+  call register_restart_field(Til_restart, "gwd_v", gwd_v, dim_names)
+
+end subroutine cg_drag_register_tile_restart
 
 !####################################################################
 ! <SUBROUTINE NAME="cg_drag_restart">
@@ -1027,10 +1023,45 @@ end subroutine cg_drag_register_restart
 ! </DESCRIPTION>
 !
 subroutine cg_drag_restart(timestamp)
-  character(len=*), intent(in), optional :: timestamp
+  character(len=*), intent(in), optional :: timestamp !< A character string that represents the model time,
+                                                      !! used for writing restart. timestamp will append to
+                                                      !! the any restart file name as a prefix.
 
-  call save_restart(Cg_restart, timestamp)
-  if(in_different_file) call save_restart(Til_restart, timestamp)
+  character(len=128)           :: fname
+  type(FmsNetcdfFile_t)       :: Cg_restart
+  type(FmsNetcdfDomainFile_t) :: Til_restart
+  logical :: tile_file_exist
+  integer, allocatable, dimension(:) :: pes
+
+  if (present(timestamp)) then
+    fname='RESTART/'//trim(timestamp)//'.cg_drag.res.nc'
+  else
+    fname='RESTART/cg_drag.res.nc'
+  endif
+
+  !< Get the current pelist
+  allocate(pes(mpp_npes()))
+  call mpp_get_current_pelist(pes)
+
+  !< Open the scalar file with the current pelist, so that only the root pe opens and writes the file
+  if (open_file(Cg_restart, fname, "overwrite", is_restart = .true., pelist=pes)) then
+     call cg_drag_register_restart(Cg_restart)
+     call write_restart(Cg_restart)
+     call close_file(Cg_restart)
+  endif
+  deallocate(pes)
+
+  if (mpp_get_ntile_count(cg_domain) == 1) then
+     tile_file_exist = open_file(Til_restart, fname, "append", cg_domain, is_restart = .true.)
+  else
+     tile_file_exist = open_file(Til_restart, fname, "overwrite", cg_domain, is_restart = .true.)
+  endif
+
+  if (tile_file_exist) then
+     call cg_drag_register_tile_restart(Til_restart)
+     call write_restart(Til_restart)
+     call close_file(Til_restart)
+  endif
 
 end subroutine cg_drag_restart
 ! </SUBROUTINE> NAME=cg_drag_restart"

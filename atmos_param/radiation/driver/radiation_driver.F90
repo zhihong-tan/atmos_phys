@@ -38,22 +38,22 @@
 !    shared modules:
 
 use block_control_mod,     only: block_control_type
-use mpp_mod,               only: input_nml_file
+use mpp_mod,               only: input_nml_file, mpp_get_current_pelist
+use mpp_domains_mod,       only: domain2D, mpp_get_ntile_count
 use fms_mod,               only: fms_init, mpp_clock_id, &
                                  mpp_clock_begin, mpp_clock_end, &
                                  CLOCK_MODULE_DRIVER, CLOCK_MODULE, &
                                  CLOCK_ROUTINE, &
-                                 field_exist, field_size, &
-                                 mpp_pe, mpp_root_pe, &
-                                 open_namelist_file, stdlog, stdout, &
+                                 mpp_pe, mpp_root_pe, mpp_npes,&
+                                 stdlog, stdout, &
                                  file_exist, FATAL, WARNING, NOTE, &
-                                 close_file, read_data, write_data, &
                                  write_version_number, check_nml_error,&
-                                 error_mesg, mpp_chksum, &
-                                 read_data, mpp_error
-use fms_io_mod,            only: restore_state, &
-                                 register_restart_field, restart_file_type, &
-                                 save_restart, get_mosaic_tile_file
+                                 error_mesg, mpp_chksum
+use fms2_io_mod,             only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                   register_restart_field, register_axis, unlimited, &
+                                   open_file, read_restart, write_restart, close_file, &
+                                   register_field, write_data, get_global_io_domain_indices, &
+                                   register_variable_attribute
 use time_manager_mod,      only: time_type, set_date, set_time,  &
                                  get_time,    operator(+),       &
                                  print_date, time_manager_init, &
@@ -534,8 +534,6 @@ end type radiation_diag_type
 !---------------------------------------------------------------------
 !---- private data ----
 !-- for netcdf restart
-type(restart_file_type), pointer, save :: Rad_restart => NULL()
-type(restart_file_type), pointer, save :: Til_restart => NULL()
 logical                                :: in_different_file = .false.
 integer                                :: int_renormalize_sw_fluxes
 integer                                :: int_do_clear_sky_pass
@@ -545,8 +543,6 @@ integer :: ido_conc_rad = 0
 integer :: idonner_meso = 0
 integer :: idoing_donner = 0
 integer :: idoing_uw_conv = 0
-type(restart_file_type), pointer, save :: Rad_restart_conc => NULL()
-type(restart_file_type), pointer, save :: Til_restart_conc => NULL()
 logical                                :: in_different_file_conc = .false.
 
 type(radiation_flux_block_type) :: Restart
@@ -736,6 +732,8 @@ integer :: num_lw_ica_profiles=1, num_sw_ica_profiles=1
 ! do_stochastic => 1; do_ica_calcs => 2
 integer :: flag_stoch
 
+type (domain2D)               :: radiation_domain !< Atmosphere domain
+
 ! <DATASET NAME="Restart file">
 ! A restart data set called radiation_driver.res(.nc) saves the
 !     global fields for the current radiative tendency, net shortwave
@@ -865,8 +863,10 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
       integer           ::   yr, month, year, dum
       integer           ::   ico2, ich4
       integer           ::   num_sw_bands, num_lw_bands
-
-
+      type(FmsNetcdfFile_t)       ::  Rad_restart, Rad_restart_conc !< Fms2io netcdf fileobj
+      type(FmsNetcdfDomainFile_t) ::  Til_restart, Til_restart_conc !< Fms2io domain decomposed fileobj
+      logical :: Rad_restart_exists, Til_restart_exists, Rad_restart_conc_exists, Til_restart_conc_exists
+      integer, allocatable, dimension(:) :: pes !< Array of pes in the current pelist
 !---------------------------------------------------------------------
 !   local variables
 ! 
@@ -904,19 +904,8 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=radiation_driver_nml, iostat=io)
       ierr = check_nml_error(io,'radiation_driver_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=radiation_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'radiation_driver_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !--------------------------------------------------------------------
 !    make sure other namelist variables are consistent with 
@@ -1151,21 +1140,35 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 
    Rad_control%using_restart_file = using_restart_file
 
+   !< Get the current pelist
+   allocate(pes(mpp_npes()))
+   call mpp_get_current_pelist(pes)
+
    if  (Rad_control%using_restart_file) then
 
 !----------------------------------------------------------------------
-!    Register fields to be written out to restart file.
-     call rad_driver_register_restart('radiation_driver.res.nc')
-
-!-----------------------------------------------------------------------
+!    Register fields to be read out to restart file.
 !    if a valid restart file exists, call read_restart_file to read it.
 !-----------------------------------------------------------------------
-        if ( file_exist('INPUT/radiation_driver.res.nc')) then
-          call restore_state(Rad_restart)
-          if(in_different_file) call restore_state(Til_restart)
-        else if ( file_exist('INPUT/radiation_driver.res')) then
-          call error_mesg ('radiation_driver_mod', &
-              'Native restarts no longer supported', FATAL)
+
+     radiation_domain = Radiation%control%domain
+     !< Open the scalar file with the current pelist, so that only the root pe opens and reads the file and
+     !! distributes the data to the other pes
+     Rad_restart_exists = open_file(Rad_restart,"INPUT/radiation_driver.nc","read", is_restart=.true., pelist=pes)
+     if (Rad_restart_exists) then !scalar file
+          call rad_driver_register_restart_scalars(Rad_Restart)
+          call read_restart(Rad_restart)
+          call close_file(Rad_restart)
+     endif
+
+    Til_restart_exists = open_file(Til_restart,"INPUT/radiation_driver.res.nc","read", radiation_domain, is_restart=.true.)
+    if (Til_restart_exists) then !domain file
+          call rad_driver_register_restart_domain(Til_Restart)
+          call read_restart(Til_restart)
+          call close_file(Til_restart)
+    endif
+
+    if (.not. Rad_restart_exists .and. .not. Til_restart_exists) then
 !----------------------------------------------------------------------
 !    if no restart file is present, initialize the needed fields until
 !    the radiation package may be called. initial surface flux is set 
@@ -1173,7 +1176,6 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !    set rad_alarm to be 1 second from now, ie., on the first step of 
 !    the job.
 !-----------------------------------------------------------------------
-        else
           lwrad_alarm                = 1
           swrad_alarm                = 1
           if (mpp_pe() == mpp_root_pe() ) then
@@ -1188,16 +1190,9 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
            'no acceptable radiation restart file present; therefore'//&
            ' will initialize input fields', NOTE)
           endif
-        endif
+    endif
 
-!---------------------------------------------------------------------
-!    if not using restart file, then initialize fields it would contain.
-!    it is the responsibility of the user to assure restart is on a
-!    radiation timestep so that restart seamlessness is maintained. if
-!    restart is done on a non-radiation step, restart seamlessness will 
-!    be lost if a restart file is not available.
-!---------------------------------------------------------------------
-   else  ! (using_restart_file)
+   else ! (using_restart_file)
      lwrad_alarm                = 1
      swrad_alarm                = 1
      if (mpp_pe() == mpp_root_pe() ) then
@@ -1293,7 +1288,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
 !---------------------------------------------------------------------
 !    initialize the diagnostics and solar interpolator module
 !---------------------------------------------------------------------
-      call radiation_driver_diag_init (Time, id, jd, kmax, axes, &
+      call radiation_driver_diag_init (radiation_domain, Time, id, jd, kmax, axes, &
                                        Rad_control, Aerosolrad_control)
 
 !-----------------------------------------------------------------------
@@ -1406,14 +1401,26 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
    if (do_concurrent_radiation) then
      if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiation_driver_mod:', &
         'concurrent radiation restart active', NOTE)
-     call conc_rad_register_restart('conc_radiation_driver.res.nc', &
-                                    Rad_flux(size(Rad_flux,1)), Exch_ctrl, Atm_block)
-     if (file_exist('INPUT/conc_radiation_driver.res.nc')) then
-       call restore_state(Rad_restart_conc)
-       if (in_different_file_conc) call restore_state(Til_restart_conc)
-     else
+     !< Open the scalar file with the current pelist, so that only the root pe opens and reads the file and
+     !! distributes the data to the other pes
+     Rad_restart_conc_exists = open_file(Rad_restart_conc,"INPUT/conc_radiation_driver.nc","read", is_restart=.true., pelist=pes)
+     if (Rad_restart_conc_exists) then
+          call conc_rad_register_restart_scalars(Rad_restart_conc, Exch_ctrl=Exch_ctrl )
+          call read_restart(Rad_restart_conc)
+          call close_file(Rad_restart_conc)
+     endif
+
+    Til_restart_conc_exists = open_file(Til_restart_conc,"INPUT/conc_radiation_driver.nc","read", radiation_domain, is_restart=.true.)
+    if (Til_restart_conc_exists) then
+          call conc_rad_register_restart_domain(Til_restart_conc, Atm_block)
+          call read_restart(Til_restart_conc)
+          call close_file(Til_restart_conc)
+    endif
+
+     if (.not. Rad_restart_conc_exists .and. .not. Til_restart_conc_exists) then
        call error_mesg ('radiation_driver_mod', 'restart file conc_radiation_driver.res.nc not found',NOTE)
      endif
+
 100 FORMAT("CHECKSUM::",A32," = ",Z20)
      outunit = stdout()
      write(outunit,*) 'BEGIN CHECKSUM(radiation_driver_init - concurrent):: '
@@ -1455,6 +1462,7 @@ type(radiation_flux_type),   intent(inout) :: Rad_flux(:)
        Rad_flux(size(Rad_flux,1))%block(n)%extinction             = Restart%extinction(ibs:ibe,jbs:jbe,:)
      end do
    endif
+   deallocate(pes)
 
 !---run the time vary routines in order to pre-load interpolation data files
 !rab   call aerosol_time_vary (Time, Aerosol_rad)
@@ -3467,7 +3475,7 @@ subroutine radiation_driver_restart(Rad_flux, Atm_block, timestamp)
   character(len=*), intent(in), optional :: timestamp
 
       call radiation_driver_restart_nc (Rad_flux, Atm_block, timestamp)
-      call write_solar_interp_restart_nc (timestamp)
+      call write_solar_interp_restart_nc (timestamp=timestamp)
       call radiative_gases_restart (timestamp)
 
  end subroutine radiation_driver_restart
@@ -3490,12 +3498,21 @@ subroutine radiation_driver_restart_nc(Rad_flux, Atm_block, timestamp)
 
 !---local variables
   integer :: n, ibs, ibe, jbs, jbe
+  type(FmsNetcdfFile_t)       ::  Rad_restart_conc !< Fms2io fileobj
+  type(FmsNetcdfDomainFile_t) ::  Til_restart_conc !< Fms2io domain decomposed fileobj
+  logical :: conc_tile_file_exist !< Flag indicating if file is open
+  character(len=128) :: filename !< Restart filename
+  integer, allocatable, dimension(:) :: pes !< Array of pes in the current pelist
 
 !---------------------------------------------------------------------
 !    write restart file if desired; the file is not necessary if job 
 !    ends on step prior to radiation ts, or if restart seamlessness 
 !    is not required.
 !---------------------------------------------------------------------
+  !< Get the current pelist
+  allocate(pes(mpp_npes()))
+  call mpp_get_current_pelist(pes)
+
   if (do_concurrent_radiation) then
     do n = 1,size(Rad_flux%block,1)
       ibs = Atm_block%ibs(n)-Atm_block%isc+1
@@ -3520,14 +3537,38 @@ subroutine radiation_driver_restart_nc(Rad_flux, Atm_block, timestamp)
       Restart%extinction(ibs:ibe,jbs:jbe,:)           = Rad_flux%block(n)%extinction
     end do
 
-    if (mpp_pe() == mpp_root_pe() ) then 
+    if (mpp_pe() == mpp_root_pe() ) then
        call error_mesg('radiation_driver_mod', 'Writing netCDF formatted restart file: '//&
                        'RESTART/conc_radiation_driver.res.nc', NOTE)
     endif
 
-    call save_restart(Rad_restart_conc,timestamp)
-    call save_restart(Til_restart_conc,timestamp)
+     if (present(timestamp)) then
+        filename ="RESTART/"//trim(timestamp)//".conc_radiation_driver.nc"
+     else
+        filename = "RESTART/conc_radiation_driver.nc"
+     endif
+
+     !< Open the scalar file with the current pelist, so that only the root pe opens and writes the file
+     if (open_file(Rad_restart_conc,filename,"overwrite", is_restart=.true., pelist=pes)) then
+          call conc_rad_register_restart_scalars(Rad_restart_conc)
+          call write_restart(Rad_restart_conc)
+          call close_file(Rad_restart_conc)
+     endif
+
+    if (mpp_get_ntile_count(radiation_domain) == 1) then
+       conc_tile_file_exist = open_file(Til_restart_conc,filename,"append", radiation_domain, is_restart=.true.)
+    else
+       conc_tile_file_exist = open_file(Til_restart_conc,filename,"overwrite", radiation_domain, is_restart=.true.)
+    endif
+
+   if (conc_tile_file_exist) then
+          call conc_rad_register_restart_domain(Til_restart_conc, Atm_block)
+          call write_restart(Til_restart_conc)
+          call close_file(Til_restart_conc)
+    endif
+
   endif
+  deallocate(pes)
 
   if (using_restart_file) then
 !---------------------------------------------------------------------
@@ -3598,6 +3639,11 @@ end subroutine radiation_diag_type_dealloc
 subroutine write_restart_nc(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
+  type(FmsNetcdfFile_t)       ::  Rad_restart !< Fms2io fileobj
+  type(FmsNetcdfDomainFile_t) ::  Til_restart !< Fms2io domain decomposed fileobj
+  logical :: tile_file_exist !< Flag indicating if file was opened
+  character(len = 128) :: filename !< Restart filename
+  integer, allocatable, dimension(:) :: pes !< Array of pes in the current pelist
 
   if( .not. Rad_control%using_restart_file ) return
 !---------------------------------------------------------------------
@@ -3619,113 +3665,162 @@ subroutine write_restart_nc(timestamp)
 
 ! Make sure that the restart_versions variable is up to date.
         vers = restart_versions(size(restart_versions(:)))
-        call save_restart(Rad_restart, timestamp)
-        if(in_different_file) call save_restart(Til_restart, timestamp)
+
+        if (present(timestamp)) then
+           filename = "RESTART/"//trim(timestamp)//".radiation_driver.nc"
+        else
+           filename = "RESTART/radiation_driver.nc"
+        endif
+
+        !< Get the current pelist
+        allocate(pes(mpp_npes()))
+        call mpp_get_current_pelist(pes)
+
+        !< Open the scalar file with the current pelist, so that only the root pe opens and writes the file
+        if (open_file(Rad_restart,filename,"overwrite", is_restart=.true., pelist=pes)) then !scalar file
+          call rad_driver_register_restart_scalars(Rad_Restart)
+          call write_restart(Rad_restart)
+          call close_file(Rad_restart)
+        endif
+        deallocate(pes)
+
+        if (mpp_get_ntile_count(radiation_domain) == 1) then
+           tile_file_exist = open_file(Til_restart,filename,"append", radiation_domain, is_restart=.true.)
+        else
+           tile_file_exist = open_file(Til_restart,filename,"overwrite", radiation_domain, is_restart=.true.)
+        endif
+
+        if (tile_file_exist) then !domain file
+          call rad_driver_register_restart_domain(Til_Restart)
+          call write_restart(Til_restart)
+          call close_file(Til_restart)
+        endif
+
 !---------------------------------------------------------------------
 
 end subroutine write_restart_nc
 
 !#####################################################################
 
-subroutine conc_rad_register_restart(fname, Rad_flux, Exch_ctrl, Atm_block)
-  character(len=*),            intent(in) :: fname
-  type(radiation_flux_type),   intent(in) :: Rad_flux
-  type(exchange_control_type), intent(in) :: Exch_ctrl
+subroutine conc_rad_register_restart_scalars(Rad_restart_conc, Exch_ctrl)
+  type(FmsNetcdfFile_t), intent(inout)       ::  Rad_restart_conc !< Fms2io fileobj
+  type(exchange_control_type), intent(in), optional :: Exch_ctrl
+
+!---local variables
+   character(len=8), dimension(1)       :: dim_names
+!---------------------------------------------------------------------
+
+   dim_names(1) = "Time"
+   call register_axis(Rad_restart_conc, dim_names(1), unlimited)
+
+   if (do_concurrent_radiation) ido_conc_rad = 1
+   if (present(Exch_ctrl)) then
+      if (Exch_ctrl%donner_meso_is_largescale) idonner_meso = 1
+      if (Exch_ctrl%doing_donner) idoing_donner = 1
+      if (Exch_ctrl%doing_uw_conv) idoing_uw_conv = 1
+   endif
+
+   call register_restart_field(Rad_restart_conc, 'do_concurrent_radiation', ido_conc_rad, dim_names)
+   call register_restart_field(Rad_restart_conc, 'donner_meso_is_largescale', idonner_meso, dim_names)
+   call register_restart_field(Rad_restart_conc, 'doing_donner', idoing_donner, dim_names)
+   call register_restart_field(Rad_restart_conc, 'doing_uw_conv', idoing_uw_conv, dim_names)
+
+end subroutine conc_rad_register_restart_scalars
+
+subroutine conc_rad_register_restart_domain(Til_restart_conc, Atm_block)
+
+  type(FmsNetcdfDomainFile_t), intent(inout)       ::  Til_restart_conc !< Fms2io domain decomposed fileobj
   type(block_control_type),    intent(in) :: Atm_block
 
 !---local variables
-  character(len=64)                     :: fname2
-  integer :: ix, jx, npz, id_restart
+   integer :: ix, jx, npz
+   character(len=8), dimension(4)       :: dim_names_4d
+   character(len=8), dimension(3)       :: dim_names_3d
+!---------------------------------------------------------------------
 
-   call get_mosaic_tile_file(fname, fname2, .false. )
-   allocate(Rad_restart_conc)
-   if(trim(fname2) == trim(fname)) then
-      Til_restart_conc => Rad_restart_conc
-      in_different_file_conc = .false.
-   else
-      in_different_file_conc = .true.
-      allocate(Til_restart_conc)
-   endif
+   dim_names_4d =  (/"xaxis_1", "yaxis_1", "zaxis_1", "Time   "/)
+   dim_names_3d =  (/"xaxis_1", "yaxis_1", "Time   "/)
 
-   if (do_concurrent_radiation) ido_conc_rad = 1
-   if (Exch_ctrl%donner_meso_is_largescale) idonner_meso = 1
-   if (Exch_ctrl%doing_donner) idoing_donner = 1
-   if (Exch_ctrl%doing_uw_conv) idoing_uw_conv = 1
+   call register_axis(Til_restart_conc, "xaxis_1", "x")
+   call register_axis(Til_restart_conc, "yaxis_1", "y")
+   call register_axis(Til_restart_conc, "zaxis_1",  size(Restart%tdt_rad, 3))
+   if (.not. Til_restart_conc%mode_is_append) call register_axis(Til_restart_conc, "Time", unlimited)
 
-   id_restart = register_restart_field(Rad_restart_conc, fname, 'do_concurrent_radiation', ido_conc_rad, no_domain=.true.)
-   id_restart = register_restart_field(Rad_restart_conc, fname, 'donner_meso_is_largescale', idonner_meso, no_domain=.true.)
-   id_restart = register_restart_field(Rad_restart_conc, fname, 'doing_donner', idoing_donner, no_domain=.true.)
-   id_restart = register_restart_field(Rad_restart_conc, fname, 'doing_uw_conv', idoing_uw_conv, no_domain=.true.)
+   call register_restart_field(Til_restart_conc, 'tdt_rad',                Restart%tdt_rad, dim_names_4d)
+   call register_restart_field(Til_restart_conc, 'tdt_lw',                 Restart%tdt_lw, dim_names_4d)
+   call register_restart_field(Til_restart_conc, 'flux_sw',                Restart%flux_sw, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_dir',            Restart%flux_sw_dir, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_dif',            Restart%flux_sw_dif, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_down_vis_dir',   Restart%flux_sw_down_vis_dir, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_down_vis_dif',   Restart%flux_sw_down_vis_dif, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_down_total_dir', Restart%flux_sw_down_total_dir, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_down_total_dif', Restart%flux_sw_down_total_dif, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_vis',            Restart%flux_sw_vis, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_vis_dir',        Restart%flux_sw_vis_dir, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_sw_vis_dif',        Restart%flux_sw_vis_dif, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'flux_lw',                Restart%flux_lw, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'coszen',                 Restart%coszen, dim_names_3d)
+   call register_restart_field(Til_restart_conc, 'extinction',             Restart%extinction, dim_names_4d)
 
-   ix = Atm_block%iec-Atm_block%isc+1
-   jx = Atm_block%jec-Atm_block%jsc+1
-   npz = Atm_block%npz
-   call Restart%alloc (ix,jx,npz)
-
-   id_restart = register_restart_field(Til_restart_conc, fname, 'tdt_rad',                Restart%tdt_rad)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'tdt_lw',                 Restart%tdt_lw)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw',                Restart%flux_sw)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_dir',            Restart%flux_sw_dir)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_dif',            Restart%flux_sw_dif)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_vis_dir',   Restart%flux_sw_down_vis_dir)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_vis_dif',   Restart%flux_sw_down_vis_dif)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_total_dir', Restart%flux_sw_down_total_dir)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_down_total_dif', Restart%flux_sw_down_total_dif)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_vis',            Restart%flux_sw_vis)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_vis_dir',        Restart%flux_sw_vis_dir)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_sw_vis_dif',        Restart%flux_sw_vis_dif)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'flux_lw',                Restart%flux_lw)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'coszen',                 Restart%coszen)
-   id_restart = register_restart_field(Til_restart_conc, fname, 'extinction',             Restart%extinction)
-
-end subroutine conc_rad_register_restart
+end subroutine conc_rad_register_restart_domain
 
 !#####################################################################
 
-subroutine rad_driver_register_restart(fname)
-  character(len=*), intent(in) :: fname
+subroutine rad_driver_register_restart_scalars(Rad_restart)
+   type(FmsNetcdfFile_t), intent(inout)       ::  Rad_restart !< Fms2io fileobj
 !---------------------------------------------------------------------
-  character(len=64)            :: fname2
-  integer                      :: id_restart
-!---------------------------------------------------------------------
-
-   call get_mosaic_tile_file(fname, fname2, .false. ) 
-   allocate(Rad_restart)
-   if(trim(fname2) == trim(fname)) then
-      Til_restart => Rad_restart
-      in_different_file = .false.
-   else
-      in_different_file = .true.
-      allocate(Til_restart)
-   endif
-
-  id_restart = register_restart_field(Rad_restart, fname, 'vers', vers, no_domain=.true.)
-  id_restart = register_restart_field(Rad_restart, fname, 'lwrad_alarm', lwrad_alarm, mandatory=.false.,no_domain=.true.)
-  id_restart = register_restart_field(Rad_restart, fname, 'swrad_alarm', swrad_alarm, mandatory=.false.,no_domain=.true.)
-  id_restart = register_restart_field(Rad_restart, fname, 'lw_rad_time_step', lw_rad_time_step, mandatory=.false.,no_domain=.true.)
-  id_restart = register_restart_field(Rad_restart, fname, 'sw_rad_time_step', sw_rad_time_step, mandatory=.false.,no_domain=.true.)
-  id_restart = register_restart_field(Rad_restart, fname, 'renormalize_sw_fluxes', int_renormalize_sw_fluxes,no_domain=.true.)
-  id_restart = register_restart_field(Rad_restart, fname, 'do_clear_sky_pass', int_do_clear_sky_pass,no_domain=.true.)
-  id_restart = register_restart_field(Til_restart, fname, 'tdt_rad', Rad_output%tdt_rad)
-  id_restart = register_restart_field(Til_restart, fname, 'tdtlw', Rad_output%tdtlw)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf', Rad_output%flux_sw_surf)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_dir', Rad_output%flux_sw_surf_dir)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_refl_dir', Rad_output%flux_sw_surf_refl_dir)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_surf_dif', Rad_output%flux_sw_surf_dif)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dir', Rad_output%flux_sw_down_vis_dir)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_vis_dif', Rad_output%flux_sw_down_vis_dif)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis', Rad_output%flux_sw_vis)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dir', Rad_output%flux_sw_vis_dir)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_refl_vis_dir', Rad_output%flux_sw_refl_vis_dir)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_sw_vis_dif', Rad_output%flux_sw_vis_dif)
-  id_restart = register_restart_field(Til_restart, fname, 'flux_lw_surf', Rad_output%flux_lw_surf)
-  id_restart = register_restart_field(Til_restart, fname, 'coszen_angle', Rad_output%coszen_angle)
-
+   character(len=8), dimension(1)       :: dim_names !< Array of dimension names
 !---------------------------------------------------------------------
 
-end subroutine rad_driver_register_restart
+  dim_names(1) = "Time"
+  call register_axis(Rad_restart, dim_names(1), unlimited)
+
+  call register_restart_field(Rad_restart, 'vers', vers, dim_names)
+  call register_restart_field(Rad_restart, 'lwrad_alarm', lwrad_alarm, dim_names, is_optional = .true. )
+  call register_restart_field(Rad_restart, 'swrad_alarm', swrad_alarm, dim_names, is_optional = .true. )
+  call register_restart_field(Rad_restart, 'lw_rad_time_step', lw_rad_time_step, dim_names, is_optional = .true. )
+  call register_restart_field(Rad_restart, 'sw_rad_time_step', sw_rad_time_step, dim_names, is_optional = .true. )
+  call register_restart_field(Rad_restart, 'renormalize_sw_fluxes', int_renormalize_sw_fluxes, dim_names)
+  call register_restart_field(Rad_restart, 'do_clear_sky_pass', int_do_clear_sky_pass, dim_names)
+
+end subroutine rad_driver_register_restart_scalars
+
+subroutine rad_driver_register_restart_domain(Til_restart)
+   type(FmsNetcdfDomainFile_t), intent(inout) ::  Til_restart !< Fms2io domain decomposed fileobj
+!---------------------------------------------------------------------
+   character(len=8), dimension(4)       :: dim_names_4d !< Array of dimension names
+   character(len=8), dimension(3)       :: dim_names_3d !< Array of dimension names
+!---------------------------------------------------------------------
+
+   dim_names_4d =  (/"xaxis_1", "yaxis_1", "zaxis_1", "Time   "/)
+   dim_names_3d =  (/"xaxis_1", "yaxis_1", "Time   "/)
+
+   call register_axis(Til_restart, "xaxis_1", "x")
+   call register_axis(Til_restart, "yaxis_1", "y")
+   call register_axis(Til_restart, "zaxis_1",  size(Rad_output%tdt_rad, 3))
+   if (.not. Til_restart%mode_is_append) call register_axis(Til_restart, "Time", unlimited)
+
+  call register_restart_field(Til_restart, 'tdt_rad', Rad_output%tdt_rad, dim_names_4d)
+  call register_restart_field(Til_restart, 'tdtlw', Rad_output%tdtlw, dim_names_4d)
+  call register_restart_field(Til_restart, 'flux_sw_surf', Rad_output%flux_sw_surf, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_surf_dir', Rad_output%flux_sw_surf_dir, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_surf_refl_dir', Rad_output%flux_sw_surf_refl_dir, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_surf_dif', Rad_output%flux_sw_surf_dif, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_down_vis_dir', Rad_output%flux_sw_down_vis_dir, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_down_vis_dif', Rad_output%flux_sw_down_vis_dif, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_down_total_dir', Rad_output%flux_sw_down_total_dir, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_down_total_dif', Rad_output%flux_sw_down_total_dif, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_vis', Rad_output%flux_sw_vis, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_vis_dir', Rad_output%flux_sw_vis_dir, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_refl_vis_dir', Rad_output%flux_sw_refl_vis_dir, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_sw_vis_dif', Rad_output%flux_sw_vis_dif, dim_names_3d)
+  call register_restart_field(Til_restart, 'flux_lw_surf', Rad_output%flux_lw_surf, dim_names_3d)
+  call register_restart_field(Til_restart, 'coszen_angle', Rad_output%coszen_angle, dim_names_3d)
+
+end subroutine rad_driver_register_restart_domain
+
+
+!---------------------------------------------------------------------
 
 !######################################################################
 ! <SUBROUTINE NAME="obtain_astronomy_variables">

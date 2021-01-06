@@ -92,6 +92,7 @@ module atmos_tracer_driver_mod
 !-----------------------------------------------------------------------
 
 use mpp_mod,               only : input_nml_file
+use mpp_domains_mod,       only : domain2D
 use fms_mod,               only : file_exist, close_file,&
                                   open_namelist_file, check_nml_error, &
                                   write_version_number, &
@@ -1724,9 +1725,10 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !   <INOUT NAME="r" TYPE="real" DIM="(:,:,:,:)">
 !     Tracer fields dimensioned as (nlon,nlat,nlev,ntrace).
 !   </INOUT>
- subroutine atmos_tracer_driver_init (lonb, latb, r, axes, Time, phalf, mask)
+ subroutine atmos_tracer_driver_init (domain, lonb, latb, r, axes, Time, phalf, mask)
 
 !-----------------------------------------------------------------------
+type(domain2D),target,intent(in)                           :: domain !< Atmosphere domain
            real, intent(in),    dimension(:,:)             :: lonb, latb
            real, intent(inout), dimension(:,:,:,:)         :: r
 type(time_type), intent(in)                                :: Time
@@ -1978,7 +1980,7 @@ type(time_type), intent(in)                                :: Time
             write(*,*) 'Allocating xactive_ndx, number of xactive tracers = ', nxactive
          ENDIF
          ALLOCATE( xactive_ndx (nxactive) )
-         call xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx )
+         call xactive_bvoc_init(domain, lonb, latb, Time, axes, xactive_ndx )
          xbvoc_clock = mpp_clock_id( 'xactive_bvocs', &
                        grain=CLOCK_MODULE )
       endif

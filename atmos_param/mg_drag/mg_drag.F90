@@ -12,11 +12,15 @@ module mg_drag_mod
  use  topography_mod, only: get_topog_stdev
 
  use         mpp_mod, only: input_nml_file
- use         fms_mod, only: mpp_npes, field_size, file_exist, write_version_number, stdlog, &
-                            mpp_pe, mpp_root_pe, error_mesg, FATAL, NOTE, read_data, write_data,  &
-                            open_namelist_file, close_file, check_nml_error, mpp_error
- use      fms_io_mod, only: register_restart_field, restart_file_type
- use      fms_io_mod, only: save_restart, restore_state
+ use mpp_domains_mod, only: domain2D
+ use         fms_mod, only: file_exist, write_version_number, stdlog, &
+                            mpp_pe, mpp_root_pe, error_mesg, FATAL, NOTE, &
+                            check_nml_error, mpp_error
+ use fms2_io_mod,     only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                   register_restart_field, register_axis, unlimited, &
+                                   open_file, read_restart, write_restart, close_file, &
+                                   register_field, write_data, register_variable_attribute, &
+                                   get_global_io_domain_indices
  use   constants_mod, only: Grav, Kappa, RDgas, cp_air
 
 !-----------------------------------------------------------------------
@@ -45,7 +49,7 @@ module mg_drag_mod
  logical :: module_is_initialized = .false.
 
 !--- for netcdf restart
-type(restart_file_type), save :: Mg_restart
+ type (domain2D), pointer               :: mg_domain !< Atmosphere domain
 
 !---------------------------------------------------------------------
 ! --- NAMELIST (mg_drag_nml)
@@ -960,7 +964,7 @@ end subroutine mgwd_tend
 
 !#######################################################################
 
-  subroutine mg_drag_init( lonb, latb, hprime )
+  subroutine mg_drag_init(domain, lonb, latb, hprime )
 
 !=======================================================================
 ! ***** INITIALIZE Mountain Gravity Wave Drag
@@ -971,6 +975,7 @@ end subroutine mgwd_tend
 !     lonb  = longitude in radians of the grid box corners
 !     latb  = latitude  in radians of the grid box corners
 !---------------------------------------------------------------------
+ type(domain2D), target,        intent(in) :: domain !< Atmosphere domain
  real, intent(in), dimension(:,:) :: lonb, latb
  
 !---------------------------------------------------------------------
@@ -985,7 +990,7 @@ end subroutine mgwd_tend
  integer  ::  ix, iy, unit, io, ierr, logunit
  logical  ::  answer
  integer  :: id_restart
-
+ type(FmsNetcdfDomainFile_t) ::  Mg_restart !< Fms2io domain decomposed fileobj
 !=====================================================================
 
 if(module_is_initialized) return
@@ -993,25 +998,8 @@ if(module_is_initialized) return
 !---------------------------------------------------------------------
 ! --- Read namelist
 !---------------------------------------------------------------------
-  if( file_exist( 'input.nml' ) ) then
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=mg_drag_nml, iostat=io)
    ierr = check_nml_error(io,'mg_drag_nml')
-#else   
-! -------------------------------------mg_drag_nml')
- 
-   unit = open_namelist_file()
-   ierr = 1
-   do while( ierr .ne. 0 )
-   read ( unit,  nml = mg_drag_nml, iostat = io, end = 10 ) 
-   ierr = check_nml_error(io,'mg_drag_nml')
-   end do
-10 continue
-   call close_file ( unit )
-#endif
-
-! -------------------------------------
-  end if
 
 !---------------------------------------------------------------------
 ! --- Output version
@@ -1035,8 +1023,7 @@ if(module_is_initialized) return
 !---------------------------------------------------------------------
 ! --- Input hprime
 !---------------------------------------------------------------------
-
-  id_restart = register_restart_field(Mg_restart, 'mg_drag.res.nc', 'ghprime', Ghprime)
+  mg_domain => domain
 
   if ( trim(source_of_sgsmtn) == 'computed' ) then
     answer = get_topog_stdev ( lonb, latb, Ghprime )
@@ -1045,10 +1032,12 @@ if(module_is_initialized) return
                       ', but topography data file does not exist', FATAL)
     endif
   else if ( trim(source_of_sgsmtn) == 'input' .or. trim(source_of_sgsmtn) == 'input/computed' ) then
-    if ( file_exist('INPUT/mg_drag.res.nc') ) then
+    if (open_file(Mg_restart,"INPUT/mg_drag.res.nc","read", mg_domain, is_restart=.true.)) then
        if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
             'Reading NetCDF formatted restart file: INPUT/mg_drag.res.nc', NOTE)
-       call restore_state(Mg_restart)
+       call mg_register_restart(Mg_restart)
+       call read_restart(Mg_restart)
+       call close_file(Mg_restart)
     else if ( file_exist( 'INPUT/mg_drag.res' ) ) then
        if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
             'Native formatted restart capability removed.', FATAL)
@@ -1076,6 +1065,22 @@ if(module_is_initialized) return
   end subroutine mg_drag_init
 
 !#######################################################################
+!< mg_register_restart:  registers the restart variables
+  subroutine mg_register_restart(Mg_restart)
+  type(FmsNetcdfDomainFile_t), intent(inout) ::  Mg_restart !< Fms2io domain decomposed fileobj
+  character(len=8), dimension(3)             ::  dim_names  !< String array of dimension names
+
+    dim_names(1) = "xaxis_1"
+    dim_names(2) = "yaxis_1"
+    dim_names(3) = "Time"
+
+    call register_axis(Mg_restart, dim_names(1), "x")
+    call register_axis(Mg_restart, dim_names(2), "y")
+    call register_axis(Mg_restart, dim_names(3), unlimited)
+
+    call register_restart_field(Mg_restart, 'ghprime', Ghprime, dim_names)
+
+  end subroutine mg_register_restart
 
   subroutine mg_drag_end
   integer :: unit
@@ -1105,7 +1110,20 @@ if(module_is_initialized) return
 subroutine mg_drag_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
-  call save_restart(Mg_restart, timestamp)
+  type(FmsNetcdfDomainFile_t) ::  Mg_restart !< Fms2io domain decomposed fileobj
+  character(len=128) :: filename !< Restart filename
+
+  if (present(timestamp)) then
+    filename = "RESTART/"//trim(timestamp)//".mg_drag.res.nc"
+  else
+    filename = "RESTART/mg_drag.res.nc"
+  endif
+
+  if (open_file(Mg_restart,trim(filename),"overwrite", mg_domain, is_restart=.true.)) then
+    call mg_register_restart(Mg_restart)
+    call write_restart(Mg_restart)
+    call close_file(Mg_restart)
+  endif
 
 end subroutine mg_drag_restart
 ! </SUBROUTINE> NAME="mg_drag_restart"

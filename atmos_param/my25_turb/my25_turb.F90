@@ -5,12 +5,16 @@
 !=======================================================================
 
  use mpp_mod,           only : input_nml_file
- use fms_mod,           only : file_exist, open_namelist_file, error_mesg, &
-                               FATAL, close_file, note, read_data,          &
+ use mpp_domains_mod,   only : domain2D
+ use fms_mod,           only : file_exist, error_mesg, &
+                               FATAL, fms_io_close_file => close_file, note, fms_io_read_data => read_data,          &
                                check_nml_error, mpp_pe, mpp_root_pe, &
                                write_version_number, stdlog, open_restart_file
- use fms_io_mod,        only : register_restart_field, restart_file_type, &
-                               save_restart, restore_state
+use fms2_io_mod,        only :  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                   register_restart_field, register_axis, unlimited, &
+                                   open_file, read_restart, write_restart, close_file, &
+                                   register_field, write_data, register_variable_attribute, &
+                                   get_global_io_domain_indices
  use tridiagonal_mod,   only : tri_invert, close_tridiagonal
  use constants_mod,     only : grav, vonkarm
  use monin_obukhov_mod, only : mo_diff
@@ -39,8 +43,8 @@
  integer :: num_total_pts, pts_done
 
 ! for netcdf restart file.
- type(restart_file_type), save :: Tur_restart
 
+ type (domain2D), pointer               :: my25_domain !< Atmosphere_domain
 !---------------------------------------------------------------------
 ! --- CONSTANTS
 !---------------------------------------------------------------------
@@ -589,7 +593,7 @@ tke_out = TKE(is:ie,js:je,:)
 end subroutine get_tke
 !#######################################################################
 
-  SUBROUTINE MY25_TURB_INIT( ix, jx, kx )
+  SUBROUTINE MY25_TURB_INIT(domain, ix, jx, kx )
 
 !=======================================================================
 ! ***** INITIALIZE MELLOR-YAMADA
@@ -599,36 +603,22 @@ end subroutine get_tke
 !     ix, jx  - Horizontal dimensions for global storage arrays
 !     kx      - Number of vertical levels in model
 !---------------------------------------------------------------------
+ type(domain2D), target,      intent(in)    :: domain !< Atmosphere domain
  integer, intent(in) :: ix, jx, kx
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
  integer             :: unit, io, ierr, logunit
  integer             :: id_restart
-
+ type(FmsNetcdfDomainFile_t) ::  Tur_restart !< Fms2io domain_decomposed fileobj
 !=====================================================================
 
 !---------------------------------------------------------------------
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=my25_turb_nml, iostat=io)
    ierr = check_nml_error(io,'my25_turb_nml')
-#else   
-  if( FILE_EXIST( 'input.nml' ) ) then
-! -------------------------------------
-   unit = OPEN_NAMELIST_FILE ( )
-   ierr = 1
-   do while( ierr .ne. 0 )
-   READ ( unit,  nml = my25_turb_nml, iostat = io, end = 10 ) 
-   ierr = check_nml_error (io, 'my25_turb_nml')
-   end do
-10 continue
-   CALL CLOSE_FILE( unit )
-! -------------------------------------
-  end if
-#endif
 
 !---------------------------------------------------------------------
 ! --- Output version
@@ -684,24 +674,24 @@ end subroutine get_tke
 !---------------------------------------------------------------------
 ! --- Input TKE
 !---------------------------------------------------------------------
+  my25_domain => domain
 
-  id_restart = register_restart_field(Tur_restart, 'my25_turb.res', 'TKE', TKE)
-  if (file_exist( 'INPUT/my25_turb.res.nc' )) then
+  if (open_file(Tur_restart,"INPUT/my25_turb.res.nc","read", my25_domain, is_restart=.true.)) then
       if (mpp_pe() == mpp_root_pe() ) then
         call error_mesg ('my25_turb_mod',  'MY25_TURB_INIT:&
              &Reading netCDF formatted restart file: &
                                  &INPUT/my25_turb.res.nc', NOTE)
       endif
-      call restore_state(Tur_restart)
-
+      call my25_register_restart(Tur_restart)
+      call read_restart(Tur_restart)
+      call close_file(Tur_restart)
   else if( FILE_EXIST( 'INPUT/my25_turb.res' ) ) then
 
       unit = OPEN_restart_FILE ( file = 'INPUT/my25_turb.res', action = 'read' )
-      call read_data ( unit, TKE )
-      CALL CLOSE_FILE( unit )
+      call fms_io_read_data ( unit, TKE )
+      CALL fms_io_close_file( unit )
 
       init_tke = .false.
-      
   else
 
       TKE  = TKEmin
@@ -721,6 +711,24 @@ end subroutine get_tke
   end SUBROUTINE MY25_TURB_INIT
 
 !#######################################################################
+!< my25_register_restart: registers the restart variables
+  subroutine my25_register_restart(Tur_restart)
+    type(FmsNetcdfDomainFile_t), intent(inout) ::  Tur_restart !< Fms2io domain decomposed fileobj
+    character(len=8), dimension(4)       :: dim_names !< String array of dimension names
+
+    dim_names(1) = "xaxis_1"
+    dim_names(2) = "yaxis_1"
+    dim_names(3) = "zaxis_1"
+    dim_names(4) = "Time"
+
+    call register_axis(Tur_restart, "Time", unlimited)
+    call register_axis(Tur_restart, "xaxis_1", "x")
+    call register_axis(Tur_restart, "yaxis_1", "y")
+    call register_axis(Tur_restart, "zaxis_1", size(TKE, 3))
+
+    call register_restart_field(Tur_restart, 'TKE', TKE,  dim_names)
+
+  end subroutine my25_register_restart
 
   SUBROUTINE MY25_TURB_END
 !=======================================================================
@@ -749,6 +757,9 @@ end subroutine get_tke
 subroutine my25_turb_restart(timestamp)
   character(len=*), intent(in), optional :: timestamp
 
+  type(FmsNetcdfDomainFile_t) ::  Tur_restart !< Fms2io domain decomposed fileobj
+  character(len=128) :: filename !< Sring of restart filename
+
   if(.not. present(timestamp)) then
       if (mpp_pe() == mpp_root_pe() ) &
             call error_mesg ('my25_turb_mod', 'my25_turb_end: &
@@ -756,11 +767,21 @@ subroutine my25_turb_restart(timestamp)
                 &requested: RESTART/my25_turb.res.nc', NOTE)
   endif     
 
+  if (present(timestamp)) then
+     filename = "RESTART/"//trim(timestamp)//".my25_turb.res.nc"
+  else
+     filename = "RESTART/my25_turb.res.nc"
+  endif
+
 !----------------------------------------------------------------------
 !    write out the restart data which is always needed, regardless of
 !    when the first donner calculation step is after restart.
 !----------------------------------------------------------------------
-  call save_restart(Tur_restart, timestamp)
+  if (open_file(Tur_restart,trim(filename),"overwrite", my25_domain, is_restart=.true.)) then
+     call my25_register_restart(Tur_restart)
+     call write_restart(Tur_restart)
+     call close_file(Tur_restart)
+  endif
 
 end subroutine my25_turb_restart
 ! </SUBROUTINE> NAME="my25_turb_restart"

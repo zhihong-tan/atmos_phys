@@ -1,5 +1,6 @@
                        module donner_deep_mod
 
+use mpp_domains_mod,        only: domain2D
 use donner_types_mod,       only: donner_initialized_type, &
                                   donner_save_type, donner_rad_type, &
                                   donner_nml_type, donner_param_type, &
@@ -406,7 +407,7 @@ logical :: doing_prog_clouds
 
 !#####################################################################
 
-subroutine donner_deep_init (lonb, latb, pref, axes, secs, days, &
+subroutine donner_deep_init (domain, lonb, latb, pref, axes, secs, days, &
                              tracers_in_donner, do_conservation_checks,&
                              using_unified_closure, doing_prog_clouds_in, &
                                                     using_fms_code)
@@ -416,6 +417,7 @@ subroutine donner_deep_init (lonb, latb, pref, axes, secs, days, &
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
+type(domain2D), target,          intent(in)   :: domain !< Atmosphere domain
 real,            dimension(:,:), intent(in)   :: lonb, latb
 real,            dimension(:),   intent(in)   :: pref
 integer,         dimension(4),   intent(in)   :: axes
@@ -833,7 +835,7 @@ logical,                         intent(in), optional :: &
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
       if (running_in_fms) then
-        call fms_donner_read_restart (Initialized, ntracers,   &
+        call fms_donner_read_restart (domain, Initialized, ntracers,   &
                                       secs, days, Don_save, Nml)
       else
 
@@ -1673,7 +1675,8 @@ subroutine donner_deep_restart(timestamp)
   integer                                :: ntracers
 
   if (running_in_fms) then
-     call fms_donner_write_restart (Initialized, timestamp)
+     ntracers = size(Don_save%tracername(:))
+     call fms_donner_write_restart (Initialized, ntracers, nml, Don_save, timestamp)
   else 
 
      !---------------------------------------------------------------------
