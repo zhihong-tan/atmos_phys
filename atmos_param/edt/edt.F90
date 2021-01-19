@@ -679,6 +679,11 @@ subroutine edt_register_restart(edt_restart)
    call register_axis(edt_restart, "zaxis_1", size(qaturb, 3))
    call register_axis(edt_restart, "zaxis_2", size(sigmas, 3))
 
+   !< Register the domain decomposed dimensions as variables so that the combiner can work
+   !! correctly
+   call register_field(edt_restart, "xaxis_1", "double", (/"xaxis_1"/))
+   call register_field(edt_restart, "yaxis_1", "double", (/"yaxis_1"/))
+
    call register_restart_field(edt_restart, 'qaturb'  , qaturb, dim_names )
    call register_restart_field(edt_restart, 'qcturb'  , qcturb, dim_names )
    call register_restart_field(edt_restart, 'tblyrtau', tblyrtau, dim_names )
@@ -1555,6 +1560,7 @@ subroutine edt_end()
        endif
        call edt_register_restart(edt_restart)
        call write_restart(edt_restart)
+       call add_domain_dimension_data(edt_restart)
        call close_file(edt_restart)
     endif
 !-----------------------------------------------------------------------
@@ -1570,6 +1576,22 @@ subroutine edt_end()
 !
        module_is_initialized = .false.
 end subroutine edt_end
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 !
 !======================================================================= 

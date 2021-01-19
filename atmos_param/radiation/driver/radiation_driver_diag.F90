@@ -3166,6 +3166,11 @@ subroutine solar_interp_register_restart(solar_interp)
   call register_axis(solar_interp, "zaxis_1", size(Sw_flux_save%sw_heating, 3))
   call register_axis(solar_interp, "zaxis_2", size(Sw_flux_save%dfsw, 3))
 
+   !< Register the domain decomposed dimensions as variables so that the combiner can work
+   !! correctly
+   call register_field(solar_interp, "xaxis_1", "double", (/"xaxis_1"/))
+   call register_field(solar_interp, "yaxis_1", "double", (/"yaxis_1"/))
+
    call register_restart_field(solar_interp, 'solar_save', solar_save, dim_names3d)
    call register_restart_field(solar_interp, 'flux_sw_surf_save', Sw_flux_save%flux_sw_surf, dim_names3d)
    call register_restart_field(solar_interp, 'flux_sw_surf_dir_save', Sw_flux_save%flux_sw_surf_dir, dim_names3d)
@@ -3233,12 +3238,29 @@ subroutine write_solar_interp_restart_nc (timestamp)
       if (open_file(solar_interp,filename,  "overwrite", radiation_diag_domain, is_restart=.true.)) then !domain file
          call solar_interp_register_restart(solar_interp)
          call write_restart(solar_interp)
+         call add_domain_dimension_data(solar_interp)
          call close_file(solar_interp)
       endif
 
 end subroutine write_solar_interp_restart_nc
 
 !###################################################################
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 subroutine radiation_driver_diag_endts (Rad_control)
 

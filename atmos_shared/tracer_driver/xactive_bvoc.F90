@@ -3393,6 +3393,11 @@ subroutine xactive_bvoc_register_restart_domains(Til_restart)
   call register_axis(Til_restart, "yaxis_1", "y")
   call register_axis(Til_restart, "Time", unlimited)
 
+  !< Register the domain decomposed dimensions as variables so that the combiner can work
+  !! correctly
+  call register_field(Til_restart, dim_names(1), "double", (/dim_names(1)/))
+  call register_field(Til_restart, dim_names(2), "double", (/dim_names(2)/))
+
   do ihour = 1,24
      write(mon_string,'(i2.2)') ihour
      if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
@@ -3449,6 +3454,7 @@ subroutine xactive_bvoc_end
    if (tile_file_open) then
       call xactive_bvoc_register_restart_domains(Til_restart)
       call write_restart(Til_restart)
+      call add_domain_dimension_data(Til_restart)
       call close_file(Til_restart)
    endif
 
@@ -3503,6 +3509,23 @@ subroutine xactive_bvoc_end
 
 end subroutine xactive_bvoc_end
 !</SUBROUTINE>
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
+
 
 !############################################################################
 end module xactive_bvoc_mod

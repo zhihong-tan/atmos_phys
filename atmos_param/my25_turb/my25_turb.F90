@@ -726,6 +726,11 @@ end subroutine get_tke
     call register_axis(Tur_restart, "yaxis_1", "y")
     call register_axis(Tur_restart, "zaxis_1", size(TKE, 3))
 
+    !< Register the domain decomposed dimensions as variables so that the combiner can work
+    !! correctly
+    call register_field(Tur_restart, dim_names(1), "double", (/dim_names(1)/))
+    call register_field(Tur_restart, dim_names(2), "double", (/dim_names(2)/))
+
     call register_restart_field(Tur_restart, 'TKE', TKE,  dim_names)
 
   end subroutine my25_register_restart
@@ -780,6 +785,7 @@ subroutine my25_turb_restart(timestamp)
   if (open_file(Tur_restart,trim(filename),"overwrite", my25_domain, is_restart=.true.)) then
      call my25_register_restart(Tur_restart)
      call write_restart(Tur_restart)
+     call add_domain_dimension_data(Tur_restart)
      call close_file(Tur_restart)
   endif
 
@@ -787,6 +793,22 @@ end subroutine my25_turb_restart
 ! </SUBROUTINE> NAME="my25_turb_restart"
 
 !#######################################################################
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
   SUBROUTINE K_PBL_DEPTH(ustar,bstar,akm,akh,zsfc,zfull,zhalf,h,kbot)
 !=======================================================================

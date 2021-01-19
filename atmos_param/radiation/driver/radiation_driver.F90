@@ -3564,6 +3564,7 @@ subroutine radiation_driver_restart_nc(Rad_flux, Atm_block, timestamp)
    if (conc_tile_file_exist) then
           call conc_rad_register_restart_domain(Til_restart_conc, Atm_block)
           call write_restart(Til_restart_conc)
+          call add_domain_dimension_data(Til_restart_conc)
           call close_file(Til_restart_conc)
     endif
 
@@ -3693,12 +3694,29 @@ subroutine write_restart_nc(timestamp)
         if (tile_file_exist) then !domain file
           call rad_driver_register_restart_domain(Til_Restart)
           call write_restart(Til_restart)
+          call add_domain_dimension_data(Til_restart)
           call close_file(Til_restart)
         endif
 
 !---------------------------------------------------------------------
 
 end subroutine write_restart_nc
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 !#####################################################################
 
@@ -3745,6 +3763,11 @@ subroutine conc_rad_register_restart_domain(Til_restart_conc, Atm_block)
    call register_axis(Til_restart_conc, "yaxis_1", "y")
    call register_axis(Til_restart_conc, "zaxis_1",  size(Restart%tdt_rad, 3))
    if (.not. Til_restart_conc%mode_is_append) call register_axis(Til_restart_conc, "Time", unlimited)
+
+   !< Register the domain decomposed dimensions as variables so that the combiner can work
+   !! correctly
+   call register_field(Til_restart_conc, "xaxis_1", "double", (/"xaxis_1"/))
+   call register_field(Til_restart_conc, "yaxis_1", "double", (/"yaxis_1"/))
 
    call register_restart_field(Til_restart_conc, 'tdt_rad',                Restart%tdt_rad, dim_names_4d)
    call register_restart_field(Til_restart_conc, 'tdt_lw',                 Restart%tdt_lw, dim_names_4d)
@@ -3799,6 +3822,11 @@ subroutine rad_driver_register_restart_domain(Til_restart)
    call register_axis(Til_restart, "yaxis_1", "y")
    call register_axis(Til_restart, "zaxis_1",  size(Rad_output%tdt_rad, 3))
    if (.not. Til_restart%mode_is_append) call register_axis(Til_restart, "Time", unlimited)
+
+   !< Register the domain decomposed dimensions as variables so that the combiner can work
+   !! correctly
+   call register_field(Til_restart, "xaxis_1", "double", (/"xaxis_1"/))
+   call register_field(Til_restart, "yaxis_1", "double", (/"yaxis_1"/))
 
   call register_restart_field(Til_restart, 'tdt_rad', Rad_output%tdt_rad, dim_names_4d)
   call register_restart_field(Til_restart, 'tdtlw', Rad_output%tdtlw, dim_names_4d)

@@ -780,10 +780,27 @@ subroutine fms_donner_write_restart (Initialized, ntracers, nml, Don_save, times
         Initialized%coldstart= .false.
         call fms_donner_register_restart_domain(Til_restart, Initialized, ntracers, Don_save)
         call write_restart(Til_restart)
+        call add_domain_dimension_data(Til_restart)
         call close_file(Til_restart)
       endif
 
-end subroutine fms_donner_write_restart 
+end subroutine fms_donner_write_restart
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 
 !#####################################################################
@@ -2421,6 +2438,11 @@ subroutine fms_donner_register_restart_domain(Til_restart, Initialized, ntracers
   call register_axis(Til_restart, "xaxis_1", "x")
   call register_axis(Til_restart, "yaxis_1", "y")
   call register_axis(Til_restart, "zaxis_1", size(Don_save%lag_temp, 3))
+
+  !< Register the domain decomposed dimensions as variables so that the combiner can work
+  !! correctly
+  call register_field(Til_restart, dim_names(1), "double", (/dim_names(1)/))
+  call register_field(Til_restart, dim_names(2), "double", (/dim_names(2)/))
 
   if (.not. (write_reduced_restart_file) .or. &
         Initialized%conv_alarm >  Initialized%physics_dt)  then

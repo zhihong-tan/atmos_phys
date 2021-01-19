@@ -1078,6 +1078,11 @@ if(module_is_initialized) return
     call register_axis(Mg_restart, dim_names(2), "y")
     call register_axis(Mg_restart, dim_names(3), unlimited)
 
+    !< Register the domain decomposed dimensions as variables so that the combiner can work
+    !! correctly
+    call register_field(Mg_restart, dim_names(1), "double", (/dim_names(1)/))
+    call register_field(Mg_restart, dim_names(2), "double", (/dim_names(2)/))
+
     call register_restart_field(Mg_restart, 'ghprime', Ghprime, dim_names)
 
   end subroutine mg_register_restart
@@ -1122,6 +1127,7 @@ subroutine mg_drag_restart(timestamp)
   if (open_file(Mg_restart,trim(filename),"overwrite", mg_domain, is_restart=.true.)) then
     call mg_register_restart(Mg_restart)
     call write_restart(Mg_restart)
+    call add_domain_dimension_data(Mg_restart)
     call close_file(Mg_restart)
   endif
 
@@ -1129,5 +1135,20 @@ end subroutine mg_drag_restart
 ! </SUBROUTINE> NAME="mg_drag_restart"
 
 !#######################################################################
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 end module mg_drag_mod

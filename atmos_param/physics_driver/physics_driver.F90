@@ -3091,11 +3091,28 @@ subroutine physics_driver_netcdf(timestamp)
   if (tile_file_exist) then !domain file
       call physics_driver_register_restart_domain(Restart, Til_restart)
       call write_restart(Til_restart)
+      call add_domain_dimension_data(Til_restart)
       call close_file(Til_restart)
   endif
 
 end subroutine physics_driver_netcdf
 ! </SUBROUTINE> NAME="physics_driver_netcdf"
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 !#######################################################################
 ! <FUNCTION NAME="do_moist_in_phys_up">
@@ -3296,6 +3313,11 @@ subroutine physics_driver_register_restart_domain (Restart, Til_restart)
   call register_axis(Til_restart, "zaxis_1",  size(diff_cu_mo, 3))
   call register_axis(Til_restart, "zaxis_2", size(exist_shconv, 3))
   if (.not. Til_restart%mode_is_append) call register_axis(Til_restart, "Time", unlimited)
+
+  !< Register the domain decomposed dimensions as variables so that the combiner can work
+  !! correctly
+  call register_field(Til_restart, "xaxis_1", "double", (/"xaxis_1"/))
+  call register_field(Til_restart, "yaxis_1", "double", (/"yaxis_1"/))
 
   call register_restart_field(Til_restart, 'diff_cu_mo', diff_cu_mo, dim_names_4d)
   call register_restart_field(Til_restart, 'pbltop',     pbltop, dim_names_3d)

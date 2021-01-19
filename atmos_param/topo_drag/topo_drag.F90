@@ -723,6 +723,11 @@ end subroutine get_pbl
      call register_axis(restart, dim_names(2), "y")
      call register_axis(restart, dim_names(3), unlimited)
 
+     !< Register the domain decomposed dimensions as variables so that the combiner can work
+     !! correctly
+     call register_field(restart, dim_names(1), "double", (/dim_names(1)/))
+     call register_field(restart, dim_names(2), "double", (/dim_names(2)/))
+
      call register_restart_field(restart, "t11", t11, dim_names)
      call register_restart_field(restart, "t12", t12, dim_names)
      call register_restart_field(restart, "t21", t21, dim_names)
@@ -953,10 +958,27 @@ subroutine topo_drag_restart(timestamp)
 
       call topo_drag_register_tile_restart(Topo_restart)
       call write_restart(Topo_restart)
+      call add_domain_dimension_data(Topo_restart)
       call close_file(Topo_restart)
 end subroutine topo_drag_restart
 ! </SUBROUTINE>
 
 !#######################################################################
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 endmodule topo_drag_mod
