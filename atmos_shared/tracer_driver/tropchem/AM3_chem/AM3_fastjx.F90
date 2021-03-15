@@ -239,16 +239,14 @@ module AM3_FASTJX_MOD
 !   MATINW (B,A)                                                        
 !                                                                       
 !-----------------------------------------------------------------------
-      use              fms_mod, only : file_exist,              &
-                                       write_version_number,    &
+      use              fms_mod, only : write_version_number,    &
                                        mpp_pe,                  &
                                        mpp_root_pE,             &
-                                       close_file,              &
                                        stdlog,                  &
                                        mpp_clock_begin, mpp_clock_end, &
                                        mpp_clock_id, CLOCK_MODULE, &
                                        check_nml_error, error_mesg, &
-                                       open_namelist_file, FATAL
+                                       FATAL
       use           mpp_io_mod, only : mpp_open, mpp_close, MPP_RDONLY, &
                                        MPP_ASCII, MPP_SEQUENTIAL,   &
                                        MPP_MULTI, MPP_SINGLE 

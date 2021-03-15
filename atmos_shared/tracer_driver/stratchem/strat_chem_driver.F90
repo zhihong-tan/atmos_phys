@@ -2,11 +2,10 @@
 
 
 use mpp_mod, only: input_nml_file 
-use              fms_mod, only : file_exist, &
-                                 check_nml_error,  &
-                                 close_file, open_namelist_file, &
+use              fms_mod, only : check_nml_error,  &
                                  stdlog, write_version_number, &
                                  error_mesg, FATAL
+use           fms2_io_mod, only: file_exists
 use              mpp_io_mod, only: mpp_open, mpp_close, &
                        MPP_NATIVE, MPP_RDONLY, MPP_DELETE
 
@@ -96,24 +95,15 @@ integer :: naerosol = 0
 function strat_chem_driver_init()
  logical :: strat_chem_driver_init
 
-      integer                 :: unit, ierr, io, logunit
+      integer                 :: ierr, io, logunit
 !---------------------------------------------------------------------
 !    read strat_chem namelist.
 !---------------------------------------------------------------------
 
 
-         if (file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+         if (file_exists('input.nml')) then
            read (input_nml_file, nml=strat_chem_nml, iostat=io)
            ierr = check_nml_error(io,'strat_chem_nml')
-#else
-           unit =  open_namelist_file ( )
-           ierr=1; do while (ierr /= 0)
-           read (unit, nml=strat_chem_nml, iostat=io, end=10)
-           ierr = check_nml_error (io, 'strat_chem_nml')
-           enddo
- 10        call close_file (unit)
-#endif
          endif
 
      strat_chem_driver_init = do_coupled_stratozone

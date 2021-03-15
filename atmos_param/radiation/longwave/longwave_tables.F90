@@ -18,11 +18,11 @@
 !    shared modules:
 
 use mpp_mod,               only: input_nml_file
-use fms_mod,               only: open_namelist_file, fms_init, &
+use fms_mod,               only: fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
                                  file_exist, write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, close_file
+                                 FATAL
 
 !  longwave radiation package modules:
 
@@ -263,7 +263,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !    k4
 !    n4
 !---------------------------------------------------------------------
-      integer    :: unit, ierr, io, logunit
+      integer    :: ierr, io, logunit
 
 
 !---------------------------------------------------------------------
@@ -279,20 +279,9 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 
 !-----------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=longwave_tables_nml, iostat=io)
       ierr = check_nml_error(io,"longwave_tables_nml")
-#else
-!-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=longwave_tables_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'longwave_tables_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
+
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
@@ -312,7 +301,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !---------------------------------------------------------------------
 !
 !---------------------------------------------------------------------
-          inrad = open_namelist_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi92')
+          inrad = longwave_open_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi92')
           read (inrad,9000) dum
           read (inrad,9000) dum
           read (inrad,9000) apwd_c   ! ckd capphi coeff for 560-800 band
@@ -336,7 +325,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !
 !---------------------------------------------------------------------
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi92')
+          inrad = longwave_open_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi92')
           read (inrad,9000) dum     
           read (inrad,9000) dum    
           read (inrad,9000) apwd_n   ! rsb capphi coeff for 560-800 band
@@ -366,7 +355,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
             trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi00')
+          inrad = longwave_open_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi00')
           read (inrad,9000) dum
           read (inrad,9000) dum
           read (inrad,9000) apwd_c   ! ckd capphi coeff for 560-800 band
@@ -390,7 +379,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !
 !---------------------------------------------------------------------
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
+          inrad = longwave_open_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
           read (inrad,9000) dum     
           read (inrad,9000) dum    
           read (inrad,9000) apwd_n   ! rsb capphi coeff for 560-800 band
@@ -416,7 +405,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
             trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
-          inrad = open_namelist_file ('INPUT/h2o_ckd_widebds_hi12')
+          inrad = longwave_open_file ('INPUT/h2o_ckd_widebds_hi12')
 !  ckd lo/hi freq for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (bdlocm_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (bdhicm_c(k),k=1,NBLY_CKD)
@@ -427,7 +416,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
           apcm_c = 0.0; bpcm_c = 0.0
           atpcm_c = 0.0; btpcm_c = 0.0
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file ('INPUT/h2o_rsb_widebds_hi12')
+          inrad = longwave_open_file ('INPUT/h2o_rsb_widebds_hi12')
 !  rsb lo/hi freq for 8 comb bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (bdlocm_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (bdhicm_n(k),k=1,NBLY_RSB)
@@ -438,7 +427,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
           apcm_n = 0.0; bpcm_n = 0.0
           atpcm_n = 0.0; btpcm_n = 0.0
         else if (trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
-          inrad = open_namelist_file ('INPUT/h2o_BPS_widebds_hi12')
+          inrad = longwave_open_file ('INPUT/h2o_BPS_widebds_hi12')
 !  ckd lo/hi freq for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (bdlocm_n(k),k=1,NBLY_CKD)
           read (inrad,9000) (bdhicm_n(k),k=1,NBLY_CKD)
@@ -451,7 +440,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
         endif
 
       endif
-      call close_file (inrad)
+      close (inrad)
 
 !----------------------------------------------------------------------
 !   set private module variables
@@ -484,16 +473,16 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
 !---------------------------------------------------------------------
       if (NBTRGE > 0) then
         if (trim(Sealw99_control%linecatalog_form) == 'hitran_1992') then
-          inrad = open_namelist_file ('INPUT/h2o12001400_hi92_data')
+          inrad = longwave_open_file ('INPUT/h2o12001400_hi92_data')
         else if(trim(Sealw99_control%linecatalog_form) == 'hitran_2000') then
-          inrad = open_namelist_file ('INPUT/h2o12001400_hi00_data')
+          inrad = longwave_open_file ('INPUT/h2o12001400_hi00_data')
         else if(trim(Sealw99_control%linecatalog_form) == 'hitran_2012') then
           if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
               trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
               trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
-            inrad = open_namelist_file ('INPUT/bandpar_h2o_ckdsea_12001400_hi12_data')
+            inrad = longwave_open_file ('INPUT/bandpar_h2o_ckdsea_12001400_hi12_data')
           else if(trim(Sealw99_control%linecatalog_form) == 'bps2.0') then
-            inrad = open_namelist_file ('INPUT/bandpar_h2o_BPS_12001400_hi12_data')
+            inrad = longwave_open_file ('INPUT/bandpar_h2o_BPS_12001400_hi12_data')
           endif
         endif
 
@@ -549,7 +538,7 @@ type (longwave_tables2_type), intent(inout) :: tab1a, tab2a, tab3a
                  'NBTRGE is inconsistent with available data', FATAL)
           endif
         end do
-        call close_file(inrad)
+        close(inrad)
       endif ! NBTRGE > 0
 
 !----------------------------------------------------------------------
@@ -791,9 +780,9 @@ subroutine idrbtsh2o
 !    the following roberts continuum coefficients are computed using the
 !    program (gasbnd) over the 0-3000 cm-1 range with 10 cm-1 bandwidth.
 !-----------------------------------------------------------------------
-      inrad = open_namelist_file ('INPUT/id2h2orbts')
+      inrad = longwave_open_file ('INPUT/id2h2orbts')
       read (inrad, FMT = '(5e14.6)') (betad(k),k=1,NBLW)
-      call close_file (inrad)
+      close (inrad)
 
 !---------------------------------------------------------------------
  
@@ -842,7 +831,7 @@ character(len=*), intent(in)   :: filename
 !    the 0-3000 cm-1 range, with 10 cm-1 bandwidth. other parameter
 !    values used in the program are obtained separately.
 !-----------------------------------------------------------------------
-      inrad = open_namelist_file (filename)
+      inrad = longwave_open_file (filename)
       read (inrad,9000) (arndm(k),k=1,NBLW)
       read (inrad,9000) (brndm(k),k=1,NBLW)
       read (inrad,9000) (dummy(k),k=1,NBLW)
@@ -851,7 +840,7 @@ character(len=*), intent(in)   :: filename
       read (inrad,9000) (dummy(k),k=1,NBLW)
       read (inrad,9000) (bandlo(k),k=1,NBLW)
       read (inrad,9000) (bandhi(k),k=1,NBLW)
-      call close_file (inrad)
+      close (inrad)
 
 !--------------------------------------------------------------------
 9000  format(5e14.6)
@@ -1563,6 +1552,15 @@ type(longwave_tables2_type), intent(inout)   :: tab1a, tab2a, tab3a
 
 end subroutine table
 
+!> @brief This function is just a wrapper for Fortran's `open`
+!! @return Unique unit number
+function longwave_open_file (filename) result (funit)
+  character(len=*), intent(in), optional :: filename
+  integer :: funit
+
+  open(file=filename, form='formatted',action='read', newunit=funit)
+
+end function longwave_open_file
 
 
 !####################################################################

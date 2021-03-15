@@ -10,7 +10,6 @@ use            fms_mod, only : file_exist,   &
                                mpp_pe,  &
                                mpp_root_pe, &
                                lowercase,   &
-                               open_namelist_file, &
                                check_nml_error, &
                                close_file,   &
                                stdlog
@@ -86,7 +85,7 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 
 !-----------------------------------------------------------------------
 
-   integer ::  unit, nfields, flag_file
+   integer ::  nfields, flag_file
    integer :: ierr, io, logunit
 
    character(len=128) :: tracer_name, tracer_units, name, control
@@ -106,17 +105,8 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 !     ... read namelist
 !-----------------------------------------------------------------------
    if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
      read (input_nml_file, nml=atmos_ch3i_nml, iostat=io)
      ierr = check_nml_error(io, 'atmos_ch3i_nml')
-#else
-     unit = open_namelist_file ()
-     ierr=1; do while (ierr /= 0)
-     read  (unit, nml=atmos_ch3i_nml, iostat=io, end=10)
-     ierr = check_nml_error(io, 'atmos_ch3i_nml')
-     enddo
-10   call close_file (unit)
-#endif
    endif
 
   

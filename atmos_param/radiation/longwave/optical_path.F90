@@ -17,11 +17,11 @@
 !   shared modules:
 
 use mpp_mod,             only: input_nml_file
-use fms_mod,             only: open_namelist_file, fms_init, &
+use fms_mod,             only: fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
-                               file_exist, write_version_number, &
+                               write_version_number, &
                                check_nml_error, error_mesg, &
-                               FATAL, close_file
+                               FATAL
 use constants_mod,       only: RDGAS, RVGAS, GRAV, wtmair, &
                                avogno, pstd, diffac, tfreeze, &
                                constants_init
@@ -287,7 +287,7 @@ subroutine optical_path_init(pref, nbtrge_in)
                                  ap_12001400, bp_12001400,          &
                                  atp_12001400, btp_12001400,        &
                                  fbdlo_12001400, fbdhi_12001400
-      integer                 ::  unit, ierr, io, logunit
+      integer                 ::  ierr, io, logunit
       integer                 :: inrad, k, m
       integer                 :: subb
 
@@ -342,24 +342,12 @@ subroutine optical_path_init(pref, nbtrge_in)
       call constants_init
       call lw_gases_stdtf_init(pref)
 
-#ifdef INTERNAL_FILE_NML
-      read (input_nml_file, nml=optical_path_nml, iostat=io)
-      ierr = check_nml_error(io,"optical_path_nml")
-#else
 !-----------------------------------------------------------------------
 !    read namelist.
-!-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=optical_path_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'optical_path_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
- 
 !---------------------------------------------------------------------
+      read (input_nml_file, nml=optical_path_nml, iostat=io)
+      ierr = check_nml_error(io,"optical_path_nml")
+
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
       call write_version_number (version, tagname)
@@ -383,11 +371,11 @@ subroutine optical_path_init(pref, nbtrge_in)
       if (trim(Sealw99_control%linecatalog_form) == 'hitran_1992' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
-          inrad = open_namelist_file('INPUT/h2ocoeff_ckd_speccombwidebds_hi92')
+          inrad = optical_path_open_file('INPUT/h2ocoeff_ckd_speccombwidebds_hi92')
           read (inrad,9000) awide_c   ! ckd rndm coeff for 560-800 band
           read (inrad,9000) bwide_c   ! ckd rndm coeff for 560-800 band
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi92')
+          inrad = optical_path_open_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi92')
           read (inrad,9000) awide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) bwide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) dum
@@ -411,11 +399,11 @@ subroutine optical_path_init(pref, nbtrge_in)
       else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
-          inrad = open_namelist_file('INPUT/h2ocoeff_ckd_speccombwidebds_hi00')
+          inrad = optical_path_open_file('INPUT/h2ocoeff_ckd_speccombwidebds_hi00')
           read (inrad,9000) awide_c   ! ckd rndm coeff for 560-800 band
           read (inrad,9000) bwide_c   ! ckd rndm coeff for 560-800 band
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
+          inrad = optical_path_open_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
           read (inrad,9000) awide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) bwide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) dum
@@ -441,11 +429,11 @@ subroutine optical_path_init(pref, nbtrge_in)
             trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
             trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
 !  ckd rndm coeff for 560-800 band
-          inrad = open_namelist_file('INPUT/bandpar_h2o_ckd_560800')
+          inrad = optical_path_open_file('INPUT/bandpar_h2o_ckd_560800')
           read (inrad,9000) awide_c   ! ckd rndm coeff for 560-800 band
           read (inrad,9000) bwide_c   ! ckd rndm coeff for 560-800 band
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
+          inrad = optical_path_open_file('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
           read (inrad,9000) awide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) bwide_n   ! rsb rndm coeff for 560-800 band
           read (inrad,9000) dum
@@ -468,7 +456,7 @@ subroutine optical_path_init(pref, nbtrge_in)
         endif
       endif
 9000  format(5e14.6)
-      call close_file (inrad)
+      close (inrad)
 
 !---------------------------------------------------------------------
 !
@@ -491,11 +479,11 @@ subroutine optical_path_init(pref, nbtrge_in)
       ab15wd = awide*bwide
 
       if (trim(Sealw99_control%linecatalog_form) == 'hitran_1992') then
-        inrad = open_namelist_file('INPUT/o39001200_hi92_data')
+        inrad = optical_path_open_file('INPUT/o39001200_hi92_data')
       else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000') then
-        inrad = open_namelist_file('INPUT/o39001200_hi00_data')
+        inrad = optical_path_open_file('INPUT/o39001200_hi00_data')
       else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2012') then
-        inrad = open_namelist_file('INPUT/o39001200_hi12_data')
+        inrad = optical_path_open_file('INPUT/o39001200_hi12_data')
       endif
       read (inrad,fmt='(3e14.6)') (ao3rnd(k),k=1,3)
       read (inrad,fmt='(3e14.6)') (bo3rnd(k),k=1,3)
@@ -504,13 +492,13 @@ subroutine optical_path_init(pref, nbtrge_in)
       if (NBTRGE > 0) then
         allocate ( csfah2o(2, NBTRGE) )
         if (trim(Sealw99_control%linecatalog_form) == 'hitran_1992') then
-          inrad = open_namelist_file('INPUT/h2o12001400_hi92_data')
+          inrad = optical_path_open_file('INPUT/h2o12001400_hi92_data')
         else if (trim(Sealw99_control%linecatalog_form) ==    &
                                                     'hitran_2000') then
-          inrad = open_namelist_file('INPUT/h2o12001400_hi00_data')
+          inrad = optical_path_open_file('INPUT/h2o12001400_hi00_data')
         else if (trim(Sealw99_control%linecatalog_form) ==    &
                                                     'hitran_2012') then
-          inrad = open_namelist_file('INPUT/bandpar_h2o_ckdsea_12001400_hi12_data')
+          inrad = optical_path_open_file('INPUT/bandpar_h2o_ckdsea_12001400_hi12_data')
         endif
 
 !----------------------------------------------------------------------
@@ -561,7 +549,7 @@ subroutine optical_path_init(pref, nbtrge_in)
           endif
         end do
 2001  format(5e14.6)
-        call close_file(inrad)
+        close(inrad)
       endif
 
 !------------------------------------------------------------------
@@ -2420,7 +2408,7 @@ subroutine optical_ckd_init
 !-------------------------------------------------------------------
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1'  .or.    &
           trim(Sealw99_control%continuum_form) == 'ckd2.4') then
-      inrad = open_namelist_file ('INPUT/h2ockd2.1_data')
+      inrad = optical_path_open_file ('INPUT/h2ockd2.1_data')
         read (inrad,fmt='(3f12.1,i8)') v1sh2o_296, v2sh2o_296, dvsh2o_296,  &
                         nptsh2o_296
         read (inrad,fmt='(5e14.5)') (ssh2o_296(k),k=1,2000)
@@ -2432,7 +2420,7 @@ subroutine optical_ckd_init
 9001  format (3f12.1,i8)
 9002  format (5e14.5)
  
-      call close_file (inrad)
+      close (inrad)
 
 !--------------------------------------------------------------------
 !    read h2o (mt_ckd2.5) data
@@ -2440,7 +2428,7 @@ subroutine optical_ckd_init
 !     no need for correction factors
 !-------------------------------------------------------------------
       else if (trim(Sealw99_control%continuum_form) == 'mt_ckd2.5') then
-        inrad = open_namelist_file ('INPUT/h2omt_ckd2.5_data')
+        inrad = optical_path_open_file ('INPUT/h2omt_ckd2.5_data')
         read (inrad,fmt='(3f12.1,i8)') v1sh2o_296, v2sh2o_296, dvsh2o_296,  &
                           nptsh2o_296
         read (inrad,fmt='(5e14.5)') (ssh2o_296(k),k=1,2000)
@@ -2450,7 +2438,7 @@ subroutine optical_ckd_init
         read (inrad,fmt='(3f12.1,i8)') v1fh2o, v2fh2o, dvfh2o, nptfh2o
         read (inrad,fmt='(5e14.5)') (sfh2o(k),k=1,2000)
 
-        call close_file(inrad)
+        close(inrad)
 
       endif
 
@@ -2460,9 +2448,9 @@ subroutine optical_ckd_init
       if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.   &
           trim(Sealw99_control%continuum_form) == 'ckd2.4')  then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1') then
-        inrad = open_namelist_file ('INPUT/h2ockd2.1_corrdata')
+        inrad = optical_path_open_file ('INPUT/h2ockd2.1_corrdata')
         else if (trim(Sealw99_control%continuum_form) == 'ckd2.4') then
-        inrad = open_namelist_file ('INPUT/h2ockd2.4_corrdata')
+        inrad = optical_path_open_file ('INPUT/h2ockd2.4_corrdata')
       endif
       read (inrad,9007) (sfac(k),k=1,2000)
       read (inrad,9007) (fscal(k),k=1,2000)
@@ -2470,16 +2458,16 @@ subroutine optical_ckd_init
       endif
 9007  format (5e13.6)
  
-      call close_file (inrad)
+      close (inrad)
 
 !--------------------------------------------------------------------
 !    read radfn data
 !--------------------------------------------------------------------
-      inrad = open_namelist_file ('INPUT/radfn_5-2995_100-490k')
+      inrad = optical_path_open_file ('INPUT/radfn_5-2995_100-490k')
       read (inrad,9000) ((radfunc%vae(k,j),radfunc%td(k,j),k=1,40), &
                                                            j=1,300)
 9000  format (8f14.6)
-      call close_file (inrad)
+      close (inrad)
 
 !---------------------------------------------------------------------
       do k=1,40
@@ -3463,6 +3451,15 @@ end subroutine cfc_optical_depth
 
 
 !#####################################################################
+!> @brief This function is just a wrapper for Fortran's `open`
+!! @return Unique unit number
+function optical_path_open_file (filename) result (funit)
+  character(len=*), intent(in), optional :: filename
+  integer :: funit
+
+  open(file=filename, form='formatted',action='read', newunit=funit)
+
+end function optical_path_open_file
 
                    end module optical_path_mod
 

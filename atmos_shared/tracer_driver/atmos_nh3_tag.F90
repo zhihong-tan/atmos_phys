@@ -14,21 +14,18 @@ module atmos_nh3_tag_mod
        register_static_field, &
        get_base_time
   use  field_manager_mod, only : MODEL_ATMOS, MODEL_LAND, parse
-  use  fms_mod, only : file_exist,   &
-       field_exist, &
-       write_version_number, &
+  use  fms_mod, only : write_version_number, &
        mpp_pe,  &
        mpp_root_pe, &
        lowercase,   &
        uppercase, &
-       open_namelist_file, &
-       close_file,   &
        stdlog, &
        check_nml_error, &
        error_mesg, &
        FATAL, &
        WARNING, &
        NOTE
+  use  fms2_io_mod, only: file_exists
   use  interpolator_mod, only : interpolate_type,     &
        interpolate_type_eq,  &
        interpolator_init,    &
@@ -763,22 +760,11 @@ contains
   subroutine read_nml_file()
     integer :: io
     integer :: ierr
-    integer :: funit
     integer :: logunit
     if (read_nml) then
-       if (file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+       if (file_exists('input.nml')) then
           read (input_nml_file, nml=atmos_nh3_tag_nml, iostat=io)
           ierr = check_nml_error(io,'atmos_nh3_tag_nml')
-#else
-          unit = open_namelist_file('input.nml')
-          ierr=1
-          do while (ierr /= 0)
-             read(unit, nml = atmos_nh3_tag_nml, iostat=io, end=10)
-             ierr = check_nml_error (io, 'atmos_nh3_tag_nml')
-          end do
-10        call close_file(unit)
-#endif
        endif
        !--------- write version and namelist to standard log ------------
        call write_version_number(version,tagname)

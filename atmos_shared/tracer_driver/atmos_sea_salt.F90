@@ -13,10 +13,10 @@ module atmos_sea_salt_mod
 use        constants_mod, only : PI, GRAV, RDGAS, DENS_H2O, PSTD_MKS, WTMAIR
 use              mpp_mod, only : input_nml_file 
 use              fms_mod, only : write_version_number, mpp_pe,  mpp_root_pe, &
-                                 open_namelist_file, close_file, file_exist, &
                                  check_nml_error, error_mesg,  &
                                  stdlog, stdout, string, lowercase, &
                                  NOTE, FATAL
+use          fms2_io_mod, only : file_exists
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data, register_diag_field
 use  atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
@@ -533,7 +533,7 @@ subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
   real, optional,   intent(in) :: mask(:,:,:)
 
   ! ---- local vars
-  integer :: outunit, unit, ierr, io
+  integer :: outunit, ierr, io
   integer :: n_atm_tracers ! number of prognostic atmos tracers
   integer :: tr ! atmos tracer iterator
   integer :: i  ! running index of seasalt tracers
@@ -550,18 +550,9 @@ subroutine atmos_sea_salt_init (lonb, latb, axes, Time, mask)
   outunit = stdout()
 
   ! read namelist.
-  if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+  if ( file_exists('input.nml')) then
     read (input_nml_file, nml=ssalt_nml, iostat=io)
     ierr = check_nml_error(io,'ssalt_nml')
-#else
-    unit =  open_namelist_file ( )
-    ierr=1; do while (ierr /= 0)
-       read (unit, nml=ssalt_nml, iostat=io, end=10)
-       ierr = check_nml_error(io, 'ssalt_nml')
-    end do
-10  call close_file (unit)
-#endif
   endif
  
   ! write namelist to the log file

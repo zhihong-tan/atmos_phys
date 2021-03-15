@@ -4,10 +4,11 @@ module solar_data_driver_mod
 
 use mpp_mod,          only: input_nml_file
 use fms_mod,          only: fms_init, mpp_pe, mpp_root_pe, &
-                            open_namelist_file, stdlog, &
-                            file_exist, FATAL, NOTE, &
-                            error_mesg, close_file, &
+                            stdlog, &
+                            FATAL, NOTE, &
+                            error_mesg,  &
                             write_version_number, check_nml_error
+use fms2_io_mod,      only: file_exists
 use time_manager_mod, only: time_type, get_date, time_manager_init
 
 !--------------------------------------------------------------------
@@ -75,7 +76,7 @@ integer, intent(out) :: ierror
 !   local variables
 
 integer :: yr, month, nband, nyr, nv
-integer ::   unit, io, ierr, logunit
+integer :: io, ierr, logunit, funit
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -93,27 +94,15 @@ integer ::   unit, io, ierr, logunit
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=solar_data_driver_nml, iostat=io)
       ierr = check_nml_error(io,'solar_data_driver_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=solar_data_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'solar_data_driver_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !--------------------------------------------------------------------
 !     code to handle time-varying solar input
 !--------------------------------------------------------------------
-        if (file_exist('INPUT/lean_solar_spectral_data.dat')) then
-          unit = open_namelist_file   &
-                                 ('INPUT/lean_solar_spectral_data.dat')
-          read (unit, FMT = '(4i8)') first_yr_lean, last_yr_lean,  &
+        if (file_exists('INPUT/lean_solar_spectral_data.dat')) then
+          open(file='INPUT/lean_solar_spectral_data.dat', form='formatted',action='read', newunit=funit)
+          read (funit, FMT = '(4i8)') first_yr_lean, last_yr_lean,  &
                                    nvalues_per_year_lean, numbands_lean
           if (numbands_lean /= nbands) then
             call error_mesg ('radiation_driver_mod', &
@@ -128,8 +117,8 @@ integer ::   unit, io, ierr, logunit
           allocate (solflxband_lean_ann_1882(numbands_lean))
           allocate (solflxband_lean_ann_2000(numbands_lean))
 
-          read (unit, FMT = '(2i6,f17.4)') yr, month, solflxtot_lean_ann_1882
-          read (unit, FMT = '(6e12.5 )')  (solflxband_lean_ann_1882(nband), nband =1,numbands_lean)
+          read (funit, FMT = '(2i6,f17.4)') yr, month, solflxtot_lean_ann_1882
+          read (funit, FMT = '(6e12.5 )')  (solflxband_lean_ann_1882(nband), nband =1,numbands_lean)
           if (solar_scale_factor >= 0.0) then
             solflxtot_lean_ann_1882 = solflxtot_lean_ann_1882 * solar_scale_factor
             do nband = 1,numbands_lean
@@ -140,8 +129,8 @@ integer ::   unit, io, ierr, logunit
 
           do nyr=1,years_of_data_lean
             do nv=1,nvalues_per_year_lean
-              read (unit, FMT = '(2i6,f17.4)') yr, month, solflxtot_lean(nyr,nv)
-              read (unit, FMT = '(6e12.5 )')  (solflxband_lean  &
+              read (funit, FMT = '(2i6,f17.4)') yr, month, solflxtot_lean(nyr,nv)
+              read (funit, FMT = '(6e12.5 )')  (solflxband_lean  &
                                 (nyr,nv,nband), nband =1,numbands_lean)
             end do
           end do
@@ -162,9 +151,9 @@ integer ::   unit, io, ierr, logunit
             enddo
           endif
 
-          read (unit, FMT = '(2i6,f17.4)') yr, month, solflxtot_lean_ann_2000
-          read (unit, FMT = '(6e12.5 )')  (solflxband_lean_ann_2000(nband), nband =1,numbands_lean)
-          call close_file (unit)
+          read (funit, FMT = '(2i6,f17.4)') yr, month, solflxtot_lean_ann_2000
+          read (funit, FMT = '(6e12.5 )')  (solflxband_lean_ann_2000(nband), nband =1,numbands_lean)
+          close(funit)
           if (solar_scale_factor >= 0.0) then
             solflxtot_lean_ann_2000 = solflxtot_lean_ann_2000 * solar_scale_factor
             do nband = 1,numbands_lean

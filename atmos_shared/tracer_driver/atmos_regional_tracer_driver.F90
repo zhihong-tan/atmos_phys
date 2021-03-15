@@ -21,19 +21,17 @@ module atmos_regional_tracer_driver_mod
 
 !-----------------------------------------------------------------------
 
-use                    fms_mod, only : file_exist,   &
-                                       field_exist, &
-                                       write_version_number, &
+use                    fms_mod, only : write_version_number, &
                                        mpp_pe,  &
                                        mpp_root_pe, &
-                                       open_namelist_file, &
-                                       close_file,   &
                                        stdlog, &
                                        check_nml_error, &
                                        error_mesg, &
                                        FATAL, &
                                        WARNING, &
                                        NOTE
+use                    mpp_mod, only : input_nml_file
+use                fms2_io_mod, only : file_exists
 use           time_manager_mod, only : time_type
 use           diag_manager_mod, only : send_data,            &
                                        register_diag_field
@@ -387,7 +385,6 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
    character(len=64) :: trname
    character(len=64) :: diag_name
    integer :: ierr, io
-   integer :: unit
 
    integer :: omp_get_num_threads
 
@@ -408,15 +405,9 @@ subroutine regional_tracer_driver_init( lonb_mod, latb_mod, axes, Time, mask )
 !-----------------------------------------------------------------------
 !     ... read namelist
 !-----------------------------------------------------------------------
-   if(file_exist('input.nml')) then
-      unit = open_namelist_file('input.nml')
-      ierr=1; do while (ierr /= 0)
-      read(unit, nml = regional_tracer_driver_nml, iostat=io, end=10)
-      ierr = check_nml_error (io, 'regional_tracer_driver_nml')
-      end do
-10    call close_file(unit)
-   end if
-  
+   read (input_nml_file, nml=regional_tracer_driver_nml, iostat=io)
+   ierr = check_nml_error(io,'regional_tracer_driver_nml')
+
    if(mpp_pe() == mpp_root_pe()) then       
       write(stdlog(), nml=regional_tracer_driver_nml)
    end if

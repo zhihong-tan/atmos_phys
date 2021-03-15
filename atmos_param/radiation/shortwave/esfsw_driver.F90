@@ -24,11 +24,11 @@
 !    shared modules:
 
 use mpp_mod,              only:  input_nml_file, mpp_chksum
-use fms_mod,              only:  open_namelist_file, fms_init, &
+use fms_mod,              only:  fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, write_version_number, &
+                                 write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, NOTE, close_file, string, stdout
+                                 FATAL, NOTE, string, stdout
 use constants_mod,        only:  PI, GRAV, radcon_mks, o2mixrat, &
                                  rhoair, pstd_mks, WTMAIR, &
                                  constants_init
@@ -354,7 +354,7 @@ subroutine esfsw_driver_init
                    twopiesq, densmolrefsqt3, wavelength,  &
                    freqsq, ristdm1, ri
       integer   :: iounit, nband, nf, ni, nw, nw1, nw2, nintsolar
-      integer   :: unit, io, ierr, logunit
+      integer   :: io, ierr, logunit
       integer   :: i
       integer   :: n
       real      :: input_flag = 1.0e-99
@@ -426,20 +426,9 @@ subroutine esfsw_driver_init
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
        read (input_nml_file, nml=esfsw_driver_nml, iostat=io)
        ierr = check_nml_error(io,'esfsw_driver_nml')
-#else   
-       if ( file_exist('input.nml')) then
-         unit =  open_namelist_file ( )
-         ierr=1; do while (ierr /= 0)
-         read  (unit, nml=esfsw_driver_nml, iostat=io, end=10)
-         ierr = check_nml_error(io,'esfsw_driver_nml')
-         end do
-10      call close_file (unit)
-      endif
-#endif
- 
+
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
@@ -585,8 +574,9 @@ subroutine esfsw_driver_init
       
       call error_mesg ( 'esfsw_driver_mod', &
           'reading solar band data from file '//trim(file_name), NOTE)
-      
-      iounit = open_namelist_file (file_name)
+
+      open(file=file_name, form='formatted',action='read', newunit=iounit)
+
       read(iounit,101) ( solflxbandref(nband), nband=1,NBANDS )
       read(iounit,102) ( nfreqpts(nband), nband=1,NBANDS )
       read(iounit,103) ( endwvnbands(nband), nband=1,NBANDS )
@@ -674,7 +664,7 @@ subroutine esfsw_driver_init
         read(iounit,107) nwvnsolar (ni),solint(ni)
       end do
  
-      call close_file (iounit)
+      close (iounit)
  
       if (tot_wvnums /= endwvnbands(nbands)) then
         call error_mesg ('esfsw_driver_mod', &

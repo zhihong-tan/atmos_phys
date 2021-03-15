@@ -93,8 +93,8 @@ module atmos_tracer_driver_mod
 
 use mpp_mod,               only : input_nml_file
 use mpp_domains_mod,       only : domain2D
-use fms_mod,               only : file_exist, close_file,&
-                                  open_namelist_file, check_nml_error, &
+use fms2_io_mod,           only : file_exists
+use fms_mod,               only : check_nml_error, &
                                   write_version_number, &
                                   error_mesg, &
                                   FATAL, &
@@ -1819,7 +1819,7 @@ type(time_type), intent(in)                                :: Time
 ! Initialize tropospheric chemistry and dry deposition
 !------------------------------------------------------------------------
       allocate( drydep_data(ntp) )
-      do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf)
+      do_tropchem = tropchem_driver_init(domain, r,mask,axes,Time,lonb,latb,phalf)
       do n = 1,ntp
          call dry_deposition_init(n,lonb,latb,drydep_data(n))
       end do
@@ -2835,22 +2835,11 @@ end subroutine atmos_nitrogen_drydep_flux_set
 subroutine read_nml_file()
     integer :: io
     integer :: ierr
-    integer :: funit
     integer :: logunit
     if (read_nml) then
-        if (file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+        if (file_exists('input.nml')) then
             read(input_nml_file,nml=atmos_tracer_driver_nml,iostat=io)
             ierr = check_nml_error(io,'atmos_tracer_driver_nml')
-#else
-            funit = open_namelist_file()
-            ierr = 1
-            do while (ierr .ne. 0)
-                read(funit,nml=atmos_tracer_driver_nml,iostat=io,end=10)
-                ierr = check_nml_error(io,'atmos_tracer_driver_nml')
-            enddo
-10          call close_file(funit)
-#endif
         endif
 !--------- write version and namelist to standard log ------------
         call write_version_number(version,tagname)

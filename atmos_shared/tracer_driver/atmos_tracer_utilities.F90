@@ -25,11 +25,11 @@ module atmos_tracer_utilities_mod
 
   ! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
   use mpp_mod,           only: input_nml_file
-  use fms_mod,           only: open_namelist_file, fms_init, &
+  use fms_mod,           only: fms_init, &
        mpp_pe, mpp_root_pe, stdlog, &
-       file_exist, write_version_number, &
+       write_version_number, &
        check_nml_error, error_mesg, &
-       FATAL, close_file
+       FATAL
   ! <---h1g,
 
   use            fms_mod, only : lowercase, uppercase, &
@@ -241,7 +241,7 @@ contains
 
     ! --->h1g, add a scale factor for aerosol wet deposition, 2014-04-10
     !   local variables:
-    integer   :: unit, io, ierr
+    integer   :: io, ierr
     ! <---h1g,
 
     ! Make local copies of the local domain dimensions for use
@@ -307,19 +307,8 @@ contains
        !-----------------------------------------------------------------------
        !    read namelist.
        !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
        read (input_nml_file, nml=atmos_tracer_utilities_nml, iostat=io)
        ierr = check_nml_error(io,'atmos_tracer_utilities_nml')
-#else
-       if ( file_exist('input.nml')) then
-          unit =  open_namelist_file ( )
-          ierr=1; do while (ierr /= 0)
-          read  (unit, nml=atmos_tracer_utilities_nml, iostat=io, end=10)
-          ierr = check_nml_error(io,'atmos_tracer_utilities_nml')
-       end do
-10     call close_file (unit)
-    endif
-#endif
 
     flag = query_method ('wet_deposition',MODEL_ATMOS,n, &
          Wetdep(n)%text_in_scheme,Wetdep(n)%control)

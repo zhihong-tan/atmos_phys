@@ -135,13 +135,10 @@ module xactive_bvoc_mod
 !------------------------------------------------------------------------------
 
 use                mpp_mod,  only : input_nml_file, mpp_get_current_pelist
-use                fms_mod,  only : file_exist,            &
-                                    write_version_number,  &
+use                fms_mod,  only : write_version_number,  &
                                     mpp_pe,                &
                                     mpp_root_pe,           &
                                     mpp_npes,              &
-                                    open_namelist_file,    &
-                                    fms_io_close_file => close_file,            &
                                     stdlog,                &
                                     check_nml_error,       &
                                     error_mesg,            &
@@ -154,7 +151,7 @@ use            fms2_io_mod,  only : FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
                                     register_restart_field, register_axis, unlimited, &
                                     open_file, read_restart, write_restart, close_file, &
                                     register_field, write_data, get_global_io_domain_indices, &
-                                    register_variable_attribute, read_data
+                                    register_variable_attribute, read_data, file_exists
 use         M_TRACNAME_MOD,  only : tracnam
 use      tracer_manager_mod, only : get_tracer_index,      &
                                     query_method
@@ -792,7 +789,7 @@ subroutine xactive_bvoc_init(domain, lonb, latb, Time, axes, xactive_ndx)
                                                     'mw   '/)
 
    integer          :: nlon, nlat, i, j, k, n, xknt, nTERP, nxactive
-   integer          :: ierr, unit, io, logunit, nPARAMS
+   integer          :: ierr, io, logunit, nPARAMS
 
    integer, parameter             :: nlonin = 720, nlatin = 360
    real, dimension(nlonin)        :: inlon
@@ -840,18 +837,9 @@ subroutine xactive_bvoc_init(domain, lonb, latb, Time, axes, xactive_ndx)
 !-----------------------------------------------------------------------
 !     ... read namelist
 !-----------------------------------------------------------------------
-   IF (file_exist('input.nml')) THEN
-#ifdef INTERNAL_FILE_NML
+   IF (file_exists('input.nml')) THEN
       read (input_nml_file, nml=xactive_bvoc_nml, iostat=io)
       ierr = check_nml_error(io,'xactive_bvoc_nml')
-#else
-      unit = open_namelist_file('input.nml')
-      ierr=1; do while (ierr /= 0)
-      read(unit, nml = xactive_bvoc_nml, iostat=io, end=10)
-      ierr = check_nml_error (io, 'xactive_bvoc_nml')
-      end do
-10    call fms_io_close_file(unit)
-#endif
    ENDIF
 
    logunit = stdlog()

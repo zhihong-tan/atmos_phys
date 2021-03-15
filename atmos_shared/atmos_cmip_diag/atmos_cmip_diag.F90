@@ -10,8 +10,8 @@ module atmos_cmip_diag_mod
 !----------------------------------------------------------------------
 
 use mpp_mod,            only: input_nml_file
-use fms_mod,            only: open_namelist_file, check_nml_error, &
-                              close_file, stdlog, mpp_pe, mpp_root_pe, &
+use fms_mod,            only: check_nml_error, &
+                              stdlog, mpp_pe, mpp_root_pe, &
                               write_version_number, file_exist, &
                               error_mesg, FATAL, WARNING, NOTE, &
                               lowercase, string
@@ -181,20 +181,8 @@ integer  :: id_lev, id_levhalf, id_nv, id_ap, id_b, &
 
 !-----------------------------------------------------------------------
 !----- read namelist -----
-#ifdef INTERNAL_FILE_NML
   read (input_nml_file, nml=atmos_cmip_diag_nml, iostat=io)
   ierr = check_nml_error (io, 'atmos_cmip_diag_nml')
-#else
-  if (file_exist('input.nml') ) then
-    iunit = open_namelist_file()
-    ierr=1
-    do while (ierr /= 0)
-      read (iunit, nml=atmos_cmip_diag_nml, iostat=io, end=10)
-      ierr = check_nml_error (io, 'atmos_cmip_diag_nml')
-    enddo
-10  call close_file (iunit)
-  endif
-#endif
 
 !----- write version and namelist to log file -----
 

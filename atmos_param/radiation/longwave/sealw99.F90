@@ -18,11 +18,11 @@
 !  shared modules:
 
 use mpp_mod,             only: input_nml_file
-use fms_mod,             only: open_namelist_file, fms_init, &
+use fms_mod,             only: fms_init, &
                                mpp_pe, mpp_root_pe, stdlog, &
-                               file_exist, write_version_number, &
+                               write_version_number, &
                                check_nml_error, error_mesg, &
-                               FATAL, NOTE,  close_file
+                               FATAL, NOTE
 use constants_mod,       only: constants_init, diffac, radcon_mks, &
                                SECONDS_PER_DAY, radcon
 
@@ -325,7 +325,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
        real, dimension (NBCO215) :: cent, del
        real            :: cent990, del990, cent900, del900, cent1070, del1070
 
-       integer         :: unit, ierr, io, k, n,  nn, logunit
+       integer         :: ierr, io, k, n,  nn, logunit
        integer         :: ioffset
        real            :: prnlte
        integer         ::     kmax, kmin
@@ -385,20 +385,9 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
 
 !-----------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=sealw99_nml, iostat=io)
       ierr = check_nml_error(io,"sealw99_nml")
-#else
 !-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=sealw99_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'sealw99_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -489,7 +478,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
       if (trim(Sealw99_control%linecatalog_form) == 'hitran_1992' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi92')
+          inrad = seal_open_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi92')
           read (inrad,9000) dum
           read (inrad,9000) dum
           read (inrad,9000) dum     ! ckd capphi coeff for 560-800 band
@@ -506,7 +495,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
           read (inrad,9000) (atpcm_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (btpcm_c(k),k=1,NBLY_CKD)
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi92')
+          inrad = seal_open_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi92')
           read (inrad,9000) dum     
           read (inrad,9000) dum    
           read (inrad,9000) dum    ! rsb capphi coeff for 560-800 band
@@ -527,7 +516,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
       else if (trim(Sealw99_control%linecatalog_form) == 'hitran_2000' ) then
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Sealw99_control%continuum_form) == 'ckd2.4' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi00')
+          inrad = seal_open_file ('INPUT/h2ocoeff_ckd_speccombwidebds_hi00')
           read (inrad,9000) dum
           read (inrad,9000) dum
           read (inrad,9000) dum    ! ckd capphi coeff for 560-800 band
@@ -544,7 +533,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
           read (inrad,9000) (atpcm_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (btpcm_c(k),k=1,NBLY_CKD)
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
+          inrad = seal_open_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
           read (inrad,9000) dum     
           read (inrad,9000) dum    
           read (inrad,9000) dum    ! rsb capphi coeff for 560-800 band
@@ -566,7 +555,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
         if (trim(Sealw99_control%continuum_form) == 'ckd2.1' .or.     &
             trim(Sealw99_control%continuum_form) == 'ckd2.4' .or.     &
             trim(Sealw99_control%continuum_form) == 'mt_ckd2.5' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_ckdsea_speccombwidebds_hi12')
+          inrad = seal_open_file ('INPUT/h2ocoeff_ckdsea_speccombwidebds_hi12')
 !  ckd rndm coeff for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (acomb_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (bcomb_c(k),k=1,NBLY_CKD)
@@ -575,7 +564,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
           read (inrad,9000) (atpcm_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (btpcm_c(k),k=1,NBLY_CKD)
         else if (trim(Sealw99_control%continuum_form) == 'rsb' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
+          inrad = seal_open_file ('INPUT/h2ocoeff_rsb_speccombwidebds_hi00')
 !  rsb rndm coeff for 8 comb bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (acomb_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (bcomb_n(k),k=1,NBLY_RSB)
@@ -584,7 +573,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
           read (inrad,9000) (atpcm_n(k),k=1,NBLY_RSB)
           read (inrad,9000) (btpcm_n(k),k=1,NBLY_RSB)
         else if (trim(Sealw99_control%continuum_form) == 'bps2.0' ) then
-          inrad = open_namelist_file ('INPUT/h2ocoeff_BPS_speccombwidebds_hi12')
+          inrad = seal_open_file ('INPUT/h2ocoeff_BPS_speccombwidebds_hi12')
 !  BPS rndm coeff for 40 bands (160-560) and 8 wide bands (560-1400)
           read (inrad,9000) (acomb_c(k),k=1,NBLY_CKD)
           read (inrad,9000) (bcomb_c(k),k=1,NBLY_CKD)
@@ -595,7 +584,7 @@ logical,              intent(in) :: do_h2o, do_o3, do_ch4, do_n2o, do_co2, do_co
         endif
       endif
 9000  format (5e14.6)
-      call close_file (inrad)
+      close(inrad)
 
 !---------------------------------------------------------------------
 !
@@ -7258,7 +7247,15 @@ type(lw_table_type), pointer, intent(out) :: Lw_tables_ptr
 end subroutine sealw99_get_tables
 
 !####################################################################
+!> @brief This function is just a wrapper for Fortran's `open`
+!! @return Unique unit number
+function seal_open_file (filename) result (funit)
+  character(len=*), intent(in), optional :: filename
+  integer :: funit
 
+  open(file=filename, form='formatted',action='read', newunit=funit)
+
+end function seal_open_file
 
                   end module sealw99_mod
 

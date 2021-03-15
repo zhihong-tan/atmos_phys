@@ -33,12 +33,13 @@ use tracer_manager_mod,only: get_tracer_index,   &
                              MAX_TRACER_FIELDS,  &
                              query_method
 use mpp_mod,           only: input_nml_file
-use fms_mod,           only: open_namelist_file, fms_init, &
+use fms_mod,           only: fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
-                             file_exist, write_version_number, &
+                             write_version_number, &
                              check_nml_error, error_mesg, &
-                             FATAL, NOTE, WARNING, close_file, &
+                             FATAL, NOTE, WARNING, &
                              lowercase
+use fms2_io_mod,       only: file_exists
 use fms_io_mod,        only: string
 use interpolator_mod,  only: interpolate_type, interpolator_init, &
                              interpolator, interpolator_end, &
@@ -329,7 +330,7 @@ character(len=64), dimension(:), optional, pointer :: aerosol_family_names
       character(len=256)       ::tr_rad_name, tr_clim_name
       character(len=256)       :: name,control
       real                    ::tr_rad_scale_factor
-      integer   ::   unit, ierr, io, logunit
+      integer   ::   ierr, io, logunit
       integer   ::   ntrace
       integer   ::   n
 
@@ -363,21 +364,8 @@ character(len=64), dimension(:), optional, pointer :: aerosol_family_names
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=aerosol_nml, iostat=io)
       ierr = check_nml_error(io,'aerosol_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=aerosol_nml, iostat=io,  &
-               end=10)
-        ierr = check_nml_error(io,'aerosol_nml')
-        end do
-10      call close_file (unit)   
-      endif                      
-#endif
-                                  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
@@ -1586,7 +1574,7 @@ subroutine obtain_input_file_data
 !    determine if a netcdf input data file exists. if so, read the 
 !    number of data records in the file.
 !---------------------------------------------------------------------
-      if (file_exist ( 'INPUT/id1aero.nc') ) then
+      if (file_exists ( 'INPUT/id1aero.nc') ) then
         ncid = ncopn ('INPUT/id1aero.nc', 0, rcode)
         call ncinq (ncid, ndims, nvars, ngatts, recdim, rcode)
         do i=1,ndims
@@ -1616,8 +1604,8 @@ subroutine obtain_input_file_data
 !    determine if the input data input file exists in ascii format. if 
 !    so, read the number of data records in the file.
 !---------------------------------------------------------------------
-      else if (file_exist ( 'INPUT/id1aero') ) then
-        iounit = open_namelist_file ('INPUT/id1aero')
+      else if (file_exists ( 'INPUT/id1aero') ) then
+        open(file='INPUT/id1aero', form='formatted',action='read', newunit=iounit)
         read (iounit,FMT = '(i4)') kmax_file
 
 !-------------------------------------------------------------------
@@ -1627,7 +1615,7 @@ subroutine obtain_input_file_data
          allocate (specified_aerosol(kmax_file) )
          read (iounit,FMT = '(5e18.10)')   &
                           (specified_aerosol(k),k=1,kmax_file)
-         call close_file (iounit)
+         close (iounit)
 
 !---------------------------------------------------------------------
 !    if file is not present, write an error message.
