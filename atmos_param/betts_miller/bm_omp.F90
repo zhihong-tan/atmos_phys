@@ -3,9 +3,9 @@ module bm_omp_mod
 
 !----------------------------------------------------------------------
 use             mpp_mod, only: input_nml_file
-use             fms_mod, only: file_exist, open_namelist_file, check_nml_error, &
+use             fms_mod, only: check_nml_error, &
                                error_mesg, FATAL, mpp_pe, mpp_root_pe, &
-                               close_file, write_version_number, stdlog
+                               write_version_number, stdlog
 
 use sat_vapor_pres_mod, only:  escomp, descomp
 use      constants_mod, only:  HLv,HLs,Cp_air,Grav,rdgas,rvgas, cp_vapor, &
@@ -1469,23 +1469,12 @@ if (k .eq. nlev) go to 11
 !
 !-----------------------------------------------------------------------
 
-  integer  unit,io,ierr, logunit
+  integer  io,ierr, logunit
 
 !----------- read namelist ---------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=bm_omp_nml, iostat=io)
       ierr = check_nml_error(io,"bm_omp_nml")
-#else
-      if (file_exist('input.nml')) then
-         unit = open_namelist_file ( )
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=bm_omp_nml, iostat=io, end=10)
-            ierr = check_nml_error (io,'bm_omp_nml')
-         enddo
-  10     call close_file (unit)
-      endif
-#endif
 
 !---------- output namelist --------------------------------------------
 

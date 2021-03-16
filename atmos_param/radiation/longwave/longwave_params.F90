@@ -19,11 +19,11 @@
 !   shared modules:
 
  use mpp_mod, only: input_nml_file
- use fms_mod, only: open_namelist_file, fms_init, &
+ use fms_mod, only: fms_init, &
                     mpp_pe, mpp_root_pe, stdlog, &
-                    file_exist, write_version_number, &
+                    write_version_number, &
                     check_nml_error, error_mesg, &
-                    FATAL, close_file
+                    FATAL
 
 !--------------------------------------------------------------------
 
@@ -127,12 +127,11 @@ subroutine longwave_params_init
 !------------------------------------------------------------------
 !  local variables:
 
-      integer    ::  unit, ierr, io, logunit
+      integer    ::  ierr, io, logunit
 
 !---------------------------------------------------------------------
 !  local variables:
 !
-!        unit            io unit number used for namelist file
 !        ierr            error code
 !        io              error status returned from io operation
 !
@@ -151,20 +150,8 @@ subroutine longwave_params_init
 
 !-----------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=longwave_params_nml, iostat=io)
       ierr = check_nml_error(io,"longwave_params_nml")
-#else
-!-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=longwave_params_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'longwave_params_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

@@ -1,8 +1,6 @@
       module MO_READ_SIM_CHM_MOD
 
       use mpp_mod,    only : mpp_error, FATAL, mpp_pe, mpp_root_pe
-      use mpp_io_mod, only : mpp_open, MPP_RDONLY, MPP_ASCII,MPP_MULTI, &
-                             MPP_SINGLE, mpp_close
       use fms_mod,    only : open_file, close_file, read_distributed
 
 implicit none

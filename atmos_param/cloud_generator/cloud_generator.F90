@@ -5,11 +5,11 @@ module cloud_generator_mod
   use constants_mod,      only: hlv, hls, cp_air, tfreeze, &
                                 rvgas, rdgas
   use mpp_mod,            only: input_nml_file
-  use fms_mod,            only: open_namelist_file, mpp_pe,       &
+  use fms_mod,            only: mpp_pe,       &
                                 mpp_root_pe, stdlog,              &
-                                write_version_number, file_exist, &
+                                write_version_number, &
                                 check_nml_error, error_mesg,      &
-                                FATAL, close_file
+                                FATAL
   use random_numbers_mod, only: randomNumberStream,        &
                                 getRandomNumbers
   use beta_dist_mod,      only: beta_dist_init, beta_dist_end, &
@@ -143,7 +143,7 @@ subroutine cloud_generator_init
 
 !----------------------------------------------------------------------
 !   local variables:
-      integer   ::   unit, ierr, io, logunit
+      integer   ::   ierr, io, logunit
 
 !--------------------------------------------------------------------
 !   local variables:
@@ -158,19 +158,8 @@ subroutine cloud_generator_init
 !---------------------------------------------------------------------
 !    read namelist.         
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
         read (input_nml_file, nml=cloud_generator_nml, iostat=io)
         ierr = check_nml_error(io,"cloud_generator_nml")
-#else
-        if (file_exist('input.nml')) then
-          unit =  open_namelist_file ( )
-          ierr=1; do while (ierr /= 0)
-          read (unit, nml=cloud_generator_nml, iostat=io, end=10) 
-          ierr = check_nml_error (io, 'cloud_generator_nml')
-          enddo                       
-10        call close_file (unit)      
-        endif                         
-#endif
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------

@@ -17,24 +17,18 @@ use atmos_tracer_utilities_mod, only : get_wetdep_param
 use  sat_vapor_pres_mod,only : sat_vapor_pres_init
 !--lwh
 use fms_mod,                only: mpp_pe, mpp_root_pe, mpp_npes, &
-                                  file_exist, check_nml_error,  &
+                                  check_nml_error,  &
                                   error_mesg, FATAL, WARNING, NOTE,  & !close_file,
-                                  stdlog, write_version_number, field_size, &
-                                  read_data, write_data, lowercase
+                                  stdlog, write_version_number, &
+                                  lowercase
 use fms2_io_mod,            only: FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
                                   register_restart_field, register_axis, unlimited, &
                                   open_file, read_restart, write_restart, close_file, &
                                   register_field, write_data, register_variable_attribute, &
-                                   get_global_io_domain_indices
+                                  get_global_io_domain_indices, file_exists
 
 use mpp_mod,                only: input_nml_file, mpp_get_current_pelist
 use mpp_domains_mod,        only: domain2D, mpp_get_ntile_count
-use mpp_io_mod,             only: mpp_open, mpp_close, fieldtype,  &
-                                  mpp_read_meta, mpp_get_info, &
-                                  mpp_get_fields, mpp_read, &
-                                  MPP_NETCDF, MPP_SINGLE,   &
-                                  MPP_SEQUENTIAL, MPP_RDONLY, MPP_NATIVE, &
-                                  mpp_get_field_name
 use constants_mod,          only: DENS_H2O, RDGAS, GRAV, CP_AIR,  &
                                   pie=>PI, KAPPA, RVGAS, &
                                   SECONDS_PER_DAY, HLV, HLF, HLS, KELVIN
@@ -549,7 +543,7 @@ integer, dimension(:), allocatable :: pes !< Array of pes in the current pelist
 !--------------------------------------------------------------------
       if (.not. Til_restart_exist .and. .not. Don_restart_exist) then
 !     if a native mode restart file is present, crash
-        if (file_exist ('INPUT/donner_deep.res') ) then
+        if (file_exists ('INPUT/donner_deep.res') ) then
            Initialized%coldstart= .false.
            call error_mesg ( 'fms_donner_mod', 'Native restart capability has been removed.', &
                                          FATAL)

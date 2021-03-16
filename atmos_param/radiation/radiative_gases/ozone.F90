@@ -284,13 +284,12 @@ real, dimension(:,:),   intent(in) :: latb, lonb
 !-----------------------------------------------------------------
 !  local variables:
 
-       integer           ::  unit, ierr, io, logunit
+       integer           ::  ierr, io, logunit
        integer           ::  n, no3
 
 !---------------------------------------------------------------------
 !  local variables:
 !
-!         unit       io unit number 
 !         ierr       error code
 !         io         error status returned from io operation
 !

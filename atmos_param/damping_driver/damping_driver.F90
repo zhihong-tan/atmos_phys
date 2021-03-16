@@ -24,11 +24,11 @@ module damping_driver_mod
                               topo_drag_restart
  use          mpp_mod, only:  input_nml_file
  use  mpp_domains_mod, only:  domain2D
- use          fms_mod, only:  file_exist, mpp_pe, mpp_root_pe, stdlog, &
+ use          fms_mod, only:  mpp_pe, mpp_root_pe, stdlog, &
                               write_version_number, &
-                              open_namelist_file, error_mesg, &
+                              error_mesg, &
                               check_nml_error,                   &
-                              FATAL, close_file
+                              FATAL
  use diag_manager_mod, only:  register_diag_field,  &
                               register_static_field, send_data
  use atmos_cmip_diag_mod, only: register_cmip_diag_field_3d, &

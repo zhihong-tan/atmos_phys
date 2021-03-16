@@ -40,15 +40,12 @@ use fms_mod,           only: fms_init, &
                              FATAL, NOTE, WARNING, &
                              lowercase
 use fms2_io_mod,       only: file_exists
-use fms_io_mod,        only: string
+use fms_mod,           only: string
 use interpolator_mod,  only: interpolate_type, interpolator_init, &
                              interpolator, interpolator_end, &
                              obtain_interpolator_time_slices, &    
                              unset_interpolator_time_flag, &
                              CONSTANT, INTERP_WEIGHTED_P
-use mpp_io_mod,        only: mpp_open, mpp_close, MPP_RDONLY,   &
-                             MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI,  &
-                             MPP_SINGLE, mpp_io_init
 use constants_mod,     only: constants_init, RADIAN, GRAV
 use data_override_mod, only: data_override
 
@@ -354,7 +351,6 @@ character(len=64), dimension(:), optional, pointer :: aerosol_family_names
 !    verify that modules used by this module that are not called later
 !    have already been initialized.
 !---------------------------------------------------------------------
-      call mpp_io_init
       call fms_init
       call diag_manager_init
   !BW call rad_utilities_init
@@ -1676,7 +1672,6 @@ program main
 
 use aerosol_mod
 use mpp_mod
-use mpp_io_mod
 use mpp_domains_mod
 use time_manager_mod
 use diag_manager_mod
@@ -1702,7 +1697,6 @@ type(aerosol_type)  :: Aerosol
 pi = 4.*atan(1.)
 
 call mpp_init
-call mpp_io_init
 call mpp_domains_init
 call diag_manager_init
 call set_calendar_type(JULIAN)

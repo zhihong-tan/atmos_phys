@@ -15,11 +15,11 @@
 !  shared modules:
 
 use mpp_mod,             only:  input_nml_file
-use fms_mod,             only:  fms_init, open_namelist_file, &
+use fms_mod,             only:  fms_init, &
                                 write_version_number, mpp_pe, &
-                                mpp_root_pe, stdlog, file_exist,  &
+                                mpp_root_pe, stdlog,&
                                 check_nml_error, error_mesg,   &
-                                FATAL, close_file, &
+                                FATAL, &
                                 string_array_index
 use constants_mod,       only:  constants_init, diffac
 use time_manager_mod,    only:  time_type
@@ -461,7 +461,7 @@ type(cloudrad_control_type), intent(in) ::  Cldrad_control
                                    sumsol5
       real                      :: sumplanck 
       real                      :: xtemv = 233.15
-      integer                   :: unit, ierr, io, logunit
+      integer                   :: ierr, io, logunit
       integer                   :: nivl, nband
       integer                   :: nivl1, nivl2, nivl3, nivl4, nivl5
       integer                   :: n, ib, nw, ni
@@ -503,7 +503,6 @@ type(cloudrad_control_type), intent(in) ::  Cldrad_control
 !                       a water substance band
 !     xtemv             temperature at which planck function is 
 !                       evaluated [  deg k ]
-!     unit              io unit for reading nml file and writing logfile
 !     io                error status returned from io operation  
 !     ierr              error code
 !     nivl              fu band index for lw case
@@ -536,20 +535,8 @@ type(cloudrad_control_type), intent(in) ::  Cldrad_control
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=microphys_rad_nml, iostat=io)
       ierr = check_nml_error(io,'microphys_rad_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=microphys_rad_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'microphys_rad_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
- 
 !---------------------------------------------------------------------
 !    write namelist and version number to logfile.
 !---------------------------------------------------------------------

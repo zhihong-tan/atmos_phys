@@ -15,9 +15,9 @@
 !  shared modules:
 
 use mpp_mod,             only : input_nml_file
-use fms_mod,             only : open_namelist_file, fms_init, &
+use fms_mod,             only : fms_init, &
                                 mpp_pe, mpp_root_pe, stdlog, &
-                                file_exist, write_version_number, &
+                                write_version_number, &
                                 check_nml_error, error_mesg, &
                                 FATAL, close_file, &
                                 open_restart_file
@@ -588,7 +588,7 @@ real, dimension(:,:), intent(in) :: pref
       real     ::  prkminh2o = 28.0
       integer  ::  kmin, kmax
       integer  ::  ks = 1
-      integer  ::  unit, ierr, io, logunit
+      integer  ::  ierr, io, logunit
       integer  ::  k
 
 !--------------------------------------------------------------------
@@ -601,7 +601,6 @@ real, dimension(:,:), intent(in) :: pref
 !       kmin
 !       kmax
 !       ks
-!       unit
 !       ierr
 !       io
 !       k
@@ -620,22 +619,8 @@ real, dimension(:,:), intent(in) :: pref
        call fms_init
        call constants_init
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=gas_tf_nml, iostat=io)
       ierr = check_nml_error(io,"gas_tf_nml")
-#else
-!-----------------------------------------------------------------------
-!    read namelist.
-!-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=gas_tf_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'gas_tf_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
