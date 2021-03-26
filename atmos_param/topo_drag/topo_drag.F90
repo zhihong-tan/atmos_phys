@@ -10,8 +10,7 @@ module topo_drag_mod
 
 use          mpp_mod, only: input_nml_file
 use  mpp_domains_mod, only: domain2D
-use          fms_mod, only: open_namelist_file,            &
-                            error_mesg, FATAL, NOTE, &
+use          fms_mod, only: error_mesg, FATAL, NOTE, &
                             mpp_pe, mpp_root_pe, stdout, stdlog,       &
                             check_nml_error, write_version_number
 use      fms2_io_mod, only: read_data, get_variable_size, variable_exists, file_exists, &

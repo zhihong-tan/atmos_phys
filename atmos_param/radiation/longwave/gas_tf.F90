@@ -19,8 +19,7 @@ use fms_mod,             only : fms_init, &
                                 mpp_pe, mpp_root_pe, stdlog, &
                                 write_version_number, &
                                 check_nml_error, error_mesg, &
-                                FATAL, close_file, &
-                                open_restart_file
+                                FATAL
 use constants_mod,       only : constants_init, RDGAS, GRAV, pstd
 
 !   longwave radiation package modules:
@@ -3603,46 +3602,46 @@ subroutine gas_tf_end
 !---------------------------------------------------------------------
       if (do_writestdco2tfs) then
         if (mpp_pe() == mpp_root_pe() ) then
-          tfsunit = open_restart_file ('stdco2tfs', action='write')
+          open(file='stdco2tfs', form='unformatted',action='write', newunit=tfsunit)
           write (tfsunit) valid_versions(nvalids)
           write (tfsunit) co2_name_save, co2_amount_save,   &
                            nstdlvls_save, kbegin_save, kend_save
           write (tfsunit) pd_save, plm_save, pa_save
-          write (tfsunit) co215nbps1, co215nbps8, co2dt15nbps1,    & 
+          write (tfsunit) co215nbps1, co215nbps8, co2dt15nbps1,    &
                           co2dt15nbps8, co2d2t15nbps1, co2d2t15nbps8
           write (tfsunit) co251, co258, cdt51, cdt58, c2d51, c2d58, &
                           co2m51, co2m58, cdtm51, cdtm58, c2dm51, c2dm58
           write (tfsunit) co211, co218
-          call close_file (tfsunit)
+          close(tfsunit)
         endif
       endif
 
       if (do_writestdco210umtfs) then
         if (mpp_pe() == mpp_root_pe() ) then
-          tfsunit = open_restart_file ('stdco210umtfs', action='write')
+          open(file='stdco210umtfs', form='unformatted',action='write', newunit=tfsunit)
           write (tfsunit) valid_versions(nvalids)
           write (tfsunit) co2_name_save, co2_amount_save,   &
                            nstdlvls_save, kbegin_save, kend_save
           write (tfsunit) pd_save, plm_save, pa_save
-          write (tfsunit) co2990nbps1, co2990nbps8, co2dt990nbps1,           & 
+          write (tfsunit) co2990nbps1, co2990nbps8, co2dt990nbps1,           &
                           co2dt990nbps8, co2d2t990nbps1, co2d2t990nbps8
           write (tfsunit) co29901, co29908, cdt9901, cdt9908, c2d9901, c2d9908, &
                           co2m9901, co2m9908, cdtm9901, cdtm9908, c2dm9901, c2dm9908
-          write (tfsunit) co2900nbps1, co2900nbps8, co2dt900nbps1,           & 
+          write (tfsunit) co2900nbps1, co2900nbps8, co2dt900nbps1,           &
                           co2dt900nbps8, co2d2t900nbps1, co2d2t900nbps8
           write (tfsunit) co29001, co29008, cdt9001, cdt9008, c2d9001, c2d9008, &
                           co2m9001, co2m9008, cdtm9001, cdtm9008, c2dm9001, c2dm9008
-          write (tfsunit) co21070nbps1, co21070nbps8, co2dt1070nbps1,           & 
+          write (tfsunit) co21070nbps1, co21070nbps8, co2dt1070nbps1,           &
                           co2dt1070nbps8, co2d2t1070nbps1, co2d2t1070nbps8
           write (tfsunit) co210701, co210708, cdt10701, cdt10708, c2d10701, c2d10708, &
                           co2m10701, co2m10708, cdtm10701, cdtm10708, c2dm10701, c2dm10708
-          call close_file (tfsunit)
+          close(tfsunit)
         endif
       endif
 
       if (do_writestdn2otfs) then
         if (mpp_pe() == mpp_root_pe()) then
-          tfsunit = open_restart_file ('stdn2otfs', action='write')
+          open(file='stdn2otfs', form='unformatted',action='write', newunit=tfsunit)
           write (tfsunit) valid_versions(nvalids)
           write (tfsunit) n2o_name_save, n2o_amount_save,   &
                           nstdlvls_save, kbegin_save, kend_save
@@ -3653,20 +3652,20 @@ subroutine gas_tf_end
                           n2od2t78
           write (tfsunit) n2o91, n2o98, n2odt91, n2odt98, n2od2t91, &
                           n2od2t98
-          call close_file (tfsunit)
+          close(tfsunit)
         endif
       endif
 
       if (do_writestdch4tfs) then
         if (mpp_pe() == mpp_root_pe()) then
-          tfsunit = open_restart_file ('stdch4tfs', action='write')
+          open(file='stdch4tfs', form='unformatted',action='write', newunit=tfsunit)
           write (tfsunit) valid_versions(nvalids)
           write (tfsunit) ch4_name_save, ch4_amount_save,   &
                           nstdlvls_save, kbegin_save, kend_save
           write (tfsunit) pd_save, plm_save, pa_save
           write (tfsunit) ch451, ch458, ch4dt51, ch4dt58, ch4d2t51,  &
                           ch4d2t58
-          call close_file (tfsunit)
+          close(tfsunit)
         endif
       endif
 
@@ -3733,7 +3732,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !---------------------------------------------------------------------
 !  local variables:
 
-      integer               ::  unit
+      integer               ::  tfsunit
 
 !---------------------------------------------------------------------
 !  local variables:
@@ -3759,16 +3758,16 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !    read the input tf file and verify that the current model config-
 !    uration matches that for which the tfs were generated.
 !--------------------------------------------------------------------
-        unit = open_restart_file ('INPUT/stdco2tfs', action='read')
+        open(file='INPUT/stdco2tfs', form='unformatted',action='read', newunit=tfsunit)
         call process_gas_input_file (gas_name, gas_amount, nstdlvls,  &
-                                     kbegin, kend, pd, plm, pa, unit)
+                                     kbegin, kend, pd, plm, pa, tfsunit)
 
-        read  (unit) co215nbps1, co215nbps8, co2dt15nbps1,           & 
+        read  (tfsunit) co215nbps1, co215nbps8, co2dt15nbps1,           &
                      co2dt15nbps8, co2d2t15nbps1, co2d2t15nbps8
-        read  (unit) co251, co258, cdt51, cdt58, c2d51, c2d58,       &  
+        read  (tfsunit) co251, co258, cdt51, cdt58, c2d51, c2d58,       &
                      co2m51, co2m58, cdtm51, cdtm58, c2dm51, c2dm58
-        read  (unit) co211, co218
-        call close_file (unit)
+        read  (tfsunit) co211, co218
+        close (tfsunit)
       endif
 
       if (do_readstdco210umtfs) then
@@ -3776,23 +3775,23 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !    read the input tf file and verify that the current model config-
 !    uration matches that for which the tfs were generated.
 !--------------------------------------------------------------------
-        unit = open_restart_file ('INPUT/stdco210umtfs', action='read')
+        open(file='INPUT/stdco210umtfs', form='unformatted',action='read', newunit=tfsunit)
         call process_gas_input_file (gas_name, gas_amount, nstdlvls,  &
-                                     kbegin, kend, pd, plm, pa, unit)
+                                     kbegin, kend, pd, plm, pa, tfsunit)
 
-        read  (unit) co2990nbps1, co2990nbps8, co2dt990nbps1,           & 
+        read  (tfsunit) co2990nbps1, co2990nbps8, co2dt990nbps1,           &
                      co2dt990nbps8, co2d2t990nbps1, co2d2t990nbps8
-        read  (unit) co29901, co29908, cdt9901, cdt9908, c2d9901, c2d9908,       &  
+        read  (tfsunit) co29901, co29908, cdt9901, cdt9908, c2d9901, c2d9908,       &
                      co2m9901, co2m9908, cdtm9901, cdtm9908, c2dm9901, c2dm9908
-        read  (unit) co2900nbps1, co2900nbps8, co2dt900nbps1,           & 
+        read  (tfsunit) co2900nbps1, co2900nbps8, co2dt900nbps1,           &
                      co2dt900nbps8, co2d2t900nbps1, co2d2t900nbps8
-        read  (unit) co29001, co29008, cdt9001, cdt9008, c2d9001, c2d9008,       &  
+        read  (tfsunit) co29001, co29008, cdt9001, cdt9008, c2d9001, c2d9008,       &
                      co2m9001, co2m9008, cdtm9001, cdtm9008, c2dm9001, c2dm9008
-        read  (unit) co21070nbps1, co21070nbps8, co2dt1070nbps1,           & 
+        read  (tfsunit) co21070nbps1, co21070nbps8, co2dt1070nbps1,           &
                      co2dt1070nbps8, co2d2t1070nbps1, co2d2t1070nbps8
-        read  (unit) co210701, co210708, cdt10701, cdt10708, c2d10701, c2d10708,   &
+        read  (tfsunit) co210701, co210708, cdt10701, cdt10708, c2d10701, c2d10708,   &
                      co2m10701, co2m10708, cdtm10701, cdtm10708, c2dm10701, c2dm10708
-        call close_file (unit)
+        close(tfsunit)
       endif
 
       if (do_writestdco2tfs .or. do_writestdco210umtfs) then
@@ -3875,7 +3874,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 
 
 
-   integer               ::  unit
+   integer               ::  tfsunit
 
 
 
@@ -3903,11 +3902,11 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !    read the input tf file and verify that the current model config-
 !    uration matches that for which the tfs were generated.
 !--------------------------------------------------------------------
-        unit = open_restart_file ('INPUT/stdch4tfs', action='read')
+        open(file='INPUT/stdch4tfs', form='unformatted',action='read', newunit=tfsunit)
         call process_gas_input_file (gas_name, gas_amount, nstdlvls,  &
-                                     kbegin, kend, pd, plm, pa, unit)
-        read  (unit) ch451, ch458, ch4dt51, ch4dt58, ch4d2t51, ch4d2t58
-        call close_file (unit)
+                                     kbegin, kend, pd, plm, pa, tfsunit)
+        read  (tfsunit) ch451, ch458, ch4dt51, ch4dt58, ch4d2t51, ch4d2t58
+        close(tfsunit)
 
 !--------------------------------------------------------------------
 !    save the data necessary to write a tf file at the end of this job
@@ -3990,7 +3989,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 
 
 
-   integer               ::  unit
+   integer               ::  tfsunit
 
 
 
@@ -4018,13 +4017,13 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !    read the input tf file and verify that the current model config-
 !    uration matches that for which the tfs were generated.
 !--------------------------------------------------------------------
-        unit = open_restart_file ('INPUT/stdn2otfs', action='read')
+        open(file='INPUT/stdn2otfs', form='unformatted',action='read', newunit=tfsunit)
         call process_gas_input_file (gas_name, gas_amount, nstdlvls,  &
-                                     kbegin, kend, pd, plm, pa, unit)
-        read  (unit) n2o51, n2o58, n2odt51, n2odt58, n2od2t51, n2od2t58
-        read  (unit) n2o71, n2o78, n2odt71, n2odt78, n2od2t71, n2od2t78
-        read  (unit) n2o91, n2o98, n2odt91, n2odt98, n2od2t91, n2od2t98
-        call close_file (unit)
+                                     kbegin, kend, pd, plm, pa, tfsunit)
+        read  (tfsunit) n2o51, n2o58, n2odt51, n2odt58, n2od2t51, n2od2t58
+        read  (tfsunit) n2o71, n2o78, n2odt71, n2odt78, n2od2t71, n2od2t78
+        read  (tfsunit) n2o91, n2o98, n2odt91, n2odt98, n2od2t91, n2od2t98
+        close (tfsunit)
 
 !--------------------------------------------------------------------
 !    save the data necessary to write a tf file at the end of this job
@@ -4751,7 +4750,7 @@ end subroutine transfn_10um
 ! </SUBROUTINE>
 ! 
 subroutine process_gas_input_file (gas_name, gas_amount, nstdlvls,  &
-                                   kbegin, kend, pd, plm, pa, unit)
+                                   kbegin, kend, pd, plm, pa, tsfunit)
 
 !--------------------------------------------------------------------
 !
@@ -4759,7 +4758,7 @@ subroutine process_gas_input_file (gas_name, gas_amount, nstdlvls,  &
 
 character(len=*),   intent(in)      :: gas_name
 real,               intent(in)      :: gas_amount
-integer,            intent(in)      :: nstdlvls, kbegin, kend, unit
+integer,            intent(in)      :: nstdlvls, kbegin, kend, tsfunit
 real, dimension(:), intent(in)      :: pd, plm, pa
 
 !---------------------------------------------------------------------
@@ -4790,7 +4789,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !--------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
-      read (unit) gastf_version
+      read (tsfunit) gastf_version
       do n=1, nvalids
         if (gastf_version == valid_versions(n)) then
           valid = .true.
@@ -4809,7 +4808,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !--------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
-      read (unit) gas_file, gas_amount_file, nstdlvls_file, &
+      read (tsfunit) gas_file, gas_amount_file, nstdlvls_file, &
                   kbegin_file, kend_file
 
 !--------------------------------------------------------------------
@@ -4851,7 +4850,7 @@ real, dimension(:), intent(in)      :: pd, plm, pa
 !--------------------------------------------------------------------
 !
 !--------------------------------------------------------------------
-      read (unit) pd_file, plm_file, pa_file
+      read (tsfunit) pd_file, plm_file, pa_file
 
 !--------------------------------------------------------------------
 !

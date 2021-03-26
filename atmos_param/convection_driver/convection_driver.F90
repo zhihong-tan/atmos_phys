@@ -52,9 +52,9 @@ use diag_manager_mod,       only: register_diag_field, send_data, &
 use diag_data_mod,          only: CMOR_MISSING_VALUE
 use mpp_domains_mod,        only: domain2D
 use mpp_mod,                only: input_nml_file
+use fms2_io_mod,            only: file_exists
 use fms_mod,                only: error_mesg, FATAL, WARNING,NOTE,&
-                                  file_exist, check_nml_error,    &
-                                  open_namelist_file, close_file, &
+                                  check_nml_error,    &
                                   write_version_number,           &
                                   mpp_pe, mpp_root_pe, stdlog,    &
                                   mpp_clock_id, mpp_clock_begin,  &
@@ -550,7 +550,7 @@ real, dimension(:),            intent(in)    :: pref
 !------------------------------------------------------------------------
 
       integer :: secs, days  
-      integer :: unit, io, ierr, logunit
+      integer :: io, ierr, logunit
 
 !------------------------------------------------------------------------
 !      secs    seconds component of time_type variable Time
@@ -567,19 +567,9 @@ real, dimension(:),            intent(in)    :: pref
 !-----------------------------------------------------------------------
 !    process the convection_driver_nml.
 !-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if ( file_exists('input.nml')) then
         read (input_nml_file, nml=convection_driver_nml, iostat=io)
         ierr = check_nml_error(io,'convection_driver_nml')
-#else
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-          read  (unit, nml=convection_driver_nml, iostat=io, end=10)
-          ierr = check_nml_error(io,'convection_driver_nml')
-        enddo
-  10    call close_file (unit)
-#endif
-
 !----------------------------------------------------------------------
 !    write version and namelist to standard logfile.
 !----------------------------------------------------------------------

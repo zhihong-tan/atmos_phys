@@ -6,10 +6,10 @@
 
  use mpp_mod,           only : input_nml_file
  use mpp_domains_mod,   only : domain2D
- use fms_mod,           only : file_exist, error_mesg, &
-                               FATAL, fms_io_close_file => close_file, note, fms_io_read_data => read_data,          &
+ use fms_mod,           only : error_mesg, &
+                               FATAL, note,          &
                                check_nml_error, mpp_pe, mpp_root_pe, &
-                               write_version_number, stdlog, open_restart_file
+                               write_version_number, stdlog
 use fms2_io_mod,        only :  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
                                    register_restart_field, register_axis, unlimited, &
                                    open_file, read_restart, write_restart, close_file, &
@@ -685,13 +685,6 @@ end subroutine get_tke
       call my25_register_restart(Tur_restart)
       call read_restart(Tur_restart)
       call close_file(Tur_restart)
-  else if( FILE_EXIST( 'INPUT/my25_turb.res' ) ) then
-
-      unit = OPEN_restart_FILE ( file = 'INPUT/my25_turb.res', action = 'read' )
-      call fms_io_read_data ( unit, TKE )
-      CALL fms_io_close_file( unit )
-
-      init_tke = .false.
   else
 
       TKE  = TKEmin

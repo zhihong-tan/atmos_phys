@@ -20,15 +20,19 @@ module atmos_age_tracer_mod
 
 !-----------------------------------------------------------------------
 
-use              fms_mod, only : file_exist,           &
-                                 field_exist,          &
-                                 write_version_number, &
+use              fms_mod, only : write_version_number, &
                                  mpp_pe,               &
                                  mpp_root_pe,          &
                                  lowercase,   &
                                  error_mesg,           &
                                  FATAL,WARNING, NOTE,  &
                                  stdlog
+use          fms2_io_mod, only : file_exists,          &
+                                 open_file,            &
+                                 close_file,           &
+                                 FmsNetcdfDomainFile_t,&
+                                 variable_exists
+use      mpp_domains_mod, only : domain2D
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data,            &
                                  register_static_field
@@ -205,7 +209,7 @@ contains
 !   <IN NAME="phalf" TYPE="real" DIM="(:,:,:)">
 !     Pressure on the model half levels (Pa)
 !   </IN>
- subroutine atmos_age_tracer_init( r, axes, Time, nage, &
+ subroutine atmos_age_tracer_init( domain, r, axes, Time, nage, &
                                    lonb_mod, latb_mod, phalf, mask)
 
 !-----------------------------------------------------------------------
@@ -216,6 +220,7 @@ contains
 !          (nlon,nlat,nlev).
 !
 !-----------------------------------------------------------------------
+type(domain2D),target,intent(in) :: domain !< Atmosphere domain
 real,             intent(inout), dimension(:,:,:,:) :: r
 type(time_type),  intent(in)                        :: Time
 integer,          intent(in)                        :: axes(4)
@@ -252,11 +257,8 @@ real, intent(in), dimension(:,:,:), optional        :: mask
 !     ... Initial conditions
 !-----------------------------------------------------------------------
       tracer_initialized = .false.
-      if ( field_exist('INPUT/atmos_tracers.res.nc', 'age') .or. &
-           field_exist('INPUT/fv_tracer.res.nc', 'age') .or. &
-           field_exist('INPUT/tracer_age.res', 'age') ) then
-         tracer_initialized = .true.
-      end if
+      tracer_initialized = check_if_tracer_initialized("age", domain)
+
       if(.not. tracer_initialized) then
 !     if((.not. tracer_initialized) .and. (nage /= -1)) then
          if( query_method('init_conc',MODEL_ATMOS,n,name,control) ) then
@@ -308,6 +310,30 @@ real, intent(in), dimension(:,:,:), optional        :: mask
  end subroutine atmos_age_tracer_end
 !</SUBROUTINE>
 
+!> @brief This function just checks if a tracer initialized in a set of files
+!! @return flag indicating if a tracer initialized
+function check_if_tracer_initialized(tracername, domain) result (tracer_initialized)
+  character(len=*), intent(in), optional :: tracername
+  type(domain2D),target,intent(in) :: domain !< Atmosphere domain
+
+  logical :: tracer_initialized
+
+  type(FmsNetcdfDomainFile_t) :: fileobj !< fms2io fileobj for domain decomposed
+
+  tracer_initialized = .false.
+
+  if (open_file(fileobj, 'INPUT/atmos_tracers.res.nc', "read", domain)) then
+     tracer_initialized = variable_exists(fileobj, tracername)
+     call close_file(fileobj)
+  elseif (open_file(fileobj, 'INPUT/fv_tracer.res.nc', "read", domain)) then
+     tracer_initialized = variable_exists(fileobj, tracername)
+     call close_file(fileobj)
+  elseif (open_file(fileobj, 'INPUT/tracer_'//trim(lowercase(tracername))//'.res', "read", domain)) then
+     tracer_initialized = variable_exists(fileobj, tracername)
+     call close_file(fileobj)
+  endif
+
+end function check_if_tracer_initialized
 
 end module atmos_age_tracer_mod
 

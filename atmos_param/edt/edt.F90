@@ -56,11 +56,11 @@ use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
 
 use            mpp_mod, only: input_nml_file
 use    mpp_domains_mod, only: domain2D
-use            fms_mod, only: file_exist, error_mesg, FATAL,&
-                              NOTE, mpp_pe, mpp_root_pe, fms_io_close_file => close_file, &
+use            fms_mod, only: error_mesg, FATAL,&
+                              NOTE, mpp_pe, mpp_root_pe, &
                               write_version_number, stdlog, &
-                              fms_io_open_file => open_file, check_nml_error
-use fms2_io_mod,        only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                              check_nml_error
+use fms2_io_mod,        only:  file_exists, FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
                                    register_restart_field, register_axis, unlimited, &
                                    open_file, read_restart, write_restart, close_file, &
                                    register_field, write_data, register_variable_attribute, &
@@ -464,8 +464,7 @@ type(FmsNetcdfDomainFile_t) ::  Edt_restart !< Fms2io domain_decomposed fileobj
 !----------------------------------------------------------------------
 !    open a unit for the radiation diagnostics output.
 !---------------------------------------------------------------------
-     dpu = fms_io_open_file ('edt.out', action='write', &
-                                 threading='multi', form='formatted')
+     open(file="edt.out", form='formatted',action='write', newunit=dpu)
      do_print = .true.
 
      if ( mpp_pe() == mpp_root_pe() ) then
@@ -510,43 +509,9 @@ type(FmsNetcdfDomainFile_t) ::  Edt_restart !< Fms2io domain_decomposed fileobj
      call read_restart(edt_restart)
      call close_file(edt_restart)
 
-   elseif (File_Exist('INPUT/edt.res')) then
+   elseif (File_Exists('INPUT/edt.res')) then
      call error_mesg ('edt_mod', 'Native format restart file read no longer supported.',&
                        FATAL)
-!     unit = Open_restart_File (FILE='INPUT/edt.res', ACTION='read')
-!     read (unit, iostat=io, err=142) vers, vers2
-!142  continue
-! 
-!!--------------------------------------------------------------------
-!!    if eor is not encountered, then the file includes tdtlw as the
-!!    first record (which this read statement read). that data is not 
-!!    needed; note this and continue by reading next record.
-!!--------------------------------------------------------------------
-!     if (io == 0) then
-!       call error_mesg ('edt_mod',  &
-!           'reading pre-version number edt.res file, '//&
-!           'ignoring tdtlw', NOTE)
-!
-!!--------------------------------------------------------------------
-!!    if the first record was only one word long, then the file is a 
-!!    newer one, and that record was the version number, read into vers. 
-!!    if it is not a valid version, stop execution with a message.
-!!--------------------------------------------------------------------
-!     else
-!       if (.not. any(vers == restart_versions) ) then
-!         write (chvers, '(i4)') vers
-!         call error_mesg ('edt_mod',  &
-!              'restart version ' // chvers//' cannot be read '//&
-!              'by this version of edt_mod.', FATAL)
-!       endif
-!     endif
-!
-!!---------------------------------------------------------------------
-!     call read_data (unit, qaturb)
-!     call read_data (unit, qcturb)
-!     call read_data (unit, tblyrtau)
-!     call read_data (unit, sigmas)
-!     call Close_File (unit)
    else
      qaturb  (:,:,:) = 0.
      qcturb  (:,:,:) = 0.
@@ -1567,7 +1532,7 @@ subroutine edt_end()
 ! 
 !      close edt output file if data was written for this window
 
-       if (do_print ) call fms_io_close_file (dpu)
+       if (do_print ) close(dpu)
        
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------

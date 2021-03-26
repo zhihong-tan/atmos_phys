@@ -29,9 +29,8 @@ module cosp_driver_mod
 
 
 use mpp_mod,                  only: input_nml_file
-use fms_mod,                  only: open_namelist_file, open_file,  &
-                                    close_file, error_mesg, FATAL, NOTE, &
-                                    file_exist, mpp_pe, mpp_root_pe,   &
+use fms_mod,                  only: error_mesg, FATAL, NOTE, &
+                                    mpp_pe, mpp_root_pe,   &
                                     check_nml_error, write_version_number,&
                                     mpp_clock_id, CLOCK_MODULE, &
                                     mpp_clock_begin, mpp_clock_end, &
@@ -260,27 +259,12 @@ integer,                     intent(in)    :: kd_in
 type(exchange_control_type), intent(inout) :: Exch_ctrl
 
 !-----------------------------------------------------------------------
-      integer :: io, unit, ierr, logunit
+      integer :: io, ierr, logunit
       integer :: imax, jmax
 
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cosp_input, iostat=io)
       ierr = check_nml_error(io,"cosp_input")
-#else
-!---------------------------------------------------------------------
-!    read namelist.
-!---------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=cosp_input, iostat=io, end=10)
-        ierr = check_nml_error(io,'cosp_input')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
-        
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------

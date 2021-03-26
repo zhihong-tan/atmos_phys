@@ -10,11 +10,10 @@
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp, horiz_interp_del
 use          mpp_mod, only: input_nml_file
-use          fms_mod, only: file_exist, error_mesg, FATAL, NOTE,     &
-                            fms_io_close_file => close_file,          &
+use          fms_mod, only: error_mesg, FATAL, NOTE,     &
                             check_nml_error, mpp_pe, mpp_root_pe,    &
-                            write_version_number, stdlog, open_ieee32_file
-use fms2_io_mod,      only: FmsNetcdfFile_t, open_file, read_data, close_file
+                            write_version_number, stdlog
+use fms2_io_mod,      only: file_exists, FmsNetcdfFile_t, open_file, read_data, close_file
 use time_manager_mod, only: time_type, get_date
 use  time_interp_mod, only: time_interp
 
@@ -102,7 +101,7 @@ type(time_type), intent(in)                    :: Time
 
 !  --- check existence of cloud data set --------
 
-      if (.not.file_exist('INPUT/cloud_obs.data')) then
+      if (.not.file_exists('INPUT/cloud_obs.data')) then
         call error_mesg ('observed_cloud',  &
                     'file INPUT/cloud_obs.data does not exist.', FATAL)
       endif
@@ -147,7 +146,7 @@ type(time_type), intent(in)                    :: Time
       if (year1 .ne. yrclda .or. month1 .ne. moclda) then
          
           unit_opened=.true.
-          unit = open_ieee32_file ( 'INPUT/cloud_obs.data', action='read' )
+          open(file='INPUT/cloud_obs.data', form='unformatted',action='read', newunit=unit)
           irec=0
           do
 !!!!               read (unit,end=380)  yr,mo,obs
@@ -177,7 +176,7 @@ type(time_type), intent(in)                    :: Time
       if (year2 .ne. yrcldb .or. month2 .ne. mocldb) then
           if (.not.unit_opened) then
              unit_opened=.true.
-             unit = open_ieee32_file ( 'INPUT/cloud_obs.data', action='read' )
+             open(file='INPUT/cloud_obs.data', form='unformatted',action='read', newunit=unit)
           endif
           if (useclimo1 .and. month2 <= month1 ) then
              if (verbose > 1 .and. pe == mpp_root_pe())  &
@@ -218,8 +217,8 @@ type(time_type), intent(in)                    :: Time
 
  381  continue
 
-   if (unit_opened .or. file_exist('INPUT/cloud_obs.data.nc')) then
-      if(unit_opened) call fms_io_close_file (unit)
+   if (unit_opened .or. file_exists('INPUT/cloud_obs.data.nc')) then
+      if(unit_opened) call close(unit)
       if (verbose > 0 .and. pe == 0) then
          call get_date (Time, year, month, day, hour, minute, second)
          write (*,600) year,month,day, hour,minute,second

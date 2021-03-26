@@ -19,12 +19,11 @@
 !   shared modules:
 
 use mpp_mod,             only: input_nml_file
-use fms_mod,             only: open_namelist_file, file_exist,   &
-                               check_nml_error, error_mesg,  &
+use fms_mod,             only: check_nml_error, error_mesg,  &
                                fms_init, stdlog, &
                                write_version_number, FATAL, NOTE, &
-                               WARNING, mpp_pe, mpp_root_pe, fms_io_close_file => close_file
-use fms2_io_mod,         only: FmsNetcdfFile_t, open_file, read_data, close_file
+                               WARNING, mpp_pe, mpp_root_pe
+use fms2_io_mod,         only: FmsNetcdfFile_t, open_file, read_data, close_file, file_exists
 use time_manager_mod,    only: time_type,  &
                                time_manager_init, operator(+), &
                                set_date, operator(-), print_date, &
@@ -878,7 +877,7 @@ subroutine obtain_input_file_data
 !    determine if a netcdf input data file exists. if so, read the
 !    number of data records in the file.
 !---------------------------------------------------------------------
-      if (file_exist ( 'INPUT/id1o3.nc') ) then
+      if (file_exists ( 'INPUT/id1o3.nc') ) then
         ncid = ncopn ('INPUT/id1o3.nc', 0, rcode)
         call ncinq (ncid, ndims, nvars, ngatts, recdim, rcode)
         do i=1,ndims
@@ -907,8 +906,8 @@ subroutine obtain_input_file_data
 !    determine if the input data input file exists in ascii format.
 !    if so, read the number of data records in the file.
 !---------------------------------------------------------------------
-      else if (file_exist ( 'INPUT/id1o3') ) then
-        iounit = open_namelist_file ('INPUT/id1o3')
+      else if (file_exists ( 'INPUT/id1o3') ) then
+        open(file='INPUT/id1o3', form='formatted',action='read', newunit=iounit)
         read (iounit,FMT = '(i4)') kmax_file
 
 !-------------------------------------------------------------------
@@ -917,7 +916,7 @@ subroutine obtain_input_file_data
 !---------------------------------------------------------------------
          allocate (qqo3(kmax_file) )
          read (iounit,FMT = '(5e18.10)') (qqo3(k),k=1,kmax_file)
-         call fms_io_close_file (iounit)
+         close(iounit)
 
 !---------------------------------------------------------------------
 !    if file is not present, write an error message.
@@ -1064,7 +1063,7 @@ integer, intent(in) :: season
         call read_data(ozone_data_file, 'o3lo3', o3lo3)
         call read_data(ozone_data_file, 'o3lo4', o3lo4)
         call close_file(ozone_data_file)
-      else if (file_exist ( 'INPUT/zonal_ozone_data') ) then
+      else if (file_exists ( 'INPUT/zonal_ozone_data') ) then
         call error_mesg('ozone_mod','Reading native input data zonal_ozone_data no longer supported',FATAL)
       else
         call error_mesg ( 'ozone_mod', &

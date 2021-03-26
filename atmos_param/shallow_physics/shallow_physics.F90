@@ -1,8 +1,7 @@
 module shallow_physics_mod
 use mpp_mod, only: input_nml_file
 
-use  fms_mod, only: open_namelist_file, file_exist,   &
-                    close_file, check_nml_error,      &
+use  fms_mod, only: check_nml_error,      &
                     error_mesg, FATAL, WARNING,       &
                     write_version_number, stdlog,     &
                     mpp_pe, mpp_root_pe
@@ -61,7 +60,7 @@ integer, intent(in) :: axes(4)
 type(time_type), intent(in) :: Time
 real, intent(in) :: lon(:,:), lat(:,:)  ! longitude and latitude in radians
 
-integer :: i, j, unit, ierr, io, logunit
+integer :: i, j, ierr, io, logunit
 real    :: xm, ym, dm, di
 real    :: lon_m, lat_m, width_m, width_i, deg2rad
 
@@ -72,20 +71,8 @@ real    :: lon_m, lat_m, width_m, width_i, deg2rad
   endif
 
 ! read the namelist
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=shallow_physics_nml, iostat=io)
    ierr = check_nml_error(io,"shallow_physics_nml")
-#else
-  if (file_exist('input.nml')) then
-    unit = open_namelist_file ()
-    ierr=1
-    do while (ierr /= 0)
-      read  (unit, nml=shallow_physics_nml, iostat=io, end=10)
-      ierr = check_nml_error (io, 'shallow_physics_nml')
-    enddo
-    10 call close_file (unit)
-  endif
-#endif
 
 ! write version info and namelist to logfile
 

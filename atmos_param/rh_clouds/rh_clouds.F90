@@ -9,13 +9,13 @@ module rh_clouds_mod
 
 use mpp_mod,    only : input_nml_file
 use    mpp_domains_mod, only: domain2D
-use fms_mod,    only : error_mesg, FATAL, file_exist, check_nml_error, & !close_file, &
+use fms_mod,    only : error_mesg, FATAL, check_nml_error, &
                        mpp_pe, mpp_root_pe, write_version_number, stdlog
 use fms2_io_mod,             only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
                                    register_restart_field, register_axis, unlimited, &
                                    open_file, read_restart, write_restart, close_file, &
                                    register_field, write_data, register_variable_attribute, &
-                                   get_global_io_domain_indices
+                                   get_global_io_domain_indices, file_exists
 
 !=======================================================================
 
@@ -185,13 +185,9 @@ type(FmsNetcdfDomainFile_t) ::  RH_restart !< Fms2io domain decomposed fileobj
         call rh_register_restart(RH_restart)
         call read_restart(RH_restart)
         call close_file(RH_restart)
-      else if (file_exist('INPUT/rh_clouds.res')) then
+      else if (file_exists('INPUT/rh_clouds.res')) then
         call error_mesg ('rh_clouds_init', &
                          'Native restart files no longer supported.', FATAL)
-!        unit = open_restart_file ('INPUT/rh_clouds.res', action='read')
-!        call read_data (unit, nsum)
-!        call read_data (unit, rhsum)
-!        call close_file (unit)
       else
         rhsum = 0.0;  nsum = 0
       endif

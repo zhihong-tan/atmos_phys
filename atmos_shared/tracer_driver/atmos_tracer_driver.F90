@@ -1792,7 +1792,7 @@ type(time_type), intent(in)                                :: Time
 
 !----- initialize the age tracer ------------
 
-      call atmos_age_tracer_init( r, axes, Time, nage, lonb, latb, phalf, mask)
+      call atmos_age_tracer_init( domain, r, axes, Time, nage, lonb, latb, phalf, mask)
       age_tracer_clock = mpp_clock_id( 'Tracer: Age tracer', grain=CLOCK_MODULE )
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &

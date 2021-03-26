@@ -23,13 +23,13 @@ use diag_data_mod,         only: CMOR_MISSING_VALUE
 use mpp_domains_mod,       only: domain2D
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
-                                 file_exist, check_nml_error,    &
-                                 open_namelist_file, close_file, &
+                                 check_nml_error,    &
                                  write_version_number, stdout,   &
                                  mpp_pe, mpp_root_pe, stdlog,    &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &
-                                 MPP_CLOCK_SYNC, read_data, write_data
+                                 MPP_CLOCK_SYNC
+use fms2_io_mod,           only: file_exists
 use field_manager_mod,     only: MODEL_ATMOS
 use tracer_manager_mod,    only: get_tracer_index,&
                                  get_tracer_names, &
@@ -385,19 +385,9 @@ type (exchange_control_type), intent(inout) :: Exch_ctrl
 !-----------------------------------------------------------------------
 !   process the moist_processes_nml.
 !-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if ( file_exists('input.nml')) then
         read (input_nml_file, nml=moist_processes_nml, iostat=io)
         ierr = check_nml_error(io,'moist_processes_nml')
-#else
-
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-          read  (unit, nml=moist_processes_nml, iostat=io, end=10)
-          ierr = check_nml_error(io,'moist_processes_nml')
-        enddo
-  10    call close_file (unit)
-#endif
 
 !--------- write version and namelist to standard log ------------
 

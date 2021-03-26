@@ -2,9 +2,9 @@
 
 use mpp_mod,                    only : input_nml_file
 use fms_mod,                    only : FATAL, error_mesg, mpp_pe, &
-                                       mpp_root_pe, open_namelist_file, &
-                                       check_nml_error, close_file,  &
-                                       write_version_number, file_exist, &
+                                       mpp_root_pe, &
+                                       check_nml_error,  &
+                                       write_version_number, &
                                        stdlog
 use constants_mod,              only : GRAV, TFREEZE, CP_AIR, HLV, HLS, &
                                        RVGAS, pi
@@ -161,7 +161,7 @@ type(exchange_control_type), intent(in) :: Exch_ctrl
 !-----------------------------------------------------------------------
 !---local variables----
 
-      integer :: unit, io, ierr, logunit
+      integer :: io, ierr, logunit
 
 !-----------------------------------------------------------------------
       if (module_is_initialized) return
@@ -169,19 +169,8 @@ type(exchange_control_type), intent(in) :: Exch_ctrl
 !-------------------------------------------------------------------------
 !    process namelist.
 !-------------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=tiedtke_macro_nml, iostat=io)
       ierr = check_nml_error(io,'tiedtke_macro_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=tiedtke_macro_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'tiedtke_macro_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !-------------------------------------------------------------------------
 !    write version and namelist to standard log.

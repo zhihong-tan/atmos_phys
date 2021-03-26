@@ -23,7 +23,7 @@ use    mpp_domains_mod, only: domain2D
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
                                  check_nml_error,    &
                                  write_version_number,           &
-                                 stdout, open_ieee32_file, &
+                                 stdout, &
                                  mpp_pe, mpp_root_pe, stdlog,    &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &

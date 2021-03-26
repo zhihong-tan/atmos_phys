@@ -10,8 +10,8 @@ use   time_manager_mod, only : time_type
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
 use  sat_vapor_pres_mod, ONLY: lookup_es_des, compute_qs, descomp
 use mpp_mod,             only: input_nml_file
-use             fms_mod, ONLY:  error_mesg, file_exist, open_namelist_file,  &
-                                check_nml_error, close_file,        &
+use             fms_mod, ONLY:  error_mesg, &
+                                check_nml_error, &
                                 FATAL, WARNING, NOTE, mpp_pe, mpp_root_pe, &
                                 write_version_number, stdlog
 use       constants_mod, ONLY: HLv, HLs, cp_air, grav, rdgas, rvgas
@@ -806,26 +806,15 @@ subroutine moist_conv_init (axes, Time, tracers_in_mca)
 
 !-----------------------------------------------------------------------
       
- integer :: unit, io, ierr, logunit
+ integer :: io, ierr, logunit
  integer :: nn, tr
  character(len=128) :: diagname, diaglname, tendunits, name, units
 
 
 !-----------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
     read (input_nml_file, nml=moist_conv_nml, iostat=io)
     ierr = check_nml_error(io,"moist_conv_nml")
-#else
-    if (file_exist('input.nml')) then
-        unit = open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-            read  (unit, nml=moist_conv_nml, iostat=io, end=10)
-            ierr = check_nml_error (io,'moist_conv_nml')
-        enddo
- 10     call close_file (unit)
-    endif
-#endif
 
 !---------- output namelist --------------------------------------------
 

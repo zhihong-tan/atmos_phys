@@ -3,9 +3,7 @@
 
 !=======================================================================
  use           mpp_mod, only: input_nml_file
- use           fms_Mod, ONLY: FILE_EXIST, OPEN_NAMELIST_FILE,          &
-                              ERROR_MESG, FATAL, mpp_pe, mpp_root_pe,  &
-                              CLOSE_FILE,                              &
+ use           fms_Mod, ONLY: ERROR_MESG, FATAL, mpp_pe, mpp_root_pe,  &
                               check_nml_error, write_version_number,   &
                               stdlog
  use  Diag_Manager_Mod, ONLY: register_diag_field, send_data
@@ -507,7 +505,7 @@ real :: missing_value = -999.
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
 
- integer :: unit, io, ierr
+ integer :: logunit, io, ierr
 
 !=======================================================================
 
@@ -515,23 +513,8 @@ real :: missing_value = -999.
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
   read (input_nml_file, nml=stable_bl_turb_nml, iostat=io)
   ierr = check_nml_error(io,'stable_bl_turb_nml')
-#else   
-! -------------------------------------
-  if( FILE_EXIST( 'input.nml' ) ) then
-   unit = OPEN_NAMELIST_FILE ( file = 'input.nml')
-   ierr = 1
-   do while( ierr .ne. 0 )
-   READ ( unit,  nml = stable_bl_turb_nml, iostat = io, end = 10 ) 
-   ierr = check_nml_error (io, 'stable_bl_turb_nml')
-   end do
-10 continue
-   CALL CLOSE_FILE( unit )
-! -------------------------------------
-  end if
-#endif
 
 !---------------------------------------------------------------------
 ! --- Output version
@@ -539,8 +522,8 @@ real :: missing_value = -999.
 
   if ( mpp_pe() == mpp_root_pe() ) then
        call write_version_number(version, tagname)
-       unit = stdlog()
-       WRITE( unit, nml = stable_bl_turb_nml ) 
+       logunit = stdlog()
+       WRITE( logunit, nml = stable_bl_turb_nml ) 
   endif
 
 !---------------------------------------------------------------------
