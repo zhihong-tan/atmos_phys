@@ -70,7 +70,7 @@ use fms_mod,                 only: mpp_clock_id, mpp_clock_begin,   &
                                    mpp_clock_end, CLOCK_MODULE_DRIVER, &
                                    fms_init, stdlog, stdout,  &
                                    write_version_number, &
-                                   file_exist, error_mesg, FATAL,   &
+                                   error_mesg, FATAL,   &
                                    NOTE, check_nml_error, mpp_pe, &
                                    mpp_root_pe, mpp_chksum, string, mpp_npes
 use fms2_io_mod,             only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &

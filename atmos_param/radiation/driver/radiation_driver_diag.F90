@@ -57,7 +57,7 @@
 use mpp_mod,               only: input_nml_file
 use mpp_domains_mod,       only: domain2D
 use fms_mod,               only: fms_init, mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, FATAL, NOTE, &
+                                 FATAL, NOTE, &
                                  write_version_number, check_nml_error, error_mesg
 use fms2_io_mod,             only: FmsNetcdfDomainFile_t, &
                                    register_restart_field, register_axis, unlimited, &

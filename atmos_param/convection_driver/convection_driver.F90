@@ -60,7 +60,7 @@ use fms_mod,                only: error_mesg, FATAL, WARNING,NOTE,&
                                   mpp_clock_id, mpp_clock_begin,  &
                                   mpp_clock_end, CLOCK_MODULE,    &
                                   CLOCK_MODULE_DRIVER, &
-                                  MPP_CLOCK_SYNC, read_data, write_data
+                                  MPP_CLOCK_SYNC
 use field_manager_mod,      only: MODEL_ATMOS
 use tracer_manager_mod,     only: get_tracer_index,&
                                   get_tracer_names, &

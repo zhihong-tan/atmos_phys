@@ -12,7 +12,7 @@ module atmos_cmip_diag_mod
 use mpp_mod,            only: input_nml_file
 use fms_mod,            only: check_nml_error, &
                               stdlog, mpp_pe, mpp_root_pe, &
-                              write_version_number, file_exist, &
+                              write_version_number, &
                               error_mesg, FATAL, WARNING, NOTE, &
                               lowercase, string
 use time_manager_mod,   only: time_type

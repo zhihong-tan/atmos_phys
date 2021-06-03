@@ -40,9 +40,7 @@ module atmos_sulfur_hex_mod
 ! </REFERENCE>
 !</INFO>
 
-use              fms_mod, only : file_exist,           &
-!                                 open_file,            &
-                                 mpp_pe,               &
+use              fms_mod, only : mpp_pe,               &
                                  mpp_root_pe,          &
                                  stdlog, stdout,       &
                                  write_version_number

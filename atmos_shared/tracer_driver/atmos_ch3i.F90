@@ -1,9 +1,9 @@
 module atmos_ch3i_mod
 
 
-use mpp_mod, only: input_nml_file 
-use            fms_mod, only : file_exist,   &
-                               write_version_number, &
+use mpp_mod, only: input_nml_file
+use        fms2_io_mod, only : file_exists
+use            fms_mod, only : write_version_number, &
                                error_mesg, &
                                FATAL, &
                                NOTE, &
@@ -11,7 +11,6 @@ use            fms_mod, only : file_exist,   &
                                mpp_root_pe, &
                                lowercase,   &
                                check_nml_error, &
-                               close_file,   &
                                stdlog
 use  field_manager_mod, only : MODEL_ATMOS,          &
                                parse
@@ -104,7 +103,7 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 !-----------------------------------------------------------------------
 !     ... read namelist
 !-----------------------------------------------------------------------
-   if ( file_exist('input.nml')) then
+   if ( file_exists('input.nml')) then
      read (input_nml_file, nml=atmos_ch3i_nml, iostat=io)
      ierr = check_nml_error(io, 'atmos_ch3i_nml')
    endif

@@ -46,7 +46,7 @@ use fms_mod,               only: fms_init, mpp_clock_id, &
                                  CLOCK_ROUTINE, &
                                  mpp_pe, mpp_root_pe, mpp_npes,&
                                  stdlog, stdout, &
-                                 file_exist, FATAL, WARNING, NOTE, &
+                                 FATAL, WARNING, NOTE, &
                                  write_version_number, check_nml_error,&
                                  error_mesg, mpp_chksum
 use fms2_io_mod,             only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &

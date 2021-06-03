@@ -13,10 +13,10 @@ module mg_drag_mod
 
  use         mpp_mod, only: input_nml_file
  use mpp_domains_mod, only: domain2D
- use         fms_mod, only: file_exist, write_version_number, stdlog, &
+ use         fms_mod, only: write_version_number, stdlog, &
                             mpp_pe, mpp_root_pe, error_mesg, FATAL, NOTE, &
                             check_nml_error, mpp_error
- use fms2_io_mod,     only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+ use fms2_io_mod,     only:  file_exists, FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
                                    register_restart_field, register_axis, unlimited, &
                                    open_file, read_restart, write_restart, close_file, &
                                    register_field, write_data, register_variable_attribute, &
@@ -1038,7 +1038,7 @@ if(module_is_initialized) return
        call mg_register_restart(Mg_restart)
        call read_restart(Mg_restart)
        call close_file(Mg_restart)
-    else if ( file_exist( 'INPUT/mg_drag.res' ) ) then
+    else if ( file_exists( 'INPUT/mg_drag.res' ) ) then
        if (mpp_pe() == mpp_root_pe()) call mpp_error ('mg_drag_mod', &
             'Native formatted restart capability removed.', FATAL)
     else

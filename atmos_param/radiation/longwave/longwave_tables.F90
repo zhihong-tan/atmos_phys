@@ -20,7 +20,7 @@
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, write_version_number, &
+                                 write_version_number, &
                                  check_nml_error, error_mesg, &
                                  FATAL
 

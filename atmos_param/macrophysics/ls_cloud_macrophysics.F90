@@ -23,7 +23,7 @@ use fms_mod,               only: error_mesg, FATAL, NOTE,        &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &
                                  CLOCK_MODULE_DRIVER, &
-                                 MPP_CLOCK_SYNC, read_data, write_data
+                                 MPP_CLOCK_SYNC
 use fms2_io_mod,           only: file_exists
 use physics_types_mod,     only: physics_control_type
 

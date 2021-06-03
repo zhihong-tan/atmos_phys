@@ -24,9 +24,8 @@ module two_stream_gray_rad_mod
 ! ==================================================================================
 ! ==================================================================================
 
-   use fms_mod,               only: open_file, check_nml_error, &
-                                    mpp_pe, close_file
-
+   use fms_mod,               only: check_nml_error
+   use mpp_mod,               only: mpp_pe, mpp_root_pe, input_nml_file
    use constants_mod,         only: stefan, cp_air, grav, pstd_mks
 
    use    diag_manager_mod,   only: register_diag_field, send_data
@@ -106,24 +105,19 @@ type(time_type), intent(in)       :: Time
 integer, intent(in)               :: is, ie, js, je, num_levels
 !-------------------------------------------------------------------------------------
 integer, dimension(3) :: half = (/1,2,4/)
-integer :: ierr, io, unit
+integer :: ierr, io, file_unit
 !-----------------------------------------------------------------------------------------
 ! read namelist and copy to logfile
 
-unit = open_file ('input.nml', action='read')
-ierr=1
-do while (ierr /= 0)
-   read  (unit, nml=two_stream_gray_rad_nml, iostat=io, end=10)
-   ierr = check_nml_error (io, 'two_stream_gray_rad_nml')
-enddo
-10 call close_file (unit)
 
-unit = open_file ('logfile.out', action='append')
-if ( mpp_pe() == 0 ) then
-  write (unit,'(/,80("="),/(a))') trim(version), trim(tag)
-  write (unit, nml=two_stream_gray_rad_nml)
+read  (input_nml_file, nml=two_stream_gray_rad_nml, iostat=io, end=10)
+ierr = check_nml_error (io, 'two_stream_gray_rad_nml')
+
+if ( mpp_pe() == mpp_root_pe() ) then
+  file_unit=stdlog()
+  write (file_unit,'(/,80("="),/(a))') trim(version), trim(tag)
+  write (file_unit, nml=two_stream_gray_rad_nml)
 endif
-call close_file (unit)
 
 pi         = 4. * atan(1.)
 deg_to_rad = pi/180.
