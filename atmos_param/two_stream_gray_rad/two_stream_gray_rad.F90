@@ -25,7 +25,7 @@ module two_stream_gray_rad_mod
 ! ==================================================================================
 
    use fms_mod,               only: check_nml_error
-   use mpp_mod,               only: mpp_pe, mpp_root_pe, input_nml_file
+   use mpp_mod,               only: mpp_pe, mpp_root_pe, input_nml_file, stdlog
    use constants_mod,         only: stefan, cp_air, grav, pstd_mks
 
    use    diag_manager_mod,   only: register_diag_field, send_data
@@ -110,7 +110,7 @@ integer :: ierr, io, file_unit
 ! read namelist and copy to logfile
 
 
-read  (input_nml_file, nml=two_stream_gray_rad_nml, iostat=io, end=10)
+read  (input_nml_file, nml=two_stream_gray_rad_nml, iostat=io)
 ierr = check_nml_error (io, 'two_stream_gray_rad_nml')
 
 if ( mpp_pe() == mpp_root_pe() ) then
