@@ -134,29 +134,24 @@ module xactive_bvoc_mod
 
 !------------------------------------------------------------------------------
 
-use                mpp_mod,  only : input_nml_file
-use                fms_mod,  only : file_exist,            &
-                                    write_version_number,  &
+use                mpp_mod,  only : input_nml_file, mpp_get_current_pelist
+use                fms_mod,  only : write_version_number,  &
                                     mpp_pe,                &
                                     mpp_root_pe,           &
-                                    open_namelist_file,    &
-                                    close_file,            &
+                                    mpp_npes,              &
                                     stdlog,                &
                                     check_nml_error,       &
                                     error_mesg,            &
                                     FATAL,                 &
                                     WARNING,               &
                                     NOTE
-
+use        mpp_domains_mod,  only : domain2D, mpp_get_ntile_count
 use            MO_GRID_MOD,  only : pcnstm1
-
-use             fms_io_mod,  only : read_data,             &
-                                    register_restart_field,&
-                                    restore_state,         &
-                                    save_restart,          &
-                                    restart_file_type,     &
-                                    get_mosaic_tile_file
-
+use            fms2_io_mod,  only : FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                    register_restart_field, register_axis, unlimited, &
+                                    open_file, read_restart, write_restart, close_file, &
+                                    register_field, write_data, get_global_io_domain_indices, &
+                                    register_variable_attribute, read_data, file_exists
 use         M_TRACNAME_MOD,  only : tracnam
 use      tracer_manager_mod, only : get_tracer_index,      &
                                     query_method
@@ -334,9 +329,7 @@ real, allocatable, dimension(:,:,:)       :: Tmo, Pmo        ! Monthly mean temp
 
 real, allocatable, dimension(:,:)         :: CO2_STORE,   &
                                              SOILM, WILT
-
-type(restart_file_type), pointer, save    :: Xbvoc_restart => NULL()
-type(restart_file_type), pointer, save    :: Til_restart => NULL()
+type (domain2D), pointer                  :: xactive_domain !< Atmosphere domain
 
 logical                                   :: in_different_file = .false.
 integer                                   :: vers = 1
@@ -762,9 +755,9 @@ end subroutine xactive_bvoc
 !     the tracer array
 !   </OUT>
 
-subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
+subroutine xactive_bvoc_init(domain, lonb, latb, Time, axes, xactive_ndx)
 
-
+   type(domain2D),target,intent(in)    :: domain !< Atmosphere domain
    real, intent(in), dimension(:,:)    :: lonb, latb     ! Lat/Lon corners
    type(time_type), intent(in)         :: Time           ! Model time
    integer, intent(in)                 :: axes(4)        ! Diagnostics axes
@@ -796,7 +789,7 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
                                                     'mw   '/)
 
    integer          :: nlon, nlat, i, j, k, n, xknt, nTERP, nxactive
-   integer          :: ierr, unit, io, logunit, nPARAMS
+   integer          :: ierr, io, logunit, nPARAMS
 
    integer, parameter             :: nlonin = 720, nlatin = 360
    real, dimension(nlonin)        :: inlon
@@ -821,7 +814,11 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
    character(len=64)  :: name=''
    integer, parameter :: nPARAMS_megan2 = 9
    integer, parameter :: nPARAMS_megan3 = 20
-
+   type(FmsNetcdfFile_t)       ::  Xbvoc_restart !< Netcdf fileobj
+   type(FmsNetcdfFile_t)       ::  megan3_isop !< Netcdf fileobj
+   type(FmsNetcdfFile_t)       ::  ecfile_obj !< Netcdf fileobj
+   type(FmsNetcdfDomainFile_t) ::  Til_restart !< Domain decomposed fileobj
+   integer, allocatable, dimension(:) :: pes !< Array of pes in the current pelist
 
    nlon = size(lonb,1) - 1
    nlat = size(latb,2) - 1
@@ -840,18 +837,9 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
 !-----------------------------------------------------------------------
 !     ... read namelist
 !-----------------------------------------------------------------------
-   IF (file_exist('input.nml')) THEN
-#ifdef INTERNAL_FILE_NML
+   IF (file_exists('input.nml')) THEN
       read (input_nml_file, nml=xactive_bvoc_nml, iostat=io)
       ierr = check_nml_error(io,'xactive_bvoc_nml')
-#else
-      unit = open_namelist_file('input.nml')
-      ierr=1; do while (ierr /= 0)
-      read(unit, nml = xactive_bvoc_nml, iostat=io, end=10)
-      ierr = check_nml_error (io, 'xactive_bvoc_nml')
-      end do
-10    call close_file(unit)
-#endif
    ENDIF
 
    logunit = stdlog()
@@ -889,8 +877,11 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
       ALLOCATE ( ECBVOC_MEGAN3(nlon,nlat,nxactive) )
       ALLOCATE ( LDFg(nlon,nlat,nxactive) )
 ! Populate these so it doesn't need to be done each time a new species is read in
-      call read_data ('INPUT/megan3.xactive.ISOP.nc', 'lon', m3inlon, no_domain=.true.)
-      call read_data ('INPUT/megan3.xactive.ISOP.nc', 'lat', m3inlat, no_domain=.true.)
+      if (open_file(megan3_isop,"INPUT/megan3.xactive.ISOP.nc","read")) then
+         call read_data (megan3_isop, 'lon', m3inlon)
+         call read_data (megan3_isop, 'lat', m3inlat)
+         call close_file(megan3_isop)
+      endif
       m3inlon = m3inlon*DEG_TO_RAD
       m3inlat = m3inlat*DEG_TO_RAD
       dlat = m3inlat(2)-m3inlat(1)
@@ -1032,9 +1023,9 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
 !--------------------------------------------------------------------------------------
          IF ( trim(tracnam(i))=='ISOP' .AND. do_AM3_ISOP ) THEN
             ecfile = 'INPUT/megan.ISOP.nc'
-            IF ( file_exist(ecfile) ) THEN
-               call read_data (ecfile, 'lon', inlon, no_domain=.true.)
-               call read_data (ecfile, 'lat', inlat, no_domain=.true.)
+            if (open_file(ecfile_obj,ecfile,"read")) then
+               call read_data (ecfile_obj, 'lon', inlon)
+               call read_data (ecfile_obj, 'lat', inlat)
                inlon = inlon*DEG_TO_RAD
                inlat = inlat*DEG_TO_RAD
                dlat = inlat(2)-inlat(1)
@@ -1046,9 +1037,10 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
                call horiz_interp_init
                call horiz_interp_new ( Interp, inlone, inlate, lonb, latb )
                DO j = 1, nVEG
-                  call read_data (ecfile,vegnames(j),AM3_ISOP_DATAIN, no_domain=.true.)
+                  call read_data (ecfile_obj,vegnames(j),AM3_ISOP_DATAIN)
                   call horiz_interp (Interp,AM3_ISOP_DATAIN,ECISOP_AM3(:,:,j), verbose=verbose)
                ENDDO
+               call close_file(ecfile_obj)
             ELSE
                   call error_mesg ('xactive_bvoc_init',  &
                      ' AM3 isoprene emission capacity file does not exist', FATAL)
@@ -1059,99 +1051,109 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
 ! Both mono- and sesq- terpenes are included in this file,
 ! but sesq may not be used (i.e., if do_SESQTERP = .false.')
                        ecfile = 'INPUT/megan2.xactive.parsed_terpenes.nc'
+                       if (open_file(ecfile_obj,ecfile,"read")) then
+                        DO k = 1, nTERP
+                           DO j = 1, nPFT
+                              call read_data(ecfile_obj,terpnames_megan2(k)//'_'//pftnames(j), &
+                                             toss)
+                              ECTERP(:,:,j,k) = toss
+                           ENDDO
+                        ENDDO
+                        call close_file(ecfile_obj)
+                       else
+                        call error_mesg ('xactive_bvoc_init',  &
+                        'MEGAN file (megan2.xactive.parsed_terpenes.nc) for '//trim(tracnam(i))//' does not exist', FATAL)
+                       endif
                  ELSE
                     IF ( do_SESQTERP ) THEN
                        ecfile = 'INPUT/megan2.xactive.lumped_terpenes_sesq.nc'
                     ELSE
                        ecfile = 'INPUT/megan2.xactive.lumped_terpenes_mono.nc'
                     ENDIF
-                 ENDIF
-                 IF ( file_exist(ecfile) ) THEN
-                    IF ( do_PARSED_TERP) THEN
-                       DO k = 1, nTERP
-                          DO j = 1, nPFT
-                             call read_data(ecfile,terpnames_megan2(k)//'_'//pftnames(j), &
-                                            toss, no_domain=.true.)
-                             ECTERP(:,:,j,k) = toss
-                          ENDDO
-                       ENDDO
-                    ELSE
-                       DO j = 1, nPFT
-                          call read_data(ecfile,pftnames(j),toss, no_domain=.true.)
-                          ECBVOC(:,:,j,xknt) = toss
-                       ENDDO
-                    ENDIF
-                 ELSE
-                    call error_mesg ('xactive_bvoc_init',  &
-                        'MEGAN file for '//trim(tracnam(i))//' does not exist', FATAL)
+                    if (open_file(ecfile_obj,ecfile,"read")) then
+                     DO j = 1, nPFT
+                        call read_data(ecfile_obj,pftnames(j),toss)
+                        ECBVOC(:,:,j,xknt) = toss
+                     ENDDO
+                     call close_file(ecfile_obj)
+                    else
+                     call error_mesg ('xactive_bvoc_init',  &
+                        'MEGAN file '//trim(ecfile)//'for '//trim(tracnam(i))//' does not exist', FATAL)
+                    endif
                  ENDIF
               ELSE IF ( xactive_algorithm == 'MEGAN3' ) THEN
                  IF ( do_PARSED_TERP ) THEN
 ! Both mono- and sesq- terpenes are included in this file,
 ! but sesq may not be used (i.e., if do_SESQTERP = .false.')
                     ecfile = 'INPUT/megan3.xactive.parsed_terpenes.nc'
+                    if (open_file(ecfile_obj,ecfile,"read")) then
+                     call horiz_interp_init
+                     call horiz_interp_new ( Interp, m3inlone, m3inlate, lonb, latb )
+                     DO k = 1, nTERP
+                        call read_data (ecfile_obj,trim(terpnames_megan3(k))//'_EF',        &
+                                        MEGAN3_DATAIN)
+                        call horiz_interp (Interp,MEGAN3_DATAIN,                  &
+                                           ECTERP_MEGAN3(:,:,k), verbose=verbose)
+                        call read_data (ecfile_obj,trim(terpnames_megan3(k))//'_LDF',       &
+                                        MEGAN3_DATAIN)
+                        call horiz_interp (Interp,MEGAN3_DATAIN,                  &
+                                           LDFg_TERP(:,:,k), verbose=verbose)
+                     ENDDO!nterp
+                     call close_file(ecfile_obj)
+                    else
+                     call error_mesg ('xactive_bvoc_init',  &
+                        'MEGAN file '//trim(ecfile)//'for '//trim(tracnam(i))//' does not exist', FATAL)
+                    endif
                  ELSE
                     IF ( do_SESQTERP ) THEN
                        ecfile = 'INPUT/megan3.xactive.lumped_terpenes_sesq.nc'
                     ELSE
                        ecfile = 'INPUT/megan3.xactive.lumped_terpenes_mono.nc'
                     ENDIF
-                 ENDIF
-                 IF ( file_exist(ecfile) ) THEN
-                    IF ( do_PARSED_TERP) THEN
-                       call horiz_interp_init
-                       call horiz_interp_new ( Interp, m3inlone, m3inlate, lonb, latb )
-                       DO k = 1, nTERP
-                          call read_data (ecfile,trim(terpnames_megan3(k))//'_EF',        &
-                                          MEGAN3_DATAIN, no_domain=.true.)
-                          call horiz_interp (Interp,MEGAN3_DATAIN,                  &
-                                             ECTERP_MEGAN3(:,:,k), verbose=verbose)
-                          call read_data (ecfile,trim(terpnames_megan3(k))//'_LDF',       &
-                                          MEGAN3_DATAIN,no_domain=.true.)
-                          call horiz_interp (Interp,MEGAN3_DATAIN,                  &
-                                             LDFg_TERP(:,:,k), verbose=verbose)
-                       ENDDO!nterp
-                    ELSE
-                       call horiz_interp_init
-                       call horiz_interp_new (Interp, m3inlone, m3inlate, lonb, latb )
-                       call read_data (ecfile,'EF',MEGAN3_DATAIN, no_domain=.true.)
-                       call horiz_interp (Interp, MEGAN3_DATAIN,ECBVOC_MEGAN3(:,:,xknt))
-                       call read_data (ecfile,'LDF',MEGAN3_DATAIN, no_domain=.true.)
-                       call horiz_interp (Interp, MEGAN3_DATAIN, LDFg(:,:,xknt ))
-                    ENDIF
-                 ELSE
-                    call error_mesg ('xactive_bvoc_init',  &
-                        'MEGAN file for '//trim(tracnam(i))//' does not exist', FATAL)
+                    if (open_file(ecfile_obj,ecfile,"read")) then
+                     call horiz_interp_init
+                     call horiz_interp_new (Interp, m3inlone, m3inlate, lonb, latb )
+                     call read_data (ecfile_obj,'EF',MEGAN3_DATAIN)
+                     call horiz_interp (Interp, MEGAN3_DATAIN,ECBVOC_MEGAN3(:,:,xknt))
+                     call read_data (ecfile_obj,'LDF',MEGAN3_DATAIN)
+                     call horiz_interp (Interp, MEGAN3_DATAIN, LDFg(:,:,xknt ))
+                     call close_file(ecfile_obj)
+                    else
+                     call error_mesg ('xactive_bvoc_init',  &
+                        'MEGAN file '//trim(ecfile)//'for '//trim(tracnam(i))//' does not exist', FATAL)
+                    endif
                  ENDIF
               ENDIF
          ELSE
             IF ( xactive_algorithm == 'MEGAN2') THEN
                ecfile = 'INPUT/megan2.xactive.'//trim(tracnam(i))//'.nc'
-               IF ( file_exist(ecfile) ) THEN
+               if (open_file(ecfile_obj,ecfile,"read")) then
                   IF (mpp_pe() == mpp_root_pe()) call error_mesg ( 'xactive_bvoc_init', &
                       'Reading EF from file ' //ecfile, NOTE)
                   DO j = 1, nPFT
-                     call read_data(ecfile,pftnames(j),toss, no_domain=.TRUE.)
+                     call read_data(ecfile_obj,pftnames(j),toss)
                      IF ( trim(tracnam(i)) == 'ISOP' ) THEN
                         toss = megan2_isop_sf * toss
                      ENDIF
                      ECBVOC(:,:,j,xknt) = toss
                   ENDDO
+                  call close_file(ecfile_obj)
                ELSE
                   call error_mesg ('xactive_bvoc_init',  &
                      'MEGAN file for '//trim(tracnam(i))//' does not exist', FATAL)
                ENDIF
             ELSE IF ( xactive_algorithm == 'MEGAN3') THEN
                ecfile = 'INPUT/megan3.xactive.'//trim(tracnam(i))//'.nc'
-               IF ( file_exist(ecfile) ) THEN
+               IF (open_file(ecfile_obj,ecfile,"read")) then
                   IF (mpp_pe() == mpp_root_pe()) call error_mesg ( 'xactive_bvoc_init', &
                       'Reading EF from file ' //ecfile, NOTE)
                      call horiz_interp_init
                      call horiz_interp_new ( Interp, m3inlone, m3inlate, lonb, latb )
-                     call read_data (ecfile,'EF',MEGAN3_DATAIN, no_domain=.true.)
+                     call read_data (ecfile_obj,'EF',MEGAN3_DATAIN)
                      call horiz_interp (Interp,MEGAN3_DATAIN,ECBVOC_MEGAN3(:,:,xknt), verbose=verbose)
-                     call read_data (ecfile,'LDF',MEGAN3_DATAIN, no_domain=.true.)
+                     call read_data (ecfile_obj,'LDF',MEGAN3_DATAIN)
                      call horiz_interp (Interp,MEGAN3_DATAIN,LDFg(:,:,xknt), verbose=verbose)
+                     call close_file(ecfile_obj)
                ENDIF
             ENDIF ! xactive_algorithm
          ENDIF ! AM3 isop, terpene, other
@@ -1190,39 +1192,44 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
             IF ( mpp_pe() == mpp_root_pe()) call error_mesg ('xactive_bvoc_init', &
                  'MEGAN Parameters for AM3 ISOP hardcoded in subroutine, skipping',NOTE)
          ELSE
+            IF (.not. open_file(ecfile_obj,ecfile,"read")) then
+               call error_mesg ('xactive_bvoc_init',  &
+                        'File '//trim(ecfile)//'for '//trim(tracnam(i))//' does not exist', FATAL)
+            ENDIF
             DO j = 1, nPARAMS
                IF ( trim(tracnam(i))=='C10H16') THEN
                   IF ( do_PARSED_TERP ) THEN
                      DO k = 1, nTERP
                         IF ( xactive_algorithm == 'MEGAN2' ) THEN
-                           call read_data(ecfile, &
+                           call read_data(ecfile_obj, &
                                 trim(paramnames_megan2(j))//'_'//terpnames_megan2(k), &
-                                          TERP_PARAM(j,k), no_domain=.true.)
+                                          TERP_PARAM(j,k))
                         ELSE IF ( xactive_algorithm == 'MEGAN3' ) THEN
-                           call read_data(ecfile, &
+                           call read_data(ecfile_obj, &
                                 trim(paramnames_megan3(j))//'_'//trim(terpnames_megan3(k)), &
-                                       TERP_PARAM(j,k), no_domain=.true.)
+                                       TERP_PARAM(j,k))
                         ENDIF
                      ENDDO
                   ELSE
                      IF ( xactive_algorithm == 'MEGAN2' ) THEN
-                        call read_data(ecfile, trim(paramnames_megan2(j)), &
-                                       MEGAN_PARAM(j,xknt), no_domain=.true.)
+                        call read_data(ecfile_obj, trim(paramnames_megan2(j)), &
+                                       MEGAN_PARAM(j,xknt))
                      ELSE IF ( xactive_algorithm == 'MEGAN3' ) THEN
-                        call read_data(ecfile, trim(paramnames_megan3(j)), &
-                                       MEGAN_PARAM(j,xknt), no_domain=.true.)
+                        call read_data(ecfile_obj, trim(paramnames_megan3(j)), &
+                                       MEGAN_PARAM(j,xknt))
                      ENDIF
                   ENDIF
                ELSE
                      IF ( xactive_algorithm == 'MEGAN2' ) THEN
-                        call read_data(ecfile, trim(paramnames_megan2(j)), &
-                                       MEGAN_PARAM(j,xknt), no_domain=.true.)
+                        call read_data(ecfile_obj, trim(paramnames_megan2(j)), &
+                                       MEGAN_PARAM(j,xknt))
                      ELSE IF (xactive_algorithm == 'MEGAN3' ) THEN
-                         call read_data(ecfile, trim(paramnames_megan3(j)), &
-                                       MEGAN_PARAM(j,xknt), no_domain=.true.)
+                         call read_data(ecfile_obj, trim(paramnames_megan3(j)), &
+                                       MEGAN_PARAM(j,xknt))
                      ENDIF
                ENDIF
             ENDDO ! j/ nparams
+            call close_file(ecfile_obj)
          ENDIF !/if do_AM3_ISOP
       ENDIF ! has_xactive
    ENDDO ! i/ species
@@ -1406,15 +1413,30 @@ subroutine xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx)
       ENDIF
    ENDIF
 
+   xactive_domain => domain
    if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
       write(*,*) 'xactive_bvoc_init: calling xactive_bvoc_register_restart'
-   call xactive_bvoc_register_restart
-   if(file_exist('INPUT/xactive_bvoc.res.nc')) then
+
+   !< Get the current pelist
+   allocate(pes(mpp_npes()))
+   call mpp_get_current_pelist(pes)
+
+   !< Open the scalar file with the current pelist, so that only the root pe opens and reads the file and
+   !! distributes the data to the other pes
+   if (open_file(Xbvoc_restart,"INPUT/xactive_bvoc.res.nc","read", is_restart=.true., pelist=pes)) then
       if (mpp_pe() == mpp_root_pe() ) &
-         call error_mesg ('xactive_bvoc_mod',  'xactive_bvoc_init:&
-            &Reading netCDF formatted restart file: xactive_bvoc.res.nc', NOTE)
-      call restore_state(Xbvoc_restart)
-      if (in_different_file) call restore_state(Til_restart)
+      call error_mesg ('xactive_bvoc_mod',  'xactive_bvoc_init:&
+         &Reading netCDF formatted restart file: xactive_bvoc.res.nc', NOTE)
+      call xactive_bvoc_register_restart_scalars(Xbvoc_restart)
+      call read_restart(Xbvoc_restart)
+      call close_file(Xbvoc_restart)
+   endif
+   deallocate(pes)
+
+   if (open_file(Til_restart,"INPUT/xactive_bvoc.res.nc","read", xactive_domain, is_restart=.true.)) then
+      call xactive_bvoc_register_restart_domains(Til_restart)
+      call read_restart(Til_restart)
+      call close_file(Til_restart)
    endif
 
    module_is_initialized = .TRUE.
@@ -2815,17 +2837,18 @@ end function fGAMMA_PAR_AM4
    integer, dimension(12)                :: mos
    logical                               :: used
    real                                  :: dlat, dlon
+   type(FmsNetcdfFile_t)                 :: tasfile_obj !< Fms2io fileobj
 
    nlon = size(lonb,1) - 1
    nlat = size(latb,2) - 1
 
-   IF ( file_exist(tasfile) ) THEN
+   IF (open_file(tasfile_obj,tasfile,"read")) then
       IF (mpp_pe() == mpp_root_pe()) call error_mesg ('temp_init_AM3', &
          'Reading NetCDF formatted input file: tas_monthly_clim_1980-2000.nc',NOTE)
 
 !read in lat & lon from input file, get boundaries and convert to radians
-      call read_data (tasfile, 'lon', metlon, no_domain=.true.)
-      call read_data (tasfile, 'lat', metlat, no_domain=.true.)
+      call read_data (tasfile_obj, 'lon', metlon)
+      call read_data (tasfile_obj, 'lat', metlat)
 
       dlon = 0.5*(metlon(1)-metlon(2))
       dlat = 0.5*(metlat(2)-metlat(1))
@@ -2847,8 +2870,8 @@ end function fGAMMA_PAR_AM4
       call horiz_interp_init
       call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
 
-      call read_data (tasfile, 'time', mos, no_domain=.true.)
-      call read_data (tasfile,'tas_clim', tas(:,:,:), no_domain=.true.)
+      call read_data (tasfile_obj, 'time', mos)
+      call read_data (tasfile_obj,'tas_clim', tas(:,:,:))
 
       DO m = 1, 12
          call horiz_interp (Interp, tas(:,:,m), Tmo(:,:,m), verbose=verbose)
@@ -2860,6 +2883,7 @@ end function fGAMMA_PAR_AM4
             used = send_data(id_tas(m),Tmo(:,:,m))
          ENDIF
       ENDDO
+      call close_file(tasfile_obj)
    ELSE
       call error_mesg ('temp_init_AM3',  &
           'tasfile :'//tasfile//' does not exist', FATAL)
@@ -2899,21 +2923,22 @@ subroutine ppfd_init_AM3 (lonb, latb, axes)
    logical                                 :: used
    real                                    :: dlat, dlon
    real, parameter                         :: const0 = 4.766
+   type(FmsNetcdfFile_t)                   :: dswfile_obj !< Fms2io fileobj
 
    nlon = size(lonb,1) - 1
    nlat = size(latb,2) - 1
 
 !  --- check existence of input file containing climatological (1980-2000)
 !  monthly surface down SW radiation --------
-  IF (file_exist(dswfile)) THEN
+  IF (open_file(dswfile_obj,dswfile,"read")) then
 
 !set up for input grid
      IF (mpp_pe() == mpp_root_pe()) call error_mesg ('ppfd_init_AM3',  &
           'Reading NetCDF formatted input file: dswrf_monthly_clim_1980-2000.nc', NOTE)
 
 !read in lat & lon from input file, get boundaries and convert to radians
-     call read_data (dswfile, 'lon', metlon, no_domain=.true.)
-     call read_data (dswfile, 'lat', metlat, no_domain=.true.)
+     call read_data (dswfile_obj, 'lon', metlon)
+     call read_data (dswfile_obj, 'lat', metlat)
 
      dlon = 0.5*(metlon(1)-metlon(2))
      dlat = 0.5*(metlat(2)-metlat(1))
@@ -2935,8 +2960,8 @@ subroutine ppfd_init_AM3 (lonb, latb, axes)
      call horiz_interp_init
      call horiz_interp_new ( Interp, metlone, metlate, lonb, latb )
 
-     call read_data (dswfile, 'time', mos, no_domain=.true.)
-     call read_data (dswfile,'dswrf_clim', dswrf(:,:,:), no_domain=.true.)
+     call read_data (dswfile_obj, 'time', mos)
+     call read_data (dswfile_obj,'dswrf_clim', dswrf(:,:,:))
 
      DO m = 1, 12
         call horiz_interp (Interp, dswrf(:,:,m), Pmo(:,:,m),verbose=verbose)
@@ -2950,7 +2975,7 @@ subroutine ppfd_init_AM3 (lonb, latb, axes)
            used = send_data(id_dsw(m),Pmo(:,:,m))
         ENDIF
      ENDDO
-
+     call close_file(dswfile_obj)
   ELSE
      call error_mesg ('ppfd_init_AM3',  &
           'dswfile does not exist', FATAL)
@@ -2997,7 +3022,7 @@ subroutine pft_init_AM3( lonb, latb, axes )
 
    integer                                  :: id_pft(nPFT)
    real, dimension(nlonin,nlatin,nPFT)      :: datapft
-
+   type(FmsNetcdfFile_t)                    :: file_PFT_obj !< Fms2io fileobj
 
    nlon = size(lonb,1) - 1
    nlat = size(latb,1) - 1
@@ -3008,16 +3033,16 @@ subroutine pft_init_AM3( lonb, latb, axes )
       file_PFT = 'INPUT/mksrf_pft.060929.nc'
    ENDIF
 
-   IF ( file_exist(file_PFT) ) THEN
+   IF ( open_file(file_PFT_obj, file_PFT, "read") ) THEN
       IF ( mpp_pe() == mpp_root_pe() ) call error_mesg ( 'pft_init_AM3', &
            'Reading NetCDF formatted input file: mksrf_pft.060929.nc', NOTE)
 ! Read in lat & lon from input file, get boundaries and convert to radians
-      call read_data (file_PFT, 'lon', lonpft, no_domain=.true.)
-      call read_data (file_PFT, 'lat', latpft, no_domain=.true.)
-      call read_data (file_PFT, 'EDGEW', edgew, no_domain=.true.)
-      call read_data (file_PFT, 'EDGES', edges, no_domain=.true.)
-      call read_data (file_PFT, 'EDGEE', edgee, no_domain=.true.)
-      call read_data (file_PFT, 'EDGEN', edgen, no_domain=.true.)
+      call read_data (file_PFT_obj, 'lon', lonpft)
+      call read_data (file_PFT_obj, 'lat', latpft)
+      call read_data (file_PFT_obj, 'EDGEW', edgew)
+      call read_data (file_PFT_obj, 'EDGES', edges)
+      call read_data (file_PFT_obj, 'EDGEE', edgee)
+      call read_data (file_PFT_obj, 'EDGEN', edgen)
 
       lonpfte(1) = edgew
       latpfte(1) = edges
@@ -3040,10 +3065,10 @@ subroutine pft_init_AM3( lonb, latb, axes )
       call horiz_interp_init
       call horiz_interp_new ( Interp, lonpfte, latpfte, lonb, latb )
 
-      call read_data (file_PFT, 'pft', pft, no_domain=.true.)
+      call read_data (file_PFT_obj, 'pft', pft)
 
 ! Read pct_pft field
-      call read_data (file_PFT, 'PCT_PFT', datapft, no_domain=.true.)
+      call read_data (file_PFT_obj, 'PCT_PFT', datapft)
 
 ! Loop over pftnames
       DO i = 1, nPFT
@@ -3058,6 +3083,7 @@ subroutine pft_init_AM3( lonb, latb, axes )
       ENDDO
 ! Scale the percentages to a fraction
       PCTPFT(:,:,:) = 0.01 * PCTPFT(:,:,:)
+      call close_file(file_PFT_obj)
    ELSE
       call error_mesg ('lai_pft_init', &
            'PFT file: '//file_PFT//' does not exist.', FATAL )
@@ -3096,6 +3122,7 @@ subroutine lai_init_AM3( lonb,latb, axes )
    integer, dimension(nMOS)                  :: mos
    logical                                   :: used
    real, dimension(nlonin,nlatin,nPFT,nMOS)  :: datalai
+   type(FmsNetcdfFile_t)                     :: file_LAI_obj !< Fms2io fileobj
    character(len=5)  :: lainames(nPFT) =  (/'lai01','lai02','lai03','lai04', &
                                             'lai05','lai06','lai07','lai08', &
                                             'lai09','lai10','lai11','lai12', &
@@ -3112,17 +3139,17 @@ subroutine lai_init_AM3( lonb,latb, axes )
 
 !  --- check existence of input file containing monthly lai, for each pft
 !  --------
-   IF (file_exist(file_LAI)) THEN
+   IF (open_file(file_LAI_obj, file_LAI, "read")) THEN
 ! Set up for input grid
       IF(mpp_pe() == mpp_root_pe()) call error_mesg ('lai_pft_init',  &
            'Reading NetCDF formatted input file: mksrf_lai.060929.nc', NOTE)
 ! Read in lat & lon from input file, get boundaries and convert to radians
-         call read_data (file_LAI, 'lon', lonlai, no_domain=.true.)
-         call read_data (file_LAI, 'lat', latlai, no_domain=.true.)
-         call read_data (file_LAI, 'EDGEW', edgew, no_domain=.true.)
-         call read_data (file_LAI, 'EDGES', edges, no_domain=.true.)
-         call read_data (file_LAI, 'EDGEE', edgee, no_domain=.true.)
-         call read_data (file_LAI, 'EDGEN', edgen, no_domain=.true.)
+         call read_data (file_LAI_obj, 'lon', lonlai)
+         call read_data (file_LAI_obj, 'lat', latlai)
+         call read_data (file_LAI_obj, 'EDGEW', edgew)
+         call read_data (file_LAI_obj, 'EDGES', edges)
+         call read_data (file_LAI_obj, 'EDGEE', edgee)
+         call read_data (file_LAI_obj, 'EDGEN', edgen)
 ! Get lat/lon edges and spacing
          lonlaie(1) = edgew
          latlaie(1) = edges
@@ -3142,10 +3169,10 @@ subroutine lai_init_AM3( lonb,latb, axes )
          call horiz_interp_init
          call horiz_interp_new ( Interp, lonlaie, latlaie, lonb, latb )
 ! Read in pft and time dimensions from lai file
-         call read_data (file_LAI, 'time', mos, no_domain=.true.)
+         call read_data (file_LAI_obj, 'time', mos)
 ! Loop over pftnames
          DO i = 1, nPFT
-            call read_data (file_LAI,lainames(i),datalai(:,:,i,:), no_domain=.true.)
+            call read_data (file_LAI_obj,lainames(i),datalai(:,:,i,:))
             DO m = 1, nMOS
                call horiz_interp (Interp, datalai(:,:,i,m),        &
                                   MLAI(:,:,i,m),verbose=verbose)
@@ -3161,6 +3188,7 @@ subroutine lai_init_AM3( lonb,latb, axes )
             ENDIF
          ENDDO
       ENDDO
+      call close_file(file_LAI_obj)
    ELSE
       call error_mesg ('lai_init_AM3',  &
            'laifile: '//file_LAI//' does not exist', FATAL)
@@ -3199,7 +3227,7 @@ subroutine lai_init_megan3( lonb,latb, axes )
    integer                                   :: id_lai
    logical                                   :: used
    real, dimension(nlonin,nlatin,nMOS)       :: datalai
-
+   type(FmsNetcdfFile_t)                     :: file_LAI_obj !< Fms2io fileobj
 
    IF ( file_LAI =='INPUT/mksrf_lai.060929.nc' ) THEN
       call error_mesg ('lai_init_megan3, incorrect file for MEGAN3', &
@@ -3207,13 +3235,13 @@ subroutine lai_init_megan3( lonb,latb, axes )
       file_LAI = 'INPUT/mksrf_lai.060929.combined_pft.nc'
    ENDIF
 
-   IF (file_exist(file_LAI)) THEN
+   IF (open_file(file_LAI_obj, file_LAI, "read")) THEN
 ! Set up for input grid
       IF (mpp_pe() == mpp_root_pe()) call error_mesg ('lai_init_megan3',  &
            'Reading NetCDF formatted input file'//file_LAI, NOTE)
 
-      call read_data (file_LAI, 'lon', inlon, no_domain=.true.)
-      call read_data (file_LAI, 'lat', inlat, no_domain=.true.)
+      call read_data (file_LAI_obj, 'lon', inlon)
+      call read_data (file_LAI_obj, 'lat', inlat)
       inlon = inlon*DEG_TO_RAD
       inlat = inlat*DEG_TO_RAD
       dlat  = inlat(2)-inlat(1)
@@ -3225,7 +3253,7 @@ subroutine lai_init_megan3( lonb,latb, axes )
 
       call horiz_interp_init
       call horiz_interp_new ( Interp, inlone, inlate, lonb, latb )
-      call read_data (file_LAI,'LAI',datalai, no_domain=.true.)
+      call read_data (file_LAI_obj,'LAI',datalai)
       DO m = 1, nMOS
          call horiz_interp (Interp, datalai(:,:,m), MLAI_MEGAN3(:,:,m),verbose=verbose)
 ! Store diagnostics for one month only - choose July for now
@@ -3239,6 +3267,7 @@ subroutine lai_init_megan3( lonb,latb, axes )
             ENDIF
          ENDIF
       ENDDO
+      call close_file(file_LAI_obj)
    ELSE
       call error_mesg ('lai_init_megan3',  &
            'laifile: '//file_LAI//' does not exist', FATAL)
@@ -3276,15 +3305,15 @@ subroutine fcover_init_megan3( lonb,latb, axes )
    integer                                   :: id_fcover
    logical                                   :: used
    real, dimension(nlonin,nlatin,nMOS)       :: datain
+   type(FmsNetcdfFile_t)                     :: file_FCOVER_obj !< Fms2io fileobj
 
-
-   IF (file_exist(file_FCOVER)) THEN
+   IF (open_file(file_FCOVER_obj, file_FCOVER, "read")) THEN
 ! Set up for input grid
       IF (mpp_pe() == mpp_root_pe()) call error_mesg ('fcover_init_megan3',  &
            'Reading NetCDF formatted input file'//file_FCOVER, NOTE)
 
-      call read_data (file_FCOVER, 'lon', inlon, no_domain=.true.)
-      call read_data (file_FCOVER, 'lat', inlat, no_domain=.true.)
+      call read_data (file_FCOVER_obj, 'lon', inlon)
+      call read_data (file_FCOVER_obj, 'lat', inlat)
       inlon = inlon*DEG_TO_RAD
       inlat = inlat*DEG_TO_RAD
       dlat  = inlat(2)-inlat(1)
@@ -3296,7 +3325,7 @@ subroutine fcover_init_megan3( lonb,latb, axes )
 
       call horiz_interp_init
       call horiz_interp_new ( Interp, inlone, inlate, lonb, latb )
-      call read_data (file_FCOVER,'FCOVER',datain(:,:,:), no_domain=.true.)
+      call read_data (file_FCOVER_obj,'FCOVER',datain(:,:,:))
       DO m = 1, nMOS
          call horiz_interp (Interp, datain(:,:,m), FCOVER(:,:,m),verbose=verbose)
 ! Store diagnostics for one month only - choose July for now
@@ -3323,45 +3352,54 @@ end subroutine fcover_init_megan3
 !  <OVERVIEW>
 !    xactive_bvoc_register_restart registers restart fields
 !  </OVERVIEW>
-subroutine xactive_bvoc_register_restart
+subroutine xactive_bvoc_register_restart_scalars(Xbvoc_restart)
+   type(FmsNetcdfFile_t), intent(inout)       ::  Xbvoc_restart !< Fms2io fileobj
+   character(len=8), dimension(1)             :: dim_names !< Array of dimension names
 
-  character(len=64) :: fname, fname2
-  character(len=2)  :: mon_string
-  integer           :: id_restart, ihour
+   dim_names =  (/"Time"/)
+   call register_axis(Xbvoc_restart, "Time", unlimited)
 
-  fname = 'xactive_bvoc.res.nc'
-  call get_mosaic_tile_file(fname, fname2, .false. ) 
-  allocate(Xbvoc_restart)
-  if(trim(fname2) == trim(fname)) then
-     Til_restart => Xbvoc_restart
-     in_different_file = .false.
-  else
-     in_different_file = .true.
-     allocate(Til_restart)
-  endif
+   call register_restart_field(Xbvoc_restart, 'version', vers)
 
-  id_restart = register_restart_field(Xbvoc_restart, fname, 'version', vers, no_domain = .true. )
+end subroutine xactive_bvoc_register_restart_scalars
+
+!< xactive_bvoc_register_restart_domains: register netcdf restart variables
+subroutine xactive_bvoc_register_restart_domains(Til_restart)
+   type(FmsNetcdfDomainFile_t), intent(inout)       ::  Til_restart !< Fms2io domain decomposed fileobj
+   character(len=2)  :: mon_string
+   character(len=8), dimension(3)             :: dim_names !< Array of dimension names
+   integer                                    :: ihour
 
    if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
       write(*,*) 'xactive_bvoc_register_restart: ', &
       'T24_STORE,P24_STORE,WS_STORE,O3_STORE=', ALLOCATED(T24_STORE), &
       ALLOCATED(P24_STORE), ALLOCATED(WS_STORE), ALLOCATED(O3_STORE)
 
+  dim_names =  (/"xaxis_1", "yaxis_1", "Time   "/)
+
+  call register_axis(Til_restart, "xaxis_1", "x")
+  call register_axis(Til_restart, "yaxis_1", "y")
+  call register_axis(Til_restart, "Time", unlimited)
+
+  !< Register the domain decomposed dimensions as variables so that the combiner can work
+  !! correctly
+  call register_field(Til_restart, dim_names(1), "double", (/dim_names(1)/))
+  call register_field(Til_restart, dim_names(2), "double", (/dim_names(2)/))
+
   do ihour = 1,24
      write(mon_string,'(i2.2)') ihour
      if (Ldebug .and. mpp_pe()==mpp_root_pe()) &
         write(*,*) 'xactive_bvoc_register_restart: register field T24_STORE_'//mon_string
-     if (ALLOCATED(T24_STORE)) id_restart = &
-        register_restart_field(Til_restart, fname, 'T24_STORE_'//mon_string, T24_STORE(:,:,ihour), mandatory=.false.)
-     if (ALLOCATED(P24_STORE)) id_restart = &
-        register_restart_field(Til_restart, fname, 'P24_STORE_'//mon_string, P24_STORE(:,:,ihour), mandatory=.false.)
-     if (ALLOCATED(WS_STORE)) id_restart = &
-        register_restart_field(Til_restart, fname, 'WS_STORE_'//mon_string,  WS_STORE(:,:,ihour),  mandatory=.false.)
-     if (ALLOCATED(O3_STORE)) id_restart = &
-        register_restart_field(Til_restart, fname, 'O3_STORE_'//mon_string,  O3_STORE(:,:,ihour),  mandatory=.false.)
+     if (ALLOCATED(T24_STORE)) call &
+        register_restart_field(Til_restart, 'T24_STORE_'//mon_string, T24_STORE(:,:,ihour), dim_names, is_optional = .true.)
+     if (ALLOCATED(P24_STORE)) call &
+        register_restart_field(Til_restart, 'P24_STORE_'//mon_string, P24_STORE(:,:,ihour), dim_names, is_optional = .true.)
+     if (ALLOCATED(WS_STORE)) call &
+        register_restart_field(Til_restart, 'WS_STORE_'//mon_string,  WS_STORE(:,:,ihour), dim_names, is_optional = .true.)
+     if (ALLOCATED(O3_STORE)) call &
+        register_restart_field(Til_restart, 'O3_STORE_'//mon_string,  O3_STORE(:,:,ihour), dim_names, is_optional = .true.)
    end do
-
-end subroutine xactive_bvoc_register_restart
+end subroutine xactive_bvoc_register_restart_domains
 ! </SUBROUTINE>
 
 
@@ -3375,11 +3413,39 @@ end subroutine xactive_bvoc_register_restart
 !   </OVERVIEW>
 !
 subroutine xactive_bvoc_end
+   type(FmsNetcdfFile_t)       ::  Xbvoc_restart !< Fms2io fileobj
+   type(FmsNetcdfDomainFile_t) ::  Til_restart !< Fms2io domain decomposed fileobj
+   logical :: tile_file_open !< Flag indicated whether the restart file was opened sucessfully
+   integer, allocatable, dimension(:) :: pes !< Array of pes in the current pelist
 
    if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart'
-   call save_restart(Xbvoc_restart)
+
+   !< Get the current pelist
+   allocate(pes(mpp_npes()))
+   call mpp_get_current_pelist(pes)
+
+   !< Open the scalar file with the current pelist, so that only the root pe opens and writes the file
+   if (open_file(Xbvoc_restart,"RESTART/xactive_bvoc.res.nc","overwrite", is_restart=.true., pelist=pes)) then
+      call xactive_bvoc_register_restart_scalars(Xbvoc_restart)
+      call write_restart(Xbvoc_restart)
+      call close_file(Xbvoc_restart)
+   endif
+   deallocate(pes)
+
    if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: calling save_restart_Til'
-   if (in_different_file) call save_restart(Til_restart)
+   if (mpp_get_ntile_count(xactive_domain) == 1) then
+      tile_file_open = open_file(Til_restart,"RESTART/xactive_bvoc.res.nc","append", xactive_domain, is_restart=.true.)
+   else
+      tile_file_open = open_file(Til_restart,"RESTART/xactive_bvoc.res.nc","overwrite", xactive_domain, is_restart=.true.)
+   endif
+
+   if (tile_file_open) then
+      call xactive_bvoc_register_restart_domains(Til_restart)
+      call write_restart(Til_restart)
+      call add_domain_dimension_data(Til_restart)
+      call close_file(Til_restart)
+   endif
+
    if (Ldebug .and. mpp_pe()==mpp_root_pe()) write(*,*) 'xactive_bvoc_end: back from save_restart_Til'
 
    IF (mpp_pe() == mpp_root_pe()) THEN
@@ -3431,6 +3497,23 @@ subroutine xactive_bvoc_end
 
 end subroutine xactive_bvoc_end
 !</SUBROUTINE>
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
+
 
 !############################################################################
 end module xactive_bvoc_mod

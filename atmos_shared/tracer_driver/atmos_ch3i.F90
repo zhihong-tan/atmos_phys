@@ -1,18 +1,16 @@
 module atmos_ch3i_mod
 
 
-use mpp_mod, only: input_nml_file 
-use            fms_mod, only : file_exist,   &
-                               write_version_number, &
+use mpp_mod, only: input_nml_file
+use        fms2_io_mod, only : file_exists
+use            fms_mod, only : write_version_number, &
                                error_mesg, &
                                FATAL, &
                                NOTE, &
                                mpp_pe,  &
                                mpp_root_pe, &
                                lowercase,   &
-                               open_namelist_file, &
                                check_nml_error, &
-                               close_file,   &
                                stdlog
 use  field_manager_mod, only : MODEL_ATMOS,          &
                                parse
@@ -86,7 +84,7 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 
 !-----------------------------------------------------------------------
 
-   integer ::  unit, nfields, flag_file
+   integer ::  nfields, flag_file
    integer :: ierr, io, logunit
 
    character(len=128) :: tracer_name, tracer_units, name, control
@@ -105,18 +103,9 @@ subroutine atmos_ch3i_init( lonb_mod, latb_mod, axes, Time, mask )
 !-----------------------------------------------------------------------
 !     ... read namelist
 !-----------------------------------------------------------------------
-   if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+   if ( file_exists('input.nml')) then
      read (input_nml_file, nml=atmos_ch3i_nml, iostat=io)
      ierr = check_nml_error(io, 'atmos_ch3i_nml')
-#else
-     unit = open_namelist_file ()
-     ierr=1; do while (ierr /= 0)
-     read  (unit, nml=atmos_ch3i_nml, iostat=io, end=10)
-     ierr = check_nml_error(io, 'atmos_ch3i_nml')
-     enddo
-10   call close_file (unit)
-#endif
    endif
 
   

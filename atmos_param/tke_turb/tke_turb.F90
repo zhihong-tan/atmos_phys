@@ -11,8 +11,7 @@ module tke_turb_mod
 
  use           mpp_mod, only: input_nml_file
 
- use           fms_mod, only: file_exist, open_namelist_file,       &
-                              error_mesg, FATAL, close_file, note,  &
+ use           fms_mod, only: error_mesg, FATAL, note,  &
                               check_nml_error, mpp_pe, mpp_root_pe, &
                               write_version_number, stdlog, stdout, &
                               mpp_chksum
@@ -1242,23 +1241,8 @@ integer           :: id_tke_avg_pbl, id_tke_turb, id_dthetav, id_dtheta, id_dqt
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=tke_turb_nml, iostat=io)
    ierr = check_nml_error(io,'tke_turb_nml')
-#else   
-  if( file_exist( 'input.nml' ) ) then
-! -------------------------------------
-   unit = open_namelist_file( )
-   ierr = 1
-   do while( ierr .ne. 0 )
-   READ ( unit,  nml = tke_turb_nml, iostat = io, end = 10 ) 
-   ierr = check_nml_error (io, 'tke_turb_nml')
-   end do
-10 continue
-   call close_file( unit )
-! -------------------------------------
-  end if
-#endif
 
 !---------------------------------------------------------------------
 ! --- Output version

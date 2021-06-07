@@ -1,9 +1,7 @@
       module MO_READ_SIM_CHM_MOD
 
-      use mpp_mod,    only : mpp_error, FATAL
-      use mpp_io_mod, only : mpp_open, MPP_RDONLY, MPP_ASCII,MPP_MULTI, &
-                             MPP_SINGLE, mpp_close
-      use fms_mod,    only : open_file, close_file, read_distributed
+      use mpp_mod,    only : mpp_error, FATAL, mpp_pe, mpp_root_pe
+      use fms_io_mod,    only : open_file, close_file, read_distributed
 
 implicit none
 character(len=128), parameter :: version     = '$Id$'
@@ -73,6 +71,8 @@ logical                       :: module_is_initialized = .false.
 !--------------------------------------------------------
 !        ... Read map info from data file
 !--------------------------------------------------------
+      if (mpp_pe() == mpp_root_pe() ) print *, "mo reading: ", sim_data_flsp
+
       if( explicit%clscnt > 0 ) then
          call read_distributed(funit,'(4i4)',iostat=ios,data=explicit%cls_rxt_cnt)
          if( ios /= 0 ) then

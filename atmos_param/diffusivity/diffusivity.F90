@@ -14,10 +14,11 @@ module diffusivity_mod
 use     constants_mod, only : grav, vonkarm, cp_air, rdgas, rvgas
 
 use           mpp_mod, only : input_nml_file
-use           fms_mod, only : error_mesg, FATAL, file_exist,   &
-                              check_nml_error, open_namelist_file,      &
-                              mpp_pe, mpp_root_pe, close_file, &
+use           fms_mod, only : error_mesg, FATAL,   &
+                              check_nml_error,      &
+                              mpp_pe, mpp_root_pe, &
                               write_version_number, stdlog
+use       fms2_io_mod, only : file_exists
 
 use monin_obukhov_mod, only : mo_diff
 
@@ -152,22 +153,13 @@ contains
 
 subroutine diffusivity_init
 
-integer :: unit, ierr, io, logunit
+integer :: ierr, io, logunit
 
 !------------------- read namelist input -------------------------------
 
-      if (file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if (file_exists('input.nml')) then
          read (input_nml_file, nml=diffusivity_nml, iostat=io)
          ierr = check_nml_error(io,"diffusivity_nml")
-#else
-         unit = open_namelist_file ()
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=diffusivity_nml, iostat=io, end=10)
-            ierr = check_nml_error(io,'diffusivity_nml')
-         enddo
-  10     call close_file (unit)
-#endif
 
 !------------------- dummy checks --------------------------------------
          if (frac_inner .le. 0. .or. frac_inner .ge. 1.) &

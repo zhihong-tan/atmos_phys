@@ -6,10 +6,10 @@ MODULE UW_CONV_MOD
   use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
   use   Time_Manager_Mod, ONLY: time_type, get_time
   use           mpp_mod, only : input_nml_file
-  use           fms_mod, only : write_version_number, open_namelist_file, check_nml_error,&
-                                FILE_EXIST, ERROR_MESG,  &
+  use           fms_mod, only : write_version_number, check_nml_error,&
+                                ERROR_MESG,  &
                                 lowercase, &
-                                CLOSE_FILE, FATAL, NOTE
+                                FATAL, NOTE
   use  field_manager_mod, only: MODEL_ATMOS
   use  tracer_manager_mod, only: get_tracer_names, query_method, &
                                  get_tracer_index, NO_TRACER
@@ -407,7 +407,7 @@ contains
 !
 !-------------------------------------------------------------------
 
-    integer   :: unit, io
+    integer   :: io
 
     integer   :: ntracers, n, nn, ierr, logunit
     logical   :: flag
@@ -426,7 +426,6 @@ contains
     call exn_init_k (Uw_p)
     call findt_init_k (Uw_p)
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=uw_closure_nml, iostat=io)
       ierr = check_nml_error(io,'uw_closure_nml')
       read (input_nml_file, nml=uw_conv_nml, iostat=io)
@@ -437,52 +436,6 @@ contains
       ierr = check_nml_error(io,'deep_conv_nml')
       read (input_nml_file, nml=idealized_forcing_nml, iostat=io)
       ierr = check_nml_error(io,'idealized_forcing_nml')
-#else
-    if( FILE_EXIST( 'input.nml' ) ) then
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = uw_closure_nml, iostat = io, end = 10 )
-          ierr = check_nml_error(io,'uw_closure_nml')
-       end do
-10     call close_file ( unit )
-
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = uw_conv_nml, iostat = io, end = 20 )
-          ierr = check_nml_error(io,'uw_conv_nml')
-       end do
-20     call close_file ( unit )
-
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = uw_plume_nml, iostat = io, end = 30 )
-          ierr = check_nml_error(io,'uw_plume_nml')
-       end do
-30     call close_file ( unit )
-
-!========Option for deep convection=======================================
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = deep_conv_nml, iostat = io, end = 40 )
-          ierr = check_nml_error(io,'deep_conv_nml')
-       end do
-40     call close_file ( unit )
-!========Option for deep convection=======================================
-!========Option for idealized forcing=====================================
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = idealized_forcing_nml, iostat = io, end = 50 ) ! Should 'end' really be 40 or is that a bug?
-          ierr = check_nml_error(io,'idealized_forcing_nml')
-       end do
-50     call close_file ( unit )
-!========Option for idealized forcing=====================================
-    end if
-#endif
 
     use_online_aerosol = Nml_mp%use_online_aerosol
     use_sub_seasalt = Nml_mp%use_sub_seasalt

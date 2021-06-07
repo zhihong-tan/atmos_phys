@@ -16,10 +16,10 @@ module atmos_dust_mod
 use        constants_mod, only : PI, GRAV, RDGAS, DENS_H2O, WTMAIR
 use              mpp_mod, only : input_nml_file 
 use              fms_mod, only : write_version_number, mpp_pe,  mpp_root_pe, &
-                                 open_namelist_file, close_file, file_exist, &
                                  check_nml_error, error_mesg,  &
                                  stdlog, stdout, string, lowercase, &
                                  NOTE, FATAL
+use          fms2_io_mod, only : file_exists
 use     time_manager_mod, only : time_type
 use     diag_manager_mod, only : send_data, register_diag_field
 use  atmos_cmip_diag_mod, only : register_cmip_diag_field_2d
@@ -838,23 +838,12 @@ end subroutine atmos_dust_solFe_frac_set
 subroutine read_nml_file()
     integer :: io
     integer :: ierr
-    integer :: funit
     integer :: logunit
     if (read_nml) then
         !read namelist.
-        if (file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+        if (file_exists('input.nml')) then
             read (input_nml_file,nml=dust_nml,iostat=io)
             ierr = check_nml_error(io,'dust_nml')
-#else
-            funit = open_namelist_file()
-            ierr = 1
-            do while (ierr .ne. 0)
-                read(funit,nml=dust_nml,iostat=io,end=10)
-                ierr = check_nml_error(io,'dust_nml')
-            enddo
-10          call close_file(funit)
-#endif
         endif
         !write namelist to the log file
         if (mpp_pe() .eq. mpp_root_pe()) then

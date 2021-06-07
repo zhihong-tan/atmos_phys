@@ -3,10 +3,10 @@
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: fms_init, &
                                  mpp_pe, mpp_root_pe, &
-                                 open_namelist_file, stdlog, stdout, &
-                                 close_file, write_version_number, &
+                                 stdlog, stdout, &
+                                 write_version_number, &
                                  error_mesg, mpp_error, &
-                                 check_nml_error, file_exist, &
+                                 check_nml_error, &
                                  FATAL, WARNING, NOTE
 use time_manager_mod,      only: time_type
 
@@ -106,7 +106,7 @@ character(len=64), pointer, intent(out)   :: aerosol_names(:), &
 !---------------------------------------------------------------------
 !   local variables
 !---------------------------------------------------------------------
-      integer  ::   unit, io, ierr, logunit
+      integer  ::   io, ierr, logunit
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -121,19 +121,8 @@ character(len=64), pointer, intent(out)   :: aerosol_names(:), &
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=aerosolrad_driver_nml, iostat=io)
       ierr = check_nml_error(io,'aerosolrad_driver_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=aerosolrad_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'aerosolrad_driver_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile

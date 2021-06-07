@@ -16,14 +16,12 @@
 !  shared modules:
 
 use mpp_mod,              only: input_nml_file
-use fms_mod,              only: open_namelist_file, fms_init, &
+use fms_mod,              only: fms_init, &
                                 mpp_pe, mpp_root_pe, stdlog, &
-                                file_exist, write_version_number, &
+                                write_version_number, &
                                 check_nml_error, error_mesg, &
-                                FATAL, NOTE, close_file, &
-                                open_direct_file
-use fms_io_mod,           only: read_data
-
+                                FATAL, NOTE
+use fms2_io_mod,          only: FmsNetcdfFile_t, open_file, read_data, close_file, ascii_read
 !  longwave radiation package modules
 
 use longwave_utilities_mod, only: optical_path_type, &
@@ -390,20 +388,9 @@ real,  dimension(:,:), intent(in) :: pref
 
 !-----------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
+!-----------------------------------------------------------------------
       read (input_nml_file, nml=lw_gases_stdtf_nml, iostat=io)
       ierr = check_nml_error(io,"lw_gases_stdtf_nml")
-#else
-!-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=lw_gases_stdtf_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'lw_gases_stdtf_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -2007,7 +1994,7 @@ subroutine std_lblpressures
 !---------------------------------------------------------------------
 !  local variables
       real      ::  fact15, fact30, dummy
-      integer   ::  unit
+      character(len=:), dimension(:), allocatable :: stdlvls_file !< stdlvls file saved as a string
 
 !---------------------------------------------------------------------
 !  local variables
@@ -2034,11 +2021,11 @@ subroutine std_lblpressures
           pa(k+1)=pa(k)*fact30
         enddo
       else if (NSTDCO2LVLS .EQ. 496) then
-        unit = open_namelist_file ('INPUT/stdlvls')
+        call ascii_read('INPUT/stdlvls', stdlvls_file)
         do k=1,496
-          read (unit,FMT =  '(4E20.10)') pa(k),dummy,dummy,dummy
+          read (stdlvls_file(k),FMT =  '(4E20.10)') pa(k),dummy,dummy,dummy
         enddo
-        call close_file (unit)
+        deallocate(stdlvls_file)
       endif
 
 !---------------------------------------------------------------------
@@ -5508,6 +5495,7 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       character(len=80) name_lo
       character(len=80) name_hi
       character(len=80) filename, ncname
+      type(FmsNetcdfFile_t) :: lw_data_file !< Fms2io fileobj
 
       real, dimension(NSTDCO2LVLS,NSTDCO2LVLS) :: trns_in
 
@@ -5636,22 +5624,11 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !-------------------------------------------------------------------
       filename = 'INPUT/' // trim(name_hi)
       ncname = trim(filename) // '.nc'
-      if(file_exist(trim(ncname))) then
+      if (open_file(lw_data_file, trim(ncname), "read", is_restart = .false.)) then
          if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-              'Reading NetCDF formatted input data file: ' // ncname, NOTE)
-         call read_data(ncname, 'trns_std_nf', trns_std_hi_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
-      else
-         if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-              'Reading native formatted input data file: ' // filename, NOTE)
-         inrad = open_direct_file (file=filename, action='read', &
-              recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
-         nrec_inhi = 0
-         do nt=1,ntbnd(nf)
-            nrec_inhi = nrec_inhi + 1
-            read (inrad, rec = nrec_inhi) trns_in
-            trns_std_hi_nf(:,:,nt) = trns_in(:,:)
-         enddo
-         call close_file (inrad)
+              'Reading NetCDF formatted input data file with new io: ' // ncname, NOTE)
+         call read_data(lw_data_file, 'trns_std_nf', trns_std_hi_nf(:,:,1:ntbnd(nf)))
+         call close_file(lw_data_file)
       endif
 
 !--------------------------------------------------------------------
@@ -5660,22 +5637,11 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       if (callrctrns) then
         filename = 'INPUT/' // trim(name_lo )
         ncname = trim(filename) // '.nc'
-        if(file_exist(trim(ncname))) then
+        if (open_file(lw_data_file, trim(ncname), "read", is_restart = .false.)) then
            if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-                'Reading NetCDF formatted input data file: ' // ncname, NOTE)
-           call read_data(ncname, 'trns_std_nf', trns_std_lo_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
-        else
-           if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-                'Reading native formatted input data file: ' // filename, NOTE)
-           inrad = open_direct_file (file=filename, action='read', &
-                recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
-           nrec_inlo = 0
-           do nt=1,ntbnd(nf)
-              nrec_inlo = nrec_inlo + 1
-              read (inrad, rec = nrec_inlo) trns_in
-              trns_std_lo_nf(:,:,nt) = trns_in(:,:)
-           enddo
-           call close_file (inrad)
+                'Reading NetCDF formatted input data file with new io: ' // ncname, NOTE)
+           call read_data(lw_data_file, 'trns_std_nf', trns_std_lo_nf(:,:,1:ntbnd(nf)))
+           call close_file(lw_data_file)
         endif
      endif
  
@@ -5729,6 +5695,7 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       character(len=80) name_lo
       character(len=80) name_hi
       character(len=80) filename, ncname
+      type(FmsNetcdfFile_t) :: lw_data_file
 
       real, dimension(NSTDCO2LVLS,NSTDCO2LVLS) :: trns_in
 
@@ -5859,22 +5826,11 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
 !-------------------------------------------------------------------
       filename = 'INPUT/' // trim(name_hi)
       ncname = trim(filename) // '.nc'
-      if(file_exist(trim(ncname))) then
+      if (open_file(lw_data_file, trim(ncname), "read", is_restart = .false.)) then
          if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-              'Reading NetCDF formatted input data file: ' // ncname, NOTE)
-         call read_data(ncname, 'trns_std_nf', trns_std_hi_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
-      else
-         if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-              'Reading native formatted input data file: ' // filename, NOTE)
-         inrad = open_direct_file (file=filename, action='read', &
-              recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
-         nrec_inhi = 0
-         do nt=1,ntbnd(nf)
-            nrec_inhi = nrec_inhi + 1
-            read (inrad, rec = nrec_inhi) trns_in
-            trns_std_hi_nf(:,:,nt) = trns_in(:,:)
-         enddo
-         call close_file (inrad)
+              'Reading NetCDF formatted input data file with new io: ' // ncname, NOTE)
+         call read_data(lw_data_file, 'trns_std_nf', trns_std_hi_nf(:,:,1:ntbnd(nf)))
+         call close_file(lw_data_file)
       endif
 
 !--------------------------------------------------------------------
@@ -5883,22 +5839,11 @@ real,    dimension (:,:,:), intent(out)  :: trns_std_hi_nf,   &
       if (callrctrns) then
         filename = 'INPUT/' // trim(name_lo )
         ncname = trim(filename) // '.nc'
-        if(file_exist(trim(ncname))) then
+        if (open_file(lw_data_file, trim(ncname), "read", is_restart = .false.)) then
            if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-                'Reading NetCDF formatted input data file: ' // ncname, NOTE)
-           call read_data(ncname, 'trns_std_nf', trns_std_lo_nf(:,:,1:ntbnd(nf)), no_domain=.true.)
-        else
-           if (mpp_pe() == mpp_root_pe()) call error_mesg ('lw_gases_stdtf_mod', &
-                'Reading native formatted input data file: ' // filename, NOTE)
-           inrad = open_direct_file (file=filename, action='read', &
-                recl = NSTDCO2LVLS*NSTDCO2LVLS*8)
-           nrec_inlo = 0
-           do nt=1,ntbnd(nf)
-              nrec_inlo = nrec_inlo + 1
-              read (inrad, rec = nrec_inlo) trns_in
-              trns_std_lo_nf(:,:,nt) = trns_in(:,:)
-           enddo
-           call close_file (inrad)
+                'Reading NetCDF formatted input data file with new io: ' // ncname, NOTE)
+           call read_data(lw_data_file, 'trns_std_nf', trns_std_lo_nf(:,:,1:ntbnd(nf)))
+           call close_file(lw_data_file)
         endif
      endif
  

@@ -92,8 +92,9 @@ module atmos_tracer_driver_mod
 !-----------------------------------------------------------------------
 
 use mpp_mod,               only : input_nml_file
-use fms_mod,               only : file_exist, close_file,&
-                                  open_namelist_file, check_nml_error, &
+use mpp_domains_mod,       only : domain2D
+use fms2_io_mod,           only : file_exists
+use fms_mod,               only : check_nml_error, &
                                   write_version_number, &
                                   error_mesg, &
                                   FATAL, &
@@ -1724,9 +1725,10 @@ logical :: mask_local_hour(size(r,1),size(r,2),size(r,3))
 !   <INOUT NAME="r" TYPE="real" DIM="(:,:,:,:)">
 !     Tracer fields dimensioned as (nlon,nlat,nlev,ntrace).
 !   </INOUT>
- subroutine atmos_tracer_driver_init (lonb, latb, r, axes, Time, phalf, mask)
+ subroutine atmos_tracer_driver_init (domain, lonb, latb, r, axes, Time, phalf, mask)
 
 !-----------------------------------------------------------------------
+type(domain2D),target,intent(in)                           :: domain !< Atmosphere domain
            real, intent(in),    dimension(:,:)             :: lonb, latb
            real, intent(inout), dimension(:,:,:,:)         :: r
 type(time_type), intent(in)                                :: Time
@@ -1790,7 +1792,7 @@ type(time_type), intent(in)                                :: Time
 
 !----- initialize the age tracer ------------
 
-      call atmos_age_tracer_init( r, axes, Time, nage, lonb, latb, phalf, mask)
+      call atmos_age_tracer_init( domain, r, axes, Time, nage, lonb, latb, phalf, mask)
       age_tracer_clock = mpp_clock_id( 'Tracer: Age tracer', grain=CLOCK_MODULE )
 
       call get_number_tracers (MODEL_ATMOS, num_tracers=nt, &
@@ -1817,7 +1819,7 @@ type(time_type), intent(in)                                :: Time
 ! Initialize tropospheric chemistry and dry deposition
 !------------------------------------------------------------------------
       allocate( drydep_data(ntp) )
-      do_tropchem = tropchem_driver_init(r,mask,axes,Time,lonb,latb,phalf)
+      do_tropchem = tropchem_driver_init(domain, r,mask,axes,Time,lonb,latb,phalf)
       do n = 1,ntp
          call dry_deposition_init(n,lonb,latb,drydep_data(n))
       end do
@@ -1978,7 +1980,7 @@ type(time_type), intent(in)                                :: Time
             write(*,*) 'Allocating xactive_ndx, number of xactive tracers = ', nxactive
          ENDIF
          ALLOCATE( xactive_ndx (nxactive) )
-         call xactive_bvoc_init(lonb, latb, Time, axes, xactive_ndx )
+         call xactive_bvoc_init(domain, lonb, latb, Time, axes, xactive_ndx )
          xbvoc_clock = mpp_clock_id( 'xactive_bvocs', &
                        grain=CLOCK_MODULE )
       endif
@@ -2833,22 +2835,11 @@ end subroutine atmos_nitrogen_drydep_flux_set
 subroutine read_nml_file()
     integer :: io
     integer :: ierr
-    integer :: funit
     integer :: logunit
     if (read_nml) then
-        if (file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+        if (file_exists('input.nml')) then
             read(input_nml_file,nml=atmos_tracer_driver_nml,iostat=io)
             ierr = check_nml_error(io,'atmos_tracer_driver_nml')
-#else
-            funit = open_namelist_file()
-            ierr = 1
-            do while (ierr .ne. 0)
-                read(funit,nml=atmos_tracer_driver_nml,iostat=io,end=10)
-                ierr = check_nml_error(io,'atmos_tracer_driver_nml')
-            enddo
-10          call close_file(funit)
-#endif
         endif
 !--------- write version and namelist to standard log ------------
         call write_version_number(version,tagname)

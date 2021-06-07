@@ -40,12 +40,11 @@ module cu_mo_trans_mod
  
 
   use         mpp_mod, only: input_nml_file
-  use         fms_mod, only: file_exist, check_nml_error,    &
-                             open_namelist_file, close_file, &
+  use         fms_mod, only: check_nml_error,    &
                              write_version_number,           &
                              mpp_pe, mpp_root_pe, stdlog,    &
                              error_mesg, FATAL, NOTE
-
+  use       fms2_io_mod, only: file_exists
   use  Diag_Manager_Mod, ONLY: register_diag_field, send_data
   use  Time_Manager_Mod, ONLY: time_type
 
@@ -145,7 +144,7 @@ subroutine cu_mo_trans_init( axes, Time, Nml_mp, cmt_mass_flux_source)
  type(mp_nml_type), intent(in) :: Nml_mp
  character(len=64), intent(in) :: cmt_mass_flux_source
 
-integer :: unit, ierr, io, logunit
+integer :: ierr, io, logunit
 integer, dimension(3)  :: half =  (/1,2,4/)
 
       do_ras = Nml_mp%do_ras
@@ -155,18 +154,9 @@ integer, dimension(3)  :: half =  (/1,2,4/)
 
 !------ read namelist ------
 
-   if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+   if ( file_exists('input.nml')) then
       read (input_nml_file, nml=cu_mo_trans_nml, iostat=io)
       ierr = check_nml_error(io,'cu_mo_trans_nml')
-#else   
-      unit = open_namelist_file ( )
-      ierr=1; do while (ierr /= 0)
-         read  (unit, nml=cu_mo_trans_nml, iostat=io, end=10)
-         ierr = check_nml_error(io,'cu_mo_trans_nml')
-      enddo
- 10   call close_file (unit)
-#endif
    endif
 
 !--------- write version number and namelist ------------------

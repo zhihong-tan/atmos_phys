@@ -5,8 +5,6 @@
       use fms_mod,          only : mpp_clock_begin, mpp_clock_id, &
                                    mpp_clock_end, CLOCK_MODULE
       use mpp_mod,          only : mpp_error, FATAL
-      use mpp_io_mod,       only : mpp_open, MPP_RDONLY, MPP_ASCII,MPP_MULTI, &
-                                   MPP_SINGLE, mpp_close
       use time_manager_mod, only : time_type, get_date
       use constants_mod,    only : PI
 
@@ -154,7 +152,7 @@ integer                       :: photo_clock
 !----------------------------------------------------------------------
       integer    :: it500, it200, izen, ialb, idob
       integer    :: ios
-      integer    :: unit
+      integer    :: funit
 !     integer    :: retval
 !     logical    :: cosb
 !     real       :: temp(tabdim)
@@ -206,17 +204,15 @@ integer                       :: photo_clock
 !     end if
 
 !----------------------------------------------------------------------
-!            ... open file using mpp_open
+!            ... open file using open
 !----------------------------------------------------------------------
 
-      call mpp_open( unit, trim(lpath)//trim(filename), MPP_RDONLY, MPP_ASCII, &
-                     threading = MPP_MULTI, fileset = MPP_SINGLE, &
-                     recl = 4500)
+      open(file=trim(lpath)//trim(filename), form='formatted',action='read', newunit=funit)
 
 !----------------------------------------------------------------------
 !        ... Readin the reference o3 column and photorate table
 !----------------------------------------------------------------------
-      read(unit,*,iostat=ios) vo3
+      read(funit,*,iostat=ios) vo3
       if( ios /= 0 ) then
          msg = ' PRATE_INIT: Failed to read o3 column'
          call ENDRUN(msg)
@@ -227,7 +223,7 @@ integer                       :: photo_clock
             do izen = 1,zangdim
                do ialb = 1,albdim
                   do idob = 1,o3ratdim
-                     read(unit,*,iostat=ios) ajl(:,:,izen,idob,ialb,it500,it200)
+                     read(funit,*,iostat=ios) ajl(:,:,izen,idob,ialb,it500,it200)
                      if( ios /= 0 ) then
                         msg = ' PRATE_INIT: Failed to read photo table; error = '//char(ios)
                         call ENDRUN(msg)
@@ -257,8 +253,7 @@ integer                       :: photo_clock
       offset(6) = offset(5)*t500dim
       offset(7) = SUM( offset(1:6) )
 
-!     close( unit )
-      call mpp_close( unit )
+      close( funit )
 
 !-----------------------------------------------------------------
 !           ... check whether using solar cycle
@@ -269,17 +264,14 @@ integer                       :: photo_clock
          use_solar_cycle = .true.
 
 !----------------------------------------------------------------------
-!            ... open file using mpp_open
+!            ... open file using open
 !----------------------------------------------------------------------
-         call mpp_open( unit, trim(lpath)//trim(filename_solarmin), MPP_RDONLY, MPP_ASCII, &
-                        threading = MPP_MULTI, fileset = MPP_SINGLE, &
-                        recl = 4500)
-
+         open(file=trim(lpath)//trim(filename_solarmin), form='formatted',action='read', newunit=funit)
 !----------------------------------------------------------------------
 !        ... Readin the reference o3 column and photorate table 
 !            for solar minimum
 !----------------------------------------------------------------------
-         read(unit,*,iostat=ios) vo3_solarmin
+         read(funit,*,iostat=ios) vo3_solarmin
          if( ios /= 0 ) then
             msg = ' PRATE_INIT: Failed to read solarmin o3 column'
             call ENDRUN(msg)
@@ -290,7 +282,7 @@ integer                       :: photo_clock
          do izen = 1,zangdim
          do ialb = 1,albdim
          do idob = 1,o3ratdim
-            read(unit,*,iostat=ios) ajl_solarmin(:,:,izen,idob,ialb,it500,it200)
+            read(funit,*,iostat=ios) ajl_solarmin(:,:,izen,idob,ialb,it500,it200)
             if( ios /= 0 ) then
                msg = ' PRATE_INIT: Failed to read solarmin photo table; error = '//char(ios)
                call ENDRUN(msg)
@@ -300,7 +292,7 @@ integer                       :: photo_clock
          end do
          end do
          end do
-         call mpp_close( unit )
+         close( funit )
       end if
 
 !-----------------------------------------------------------------

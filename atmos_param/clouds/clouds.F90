@@ -14,9 +14,9 @@ use  cloud_zonal_mod, only:  cloud_zonal
 use    cloud_obs_mod, only:  cloud_obs, cloud_obs_init
 use time_manager_mod, only:  time_type
 use          mpp_mod, only:  input_nml_file
-use          fms_mod, only:  error_mesg, FATAL, file_exist,   &
-                             check_nml_error, open_namelist_file,      &
-                             mpp_pe, mpp_root_pe, close_file, &
+use          fms_mod, only:  error_mesg, FATAL,  &
+                             check_nml_error,      &
+                             mpp_pe, mpp_root_pe, &
                              write_version_number, stdlog
 use    rh_clouds_mod, only:  do_rh_clouds, rh_clouds, rh_clouds_avg
 use   diag_cloud_mod, only:  do_diag_cloud, diag_cloud_driver, &
@@ -707,23 +707,12 @@ end subroutine compute_isccp_clds
         integer, intent(in), dimension(4) :: axes
 type(time_type), intent(in)               :: Time
 !-----------------------------------------------------------------------
-      integer  unit,io,ierr, logunit
+      integer  io,ierr, logunit
 
 !-------------- read namelist --------------
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=clouds_nml, iostat=io)
       ierr = check_nml_error(io,"clouds_nml")
-#else
-      if ( file_exist('input.nml')) then
-         unit = open_namelist_file ()
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=clouds_nml, iostat=io, end=10)
-            ierr = check_nml_error(io,'clouds_nml')
-         enddo
-  10     call close_file (unit)
-      endif
-#endif
 
 !      ----- write namelist -----
 

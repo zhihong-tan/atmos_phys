@@ -22,9 +22,9 @@
  use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
  use   Time_Manager_Mod, ONLY: time_type
  use            mpp_mod, only: input_nml_file
- use            fms_mod, only: write_version_number, open_namelist_file, &
-                               FILE_EXIST, ERROR_MESG, check_nml_error, &
-                               CLOSE_FILE, FATAL
+ use            fms_mod, only: write_version_number,&
+                               ERROR_MESG, check_nml_error, &
+                               FATAL
  use  field_manager_mod, only: MODEL_ATMOS
  use tracer_manager_mod, only: get_tracer_index,   &
                                get_number_tracers, &
@@ -223,7 +223,7 @@ logical  :: do_ras_tracer = .false.
 !  (Intent local)
 !---------------------------------------------------------------------
 
- integer             :: unit, io, ierr
+ integer             :: io, ierr
  real                :: actp, facm 
  real, dimension(15) :: au,   tem
  integer, dimension(3) :: half = (/1,2,4/)
@@ -237,19 +237,8 @@ logical  :: do_ras_tracer = .false.
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
   read (input_nml_file, nml=ras_nml, iostat=io)
   ierr = check_nml_error(io,"ras_nml")
-#else
-  if( FILE_EXIST( 'input.nml' ) ) then
-      unit = OPEN_NAMELIST_FILE ()
-      ierr = 1 ; do while ( ierr .ne. 0 )
-        READ( unit, nml = ras_nml, iostat = io, end = 10 )
-        ierr = check_nml_error (io, 'ras_nml')
-      end do
-10  CALL CLOSE_FILE ( unit )
-  end if
-#endif
 
 !---------------------------------------------------------------------
 ! --- Write namelist

@@ -8,15 +8,12 @@
 
 !    shared modules:
 use mpp_mod,               only: input_nml_file
-use fms_mod,               only: open_namelist_file, fms_init, &
+use fms_mod,               only: fms_init, &
                                  mpp_pe, mpp_root_pe, stdlog, &
-                                 file_exist, write_version_number, &
+                                 write_version_number, &
                                  check_nml_error, error_mesg, &
-                                 FATAL, NOTE, close_file
+                                 FATAL, NOTE
 use constants_mod,         only: diffac, constants_init
-use mpp_io_mod,            only: mpp_open, mpp_close, MPP_RDONLY,   &
-                                 MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI, &
-                                 MPP_SINGLE, mpp_io_init
 use time_manager_mod,      only: time_type, time_manager_init,  &
                                  get_date, set_date, operator(+), &
                                  print_date, operator(-), operator(>)
@@ -451,7 +448,6 @@ real, dimension(:,:),           intent(in)    :: latb !< 2d array of model latit
 type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
 
       ! local variables:
-      integer           :: unit !< io unit number used for namelist file
       integer           :: ierr !< error code
       integer           :: io !< error status returned from io operation
       integer           :: logunit
@@ -467,7 +463,6 @@ type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
  
       !> verify that modules used by this module that are not called later
       !! have already been initialized.
-      call mpp_io_init
       call fms_init
       call constants_init
       call diag_manager_init
@@ -476,19 +471,8 @@ type(aerosolrad_control_type),  intent(inout) :: Aerosolrad_control
        nfields_save = size(aerosol_names(:))
 
 !> read namelist.
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=aerosolrad_package_nml, iostat=io)
       ierr = check_nml_error(io,'aerosolrad_package_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=aerosolrad_package_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'aerosolrad_package_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
 
       !> write version number and namelist to logfile.
       call write_version_number (version, tagname)
@@ -1833,23 +1817,22 @@ subroutine read_optical_input_file
       logical, dimension(:), allocatable    :: found           !< aerosol radiative property data has been obtained from
                                                                !! input file for the given optical properties type?
 
-      integer           :: unit, &              !< io unit number used for optical properties file
+      integer           :: funit, &              !< io unit number used for optical properties file
                            num_input_categories !< number of optical properties types contained in optical data input file
       character(len=64) :: name_in              !< name of optical properties type being processed
       integer           :: n, noptical ! iterators
 
       !> open the ASCII input file containing aerosol optical property information.
-      call mpp_open (unit, 'INPUT/'//optical_filename, MPP_RDONLY,  &
-                     MPP_ASCII, MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+      open(file='INPUT/'//optical_filename, form='formatted',action='read', newunit=funit)
 
       !> read the dimension information contained in the input file.
-      read ( unit,* ) num_wavenumbers
-      read ( unit,* ) num_input_categories
+      read ( funit,* ) num_wavenumbers
+      read ( funit,* ) num_input_categories
 
       !> read wavenumber limits for aerosol parameterization bands from the input file.
       allocate (endaerwvnsf(num_wavenumbers) )
-      read (unit,* )
-      read (unit,* ) endaerwvnsf
+      read (funit,* )
+      read (funit,* ) endaerwvnsf
  
       !> allocate module arrays to hold the specified sw properties for 
       !! each parameterization bnad and each aerosol properties type.
@@ -1869,13 +1852,13 @@ subroutine read_optical_input_file
       !! appropriately. indicate that the data has been found.
       found(:) = .false.
       do n=1,num_input_categories
-        read( unit,* ) name_in
-        read( unit,* )
-        read( unit,* ) aeroext_in
-        read( unit,* )
-        read( unit,* ) aerossalb_in
-        read( unit,* )
-        read( unit,* ) aeroasymm_in
+        read( funit,* ) name_in
+        read( funit,* )
+        read( funit,* ) aeroext_in
+        read( funit,* )
+        read( funit,* ) aerossalb_in
+        read( funit,* )
+        read( funit,* ) aeroasymm_in
         do noptical=1,naermodels
           if (aerosol_optical_names(noptical) == name_in) then
             aeroextivl(:,noptical)   = aeroext_in
@@ -1888,7 +1871,7 @@ subroutine read_optical_input_file
       end do
 
       !> close the ASCII input file.
-      call mpp_close( unit )
+      close( funit )
 
       !> check to make sure data for all aerosol optical property
       !! categories specified in namelist were contained in ASCII

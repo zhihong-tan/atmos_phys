@@ -55,13 +55,16 @@ use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
                               tfreeze,radian
 
 use            mpp_mod, only: input_nml_file
-use            fms_mod, only: file_exist, open_namelist_file, error_mesg, FATAL,&
-                              NOTE, mpp_pe, mpp_root_pe, close_file, read_data, &
-                              write_data, write_version_number, stdlog, &
-                              open_file, check_nml_error
-use fms_io_mod,         only: register_restart_field, restart_file_type, &
-                              save_restart, restore_state
-
+use    mpp_domains_mod, only: domain2D
+use            fms_mod, only: error_mesg, FATAL,&
+                              NOTE, mpp_pe, mpp_root_pe, &
+                              write_version_number, stdlog, &
+                              check_nml_error
+use fms2_io_mod,        only:  file_exists, FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                   register_restart_field, register_axis, unlimited, &
+                                   open_file, read_restart, write_restart, close_file, &
+                                   register_field, write_data, register_variable_attribute, &
+                                   get_global_io_domain_indices
 use   diag_manager_mod, only: register_diag_field, send_data
         
 use   time_manager_mod, only: time_type, get_date, month_name
@@ -96,8 +99,6 @@ real, allocatable, dimension(:,:,:) :: tblyrtau  ! turbulent layer
 real, allocatable, dimension(:,:,:) :: sigmas ! standard deviation of 
                                               ! water perturbation
                                               ! (kg water/kg air)     
-
-type(restart_file_type), pointer, save :: edt_restart => NULL()
 !-----------------------------------------------------------------------
 !
 !      set default values to namelist parameters       
@@ -286,6 +287,8 @@ logical            :: module_is_initialized = .false.
 
       integer, dimension(1) :: restart_versions = (/ 1 /)
 
+      type (domain2D), pointer               :: edt_domain !< Atmosphere domain
+
 contains
 
 
@@ -300,7 +303,7 @@ contains
 !      and initializes some constants.
 !        
 
-subroutine edt_init(lonb, latb, axes,time,idim,jdim,kdim)
+subroutine edt_init(domain, lonb, latb, axes,time,idim,jdim,kdim)
 
 !-----------------------------------------------------------------------
 !
@@ -325,7 +328,7 @@ subroutine edt_init(lonb, latb, axes,time,idim,jdim,kdim)
 !      half              indices for half level axes coordinates
 !
 !-----------------------------------------------------------------------
-
+type(domain2D),target,intent(in) :: domain !< Atmosphere domain
 integer,              intent(in) :: idim,jdim,kdim,axes(4)
 type(time_type),      intent(in) :: time
 real, dimension(:,:), intent(in) :: lonb, latb
@@ -335,23 +338,14 @@ real                  :: dellat, dellon
 character(len=4)      :: chvers
 integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
 
+type(FmsNetcdfDomainFile_t) ::  Edt_restart !< Fms2io domain_decomposed fileobj
+
 !-----------------------------------------------------------------------
 !
 !      namelist functions
 
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=edt_nml, iostat=io)
    ierr = check_nml_error(io,'edt_nml')
-#else   
-   if (file_exist('input.nml')) then
-      unit = open_namelist_file ()
-      ierr=1 ; Do While (ierr .ne. 0)
-        Read  (unit, nml=edt_nml, iostat=io, End=10)
-        ierr = check_nml_error(io,'edt_nml')
-      enddo
-10    Call Close_File (unit)
-   endif
-#endif
 
 !------- write version number and namelist ---------
 
@@ -470,8 +464,7 @@ integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
 !----------------------------------------------------------------------
 !    open a unit for the radiation diagnostics output.
 !---------------------------------------------------------------------
-     dpu = open_file ('edt.out', action='write', &
-                                 threading='multi', form='formatted')
+     open(file="edt.out", form='formatted',action='write', newunit=dpu)
      do_print = .true.
 
      if ( mpp_pe() == mpp_root_pe() ) then
@@ -505,58 +498,20 @@ integer, dimension(3) :: full = (/1,2,3/), half = (/1,2,4/)
    if (allocated(sigmas)) deallocate (sigmas)
    allocate(sigmas(idim,jdim,kdim+1))
 
+   edt_domain => domain
 
-   allocate(edt_restart)
-   id_restart = register_restart_field(edt_restart, 'edt.res.nc', 'qaturb'  , qaturb )
-   id_restart = register_restart_field(edt_restart, 'edt.res.nc', 'qcturb'  , qcturb )
-   id_restart = register_restart_field(edt_restart, 'edt.res.nc', 'tblyrtau', tblyrtau )
-   id_restart = register_restart_field(edt_restart, 'edt.res.nc', 'sigmas'  , sigmas )
-
-   if (File_Exist('INPUT/edt.res.nc')) then
-
+   if (open_file(edt_restart,"INPUT/edt.res.nc","read", edt_domain, is_restart=.true.)) then
      if (mpp_pe() == mpp_root_pe() ) then
        call error_mesg ('edt_mod',  'Reading netCDF formatted restart file: INPUT/edt.res.nc', &
                          NOTE)
      endif
-     call restore_state(edt_restart)
+     call edt_register_restart(edt_restart)
+     call read_restart(edt_restart)
+     call close_file(edt_restart)
 
-   elseif (File_Exist('INPUT/edt.res')) then
+   elseif (File_Exists('INPUT/edt.res')) then
      call error_mesg ('edt_mod', 'Native format restart file read no longer supported.',&
                        FATAL)
-!     unit = Open_restart_File (FILE='INPUT/edt.res', ACTION='read')
-!     read (unit, iostat=io, err=142) vers, vers2
-!142  continue
-! 
-!!--------------------------------------------------------------------
-!!    if eor is not encountered, then the file includes tdtlw as the
-!!    first record (which this read statement read). that data is not 
-!!    needed; note this and continue by reading next record.
-!!--------------------------------------------------------------------
-!     if (io == 0) then
-!       call error_mesg ('edt_mod',  &
-!           'reading pre-version number edt.res file, '//&
-!           'ignoring tdtlw', NOTE)
-!
-!!--------------------------------------------------------------------
-!!    if the first record was only one word long, then the file is a 
-!!    newer one, and that record was the version number, read into vers. 
-!!    if it is not a valid version, stop execution with a message.
-!!--------------------------------------------------------------------
-!     else
-!       if (.not. any(vers == restart_versions) ) then
-!         write (chvers, '(i4)') vers
-!         call error_mesg ('edt_mod',  &
-!              'restart version ' // chvers//' cannot be read '//&
-!              'by this version of edt_mod.', FATAL)
-!       endif
-!     endif
-!
-!!---------------------------------------------------------------------
-!     call read_data (unit, qaturb)
-!     call read_data (unit, qcturb)
-!     call read_data (unit, tblyrtau)
-!     call read_data (unit, sigmas)
-!     call Close_File (unit)
    else
      qaturb  (:,:,:) = 0.
      qcturb  (:,:,:) = 0.
@@ -673,7 +628,33 @@ end subroutine edt_init
 !
 !======================================================================= 
 
+!< edt_register_restart: registers the restart variables
+subroutine edt_register_restart(edt_restart)
+   type(FmsNetcdfDomainFile_t), intent(inout) :: Edt_restart !< Fms2io domain decomposed fileobj
 
+   character(len=8), dimension(4)             :: dim_names !< String array of dimension names
+   character(len=8), dimension(4)             :: dim_names2 !< String array of dimension names
+!---------------------------------------------------------------------
+   dim_names =  (/"xaxis_1", "yaxis_1", "zaxis_1", "Time   "/)
+   dim_names2 =  (/"xaxis_1", "yaxis_1", "zaxis_2", "Time   "/)
+
+   call register_axis(edt_restart, "Time", unlimited)
+   call register_axis(edt_restart, "xaxis_1", "x")
+   call register_axis(edt_restart, "yaxis_1", "y")
+   call register_axis(edt_restart, "zaxis_1", size(qaturb, 3))
+   call register_axis(edt_restart, "zaxis_2", size(sigmas, 3))
+
+   !< Register the domain decomposed dimensions as variables so that the combiner can work
+   !! correctly
+   call register_field(edt_restart, "xaxis_1", "double", (/"xaxis_1"/))
+   call register_field(edt_restart, "yaxis_1", "double", (/"yaxis_1"/))
+
+   call register_restart_field(edt_restart, 'qaturb'  , qaturb, dim_names )
+   call register_restart_field(edt_restart, 'qcturb'  , qcturb, dim_names )
+   call register_restart_field(edt_restart, 'tblyrtau', tblyrtau, dim_names )
+   call register_restart_field(edt_restart, 'sigmas'  , sigmas, dim_names2 )
+
+end subroutine edt_register_restart
 
 
 !======================================================================= 
@@ -1526,7 +1507,7 @@ subroutine edt_end()
 !-----------------------------------------------------------------------
 !
 !      variables
-!
+   type(FmsNetcdfDomainFile_t) ::  Edt_restart !< Fms2io domain decomposed fileobj
 !      --------
 !      internal
 !      --------
@@ -1537,13 +1518,21 @@ subroutine edt_end()
 !
 !      write out restart file
 !
-       call save_restart(edt_restart)
-
+    if (open_file(edt_restart,"RESTART/edt.res.nc","overwrite", edt_domain, is_restart=.true.)) then
+       if (mpp_pe() == mpp_root_pe() ) then
+        call error_mesg ('edt_mod',  'Reading netCDF formatted restart file: INPUT/edt.res.nc', &
+                         NOTE)
+       endif
+       call edt_register_restart(edt_restart)
+       call write_restart(edt_restart)
+       call add_domain_dimension_data(edt_restart)
+       call close_file(edt_restart)
+    endif
 !-----------------------------------------------------------------------
 ! 
 !      close edt output file if data was written for this window
 
-       if (do_print ) call Close_File (dpu)
+       if (do_print ) close(dpu)
        
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
@@ -1552,6 +1541,22 @@ subroutine edt_end()
 !
        module_is_initialized = .false.
 end subroutine edt_end
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 !
 !======================================================================= 

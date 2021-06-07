@@ -8,9 +8,9 @@ module atmos_global_diag_mod
 use mpp_mod,          only: input_nml_file
 use mpp_domains_mod,  only: domain2d, mpp_global_sum, BITWISE_EFP_SUM, &
                             null_domain2d, operator(.eq.)
-use fms_mod,          only: open_namelist_file, check_nml_error, &
-                            close_file, stdlog, mpp_pe, mpp_root_pe, &
-                            write_version_number, file_exist, &
+use fms_mod,          only: check_nml_error, &
+                            stdlog, mpp_pe, mpp_root_pe, &
+                            write_version_number, &
                             error_mesg, FATAL, WARNING
 use time_manager_mod, only: time_type
 use diag_manager_mod, only: register_diag_field, send_data, &
@@ -104,20 +104,8 @@ integer :: iunit, ierr, io
 
 !-----------------------------------------------------------------------
 !----- read namelist -----
-#ifdef INTERNAL_FILE_NML
   read (input_nml_file, nml=atmos_global_diag_nml, iostat=io)
   ierr = check_nml_error (io, 'atmos_global_diag_nml')
-#else
-  if (file_exist('input.nml') ) then
-    iunit = open_namelist_file()
-    ierr=1
-    do while (ierr /= 0)
-      read (iunit, nml=atmos_global_diag_nml, iostat=io, end=10)
-      ierr = check_nml_error (io, 'atmos_global_diag_nml')
-    enddo
-10  call close_file (iunit)
-  endif
-#endif
 
 !----- write version and namelist to log file -----
 

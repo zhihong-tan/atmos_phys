@@ -9,13 +9,16 @@ module topo_drag_mod
 !-----------------------------------------------------------------------
 
 use          mpp_mod, only: input_nml_file
-use          fms_mod, only: file_exist, open_namelist_file,            &
-                            close_file, error_mesg, FATAL, NOTE,       &
+use  mpp_domains_mod, only: domain2D
+use          fms_mod, only: error_mesg, FATAL, NOTE, &
                             mpp_pe, mpp_root_pe, stdout, stdlog,       &
                             check_nml_error, write_version_number
-use       fms_io_mod, only: read_data, field_size, field_exist
-use       fms_io_mod, only: register_restart_field, restart_file_type
-use       fms_io_mod, only: save_restart, restore_state
+use      fms2_io_mod, only: read_data, get_variable_size, variable_exists, file_exists, &
+                            FmsNetcdfDomainFile_t, register_variable_attribute, &
+                            register_restart_field, register_axis, unlimited, &
+                            open_file, read_restart, write_restart, close_file, &
+                            register_field, write_data, get_global_io_domain_indices, &
+                            FmsNetcdfFile_t
 use    constants_mod, only: Grav, Cp_Air, Rdgas, Pi, Radian
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp, horiz_interp_del
@@ -54,8 +57,7 @@ real, parameter :: frint=0.5
 integer, parameter :: ipts=360*resolution
 integer, parameter :: jpts=180*resolution
 
-!--- for netcdf restart
-type(restart_file_type), save :: Top_restart
+type(domain2D), pointer     :: topo_domain
 
 ! parameters in namelist (topo_drag_nml):
 
@@ -708,13 +710,39 @@ integer :: k, kdim
 end subroutine get_pbl
 
 !=======================================================================
+ subroutine topo_drag_register_tile_restart(restart)
 
-subroutine topo_drag_init (lonb, latb)
+     type(FmsNetcdfDomainFile_t), intent(inout) :: restart
+     character(len=8), dimension(3)             :: dim_names
 
+     dim_names(1) = "xaxis_1"
+     dim_names(2) = "yaxis_1"
+     dim_names(3) = "Time"
+     call register_axis(restart, dim_names(1), "x")
+     call register_axis(restart, dim_names(2), "y")
+     call register_axis(restart, dim_names(3), unlimited)
+
+     !< Register the domain decomposed dimensions as variables so that the combiner can work
+     !! correctly
+     call register_field(restart, dim_names(1), "double", (/dim_names(1)/))
+     call register_field(restart, dim_names(2), "double", (/dim_names(2)/))
+
+     call register_restart_field(restart, "t11", t11, dim_names)
+     call register_restart_field(restart, "t12", t12, dim_names)
+     call register_restart_field(restart, "t21", t21, dim_names)
+     call register_restart_field(restart, "t22", t22, dim_names)
+     call register_restart_field(restart, "hmin", hmin, dim_names)
+     call register_restart_field(restart, "hmax", hmax, dim_names)
+
+end subroutine
+
+subroutine topo_drag_init (domain, lonb, latb)
+
+type(domain2D), target, intent(in) :: domain
 real, intent(in), dimension(:,:) :: lonb, latb
 
 character(len=128) :: msg
-character(len=64)  :: restart_file='topo_drag.res.nc'
+character(len=64)  :: restart_fname='INPUT/topo_drag.res.nc'
 character(len=64)  :: topography_file='INPUT/poztopog.nc'
 character(len=64)  :: dragtensor_file='INPUT/dragelements.nc'
 character(len=3)   :: tensornames(4) = (/ 't11', 't21', 't12', 't22' /)
@@ -732,7 +760,8 @@ integer :: n
 integer :: io, ierr, unit_nml, logunit
 integer :: i, j
 integer :: siz(4)
-integer :: id_restart
+type(FmsNetcdfDomainFile_t) :: Topo_restart !< Fms2io domain decomposed fileobj
+type(FmsNetcdfFile_t) :: topography_fileobj, dragtensor_fileobj !< Fms2io fileobj
 
   if (module_is_initialized) return
 
@@ -741,18 +770,8 @@ integer :: id_restart
 
 ! read namelist
 
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=topo_drag_nml, iostat=io)
    ierr = check_nml_error(io,'topo_drag_nml')
-#else   
-  unit_nml = open_namelist_file ( )
-  ierr = 1
-  do while ( ierr /= 0 )
-     read( unit_nml, nml = topo_drag_nml, iostat = io, end = 10 )
-     ierr = check_nml_error (io, 'topo_drag_nml')
-  end do
-10 call close_file ( unit_nml )
-#endif
 
 ! write version number and namelist to logfile
 
@@ -761,6 +780,7 @@ integer :: id_restart
   if (mpp_pe() == mpp_root_pe())                                       &
                                     write (logunit, nml=topo_drag_nml)
 
+  topo_domain => domain
   allocate (t11(nlon,nlat))
   allocate (t21(nlon,nlat))
   allocate (t12(nlon,nlat))
@@ -772,24 +792,19 @@ integer :: id_restart
 
 ! read restart file
 
-  id_restart = register_restart_field(Top_restart, restart_file, 't11', t11)
-  id_restart = register_restart_field(Top_restart, restart_file, 't21', t21)
-  id_restart = register_restart_field(Top_restart, restart_file, 't12', t12)
-  id_restart = register_restart_field(Top_restart, restart_file, 't22', t22)
-  id_restart = register_restart_field(Top_restart, restart_file, 'hmin', hmin)
-  id_restart = register_restart_field(Top_restart, restart_file, 'hmax', hmax)
-  restart_file = 'INPUT/'//trim(restart_file)
-
-  if ( file_exist(restart_file) ) then
+  if ( open_file(Topo_restart, restart_fname, "read", topo_domain, is_restart = .true.) ) then
 
      if (mpp_pe() == mpp_root_pe()) then
-        write ( msg, '("Reading restart file: ",a40)' ) restart_file
+        write ( msg, '("Reading restart file: ",a40)' ) restart_fname
         call error_mesg('topo_drag_mod', msg, NOTE)
      endif
-     call restore_state(Top_restart)
 
-  else if (file_exist(topography_file) .and.                           &
-           file_exist(dragtensor_file)) then
+     call topo_drag_register_tile_restart(Topo_restart)
+     call read_restart(Topo_restart)
+     call close_file(Topo_restart)
+
+  else if (file_exists(topography_file) .and.                           &
+           file_exists(dragtensor_file)) then
 
 !    read and interpolate topography datasets
 
@@ -799,8 +814,16 @@ integer :: id_restart
         call error_mesg('topo_drag_mod', msg, NOTE)
      endif
 
+     if( .not. open_file(topography_fileobj, topography_file, "read")) then
+         call error_mesg('topo_drag_mod', "Error opening topography file", FATAL)
+     endif
+
+     if( .not. open_file(dragtensor_fileobj, dragtensor_file, "read")) then
+         call error_mesg('topo_drag_mod', "Error opening dragtensor file", FATAL)
+     endif
+
      ! check for correct field size in topography
-     call field_size (topography_file, 'hpos', siz)
+     call get_variable_size(topography_fileobj, 'hpos', siz)
      if (siz(1) /= ipts .or. siz(2) /= jpts) then
          call error_mesg('topo_drag_mod', 'Field \"hpos\" in file '//  &
                    trim(topography_file)//' has the wrong size', FATAL)
@@ -831,7 +854,8 @@ integer :: id_restart
      call horiz_interp_init
      call horiz_interp_new ( Interp, xdatb, ydatb, lonb, latb, interp_method="conservative" )
 
-     call read_data (topography_file, 'hpos', zdat, no_domain=.true.)
+     call read_data (topography_fileobj, 'hpos', zdat)
+
      exponent = 2. - gamma
      zdat = max(0., zdat)**exponent
      call horiz_interp ( Interp, zdat, zout )
@@ -848,16 +872,16 @@ integer :: id_restart
 
      ! check for correct field size in tensor file
 
-     call field_size (dragtensor_file, tensornames(1), siz)
+     call get_variable_size(dragtensor_fileobj, tensornames(1), siz)
      if (siz(1) /= ipts .or. siz(2) /= jpts) then
          call error_mesg('topo_drag_mod', 'Fields in file ' &
          //trim(dragtensor_file)//' have the wrong size', FATAL)
      endif
 
      do n=1,4
-        found_field(n) = field_exist(dragtensor_file, tensornames(n))
+        found_field(n) = variable_exists(dragtensor_fileobj, tensornames(n))
         if (.not. found_field(n)) cycle
-        call read_data (dragtensor_file, tensornames(n), zdat, no_domain=.true.)
+        call read_data (dragtensor_fileobj, tensornames(n), zdat)
         call horiz_interp ( Interp, zdat, zout )
         if ( tensornames(n) == 't11' ) then
            t11 = zout/bfscale
@@ -874,6 +898,9 @@ integer :: id_restart
 
      deallocate (zdat, zout)
      call horiz_interp_del ( Interp )
+
+     call close_file(topography_fileobj)
+     call close_file(dragtensor_fileobj)
 
   else
 
@@ -914,13 +941,43 @@ end subroutine topo_drag_end
 ! </DESCRIPTION>
 !
 subroutine topo_drag_restart(timestamp)
-   character(len=*), intent(in), optional :: timestamp
+      character(len=*), intent(in), optional :: timestamp
+      type(FmsNetcdfDomainFile_t) :: Topo_restart
+      character(len=128)  :: restart_fname
 
-   call save_restart(Top_restart, timestamp)
+      if (present(timestamp)) then
+          restart_fname='RESTART/'//trim(timestamp)//'.topo_drag.res.nc'
+      else
+          restart_fname='RESTART/topo_drag.res.nc'
+      endif
 
+      if (.not. open_file(Topo_restart, restart_fname, "overwrite", topo_domain, is_restart = .true.)) then
+         call error_mesg("topo_drag_mod", "The topo_drag tiled restart file does not exist", fatal)
+      endif
+
+      call topo_drag_register_tile_restart(Topo_restart)
+      call write_restart(Topo_restart)
+      call add_domain_dimension_data(Topo_restart)
+      call close_file(Topo_restart)
 end subroutine topo_drag_restart
 ! </SUBROUTINE>
 
 !#######################################################################
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 endmodule topo_drag_mod

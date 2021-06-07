@@ -3,9 +3,9 @@ module bm_massflux_mod
 
 !----------------------------------------------------------------------
 use            mpp_mod, only:  input_nml_file
-use            fms_mod, only:  file_exist, error_mesg, open_namelist_file,  &
+use            fms_mod, only:  error_mesg,  &
                                check_nml_error, mpp_pe, FATAL,  &
-                               close_file, mpp_root_pe, write_version_number, stdlog
+                               mpp_root_pe, write_version_number, stdlog
 use sat_vapor_pres_mod, only:  escomp, descomp
 use      constants_mod, only:  HLv,HLs,Cp_air,Grav,rdgas,rvgas, cp_vapor, kappa
 
@@ -1561,22 +1561,11 @@ real :: prec_rev, ratio, q_src, ratio_q, ratio_T, en_acc, ratio_ml
 !
 !-----------------------------------------------------------------------
 
-  integer  unit,io,ierr, logunit
+  integer  io,ierr, logunit
 
 !----------- read namelist ---------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=bm_massflux_nml, iostat=io)
       ierr = check_nml_error(io,"bm_massflux_nml")
-#else
-      if (file_exist('input.nml')) then
-         unit = open_namelist_file ( )
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=bm_massflux_nml, iostat=io, end=10)
-            ierr = check_nml_error (io,'bm_massflux_nml')
-         enddo
-  10     call close_file (unit)
-      endif
-#endif
 
 !---------- output namelist --------------------------------------------
 

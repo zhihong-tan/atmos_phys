@@ -5,14 +5,12 @@ use mpp_mod,               only: input_nml_file
 use fms_mod,               only: fms_init, mpp_clock_id, &
                                  mpp_clock_begin, mpp_clock_end, &
                                  CLOCK_MODULE_DRIVER, CLOCK_MODULE, &
-                                 field_exist, field_size, &
                                  mpp_pe, mpp_root_pe, &
-                                 open_namelist_file, stdlog, stdout, &
-                                 file_exist, FATAL, WARNING, NOTE, &
-                                 close_file, read_data, write_data, &
+                                 stdlog, stdout, &
+                                 FATAL, WARNING, NOTE, &
                                  write_version_number, check_nml_error,&
                                  error_mesg, mpp_chksum, &
-                                 read_data, mpp_error
+                                 mpp_error
 use time_manager_mod,      only: time_type
 
 use field_manager_mod,     only: MODEL_ATMOS
@@ -114,7 +112,7 @@ type(exchange_control_type), intent(inout) :: Exch_ctrl
 !----------------------------------------------------------------------
 !   local variables
 
-      integer   ::   unit, io, ierr, logunit
+      integer   ::   io, ierr, logunit
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -134,19 +132,8 @@ type(exchange_control_type), intent(inout) :: Exch_ctrl
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cloudrad_driver_nml, iostat=io)
       ierr = check_nml_error(io,'cloudrad_driver_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=cloudrad_driver_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'cloudrad_driver_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

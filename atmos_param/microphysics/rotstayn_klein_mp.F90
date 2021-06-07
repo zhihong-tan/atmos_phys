@@ -3,9 +3,9 @@
 
 use mpp_mod,             only : input_nml_file
 use fms_mod,             only : error_mesg, FATAL, mpp_pe, mpp_root_pe, &
-                                open_namelist_file, check_nml_error, &
-                                close_file, write_version_number, &
-                                file_exist, stdlog
+                                check_nml_error, &
+                                write_version_number, &
+                                stdlog
 use cloud_generator_mod, only : cloud_generator_init, do_cloud_generator, &
                                 compute_overlap_weighting
 use  constants_mod,      only : HLV, HLF, HLS, RDGAS, CP_AIR, GRAV, &
@@ -186,7 +186,7 @@ type(lscloud_nml_type),      intent(in) :: Nml_lsc
 type(exchange_control_type), intent(in) :: Exch_ctrl
 
 !-----------------------------------------------------------------------
-      integer :: unit, ierr, io, logunit
+      integer :: ierr, io, logunit
 
 !------------------------------------------------------------------------
 !    if module has already been initialized, return.
@@ -205,19 +205,8 @@ type(exchange_control_type), intent(in) :: Exch_ctrl
 !-------------------------------------------------------------------------
 !    process namelist.
 !-------------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=rotstayn_klein_mp_nml, iostat=io)
       ierr = check_nml_error(io,'rotstayn_klein_mp_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=rotstayn_klein_mp_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'rotstayn_klein_mp_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !-------------------------------------------------------------------------
 !    write version and namelist to standard log.

@@ -37,10 +37,10 @@ module cldwat2m_micro
   use lscloud_types_mod,         only: diag_id_type, diag_pt_type,   &
                                        lscloud_nml_type
   use mpp_mod,                   only: input_nml_file
-  use fms_mod,                   only: mpp_pe, file_exist, error_mesg,  &
-                                       open_namelist_file, FATAL, &
+  use fms_mod,                   only: mpp_pe, error_mesg,  &
+                                       FATAL, &
                                        stdlog, write_version_number, &
-                                       check_nml_error, close_file, &
+                                       check_nml_error, &
                                        mpp_root_pe
   use simple_pdf_mod,            only: simple_pdf
   use sat_vapor_pres_mod,        only: lookup_es2, lookup_es3, compute_qs
@@ -262,7 +262,7 @@ subroutine ini_micro
 
 
 #ifdef GFDL_COMPATIBLE_MICROP
-   INTEGER   :: unit, io, ierr, logunit
+   INTEGER   :: io, ierr, logunit
 #endif
 
 #ifndef GFDL_COMPATIBLE_MICROP
@@ -393,20 +393,8 @@ subroutine ini_micro
 !---------------------------------------------------------------
 !     process namelist
 !---------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cldwat2m_micro_nml, iostat=io)
       ierr = check_nml_error(io,'cldwat2m_micro_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=cldwat2m_micro_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'cldwat2m__micro_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
- 
 !-----------------------------------------------------------------------
 !    write version and namelist to stdlog.
 !-----------------------------------------------------------------------

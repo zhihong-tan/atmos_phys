@@ -17,14 +17,13 @@
 use time_manager_mod,      only: time_type, get_time, set_date
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
-                                 file_exist, check_nml_error,    &
-                                 open_namelist_file, close_file, &
+                                 check_nml_error,    &
                                  write_version_number, stdlog,   &
                                  mpp_pe, mpp_root_pe, stdlog,    &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &
                                  CLOCK_MODULE_DRIVER, &
-                                 MPP_CLOCK_SYNC, read_data, write_data
+                                 MPP_CLOCK_SYNC
 use field_manager_mod,     only: MODEL_ATMOS
 use tracer_manager_mod,    only: get_tracer_index,&
                                  get_number_tracers, &
@@ -282,19 +281,8 @@ type(exchange_control_type), intent(in)    :: Exch_ctrl
 !-------------------------------------------------------------------------
 !    process namelist.
 !-------------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=ls_cloud_microphysics_nml, iostat=io)
       ierr = check_nml_error(io,'ls_cloud_microphysics_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=ls_cloud_microphysics_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'ls_cloud_microphysics_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !-------------------------------------------------------------------------
 !    write version number and namelist to standard log.

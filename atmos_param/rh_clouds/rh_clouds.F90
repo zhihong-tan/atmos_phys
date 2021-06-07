@@ -8,13 +8,14 @@ module rh_clouds_mod
 !=======================================================================
 
 use mpp_mod,    only : input_nml_file
-use fms_mod,    only : error_mesg, FATAL, file_exist,    &
-                       check_nml_error, open_namelist_file,       &
-                       close_file, mpp_pe, mpp_root_pe, &
-                       write_version_number, stdlog
-use fms_io_mod, only : restore_state, &
-                       register_restart_field, restart_file_type, &
-                       save_restart, get_mosaic_tile_file
+use    mpp_domains_mod, only: domain2D
+use fms_mod,    only : error_mesg, FATAL, check_nml_error, &
+                       mpp_pe, mpp_root_pe, write_version_number, stdlog
+use fms2_io_mod,             only:  FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                   register_restart_field, register_axis, unlimited, &
+                                   open_file, read_restart, write_restart, close_file, &
+                                   register_field, write_data, register_variable_attribute, &
+                                   get_global_io_domain_indices, file_exists
 
 !=======================================================================
 
@@ -145,7 +146,7 @@ namelist /rh_clouds_nml/ high_middle_pole, high_middle_eq, &
 !  OTHER MODULE VARIABLES
 
 !--- for netcdf restart
-type(restart_file_type), pointer, save :: RH_restart => NULL()
+type (domain2D), pointer               :: rh_domain !< Atmosphere domain
 
 logical :: module_is_initialized = .false.
 
@@ -153,29 +154,19 @@ contains
 
 !#######################################################################
 
-subroutine rh_clouds_init (nlon, nlat, nlev)
+subroutine rh_clouds_init (domain, nlon, nlat, nlev)
 
+type(domain2D), target,        intent(in) :: domain !< Atmosphere domain
 integer, intent(in) :: nlon, nlat, nlev
-
-integer :: unit, ierr, io, logunit, id_restart
+integer :: unit, ierr, io, logunit
+type(FmsNetcdfDomainFile_t) ::  RH_restart !< Fms2io domain decomposed fileobj
 
       if (module_is_initialized) return
 
 !------------------- read namelist input -------------------------------
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=rh_clouds_nml, iostat=io)
       ierr = check_nml_error(io,'rh_clouds_nml')
-#else   
-      if (file_exist('input.nml')) then
-         unit = open_namelist_file ()
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=rh_clouds_nml, iostat=io, end=10)
-            ierr = check_nml_error(io,'rh_clouds_nml')
-         enddo
-  10     call close_file (unit)
-      endif
-#endif
 
 !---------- output namelist to log-------------------------------------
 
@@ -188,19 +179,15 @@ integer :: unit, ierr, io, logunit, id_restart
 !---------- initialize for rh cloud averaging -------------------------
 
       allocate (rhsum(nlon,nlat,nlev), nsum(nlon,nlat))
-      allocate(RH_restart)
 
-      id_restart = register_restart_field(RH_restart, 'rh_clouds.res.nc', 'nsum',  nsum)
-      id_restart = register_restart_field(RH_restart, 'rh_clouds.res.nc', 'rhsum', rhsum)
-      if (file_exist('INPUT/rh_clouds.res.nc')) then
-        call restore_state(RH_restart)
-      else if (file_exist('INPUT/rh_clouds.res')) then
+      rh_domain => domain
+      if (open_file(RH_restart,"INPUT/rh_clouds.res.nc","read", rh_domain, is_restart=.true.)) then
+        call rh_register_restart(RH_restart)
+        call read_restart(RH_restart)
+        call close_file(RH_restart)
+      else if (file_exists('INPUT/rh_clouds.res')) then
         call error_mesg ('rh_clouds_init', &
                          'Native restart files no longer supported.', FATAL)
-!        unit = open_restart_file ('INPUT/rh_clouds.res', action='read')
-!        call read_data (unit, nsum)
-!        call read_data (unit, rhsum)
-!        call close_file (unit)
       else
         rhsum = 0.0;  nsum = 0
       endif
@@ -213,14 +200,60 @@ integer :: unit, ierr, io, logunit, id_restart
 end subroutine rh_clouds_init
 
 !#######################################################################
+!< rh_register_restart: Register the netcdf restart variables
+subroutine rh_register_restart(RH_restart)
+type(FmsNetcdfDomainFile_t), intent(inout) ::  RH_restart !< Fms2io netcdf file obj
+character(len=8), dimension(4)       :: dim_names !< Array of dimension names
+
+  dim_names(1) = "xaxis_1"
+  dim_names(2) = "yaxis_1"
+  dim_names(3) = "zaxis_1"
+  dim_names(4) = "Time"
+
+  call register_axis(RH_restart, "Time", unlimited)
+  call register_axis(RH_restart, "xaxis_1", "x")
+  call register_axis(RH_restart, "yaxis_1", "y")
+  call register_axis(RH_restart, "zaxis_1", size(rhsum, 3))
+
+  !< Register the domain decomposed dimensions as variables so that the combiner can work
+  !! correctly
+  call register_field(RH_restart, dim_names(1), "double", (/dim_names(1)/))
+  call register_field(RH_restart, dim_names(2), "double", (/dim_names(2)/))
+
+
+  call register_restart_field(RH_restart, 'nsum',  nsum, (/"xaxis_1", "yaxis_1", "Time   "/))
+  call register_restart_field(RH_restart, 'rhsum', rhsum, dim_names)
+
+end subroutine rh_register_restart
 
 subroutine rh_clouds_end
+type(FmsNetcdfDomainFile_t) ::  RH_restart
 
-
-    call save_restart(RH_restart)
+    if (open_file(RH_restart,"RESTART/rh_clouds.res.nc","overwrite", rh_domain, is_restart=.true.)) then
+       call rh_register_restart(RH_restart)
+       call write_restart(RH_restart)
+       call add_domain_dimension_data(RH_restart)
+       call close_file(RH_restart)
+    endif
     module_is_initialized = .false.
 
 end subroutine rh_clouds_end
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 !#######################################################################
 

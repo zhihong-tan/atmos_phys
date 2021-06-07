@@ -19,9 +19,8 @@
 
 use   time_manager_mod, only: time_type
 use            mpp_mod, only: input_nml_file
-use            fms_mod, only: open_namelist_file, file_exist,   &
-                              check_nml_error, error_mesg,   &
-                              close_file, FATAL, NOTE, &
+use            fms_mod, only: check_nml_error, error_mesg,   &
+                              FATAL, NOTE, &
                               WARNING, mpp_pe, mpp_root_pe, &
                               write_version_number, stdlog
 use      constants_mod, only: DENS_H2O, RDGAS, TFREEZE, pi
@@ -137,26 +136,15 @@ subroutine uw_clouds_W_init  (Exch_ctrl)
 
 type(exchange_control_type), intent(in) :: Exch_ctrl
 
-      integer            :: unit, ierr, io, logunit
+      integer            :: ierr, io, logunit
 
       if (module_is_initialized) return
 
 !---------------------------------------------------------------------
 !-----  read namelist  ------
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=uw_clouds_W_nml, iostat=io)
       ierr = check_nml_error(io,"uw_clouds_W_nml")
-#else
-      if (file_exist('input.nml')) then
-        unit =  open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read (unit, nml=uw_clouds_W_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'uw_clouds_W_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
       if ( mpp_pe() == mpp_root_pe() ) then
          call write_version_number(version, tagname)

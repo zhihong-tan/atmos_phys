@@ -218,11 +218,10 @@
 !   shared modules:
 
 use mpp_mod,                    only: input_nml_file
-use fms_mod,                    only: file_exist, fms_init,       &
+use fms_mod,                    only: fms_init,       &
                                       stdlog, mpp_pe, mpp_root_pe, &
-                                      open_namelist_file, &
                                       write_version_number,  &
-                                      error_mesg, FATAL, close_file,  &
+                                      error_mesg, FATAL,  &
                                       check_nml_error
 use constants_mod,              only: RDGAS, GRAV, TFREEZE, DENS_H2O, &
                                       constants_init, pi
@@ -508,7 +507,7 @@ type(exchange_control_type), intent(in), optional :: Exch_ctrl
 !----------------------------------------------------------------------
 !  Internal variables
 
-      integer  :: unit, io, ierr, logunit
+      integer  :: io, ierr, logunit
 
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
@@ -528,19 +527,8 @@ type(exchange_control_type), intent(in), optional :: Exch_ctrl
 !--------------------------------------------------------------------
 !    read namelist.
 !--------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cloud_rad_nml, iostat=io)
       ierr = check_nml_error(io,'cloud_rad_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-           read  (unit, nml=cloud_rad_nml, iostat=io, end=10)
-           ierr = check_nml_error(io,'cloud_rad_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

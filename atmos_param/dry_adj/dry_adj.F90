@@ -5,9 +5,9 @@
 !=======================================================================
 
  use       mpp_mod, only: input_nml_file
- use       Fms_Mod, ONLY: FILE_EXIST, ERROR_MESG, OPEN_NAMELIST_FILE, &
+ use       Fms_Mod, ONLY: ERROR_MESG, &
                           CHECK_NML_ERROR,                   &
-                          mpp_pe, mpp_root_pe, FATAL, WARNING, CLOSE_FILE, &
+                          mpp_pe, mpp_root_pe, FATAL, WARNING, &
                           stdlog, write_version_number
  use Constants_Mod, ONLY: Grav, Kappa
 !---------------------------------------------------------------------
@@ -194,7 +194,7 @@
 !  (Intent local)
 !---------------------------------------------------------------------
 
-  integer :: unit, io, ierr, logunit
+  integer :: io, ierr, logunit
 
 !=====================================================================
 
@@ -202,20 +202,8 @@
 ! --- READ NAMELIST
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
   read (input_nml_file, nml=dry_adj_nml, iostat=io)
   ierr = check_nml_error(io,"dry_adj_nml")
-#else
-  if( FILE_EXIST( 'input.nml' ) ) then
-      unit = OPEN_NAMELIST_FILE ()
-      ierr = 1
-  do while ( ierr /= 0 )
-      READ( unit, nml = dry_adj_nml, iostat = io, end = 10 )
-      ierr = check_nml_error(io,'dry_adj_nml')
-  end do
-  10  CALL CLOSE_FILE ( unit )
-  end if
-#endif
 
 !------- write version number and namelist ---------
 

@@ -19,17 +19,15 @@
 use time_manager_mod,      only: time_type
 use diag_manager_mod,      only: register_diag_field, send_data
 use mpp_mod,               only: input_nml_file
+use    mpp_domains_mod, only: domain2D
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
-                                 file_exist, check_nml_error,    &
-                                 open_namelist_file, close_file, &
+                                 check_nml_error,    &
                                  write_version_number,           &
-                                 open_file, &
-                                 stdout, open_ieee32_file, &
+                                 stdout, &
                                  mpp_pe, mpp_root_pe, stdlog,    &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &
-                                 CLOCK_MODULE_DRIVER, &
-                                 MPP_CLOCK_SYNC
+                                 CLOCK_MODULE_DRIVER
 use field_manager_mod,     only: MODEL_ATMOS
 use tracer_manager_mod,    only: get_tracer_names, get_tracer_index, &
                                  NO_TRACER
@@ -301,10 +299,11 @@ type(cmip_diag_id_type) :: ID_tntscp, ID_tnhusscp
 
 !#######################################################################
 
-subroutine lscloud_driver_init (id, jd, kd, axes, Time, &
+subroutine lscloud_driver_init (domain, id, jd, kd, axes, Time, &
                                 Exch_ctrl, Nml_mp, Physics_control, &
                                 lon, lat, phalf, pref)
 
+type(domain2D), target,  intent(in)     :: domain !< Atmosphere domain
 integer,                 intent(in)     :: id, jd, kd
 integer,                 intent(in)     :: axes(4)
 type(time_type),         intent(in)     :: Time
@@ -473,20 +472,9 @@ real, dimension(:),      intent(in)     :: pref
 
 !----------------------------------------------------------------------- 
 !    process namelist.
-!-----------------------------------------------------------------------  
-#ifdef INTERNAL_FILE_NML
+!-----------------------------------------------------------------------
         read (input_nml_file, nml=lscloud_driver_nml, iostat=io)
         ierr = check_nml_error(io,'lscloud_driver_nml')
-#else
-        if ( file_exist('input.nml')) then
-          unit = open_namelist_file ()
-          ierr=1; do while (ierr /= 0)
-          read  (unit, nml=lscloud_driver_nml, iostat=io, end=10)
-          ierr = check_nml_error(io,'lscloud_driver_nml')
-          enddo
-10        call close_file (unit)
-        endif
-#endif
 
 !----------------------------------------------------------------------- 
 !    write version and namelist to stdlog.
@@ -768,7 +756,7 @@ real, dimension(:),      intent(in)     :: pref
 !    initialize the rh_clouds module, if needed.
 !----------------------------------------------------------------------
           if (Nml_mp%do_rh_clouds) then
-            call rh_clouds_init (id, jd, kd)
+            call rh_clouds_init (domain, id, jd, kd)
           endif
           call mpp_clock_end   (lscalecond_init_clock)
         endif

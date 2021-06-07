@@ -2,7 +2,6 @@
 
 use time_manager_mod,       only: time_type, set_time, &
                                   set_date, get_time,   &
-                                  get_calendar_type, &
                                   operator(-), &
                                   operator(>=), operator (<)
 use diag_manager_mod,       only: register_diag_field, send_data, &
@@ -17,22 +16,19 @@ use tracer_manager_mod,     only: get_tracer_names,get_number_tracers, &
 use atmos_tracer_utilities_mod, only : get_wetdep_param
 use  sat_vapor_pres_mod,only : sat_vapor_pres_init
 !--lwh
-use fms_mod,                only: mpp_pe, mpp_root_pe,  &
-                                  file_exist,  check_nml_error,  &
-                                  error_mesg, FATAL, WARNING, NOTE,  &
-                                  close_file, open_namelist_file,    &
-                                  stdout, stdlog, write_version_number,  &
-                                  field_size, &
-                                  read_data, write_data, lowercase
-use fms_io_mod,             only: register_restart_field, restart_file_type, &
-                                  save_restart, restore_state, get_mosaic_tile_file
-use mpp_mod,                only: input_nml_file
-use mpp_io_mod,             only: mpp_open, mpp_close, fieldtype,  &
-                                  mpp_read_meta, mpp_get_info, &
-                                  mpp_get_fields, mpp_read, &
-                                  MPP_NETCDF, MPP_SINGLE,   &
-                                  MPP_SEQUENTIAL, MPP_RDONLY, MPP_NATIVE, &
-                                  mpp_get_field_name
+use fms_mod,                only: mpp_pe, mpp_root_pe, mpp_npes, &
+                                  check_nml_error,  &
+                                  error_mesg, FATAL, WARNING, NOTE,  & !close_file,
+                                  stdlog, write_version_number, &
+                                  lowercase
+use fms2_io_mod,            only: FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                                  register_restart_field, register_axis, unlimited, &
+                                  open_file, read_restart, write_restart, close_file, &
+                                  register_field, write_data, register_variable_attribute, &
+                                  get_global_io_domain_indices, file_exists
+
+use mpp_mod,                only: input_nml_file, mpp_get_current_pelist
+use mpp_domains_mod,        only: domain2D, mpp_get_ntile_count
 use constants_mod,          only: DENS_H2O, RDGAS, GRAV, CP_AIR,  &
                                   pie=>PI, KAPPA, RVGAS, &
                                   SECONDS_PER_DAY, HLV, HLF, HLS, KELVIN
@@ -86,12 +82,11 @@ public   &
 
 private   &
 !  module subroutines called by donner_deep_init:
-        register_fields, read_restart_nc,  &
+        register_fields,  &
         process_coldstart,&
 !  module subroutines called by donner_deep:
-        donner_deep_netcdf, donner_column_control,     &
+        donner_deep_netcdf, donner_column_control
 !  module subroutines called from donner_deep_end:
-        write_restart
 
 
 !---------------------------------------------------------------------
@@ -108,10 +103,6 @@ private   &
 !--------------------------------------------------------------------
 !----private data-----------
 
-!--- for restart file
-type(restart_file_type), pointer, save :: Don_restart => NULL()
-type(restart_file_type), pointer, save :: Til_restart => NULL()
-logical                                :: in_different_file = .false.
 !---------------------------------------------------------------------
 !  parameters stored in the donner_param derived type variable to facili-
 !  tate passage to kernel subroutines:
@@ -231,7 +222,7 @@ integer, dimension(:), allocatable :: col_diag_unit
 real   , dimension(:), allocatable :: col_diag_lon, col_diag_lat   
 integer, dimension(:), allocatable :: col_diag_j, col_diag_i        
 type(time_type)                    :: Time_col_diagnostics  
-
+type (domain2D), pointer           :: don_domain !< Atmosphere domain
 
 !-----------------------------------------------------------------------
 !   miscellaneous variables
@@ -293,19 +284,8 @@ integer,               intent(in)       :: kpar
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=donner_deep_nml, iostat=io)
       ierr = check_nml_error(io,'donner_deep_nml')
-#else   
-      if (file_exist('input.nml')) then
-        unit =  open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read (unit, nml=donner_deep_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'donner_deep_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -503,16 +483,22 @@ end subroutine fms_donner_activate_diagnostics
 
 !#####################################################################
 
-subroutine fms_donner_read_restart (Initialized, ntracers,   &
+subroutine fms_donner_read_restart (domain, Initialized, ntracers,   &
                                     secs, days, Don_save, Nml)
 
+type(domain2D), target,        intent(in) :: domain !< Atmosphere domain
 type(donner_initialized_type), intent(inout) :: Initialized
 type(donner_save_type), intent(inout) :: Don_save
 type(donner_nml_type), intent(inout) :: Nml     
 integer, intent(in) :: secs, days, ntracers
 
-      type(time_type) :: Time
+type(time_type) :: Time
 integer :: outunit
+type(FmsNetcdfFile_t)       ::  Don_restart !< Fms2io fileobj
+type(FmsNetcdfDomainFile_t) ::  Til_restart !< Fms2io domain decomposed fileobj
+logical :: Don_restart_exist !< Flag indicating if the file was opened sucessfully
+logical :: Til_restart_exist !< Flag indicating if the file was opened sucessfully
+integer, dimension(:), allocatable :: pes !< Array of pes in the current pelist
 
      Time = set_time (secs, days)
 
@@ -523,35 +509,47 @@ integer :: outunit
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 !--------------------------------------------------------------------
-!    if a netcdf restart file is present, call read_restart_nc to read 
+!    if a netcdf restart file is present, call to read
 !    it.
 !--------------------------------------------------------------------
+      don_domain => domain
+
+      !< Get the current pelist
+      allocate(pes(mpp_npes()))
+      call mpp_get_current_pelist(pes)
+
+      !< Open the scalar file with the current pelist, so that only the root pe opens and reads the file and
+      !! distributes the data to the other pes
       !--- register restart field to be ready to be written out.
-      call fms_donner_register_restart('donner_deep.res.nc', Initialized, ntracers, Don_save, Nml)
-
-      if (file_exist ('INPUT/donner_deep.res.nc') ) then
-       Initialized%coldstart= .false.
-!        call read_restart_nc (ntracers, Initialized,Nml, Don_save)
-       call restore_state(Don_restart)
-       if (in_different_file) call restore_state(Til_restart)
-
-!--------------------------------------------------------------------
-!    if a native mode restart file is present, call read_restart 
-!    to read it.
-!--------------------------------------------------------------------
-      else if (file_exist ('INPUT/donner_deep.res') ) then
+      Don_restart_exist = open_file(Don_restart,"INPUT/donner_deep.res.nc","read", is_restart=.true., pelist=pes)
+      if (Don_restart_exist) then !scalar file
         Initialized%coldstart= .false.
-        call error_mesg ( 'fms_donner_mod', 'Native restart capability has been removed.', &
-                                         FATAL)
+        call fms_donner_register_restart_scalars(Don_restart, Initialized, Nml)
+        call read_restart(Don_restart)
+        call close_file(Don_restart)
+      endif
+      deallocate(pes)
+
+      Til_restart_exist = open_file(Til_restart,"INPUT/donner_deep.res.nc","read", don_domain, is_restart=.true.)
+      if (Til_restart_exist) then !domain file
+        Initialized%coldstart= .false.
+        call fms_donner_register_restart_domain(Til_restart, Initialized, ntracers, Don_save)
+        call read_restart(Til_restart)
+        call close_file(Til_restart)
+      endif
 !--------------------------------------------------------------------
 !    if no restart file is present, call subroutine process_coldstart
 !    to define the needed variables.
 !--------------------------------------------------------------------
-      else
+      if (.not. Til_restart_exist .and. .not. Don_restart_exist) then
+!     if a native mode restart file is present, crash
+        if (file_exists ('INPUT/donner_deep.res') ) then
+           Initialized%coldstart= .false.
+           call error_mesg ( 'fms_donner_mod', 'Native restart capability has been removed.', &
+                                         FATAL)
+        endif
         call process_coldstart (Time, Initialized, Nml, Don_save)
       endif
-
-
 end subroutine fms_donner_read_restart 
 
 
@@ -711,9 +709,18 @@ end subroutine fms_donner_col_diag
 !                                      the any restart file name as a prefix. 
 ! </DESCRIPTION>
 !
-subroutine fms_donner_write_restart (Initialized, timestamp)
-  type(donner_initialized_type), intent(in) :: Initialized
+subroutine fms_donner_write_restart (Initialized, ntracers, nml, Don_save, timestamp)
+  type(donner_initialized_type), intent(inout) :: Initialized
+  integer, intent(in) :: ntracers
+  type(donner_nml_type), intent(inout) :: Nml
+  type(donner_save_type), intent(inout) :: Don_save
   character(len=*), intent(in), optional :: timestamp
+
+  type(FmsNetcdfFile_t)       ::  Don_restart !< Fms2io fileobj
+  type(FmsNetcdfDomainFile_t) ::  Til_restart !< Fms2io domain decomposed fileobj
+  logical :: tile_file_open !< Flag indicating if the domain decomposed file was opened sucessfully
+  character(len=128) :: filename !< String with restart filename
+  integer, dimension(:), allocatable :: pes !< Array of pes in the current pelist
 
 !-------------------------------------------------------------------
 !    call subroutine to write restart file. NOTE: only the netcdf 
@@ -737,10 +744,57 @@ subroutine fms_donner_write_restart (Initialized, timestamp)
           endif
         endif
       endif
-      call save_restart(Don_restart, timestamp)
-      if(in_different_file) call save_restart(Til_restart, timestamp)
 
-end subroutine fms_donner_write_restart 
+      if (present(timestamp)) then
+         filename= "RESTART/"//trim(timestamp)//".donner_deep.res.nc"
+      else
+         filename = "RESTART/donner_deep.res.nc"
+      endif
+
+      !< Get the current pelist
+      allocate(pes(mpp_npes()))
+      call mpp_get_current_pelist(pes)
+
+      !< Open the scalar file with the current pelist, so that only the root pe opens and writes the file
+      if (open_file(Don_restart,trim(filename),"overwrite", is_restart=.true., pelist=pes)) then !scalar file
+        Initialized%coldstart= .false.
+        call fms_donner_register_restart_scalars(Don_restart, Initialized, Nml)
+        call write_restart(Don_restart)
+        call close_file(Don_restart)
+      endif
+      deallocate(pes)
+
+      if (mpp_get_ntile_count(don_domain) == 1) then
+         tile_file_open = open_file(Til_restart,trim(filename),"append", don_domain, is_restart=.true.)!domain file
+      else
+         tile_file_open = open_file(Til_restart,trim(filename),"overwrite", don_domain, is_restart=.true.) !domain file
+      endif
+
+      if(tile_file_open) then
+        Initialized%coldstart= .false.
+        call fms_donner_register_restart_domain(Til_restart, Initialized, ntracers, Don_save)
+        call write_restart(Til_restart)
+        call add_domain_dimension_data(Til_restart)
+        call close_file(Til_restart)
+      endif
+
+end subroutine fms_donner_write_restart
+
+!< Add_dimension_data: Adds dummy data for the domain decomposed axis
+subroutine add_domain_dimension_data(fileobj)
+  type(FmsNetcdfDomainFile_t) :: fileobj !< Fms2io domain decomposed fileobj
+  integer, dimension(:), allocatable :: buffer !< Buffer with axis data
+  integer :: is, ie !< Starting and Ending indices for data
+
+    call get_global_io_domain_indices(fileobj, "xaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "xaxis_1", buffer)
+    deallocate(buffer)
+
+    call get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
+    call write_data(fileobj, "yaxis_1", buffer)
+    deallocate(buffer)
+
+end subroutine add_domain_dimension_data
 
 
 !#####################################################################
@@ -2343,406 +2397,77 @@ end subroutine process_coldstart
 
 !#####################################################################
 ! register restart field to be written to restart file.
-subroutine fms_donner_register_restart(fname, Initialized, ntracers, Don_save, Nml)
-  character(len=*),                 intent(in) :: fname
+subroutine fms_donner_register_restart_scalars(Don_restart, Initialized, Nml)
+  type(FmsNetcdfFile_t),         intent(inout) :: Don_restart !< Fms2io fileobj
+  type(donner_initialized_type), intent(inout) :: Initialized
+  type(donner_nml_type),         intent(inout) :: Nml
+
+  character(len=8), dimension(1)       :: dim_names !< Array of dimension names
+
+  dim_names(1) = "Time"
+  call register_axis(Don_restart, dim_names(1), unlimited)
+
+  call register_restart_field(Don_restart, 'conv_alarm', Initialized%conv_alarm, dim_names)
+  call register_restart_field(Don_restart, 'donner_deep_freq', Nml%donner_deep_freq, dim_names)
+
+end subroutine fms_donner_register_restart_scalars
+
+subroutine fms_donner_register_restart_domain(Til_restart, Initialized, ntracers, Don_save)
+  type(FmsNetcdfDomainFile_t),   intent(inout) :: Til_restart !< Fms2io domain decomposed fileobj
   type(donner_initialized_type), intent(inout) :: Initialized
   integer,                          intent(in) :: ntracers
   type(donner_save_type),        intent(inout) :: Don_save
-  type(donner_nml_type),         intent(inout) :: Nml
-  character(len=64)                            :: fname2
-  integer :: id_restart, n
 
-   call get_mosaic_tile_file(fname, fname2, .false. ) 
-   allocate(Don_restart)
-   if(trim(fname2) == trim(fname)) then
-      Til_restart => Don_restart
-      in_different_file = .false.
-   else
-      in_different_file = .true.
-      allocate(Til_restart)
-   endif
+  integer :: n
+  character(len=8), dimension(4)       :: dim_names, dim_names2 !< Array of dimension names
+  character(len=8), dimension(3)       :: dim_names2d !< Array of dimension names
 
-   id_restart = register_restart_field(Don_restart, fname, 'conv_alarm', Initialized%conv_alarm, no_domain = .true.)
-   id_restart = register_restart_field(Don_restart, fname, 'donner_deep_freq', Nml%donner_deep_freq, no_domain = .true.)
+  dim_names(1) = "xaxis_1"
+  dim_names(2) = "yaxis_1"
+  dim_names(3) = "zaxis_1"
+  dim_names(4) = "Time"
 
-   if (.not. (write_reduced_restart_file) .or. &
+  dim_names2d =  (/"xaxis_1", "yaxis_1", "Time   "/)
+  if (.not. Til_restart%mode_is_append) call register_axis(Til_restart, "Time", unlimited)
+  call register_axis(Til_restart, "xaxis_1", "x")
+  call register_axis(Til_restart, "yaxis_1", "y")
+  call register_axis(Til_restart, "zaxis_1", size(Don_save%lag_temp, 3))
+
+  !< Register the domain decomposed dimensions as variables so that the combiner can work
+  !! correctly
+  call register_field(Til_restart, dim_names(1), "double", (/dim_names(1)/))
+  call register_field(Til_restart, dim_names(2), "double", (/dim_names(2)/))
+
+  if (.not. (write_reduced_restart_file) .or. &
         Initialized%conv_alarm >  Initialized%physics_dt)  then
-      id_restart = register_restart_field(Til_restart, fname, 'cemetf', Don_save%cemetf)
-      id_restart = register_restart_field(Til_restart, fname, 'cememf', Don_save%cememf)
-      id_restart = register_restart_field(Til_restart, fname, 'mass_flux', Don_save%mass_flux)
-      id_restart = register_restart_field(Til_restart, fname, 'cell_up_mass_flux', Don_save%cell_up_mass_flux)
-      id_restart = register_restart_field(Til_restart, fname, 'det_mass_flux', Don_save%det_mass_flux)
-      id_restart = register_restart_field(Til_restart, fname, 'dql_strat', Don_save%dql_strat)
-      id_restart = register_restart_field(Til_restart, fname, 'dqi_strat', Don_save%dqi_strat)
-      id_restart = register_restart_field(Til_restart, fname, 'dqa_strat', Don_save%dqa_strat)
-      id_restart = register_restart_field(Til_restart, fname, 'tprea1', Don_save%tprea1)
-      id_restart = register_restart_field(Til_restart, fname, 'humidity_area', Don_save%humidity_area)
-      id_restart = register_restart_field(Til_restart, fname, 'humidity_factor', Don_save%humidity_factor)
+
+      dim_names2 =  (/"xaxis_1", "yaxis_1", "zaxis_2", "Time   "/)
+      call register_axis(Til_restart, "zaxis_2", size(Don_save%cell_up_mass_flux, 3))
+
+      call register_restart_field(Til_restart, 'cemetf', Don_save%cemetf, dim_names)
+      call register_restart_field(Til_restart, 'cememf', Don_save%cememf, dim_names)
+      call register_restart_field(Til_restart, 'mass_flux', Don_save%mass_flux, dim_names)
+      call register_restart_field(Til_restart, 'cell_up_mass_flux', Don_save%cell_up_mass_flux, dim_names2)
+      call register_restart_field(Til_restart, 'det_mass_flux', Don_save%det_mass_flux, dim_names)
+      call register_restart_field(Til_restart, 'dql_strat', Don_save%dql_strat, dim_names)
+      call register_restart_field(Til_restart, 'dqi_strat', Don_save%dqi_strat, dim_names)
+      call register_restart_field(Til_restart, 'dqa_strat', Don_save%dqa_strat, dim_names)
+      call register_restart_field(Til_restart, 'tprea1', Don_save%tprea1, dim_names2d)
+      call register_restart_field(Til_restart, 'humidity_area', Don_save%humidity_area, dim_names)
+      call register_restart_field(Til_restart, 'humidity_factor', Don_save%humidity_factor, dim_names)
       if (Initialized%do_donner_tracer) then
          do n=1,ntracers
-            id_restart = register_restart_field(Til_restart, fname, 'tracer_tends_'// trim(Don_save%tracername(n)), &
-                 Don_save%tracer_tends(:,:,:,n))
+            call register_restart_field(Til_restart, 'tracer_tends_'// trim(Don_save%tracername(n)), &
+                 Don_save%tracer_tends(:,:,:,n), dim_names)
          end do
       endif
-   endif
-   id_restart = register_restart_field(Til_restart, fname, 'parcel_disp', Don_save%parcel_disp)
-   id_restart = register_restart_field(Til_restart, fname, 'lag_temp', Don_save%lag_temp)
-   id_restart = register_restart_field(Til_restart, fname, 'lag_vapor', Don_save%lag_vapor)
-   id_restart = register_restart_field(Til_restart, fname, 'lag_press', Don_save%lag_press)
+  endif
+  call register_restart_field(Til_restart, 'parcel_disp', Don_save%parcel_disp, dim_names2d)
+  call register_restart_field(Til_restart, 'lag_temp', Don_save%lag_temp, dim_names)
+  call register_restart_field(Til_restart, 'lag_vapor', Don_save%lag_vapor, dim_names)
+  call register_restart_field(Til_restart, 'lag_press', Don_save%lag_press, dim_names)
 
-end subroutine fms_donner_register_restart
-
-
-!#####################################################################
-! <SUBROUTINE NAME="read_restart_nc">
-!  <OVERVIEW>
-!    read_restart_nc reads a netcdf restart file containing donner_deep
-!    restart information.
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!    read_restart_nc reads a netcdf restart file containing donner_deep
-!    restart information.
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call read_restart_nc
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-
-
-subroutine read_restart_nc (ntracers, Initialized, Nml, Don_save)
-
-!-----------------------------------------------------------------------
-!    subroutine read_restart_nc reads a netcdf restart file to obtain 
-!    the variables needed upon experiment restart. 
-!-----------------------------------------------------------------------
-
-integer, intent(in) :: ntracers
-type(donner_initialized_type), intent(inout) :: Initialized
-type(donner_save_type), intent(inout) :: Don_save
-type(donner_nml_type), intent(inout) :: Nml     
-
-!----------------------------------------------------------------------
-!   intent(in) variables:
-!
-!      ntracers    number of tracers being transported by the
-!                  donner deep convection parameterization in this job
-!
-!---------------------------------------------------------------------
-
-!---------------------------------------------------------------------
-!   local variables:
-
-      logical,         dimension(ntracers)  :: success
-      integer,         dimension(:), allocatable :: ntindices
-      type(fieldtype), dimension(:), allocatable :: tracer_fields
-
-      character(len=64)     :: fname2='INPUT/donner_deep.res.tile1'
-      character(len=64)     :: fname='INPUT/donner_deep.res.nc'
-      character(len=128)    :: tname
-      integer               :: ndim, natt, nvar, ntime
-      integer               :: old_freq
-      integer               :: n_alltracers, iuic
-      logical               :: is_tracer_in_restart_file
-      integer, dimension(4) :: siz
-      logical               :: field_found, field_found2, &
-                               field_found4
-      integer               :: it, jn, nn
-
-!---------------------------------------------------------------------
-!   local variables:
-!
-!        success          logical indicating if needed data for tracer n 
-!                         was obtained from restart file
-!        ntindices        array of all tracer indices
-!        tracer_fields    field_type variable containing information on
-!                         all restart file variables
-!        fname2           restart file name without ".nc" appended, 
-!                         needed as argument in call to mpp_open
-!        fname            restart file name
-!        tname            contains successive variable names from 
-!                         restart file
-!        ndim             number of dimensions in restart file
-!        natt             number of attributes in restart file
-!        nvar             number of variables in restart file
-!        ntime            number of time levels in restart file
-!        old_freq         donner_deep_freq as read from restart file;
-!                         value used during previous job
-!        n_alltracers     number of tracers registered with 
-!                         tracer_manager_mod
-!        iuic             unit number assigned to restart file
-!        is_tracer_in_restart_file  
-!                         should we stop searching the restart file 
-!                         for the current tracer name because it has 
-!                         been found ?
-!        siz              sizes (each dimension) of netcdf variable 
-!        field_found      is the requested variable in the restart file ?
-!                         if it is not, then this is a reduced restart
-!                         file
-!        field_found2     is the requested variable in the restart file ?
-!                         if it is not, then Don_save%det_mass_flux and
-!                         Don_save%cell_up_mass_flux must be initialized
-!        it, jn, nn       do-loop indices
-!
-!----------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!    output a message indicating entrance into this routine.
-!--------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe() ) then
-        call error_mesg ('donner_deep_mod',  'read_restart_nc:&
-             &Reading netCDF formatted restart file: &
-                                 &INPUT/donner_deep.res.nc', NOTE)
-      endif
-
-!-------------------------------------------------------------------
-!    read the values of conv_alarm when the restart file was written and
-!    the frequency of calculating donner deep convection effects in the
-!    job which wrote the file.
-!-------------------------------------------------------------------
-      call read_data(fname, 'conv_alarm', Initialized%conv_alarm,   &
-                                                       no_domain=.true.)
-      call read_data(fname, 'donner_deep_freq', old_freq,   &
-                                                       no_domain=.true.)
-  
-!----------------------------------------------------------------------
-!    call field_size to determine if variable cemetf is present in the
-!    restart file.
-!----------------------------------------------------------------------
-      call field_size(fname, 'cemetf', siz, field_found=field_found)
-
-!---------------------------------------------------------------------
-!    if the frequency of calculating deep convection has changed, 
-!    redefine the time remaining until the next calculation.
-!---------------------------------------------------------------------
-      if (Nml%donner_deep_freq /= old_freq) then
-        Initialized%conv_alarm = Initialized%conv_alarm - old_freq +  &
-                                 Nml%donner_deep_freq
-        if (mpp_pe() == mpp_root_pe()) then
-          call error_mesg ('donner_deep_mod', 'read_restart_nc:  &
-                   &donner_deep time step has changed', NOTE)
-        endif
-
-!----------------------------------------------------------------------
-!    if cemetf is not present, then this is a reduced restart file. it 
-!    is not safe to change the frequency of calculating donner 
-!    effects when reading a reduced restart file, so a fatal error is
-!    generated.
-!----------------------------------------------------------------------
-        if (.not. field_found) then
-          call error_mesg ('donner_deep_mod', 'read_restart_nc: &
-           & cannot use reduced restart file and change donner_deep_freq&
-           & within experiment and guarantee restart reproducibility', &
-                                                                  FATAL)
-        endif
-      endif  !(donner_deep_freq /= old_freq)
-
-!---------------------------------------------------------------------
-!    read the restart data that is present in a full restart but absent
-!    in a reduced restart.
-!---------------------------------------------------------------------
-      if (field_found) then
-        call read_data (fname, 'cemetf',  Don_save%cemetf)
-        call read_data (fname, 'cememf',  Don_save%cememf)            
-        call read_data (fname, 'mass_flux', Don_save%mass_flux)
-        call read_data (fname, 'dql_strat', Don_save%dql_strat)
-        call read_data (fname, 'dqi_strat', Don_save%dqi_strat)
-        call read_data (fname, 'dqa_strat', Don_save%dqa_strat)
-        call read_data (fname, 'tprea1', Don_save%tprea1)       
-        call read_data (fname, 'humidity_area', Don_save%humidity_area) 
-
-!---------------------------------------------------------------------
-!  determine if humidity_factor is in file. if it is, read the values 
-!  into Don_Save%humidity_factor. if it is not (it is an older file), 
-!  it is only required if donner_deep will not be called on the first 
-!  step of this job.
-!  if that is the case, stop with a fatal error; otherwise, continue on,
-!  since humidity_factor will be calculated before it is used.
-!---------------------------------------------------------------------
-        call field_size(fname, 'humidity_factor', siz,   &
-                                              field_found=field_found4)
-        if (field_found4) then
-          call read_data (fname, 'humidity_factor',  &
-                                              Don_save%humidity_factor)
-        else if (Initialized%conv_alarm > 0) then
-          call error_mesg ('donner_deep_mod', &
-             'cannot restart with this restart file unless donner_deep &
-                &calculated on first step', FATAL)
-        endif
-
-!----------------------------------------------------------------------
-!    determine if det_mass_flux is present in the file.
-!----------------------------------------------------------------------
-        call field_size(fname, 'det_mass_flux', siz,    &
-                                               field_found=field_found2)
-
-!----------------------------------------------------------------------
-!    if it is present, then read det_mass_flux and cell_up_mass_flux.
-!----------------------------------------------------------------------
-        if (field_found2) then
-          call read_data (fname, 'det_mass_flux', Don_save%det_mass_flux)
-          call read_data (fname, 'cell_up_mass_flux',    &
-                                              Don_save%cell_up_mass_flux)
-
-!----------------------------------------------------------------------
-!    if it is not present (an earlier version of this file), set 
-!    det_mass_flux and cell_up_mass_flux to default values.
-!----------------------------------------------------------------------
-        else
-          Don_save%det_mass_flux     = 0.0
-          Don_save%cell_up_mass_flux = 0.0
-        endif
-
-!------------------------------------------------------------------
-!    if tracers are to be transported, see if tendencies are available
-!    in the restart file.
-!------------------------------------------------------------------
-        if (Initialized%do_donner_tracer) then
-
-!---------------------------------------------------------------------
-!    initialize a logical array indicating whether the data for each
-!    tracer is available.
-!---------------------------------------------------------------------
-          success = .false.
-
-!---------------------------------------------------------------------
-!    open the restart file with mpp_open so that the unit number is 
-!    available. obtain needed file characteristics by calling 
-!    mpp_read_meta and  mpp_get_info. 
-!---------------------------------------------------------------------
-          call mpp_open(iuic, fname2, &
-               action=MPP_RDONLY, form=MPP_NETCDF, threading=MPP_SINGLE )
-          call mpp_read_meta (iuic)
-          call mpp_get_info (iuic, ndim, nvar, natt, ntime)
-
-!---------------------------------------------------------------------
-!    obtain information on the file variables by calling mpp_get_fields.
-!    it is returned in a field_type variable tracer_fields; the specific
-!    information needed is the variable name.
-!---------------------------------------------------------------------
-          allocate (tracer_fields(nvar))
-          if (mpp_pe() == mpp_root_pe()) then
-            call mpp_get_fields (iuic, tracer_fields)
-          endif
-
-!---------------------------------------------------------------------
-!    call get_number_tracers to determine how many tracers are registered
-!    with tracer manager. allocate an array to hold their tracer indices.
-!    call get_tracer_indices to retrieve the tracer indices. 
-!---------------------------------------------------------------------
-          call get_number_tracers (MODEL_ATMOS, num_tracers=n_alltracers)
-          allocate (ntindices(n_alltracers))
-          call get_tracer_indices (MODEL_ATMOS, ind=ntindices)
-
-!----------------------------------------------------------------------
-!    loop over the tracers, obtaining their names via a call to
-!    get_tracer_names. bypass those tracers known to not be transported
-!    by donner convection.
-!----------------------------------------------------------------------
-          do it=1,n_alltracers
-            call get_tracer_names (MODEL_ATMOS, ntindices(it), tname)
-            if (tname == "sphum"  ) cycle
-            if (tname == "liq_wat") cycle
-            if (tname == "ice_wat") cycle
-            if (tname == "cld_amt") cycle
-
-!--------------------------------------------------------------------
-!    initialize a logical indicating whether this tracer is in the 
-!    restart file.
-!--------------------------------------------------------------------
-            is_tracer_in_restart_file = .FALSE.
-
-!---------------------------------------------------------------------
-!    loop over the variables in the restart file to determine if the
-!    current tracer's time tendency field is present.
-!---------------------------------------------------------------------
-            do jn=1,nvar 
-              if (lowercase (trim(mpp_get_field_name(tracer_fields(jn)))) ==   &
-                  lowercase ('tracer_tends_' // trim(tname)) ) then 
-
-!---------------------------------------------------------------------
-!    if tracer tendency is in restart file, write a message. set the 
-!    logical flag indicating such to .true..
-!---------------------------------------------------------------------
-                if (mpp_pe() == mpp_root_pe() )  then
-                  print *,'tracer_tends_' // trim(tname), ' found!'
-                endif
-                is_tracer_in_restart_file = .TRUE.
-
-!---------------------------------------------------------------------
-!    loop over the tracers being transported by donner convection in this
-!    job to determine if this tracer is one of those being transported.
-!    determine the tracer index in tracername array corresponding to 
-!    this tracer.
-!---------------------------------------------------------------------
-                do nn=1,ntracers
-                  if (lowercase( 'tracer_tends_' // trim(tname) ) == &
-                      'tracer_tends_' // Don_save%tracername(nn) )  then
-                  
-!---------------------------------------------------------------------
-!    if data for this tracer is needed, read data into proper section of
-!    array tracer_tends. set the logical flag for this tracer indicating 
-!    successful retrieval. exit this loop.
-!---------------------------------------------------------------------
-                    call read_data (fname,   &
-                                  'tracer_tends_' // trim(tname),   &
-                                   Don_save%tracer_tends(:,:,:,nn))
-                    success(nn) = .true.
-                    exit
-                  endif 
-                end do  ! (nn)
-              endif
-
-!---------------------------------------------------------------------
-!    if desired tracer has been found, stop searching the restart file
-!    variables for this tracer and cycle to begin searching the restart
-!    file for the next field_table tracer.
-!---------------------------------------------------------------------
-              if (is_tracer_in_restart_file) exit
-            end do !  (jn)
-          end do ! (it)
-
-!---------------------------------------------------------------------
-!    initialize the time tendencies to 0.0 for any tracers that are to
-!    be transported and whose time tendencies were not found on the 
-!    restart file.  enter a message in the output file.
-!---------------------------------------------------------------------
-          do nn=1,ntracers
-            if (success(nn) ) then
-            else
-              call error_mesg ('donner_deep_mod', 'read_restart_nc: &
-                  &did not find tracer restart data for ' //  &
-                  trim(Don_save%tracername(nn)) //  &
-                  '; am initializing tendency to 0.0', NOTE)
-              Don_save%tracer_tends(:,:,:,nn) = 0.0
-            endif   
-          end do
-
-!----------------------------------------------------------------------
-!    deallocate local variables.
-!----------------------------------------------------------------------
-          deallocate (ntindices)
-          deallocate (tracer_fields)
-        endif  ! (do_donner_tracer)
-      endif  ! (field_found)
-
-!---------------------------------------------------------------------
-!    read the restart data that is present in both full and reduced
-!    restart files.
-!---------------------------------------------------------------------
-      call read_data (fname, 'parcel_disp', Don_save%parcel_disp)
-      call read_data (fname, 'lag_temp',    Don_save%lag_temp)     
-      call read_data (fname, 'lag_vapor',   Don_save%lag_vapor)     
-      call read_data (fname, 'lag_press',   Don_save%lag_press)     
-
-!---------------------------------------------------------------------
-
-
-
-
-end subroutine read_restart_nc
-
-
+end subroutine fms_donner_register_restart_domain
 
 !#####################################################################
 
@@ -3818,143 +3543,6 @@ end subroutine donner_deep_netcdf
 
 
 !#####################################################################
-
-subroutine write_restart (ntracers, Don_save, Initialized, Nml)          
-
-!--------------------------------------------------------------------
-!    subroutine write_restart is a template to be used if a native mode
-!    restart file MUST be generated. currently, if a native mode file is
-!    requested, a netcdf file will be witten instead, and an informative
-!    message provided.
-!--------------------------------------------------------------------
- 
-integer, intent(in) :: ntracers
-type(donner_initialized_type), intent(inout) :: Initialized
-type(donner_save_type), intent(inout) :: Don_save
-type(donner_nml_type), intent(inout) :: Nml     
-
-!----------------------------------------------------------------------
-!   intent(in) variables:
-!
-!     ntracers               number of tracers to be transported by
-!                            the donner deep convection parameterization
-!
-!--------------------------------------------------------------------
-
-!--------------------------------------------------------------------
-!  local variables:
-
-!     integer :: unit          ! unit number for restart file
-!     integer :: n             ! do-loop index
-
-!-------------------------------------------------------------------
-!    currently code is provided only for writing netcdf restart files.
-!    if a non-netcdf restart file has been requested, this routine will 
-!    issue a message, and then call the routine to write the netcdf file.
-!    if the user is insistent on a native mode restart file, the code to
-!    read and write such files (subroutines write_restart and 
-!    read_restart_file) must be updated to be compatible with  the cur-
-!    rent versions of write_restart_nc and read_restart_nc, and the 
-!    code immediately below eliminated. the commented code below repres-
-!    ents a starting point for the write_restart routine; it is not 
-!    kept up-to-date as far as the variables which must be written.
-!-------------------------------------------------------------------
-      call error_mesg ('donner_deep_mod', 'write_restart: &
-          &writing a netcdf restart despite request for native &
-           &format (not currently supported); if you must have native &
-           &mode, then you must update the source code and remove &
-                                               &this if loop.', NOTE)
-!      call write_restart_nc (ntracers, Don_save, Initialized, Nml) 
-
-!-------------------------------------------------------------------
-!    open unit for restart file.
-!-------------------------------------------------------------------
-!      unit = open_restart_file ('RESTART/donner_deep.res', 'write')
-
-!-------------------------------------------------------------------
-!    file writing is currently single-threaded. write out restart
-!    version, time remaining until next call to donner_deep_mod and
-!    the frequency of calculating donner_deep convection.
-!-------------------------------------------------------------------
-!     if (mpp_pe() == mpp_root_pe()) then
-!       write (unit) restart_versions(size(restart_versions(:)))
-!       write (unit) Initialized%conv_alarm, donner_deep_freq
-!     endif
-
-!-------------------------------------------------------------------
-!    write out the donner_deep restart variables.
-!    cemetf    - heating rate due to donner_deep
-!    cememf    - moistening rate due to donner_deep
-!    xcape_lag - cape value which will be used on next step in
-!                calculation od dcape/dt
-!-------------------------------------------------------------------
-!     call write_data (unit, Don_save%cemetf)
-!     call write_data (unit, Don_save%cememf)
-      
-!--------------------------------------------------------------------
-!    the following variables are needed when a prognostic cloud scheme
-!    is being used. they are always present in the restart file, having
-!    been initialized to zero, if prognostic clouds are not active.
-!--------------------------------------------------------------------
-!     call write_data (unit, Don_save%mass_flux)
-!     call write_data (unit, Don_save%dql_strat )
-!     call write_data (unit, Don_save%dqi_strat )
-!     call write_data (unit, Don_save%dqa_strat )
-
-!----------------------------------------------------------------------
-!    
-!-------------------------------------------------------------------
-!    write out more donner_deep restart variables.
-!    qint_lag   - column integrated water vapor mixing ratio
-!    parcel_disp  - time-integrated low-level vertical displacement
-!    tprea1     - precipitation due to donner_deep_mod
-!----------------------------------------------------------------------
-!     call write_data (unit, Don_save%parcel_disp)
-!     call write_data (unit, Don_save%tprea1)
-!     call write_data (unit, Don_save%lag_temp)
-!     call write_data (unit, Don_save%lag_vapor)
-!     call write_data (unit, Don_save%lag_press)
-!     call write_data (unit, Don_save%humidity_area)
-!     call write_data (unit, Don_save%humidity_ratio)
-
-!---------------------------------------------------------------------
-!    write out the number of tracers that are being transported by
-!    donner_deep_mod.
-!---------------------------------------------------------------------
-!     if (mpp_pe() == mpp_root_pe()) then
-!       write (unit) ntracers
-!     endif
-
-!----------------------------------------------------------------------
-!    if tracers are being transported, write out their names and 
-!    current time tendencies.
-!----------------------------------------------------------------------
-!     if (Initialized%do_donner_tracer) then
-!       do n=1,ntracers
-!         if (mpp_pe() == mpp_root_pe()) then
-!           write (unit) Don_save%tracername(n)         
-!         endif
-!         call write_data(unit, Don_save%tracer_tends(:,:,:,n))
-!       end do
-!     endif
-
-!-------------------------------------------------------------------
-!    close restart file unit.
-!------------------------------------------------------------------
-!     call close_file (unit)
-
-!---------------------------------------------------------------------
-
-
-end subroutine write_restart
-
-
-
-
-!######################################################################
-
-
-
 
 
 !######################################################################

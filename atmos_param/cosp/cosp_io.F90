@@ -50,8 +50,7 @@ MODULE MOD_COSP_IO
   use MOD_COSP_Modis_Simulator
 #ifdef COSP_GFDL
   use mpp_mod, only: input_nml_file
-  use fms_mod, only: open_namelist_file, open_file, close_file,   &
-                     file_exist, mpp_pe, mpp_root_pe,   &
+  use fms_mod, only: mpp_pe, mpp_root_pe,   &
                      error_mesg, FATAL, &
                      check_nml_error, write_version_number, stdlog
 #endif
@@ -1778,7 +1777,7 @@ CONTAINS
              Ltauwlogmodis,Ltauilogmodis,Lreffclwmodis,Lreffclimodis,Lpctmodis,Llwpmodis, &
              Liwpmodis,Lclmodis
 #ifdef COSP_GFDL
-  integer :: unit, io, ierr, logunit
+  integer :: io, ierr, logunit
 #endif
 
   do i=1,N_OUT_LIST
@@ -1787,20 +1786,8 @@ CONTAINS
 #ifdef COSP_GFDL
 !---------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=cosp_output, iostat=io)
    ierr = check_nml_error(io,"cosp_output")
-#else
-!---------------------------------------------------------------------
-    if ( file_exist('input.nml')) then
-     unit =  open_namelist_file ()
-     ierr=1; do while (ierr /= 0)
-     read  (unit, nml=cosp_output, iostat=io, end=10)
-     ierr = check_nml_error(io,'cosp_output')
-     enddo
-10      call close_file (unit)
-   endif
-#endif
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------

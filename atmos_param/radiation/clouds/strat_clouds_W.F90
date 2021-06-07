@@ -19,11 +19,11 @@
 use constants_mod,          only: radian
 use time_manager_mod,       only: time_type, time_manager_init
 use mpp_mod,                only: input_nml_file
-use fms_mod,                only: open_namelist_file, mpp_pe, &
+use fms_mod,                only: mpp_pe, &
                                   mpp_root_pe, stdlog,  fms_init, &
-                                  write_version_number, file_exist, &
+                                  write_version_number, &
                                   check_nml_error, error_mesg,   &
-                                  FATAL, close_file
+                                  FATAL
 
 !   atmos shared modules:
 
@@ -142,12 +142,11 @@ subroutine strat_clouds_W_init(latb, lonb, Cldrad_control, Exch_ctrl)
 !----------------------------------------------------------------------
 !   local variables:
 
-      integer   ::   unit, ierr, io, logunit
+      integer   ::   ierr, io, logunit
 
 !--------------------------------------------------------------------
 !   local variables:
 !
-!      unit     io unit for reading nml file and writing logfile
 !      ierr     error code
 !      io       error status returned from io operation  
 !
@@ -179,20 +178,8 @@ subroutine strat_clouds_W_init(latb, lonb, Cldrad_control, Exch_ctrl)
 !---------------------------------------------------------------------
 !    read namelist.         
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=strat_clouds_W_nml, iostat=io)
    ierr = check_nml_error(io,'strat_clouds_W_nml')
-#else
-      if (file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read (unit, nml=strat_clouds_W_nml, iostat=io, end=10) 
-        ierr = check_nml_error (io, 'strat_clouds_W_nml')
-        enddo                       
-10      call close_file (unit)      
-      endif                         
-#endif
-                                    
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------

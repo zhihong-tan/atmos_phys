@@ -21,15 +21,14 @@ module atmos_sulfate_mod
 !-----------------------------------------------------------------------
 
 use                    mpp_mod, only : input_nml_file 
-use                    fms_mod, only : file_exist,              &
-                                       write_version_number,    &
+use                    fms_mod, only : write_version_number,    &
                                        mpp_pe,                  &
                                        mpp_root_pE,             &
-                                       close_file,              &
                                        stdlog,                  &
                                        check_nml_error, error_mesg, &
-                                       open_namelist_file, FATAL, NOTE, WARNING, &
+                                       FATAL, NOTE, WARNING, &
                                        lowercase !f1p
+use                fms2_io_mod, only : file_exists
 use           time_manager_mod, only : time_type, &
                                        days_in_month, days_in_year, &
                                        set_date, set_time, get_date_julian, &
@@ -332,7 +331,7 @@ integer :: n, m, nsulfate
 
 !-----------------------------------------------------------------------
 !
-      integer  unit,io, logunit
+      integer  io, logunit
       character(len=12) :: SOx_tracer(5)
 !
 !     1. DMS       = Dimethyl sulfide            = CH3SCH3
@@ -356,18 +355,9 @@ integer :: n, m, nsulfate
 
 !    read namelist.
 !-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if ( file_exists('input.nml')) then
         read (input_nml_file, nml=simple_sulfate_nml, iostat=io)
         ierr = check_nml_error(io,'simple_sulfate_nml')
-#else
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=simple_sulfate_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'simple_sulfate_nml')
-        end do
-10      call close_file (unit)
-#endif
       endif
 
 !---------------------------------------------------------------------
