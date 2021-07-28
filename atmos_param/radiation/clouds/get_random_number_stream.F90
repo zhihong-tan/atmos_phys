@@ -4,10 +4,10 @@ module random_number_streams_mod
 !----------------------------------------------------------------------
 
 use mpp_mod,            only:  input_nml_file
-use fms_mod,            only:  open_namelist_file, mpp_pe, &
+use fms_mod,            only:  mpp_pe, &
                                mpp_root_pe, stdlog, fms_init, &
-                               write_version_number, file_exist, &
-                               check_nml_error, close_file, &
+                               write_version_number, &
+                               check_nml_error, &
                                error_mesg, FATAL, NOTE
 use time_manager_mod,   only:  time_type
 use constants_mod,      only:  RADIAN
@@ -82,7 +82,7 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !----------------------------------------------------------------------
 !   local variables:
 
-      integer  ::   unit, ierr, io
+      integer  ::   ierr, io
       integer  ::   id, jd, i, j, ii, jj
 
 !---------------------------------------------------------------------
@@ -98,20 +98,8 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 
 !---------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=random_number_streams_nml, iostat=io)
       ierr = check_nml_error(io,"random_number_streams_nml")
-#else
-      if (file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read (unit, nml=random_number_streams_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'random_number_streams_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
-
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------
@@ -136,17 +124,17 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !---------------------------------------------------------------------
         if ( force_use_of_temp_for_seed) then
           use_temp_for_seed = .true.
-          call error_mesg ('cloud_spec_init', &
+          call error_mesg ('random_number_streams_init', &
            'Will use temp as basis for stochastic cloud seed; seed is set true', &
             NOTE)
         else
           use_temp_for_seed = .false.
-          call error_mesg ('cloud_spec_init', &
+          call error_mesg ('random_number_streams_init', &
                ' If model resolution is above c48, it is '// &
-               'HIGHLY RECOMMENDED that you set cloud_spec_nml variable '// &
+               'HIGHLY RECOMMENDED that you set random_number_streams_nml variable '// &
                'force_use_of_temp_for_seed to true to assure '// &
                'reproducibility across pe count and domain layout', NOTE)
-          call error_mesg ('cloud_spec_init', &
+          call error_mesg ('random_number_streams_init', &
                'No action is needed at or below c48 resolution.', NOTE)
         endif
 
@@ -185,12 +173,12 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
                   if (NINT(lats(ii,jj)) == NINT(lats(i,j))) then
                     if (NINT(lons(ii,jj)) == NINT(lons(i,j))) then    
                       Cldrad_control%use_temp_for_seed = .true.
-                      call error_mesg ('cloud_spec_init', &
+                      call error_mesg ('random_number_streams_init', &
                            'Found grid point within 1 degree of  &
                              &another',NOTE)
-                      call error_mesg ('cloud_spec_init', &
+                      call error_mesg ('random_number_streams_init', &
                             'if reproducibility across npes and layout is &
-                           &desired, you must set cloud_spec_nml variable &
+                           &desired, you must set random_number_streams_nml variable &
                            &force_use_of_temp_for_seed to true., and &
                            &restart the model.', NOTE)
                       exit jLoop

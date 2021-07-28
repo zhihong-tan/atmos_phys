@@ -409,19 +409,14 @@ module MO_FASTJX_MOD
 ! END MODULE FJX_SUB_MOD
 !----------------------------------------------------------------------------------                                                                       
 
-      use              fms_mod, only : file_exist,              &
-                                       write_version_number,    &
+      use              fms_mod, only : write_version_number,    &
                                        mpp_pe,                  &
                                        mpp_root_pE,             &
-                                       close_file,              &
                                        stdlog,                  &
                                        mpp_clock_begin, mpp_clock_end, &
                                        mpp_clock_id, CLOCK_MODULE, &
                                        check_nml_error, error_mesg, &
-                                       open_namelist_file, FATAL
-      use           mpp_io_mod, only : mpp_open, mpp_close, MPP_RDONLY, &
-                                       MPP_ASCII, MPP_SEQUENTIAL,   &
-                                       MPP_MULTI, MPP_SINGLE 
+                                       FATAL
       use           time_manager_mod, only : time_type, get_date
       use tropchem_types_mod, only : tropchem_opt
       implicit none
@@ -1383,8 +1378,7 @@ module MO_FASTJX_MOD
 ! >>>> W_ = 12 <<<< means trop-only, discard WL #1-4 and #9-10, some X-sects
 
 !      open (NUN,FILE=NAMFIL,status='old',form='formatted')
-      call mpp_open (NUN, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+      NUN = MO_open_file(trim(NAMFIL))
 
       read (NUN,100) TITLE0
 
@@ -1576,7 +1570,7 @@ module MO_FASTJX_MOD
        endif
       endif
 
-      call mpp_close (NUN)
+      close (NUN)
 
   100 format(a)
   101 format(10x,5i5)
@@ -1615,9 +1609,7 @@ module MO_FASTJX_MOD
       character*20 TITLAA(A_)   ! TITLAA: Title for scatering data
 
 !      open (NUN,FILE=NAMFIL,status='old',form='formatted')
-      call mpp_open (NUN, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
-
+      NUN = MO_open_file(trim(NAMFIL))
 
       read (NUN,'(i2,a78)') NCC,TITLE0
         if (NCC .gt. C_) then
@@ -1638,7 +1630,7 @@ module MO_FASTJX_MOD
         enddo
       enddo
 
-      call mpp_close(NUN)
+      close(NUN)
 
 !      write(*,'(a,9f8.1)') ' Aerosol optical: r-eff/rho/Q(@wavel):'  &
 !                   ,(WCC(K,1),K=1,5)
@@ -1676,9 +1668,7 @@ module MO_FASTJX_MOD
       character*20 TITLAA(A_)   ! TITLAA: Title for scatering data
 
 !      open (NUN,FILE=NAMFIL,status='old',form='formatted')
-      call mpp_open (NUN, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
-
+      NUN = MO_open_file(trim(NAMFIL))
       read (NUN,'(i2,a78)') NAA,TITLE0
         if (NAA .gt. A_) then
           write(*,*)' too many aerosol-data sets: NAA > A_'
@@ -1698,7 +1688,7 @@ module MO_FASTJX_MOD
         enddo
       enddo
 
-      call mpp_close(NUN)
+      close(NUN)
 
 !      write(*,'(a,9f8.1)') ' Aerosol optical: r-eff/rho/Q(@wavel):'  &
 !                   ,(WAA(K,1),K=1,5)
@@ -1726,9 +1716,7 @@ module MO_FASTJX_MOD
       character*20 TITLUM(33)   ! TITLUM: Title for U Michigan aerosol data set
 
 !      open (NUN,FILE=NAMFIL,status='old',form='formatted')
-     call mpp_open (NUN, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
-
+      NUN = MO_open_file(trim(NAMFIL))
       read (NUN,'(a78)') TITLE0
 !        write(*,*) 'UMichigan Aerosols', TITLE0
       read(NUN,'(5x,10f5.0)') WMM
@@ -1746,7 +1734,7 @@ module MO_FASTJX_MOD
         enddo
       enddo
 
-      call mpp_close(NUN)
+      close(NUN)
 
 !        write(*,'(a)') 'collapse UM wavelengths, drop 550 nm'
           WMM(4) = WMM(5)
@@ -1855,10 +1843,7 @@ module MO_FASTJX_MOD
       JFACTA(:) = 0.d0
 
 !      open (NUNIT,file=NAMFIL,status='old',form='formatted')
-      call mpp_open (NUNIT, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
-
-
+       NUNIT = MO_open_file(trim(NAMFIL))
        read (NUNIT,'(a)') CLINE
 !         write(*,'(a)') CLINE
       do J = 1,JVN_
@@ -1870,7 +1855,7 @@ module MO_FASTJX_MOD
         NRATJ = JJ
       enddo
 
- 20   call mpp_close(NUNIT)
+ 20   close(NUNIT)
 
 !---Zero / Set index arrays that map Jvalue(j) onto rates
       do K = 1,NRATJ
@@ -1904,8 +1889,7 @@ module MO_FASTJX_MOD
       character(*), intent(in)               ::  NAMFIL
       integer   NUN, year, month,nyr,nv,nband
 
-      call mpp_open (NUN, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+          NUN = MO_open_file(trim(NAMFIL))
           read (NUN, FMT = '(4i8)') first_yr, last_yr,  &
                                    nvalues_per_year, numbands
           if (numbands /= nbands) then
@@ -1933,7 +1917,7 @@ module MO_FASTJX_MOD
 
           read (NUN, FMT = '(2i6,e12.5)') year, month, solflxtot_ann_2300
           read (NUN, FMT = '(6e12.5 )')  (solflxband_ann_2300(nband), nband =1,numbands)
-      call mpp_close(NUN)
+      close(NUN)
 
       END SUBROUTINE RD_SOLAR                                           
 
@@ -3797,8 +3781,7 @@ module MO_FASTJX_MOD
 !   WAA(K,J),QAA(K,J),SAA(K,J),PAA(I,K,J)
 !
 !jul--                                                                        
-      call mpp_open (NJ1, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+      NJ1 = MO_open_file(trim(NAMFIL))
                                                                         
       read (NJ1,'(i4,a78)') NAA_AM3, TITLE0_AM3 
       if (NAA_AM3 .gt. A_AM3) then 
@@ -3833,7 +3816,7 @@ module MO_FASTJX_MOD
         enddo 
       enddo 
                                                                         
-       call mpp_close (NJ1)
+       close (NJ1)
 !      if (mpp_pe() == mpp_root_pe()) then 
 !        write(*,'(a,9f8.1)') ' ATMOS:fastjx_init: RD_MIE: Aerosol optical: r-eff/rho/Q(@wavel):'     &
 !                  ,(WAA_AM3(K,1),K=1,5)                                    
@@ -3873,4 +3856,16 @@ module MO_FASTJX_MOD
       endif 
       return 
       END  FUNCTION FLINT                                         
+
+!> @brief This function is just a wrapper for Fortran's `open`
+!! @return Unique unit number
+function MO_open_file (filename) result (funit)
+  character(len=*), intent(in), optional :: filename
+  integer :: funit
+
+  open(file=filename, form='formatted',action='read', newunit=funit)
+
+end function MO_open_file
+
+
 end module MO_FASTJX_MOD

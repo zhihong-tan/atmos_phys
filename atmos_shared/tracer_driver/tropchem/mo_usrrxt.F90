@@ -9,7 +9,7 @@
       use tracer_manager_mod, only : get_tracer_index,  query_method
       use field_manager_mod,  only: parse             
       use tropchem_types_mod, only : tropchem_opt, tropchem_diag
-      use fms_mod,    only : open_file, close_file
+      use mpp_mod, only: mpp_root_pe, mpp_pe
 
 implicit none
       public :: usrrxt_init, usrrxt
@@ -158,9 +158,7 @@ end if
 !     RAA      Effective radius associated with aerosol type            
 !     SAA      Single scattering albedo                                 
 !-----------------------------------------------------------------------
-      funit = open_file(FILE='INPUT/am3_uptake.dat',form='formatted',action='read',threading='multi', &
-                        dist=.false.)
-
+      open(FILE='INPUT/am3_uptake.dat',form='formatted',action='read', newunit=funit)
       read (funit,'(i4,a78)') NAA_HET, TITLE0_HET 
       if (NAA_HET .gt. A_HET) then 
          write(*,*) 'ATMOS:fastjx_init: too many scat-data sets for AM3:', NAA_HET, A_HET 
@@ -178,7 +176,7 @@ end if
          enddo
        enddo  
        
-       call close_file(funit,dist=.false.)
+       close(funit)
 
     end subroutine usrrxt_init
 

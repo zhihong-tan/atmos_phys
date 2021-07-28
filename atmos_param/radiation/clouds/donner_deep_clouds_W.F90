@@ -19,9 +19,8 @@
 
 use time_manager_mod,   only: time_type
 use mpp_mod,            only: input_nml_file
-use fms_mod,            only: open_namelist_file, file_exist,   &
-                              check_nml_error, error_mesg,   &
-                              close_file, FATAL,  &
+use fms_mod,            only: check_nml_error, error_mesg,   &
+                              FATAL,  &
                               mpp_pe, mpp_root_pe, &
                               write_version_number, stdlog
 use cloudrad_types_mod, only: microphysics_type
@@ -121,25 +120,14 @@ real, dimension(:,:), intent(in) :: lonb, latb
 integer, dimension(4), intent(in)      :: axes
 type(time_type),       intent(in)      :: Time
 
-      integer            :: unit, ierr, io, logunit
+      integer            :: ierr, io, logunit
 
      if (module_is_initialized) return
 !---------------------------------------------------------------------
 !-----  read namelist  ------
   
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=donner_deep_clouds_W_nml, iostat=io)
       ierr = check_nml_error(io,"donner_deep_clouds_W_nml")
-#else
-      if (file_exist('input.nml')) then
-        unit =  open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read (unit, nml=donner_deep_clouds_W_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'donner_deep_clouds_W_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
       if ( mpp_pe() == mpp_root_pe() ) then
          call write_version_number(version, tagname)

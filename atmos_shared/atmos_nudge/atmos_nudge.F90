@@ -1,12 +1,8 @@
 module atmos_nudge_mod
 
-#ifdef INTERNAL_FILE_NML
 use mpp_mod, only: input_nml_file
-#else
-use fms_mod, only: open_namelist_file
-#endif
 
-use fms_mod, only: check_nml_error, close_file, &
+use fms_mod, only: check_nml_error,  &
                    stdlog, mpp_pe, mpp_root_pe, write_version_number, &
                    error_mesg, FATAL, WARNING
 use time_manager_mod, only: time_type, set_time, get_date, &
@@ -296,24 +292,15 @@ subroutine atmos_nudge_init ( Time, axes, flag )
 type (time_type),      intent(in)  :: Time
 integer, dimension(3), intent(in)  :: axes
 logical, optional,     intent(out) :: flag
-integer :: ierr, io, unit, logunit
+integer :: ierr, io, logunit
 real :: eps
 character(len=64) :: desc
 real :: missing_value = -1.e10
 
  ! read namelist
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=atmos_nudge_nml, iostat=io)
    ierr = check_nml_error(io, 'atmos_nudge_nml')
-#else
-   unit = open_namelist_file()
-   ierr=1  
-   do while (ierr /= 0)
-     read (unit, nml=atmos_nudge_nml, iostat=io, end=10) 
-     ierr = check_nml_error (io, 'atmos_nudge_nml')
-   enddo   
-10 call close_file (unit)
-#endif
+
    call write_version_number (version, tagname)
    logunit=stdlog()
    if (mpp_pe() == mpp_root_pe()) write (logunit, nml=atmos_nudge_nml)

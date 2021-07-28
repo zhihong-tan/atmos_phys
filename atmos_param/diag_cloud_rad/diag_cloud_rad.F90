@@ -28,8 +28,8 @@ MODULE DIAG_CLOUD_RAD_MOD
 !-------------------------------------------------------------------
 
 use       mpp_mod, only: input_nml_file
-use       fms_mod, only: file_exist, check_nml_error, open_namelist_file, &
-                         mpp_pe, mpp_root_pe, close_file, &
+use       fms_mod, only: check_nml_error, &
+                         mpp_pe, mpp_root_pe, &
                          write_version_number, stdlog
 
 ! Steve Klein's Cloud_Rad module
@@ -3188,7 +3188,7 @@ end subroutine CLOUD_OPT_PROP_tg2
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer             :: unit, io, logunit, ierr
+ integer             :: io, logunit, ierr
 
 !=====================================================================
 
@@ -3196,23 +3196,8 @@ end subroutine CLOUD_OPT_PROP_tg2
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
   read (input_nml_file, nml=diag_cloud_rad_nml, iostat=io)
   ierr = check_nml_error(io,"diag_cloud_rad_nml")
-#else
-  if( FILE_EXIST( 'input.nml' ) ) then
-! -------------------------------------
-         unit = open_namelist_file ()
-   io = 1
-   do while( io .ne. 0 )
-      READ ( unit,  nml = diag_cloud_rad_nml, iostat = io, end = 10 ) 
-      ierr = check_nml_error(io,'diag_cloud_rad_nml')
-   end do
-10 continue
-   call close_file (unit)
-! -------------------------------------
-  end if
-#endif
 
 !   **** call cloud_rad_init to read namelist containing L2STREM  ****
        call cloud_rad_init()

@@ -1,9 +1,10 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 ! 
 ! Copyright (c) 2009,  Roger Marchand, version 1.2
 ! All rights reserved.
 ! $Revision: 23 $, $Date: 2011-03-31 09:41:37 -0400 (Thu, 31 Mar 2011) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/MISR_simulator/MISR_simulator.f $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/MISR_simulator/MISR_simulator.f $
 ! 
 ! Redistribution and use in source and binary forms, with or without modification, are permitted 
 ! provided that the following conditions are met:
@@ -329,72 +330,75 @@
     !
     !   This setup assumes the columns represent a about a 1 to 4 km scale
     !   it will need to be modified significantly, otherwise
-        if(ncol.eq.1) then
+
+ ! Commented out.  Should only be used with subcolumns are not randomly o    rdered.  Roj 4/2018
+
+!       if(ncol.eq.1) then
     
        ! adjust based on neightboring points ... i.e. only 2D grid was input
-           do j=2,npoints-1
+!          do j=2,npoints-1
             
-            if(box_MISR_ztop(j-1,1).gt.0 .and. 
-     &             box_MISR_ztop(j+1,1).gt.0       ) then
+!           if(box_MISR_ztop(j-1,1).gt.0 .and. 
+!    &             box_MISR_ztop(j+1,1).gt.0       ) then
 
-                if( abs( box_MISR_ztop(j-1,1) -  
-     &                   box_MISR_ztop(j+1,1) ) .lt. 500 
-     &              .and.
-     &                   box_MISR_ztop(j,1) .lt. 
-     &                   box_MISR_ztop(j+1,1)     ) then
+!               if( abs( box_MISR_ztop(j-1,1) -  
+!    &                   box_MISR_ztop(j+1,1) ) .lt. 500 
+!    &              .and.
+!    &                   box_MISR_ztop(j,1) .lt. 
+!    &                   box_MISR_ztop(j+1,1)     ) then
             
-                    box_MISR_ztop(j,1) =
-     &                      box_MISR_ztop(j+1,1)    
-                endif
+!                   box_MISR_ztop(j,1) =
+!    &                      box_MISR_ztop(j+1,1)    
+!               endif
 
-            endif
-         enddo
-        else
+!           endif
+!        enddo
+!       else
          
          ! adjust based on neighboring subcolumns ....
 #ifdef COSP_GFDL
 !RSH ADDS j loop and uses j as index rather than just j=1:
 ! Not certain this is proper but it is needed to provide reproducibility
 ! across domain decomposition.
-          do j=1,npoints
+!         do j=1,npoints
 #endif
-         do ibox=2,ncol-1
+!        do ibox=2,ncol-1
             
 #ifndef COSP_GFDL
-            if(box_MISR_ztop(1,ibox-1).gt.0 .and. 
-     &             box_MISR_ztop(1,ibox+1).gt.0        ) then
+!           if(box_MISR_ztop(1,ibox-1).gt.0 .and. 
+!    &             box_MISR_ztop(1,ibox+1).gt.0        ) then
 
-                if( abs( box_MISR_ztop(1,ibox-1) -  
-     &                   box_MISR_ztop(1,ibox+1) ) .lt. 500 
-     &              .and.
-     &                   box_MISR_ztop(1,ibox) .lt. 
-     &                   box_MISR_ztop(1,ibox+1)     ) then
+!               if( abs( box_MISR_ztop(1,ibox-1) -  
+!    &                   box_MISR_ztop(1,ibox+1) ) .lt. 500 
+!    &              .and.
+!    &                   box_MISR_ztop(1,ibox) .lt. 
+!    &                   box_MISR_ztop(1,ibox+1)     ) then
             
-                    box_MISR_ztop(1,ibox) =
-     &                      box_MISR_ztop(1,ibox+1)    
+!                   box_MISR_ztop(1,ibox) =
+!    &                      box_MISR_ztop(1,ibox+1)    
 #else
  
-            if(box_MISR_ztop(j,ibox-1).gt.0 .and.
-     &             box_MISR_ztop(j,ibox+1).gt.0        ) then
+!           if(box_MISR_ztop(j,ibox-1).gt.0 .and.
+!    &             box_MISR_ztop(j,ibox+1).gt.0        ) then
 
-                if( abs( box_MISR_ztop(j,ibox-1) -
-     &                   box_MISR_ztop(j,ibox+1) ) .lt. 500
-     &              .and.
-     &                   box_MISR_ztop(j,ibox) .lt.
-     &                   box_MISR_ztop(j,ibox+1)     ) then
+!               if( abs( box_MISR_ztop(j,ibox-1) -
+!    &                   box_MISR_ztop(j,ibox+1) ) .lt. 500
+!    &              .and.
+!    &                   box_MISR_ztop(j,ibox) .lt.
+!    &                   box_MISR_ztop(j,ibox+1)     ) then
 
-                    box_MISR_ztop(j,ibox) =
-     &                      box_MISR_ztop(j,ibox+1)
+!                   box_MISR_ztop(j,ibox) =
+!    &                      box_MISR_ztop(j,ibox+1)
 #endif
-                endif
+!               endif
 
-            endif
-         enddo
+!           endif
+!        enddo
 #ifdef COSP_GFDL
-          enddo
+!         enddo
 #endif
       
-        endif
+!       endif
 
         !     
     !     DETERMINE CLOUD TYPE FREQUENCIES

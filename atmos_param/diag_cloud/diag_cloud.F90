@@ -17,13 +17,13 @@ MODULE DIAG_CLOUD_MOD
 !-------------------------------------------------------------------
 
 use mpp_mod, only: input_nml_file
- use       fms_mod, only: error_mesg, FATAL, NOTE, file_exist,    &
-                          check_nml_error, open_namelist_file,       &
-                          mpp_pe, mpp_root_pe,  close_file, &
-                          read_data, write_data, &
+ use       fms_mod, only: error_mesg, FATAL, NOTE,    &
+                          check_nml_error,        &
+                          mpp_pe, mpp_root_pe, &
                           write_version_number, stdlog
  use     fms_io_mod, only: register_restart_field, restart_file_type, &
                            save_restart, restore_state
+ use    fms2_io_mod, only: file_exists
  use  Constants_Mod, only: Cp_Air, rdgas, rvgas, Kappa, HLv
  use time_manager_mod, only:  TIME_TYPE
  use  cloud_zonal_mod, only:  CLOUD_ZONAL_INIT, GETCLD
@@ -3110,7 +3110,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer  unit, io, ierrnml, logunit
+ integer  io, ierrnml, logunit
  integer  id_restart
  character(len=32) :: fname
 
@@ -3121,22 +3121,8 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=diag_cloud_nml, iostat=io)
    ierr = check_nml_error(io,"diag_cloud_nml")
-#else
-  if( FILE_EXIST( 'input.nml' ) ) then
-! -------------------------------------
-    unit = open_namelist_file ('input.nml')
-    ierrnml = 1
-    do while( ierrnml .ne. 0 )
-      READ ( unit,  nml = diag_cloud_nml, iostat = io, end = 10 ) 
-      ierrnml = check_nml_error(io,'diag_cloud_nml')
-    end do
-10  call close_file (unit)
-! -------------------------------------
-  end if
-#endif
 
 !---------------------------------------------------------------------
 ! --- Output namelist
@@ -3177,7 +3163,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
   id_restart = register_restart_field(Dia_restart, fname, 'cnvcntq_sum', cnvcntq_sum, no_domain=.true.)
   id_restart = register_restart_field(Dia_restart, fname, 'convprc_sum', convprc_sum, no_domain=.true.)
 
-  if( FILE_EXIST( 'INPUT/diag_cloud.res.nc' ) ) then
+  if( FILE_EXISTS( 'INPUT/diag_cloud.res.nc' ) ) then
      if(mpp_pe() == mpp_root_pe() ) call error_mesg ('diag_cloud_mod', &
           'Reading netCDF formatted restart file: INPUT/diag_cloud.res.nc', NOTE)
      call restore_state(Dia_restart)
@@ -3185,7 +3171,7 @@ end subroutine CLD_LAYR_MN_TEMP_DELP
      qmix_sum2(:,:) = qmix_sum(:,:,size(qmix_sum,3))
      ierr = 0
      num_pts = tot_pts
-  else if( FILE_EXIST( 'INPUT/diag_cloud.res' ) ) then
+  else if( FILE_EXISTS( 'INPUT/diag_cloud.res' ) ) then
       call error_mesg ( 'diag_cloud_mod', 'Native restart capability has been removed.', &
                                          FATAL)
   else

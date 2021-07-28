@@ -35,9 +35,9 @@ module qe_moist_convection_mod
   ! approximating the relation between vapor pressure and specific
   ! humidity.) 
   !----------------------------------------------------------------------
-  use            fms_mod, only:  file_exist, error_mesg, open_file,  &
-                                 check_nml_error, mpp_pe, FATAL,  &
-                                 close_file
+  use            fms_mod, only:  error_mesg,  &
+                                 check_nml_error, mpp_pe, FATAL
+  use         fms_io_mod, only:  close_file, open_file, file_exist
   use sat_vapor_pres_mod, only:  escomp, descomp
   use      constants_mod, only:  HLv, HLs, Cp_air, Grav, rdgas, rvgas, &
                                  kappa

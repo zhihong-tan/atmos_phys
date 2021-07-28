@@ -40,15 +40,16 @@ module cu_mo_trans_mod
  
 
   use         mpp_mod, only: input_nml_file
-  use         fms_mod, only: file_exist, check_nml_error,    &
-                             open_namelist_file, close_file, &
+  use         fms_mod, only: check_nml_error,    &
                              write_version_number,           &
                              mpp_pe, mpp_root_pe, stdlog,    &
                              error_mesg, FATAL, NOTE
-
+  use       fms2_io_mod, only: file_exists
   use  Diag_Manager_Mod, ONLY: register_diag_field, send_data
   use  Time_Manager_Mod, ONLY: time_type
 
+ use convection_utilities_mod, only : conv_results_type
+ use moist_proc_utils_mod, only: mp_input_type, mp_output_type, mp_nml_type
 implicit none
 private
 
@@ -70,8 +71,11 @@ logical :: module_is_initialized = .false.
 
 !---------------diagnostics fields------------------------------------- 
 
-integer :: id_diff_cmt, id_utnd_cmt, id_vtnd_cmt, id_ttnd_cmt, &
-           id_massflux_cmt, id_detmf_cmt
+integer :: id_ras_utnd_cmt, id_ras_vtnd_cmt, id_ras_ttnd_cmt, &
+           id_ras_massflux_cmt, id_ras_detmf_cmt
+integer :: id_diff_cmt, id_massflux_cmt
+integer :: id_donner_utnd_cmt, id_donner_vtnd_cmt, id_donner_ttnd_cmt, &
+           id_donner_massflux_cmt, id_donner_detmf_cmt
 
 character(len=11) :: mod_name = 'cu_mo_trans'
 
@@ -104,6 +108,11 @@ namelist/cu_mo_trans_nml/ diff_norm, &
 character(len=128) :: version = '$Id$'
 character(len=128) :: tagname = '$Name$'
 
+logical :: cmt_uses_ras, cmt_uses_donner, cmt_uses_uw
+logical :: do_ras, do_donner_deep, do_uw_conv
+
+
+
 contains
 
 !#######################################################################
@@ -128,29 +137,26 @@ contains
 !  </IN>
 ! </SUBROUTINE>
 !
-subroutine cu_mo_trans_init( axes, Time, doing_diffusive )
+subroutine cu_mo_trans_init( axes, Time, Nml_mp, cmt_mass_flux_source)
 
  integer,         intent(in) :: axes(4)
  type(time_type), intent(in) :: Time
- logical,         intent(out) :: doing_diffusive
+ type(mp_nml_type), intent(in) :: Nml_mp
+ character(len=64), intent(in) :: cmt_mass_flux_source
 
-integer :: unit, ierr, io, logunit
+integer :: ierr, io, logunit
 integer, dimension(3)  :: half =  (/1,2,4/)
+
+      do_ras = Nml_mp%do_ras
+      do_donner_deep = Nml_mp%do_donner_deep
+      do_uw_conv = Nml_mp%do_uw_conv
+
 
 !------ read namelist ------
 
-   if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+   if ( file_exists('input.nml')) then
       read (input_nml_file, nml=cu_mo_trans_nml, iostat=io)
       ierr = check_nml_error(io,'cu_mo_trans_nml')
-#else   
-      unit = open_namelist_file ( )
-      ierr=1; do while (ierr /= 0)
-         read  (unit, nml=cu_mo_trans_nml, iostat=io, end=10)
-         ierr = check_nml_error(io,'cu_mo_trans_nml')
-      enddo
- 10   call close_file (unit)
-#endif
    endif
 
 !--------- write version number and namelist ------------------
@@ -172,8 +178,6 @@ integer, dimension(3)  :: half =  (/1,2,4/)
          'invalid specification of transport_scheme', FATAL)
       endif
 
-      doing_diffusive = do_diffusive_transport
-
 ! --- initialize quantities for diagnostics output -------------
 
    if (do_diffusive_transport) then
@@ -186,34 +190,302 @@ integer, dimension(3)  :: half =  (/1,2,4/)
                         'cu_mo_trans mass flux',  'kg/(m2 s)', &
                          missing_value=missing_value               )
     else if (do_nonlocal_transport) then 
-     id_utnd_cmt = &
-      register_diag_field ( mod_name, 'utnd_cmt', axes(1:3), Time,    &
-                        'cu_mo_trans u tendency',  'm/s2', &
+     id_ras_utnd_cmt = &
+      register_diag_field ( mod_name, 'ras_utnd_cmt', axes(1:3), Time,    &
+                        'cu_mo_trans u tendency from ras',  'm/s2', &
                          missing_value=missing_value               )
-     id_vtnd_cmt = &
-      register_diag_field ( mod_name, 'vtnd_cmt', axes(1:3), Time,    &
-                        'cu_mo_trans v tendency',  'm/s2', &
+     id_ras_vtnd_cmt = &
+      register_diag_field ( mod_name, 'ras_vtnd_cmt', axes(1:3), Time,    &
+                        'cu_mo_trans v tendency from ras',  'm/s2', &
                          missing_value=missing_value               )
-     id_ttnd_cmt = &
-      register_diag_field ( mod_name, 'ttnd_cmt', axes(1:3), Time,    &
-                        'cu_mo_trans temp tendency',  'deg K/s', &
+     id_ras_ttnd_cmt = &
+      register_diag_field ( mod_name, 'ras_ttnd_cmt', axes(1:3), Time,    &
+                        'cu_mo_trans temp tendency from ras',  'deg K/s', &
                          missing_value=missing_value               )
-     id_massflux_cmt = &
-      register_diag_field ( mod_name, 'massflux_cmt', axes(half), Time, &
-                        'cu_mo_trans mass flux',  'kg/(m2 s)', &
+     id_ras_massflux_cmt = &
+      register_diag_field ( mod_name, 'ras_massflux_cmt', axes(half), Time,&
+                        'cu_mo_trans mass flux from ras',  'kg/(m2 s)', &
                          missing_value=missing_value               )
-     id_detmf_cmt = &
-      register_diag_field ( mod_name, 'detmf_cmt', axes(1:3), Time,  &
-                      'cu_mo_trans detrainment mass flux',  'kg/(m2 s)',&
+     id_ras_detmf_cmt = &
+      register_diag_field ( mod_name, 'ras_detmf_cmt', axes(1:3), Time,  &
+                'cu_mo_trans detrainment mass flux from ras',  'kg/(m2 s)',&
+                         missing_value=missing_value               )
+     id_donner_utnd_cmt = &
+      register_diag_field ( mod_name, 'donner_utnd_cmt', axes(1:3), Time, &
+                        'cu_mo_trans u tendency from donner',  'm/s2', &
+                         missing_value=missing_value               )
+     id_donner_vtnd_cmt = &
+      register_diag_field ( mod_name, 'donner_vtnd_cmt', axes(1:3), Time,  &
+                        'cu_mo_trans v tendency from donner',  'm/s2', &
+                         missing_value=missing_value               )
+     id_donner_ttnd_cmt = &
+      register_diag_field ( mod_name, 'donner_ttnd_cmt', axes(1:3), Time,  &
+                    'cu_mo_trans temp tendency from donner',  'deg K/s', &
+                         missing_value=missing_value               )
+     id_donner_massflux_cmt = &
+  register_diag_field ( mod_name, 'donner_massflux_cmt', axes(half), Time, &
+                        'cu_mo_trans mass flux from donner',  'kg/(m2 s)', &
+                         missing_value=missing_value               )
+     id_donner_detmf_cmt = &
+    register_diag_field ( mod_name, 'donner_detmf_cmt', axes(1:3), Time,  &
+             'cu_mo_trans detrainment mass flux from donner',  'kg/(m2 s)',&
                          missing_value=missing_value               )
     endif
 
 !--------------------------------------------------------------
+        if (trim(cmt_mass_flux_source) == 'ras') then
+          cmt_uses_ras = .true.
+          cmt_uses_donner = .false.
+          cmt_uses_uw = .false.
+          if (.not. do_ras) then
+            call error_mesg ('moist_processes_mod', &
+              'if cmt_uses_ras = T, then do_ras must be T', FATAL)
+          endif
+
+        else if (trim(cmt_mass_flux_source) == 'donner') then
+          cmt_uses_ras = .false.
+          cmt_uses_donner = .true.
+          cmt_uses_uw = .false.
+          if (.not. do_donner_deep)  then
+            call error_mesg ('convection_driver_init', &
+              'if cmt_uses_donner = T, then do_donner_deep must be T', &
+                                                                    FATAL)
+          endif
+
+        else if (trim(cmt_mass_flux_source) == 'uw') then
+          cmt_uses_ras = .false.
+          cmt_uses_donner = .false.
+          cmt_uses_uw = .true.
+          if (.not. do_uw_conv)  then
+            call error_mesg ('convection_driver_init', &
+                'if cmt_uses_uw = T, then do_uw_conv must be T', FATAL)
+          endif
+
+        else if (trim(cmt_mass_flux_source) == 'donner_and_ras') then
+          cmt_uses_ras = .true.
+          if (.not. do_ras) then
+            call error_mesg ('convection_driver_init', &
+              'if cmt_uses_ras = T, then do_ras must be T', FATAL)
+          endif
+          cmt_uses_donner = .true.
+          if (.not.  do_donner_deep)  then
+            call error_mesg ('convection_driver_init', &
+              'if cmt_uses_donner = T, then do_donner_deep must be T', &
+                                                                    FATAL)
+          endif
+          cmt_uses_uw = .false.
+
+        else if (trim(cmt_mass_flux_source) == 'donner_and_uw') then
+          cmt_uses_uw = .true.
+          if (.not. do_uw_conv)  then
+            call error_mesg ('convection_driver_init', &
+                'if cmt_uses_uw = T, then do_uw_conv must be T', FATAL)
+          endif
+          cmt_uses_donner = .true.
+          if (.not.  do_donner_deep)  then
+            call error_mesg ('convection_driver_init', &
+              'if cmt_uses_donner = T, then do_donner_deep must be T', &
+                                                                    FATAL)
+          endif
+          cmt_uses_ras = .false.
+
+        else if (trim(cmt_mass_flux_source) == 'ras_and_uw') then
+          cmt_uses_ras = .true.
+          if (.not. do_ras) then
+            call error_mesg ('convection_driver_init', &
+              'if cmt_uses_ras = T, then do_ras must be T', FATAL)
+          endif
+          cmt_uses_uw = .true.
+          if (.not. do_uw_conv)  then
+            call error_mesg ('convection_driver_init', &
+                'if cmt_uses_uw = T, then do_uw_conv must be T', FATAL)
+          endif
+          cmt_uses_donner = .false.
+
+        else if   &
+              (trim(cmt_mass_flux_source) == 'donner_and_ras_and_uw') then
+          cmt_uses_ras = .true.
+          if (.not. do_ras) then
+            call error_mesg ('convection_driver_init', &
+              'if cmt_uses_ras = T, then do_ras must be T', FATAL)
+          endif
+          cmt_uses_donner = .true.
+          if (.not.  do_donner_deep)  then
+            call error_mesg ('convection_driver_init', &
+              'if cmt_uses_donner = T, then do_donner_deep must be T', &
+                                                                    FATAL)
+          endif
+          cmt_uses_uw = .true.
+          if (.not. do_uw_conv)  then
+            call error_mesg ('convection_driver_init', &
+                'if cmt_uses_uw = T, then do_uw_conv must be T', FATAL)
+          endif
+        else if (trim(cmt_mass_flux_source) == 'all') then
+          if (do_ras) then
+            cmt_uses_ras = .true.
+          else
+            cmt_uses_ras = .false.
+          endif
+          if (do_donner_deep)  then
+            cmt_uses_donner = .true.
+          else
+            cmt_uses_donner = .false.
+          endif
+          if (do_uw_conv)  then
+            cmt_uses_uw = .true.
+          else
+            cmt_uses_uw = .false.
+          endif
+        else
+          call error_mesg ('convection_driver_init', &
+             'invalid specification of cmt_mass_flux_source', FATAL)
+        endif
+
+        if (cmt_uses_uw .and.  do_nonlocal_transport) then
+          call error_mesg ('convection_driver_init', &
+             'currently cannot do non-local cmt with uw as mass &
+                                                &flux_source', FATAL)
+        endif
 
   module_is_initialized = .true.
 
 
 end subroutine cu_mo_trans_init
+
+!#########################################################################
+
+subroutine cu_mo_trans ( is, js, Time, dt, num_tracers, Input_mp,  &
+                         Conv_results, Output_mp, ttnd_conv)
+
+type(time_type),          intent(in)    :: Time
+integer,                  intent(in)    :: is, js, num_tracers
+real,                     intent(in)    :: dt
+type(mp_input_type),      intent(inout)    :: Input_mp
+type(mp_output_type),     intent(inout) :: Output_mp
+real, dimension(:,:,:),   intent(inout) ::  ttnd_conv
+type(conv_results_type), intent(inout)   :: Conv_results
+
+      real, dimension(size(Input_mp%tin,1), size(Input_mp%tin,2),   &
+                             size(Input_mp%tin,3)) :: ttnd, utnd, vtnd, &
+                                             det_cmt
+      real, dimension(size(Input_mp%tin,1), size(Input_mp%tin,2),   &
+                             size(Input_mp%tin,3)+1) :: mc_cmt
+      real, dimension(size(Output_mp%rdt,1), size(Output_mp%rdt,2),      &
+                              size(Output_mp%rdt,3),num_tracers) :: qtr
+      integer :: n
+      integer :: k, kx
+      integer :: im, jm, km, nq, nq_skip
+
+      kx = size(Input_mp%tin,3)
+
+!----------------------------------------------------------------------
+!    if doing nonlocal cmt, call cu_mo_trans for each convective scheme
+!    separately.
+!----------------------------------------------------------------------
+      if (do_nonlocal_transport) then
+        im = size(Input_mp%uin,1)
+        jm = size(Input_mp%uin,2)
+        km = size(Input_mp%uin,3)
+        nq = size(Input_mp%tracer,4)
+        nq_skip = nq
+        qtr    (:,:,:,1:nq_skip) = 0.0
+        if (cmt_uses_ras) then
+          call non_local_mot (im, jm, km, is, js, Time, dt, INput_mp%tin,  &
+                               Input_mp%uin, Input_mp%vin, nq, nq_skip,   &
+                               Input_mp%tracer, Input_mp%pmass, Conv_results%ras_mflux, &
+                               Conv_results%ras_det_mflux, utnd, vtnd, ttnd,  &
+                               qtr, .true., .false.)
+
+!---------------------------------------------------------------------
+!    update the current tracer tendencies with the contributions 
+!    just obtained from cu_mo_trans.
+!---------------------------------------------------------------------
+          do n=1, num_tracers
+            Output_mp%rdt(:,:,:,n) = Output_mp%rdt(:,:,:,n) + qtr(:,:,:,n)
+          end do
+
+!----------------------------------------------------------------------
+!    add the temperature, specific humidity and momentum tendencies 
+!    due to cumulus transfer (ttnd, qtnd, utnd, vtnd) to the arrays 
+!    accumulating these tendencies from all physics processes (tdt, qdt, 
+!    udt, vdt).
+!----------------------------------------------------------------------
+          Output_mp%tdt = Output_mp%tdt + ttnd 
+          Output_mp%udt = Output_mp%udt + utnd
+          Output_mp%vdt = Output_mp%vdt + vtnd
+          ttnd_conv = ttnd_conv + ttnd
+        endif !(cmt_uses_ras)
+ 
+        if (cmt_uses_donner) then
+          call non_local_mot (im, jm, km, is, js, Time, dt, INput_mp%tin,  &
+                               Input_mp%uin, Input_mp%vin, nq, nq_skip,   &
+                               Input_mp%tracer, Input_mp%pmass, Conv_results%donner_mflux, &
+                               Conv_results%donner_det_mflux, utnd, vtnd, ttnd,  &
+                               qtr, .false., .true.)
+
+ 
+!---------------------------------------------------------------------
+!    update the current tracer tendencies with the contributions 
+!    just obtained from cu_mo_trans.
+!---------------------------------------------------------------------
+          do n=1, num_tracers
+            Output_mp%rdt(:,:,:,n) = Output_mp%rdt(:,:,:,n) + qtr(:,:,:,n)
+          end do
+
+!----------------------------------------------------------------------
+!    add the temperature, specific humidity and momentum tendencies 
+!    due to cumulus transfer (ttnd, qtnd, utnd, vtnd) to the arrays 
+!    accumulating these tendencies from all physics processes (tdt, qdt, 
+!    udt, vdt).
+!----------------------------------------------------------------------
+          Output_mp%tdt = Output_mp%tdt + ttnd 
+          Output_mp%udt = Output_mp%udt + utnd
+          Output_mp%vdt = Output_mp%vdt + vtnd
+          ttnd_conv = ttnd_conv + ttnd
+        endif
+
+        if (cmt_uses_uw) then
+
+!----------------------------------------------------------------------
+!    CURRENTLY no detrained mass flux is provided from uw_conv; should only
+!    use with 'diffusive' cmt scheme, not the non-local. (attempt to
+!    use non-local will cause FATAL in _init routine.)
+!----------------------------------------------------------------------
+        endif
+
+      else ! (do_diffusive_transport)
+
+!-----------------------------------------------------------------------
+!    if using diffusive cmt, call cu_mo_trans once with combined mass
+!    fluxes from all desired convective schemes.
+!-----------------------------------------------------------------------
+        mc_cmt = 0.
+        det_cmt = 0.
+        if (cmt_uses_ras) then
+          mc_cmt = mc_cmt + Conv_results%ras_mflux
+        endif
+        if (cmt_uses_donner) then
+          mc_cmt = mc_cmt + Conv_results%donner_mflux 
+        endif
+        if (cmt_uses_uw) then
+          do k=2,kx
+            mc_cmt(:,:,k) = mc_cmt(:,:,k) + Conv_results%uw_mflux(:,:,k-1)
+          end do
+        endif
+
+!------------------------------------------------------------------------
+!    call cu_mo_trans to calculate cumulus momentum transport.
+!------------------------------------------------------------------------
+        call diffusive_cu_mo_trans (is, js, Time, mc_cmt, Input_mp%tin,      &
+                                    Input_mp%phalf, Input_mp%pfull, Input_mp%zhalf,  &
+                                                  Input_mp%zfull, Output_mp%diff_cu_mo)
+      endif ! (do_nonlocal_transport)
+
+!-----------------------------------------------------------------------
+
+
+end subroutine cu_mo_trans
+
 
 !#######################################################################
 
@@ -233,7 +505,7 @@ subroutine cu_mo_trans_end()
 
   module_is_initialized = .false.
 
-end subroutine cu_mo_trans_end
+  end subroutine cu_mo_trans_end
 
 !#######################################################################
 
@@ -294,66 +566,6 @@ end subroutine cu_mo_trans_end
 ! </SUBROUTINE>
 !
 
-
-
-
-subroutine cu_mo_trans (is, js, Time, mass_flux, t,           &
-                        p_half, p_full, z_half, z_full, dt, uin, vin,&
-                        tracer, pmass, det0, utnd, vtnd, ttnd, &
-                        qtrcumo, diff)
-
-type(time_type), intent(in) :: Time
-integer,         intent(in) :: is, js
-
-real,   intent(in) :: dt
-real, intent(inout)   , dimension(:,:,:,:) :: tracer           
-real, intent(inout)   , dimension(:,:,:) :: uin, vin, t        
-real, intent(in)   , dimension(:,:,:) :: mass_flux, &
-                                         pmass, det0, &
-                                         p_half, p_full, z_half, z_full
-real, intent(out), dimension(:,:,:) :: utnd, vtnd          
-real, intent(out), dimension(:,:,:) :: ttnd          
-real, intent(out), dimension(:,:,:,:) :: qtrcumo                   
-real, intent(inout), dimension(:,:,:) :: diff                      
-
-
-      integer :: im, jm, km, nq, nq_skip
-
-!-----------------------------------------------------------------------
-
- if (.not.module_is_initialized) call error_mesg ('cu_mo_trans',  &
-                      'cu_mo_trans_init has not been called.', FATAL)
-
-!-----------------------------------------------------------------------
-!   utnd = 0.
-!   vtnd = 0.
-!   ttnd = 0.
-!   qtrcumo = 0.
-
-    if (do_diffusive_transport) then
-      call diffusive_cu_mo_trans (is, js, Time, mass_flux, t,      &
-                      p_half, p_full, z_half, z_full, diff)
-    utnd = 0.
-    vtnd = 0.
-    ttnd = 0.
-    qtrcumo = 0.
-      
-    else if (do_nonlocal_transport) then
-!      call error_mesg ('cu_mo_trans',  &
-!        'non-local transport not currently available', FATAL)
-       im = size(uin,1)
-       jm = size(uin,2)
-       km = size(uin,3)
-       nq = size(tracer,4)
-       nq_skip = nq
-       qtrcumo(:,:,:,1:nq_skip) = 0.0
-       call non_local_mot (im, jm, km, is, js, Time, dt, t, uin, vin,  &
-                           nq, nq_skip,   &
-                 tracer, pmass, mass_flux, det0, utnd, vtnd, ttnd,  &
-                 qtrcumo)
-    endif
-
-end subroutine cu_mo_trans
 
 
 !#######################################################################
@@ -494,7 +706,7 @@ end subroutine diffusive_cu_mo_trans
 !#######################################################################
 
  subroutine non_local_mot(im, jm, km, is, js, Time, dt, tin, uin, vin, nq, nq_skip, qin, pmass, mc,       &
-                          det0, utnd, vtnd, ttnd, qtnd)
+                          det0, utnd, vtnd, ttnd, qtnd, ras_cmt, donner_cmt)
 !
 ! This is a non-local cumulus transport algorithm based on the given cloud mass fluxes (mc).
 ! Detrainment fluxes are computed internally by mass (or momentum) conservation.
@@ -532,6 +744,7 @@ end subroutine diffusive_cu_mo_trans
   real,    intent(out)::qtnd(im,jm,km,nq)
 
   real,    intent(out)::utnd(im,jm,km), vtnd(im,jm,km)   ! m/s**2
+  logical, intent(in) :: ras_cmt, donner_cmt
 !
 ! Local 
   real dm1(km), u1(km), v1(km), u2(km), v2(km)
@@ -786,30 +999,55 @@ end subroutine diffusive_cu_mo_trans
   enddo
 
 ! --- diagnostics
-     if ( id_utnd_cmt > 0 ) then
-        used = send_data ( id_utnd_cmt, utnd, Time, is, js, 1 )
+if (ras_cmt) then
+     if ( id_ras_utnd_cmt > 0 ) then
+        used = send_data ( id_ras_utnd_cmt, utnd, Time, is, js, 1 )
      endif
-     if ( id_vtnd_cmt > 0 ) then
-        used = send_data ( id_vtnd_cmt, vtnd, Time, is, js, 1 )
+     if ( id_ras_vtnd_cmt > 0 ) then
+        used = send_data ( id_ras_vtnd_cmt, vtnd, Time, is, js, 1 )
      endif
      if (conserve_te) then
-     if ( id_ttnd_cmt > 0 ) then
-        used = send_data ( id_ttnd_cmt, ttnd, Time, is, js, 1 )
+     if ( id_ras_ttnd_cmt > 0 ) then
+        used = send_data ( id_ras_ttnd_cmt, ttnd, Time, is, js, 1 )
      endif
      endif
-     if ( id_massflux_cmt > 0 ) then
-        used = send_data ( id_massflux_cmt, mc, Time, is, js, 1 )
+     if ( id_ras_massflux_cmt > 0 ) then
+        used = send_data ( id_ras_massflux_cmt, mc, Time, is, js, 1 )
      endif
-     if ( id_detmf_cmt > 0 ) then
-        used = send_data ( id_detmf_cmt, det0, Time, is, js, 1 )
+     if ( id_ras_detmf_cmt > 0 ) then
+        used = send_data ( id_ras_detmf_cmt, det0, Time, is, js, 1 )
      endif
+endif
+
+if(donner_cmt) then
+
+     if ( id_donner_utnd_cmt > 0 ) then
+        used = send_data ( id_donner_utnd_cmt, utnd, Time, is, js, 1 )
+     endif
+     if ( id_donner_vtnd_cmt > 0 ) then
+        used = send_data ( id_donner_vtnd_cmt, vtnd, Time, is, js, 1 )
+     endif
+     if (conserve_te) then
+     if ( id_donner_ttnd_cmt > 0 ) then
+        used = send_data ( id_donner_ttnd_cmt, ttnd, Time, is, js, 1 )
+     endif
+     endif
+     if ( id_donner_massflux_cmt > 0 ) then
+        used = send_data ( id_donner_massflux_cmt, mc, Time, is, js, 1 )
+     endif
+     if ( id_donner_detmf_cmt > 0 ) then
+        used = send_data ( id_donner_detmf_cmt, det0, Time, is, js, 1 )
+     endif
+endif
 
  end subroutine non_local_mot
 
+
+
+!#######################################################################
+
+
+
 end module cu_mo_trans_mod
-
-! <INFO>
-
-! </INFO>
 
 

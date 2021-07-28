@@ -18,12 +18,11 @@
 !  shared modules:
 
 use mpp_mod,            only: input_nml_file
-use fms_mod,            only: open_namelist_file, fms_init, &
+use fms_mod,            only: fms_init, &
                               mpp_pe, mpp_root_pe, stdlog, &
-                              file_exist, write_version_number, &
+                              write_version_number, &
                               check_nml_error, error_mesg, &
-                              FATAL, close_file, &
-                              open_file     
+                              FATAL
 use constants_mod,      only: constants_init, radcon_mks, radian
 
 !  shared radiation package modules:
@@ -197,14 +196,13 @@ integer,              intent(out) ::  npts
 !--------------------------------------------------------------------
 !  local variables
 
-      integer     :: unit, ierr, io, logunit
+      integer     :: ierr, io, logunit
       integer     :: nn, j, i
       real        :: dellat, dellon
 
 !--------------------------------------------------------------------
 !  local variables
 !
-!     unit
 !
 !-------------------------------------------------------------------
 
@@ -223,19 +221,8 @@ integer,              intent(out) ::  npts
 !-----------------------------------------------------------------------
 !    read namelist.              
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=radiation_diag_nml, iostat=io)
       ierr = check_nml_error(io,'radiation_diag_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=radiation_diag_nml, iostat=io, end=10) 
-        ierr = check_nml_error(io,'radiation_diag_nml')
-        end do                   
-10      call close_file (unit)   
-      endif                      
-#endif
                                   
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -357,8 +344,7 @@ integer,              intent(out) ::  npts
 !----------------------------------------------------------------------
 !    open a unit for the radiation diagnostics output.
 !---------------------------------------------------------------------
-        radiag_unit = open_file ('radiation_diag.out', action='write', &
-                                 threading='multi', form='formatted')
+        if (mpp_pe() == mpp_root_pe() ) open(newunit = radiag_unit, file='radiation_diag.out', status='replace', form='formatted')
 
 !----------------------------------------------------------------------
 !    save the input fields from the lw_tables_type variable that will
@@ -503,7 +489,7 @@ subroutine radiation_diag_end
 !--------------------------------------------------------------------
 !    close the radiation_diag.out file.
 !--------------------------------------------------------------------
-        call close_file (radiag_unit)
+        if (mpp_pe() == mpp_root_pe() ) close(radiag_unit)
 
 !--------------------------------------------------------------------
 !    deallocate module arrays.
@@ -843,19 +829,19 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    write out the latitude and longitude of the model point for which
 !    diagnostics will be produced.
 !---------------------------------------------------------------------
-            write (radiag_unit,99000) deglon1(nn), deglat1(nn)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,99000) deglon1(nn), deglat1(nn)
 
 !----------------------------------------------------------------------
 !    write longwave cloud data. determine if any clouds are present
 !    in the column. if there are, define the number of lw cloud bands.
 !----------------------------------------------------------------------
-            write (radiag_unit,9009)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9009)
        !bw  nmxolw     = Cld_spec%nmxolw(iloc, jloc)
        !bw  nrndlw     = Cld_spec%nrndlw(iloc, jloc)
             nmxolw = count(Rad_diag%cmxolw(iloc, jloc, ks:ke) > 0.0)
             nrndlw = count(Rad_diag%crndlw(iloc, jloc, ks:ke, 1) > 0.0) ! what about stochastic clouds?
             if (nmxolw > 0 .OR. nrndlw > 0) then
-              write (radiag_unit,9010) nmxolw, nrndlw    
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9010) nmxolw, nrndlw    
               nlwcldb = size (Rad_diag%emmxolw,4)
 !----------------------------------------------------------------------
 !    write longwave cloud amounts and emissivities for each cloud band.
@@ -865,11 +851,11 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !                [ dimensionless ]
 !----------------------------------------------------------------------
               do n=1,nlwcldb
-                write (radiag_unit,9041) n
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9041) n
                 do k = ks,ke
                   ! what if stochastic clouds = true?
                   if (Rad_diag%cmxolw(iloc,jloc,k) > 0.0 .or. Rad_diag%crndlw(iloc,jloc,k,1) > 0.0)  then
-                    write (radiag_unit,9030)   k,    &
+                    if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9030)   k,    &
                       Rad_diag%cmxolw(iloc,jloc,k),   Rad_diag%emmxolw(iloc,jloc,k,n,1),&
                       Rad_diag%crndlw(iloc,jloc,k,1), Rad_diag%emrndlw(iloc,jloc,k,n,1)
                   endif
@@ -880,7 +866,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    if no clouds are present, write a message.
 !--------------------------------------------------------------------
             else
-              write (radiag_unit, 9052)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 9052)
             endif 
 
 !----------------------------------------------------------------------
@@ -888,8 +874,8 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !----------------------------------------------------------------------
        !bw  ncldsw = Cld_spec%ncldsw(iloc, jloc)
             ncldsw = count(Rad_diag%camtsw(iloc,jloc,ks:ke,1) > 0.0) ! stochastic clouds?
-            write (radiag_unit, 9018)
-            write (radiag_unit, 9019) ncldsw
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 9018)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 9019) ncldsw
 
 !----------------------------------------------------------------------
 !    if clouds exist, write shortwave cloud data.
@@ -913,7 +899,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    %deltaz      model vertical grid interval [ meters ]
 !---------------------------------------------------------------------
                 do n=1,size(Rad_diag%cldext,4)
-                  write (radiag_unit,9040) n
+                  if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9040) n
                   do k=ks,ke
                     if (Rad_diag%camtsw(iloc,jloc,k,1) > 0.0) then    ! stochastic clouds?
                       cldextdz = Rad_diag%cldext(iloc,jloc,k,n,1)   !DEL*   &
@@ -925,7 +911,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                       else
                         cldssalb = 0.0
                       endif
-                      write (radiag_unit,9050) k,     &
+                      if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9050) k,     &
                              Rad_diag%camtsw (iloc,jloc,k,1),   &    ! stochastic clouds?        
                              cldextdz, cldssalb,                      &
                              Rad_diag%cldasymm(iloc,jloc,k,n,1)
@@ -945,7 +931,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    if no clouds are present in the column, write out a message. 
 !----------------------------------------------------------------------
             else
-              write (radiag_unit, 9053)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 9053)
             endif
 
 !--------------------------------------------------------------------
@@ -955,36 +941,36 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
             cirrfgd_dir  = Rad_diag%asfc_nir_dir(iloc,jloc)
             cvisrfgd_dif = Rad_diag%asfc_vis_dif(iloc,jloc)
             cirrfgd_dif  = Rad_diag%asfc_nir_dif(iloc,jloc)
-            write (radiag_unit,9059)
-            write (radiag_unit,9060) cvisrfgd_dir, cirrfgd_dir, &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9059)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9060) cvisrfgd_dir, cirrfgd_dir, &
                                      cvisrfgd_dif, cirrfgd_dif
 
 !----------------------------------------------------------------------
 !     write out the amounts of the radiative gases that the radiation
 !     code sees.     
 !--------------------------------------------------------------------
-            write (radiag_unit,9069)
-            write (radiag_unit,9070) Rad_diag%rrvco2
-            write (radiag_unit,9071) Rad_diag%rrvf11
-            write (radiag_unit,9072) Rad_diag%rrvf12
-            write (radiag_unit,9075) Rad_diag%rrvf113
-            write (radiag_unit,9076) Rad_diag%rrvf22
-            write (radiag_unit,9073) Rad_diag%rrvch4
-            write (radiag_unit,9074) Rad_diag%rrvn2o
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9069)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9070) Rad_diag%rrvco2
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9071) Rad_diag%rrvf11
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9072) Rad_diag%rrvf12
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9075) Rad_diag%rrvf113
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9076) Rad_diag%rrvf22
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9073) Rad_diag%rrvch4
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9074) Rad_diag%rrvn2o
  
 !---------------------------------------------------------------------
 !    define the shortwave parameterization being employed. define the 
 !    assumption used to specify the solar zenith angle.
 !---------------------------------------------------------------------
-            write (radiag_unit, 9079)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 9079)
             if (Rad_diag%do_diurnal) then
-              write (radiag_unit,99020) 
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,99020) 
             else if (Rad_diag%do_annual) then
-              write (radiag_unit,99025)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,99025)
             else if (Rad_diag%do_daily_mean) then
-              write (radiag_unit,99030)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,99030)
             else ! (if all 3 are false)
-              write (radiag_unit,99040)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,99040)
             endif
 
 !----------------------------------------------------------------------
@@ -998,7 +984,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !     %rrsun           earth-sun distance relative to mean distance 
 !                      [ dimensionless ]
 !----------------------------------------------------------------------
-            write (radiag_unit,9080)    &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9080)    &
                                Rad_diag%solar_constant*Rad_diag%rrsun, &
                                Rad_diag%cosz(iloc,jloc), &
                                Rad_diag%fracday(iloc,jloc)
@@ -1054,19 +1040,19 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    %hsw        sw radiation heating rates.
 !                [ degrees K / day ]
 !----------------------------------------------------------------------
-            write (radiag_unit,9130)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9130)
 !DEL        if (Sw_control%do_esfsw) then
-              write (radiag_unit, 99016)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 99016)
 !DEL        endif
-           !write (radiag_unit, 9082) nz
-            write (radiag_unit,9140)
-            write (radiag_unit,9150) (k, press(k),   &
+           !if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 9082) nz
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9140)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9150) (k, press(k),   &
                                      Rad_diag%Sw_output(1)%hsw  (iloc,jloc,k), &
                                      Rad_diag%Sw_output(1)%fsw  (iloc,jloc,k), &
                                      Rad_diag%Sw_output(1)%dfsw (iloc,jloc,k),    &
                                      Rad_diag%Sw_output(1)%ufsw (iloc,jloc,k),&
                                      pflux          (k), k=ks,ke)
-            write (radiag_unit,6556) press(ke+1),    &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,6556) press(ke+1),    &
                                      Rad_diag%Sw_output(1)%fsw  (iloc,jloc,ke+1), &
                                      Rad_diag%Sw_output(1)%dfsw (iloc,jloc,ke+1), &
                                      Rad_diag%Sw_output(1)%ufsw (iloc,jloc,ke+1), &
@@ -1083,7 +1069,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                          Rad_diag%Sw_output(1)%ufsw_vis_sfc(iloc,jloc)
               ufsw_nir_dif = Rad_diag%Sw_output(1)%ufsw_dif_sfc(iloc,jloc) -   &
                              Rad_diag%Sw_output(1)%ufsw_vis_sfc_dif(iloc,jloc)
-              write (radiag_unit, 99026)    &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 99026)    &
                            Rad_diag%Sw_output(1)%dfsw_vis_sfc(iloc,jloc), &
                            Rad_diag%Sw_output(1)%ufsw_vis_sfc(iloc,jloc), &
                            Rad_diag%Sw_output(1)%dfsw_vis_sfc_dir(iloc,jloc), &
@@ -1106,12 +1092,12 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
               hlwsw(k) = Rad_diag%Sw_output(1)%hsw    (iloc,jloc,k) +    &
                          Rad_diag%Lw_output(1)%heatra (iloc,jloc,k)
             end do
-            write (radiag_unit,9160)
-            write (radiag_unit,9170)
-            write (radiag_unit,9190) (k, press(k),    &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9160)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9170)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9190) (k, press(k),    &
                                       hlwsw(k), flwsw(k), &
                                       pflux(k), k=ks,ke)
-            write (radiag_unit,9180)  press(ke+1), flwsw(ke+1),   &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9180)  press(ke+1), flwsw(ke+1),   &
                                       pflux(ke+1)
 
             if (Rad_diag%do_totcld_forcing) then
@@ -1126,16 +1112,16 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !                cloud.
 !                [ Watts / m**2 , or kg / sec**3 ]
 !----------------------------------------------------------------------
-              write (radiag_unit,9400)
-              write (radiag_unit,9100)
-              write (radiag_unit,9110) (k, press (k),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9400)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9100)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9110) (k, press (k),  &
                                     Rad_diag%temp  (iloc,jloc,k), &
                                     Rad_diag%rh2o  (iloc,jloc,k), &
                                     Rad_diag%qo3   (iloc,jloc,k), &
                                     Rad_diag%Lw_output(1)%heatracf(iloc,jloc,k), &
                                     Rad_diag%Lw_output(1)%flxnetcf(iloc,jloc,k), &
                                     pflux (k), k=ks,ke)
-              write (radiag_unit,9120)  press (ke+1),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9120)  press (ke+1),  &
                                     Rad_diag%temp  (iloc,jloc,ke+1),&
                                     Rad_diag%Lw_output(1)%flxnetcf(iloc,jloc,ke+1),&
                                     pflux(ke+1)
@@ -1152,16 +1138,16 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    %hswcf      sw radiation heating rates in the absence of clouds.
 !                [ degrees K / day ]
 !----------------------------------------------------------------------
-              write (radiag_unit,9410)
-             !write (radiag_unit, 9082) nz
-              write (radiag_unit,9140)
-              write (radiag_unit,9150) (k, press(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9410)
+             !if (mpp_pe() == mpp_root_pe() ) write (radiag_unit, 9082) nz
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9140)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9150) (k, press(k),   &
                                         Rad_diag%Sw_output(1)%hswcf (iloc,jloc,k), &
                                         Rad_diag%Sw_output(1)%fswcf (iloc,jloc,k), &
                                         Rad_diag%Sw_output(1)%dfswcf(iloc,jloc,k),&
                                         Rad_diag%Sw_output(1)%ufswcf(iloc,jloc,k), &
                                         pflux(k), k=ks,ke)
-              write (radiag_unit,6556)    &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,6556)    &
                                     press(ke+1), &
                                     Rad_diag%Sw_output(1)%fswcf(iloc,jloc,ke+1),&
                                     Rad_diag%Sw_output(1)%dfswcf(iloc,jloc,ke+1),  &
@@ -1181,11 +1167,11 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                              Rad_diag%Lw_output(1)%heatracf(iloc,jloc,k)
               end do
 
-              write (radiag_unit,9420)
-              write (radiag_unit,9170)
-              write (radiag_unit,9190) (k, press(k), hlwswcf(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9420)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9170)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9190) (k, press(k), hlwswcf(k),   &
                                        flwswcf(k), pflux(k), k=ks,ke)
-              write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
                                        pflux(ke+1)
             endif
 
@@ -1208,40 +1194,40 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !----------------------------------------------------------------------
               if (Rad_diag%do_lwaerosol) then
 ! climate includes aerosol effects, lw aerosol forcing by exclusion
-                write (radiag_unit,9603)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9603)
               else
 ! climate includes no aerosol effects, lw aerosol forcing by inclusion
-                write (radiag_unit,9601)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9601)
               endif
-              write (radiag_unit,9100)
-              write (radiag_unit,9110) (k, press (k),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9100)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9110) (k, press (k),  &
                                     Rad_diag%temp  (iloc,jloc,k), &
                                     Rad_diag%rh2o  (iloc,jloc,k), &
                                     Rad_diag%qo3   (iloc,jloc,k), &
                                     Lw_output_ad%heatra(iloc,jloc,k), &
                                     Lw_output_ad%flxnet(iloc,jloc,k), &
                                     pflux (k), k=ks,ke)
-              write (radiag_unit,9120)  press (ke+1),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9120)  press (ke+1),  &
                                     Rad_diag%temp  (iloc,jloc,ke+1),&
                                     Lw_output_ad%flxnet(iloc,jloc,ke+1),&
                                     pflux(ke+1)
 ! clear-sky results
               if (Rad_diag%do_lwaerosol) then
 ! climate includes aerosol effects, lw aerosol forcing by exclusion
-                write (radiag_unit,9604)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9604)
               else
 ! climate includes no aerosol effects, lw aerosol forcing by inclusion
-                write (radiag_unit,9602)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9602)
               endif
-              write (radiag_unit,9100)
-              write (radiag_unit,9110) (k, press (k),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9100)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9110) (k, press (k),  &
                                     Rad_diag%temp  (iloc,jloc,k), &
                                     Rad_diag%rh2o  (iloc,jloc,k), &
                                     Rad_diag%qo3   (iloc,jloc,k), &
                                     Lw_output_ad%heatracf(iloc,jloc,k), &
                                     Lw_output_ad%flxnetcf(iloc,jloc,k), &
                                     pflux (k), k=ks,ke)
-              write (radiag_unit,9120)  press (ke+1),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9120)  press (ke+1),  &
                                     Rad_diag%temp  (iloc,jloc,ke+1),&
                                     Lw_output_ad%flxnetcf(iloc,jloc,ke+1),&
                                     pflux(ke+1)
@@ -1271,19 +1257,19 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !----------------------------------------------------------------------
               if (Rad_diag%do_swaerosol) then
 ! climate includes aerosol effects, sw aerosol forcing by exclusion
-                write (radiag_unit,9703)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9703)
               else
 ! climate includes no aerosol effects, sw aerosol forcing by inclusion
-                write (radiag_unit,9701)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9701)
               endif
-              write (radiag_unit,9140)
-              write (radiag_unit,9150) (k, press(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9140)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9150) (k, press(k),   &
                                         Sw_output_ad%hsw (iloc,jloc,k), &
                                         Sw_output_ad%fsw (iloc,jloc,k), &
                                         Sw_output_ad%dfsw(iloc,jloc,k),&
                                         Sw_output_ad%ufsw(iloc,jloc,k), &
                                         pflux(k), k=ks,ke)
-              write (radiag_unit,6556)    &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,6556)    &
                                     press(ke+1), &
                                     Sw_output_ad%fsw(iloc,jloc,ke+1),&
                                     Sw_output_ad%dfsw(iloc,jloc,ke+1),  &
@@ -1292,19 +1278,19 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 ! clear-sky results
               if (Rad_diag%do_swaerosol) then
 ! climate includes aerosol effects, sw aerosol forcing by exclusion
-                write (radiag_unit,9704)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9704)
               else
 ! climate includes no aerosol effects, sw aerosol forcing by inclusion
-                write (radiag_unit,9702)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9702)
               endif
-              write (radiag_unit,9140)
-              write (radiag_unit,9150) (k, press(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9140)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9150) (k, press(k),   &
                                         Sw_output_ad%hswcf (iloc,jloc,k), &
                                         Sw_output_ad%fswcf (iloc,jloc,k), &
                                         Sw_output_ad%dfswcf(iloc,jloc,k),&
                                         Sw_output_ad%ufswcf(iloc,jloc,k), &
                                         pflux(k), k=ks,ke)
-              write (radiag_unit,6556)    &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,6556)    &
                                     press(ke+1), &
                                     Sw_output_ad%fswcf(iloc,jloc,ke+1),&
                                     Sw_output_ad%dfswcf(iloc,jloc,ke+1),  &
@@ -1332,19 +1318,19 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                              Lw_output_ad%heatracf(iloc,jloc,k)
               end do
 
-              write (radiag_unit,9801)
-              write (radiag_unit,9170)
-              write (radiag_unit,9190) (k, press(k),    &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9801)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9170)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9190) (k, press(k),    &
                                         hlwsw(k), flwsw(k), &
                                         pflux(k), k=ks,ke)
-              write (radiag_unit,9180)  press(ke+1), flwsw(ke+1),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9180)  press(ke+1), flwsw(ke+1),   &
                                         pflux(ke+1)
 
-              write (radiag_unit,9802)
-              write (radiag_unit,9170)
-              write (radiag_unit,9190) (k, press(k), hlwswcf(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9802)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9170)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9190) (k, press(k), hlwswcf(k),   &
                                        flwswcf(k), pflux(k), k=ks,ke)
-              write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9180) press(ke+1), flwswcf(ke+1),  &
                                        pflux(ke+1)
             endif
 
@@ -1436,42 +1422,42 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    write approximate emissivity heating rates.
 !----------------------------------------------------------------------
             if (nbtrge == 0) then
-              write (radiag_unit,9200)
-              write (radiag_unit,9210) (k, press(k), htem1(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9200)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9210) (k, press(k), htem1(k),   &
                                         htem2(k), htem3(k), htem4(k), &
                                         htem5(k), htem6(k), htem(k), &
                                         k=ks,ke)
             else
               if (nbtrge .EQ. 1) then
-                write (radiag_unit,9201)
-                write (radiag_unit,9211) (k, press(k), htem1(k),  &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9201)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9211) (k, press(k), htem1(k),  &
                                          htem2(k), htem3(k), htem4(k), &
                                          htem5(k), htem6(k),  &
                                          htem7(k,1), htem(k),k=ks,ke)
               else if (nbtrge .EQ. 2) then
-                write (radiag_unit,9202)
-                write (radiag_unit,9212) (k, press(k), htem1(k),  &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9202)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9212) (k, press(k), htem1(k),  &
                                          htem2(k), htem3(k), htem4(k), &
                                          htem5(k), htem6(k),   &
                                          (htem7(k,n),n=1,nbtrge),  &
                                          htem7t(k), htem(k),k=ks,ke)
               else if (nbtrge .EQ. 4) then
-                write (radiag_unit,9203)
-                write (radiag_unit,9213) (k, press(k), htem1(k),   &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9203)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9213) (k, press(k), htem1(k),   &
                                          htem2(k), htem3(k), htem4(k),&
                                          htem5(k), htem6(k),   &
                                          (htem7(k,n),n=1,nbtrge),   &
                                          htem7t(k), htem(k),k=ks,ke)
               else if (nbtrge .EQ. 10) then
-                write (radiag_unit,9201)
-                write (radiag_unit,9211) (k, press(k), htem1(k),  &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9201)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9211) (k, press(k), htem1(k),  &
                                          htem2(k), htem3(k), htem4(k), &
                                          htem5(k), htem6(k), &
                                          htem7t(k), &
                                          htem(k),k=ks,ke)
               else if (nbtrge .EQ. 20) then
-                write (radiag_unit,9201)
-                write (radiag_unit,9211) (k, press(k), htem1(k),  &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9201)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9211) (k, press(k), htem1(k),  &
                                          htem2(k), htem3(k), htem4(k), &
                                          htem5(k), htem6(k), &
                                          htem7t(k), &
@@ -1499,8 +1485,8 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
               ctst(k) = ctso3(k) + ctsco2(k) + cts(k)
             end do
 
-            write (radiag_unit,9220)
-            write (radiag_unit,9230) (k, press(k), cts(k), ctsco2(k),  &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9220)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9230) (k, press(k), cts(k), ctsco2(k),  &
                                      ctso3(k), ctst(k), k=ks,ke)
 
 !----------------------------------------------------------------------
@@ -1517,25 +1503,25 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                 exctsn(k,n) =  Rad_diag%Lw_diagnostics%exctsn(iloc,jloc,k,n)
               end do
             end do
-            write (radiag_unit,9240)
-            write (radiag_unit,9250) (k, press(k),            &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9240)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9250) (k, press(k),            &
                                      Rad_diag%Lw_diagnostics%excts(iloc,jloc,k),&
                                      (exctsn(k,n), n=1,7) , k=ks,ke)
-            write (radiag_unit,9260)
-            write (radiag_unit,9250) (k, press(k),   &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9260)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9250) (k, press(k),   &
                                      (exctsn(k,n), n=8,15) , k=ks,ke)
             if (nbly == 48) then
-              write (radiag_unit,9261)
-              write (radiag_unit,9250) (k, press(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9261)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9250) (k, press(k),   &
                                        (exctsn(k,n), n=16,23) , k=ks,ke)
-              write (radiag_unit,9262)
-              write (radiag_unit,9250) (k, press(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9262)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9250) (k, press(k),   &
                                        (exctsn(k,n), n=24,31) , k=ks,ke)
-              write (radiag_unit,9263)
-              write (radiag_unit,9250) (k, press(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9263)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9250) (k, press(k),   &
                                        (exctsn(k,n), n=32,39) , k=ks,ke)
-              write (radiag_unit,9264)
-              write (radiag_unit,9250) (k, press(k),   &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9264)
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9250) (k, press(k),   &
                                       (exctsn(k,n), n=40,47) , k=ks,ke)
             endif
 
@@ -1600,7 +1586,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
             fdiff = Rad_diag%Lw_diagnostics%gxcts(iloc,jloc) +   &
                     Rad_diag%Lw_diagnostics%flx1e1(iloc,jloc) -    &
                     Rad_diag%Lw_output(1)%flxnet(iloc,jloc,ke+1)
-            write (radiag_unit,9270)      &
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9270)      &
                                 Rad_diag%Lw_diagnostics%gxcts(iloc,jloc), &
                                 Rad_diag%Lw_diagnostics%flx1e1(iloc,jloc), &
                                 Rad_diag%Lw_diagnostics%gxcts(iloc,jloc)+ &
@@ -1609,7 +1595,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                                 fdiff
             if (nbtrge > 0) then
               do m=1,nbtrge
-                write (radiag_unit,9271) m,    &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9271) m,    &
                                    Rad_diag%Lw_diagnostics%flx1e1f(iloc,jloc,m)
               end do
               ftopeft   = 0.0E+00
@@ -1617,7 +1603,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
                 ftopeft   = ftopeft +    &
                                     Rad_diag%Lw_diagnostics%flx1e1f(iloc,jloc,m)
               end do
-              write (radiag_unit,9272) ftopeft
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9272) ftopeft
             endif
 
 !----------------------------------------------------------------------
@@ -1631,14 +1617,14 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
               do nx=1,n_continuum_bands
                 if (Rad_diag%Lw_tables%iband(nx) .EQ. ny) then
                   if (nprt .EQ. 1) then
-                    write (radiag_unit,9290) ny,   &
+                    if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9290) ny,   &
                           Rad_diag%Lw_tables%bandlo(nx+16), &
                           Rad_diag%Lw_tables%bandhi(nx+16), &
                           ftopn(ny), ftopac(ny),    &
                           Rad_diag%Lw_diagnostics%fctsg(iloc,jloc,ny), vsumac(ny)
                     nprt = 0
                   else
-                    write (radiag_unit,9300) Rad_diag%Lw_tables%bandlo(nx+16),   &
+                    if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9300) Rad_diag%Lw_tables%bandlo(nx+16),   &
                                              Rad_diag%Lw_tables%bandhi(nx+16)
                   endif
                 endif
@@ -1649,7 +1635,7 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !    write out toa and sfc fluxes for remaining bands.
 !----------------------------------------------------------------------
             do ny =nbly-7, nbly
-              write (radiag_unit,9290) ny,     &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9290) ny,     &
                         Rad_diag%Lw_tables%bdlocm(ny), &
                         Rad_diag%Lw_tables%bdhicm(ny), ftopn(ny),ftopac(ny), &
                         Rad_diag%Lw_diagnostics%fctsg(iloc,jloc,ny), vsumac(ny)
@@ -1658,31 +1644,31 @@ integer     :: n_continuum_bands ! number of bands in the h2o continuum
 !----------------------------------------------------------------------
 !    write out emissivity fluxes.
 !----------------------------------------------------------------------
-            write (radiag_unit,9310)
+            if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9310)
             if (nbtrge == 0) then
-              write (radiag_unit,9320) 
-              write (radiag_unit,9330) (k, flx1(k),flx2(k), flx3(k),  &
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9320) 
+              if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9330) (k, flx1(k),flx2(k), flx3(k),  &
                                        flx4(k), flx5(k), flx6(k), &
                                        flxem(k),  k=ks,ke+1)
             else
               if (nbtrge .EQ. 1) then
-                write (radiag_unit,9321)
-                write (radiag_unit,9331) (k, flx1(k),flx2(k), &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9321)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9331) (k, flx1(k),flx2(k), &
                                          flx3(k),flx4(k), &
                                          flx5(k), flx6(k), &
                                          flxemch4n2o(k), flxem(k), &
                                          k=ks,ke+1)
               else if (nbtrge .EQ. 2) then
-                write (radiag_unit,9322)
-                write (radiag_unit,9332) (k, flx1(k),flx2(k), &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9322)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9332) (k, flx1(k),flx2(k), &
                                          flx3(k),flx4(k), &
                                          flx5(k), flx6(k), &
                                          (flx7(k,m   ),m=1,nbtrge), &
                                          flxemch4n2o(k), flxem(k), &
                                          k=ks,ke+1)
               else if (nbtrge .EQ. 4) then
-                write (radiag_unit,9323)
-                write (radiag_unit,9333) (k, flx1(k),flx2(k), &
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9323)
+                if (mpp_pe() == mpp_root_pe() ) write (radiag_unit,9333) (k, flx1(k),flx2(k), &
                                          flx3(k),flx4(k), &
                                          flx5(k), flx6(k),&
                                          (flx7(k,m),m=1,nbtrge),&

@@ -30,16 +30,18 @@ use time_manager_mod,    only: time_manager_init, time_type, set_date, &
                                days_in_year, get_time, length_of_year, &
                                assignment(=)
 use diag_manager_mod,    only: diag_manager_init, get_base_time
-use mpp_mod,             only: input_nml_file
-use fms_mod,             only: open_namelist_file, fms_init, &
-                               mpp_pe, mpp_root_pe, stdlog, &
-                               file_exist, write_version_number, &
+use mpp_mod,             only: input_nml_file, mpp_get_current_pelist
+use fms_mod,             only: fms_init, &
+                               mpp_pe, mpp_root_pe, mpp_npes, stdlog, &
+                               write_version_number, &
                                check_nml_error, error_mesg, &
-                               FATAL, WARNING, NOTE, close_file, &
-                               open_restart_file, read_data
-use fms_io_mod,          only: get_restart_io_mode, &
-                               register_restart_field, restart_file_type, &
-                               save_restart, restore_state, query_initialized
+                               FATAL, WARNING, NOTE
+use fms2_io_mod,         only: FmsNetcdfFile_t, FmsNetcdfDomainFile_t, &
+                               register_restart_field, register_axis, unlimited, &
+                               open_file, read_restart, write_restart, close_file, &
+                               register_field, write_data, register_variable_attribute, &
+                               file_exists
+
 use time_interp_mod,     only: time_interp_init, time_interp
 use tracer_manager_mod,  only: get_tracer_index, NO_TRACER
 use field_manager_mod,   only: MODEL_ATMOS
@@ -93,10 +95,7 @@ private    &
 
 ! called from radiative_gases_time_vary:
          define_gas_amount,  &
-         obtain_gas_tfs,     &
-
-! called from radiative_gases_end:
-         write_restart_radiative_gases
+         obtain_gas_tfs
 
 !---------------------------------------------------------------------
 !-------- namelist  ---------
@@ -416,7 +415,6 @@ namelist /radiative_gases_nml/ verbose, &
 !------- private data ------
 
 !--- for netcdf restart
-type(restart_file_type), save :: Rad_restart
 logical                       :: do_netcdf_restart= .true.
 integer                       ::  vers   ! version number of restart file 
 !---------------------------------------------------------------------
@@ -613,7 +611,6 @@ subroutine radiative_gases_init (lw_rad_time_step, pref, latb, lonb)
 !---------------------------------------------------------------------
 !    radiative_gases_init is the constructor for radiative_gases_mod.
 !---------------------------------------------------------------------
-
 integer,                      intent(in)    :: lw_rad_time_step
 real, dimension(:,:),         intent(in)    :: pref
 real, dimension(:,:),         intent(in)    :: latb, lonb
@@ -640,7 +637,8 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
       character(len=32)    :: restart_file
       integer              :: id_restart
       integer              :: logunit  ! unit number for writing to logfile.
-
+      type(FmsNetcdfFile_t)       ::  Rad_restart !< Fms2io fileobj
+      integer, allocatable, dimension(:) :: pes !< Array of pes in the current pelist
 !---------------------------------------------------------------------
 !    if routine has already been executed, exit.
 !---------------------------------------------------------------------
@@ -658,20 +656,10 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
 !-----------------------------------------------------------------------
 !    read namelist.              
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=radiative_gases_nml, iostat=io)
       ierr = check_nml_error(io,'radiative_gases_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=radiative_gases_nml, iostat=io, end=10) 
-        ierr = check_nml_error(io,'radiative_gases_nml')
-        end do                   
-10      call close_file (unit)   
-      endif                      
-#endif
-      call get_restart_io_mode(do_netcdf_restart)
+
+      do_netcdf_restart = .true.
 
                                   
 !---------------------------------------------------------------------
@@ -768,48 +756,38 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
 !    if present, read the radiative gases restart file. set a flag 
 !    indicating the presence of the file.
 !---------------------------------------------------------------------
-     restart_file = 'radiative_gases.res.nc'
-      if(do_netcdf_restart) then
-         id_restart = register_restart_field(Rad_restart, restart_file, 'vers', vers, no_domain = .true. )
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rco2', rco2, no_domain = .true. )          
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf11', rf11, no_domain = .true. )
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf12', rf12, no_domain = .true. ) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf113', rf113, no_domain = .true. ) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rf22', rf22, no_domain = .true. ) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rch4', rch4, no_domain = .true. ) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'rn2o', rn2o, no_domain = .true. ) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'co2_for_last_tf_calc', &
-                                             co2_for_last_tf_calc, mandatory=.false., no_domain = .true. ) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'ch4_for_last_tf_calc', &
-                                             ch4_for_last_tf_calc, mandatory=.false., no_domain = .true. ) 
-         id_restart = register_restart_field(Rad_restart, restart_file, 'n2o_for_last_tf_calc', &
-                                             n2o_for_last_tf_calc, mandatory=.false., no_domain = .true. )     
-      endif
 
+      !< Get the current pelist
+      allocate(pes(mpp_npes()))
+      call mpp_get_current_pelist(pes)
+
+      !< Open the scalar file with the current pelist, so that only the root pe opens and reads the file and
+      !! distributes the data to the other pes
       restart_present = .false.
-      if (file_exist('INPUT/radiative_gases.res.nc')) then
+      if (open_file(Rad_restart,"INPUT/radiative_gases.res.nc","read", is_restart=.true., pelist=pes)) then
          if (mpp_pe() == mpp_root_pe()) call error_mesg ('radiative_gases_mod', &
               'Reading NetCDF formatted restart file: INPUT/radiative_gases.res.nc', NOTE)
          if(.not. do_netcdf_restart) call error_mesg ('radiative_gases_mod', &
               'netcdf format restart file INPUT/radiative_gases.res.nc exist, but do_netcdf_restart is false.', FATAL)
-         call restore_state(Rad_restart)
+
+         call radiative_gases_register_restart(Rad_restart)
+         call read_restart(Rad_restart)
+         call close_file(Rad_restart)
+
          restart_present = .true.
-         if(vers >= 3) then
-            if(.NOT. query_initialized(Rad_restart, id_restart) ) call error_mesg('radiative_gases_mod', &
-                'vers >=3 and INPUT/radiative_gases.res.nc exist, but field n2o_for_last_tf_calc does not in that file', FATAL)
-         else
+         if(vers <= 3) then
             define_co2_for_last_tf_calc = .true.
             define_ch4_for_last_tf_calc = .true.
             define_n2o_for_last_tf_calc = .true.
          endif       
          vers = restart_versions(size(restart_versions(:)))     
       else
-         if (file_exist ('INPUT/radiative_gases.res')) then
+         if (file_exists ('INPUT/radiative_gases.res')) then
            call error_mesg ('radiative_gases_mod', &
                  'Native formatted restart file no longer supported.', FATAL)
          endif
       endif
-
+      deallocate(pes)
 !---------------------------------------------------------------------
 !    call a routine for each gas to initialize its mixing ratio
 !    and set a flag indicating whether it is fixed in time or time-
@@ -1063,10 +1041,35 @@ real, dimension(:,:),         intent(in)    :: latb, lonb
 
 end subroutine radiative_gases_init
 
+!< radiative_gases_register_restart: register netcdf restart variable
+subroutine radiative_gases_register_restart(Rad_restart)
 
+  type(FmsNetcdfFile_t), intent(inout)       ::  Rad_restart !< Fms2io fileobj
+
+!--------------------------------------------------------------------
+  character(len=8), dimension(1)       :: dim_names !< Array of dimension names
+
+  dim_names(1) = "Time"
+  call register_axis(Rad_restart, dim_names(1), unlimited)
+
+  call register_restart_field(Rad_restart,  'vers', vers,  dim_names)
+  call register_restart_field(Rad_restart,  'rco2', rco2,  dim_names)
+  call register_restart_field(Rad_restart,  'rf11', rf11,  dim_names)
+  call register_restart_field(Rad_restart,  'rf12', rf12,  dim_names)
+  call register_restart_field(Rad_restart,  'rf113', rf113,  dim_names)
+  call register_restart_field(Rad_restart,  'rf22', rf22,  dim_names)
+  call register_restart_field(Rad_restart,  'rch4', rch4,  dim_names)
+  call register_restart_field(Rad_restart,  'rn2o', rn2o,  dim_names)
+  call register_restart_field(Rad_restart,  'co2_for_last_tf_calc', &
+                                             co2_for_last_tf_calc,  dim_names, is_optional = .true.)
+  call register_restart_field(Rad_restart,  'ch4_for_last_tf_calc', &
+                                             ch4_for_last_tf_calc,  dim_names, is_optional = .true.)
+  call register_restart_field(Rad_restart,  'n2o_for_last_tf_calc', &
+                                             n2o_for_last_tf_calc,  dim_names, is_optional = .true.)
+
+end subroutine radiative_gases_register_restart
 
 !####################################################################
-
 
 ! <SUBROUTINE NAME="define_radiative_gases">
 !  <OVERVIEW>
@@ -1986,14 +1989,35 @@ end subroutine radiative_gases_end
 !
 subroutine radiative_gases_restart(timestamp)
    character(len=*), intent(in), optional :: timestamp
+   character(len=128) :: filename !< Restart filename
+
+  type(FmsNetcdfFile_t) ::  Rad_restart !< Fms2io fileobj
+  integer, allocatable, dimension(:) :: pes !< Array of pes in the current pelist
 
 ! Make sure that the restart_versions variable is up to date.
-   vers = restart_versions(size(restart_versions(:)))     
+   vers = restart_versions(size(restart_versions(:)))
    if( do_netcdf_restart ) then
       if(mpp_pe() == mpp_root_pe() ) then
          call error_mesg ('radiative_gases_mod', 'Writing NetCDF formatted restart file: RESTART/radiative_gases.res.nc', NOTE)
       endif
-      call save_restart(Rad_restart, timestamp)
+
+      if (present(timestamp)) then
+        filename = "RESTART/"//trim(timestamp)//".radiative_gases.res.nc"
+      else
+        filename = "RESTART/radiative_gases.res.nc"
+      endif
+
+      !< Get the current pelist
+      allocate(pes(mpp_npes()))
+      call mpp_get_current_pelist(pes)
+
+      !< Open the scalar file with the current pelist, so that only the root pe opens and writes the file
+      if (open_file(Rad_restart,filename,"overwrite", is_restart=.true., pelist=pes)) then
+         call radiative_gases_register_restart(Rad_restart)
+         call write_restart(Rad_restart)
+         call close_file(Rad_restart)
+      endif
+      deallocate(pes)
    else
       call error_mesg ('radiative_gases_mod', &
          'Native intermediate restart files are not supported.', FATAL)
@@ -3425,8 +3449,9 @@ real,                               intent(out)   :: rgas
 !--------------------------------------------------------------------
 !    process the gas timeseries file.
 !--------------------------------------------------------------------
-      if (file_exist (file_name) ) then
-        inrad = open_namelist_file (file_name)
+      if (file_exists (file_name) ) then
+
+        open(file=file_name, form='formatted',action='read', newunit=inrad)
 
 !--------------------------------------------------------------------
 !    read the number of data points in the timeseries.
@@ -3466,7 +3491,7 @@ real,                               intent(out)   :: rgas
 !---------------------------------------------------------------------
 !    close the input file.
 !---------------------------------------------------------------------
-        call close_file (inrad)
+        close (inrad)
 
 !---------------------------------------------------------------------
 !    convert the time stamps of the series to time_type variables.     
@@ -4733,50 +4758,6 @@ real,                   intent(out)   :: gas_for_tf_calc
 
 end subroutine obtain_gas_tfs 
 
-
-!####################################################################
-! <SUBROUTINE NAME="write_restart_radiative_gases">
-!  <OVERVIEW>
-!   Subroutine to write the radiative restart files
-!  </OVERVIEW>
-!  <DESCRIPTION>
-!   Subroutine to write the radiative restart files
-!  </DESCRIPTION>
-!  <TEMPLATE>
-!   call write_restart_radiative_gases
-!  </TEMPLATE>
-! </SUBROUTINE>
-!
-subroutine write_restart_radiative_gases
-
-!---------------------------------------------------------------------
-!    write_restart_radiative_gases writes the radiative_gases.res file.
-!---------------------------------------------------------------------
-
-      integer    :: unit    ! unit number for i/o
-
-
-
-!---------------------------------------------------------------------
-!    open unit and write radiative gas restart file.
-!---------------------------------------------------------------------
-      if (mpp_pe() == mpp_root_pe() ) then
-         call error_mesg ('radiative_gases_mod', 'Writing native formatted restart file: RESTART/radiative_gases.res', NOTE)
-        unit = open_restart_file ('RESTART/radiative_gases.res',   &
-                                   action= 'write')
-        write (unit) restart_versions(size(restart_versions(:)))
-        write (unit) rrvco2
-        write (unit) rrvf11, rrvf12, rrvf113, rrvf22
-        write (unit) rrvch4, rrvn2o
-        write (unit) co2_for_last_tf_calc
-        write (unit) ch4_for_last_tf_calc
-        write (unit) n2o_for_last_tf_calc
-        call close_file (unit)
-      endif
-
-!----------------------------------------------------------------------
-
-end subroutine write_restart_radiative_gases
 
 !####################################################################
 

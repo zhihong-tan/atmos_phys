@@ -1,9 +1,10 @@
         module aer_ccn_act_mod
 
-use fms_mod,             only: error_mesg, FATAL, open_namelist_file, &
+use fms_mod,             only: error_mesg, FATAL, &
                                mpp_pe, mpp_root_pe, stdlog, &
-                               file_exist, write_version_number, &
-                               check_nml_error, open_file, close_file, read_distributed
+                               write_version_number, &
+                               check_nml_error
+use fms2_io_mod,         only: file_exists, ascii_read
 use mpp_mod,             only: input_nml_file, get_unit
 use aer_ccn_act_k_mod,   only: aer_ccn_act_k, aer_ccn_act2_k, &
                                aer_ccn_act_wpdf_k, aer_ccn_act_k_init, &
@@ -185,20 +186,10 @@ subroutine aer_ccn_act_init ()
 !--------------------------------------------------------------------- 
 !    read namelist.
 !--------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if ( file_exists('input.nml')) then
         read (input_nml_file, nml=aer_ccn_act_nml, iostat=io)
         ierr = check_nml_error(io,'aer_ccn_act_nmliostat=io')
-#else
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=aer_ccn_act_nml, iostat=io,  &
-               end=10)
-        ierr = check_nml_error(io,'aer_ccn_act_nml')
-        end do
-10      call close_file (unit)   
-#endif
-      endif                      
+      endif
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !--------------------------------------------------------------------
@@ -224,17 +215,20 @@ end subroutine aer_ccn_act_init
 subroutine Loading(droplets, droplets2)
 
 real, dimension(:,:,:,:,:), intent(out) :: droplets, droplets2
-integer :: unit, ios=0
 
-  unit = open_file(file='INPUT/droplets.dat',action='read',dist=.true.)
-  call read_distributed(unit,fmt='*',iostat=ios,data=droplets)
+character(len=:), dimension(:), allocatable :: droplets_file !< Restart file saved as a string
+integer :: ios=0
+
+  call ascii_read('INPUT/droplets.dat', droplets_file)
+  read(droplets_file,fmt=*,iostat=ios) droplets
   if (ios /= 0) call error_mesg ('aer_ccn_act_init', 'Read of INPUT/droplets.dat failed', FATAL)
-  call close_file(unit,dist=.true.)
+  deallocate(droplets_file)
 
-  unit = open_file(file='INPUT/droplets2.dat',action='read',dist=.true.)
-  call read_distributed(unit,fmt='*',iostat=ios,data=droplets2) 
+  call ascii_read('INPUT/droplets2.dat', droplets_file)
+  read(droplets_file,fmt=*,iostat=ios) droplets2
   if (ios /= 0) call error_mesg ('aer_ccn_act_init', 'Read of INPUT/droplets2.dat failed', FATAL)
-  call close_file(unit,dist=.true.)
+  deallocate(droplets_file)
+
 end subroutine Loading
 
 

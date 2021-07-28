@@ -6,9 +6,9 @@
 
  use  Sat_Vapor_Pres_Mod, ONLY: compute_qs, lookup_es_des
  use  mpp_mod,            only: input_nml_file
- use  Fms_Mod,            ONLY: FILE_EXIST, ERROR_MESG, FATAL,   &
-                                CHECK_NML_ERROR, OPEN_NAMELIST_FILE,      &
-                                CLOSE_FILE, mpp_pe, mpp_root_pe, &
+ use  Fms_Mod,            ONLY: ERROR_MESG, FATAL,   &
+                                CHECK_NML_ERROR,      &
+                                mpp_pe, mpp_root_pe, &
                                 write_version_number, stdlog
 
  use constants_mod, only: Hlv, Cp_Air, RDgas, RVgas, Kappa, grav
@@ -77,7 +77,7 @@
 !---------------------------------------------------------------------
 !  (Intent local)
 !---------------------------------------------------------------------
- integer :: unit, io, ierr, logunit
+ integer :: io, ierr, logunit
  
 !=====================================================================
 
@@ -87,23 +87,8 @@
 ! --- Read namelist
 !---------------------------------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
   read (input_nml_file, nml=shallow_conv_nml, iostat=io)
   ierr = check_nml_error(io,"shallow_conv_nml")
-#else
-  if( FILE_EXIST( 'input.nml' ) ) then
-! -------------------------------------
-   unit = OPEN_NAMELIST_FILE ( )
-   ierr = 1
-   do while( ierr .ne. 0 )
-   READ ( unit,  nml = shallow_conv_nml, iostat = io, end = 10 ) 
-   ierr = CHECK_NML_ERROR(io,'shallow_conv_nml')
-   end do
-10 continue
-   CALL CLOSE_FILE ( unit )
-! -------------------------------------
-  end if
-#endif
 
 !------- write version number and namelist ---------
 

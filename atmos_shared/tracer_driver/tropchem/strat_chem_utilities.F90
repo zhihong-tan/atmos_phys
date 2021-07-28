@@ -1,9 +1,8 @@
 module strat_chem_utilities_mod
 
-use       mpp_io_mod, only : mpp_open, mpp_close, MPP_RDONLY
 use          mpp_mod, only : mpp_pe, mpp_root_pe, stdout
-use          fms_mod, only : file_exist, open_namelist_file, close_file, &
-                             error_mesg, FATAL
+use          fms_mod, only : error_mesg, FATAL
+use      fms2_io_mod, only : file_exists
 use    constants_mod, only : PI, DEG_TO_RAD, AVOGNO, PSTD_MKS, SECONDS_PER_DAY
 use time_manager_mod, only : time_type, get_date, days_in_month, days_in_year, &
                              set_date, increment_time, set_time, &
@@ -106,7 +105,7 @@ subroutine strat_chem_utilities_init( lonb, latb, age_factor_in, dclydt_factor_i
 ! local variables
    real :: chlb_dummy(nlat_input,nspecies_lbc), &
            ozb_dummy(nlon_input, nlat_input, 12)
-   integer :: unit, nc, n, year, outunit
+   integer :: funit, nc, n, year, outunit
    type(time_type) :: Model_init_time
    
    if (module_is_initialized) return
@@ -125,15 +124,15 @@ subroutine strat_chem_utilities_init( lonb, latb, age_factor_in, dclydt_factor_i
 !-----------------------------------------------------------------------
 !     ... read in chemical lower boundary 
 !-----------------------------------------------------------------------
-   call mpp_open( unit, 'INPUT/' // TRIM(cfc_lbc_filename),action=MPP_RDONLY )
+   open(file='INPUT/' // TRIM(cfc_lbc_filename), form='formatted',action='read', newunit=funit)
    outunit= stdout()
-   if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'reading INPUT/' // TRIM(cfc_lbc_filename)
+   if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'reading: INPUT/' // TRIM(cfc_lbc_filename)
    do nc = 1,15                                           
-     read(unit,'(6E13.6)') chlb_dummy(:,nc)
+     read(funit,'(6E13.6)') chlb_dummy(:,nc)
    end do
-   read(unit,'(6E13.6)') ozb_dummy
-   read(unit,'(6e13.6)') tropc
-   call mpp_close(unit)
+   read(funit,'(6E13.6)') ozb_dummy
+   read(funit,'(6e13.6)') tropc
+   close(funit)
 
 !++lwh
 !---------------------------------------------------------------------
@@ -1351,8 +1350,8 @@ ch4_entry = ch4_entry_in
 
 
 filename = 'INPUT/' // trim(ch4_filename)
-if( file_exist(filename) ) then
-   flb = open_namelist_file( filename )
+if( file_exists(filename) ) then
+   open(file=filename, form='formatted',action='read', newunit=flb)
    read(flb, FMT='(i12)') series_length
    allocate( ch4_value(series_length), &
              input_time(series_length), &
@@ -1361,7 +1360,7 @@ if( file_exist(filename) ) then
       read (flb, FMT = '(2f12.4)') input_time(n), ch4_value(n)
    end do
    ch4_value(:) = ch4_value(:) * ch4_scale_factor
-   call close_file( flb )
+   close( flb )
 !---------------------------------------------------------------------
 !    convert the time stamps of the series to time_type variables.     
 !---------------------------------------------------------------------

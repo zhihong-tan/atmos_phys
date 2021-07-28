@@ -17,11 +17,11 @@ module cloudrad_diagnostics_mod
 ! shared modules:
 
 use mpp_mod,                 only: input_nml_file
-use fms_mod,                 only: fms_init, open_namelist_file, &
+use fms_mod,                 only: fms_init, &
                                    write_version_number, mpp_pe, &
-                                   mpp_root_pe, stdlog, file_exist,  &
+                                   mpp_root_pe, stdlog,  &
                                    check_nml_error, error_mesg,   &
-                                   FATAL, NOTE, close_file
+                                   FATAL, NOTE
 use time_manager_mod,        only: time_type, time_manager_init,  &
                                    operator(>)
 use diag_manager_mod,        only: register_diag_field, send_data, &
@@ -426,12 +426,11 @@ type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer         :: unit, io, ierr, logunit
+      integer         :: io, ierr, logunit
 
 !---------------------------------------------------------------------
 !   local variables:
 !
-!      unit     io unit for reading nml file and writing logfile
 !      io       error status returned from io operation  
 !      ierr     error code
 !
@@ -453,20 +452,8 @@ type(cloudrad_control_type), intent(in)  ::  Cldrad_control
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cloudrad_diagnostics_nml, iostat=io)
       ierr = check_nml_error(io,'cloudrad_diagnostics_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=cloudrad_diagnostics_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'cloudrad_diagnostics_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
- 
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------

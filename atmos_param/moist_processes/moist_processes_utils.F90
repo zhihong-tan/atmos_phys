@@ -29,13 +29,19 @@ use time_manager_mod,          only: time_type
 use diag_manager_mod,          only: send_data
 use constants_mod,             only: RDGAS, RVGAS
 use lscloud_types_mod,         only: diag_pt_type, diag_id_type
+use field_manager_mod,     only: MODEL_ATMOS
+use tracer_manager_mod,    only: get_tracer_index,&
+                                 get_tracer_names, &
+                                 query_method, &
+                                 NO_TRACER
 
 implicit none
 private
 
 !------------------ private and public data/interfaces -----------------
 
-public capecalcnew, tempavg, column_diag, rh_calc
+public capecalcnew, tempavg, column_diag, rh_calc,   &
+       define_removal_mp_control_type, deallocate_mp_removal_control_type
 
 public mp_input_type, mp_nml_type, mp_tendency_type,   &
        mp_removal_control_type, mp_conv2ls_type, mp_output_type, &
@@ -76,6 +82,8 @@ type mp_input_type
     real, dimension(:,:,:),        pointer      :: zfull => NULL()
     real, dimension(:,:,:),        allocatable  :: tin
     real, dimension(:,:,:),        allocatable  :: qin
+    real, dimension(:,:,:),        allocatable  :: tin_orig
+    real, dimension(:,:,:),        allocatable  :: qin_orig
     real, dimension(:,:,:),        allocatable  :: uin
     real, dimension(:,:,:),        allocatable  :: vin
     real, dimension(:,:,:),        pointer      :: w => NULL()
@@ -83,6 +91,7 @@ type mp_input_type
     real, dimension(:,:,:),        pointer      :: radturbten => NULL()
     real, dimension(:,:,:),        pointer      :: diff_t => NULL()
     real, dimension(:,:,:,:),      allocatable  :: tracer
+    real, dimension(:,:,:,:),      allocatable  :: tracer_orig
     real, dimension(:,:,:),        pointer      :: t => NULL()
     real, dimension(:,:,:),        pointer      :: q => NULL()
     real, dimension(:,:,:),        pointer      :: u => NULL()
@@ -94,6 +103,7 @@ type mp_input_type
     real, dimension(:,:,:),        pointer      :: vm => NULL()
     real, dimension(:,:,:,:),      pointer      :: rm => NULL()
     real, dimension(:,:,:),        allocatable  :: pmass
+    real, dimension(:,:,:),        allocatable  :: tin_tentative
 end type mp_input_type
 
 type mp_output_type
@@ -101,9 +111,12 @@ type mp_output_type
     real, dimension(:,:,:),        pointer      ::  udt => NULL()
     real, dimension(:,:,:),        pointer      ::  vdt => NULL()
     real, dimension(:,:,:,:),      pointer      ::  rdt => NULL()
+    real, dimension(:,:,:,:),      allocatable  ::  rdt_init 
+    real, dimension(:,:,:,:),      allocatable  ::  rdt_tentative
     logical, dimension(:,:),       pointer      ::  convect => NULL()
     real, dimension(:,:),          allocatable  ::  lprec
     real, dimension(:,:),          allocatable  ::  fprec
+    real, dimension(:,:),          allocatable  ::  precip
     real, dimension(:,:),          allocatable  ::  gust_cv
     real, dimension(:,:,:),        pointer      ::  diff_t_clubb => NULL()
     real, dimension(:,:,:),        pointer      ::  diff_cu_mo => NULL()
@@ -993,11 +1006,124 @@ logical,                 intent(in)           :: do_simple
 
 END SUBROUTINE rh_calc
 
+!#######################################################################
+
+subroutine define_removal_mp_control_type (Control, num_prog_tracers)
+
+type(mp_removal_control_type), intent(inout) :: Control
+integer,                       intent(in)    :: num_prog_tracers
+
+
+     integer           :: n
+     character(len=80) :: scheme
+
+
+
+!------------------------------------------------------------------------
+!    allocate and initialize an Mp_removal_control_type variable which will
+!    indicate for each tracer whether it is to be transported by the 
+!    various available convective schemes. Also included is a counter of 
+!    the number of tracers being affected by each available convective 
+!    scheme.
+!------------------------------------------------------------------------
+      allocate (control%tracers_in_donner(num_prog_tracers))
+      allocate (control%tracers_in_ras(num_prog_tracers))
+      allocate (control%tracers_in_uw(num_prog_tracers))
+      allocate (control%tracers_in_mca(num_prog_tracers))
+      control%tracers_in_donner = .false.
+      control%tracers_in_ras    = .false.
+      control%tracers_in_uw     = .false.
+      control%tracers_in_mca    = .false.
+      control%num_mca_tracers   = 0       
+      control%num_ras_tracers   = 0       
+      control%num_donner_tracers   = 0       
+      control%num_uw_tracers   = 0       
+
+!----------------------------------------------------------------------
+!    for each tracer, determine if it is to be transported by convect-
+!    ion, and the convection schemes that are to transport it. set a 
+!    logical flag to .true. for each tracer that is to be transported by
+!    each scheme and increment the count of tracers to be transported
+!    by that scheme.
+!----------------------------------------------------------------------
+      do n=1, num_prog_tracers
+        if (query_method ('convection', MODEL_ATMOS, n, scheme)) then
+          select case (scheme)
+            case ("none")
+            case ("donner")
+               Control%num_donner_tracers = Control%num_donner_tracers + 1
+               Control%tracers_in_donner(n) = .true.
+            case ("mca")
+               Control%num_mca_tracers = Control%num_mca_tracers + 1
+               Control%tracers_in_mca(n) = .true.
+            case ("ras")
+               Control%num_ras_tracers = Control%num_ras_tracers + 1
+               Control%tracers_in_ras(n) = .true.
+            case ("uw")
+               Control%num_uw_tracers = Control%num_uw_tracers + 1
+               Control%tracers_in_uw(n) = .true.
+            case ("donner_and_ras")
+               Control%num_donner_tracers = Control%num_donner_tracers + 1
+               Control%tracers_in_donner(n) = .true.
+               Control%num_ras_tracers = Control%num_ras_tracers + 1
+               Control%tracers_in_ras(n) = .true.
+            case ("donner_and_mca")
+               Control%num_donner_tracers = Control%num_donner_tracers + 1
+               Control%tracers_in_donner(n) = .true.
+               Control%num_mca_tracers = Control%num_mca_tracers + 1
+
+               Control%tracers_in_mca(n) = .true.
+            case ("mca_and_ras")
+               Control%num_mca_tracers = Control%num_mca_tracers + 1
+               Control%tracers_in_mca(n) = .true.
+               Control%num_ras_tracers = Control%num_ras_tracers + 1
+               Control%tracers_in_ras(n) = .true.
+            case ("all")
+               Control%num_donner_tracers = Control%num_donner_tracers + 1
+               Control%tracers_in_donner(n) = .true.
+               Control%num_mca_tracers = Control%num_mca_tracers + 1
+               Control%tracers_in_mca(n) = .true.
+               Control%num_ras_tracers = Control%num_ras_tracers + 1
+               Control%tracers_in_ras(n) = .true.
+               Control%num_uw_tracers = Control%num_uw_tracers + 1
+               Control%tracers_in_uw(n) = .true.
+            case ("all_nodonner")
+               Control%num_mca_tracers = Control%num_mca_tracers + 1
+               Control%tracers_in_mca(n) = .true.
+               Control%num_ras_tracers = Control%num_ras_tracers + 1
+               Control%tracers_in_ras(n) = .true.
+               Control%num_uw_tracers = Control%num_uw_tracers + 1
+               Control%tracers_in_uw(n) = .true.
+            case default  ! corresponds to "none"
+          end select
+        endif
+      end do
+
+end subroutine define_removal_mp_control_type
+
+
+!#######################################################################
+
+subroutine deallocate_mp_removal_control_type (Removal_mp_control)
+
+type(mp_removal_control_type), intent(inout)  :: Removal_mp_control
+
+      deallocate (Removal_mp_control%tracers_in_donner )   
+      deallocate (Removal_mp_control%tracers_in_ras )    
+      deallocate (Removal_mp_control%tracers_in_uw  )   
+      deallocate (Removal_mp_control%tracers_in_mca )  
+
+
+end subroutine deallocate_mp_removal_control_type 
+
+
 
 
 !#######################################################################
 
 
+
                  end module moist_proc_utils_mod
+
 
 

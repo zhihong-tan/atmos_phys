@@ -3,9 +3,8 @@
 
 
 use mpp_mod,               only : input_nml_file
-use fms_mod,               only : file_exist, open_namelist_file,&
-                                  open_file, error_mesg, FATAL, NOTE, &
-                                  mpp_pe, mpp_root_pe, close_file, &
+use fms_mod,               only : error_mesg, FATAL, NOTE, &
+                                  mpp_pe, mpp_root_pe, &
                                   stdlog, check_nml_error,  &
                                   write_version_number, stdout
 use lscloud_types_mod,     only : lscloud_types_init, lscloud_debug_type, &
@@ -105,7 +104,7 @@ logical, intent(out) :: debug_out
 !    initialize the lscloud_debug module.
 !------------------------------------------------------------------------
 
-      integer :: io, ierr, logunit, unit
+      integer :: io, ierr, logunit
 
 !------------------------------------------------------------------------ 
 !    if module is already initialized, return.
@@ -119,19 +118,8 @@ logical, intent(out) :: debug_out
 !----------------------------------------------------------------------- 
 !    process namelist.
 !-----------------------------------------------------------------------  
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=lscloud_debug_nml, iostat=io)
       ierr = check_nml_error(io,'lscloud_debug_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=lscloud_debug_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'lscloud_debug_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !----------------------------------------------------------------------- 
 !    write version and namelist to stdlog.
@@ -189,8 +177,7 @@ logical, intent(out) :: debug_out
 !    if any debugging is desired, open a file to hold the output. 
 !-------------------------------------------------------------------------
       if (Debug%debugo ) then   
-        Debug%otun = open_file (otname, threading = 'multi',  &
-                                                        action = 'append')
+        open(file=otname, form='formatted',action='write', position="append", newunit=Debug%otun)
       else
         Debug%otun = 0
       endif
