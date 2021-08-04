@@ -9,8 +9,8 @@ module cloud_zonal_mod
 
 use time_manager_mod, only:  time_type
 use  time_interp_mod, only:  fraction_of_year
-use          fms_mod, only:  error_mesg, FATAL, open_file, &
-                             close_file, mpp_pe, mpp_root_pe, &
+use          fms_mod, only:  error_mesg, FATAL, &
+                             mpp_pe, mpp_root_pe, &
                              write_version_number
 
 implicit none

@@ -19,12 +19,11 @@
 !   shared modules:
 
 use mpp_mod,             only: input_nml_file
-use fms_mod,             only: open_namelist_file, file_exist,    &
-                               check_nml_error, error_mesg,  &
+use fms_mod,             only: check_nml_error, error_mesg,  &
                                fms_init, stdlog, &
                                write_version_number, FATAL, NOTE, &
-                               WARNING, mpp_pe, mpp_root_pe, close_file
-use fms_io_mod,          only: read_data
+                               WARNING, mpp_pe, mpp_root_pe
+use fms2_io_mod,         only: FmsNetcdfFile_t, open_file, read_data, close_file, file_exists
 use time_manager_mod,    only: time_type,  &
                                time_manager_init, operator(+), &
                                set_date, operator(-), print_date, &
@@ -284,13 +283,12 @@ real, dimension(:,:),   intent(in) :: latb, lonb
 !-----------------------------------------------------------------
 !  local variables:
 
-       integer           ::  unit, ierr, io, logunit
+       integer           ::  ierr, io, logunit
        integer           ::  n, no3
 
 !---------------------------------------------------------------------
 !  local variables:
 !
-!         unit       io unit number 
 !         ierr       error code
 !         io         error status returned from io operation
 !
@@ -312,22 +310,11 @@ real, dimension(:,:),   intent(in) :: latb, lonb
       call time_interp_init   
       call constants_init
  
-#ifdef INTERNAL_FILE_NML
-      read (input_nml_file, nml=ozone_nml, iostat=io)
-      ierr = check_nml_error(io,"ozone_nml")
-#else
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=ozone_nml, iostat=io, end=10)
-        ierr = check_nml_error(io, 'ozone_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
+      read (input_nml_file, nml=ozone_nml, iostat=io)
+      ierr = check_nml_error(io,"ozone_nml")
  
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -890,7 +877,7 @@ subroutine obtain_input_file_data
 !    determine if a netcdf input data file exists. if so, read the
 !    number of data records in the file.
 !---------------------------------------------------------------------
-      if (file_exist ( 'INPUT/id1o3.nc') ) then
+      if (file_exists ( 'INPUT/id1o3.nc') ) then
         ncid = ncopn ('INPUT/id1o3.nc', 0, rcode)
         call ncinq (ncid, ndims, nvars, ngatts, recdim, rcode)
         do i=1,ndims
@@ -919,8 +906,8 @@ subroutine obtain_input_file_data
 !    determine if the input data input file exists in ascii format.
 !    if so, read the number of data records in the file.
 !---------------------------------------------------------------------
-      else if (file_exist ( 'INPUT/id1o3') ) then
-        iounit = open_namelist_file ('INPUT/id1o3')
+      else if (file_exists ( 'INPUT/id1o3') ) then
+        open(file='INPUT/id1o3', form='formatted',action='read', newunit=iounit)
         read (iounit,FMT = '(i4)') kmax_file
 
 !-------------------------------------------------------------------
@@ -929,7 +916,7 @@ subroutine obtain_input_file_data
 !---------------------------------------------------------------------
          allocate (qqo3(kmax_file) )
          read (iounit,FMT = '(5e18.10)') (qqo3(k),k=1,kmax_file)
-         call close_file (iounit)
+         close(iounit)
 
 !---------------------------------------------------------------------
 !    if file is not present, write an error message.
@@ -1007,7 +994,7 @@ integer, intent(in) :: season
       character(len=48)         ::  err_string 
       integer                   ::  iounit   
       integer                   ::  j, k, kk, n  
-
+      type(FmsNetcdfFile_t) :: ozone_data_file !< Fms2io fileobj
 !-----------------------------------------------------------------------
 !  local variables:
 ! 
@@ -1066,16 +1053,17 @@ integer, intent(in) :: season
 !    open the file and read the data set.  close the file upon 
 !    completion. if it is not present, write an error message.
 !---------------------------------------------------------------------
-      if (file_exist ( 'INPUT/zonal_ozone_data.nc')) then
+      if (open_file(ozone_data_file, 'INPUT/zonal_ozone_data.nc' , "read", is_restart = .false.)) then
         if(mpp_pe() == mpp_root_pe()) &
              call error_mesg('ozone_mod','Reading netCDF input data: zonal_ozone_data.nc',NOTE)
-        call read_data('INPUT/zonal_ozone_data.nc', 'ph3', ph3, no_domain=.true.)
-        call read_data('INPUT/zonal_ozone_data.nc', 'o3hi', o3hi, no_domain=.true.)
-        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo1', o3lo1, no_domain=.true.)
-        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo2', o3lo2, no_domain=.true.)
-        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo3', o3lo3, no_domain=.true.)
-        call read_data('INPUT/zonal_ozone_data.nc', 'o3lo4', o3lo4, no_domain=.true.)
-      else if (file_exist ( 'INPUT/zonal_ozone_data') ) then
+        call read_data(ozone_data_file, 'ph3', ph3)
+        call read_data(ozone_data_file, 'o3hi', o3hi)
+        call read_data(ozone_data_file, 'o3lo1', o3lo1)
+        call read_data(ozone_data_file, 'o3lo2', o3lo2)
+        call read_data(ozone_data_file, 'o3lo3', o3lo3)
+        call read_data(ozone_data_file, 'o3lo4', o3lo4)
+        call close_file(ozone_data_file)
+      else if (file_exists ( 'INPUT/zonal_ozone_data') ) then
         call error_mesg('ozone_mod','Reading native input data zonal_ozone_data no longer supported',FATAL)
       else
         call error_mesg ( 'ozone_mod', &

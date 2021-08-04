@@ -7,10 +7,10 @@ use polysvp_mod,               only : polysvp_l,  polysvp_i,   &
 use constants_mod,             only : pi, grav, rvgas, rdgas, tfreeze, &
                                       hlv, hlf, hls, cp_air
 use mpp_mod,                   only : input_nml_file
-use fms_mod,                   only : mpp_pe, file_exist, error_mesg,  &
-                                      open_namelist_file, FATAL, &
+use fms_mod,                   only : mpp_pe, error_mesg,  &
+                                      FATAL, &
                                       stdlog, write_version_number, &
-                                      check_nml_error, close_file, &
+                                      check_nml_error, &
                                       mpp_root_pe
 use lscloud_debug_mod,         only : record_micro_refusal
 use lscloud_types_mod,         only : lscloud_types_init, &
@@ -258,7 +258,7 @@ type(exchange_control_type), intent(in) :: Exch_ctrl
 !-----------------------------------------------------------------------
 !--local variables------------------------------------------------------
 
-      INTEGER   :: unit, io, ierr, logunit
+      INTEGER   :: io, ierr, logunit
 
 !-----------------------------------------------------------------------
       if (module_is_initialized) return
@@ -266,19 +266,8 @@ type(exchange_control_type), intent(in) :: Exch_ctrl
 !-----------------------------------------------------------------------
 !    process namelist.
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=morrison_gettelman_microp_nml, iostat=io)
       ierr = check_nml_error(io,'morrison_gettelman_microp_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=morrison_gettelman_microp_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'morrison_gettelman_microp_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !-----------------------------------------------------------------------
 !    write version and namelist to stdlog.

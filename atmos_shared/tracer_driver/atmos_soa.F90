@@ -17,14 +17,13 @@ module atmos_soa_mod
 !-----------------------------------------------------------------------
 
 use mpp_mod, only: input_nml_file 
-use                    fms_mod, only : file_exist,              &
-                                       write_version_number,    &
+use                    fms_mod, only : write_version_number,    &
                                        mpp_pe,                  &
                                        mpp_root_pE,             &
-                                       close_file,              &
                                        stdout, stdlog,          &
                                        check_nml_error, error_mesg, &
-                                       open_namelist_file, FATAL, NOTE
+                                       FATAL, NOTE
+use                fms2_io_mod, only : file_exists
 use           time_manager_mod, only : time_type,               &
                                        days_in_month, &
                                        set_date, set_time, print_date, get_date, &
@@ -184,7 +183,7 @@ character(len=7), parameter :: mod_name = 'tracers'
 !
 !-----------------------------------------------------------------------
 !
-      integer  unit,io,ierr, logunit, outunit
+      integer  io,ierr, logunit, outunit
       character(len=3) :: SOA_tracer
 !
       data SOA_tracer/'SOA'/
@@ -193,18 +192,9 @@ character(len=7), parameter :: mod_name = 'tracers'
       if (module_is_initialized) return
 !    read namelist.
 !-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if ( file_exists('input.nml')) then
         read (input_nml_file, nml=secondary_organics_nml, iostat=io)
         ierr = check_nml_error(io,'secondary_organics_nml')
-#else
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=secondary_organics_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'secondary_organics_nml')
-        end do
-10      call close_file (unit)
-#endif
       endif
 
 !---------------------------------------------------------------------
@@ -227,7 +217,7 @@ character(len=7), parameter :: mod_name = 'tracers'
                  write (logunit,30) SOA_tracer,nsoa
       endif
 
-  30   format (A,' was initialized as tracer number ',i2)
+  30   format (A,' was initialized as tracer number ',i3)
 
 !----- check for other required tracers ------------
 

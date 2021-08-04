@@ -1,8 +1,9 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 ! (c) British Crown Copyright 2008, the Met Office.
 ! All rights reserved.
 ! $Revision: 88 $, $Date: 2013-11-13 09:08:38 -0500 (Wed, 13 Nov 2013) $
-! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.1/cosp_io.F90 $
+! $URL: http://cfmip-obs-sim.googlecode.com/svn/stable/v1.4.0/cosp_io.F90 $
 ! 
 ! Redistribution and use in source and binary forms, with or without modification, are permitted 
 ! provided that the following conditions are met:
@@ -49,8 +50,7 @@ MODULE MOD_COSP_IO
   use MOD_COSP_Modis_Simulator
 #ifdef COSP_GFDL
   use mpp_mod, only: input_nml_file
-  use fms_mod, only: open_namelist_file, open_file, close_file,   &
-                     file_exist, mpp_pe, mpp_root_pe,   &
+  use fms_mod, only: mpp_pe, mpp_root_pe,   &
                      error_mesg, FATAL, &
                      check_nml_error, write_version_number, stdlog
 #endif
@@ -1777,7 +1777,7 @@ CONTAINS
              Ltauwlogmodis,Ltauilogmodis,Lreffclwmodis,Lreffclimodis,Lpctmodis,Llwpmodis, &
              Liwpmodis,Lclmodis
 #ifdef COSP_GFDL
-  integer :: unit, io, ierr, logunit
+  integer :: io, ierr, logunit
 #endif
 
   do i=1,N_OUT_LIST
@@ -1786,20 +1786,8 @@ CONTAINS
 #ifdef COSP_GFDL
 !---------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=cosp_output, iostat=io)
    ierr = check_nml_error(io,"cosp_output")
-#else
-!---------------------------------------------------------------------
-    if ( file_exist('input.nml')) then
-     unit =  open_namelist_file ()
-     ierr=1; do while (ierr /= 0)
-     read  (unit, nml=cosp_output, iostat=io, end=10)
-     ierr = check_nml_error(io,'cosp_output')
-     enddo
-10      call close_file (unit)
-   endif
-#endif
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------

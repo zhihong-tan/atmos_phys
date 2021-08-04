@@ -8,9 +8,9 @@
 !-----------------------------------------------------------------------
 
 use fms_mod,                   only :  error_mesg, FATAL, mpp_pe,   &
-                                       mpp_root_pe, open_namelist_file, &
-                                       check_nml_error, close_file,  &
-                                       write_version_number, file_exist, &
+                                       mpp_root_pe,  &
+                                       check_nml_error,  &
+                                       write_version_number, &
                                        stdlog
 use constants_mod,             ONLY :  grav, cp_air, rdgas, rvgas, tfreeze
 use time_manager_mod,          only :  time_type
@@ -145,7 +145,7 @@ type(exchange_control_type), intent(in) :: Exch_ctrl
 
 !-----local variables
 
-      integer :: unit, io, ierr, logunit
+      integer :: io, ierr, logunit
 
 !-----------------------------------------------------------------------
       if (module_is_initialized) return
@@ -171,20 +171,8 @@ type(exchange_control_type), intent(in) :: Exch_ctrl
 !-------------------------------------------------------------------------
 !    process namelist.
 !-------------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=aerosol_cloud_nml, iostat=io)
       ierr = check_nml_error(io,'aerosol_cloud_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=aerosol_cloud_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'aerosol_cloud_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
- 
 !-------------------------------------------------------------------------
 !    write version and namelist to standard log.
 !-------------------------------------------------------------------------

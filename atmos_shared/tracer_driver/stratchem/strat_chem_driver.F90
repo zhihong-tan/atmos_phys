@@ -2,14 +2,10 @@
 
 
 use mpp_mod, only: input_nml_file 
-use              fms_mod, only : file_exist, &
-                                 check_nml_error,  &
-                                 close_file, open_namelist_file, &
+use              fms_mod, only : check_nml_error,  &
                                  stdlog, write_version_number, &
                                  error_mesg, FATAL
-use              mpp_io_mod, only: mpp_open, mpp_close, &
-                       MPP_NATIVE, MPP_RDONLY, MPP_DELETE
-
+use           fms2_io_mod, only: file_exists
 use   tracer_manager_mod, only : get_tracer_index, NO_TRACER
 use    field_manager_mod, only : MODEL_ATMOS
 
@@ -96,24 +92,15 @@ integer :: naerosol = 0
 function strat_chem_driver_init()
  logical :: strat_chem_driver_init
 
-      integer                 :: unit, ierr, io, logunit
+      integer                 :: ierr, io, logunit
 !---------------------------------------------------------------------
 !    read strat_chem namelist.
 !---------------------------------------------------------------------
 
 
-         if (file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+         if (file_exists('input.nml')) then
            read (input_nml_file, nml=strat_chem_nml, iostat=io)
            ierr = check_nml_error(io,'strat_chem_nml')
-#else
-           unit =  open_namelist_file ( )
-           ierr=1; do while (ierr /= 0)
-           read (unit, nml=strat_chem_nml, iostat=io, end=10)
-           ierr = check_nml_error (io, 'strat_chem_nml')
-           enddo
- 10        call close_file (unit)
-#endif
          endif
 
      strat_chem_driver_init = do_coupled_stratozone
@@ -152,7 +139,7 @@ end subroutine strat_chem_driver_end
 !
 !   local variables: 
 
-      integer                 :: unit, outunit
+      integer                 :: funit, outunit
 
       if(run_startup) then
          run_startup = .false.
@@ -208,49 +195,51 @@ end subroutine strat_chem_driver_end
 !  read in chemical lower boundary 
 !  
          outunit = stdout()
-         call mpp_open( unit, 'INPUT/chemlbf',action=MPP_RDONLY )
+         open(file='INPUT/chemlbf', form='formatted',action='read', newunit=funit)
          if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/chemlbf'
          DO NC = 1,15                                           
-           READ(unit,'(6E13.6)') (CHLB(JL,NC),JL=1,90) 
+           READ(funit,'(6E13.6)') (CHLB(JL,NC),JL=1,90)
          ENDDO                                                          
-         READ(unit,'(6E13.6)') OZB  
-         read(unit,'(6e13.6)') tropc
-         call mpp_close(unit)
+         READ(funit,'(6E13.6)') OZB
+         read(funit,'(6e13.6)') tropc
+         close(funit)
 !
 !  read in photolysis files
 !         
-         call mpp_open( unit, 'INPUT/photolsmax', action=MPP_RDONLY )
+         open(file='INPUT/photolsmax', form='formatted',action='read', newunit=funit)
          if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/photolsmax'
          DO LEV = 1,48                                            
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
-         READ(unit,'(I4,E12.4,2F10.4,5(/6E12.4),/3E12.4)') &
+         READ(funit,'(I4,E12.4,2F10.4,5(/6E12.4),/3E12.4)') &
            LV,OZON(IPZ,LEV),COSP(ICZ),COSPHC(LEV), &
            (PHOTO(IR,ICZ,IPZ,LEV),IR=1,33)
-         READ(unit,'(5(6E12.4/),3E12.4)')   &
+         READ(funit,'(5(6E12.4/),3E12.4)')   &
            (PHOTO(IR,ICZ,IPZ,LEV),IR=34,66)
          enddo
          enddo
          enddo
-         call mpp_close(unit)
-         call mpp_open( unit, 'INPUT/photolsmin', action=MPP_RDONLY )
+         close(funit)
+
+         open(file='INPUT/photolsmin', form='formatted',action='read', newunit=funit)
          if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/photolsmin'
          DO LEV = 1,48                                            
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
-         READ(unit,'(I4,E12.4,2F10.4,5(/6E12.4),/3E12.4)') &
+         READ(funit,'(I4,E12.4,2F10.4,5(/6E12.4),/3E12.4)') &
            LV,OZON(IPZ,LEV),COSP(ICZ),COSPHC(LEV), &
            (PHOTO(IR,ICZ,IPZ,LEV),IR=67,99)
-         READ(unit,'(5(6E12.4/),3E12.4)')   &
+         READ(funit,'(5(6E12.4/),3E12.4)')   &
            (PHOTO(IR,ICZ,IPZ,LEV),IR=100,132)
          enddo
          enddo
          enddo
-         call mpp_close(unit)
-         call mpp_open( unit, 'INPUT/solar_f107.dat', action=MPP_RDONLY )
+         close(funit)
+
+         open(file='INPUT/solar_f107.dat', form='formatted',action='read', newunit=funit)
          if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/solar_f107.dat'
-         read(unit,'(f6.0,5f7.0)') solardata
-         call mpp_close(unit)
+         read(funit,'(f6.0,5f7.0)') solardata
+         close(funit)
          DO LEV = 1,48                                              
          DO IPZ = 1,11                                               
          DO ICZ = 1,14                                               
@@ -263,18 +252,18 @@ end subroutine strat_chem_driver_end
 !
 !  read in data for Cly and Bry computation
 !         
-         call mpp_open( unit, 'INPUT/dfdage.dat', action=MPP_RDONLY )
+         open(file='INPUT/dfdage.dat', form='formatted',action='read', newunit=funit)
          if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/dfdage.dat'
-         read(unit,'(6e13.6)') age
-         read(unit,'(6e13.6)') dfdage
-         call mpp_close(unit)
+         read(funit,'(6e13.6)') age
+         read(funit,'(6e13.6)') dfdage
+         close(funit)
 !
 !  read in data for NOy tropospheric relaxation
 !         
-         call mpp_open( unit, 'INPUT/noy_annual.dat', action=MPP_RDONLY )
+         open(file='INPUT/noy_annual.dat', form='formatted',action='read', newunit=funit)
          if (mpp_pe() == mpp_root_pe()) WRITE(outunit,*) 'INPUT/noy_annual.dat'
-         read(unit,'(6e13.6)') anoy
-         call mpp_close(unit)
+         read(funit,'(6e13.6)') anoy
+         close(funit)
      endif
 
 

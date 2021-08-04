@@ -24,11 +24,12 @@
 use time_manager_mod,         only: time_type, time_manager_init, &
                                     set_time, operator (+)
 use mpp_mod,                  only: input_nml_file
-use fms_mod,                  only: open_namelist_file, mpp_pe, &
+use fms_mod,                  only: mpp_pe, &
                                     mpp_root_pe, stdlog,  fms_init, &
-                                    write_version_number, file_exist, & 
+                                    write_version_number, &
                                     check_nml_error, error_mesg,   &
-                                    FATAL, NOTE, close_file, stdout
+                                    FATAL, NOTE, stdout
+use fms2_io_mod,              only: file_exists
 use tracer_manager_mod,       only:         &
 !                                   tracer_manager_init,  &
                                     get_tracer_index, NO_TRACER
@@ -290,14 +291,13 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !----------------------------------------------------------------------
 !   local variables:
  
-      integer   ::   unit, ierr, io, logunit
+      integer   ::   ierr, io, logunit
       integer   ::   ndum, i, j, ii, jj
       
 
 !--------------------------------------------------------------------
 !   local variables:
 !
-!      unit     io unit for reading nml file and writing logfile
 !      ierr     error code
 !      io       error status returned from io operation  
 !      ndum     dummy argument needed for call to field_manager_init
@@ -321,20 +321,8 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
  
 !---------------------------------------------------------------------
 !    read namelist.
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=cloud_spec_nml, iostat=io)
       ierr = check_nml_error(io,"cloud_spec_nml")
-#else
-!---------------------------------------------------------------------
-      if (file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read (unit, nml=cloud_spec_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'cloud_spec_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !----------------------------------------------------------------------
 !    write version number and namelist to logfile.
@@ -503,8 +491,8 @@ type(cloudrad_control_type), intent(inout) ::  Cldrad_control
 !    will not be available until num_pts equals or exceeds tot_pts, so
 !    continue processing without issuing an error message. 
 !--------------------------------------------------------------------
-      if (file_exist ('INPUT/tracer_cld_amt.res') .or.  &
-          file_exist ('INPUT/strat_cloud.res') ) then
+      if (file_exists ('INPUT/tracer_cld_amt.res') .or.  &
+          file_exists ('INPUT/strat_cloud.res') ) then
         num_pts = tot_pts
       else
         num_pts = 0

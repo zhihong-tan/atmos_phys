@@ -9,9 +9,9 @@ MODULE ice_nucl_mod
 
 use mpp_mod,           only : input_nml_file
 use fms_mod,           only : error_mesg, FATAL, mpp_pe, mpp_root_pe, &
-                              open_namelist_file, check_nml_error, &
-                              close_file, write_version_number, &
-                              file_exist, stdlog
+                              check_nml_error, &
+                              write_version_number, &
+                              stdlog
 use aer_ccn_act_k_mod, only : ghquad, dlocate
 use aerosol_params_mod,only : aerosol_params_init, rho_sulf, sigma_sulf,  &
                               rho_bc, sigma_bc, Nfact_du1, Nfact_du2,  &
@@ -116,7 +116,7 @@ contains
 
 SUBROUTINE ice_nucl_wpdf_init
 
-      integer :: unit, io, ierr, logunit
+      integer :: io, ierr, logunit
      
 !------------------------------------------------------------------------
       IF (module_is_initialized) return
@@ -124,20 +124,8 @@ SUBROUTINE ice_nucl_wpdf_init
 !-------------------------------------------------------------------------
 !    process namelist.
 !-------------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=ice_nucl_nml, iostat=io)
       ierr = check_nml_error(io,'ice_nucl_nml')
-#else
-      if ( file_exist('input.nml')) then
- 
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=ice_nucl_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'ice_nucl_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !--------- write version and namelist to standard log ------------
  

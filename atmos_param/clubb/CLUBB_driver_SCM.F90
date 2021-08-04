@@ -107,14 +107,14 @@ module clubb_driver_mod
 use       constants_mod, only: RAD_TO_DEG
 use             mpp_mod, only: mpp_pe, mpp_root_pe, stdlog, mpp_chksum,        &
                                mpp_clock_id, mpp_clock_begin, mpp_clock_end,   &
-                               CLOCK_MODULE_DRIVER
+                               CLOCK_MODULE_DRIVER, input_nml_file
 use    diag_manager_mod, only: register_diag_field, send_data
 use    time_manager_mod, only: time_type, get_time, set_time, get_date,        &
                                operator(+), operator(-)
-use             fms_mod, only: write_version_number, open_file,                &
-                               open_namelist_file, check_nml_error,            &
-                               file_exist, error_mesg, close_file,             &
-                               read_data, write_data,                          &
+use         fms2_io_mod, only: file_exists
+use             fms_mod, only: write_version_number,                &
+                               check_nml_error,            &
+                               error_mesg,             &
                                mpp_error, FATAL, NOTE
 use   field_manager_mod, only: MODEL_ATMOS
 use  tracer_manager_mod, only: get_number_tracers, get_tracer_index,           &
@@ -2213,7 +2213,7 @@ contains
   ! ----- Local variables -----
 
   integer, dimension(3) :: half = (/1,2,4/)
-  integer :: ierr, io, unit            !open namelist error
+  integer :: ierr, io            !open namelist error
 
   integer :: i, j, n
 
@@ -2238,23 +2238,13 @@ contains
 
   ! ----- Read namelist -----
 
-  if ( file_exist( 'input.nml' ) ) then
+  if ( file_exists( 'input.nml' ) ) then
 
-    unit = open_namelist_file ( )
-    ierr = 1        
-    do while( ierr /= 0 )
-      read ( unit,  nml = clubb_setting_nml, iostat = io, end = 10 ) 
-      ierr = check_nml_error (io, 'clubb_setting_nml')
-    end do
-10  call close_file( unit )
+    read (input_nml_file, nml=clubb_setting_nml, iostat=io)
+    ierr = check_nml_error(io,"clubb_setting_nml")
 
-    unit = open_namelist_file ( )
-    ierr = 1
-    do while( ierr /= 0 )
-     read ( unit,  nml = clubb_stats_setting_nml, iostat = io, end = 20 ) 
-     ierr = check_nml_error (io, 'clubb_stats_setting_nml')
-    end do
-20  call close_file( unit )
+    read (input_nml_file, nml=clubb_stats_setting_nml, iostat=io)
+    ierr = check_nml_error(io,"clubb_stats_setting_nml")
 
   end if
 
@@ -2613,9 +2603,6 @@ contains
       istats, jstats,                                                  &
       RAD_TO_DEG*lon(istats,jstats), RAD_TO_DEG*lat(istats,jstats),    &
       trim(fname_prefix(fstats))
-
-      unit_stats = open_namelist_file()
-      close(unit_stats)
 
       Time_stats_init = Time
       call get_date( Time_stats_init, year, month, day, hour, minute, second )

@@ -1,5 +1,6 @@
                        module donner_deep_mod
 
+use mpp_domains_mod,        only: domain2D
 use donner_types_mod,       only: donner_initialized_type, &
                                   donner_save_type, donner_rad_type, &
                                   donner_nml_type, donner_param_type, &
@@ -387,6 +388,7 @@ logical :: module_is_initialized = .false.
 
 
 logical :: running_in_fms = .true.
+logical :: doing_prog_clouds
 
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
@@ -405,15 +407,17 @@ logical :: running_in_fms = .true.
 
 !#####################################################################
 
-subroutine donner_deep_init (lonb, latb, pref, axes, secs, days, &
+subroutine donner_deep_init (domain, lonb, latb, pref, axes, secs, days, &
                              tracers_in_donner, do_conservation_checks,&
-                             using_unified_closure, using_fms_code)
+                             using_unified_closure, doing_prog_clouds_in, &
+                                                    using_fms_code)
 
 !---------------------------------------------------------------------
 !    donner_deep_init is the constructor for donner_deep_mod.
 !---------------------------------------------------------------------
 
 !--------------------------------------------------------------------
+type(domain2D), target,          intent(in)   :: domain !< Atmosphere domain
 real,            dimension(:,:), intent(in)   :: lonb, latb
 real,            dimension(:),   intent(in)   :: pref
 integer,         dimension(4),   intent(in)   :: axes
@@ -421,6 +425,7 @@ integer,                         intent(in)   :: secs, days
 logical,         dimension(:),   intent(in)   :: tracers_in_donner
 logical,                         intent(in)   :: do_conservation_checks
 logical,                         intent(in)   :: using_unified_closure
+logical,                         intent(in)   :: doing_prog_clouds_in
 logical,                         intent(in), optional :: &
                                                  using_fms_code
 
@@ -468,6 +473,8 @@ logical,                         intent(in), optional :: &
 !-------------------------------------------------------------------
       ermesg = '  '
       erflag = 0
+
+      doing_prog_clouds = doing_prog_clouds_in
 
 !---------------------------------------------------------------------
 !    define variable to indicated whether this module is being executed
@@ -828,7 +835,7 @@ logical,                         intent(in), optional :: &
 !@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
       if (running_in_fms) then
-        call fms_donner_read_restart (Initialized, ntracers,   &
+        call fms_donner_read_restart (domain, Initialized, ntracers,   &
                                       secs, days, Don_save, Nml)
       else
 
@@ -1185,10 +1192,8 @@ real, dimension(:,:,:),       intent(out)   :: delta_temp, delta_vapor,&
                                                frozen_precip             
 real, dimension(:,:,:,:),     intent(out)   :: qtrtnd 
 real, dimension(:,:,:),       intent(out)   :: donner_wetdep
-real, dimension(:,:,:),       intent(in),                &
-                                   optional :: qlin, qiin, qain
-real, dimension(:,:,:),       intent(out),               &
-                                   optional :: delta_ql, delta_qi, &
+real, dimension(:,:,:),       intent(in)  :: qlin, qiin, qain
+real, dimension(:,:,:),       intent(out) :: delta_ql, delta_qi, &
                                                delta_qa
 
 !--------------------------------------------------------------------
@@ -1395,39 +1400,16 @@ real, dimension(:,:,:),       intent(out),               &
         endif
       endif
 
-!----------------------------------------------------------------------
-!    determine if the arguments needed when run with the strat_cloud_mod 
-!    are present; set cloud_tracers_present appropriately.
-!----------------------------------------------------------------------
-      num_cld_tracers = count( (/present(qlin), present(qiin),   &
-                                 present(qain), present(delta_ql), &
-                                 present(delta_qi),present(delta_qa)/) )
-      if (num_cld_tracers == 0) then
-        cloud_tracers_present = .false.
-        qlin_arg = 0.
-        qiin_arg = 0.
-        qain_arg = 0.
-      else if (num_cld_tracers == 6) then
+      if (doing_prog_clouds) then
+        num_cld_tracers = 6
         cloud_tracers_present = .true.
+      else
+        num_cld_tracers = 0
+        cloud_tracers_present = .false.
+       endif
         qlin_arg = qlin 
         qiin_arg = qiin
         qain_arg = qain
-      else
-        ermesg = 'donner_deep: &
-                        &Either none or all of the cloud tracers '// &
-                         'and their tendencies must be present'
-        if (running_in_fms) then
-          call fms_error_mesg (ermesg) 
-        else
-
-!---------------------------------------------------------------------
-!    appropriate error processing code should be added in subroutine
-!    nonfms_error_mesg. currently an error message is printed and a 
-!    stop command issued (dangerous on parallel machines!).
-!---------------------------------------------------------------------
-          call nonfms_error_mesg (ermesg) 
-        endif
-      endif
 
 !--------------------------------------------------------------------
 !    if column diagnostics have been requested for any column, call 
@@ -1693,7 +1675,8 @@ subroutine donner_deep_restart(timestamp)
   integer                                :: ntracers
 
   if (running_in_fms) then
-     call fms_donner_write_restart (Initialized, timestamp)
+     ntracers = size(Don_save%tracername(:))
+     call fms_donner_write_restart (Initialized, ntracers, nml, Don_save, timestamp)
   else 
 
      !---------------------------------------------------------------------

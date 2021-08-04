@@ -12,11 +12,12 @@ module atmos_tropopause_mod
 ! </DESCRIPTION>
 
 
-use              fms_mod, only : file_exist, write_version_number,    &
+use              fms_mod, only : write_version_number,    &
                                  mpp_pe, mpp_root_pe,                 &
-                                 close_file, stdlog, stdout,          &
+                                 stdlog, stdout,          &
                                  check_nml_error, error_mesg,         &
-                                 open_namelist_file, FATAL, NOTE, WARNING
+                                 FATAL, NOTE, WARNING
+use          fms2_io_mod, only : file_exists
 use     diag_manager_mod, only : send_data
 use atmos_cmip_diag_mod,  only : register_cmip_diag_field_2d
 use     time_manager_mod, only : time_type
@@ -194,7 +195,7 @@ type(time_type),       intent(in)                   :: Time
 !         io         error status returned from io operation
 !-----------------------------------------------------------------------
 !
-integer :: ierr, unit, io
+integer :: ierr, io
 !
 !-----------------------------------------------------------------------
 !     local parameters
@@ -208,18 +209,9 @@ integer :: ierr, unit, io
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
-    if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+    if ( file_exists('input.nml')) then
         read (input_nml_file, nml=atmos_tropopause_nml, iostat=io)
         ierr = check_nml_error(io,'atmos_tropopause_nml')
-#else
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=atmos_tropopause_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'atmos_tropopause_nml')
-        end do
-10      call close_file (unit)
-#endif
     end if
 
 !---------------------------------------------------------------------

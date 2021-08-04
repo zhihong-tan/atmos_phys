@@ -17,11 +17,11 @@
 !   shared modules:
 
 use mpp_mod,           only: input_nml_file
-use fms_mod,           only: open_namelist_file, fms_init, &
+use fms_mod,           only: fms_init, &
                              mpp_pe, mpp_root_pe, stdlog, &
-                             file_exist, write_version_number, &
+                             write_version_number, &
                              check_nml_error, error_mesg, &
-                             FATAL, NOTE, close_file, string, lowercase
+                             FATAL, NOTE, string, lowercase
 use time_manager_mod,  only: time_manager_init, time_type, operator(>)
 use diag_manager_mod,  only: register_diag_field, diag_manager_init, &
                              send_data, get_diag_field_id, &
@@ -303,13 +303,12 @@ type(aerosolrad_control_type),  intent(in)    :: Aerosolrad_control
 !---------------------------------------------------------------------
 !   local variables:
 
-      integer   :: unit, io, ierr, logunit
+      integer   :: io, ierr, logunit
       integer   :: nfields
 
 !---------------------------------------------------------------------
 !   local variables:
 !
-!        unit            io unit number used for namelist file
 !        ierr            error code
 !        io              error status returned from io operation
 !        nfields         number of active aerosol fields
@@ -333,20 +332,8 @@ type(aerosolrad_control_type),  intent(in)    :: Aerosolrad_control
 !-----------------------------------------------------------------------
 !    read namelist.
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=rad_output_file_nml, iostat=io)
       ierr = check_nml_error(io,'rad_output_file_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=rad_output_file_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'rad_output_file_nml')
-        end do
-10      call close_file (unit)
-      endif
-#endif
- 
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.
 !---------------------------------------------------------------------

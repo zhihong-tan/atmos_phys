@@ -6,10 +6,10 @@ MODULE UW_CONV_MOD
   use   Diag_Manager_Mod, ONLY: register_diag_field, send_data
   use   Time_Manager_Mod, ONLY: time_type, get_time
   use           mpp_mod, only : input_nml_file
-  use           fms_mod, only : write_version_number, open_namelist_file, check_nml_error,&
-                                FILE_EXIST, ERROR_MESG,  &
+  use           fms_mod, only : write_version_number, check_nml_error,&
+                                ERROR_MESG,  &
                                 lowercase, &
-                                CLOSE_FILE, FATAL, NOTE
+                                FATAL, NOTE
   use  field_manager_mod, only: MODEL_ATMOS
   use  tracer_manager_mod, only: get_tracer_names, query_method, &
                                  get_tracer_index, NO_TRACER
@@ -407,7 +407,7 @@ contains
 !
 !-------------------------------------------------------------------
 
-    integer   :: unit, io
+    integer   :: io
 
     integer   :: ntracers, n, nn, ierr, logunit
     logical   :: flag
@@ -426,7 +426,6 @@ contains
     call exn_init_k (Uw_p)
     call findt_init_k (Uw_p)
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=uw_closure_nml, iostat=io)
       ierr = check_nml_error(io,'uw_closure_nml')
       read (input_nml_file, nml=uw_conv_nml, iostat=io)
@@ -437,52 +436,6 @@ contains
       ierr = check_nml_error(io,'deep_conv_nml')
       read (input_nml_file, nml=idealized_forcing_nml, iostat=io)
       ierr = check_nml_error(io,'idealized_forcing_nml')
-#else
-    if( FILE_EXIST( 'input.nml' ) ) then
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = uw_closure_nml, iostat = io, end = 10 )
-          ierr = check_nml_error(io,'uw_closure_nml')
-       end do
-10     call close_file ( unit )
-
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = uw_conv_nml, iostat = io, end = 20 )
-          ierr = check_nml_error(io,'uw_conv_nml')
-       end do
-20     call close_file ( unit )
-
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = uw_plume_nml, iostat = io, end = 30 )
-          ierr = check_nml_error(io,'uw_plume_nml')
-       end do
-30     call close_file ( unit )
-
-!========Option for deep convection=======================================
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = deep_conv_nml, iostat = io, end = 40 )
-          ierr = check_nml_error(io,'deep_conv_nml')
-       end do
-40     call close_file ( unit )
-!========Option for deep convection=======================================
-!========Option for idealized forcing=====================================
-       unit = OPEN_NAMELIST_FILE ()
-       io = 1
-       do while ( io .ne. 0 )
-          READ( unit, nml = idealized_forcing_nml, iostat = io, end = 40 )
-          ierr = check_nml_error(io,'idealized_forcing_nml')
-       end do
-50     call close_file ( unit )
-!========Option for idealized forcing=====================================
-    end if
-#endif
 
     use_online_aerosol = Nml_mp%use_online_aerosol
     use_sub_seasalt = Nml_mp%use_sub_seasalt
@@ -1308,8 +1261,9 @@ contains
     integer :: seedperm = 0
  !========Option for deep convection=======================================
 
-    real, dimension(size(tb,3)) :: am1, am2, am3, am4, am5, qntmp
-    real, dimension(size(tb,3),5) :: amx
+    real, dimension(size(tb,3)) :: qntmp
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: am1, am2, am3, am4, am5, am_tmp
+    real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: amx1, amx2, amx3, amx4, amx5, amx_tmp
 
     real, dimension(size(tb,1),size(tb,2),size(tb,3)) :: pmass    ! layer mass (kg/m2)
     real, dimension(size(tb,1),size(tb,2))            :: tempdiag ! temporary diagnostic variable
@@ -1528,7 +1482,9 @@ contains
 
     cqa  =0.; cql  =0.; cqi  =0.; cqn  =0.;
     cqa_s=0.; cql_s=0.; cqi_s=0.; cqn_s=0.;
-    hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.; am1=0.; am2=0.; am3=0.; am4=0.; amx=0.;
+    hlflx=0.; qtflx=0.; nqtflx=0.; pflx=0.;
+    am1=0.; am2=0.; am3=0.; am4=0.; am5=0.;
+    amx1=0.; amx2=0.; amx3=0.; amx4=0.; amx5=0.;
     tten_pevap=0.; qvten_pevap=0.; temp=0.;
     ice_pflx = 0. ; liq_pflx = 0.; qtflx_up=0.; qtflx_dn=0.;
     omega_up=0.; omega_dn=0.; omgmc_up=0.;
@@ -1592,35 +1548,150 @@ contains
     end if
 
     do k=1,kmax
-       do j = 1, jmax
-          do i=1, imax
-             pmass(i,j,k) = (pint(i,j,k+1) - pint(i,j,k))/GRAV
-          enddo
-       enddo
+      pmass(:,:,k) = (pint(:,:,k+1) - pint(:,:,k))/GRAV
     enddo
 
-    do j = 1, jmax
-       do i=1, imax
-         trtend_t=0.; trwet_t=0.;
+
+    if(use_online_aerosol) then
+
+      do k=1,kmax
+        am_tmp(:,:,k)  = 1./(zint(:,:,k)-zint(:,:,k+1)) * 1.0e-3
+        amx_tmp(:,:,k) = 1./pmass(:,:,k)
+      end do
+
+      do na = 1,naer
+        if(asol%aerosol_names(na) == 'so4' .or. &
+           asol%aerosol_names(na) == 'so4_anthro' .or. &
+           asol%aerosol_names(na) == 'so4_natural') then     !aerosol unit: kg/m2
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                am1(i,j,k)=am1(i,j,k)+asol%aerosol(i,j,k,na)*am_tmp(i,j,k)  !am1 unit: g/cm3
+                amx1(i,j,k)=amx1(i,j,k)+asol%aerosol(i,j,k,na)*amx_tmp(i,j,k)  !amx unit: kg/kg
+              end do
+            end do
+          end do
+        else if(asol%aerosol_names(na) == 'omphilic' .or. &
+                asol%aerosol_names(na) == 'omphobic') then
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                am4(i,j,k)=am4(i,j,k)+asol%aerosol(i,j,k,na)*am_tmp(i,j,k)
+                amx4(i,j,k)=amx4(i,j,k)+asol%aerosol(i,j,k,na)*amx_tmp(i,j,k)
+              end do
+            end do
+          end do
+        else if(asol%aerosol_names(na) == 'bcphilic' .or. &
+                asol%aerosol_names(na) == 'bcphobic' .or. &
+                asol%aerosol_names(na) == 'dust1' .or. &
+                asol%aerosol_names(na) == 'dust2' .or. &
+                asol%aerosol_names(na) == 'dust3' .or. &
+                asol%aerosol_names(na) == 'dust_mode1_of_2') then   !h1g, 2015-09-19
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                am2(i,j,k)=am2(i,j,k)+asol%aerosol(i,j,k,na)*am_tmp(i,j,k)
+                amx2(i,j,k)=amx2(i,j,k)+asol%aerosol(i,j,k,na)*amx_tmp(i,j,k)
+              end do
+            end do
+          end do
+        else if(asol%aerosol_names(na) == 'seasalt1' .or. &
+                asol%aerosol_names(na) == 'seasalt2' .or. &
+                asol%aerosol_names(na) == 'seasalt_aitken' .or. &   !h1g, 2015-09-19
+                asol%aerosol_names(na) == 'seasalt_fine'  ) then    !h1g, 2015-09-19
+          do k=1,kmax
+            do j = 1, jmax
+              do i=1, imax
+                am3(i,j,k)=am3(i,j,k)+asol%aerosol(i,j,k,na)*am_tmp(i,j,k)
+                amx3(i,j,k)=amx3(i,j,k)+asol%aerosol(i,j,k,na)*amx_tmp(i,j,k)
+              end do
+            end do
+          end do
+        else if(.not. use_sub_seasalt) then
+          if(asol%aerosol_names(na) == 'seasalt3' .or. &
+                asol%aerosol_names(na) == 'seasalt4' .or. &
+                asol%aerosol_names(na) == 'seasalt5' .or. &
+                asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
+            do k=1,kmax
+              do j = 1, jmax
+                do i=1, imax
+                  am5(i,j,k)=am5(i,j,k)+asol%aerosol(i,j,k,na)*am_tmp(i,j,k)
+                  amx5(i,j,k)=amx5(i,j,k)+asol%aerosol(i,j,k,na)*amx_tmp(i,j,k)
+                end do
+              end do
+            end do
+          end if
+        end if
+      end do
+
+      am2(:,:,:) =am2(:,:,:) +am3(:,:,:) +am4(:,:,:)
+      amx2(:,:,:)=amx2(:,:,:)+amx3(:,:,:)+amx4(:,:,:)
+      if(.not. use_sub_seasalt) then
+        am3(:,:,:)=am3(:,:,:)+am5(:,:,:)
+        amx3(:,:,:)=amx3(:,:,:)+amx5(:,:,:)
+      end if
+    else ! use_online_aerosol
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            am2(i,j,k) = asol%aerosol(i,j,k,1)*am_tmp(i,j,k)
+            amx2(i,j,k)= asol%aerosol(i,j,k,1)*amx_tmp(i,j,k)
+          end do
+        end do
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            am1(i,j,k) = asol%aerosol(i,j,k,2)*am_tmp(i,j,k)
+            amx1(i,j,k)= asol%aerosol(i,j,k,2)*amx_tmp(i,j,k)
+          end do
+        end do
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            am4(i,j,k) = om_to_oc*asol%aerosol(i,j,k,3)*am_tmp(i,j,k)
+            amx4(i,j,k)= om_to_oc*asol%aerosol(i,j,k,3)*amx_tmp(i,j,k)
+          end do
+        end do
+      end do
+      do k=1,kmax
+        do j = 1, jmax
+          do i=1, imax
+            am3(i,j,k) = sea_salt_scale*asol%aerosol(i,j,k,5)*am_tmp(i,j,k)
+            amx3(i,j,k)= sea_salt_scale*asol%aerosol(i,j,k,5)*amx_tmp(i,j,k)
+          end do
+        end do
+      end do
+    endif ! use_online_aerosol
+
     !relaxation TKE back to 0 with time-scale of disscale
     !tkeavg = ustar(i,j)*bstar(i,j)*disscale
     !dissipate tke with length-scale of disscale
     !tkeavg=(ustar(i,j)*bstar(i,j)*disscale)**(2./3.)
     !below following Holtslag and Boville 1993
+    do j = 1, jmax
+       do i=1, imax
+        if (pblht(i,j).lt.0.) then
+          temp_1=0.0
+        elseif (pblht(i,j).gt.5000.) then
+          temp_1=5000.
+        else
+          temp_1=pblht(i,j)
+        endif
 
-         if (pblht(i,j).lt.0.) then
-            temp_1=0.0
-         elseif (pblht(i,j).gt.5000.) then
-            temp_1=5000.
-         else
-            temp_1=pblht(i,j)
-         endif
+!        bflux(i,j) = 0.5*(0.6*ustar(i,j)*bstar(i,j)*temp_1)**(2./3.)
+        temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
+        if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
+        tkeo(i,j) = MAX (tkemin, temp_1)
+      end do
+    end do
 
-!         bflux(i,j) = 0.5*(0.6*ustar(i,j)*bstar(i,j)*temp_1)**(2./3.)
-         temp_1=ustar(i,j)**3.+0.6*ustar(i,j)*bstar(i,j)*temp_1
-         if (temp_1 .gt. 0.) temp_1 = 0.5*temp_1**(2./3.)
-         tkeo(i,j) = MAX (tkemin, temp_1)
 
+    do j = 1, jmax
+       do i=1, imax
+
+         trtend_t=0.; trwet_t=0.;
          cbmf_shallow=0. ! Set cbmf_shallow to avoid usage before assignment.
          if (skip_calculation(i,j)) then
            ocode(i,j) = 6
@@ -1637,62 +1708,6 @@ contains
           cush(i,j) = -1.;
           if(cc%scaleh.le.0.0) cc%scaleh=1000.
 
-          am1(:) = 0.; am2(:) = 0.; am3(:) = 0.; am4(:) = 0.; am5(:) = 0.;
-          amx(:,:)=0. !amx contains mixing ratio (kg/kg)
-
-          do k=1,kmax
-            tmp=1. / (zint(i,j,k)-zint(i,j,k+1)) * 1.0e9 * 1.0e-12
-            tmp1=1./pmass(i,j,k)
-            if(use_online_aerosol) then
-              do na = 1,naer
-                if(asol%aerosol_names(na) == 'so4' .or. &
-                   asol%aerosol_names(na) == 'so4_anthro' .or. &
-                   asol%aerosol_names(na) == 'so4_natural') then     !aerosol unit: kg/m2
-                           am1(k)=am1(k)+asol%aerosol(i,j,k,na)*tmp  !am1 unit: g/cm3
-                           amx(k,1)=amx(k,1)+asol%aerosol(i,j,k,na)*tmp1  !am1 unit: kg/kg
-                else if(asol%aerosol_names(na) == 'omphilic' .or. &
-                        asol%aerosol_names(na) == 'omphobic') then
-                           am4(k)=am4(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,4)=amx(k,4)+asol%aerosol(i,j,k,na)*tmp1
-                else if(asol%aerosol_names(na) == 'bcphilic' .or. &
-                        asol%aerosol_names(na) == 'bcphobic' .or. &
-                        asol%aerosol_names(na) == 'dust1' .or. &
-                        asol%aerosol_names(na) == 'dust2' .or. &
-                        asol%aerosol_names(na) == 'dust3' .or. &
-                        asol%aerosol_names(na) == 'dust_mode1_of_2') then   !h1g, 2015-09-19
-                           am2(k)=am2(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,2)=amx(k,2)+asol%aerosol(i,j,k,na)*tmp1
-                else if(asol%aerosol_names(na) == 'seasalt1' .or. &
-                        asol%aerosol_names(na) == 'seasalt2' .or. &
-                        asol%aerosol_names(na) == 'seasalt_aitken' .or. &   !h1g, 2015-09-19
-                        asol%aerosol_names(na) == 'seasalt_fine'  ) then    !h1g, 2015-09-19
-                           am3(k)=am3(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,3)=amx(k,3)+asol%aerosol(i,j,k,na)*tmp1
-                else if(asol%aerosol_names(na) == 'seasalt3' .or. &
-                        asol%aerosol_names(na) == 'seasalt4' .or. &
-                        asol%aerosol_names(na) == 'seasalt5' .or. &
-                        asol%aerosol_names(na) == 'seasalt_coarse') then    !h1g, 2015-09-19
-                           am5(k)=am5(k)+asol%aerosol(i,j,k,na)*tmp
-                           amx(k,5)=amx(k,5)+asol%aerosol(i,j,k,na)*tmp1
-                end if
-              end do
-              am2(k)=am2(k)+am3(k)+am4(k)
-              amx(k,2)=amx(k,2)+amx(k,3)+amx(k,4)
-              if(.not. use_sub_seasalt) then
-                am3(k)=am3(k)+am5(k)
-                amx(k,3)=amx(k,3)+amx(k,5)
-              end if
-            else
-              am1(k)= asol%aerosol(i,j,k,2)*tmp
-              am2(k)= asol%aerosol(i,j,k,1)*tmp
-              am3(k)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp
-              am4(k)= om_to_oc*asol%aerosol(i,j,k,3)*tmp
-              amx(k,1)= asol%aerosol(i,j,k,2)*tmp1
-              amx(k,2)= asol%aerosol(i,j,k,1)*tmp1
-              amx(k,3)= sea_salt_scale*asol%aerosol(i,j,k,5)*tmp1
-              amx(k,4)= om_to_oc*asol%aerosol(i,j,k,3)*tmp1
-            endif
-          end do
 
 !========Pack column properties into a sounding structure====================
 
@@ -1703,10 +1718,13 @@ contains
           end if
           ksrc=1
           tdt_dif(i,j,:)=tdt_tot(i,j,:)-tdt_rad(i,j,:);
+
           call pack_sd_k(land(i,j), coldT(i,j), delt, pmid(i,j,:), pint(i,j,:),    &
           zmid(i,j,:), zint(i,j,:), ub(i,j,:), vb(i,j,:), omega(i,j,:), tb(i,j,:), &
           qv(i,j,:), qtr(i,j,:,nql), qtr(i,j,:,nqi), qtr(i,j,:,nqa), qntmp,        &
-          am1(:), am2(:), am3(:), am4(:), amx(:,:), tracers(i,j,:,:), src_choice,  &
+          am1(i,j,:),  am2(i,j,:),  am3(i,j,:),  am4(i,j,:),                       &
+          amx1(i,j,:), amx2(i,j,:), amx3(i,j,:), amx4(i,j,:),                      &
+          tracers(i,j,:,:), src_choice,                                            &
           tdt_rad(i,j,:), tdt_dyn(i,j,:), qvdt_dyn(i,j,:), qidt_dyn(i,j,:),        &
           dgz_dyn(i,j,:), ddp_dyn(i,j,:), tdt_dif(i,j,:), dgz_phy(i,j,:),          &
           qvdt_dif(i,j,:), qidt_dif(i,j,:), sd, Uw_p)
@@ -1889,7 +1907,8 @@ contains
           end if
           if (do_eis_limitn) then
              if (sd%eis .gt. eis_max) then
-               ocode(i,j)=10; cbmf_shallow=0.; goto 200
+               ocode(i,j)=10; cbmf_shallow=0.;
+               goto 200
              end if
           end if
           if (do_lts_limit) then
@@ -1899,7 +1918,8 @@ contains
           end if
           if (do_lts_limitn) then
              if (sd%lts .gt. eis_max) then
-               ocode(i,j)=10; cbmf_shallow=0.; goto 200
+               ocode(i,j)=10; cbmf_shallow=0.;
+               goto 200  
              end if
           end if
 
@@ -1972,11 +1992,15 @@ contains
              fero_s(i,j,nk) = cp%fer(k)
              fdro_s(i,j,nk) = cp%fdr(k)
              fdrso_s(i,j,nk)= cp%fdrsat(k)*cp%fdr(k)!*cp%umf(k)
-
-             do n = 1, size(trtend,4)
-              trevp_s(i,j,nk,n) = ct%trevp(k,n)
-             enddo
           enddo
+
+          do n = 1, size(trtend,4)
+            do k = 1,cp%ltop
+              nk = kmax+1-k
+              trevp_s(i,j,nk,n) = ct%trevp(k,n)
+            enddo
+          enddo
+
           cush_s(i,j)  = cp%cush
           snow  (i,j)  = ct%snow
           rain  (i,j)  = ct%rain
@@ -2000,9 +2024,9 @@ contains
 !                                           cp%tr, ct%trten, ct%trwet)
              call check_tracer_realizability (kmax, size(trtend,4), delt, &
                                            cp%tr, ct%trten, ct%trwet, pmass(i,j,:), tracer_check_type, rn = rn )
-            do k = 1,cp%ltop
-              nk = kmax+1-k
-              do n = 1, size(trtend,4)
+            do n = 1, size(trtend,4)
+              do k = 1,cp%ltop
+                nk = kmax+1-k
                 trtend(i,j,nk,n) = ct%trten(k,n) + ct%trwet(k,n)
                 trwet(i,j,nk,n)  = ct%trwet(k,n)
                 rn_diag(i,j,nk,n) = rn(k,n)
@@ -2173,80 +2197,103 @@ contains
                enddo
              enddo
 
-             uten  (i,j,:) = uten  (i,j,:) + uten_d  (i,j,:)
-             vten  (i,j,:) = vten  (i,j,:) + vten_d  (i,j,:)
-             qlten (i,j,:) = qlten (i,j,:) + qlten_d (i,j,:)
-             qiten (i,j,:) = qiten (i,j,:) + qiten_d (i,j,:)
-             qaten (i,j,:) = qaten (i,j,:) + qaten_d (i,j,:)
-             qnten (i,j,:) = qnten (i,j,:) + qnten_d (i,j,:)
-             qvten (i,j,:) = qvten (i,j,:) + qvten_d (i,j,:)
-             tten  (i,j,:) = tten  (i,j,:) + tten_d  (i,j,:)
-             pflx  (i,j,:) = pflx  (i,j,:) + pflx_d  (i,j,:)
-             hlflx (i,j,:) = hlflx (i,j,:) + hlflx_d (i,j,:)
-             qtflx (i,j,:) = qtflx (i,j,:) + qtflx_d (i,j,:)
-             nqtflx(i,j,:) = nqtflx(i,j,:) + nqtflx_d(i,j,:)
-             cmf   (i,j,:) = cmf_s (i,j,:) + cmf_d   (i,j,:)
-             tten_pevap (i,j,:)=tten_pevap (i,j,:) + tten_pevap_d (i,j,:)
-             qvten_pevap(i,j,:)=qvten_pevap(i,j,:) + qvten_pevap_d(i,j,:)
-
-             if (do_new_convcld) then
-                cqa(kmax+1)=0.; cql(kmax+1)=0.; cqi(kmax+1)=0.; cqn(kmax+1)=0.;
-                do k = 1,kmax
-                   cqa(k) =cqa_s(i,j,k)+cqa_d(i,j,k)
-                   if (cqa(k).ne.0.) then
-                      cql(k)=(cql_s(i,j,k)*cqa_s(i,j,k)+cql_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
-                      cqi(k)=(cqi_s(i,j,k)*cqa_s(i,j,k)+cqi_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
-                      cqn(k)=(cqn_s(i,j,k)*cqa_s(i,j,k)+cqn_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
-                   else
-                      cql(k)=0.
-                      cqi(k)=0.
-                      cqn(k)=0.
-                   end if
-                   cqa(k) = min(cqa(k),1.0)
-                end do
-                do k = 1,kmax
-                   cldqa(i,j,k)=(cqa(k)+cqa(k+1))*0.5
-                   cldql(i,j,k)=(cql(k)+cql(k+1))*0.5
-                   cldqi(i,j,k)=(cqi(k)+cqi(k+1))*0.5
-                   cldqn(i,j,k)=(cqn(k)+cqn(k+1))*0.5
-                end do
-
-                do k = 1,kmax
-                   cltc (i,j) = max(cltc(i,j),cldqa(i,j,k)) !assuming maximum overlap
-                end do
-             end if
-
-             snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
-             rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
-             denth (i,j)  = denth (i,j) + denth_d (i,j)
-             dting (i,j)  = dting (i,j) + dting_d (i,j)
-             dqtmp (i,j)  = dqtmp (i,j) + dqtmp_d (i,j)
              cpool (i,j)  = cpool (i,j) + ct1%cpool
-
-             feq_c (i,j)  = max(feq_s(i,j), feq_d(i,j))
-             pcb_c (i,j)  = max(pcb_s(i,j), pcb_d(i,j))
-             pct_c (i,j)  = min(max(pct_s(i,j),0.), max(pct_d(i,j),0.))
              !cbmfo (i,j)  = cc%cbmf
              !cwfno (i,j)  = cc%cwfn
           end if
+        enddo
+      enddo
+
+      if (do_deep) then
+        do k = 1,kmax
+          do j = 1,jmax
+            do i = 1,imax
+              uten  (i,j,k) = uten  (i,j,k) + uten_d  (i,j,k)
+              vten  (i,j,k) = vten  (i,j,k) + vten_d  (i,j,k)
+              qlten (i,j,k) = qlten (i,j,k) + qlten_d (i,j,k)
+              qiten (i,j,k) = qiten (i,j,k) + qiten_d (i,j,k)
+              qaten (i,j,k) = qaten (i,j,k) + qaten_d (i,j,k)
+              qnten (i,j,k) = qnten (i,j,k) + qnten_d (i,j,k)
+              qvten (i,j,k) = qvten (i,j,k) + qvten_d (i,j,k)
+              tten  (i,j,k) = tten  (i,j,k) + tten_d  (i,j,k)
+              pflx  (i,j,k) = pflx  (i,j,k) + pflx_d  (i,j,k)
+              hlflx (i,j,k) = hlflx (i,j,k) + hlflx_d (i,j,k)
+              qtflx (i,j,k) = qtflx (i,j,k) + qtflx_d (i,j,k)
+              nqtflx(i,j,k) = nqtflx(i,j,k) + nqtflx_d(i,j,k)
+              cmf   (i,j,k) = cmf_s (i,j,k) + cmf_d   (i,j,k)
+              tten_pevap (i,j,k)=tten_pevap (i,j,k) + tten_pevap_d (i,j,k)
+              qvten_pevap(i,j,k)=qvten_pevap(i,j,k) + qvten_pevap_d(i,j,k)
+            enddo
+          enddo
+        enddo
+
+        do j = 1,jmax
+          do i = 1,imax
+            snow  (i,j)  = snow  (i,j) + snow_d  (i,j)
+            rain  (i,j)  = rain  (i,j) + rain_d  (i,j)
+            denth (i,j)  = denth (i,j) + denth_d (i,j)
+            dting (i,j)  = dting (i,j) + dting_d (i,j)
+            dqtmp (i,j)  = dqtmp (i,j) + dqtmp_d (i,j)
+
+            feq_c (i,j)  = max(feq_s(i,j), feq_d(i,j))
+            pcb_c (i,j)  = max(pcb_s(i,j), pcb_d(i,j))
+            pct_c (i,j)  = min(max(pct_s(i,j),0.), max(pct_d(i,j),0.))
+          enddo
+        enddo
+
+        if (do_new_convcld) then
+          do j = 1,jmax
+            do i = 1,imax
+              cqa(kmax+1)=0.; cql(kmax+1)=0.; cqi(kmax+1)=0.; cqn(kmax+1)=0.;
+              do k = 1,kmax
+                cqa(k) =cqa_s(i,j,k)+cqa_d(i,j,k)
+                if (cqa(k).ne.0.) then
+                  cql(k)=(cql_s(i,j,k)*cqa_s(i,j,k)+cql_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+                  cqi(k)=(cqi_s(i,j,k)*cqa_s(i,j,k)+cqi_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+                  cqn(k)=(cqn_s(i,j,k)*cqa_s(i,j,k)+cqn_d(i,j,k)*cqa_d(i,j,k))/cqa(k)
+                else
+                  cql(k)=0.
+                  cqi(k)=0.
+                  cqn(k)=0.
+                end if
+                cqa(k) = min(cqa(k),1.0)
+              end do
+              do k = 1,kmax
+                cldqa(i,j,k)=(cqa(k)+cqa(k+1))*0.5
+                cldql(i,j,k)=(cql(k)+cql(k+1))*0.5
+                cldqi(i,j,k)=(cqi(k)+cqi(k+1))*0.5
+                cldqn(i,j,k)=(cqn(k)+cqn(k+1))*0.5
+              end do
+
+              do k = 1,kmax
+                cltc (i,j) = max(cltc(i,j),cldqa(i,j,k)) !assuming maximum overlap
+              end do
+            enddo
+          enddo
+        end if
+      end if
 !========End of do_deep, Option for deep convection=======================================
 
-200       if (do_prog_gust) then
-             gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
-          endif
-
-!subtract parameterized convective mass flux
-          do k = 1,kmax
-             tmp=cmf(i,j,k)*Uw_p%grav;
-             if ((-omega_up(i,j,k).gt.tmp) .and. (tmp.gt.0)) then
-                omgmc_up(i,j,k) = omega_up(i,j,k)+tmp;
-             else
-                omgmc_up(i,j,k) = omega_up(i,j,k);
-             endif
+200      if (do_prog_gust) then
+        do j = 1,jmax
+          do i = 1,imax
+            gusto(i,j)=(gusto(i,j)+geff*cpool(i,j)*delt)/(1+delt/tau_gust)
           enddo
-
-       enddo
-    enddo
+        enddo
+      endif
+!subtract parameterized convective mass flux
+      do k = 1,kmax
+        do j = 1,jmax
+          do i = 1,imax
+            tmp=cmf(i,j,k)*Uw_p%grav;
+            if ((-omega_up(i,j,k).gt.tmp) .and. (tmp.gt.0)) then
+              omgmc_up(i,j,k) = omega_up(i,j,k)+tmp
+            else
+              omgmc_up(i,j,k) = omega_up(i,j,k)
+            endif
+          enddo
+        enddo
+      enddo
 
     call sd_end_k(sd)
     call sd_end_k(sd1)
@@ -2270,8 +2317,8 @@ contains
                                     (vb(:,:,:) + half_delt*vten(:,:,:))*vten(:,:,:))*cp_inv
         !tten(:,:,:) = tten(:,:,:) + dissipative_heat(:,:,:)
     else
-        uten=0.;
-        vten=0.;
+        uten=0.
+        vten=0.
     end if
 
     if ( prevent_unreasonable ) then
@@ -2362,15 +2409,27 @@ contains
               qlten(i,j,k)  = scale_uw(i,j) * qlten(i,j,k)
               qiten(i,j,k)  = scale_uw(i,j) * qiten(i,j,k)
               qaten(i,j,k)  = scale_uw(i,j) * qaten(i,j,k)
-              if (do_qn) qnten(i,j,k) = scale_uw(i,j) * qnten(i,j,k)
-              if (k.eq.kmax) then
-                rain(i,j) = scale_uw(i,j) * rain(i,j)
-                snow(i,j) = scale_uw(i,j) * snow(i,j)
-                rain_d(i,j)=scale_uw(i,j) * rain_d(i,j)
-                snow_d(i,j)=scale_uw(i,j) * snow_d(i,j)
-                cpool(i,j)= scale_uw(i,j) * cpool(i,j)
-              endif
             end do
+          end do
+        end do
+
+        if (do_qn) then
+          do k=1,kmax
+            do j=1,jmax
+              do i=1,imax
+                qnten(i,j,k) = scale_uw(i,j) * qnten(i,j,k)
+              end do
+            end do
+          end do
+        endif
+
+        do j=1,jmax
+          do i=1,imax
+            rain(i,j) = scale_uw(i,j) * rain(i,j)
+            snow(i,j) = scale_uw(i,j) * snow(i,j)
+            rain_d(i,j)=scale_uw(i,j) * rain_d(i,j)
+            snow_d(i,j)=scale_uw(i,j) * snow_d(i,j)
+            cpool(i,j)= scale_uw(i,j) * cpool(i,j)
           end do
         end do
       end if
@@ -2391,10 +2450,10 @@ contains
       dgz_conv_int(:,:,:)= Uw_p%grav*(zmid_n(:,:,:)-zmid(:,:,:))/delt * pmass(:,:,:)
       tdt_conv_int(:,:,:)= Uw_p%cp_air * tten(:,:,:) * pmass(:,:,:)
       qdt_conv_int(:,:,:)=(Uw_p%HLv*qvten(:,:,:) - Uw_p%HLf*qiten(:,:,:)) * pmass(:,:,:)
-      do k=2, kmax
-        dgz_conv_int(:,:,k)= dgz_conv_int(:,:,k)+dgz_conv_int(:,:,k-1)
-        tdt_conv_int(:,:,k)= tdt_conv_int(:,:,k)+tdt_conv_int(:,:,k-1)
-        qdt_conv_int(:,:,k)= qdt_conv_int(:,:,k)+qdt_conv_int(:,:,k-1)
+      do k=1, kmax-1
+        dgz_conv_int(:,:,k+1)= dgz_conv_int(:,:,k+1)+dgz_conv_int(:,:,k)
+        tdt_conv_int(:,:,k+1)= tdt_conv_int(:,:,k+1)+tdt_conv_int(:,:,k)
+        qdt_conv_int(:,:,k+1)= qdt_conv_int(:,:,k+1)+qdt_conv_int(:,:,k)
       end do
       hdt_conv_int(:,:,:) = tdt_conv_int(:,:,:)+qdt_conv_int(:,:,:)+dgz_conv_int(:,:,:)
     endif !do_mse_budget
@@ -2402,8 +2461,8 @@ contains
     cush(:,:) = cush_s(:,:)
     do j = 1,jmax
        do i = 1,imax
-          if (cush_s(i,j) .gt. 0) feq_s(i,j)=1.;
-          if (cush_d(i,j) .gt. 0) feq_d(i,j)=1.;
+          if (cush_s(i,j) .gt. 0) feq_s(i,j)=1.
+          if (cush_d(i,j) .gt. 0) feq_d(i,j)=1.
        enddo
     enddo
 
@@ -2421,16 +2480,16 @@ contains
 
     if (do_imposing_rad_cooling) then
       tten_rad(:,:,:) = 0.0
-      do j = 1,jmax
-         do i=1,imax
-           do k = 1,kmax
-              if (tb(i,j,k) .gt. t_thresh) then
-                tten_rad (i,j,k) = cooling_rate/86400.
-              else
-                tten_rad (i,j,k) = (t_strato-tb(i,j,k))/(tau_rad*86400.)
-              end if
-           enddo
-         enddo
+      do k = 1,kmax
+        do j = 1,jmax
+          do i=1,imax
+            if (tb(i,j,k) .gt. t_thresh) then
+              tten_rad (i,j,k) = cooling_rate/86400.
+            else
+              tten_rad (i,j,k) = (t_strato-tb(i,j,k))/(tau_rad*86400.)
+            end if
+          enddo
+        enddo
       enddo
 !      used = send_data( id_tten_rad_uwc,tten_rad*aday,Time, is, js, 1)
     end if
@@ -2438,34 +2497,39 @@ contains
     if (do_imposing_forcing) then
       tten_forc(:,:,:) = 0.0
       qten_forc(:,:,:) = 0.0
-      do j = 1,jmax
-        do i=1,imax
-           tten_forc(i,j,:)=0;
-           qten_forc(i,j,:)=0;
-           if (use_klevel) then
-             k = klevel
-             tten_forc(i,j,k)=tdt_rate/86400.
-             qten_forc(i,j,k)=qdt_rate/86400.
-           else
-             kbot_tmp=1;
-             ktop_tmp=kmax;
-             do k=1,kmax
-               if (pmid(i,j,k)>=7500) then
-                 ktop_tmp=k
-               end if
-               if (pmid(i,j,k)>=85000) then
-                 kbot_tmp=k
-               end if
-             enddo
-             do k = kbot_tmp,ktop_tmp
-                if (pmid(i,j,k)>pres_min .and. pmid(i,j,k)<=pres_max) then
-                   tten_forc(i,j,k)=tdt_rate/86400.
-                   qten_forc(i,j,k)=qdt_rate/86400.
-                end if
-             enddo
-           end if
+      if (use_klevel) then
+        k = klevel
+        do j = 1,jmax
+          do i=1,imax
+            tten_forc(i,j,k)=tdt_rate/86400.
+            qten_forc(i,j,k)=qdt_rate/86400.
+          enddo
         enddo
-      enddo
+      else
+        ! Strided memory accesses here, but k depends on i and j
+        do j = 1,jmax
+          do i=1,imax
+            kbot_tmp = 1
+            ktop_tmp = kmax
+            do k=1,kmax
+              if (pmid(i,j,k)>=7500) then
+                ktop_tmp = k
+              end if
+              if (pmid(i,j,k)>=85000) then
+                kbot_tmp = k
+              end if
+            enddo
+            do k = kbot_tmp,ktop_tmp
+              if (pmid(i,j,k)>pres_min .and. pmid(i,j,k)<=pres_max) then
+                tten_forc(i,j,k)=tdt_rate/86400.
+                qten_forc(i,j,k)=qdt_rate/86400.
+              end if
+            enddo
+          enddo
+        enddo
+      end if
+
+
       used = send_data( id_tdt_forc_uwc,tten_forc*aday,Time, is, js, 1)
       used = send_data( id_qdt_forc_uwc,qten_forc*aday,Time, is, js, 1)
     end if
@@ -2831,11 +2895,11 @@ contains
     end if
 
     if (do_imposing_rad_cooling) then
-      tten(:,:,:) = tten(:,:,:) + tten_rad(:,:,:)
+       tten(:,:,:) = tten (:,:,:) + tten_rad (:,:,:)
     end if
 
     if (do_imposing_forcing) then
-       tten(:,:,:) = tten(:,:,:) + tten_forc(:,:,:)
+       tten (:,:,:) = tten (:,:,:) + tten_forc(:,:,:)
        qvten(:,:,:) = qvten(:,:,:) + qten_forc(:,:,:)
     end if
 
@@ -2844,7 +2908,7 @@ contains
       do k = 1,kmax
         do j = 1,jmax
           do i = 1,imax
-            hten(i,j)=hten(i,j)+(cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
+            hten(i,j) = hten(i,j) + (cp_air*tten(i,j,k)+HLv*qvten(i,j,k)-HLv*qiten(i,j,k))*pmass(i,j,k)
           enddo
         enddo
       enddo

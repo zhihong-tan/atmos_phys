@@ -24,15 +24,13 @@ module tropchem_driver_mod
 !-----------------------------------------------------------------------
 
 use                    mpp_mod, only : input_nml_file
-use                    fms_mod, only : file_exist,   &
-                                       field_exist, &
-                                       write_version_number, &
+use                fms2_io_mod, only : file_exists, open_file, close_file, FmsNetcdfDomainFile_t, variable_exists
+use            mpp_domains_mod, only : domain2D
+use                    fms_mod, only : write_version_number, &
                                        mpp_pe,  &
                                        mpp_root_pe, &
                                        lowercase,   &
                                        uppercase, &
-                                       open_namelist_file, &
-                                       close_file,   &
                                        stdlog, &
                                        check_nml_error, &
                                        error_mesg, &
@@ -110,7 +108,6 @@ use       shortwave_driver_mod, only : shortwave_number_of_bands, &
 use astronomy_mod,         only : diurnal_solar, universal_time
 use horiz_interp_mod, only: horiz_interp_type, horiz_interp_init, &
                             horiz_interp_new, horiz_interp
-use fms_io_mod, only: read_data
 
 use cloud_chem, only: CLOUD_CHEM_PH_LEGACY, CLOUD_CHEM_PH_BISECTION, &
                       CLOUD_CHEM_PH_CUBIC, CLOUD_CHEM_F1P,&
@@ -159,8 +156,7 @@ character(len=64)  :: file_sulfate = 'sulfate.nc',    & ! NetCDF file for sulfat
                       file_emis3d_1 = 'emissions3d.', & ! NetCDF file name (beginning) for 3-D emissions
                       file_emis3d_2 = '.nc',          & ! NetCDF file name (end) for 3-D emissions
                       file_ub = 'ub_vals.nc'            ! NetCDF file for chemical upper boundary conditions
-character(len=64)  :: file_dry = 'depvel.nc',         & ! NetCDF file for dry deposition velocities
-                      file_aircraft = 'aircraft.nc',  & ! NetCDF file for aircraft emissions
+character(len=64)  :: file_aircraft = 'aircraft.nc',  & ! NetCDF file for aircraft emissions
                       file_jval_lut = 'jvals.v5',     & ! ascii file for photolysis rate lookup table
                       file_jval_lut_min = ''            ! ascii file for photolysis rate LUT (for solar min)
 character(len=10), dimension(maxinv) :: inv_list =''    ! list of invariant (fixed) tracers
@@ -239,6 +235,8 @@ character(len=64)  :: gso2_dynamic          = 'none'
 
 type(tropchem_diag),  save :: trop_diag
 type(tropchem_opt),   save :: trop_option
+type (domain2D), pointer :: tropchem_domain !< Atmosphere domain
+
 
 namelist /tropchem_driver_nml/    &
                                relaxed_dt, &
@@ -252,7 +250,6 @@ namelist /tropchem_driver_nml/    &
                                file_emis3d_1, &
                                file_emis3d_2, &
                                file_ub, &
-                               file_dry, &
                                inv_list, &
                                file_aircraft,&
                                aircraft_scale_factor, &
@@ -408,7 +405,6 @@ type :: co2_type
    type(time_type)                        :: fixed_entry
 end type co2_type
 type(co2_type) :: co2_t
-type(interpolate_type), save :: drydep_data_default
 integer :: clock_id,ndiag
 
 !++van
@@ -1504,8 +1500,7 @@ end subroutine tropchem_driver
 !   </DESCRIPTION>
 !   <TEMPLATE>
 !     Ltropchem = tropchem_driver_init( r, mask, axes, Time, &
-!                                       lonb_mod, latb_mod, phalf, &
-!                                       drydep_data )
+!                                       lonb_mod, latb_mod, phalf)
 !   </TEMPLATE>
 !   <IN NAME="mask" TYPE="real, optional" DIM="(:,:,:)">
 !      optional mask that designates which grid points
@@ -1536,9 +1531,8 @@ end subroutine tropchem_driver
 !     Tracer mixing ratios (tropchem tracers in VMR)
 !   </INOUT>
 
-function tropchem_driver_init( r, mask, axes, Time, &
-                               lonb_mod, latb_mod, phalf, &
-                               drydep_data ) result(Ltropchem)
+function tropchem_driver_init( domain, r, mask, axes, Time, &
+                               lonb_mod, latb_mod, phalf) result(Ltropchem)
 
 !-----------------------------------------------------------------------
 !
@@ -1548,6 +1542,7 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !          (nlon,nlat,nlev).
 !
 !-----------------------------------------------------------------------
+   type(domain2D),target,intent(in) :: domain !< Atmosphere domain
    real, intent(inout), dimension(:,:,:,:) :: r
    real, intent(in),    dimension(:,:,:), optional :: mask
    type(time_type), intent(in) :: Time
@@ -1555,7 +1550,6 @@ function tropchem_driver_init( r, mask, axes, Time, &
    real, intent(in), dimension(:,:) :: lonb_mod
    real, intent(in), dimension(:,:) :: latb_mod
    real, intent(in),dimension(:,:,:) :: phalf
-   type(interpolate_type), intent(out) :: drydep_data(:)
 
    real    :: small_value
 
@@ -1579,7 +1573,6 @@ function tropchem_driver_init( r, mask, axes, Time, &
                                            airc_files
    logical :: tracer_initialized
 
-   integer :: unit
    character(len=16) :: fld
    character(len=32) :: tracer_name
 
@@ -1600,18 +1593,9 @@ function tropchem_driver_init( r, mask, axes, Time, &
 !-----------------------------------------------------------------------
 !     ... read namelist
 !-----------------------------------------------------------------------
-   if(file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+   if(file_exists('input.nml')) then
       read (input_nml_file, nml=tropchem_driver_nml, iostat=io)
       ierr = check_nml_error(io,'tropchem_driver_nml')
-#else
-      unit = open_namelist_file('input.nml')
-      ierr=1; do while (ierr /= 0)
-      read(unit, nml = tropchem_driver_nml, iostat=io, end=10)
-      ierr = check_nml_error (io, 'tropchem_driver_nml')
-      end do
-10    call close_file(unit)
-#endif
    end if
 
    logunit = stdlog()
@@ -1624,6 +1608,8 @@ function tropchem_driver_init( r, mask, axes, Time, &
    if (.not. Ltropchem) then
       return
    end if
+
+  tropchem_domain => domain
 
 !-------------------------------------------------------------------------
 !     ... Make sure input value for clouds_in_fastjx is a valid option.
@@ -1861,13 +1847,6 @@ end if
 !--van    
 
 !-----------------------------------------------------------------------
-!     ... Setup dry deposition
-!-----------------------------------------------------------------------
-   call tropchem_drydep_init( dry_files, dry_names, &
-                              lonb_mod, latb_mod, &
-                              drydep_data )
-
-!-----------------------------------------------------------------------
 !     ... Setup upper boundary condition data
 !-----------------------------------------------------------------------
    call interpolator_init( ub_default, trim(file_ub), lonb_mod, latb_mod, &
@@ -1954,8 +1933,8 @@ end if
             flag_fixed = parse(control, 'fixed_year', fixed_year)
             if( flag_file > 0 ) then
                lb_files(i) = 'INPUT/' // trim(filename)
-               if( file_exist(lb_files(i)) ) then
-                  flb = open_namelist_file( lb_files(i) )
+               if( file_exists(lb_files(i)) ) then
+                  flb = tropchem_open_file( lb_files(i) )
                   read(flb, FMT='(i12)') series_length
                   allocate( lb(i)%gas_value(series_length), &
                             lb(i)%gas_time(series_length) )
@@ -1973,7 +1952,7 @@ end if
                   if (flag_spec > 0) then
                      lb(i)%gas_value(:) = lb(i)%gas_value(:) * scale_factor
                   end if
-                  call close_file( flb )
+                  close ( flb )
                   if( flag_fixed > 0 ) then
                      fixed_lbc_time(i) = .true.
                      year = INT(fixed_year)
@@ -1997,12 +1976,7 @@ end if
 !-----------------------------------------------------------------------
 !     ... Initial conditions
 !-----------------------------------------------------------------------
-      tracer_initialized = .false.
-      if ( field_exist('INPUT/atmos_tracers.res.nc', lowercase(tracnam(i))) .or. &
-           field_exist('INPUT/fv_tracer.res.nc', lowercase(tracnam(i))) .or. &
-           field_exist('INPUT/tracer_'//trim(lowercase(tracnam(i)))//'.res', lowercase(tracnam(i))) ) then
-         tracer_initialized = .true.
-      end if
+      tracer_initialized = check_if_tracer_initialized(lowercase(tracnam(i)))
 
       if(.not. tracer_initialized) then
          if( query_method('init_conc',MODEL_ATMOS,indices(i),name,control) ) then
@@ -2075,10 +2049,10 @@ end if
 !move CO2 input out of the loop of "do i = 1,pcnstm1", 2016-07-25
 !fp
 !CO2
-      if ( file_exist('INPUT/' // trim(co2_filename) ) ) then
+      if ( file_exists('INPUT/' // trim(co2_filename) ) ) then
          co2_t%use_fix_value  = .false.
          !read from file
-         flb = open_namelist_file( 'INPUT/' // trim(co2_filename) )
+         flb = tropchem_open_file( 'INPUT/' // trim(co2_filename) )
          read(flb,FMT='(i12)') series_length
          allocate( co2_t%gas_value(series_length), co2_t%gas_time(series_length) )
          do n = 1,series_length
@@ -2089,7 +2063,7 @@ end if
             extra_seconds = (input_time - year)*diy*SECONDS_PER_DAY
             co2_t%gas_time(n) = Year_t + set_time(NINT(extra_seconds), 0)
          end do
-         call close_file(flb)
+         close(flb)
          if (co2_scale_factor .gt. 0) then
             co2_t%gas_value = co2_t%gas_value * co2_scale_factor
          end if
@@ -2904,76 +2878,38 @@ subroutine init_xactive_emis( model, method_type, index, species, &
 end subroutine init_xactive_emis
 !</SUBROUTINE>
 
+!> @brief This function is just a wrapper for Fortran's `open`
+!! @return Unique unit number
+function tropchem_open_file (filename) result (funit)
+  character(len=*), intent(in), optional :: filename
+  integer :: funit
 
+  open(file=filename, form='formatted',action='read', newunit=funit)
 
-!############################################################################
+end function tropchem_open_file
 
-! <SUBROUTINE NAME="tropchem_drydep_init">
-!   <OVERVIEW>
-!     Open dry deposition file
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Opens NetCDF file of tracer dry deposition velocities for reading,
-!     and set up interpolation to model grid/time
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     call tropchem_drydep_init( dry_files, dry_names, &
-!                                lonb_mod, latb_mod, &
-!                                drydep_data )
-!   </TEMPLATE>
+!> @brief This function just checks if a tracer initialized in a set of files
+!! @return flag indicating if a tracer initialized
+function check_if_tracer_initialized(tracername) result (tracer_initialized)
+  character(len=*), intent(in), optional :: tracername
+  logical :: tracer_initialized
 
-subroutine tropchem_drydep_init( dry_files, dry_names, &
-                                 lonb_mod, latb_mod, &
-                                 drydep_data )
+  type(FmsNetcdfDomainFile_t) :: fileobj !< fms2io fileobj for domain decomposed
 
-!-----------------------------------------------------------------------
+  tracer_initialized = .false.
 
-   real,                   intent(in),  dimension(:,:) :: lonb_mod, latb_mod
-   character(len=64),      intent(out), dimension(:) :: dry_files, dry_names
-   type(interpolate_type), intent(out)               :: drydep_data(:)
+  if (open_file(fileobj, 'INPUT/atmos_tracers.res.nc', "read", tropchem_domain)) then
+     tracer_initialized = variable_exists(fileobj, tracername)
+     call close_file(fileobj)
+  elseif (open_file(fileobj, 'INPUT/fv_tracer.res.nc', "read", tropchem_domain)) then
+     tracer_initialized = variable_exists(fileobj, tracername)
+     call close_file(fileobj)
+  elseif (open_file(fileobj, 'INPUT/tracer_'//trim(lowercase(tracername))//'.res', "read", tropchem_domain)) then
+     tracer_initialized = variable_exists(fileobj, tracername)
+     call close_file(fileobj)
+  endif
 
-!-----------------------------------------------------------------------
-
-   integer :: i
-   integer :: flag_file, flag_spec
-   character(len=64) :: filename,specname
-   character(len=64) :: name='', control=''
-
-!-----------------------------------------------------------------------
-
-!---------- Set interpolator type for dry deposition
-   call interpolator_init( drydep_data_default, trim(file_dry), lonb_mod, latb_mod, &
-                           data_out_of_bounds=(/CONSTANT/), &
-                           vert_interp=(/INTERP_WEIGHTED_P/))
-
-   do i = 1,pcnstm1
-      dry_files(i) = ''
-      dry_names(i) = ''
-      if( query_method('dry_deposition',MODEL_ATMOS,indices(i),name,control) )then
-         if( trim(name(1:4)) == 'file' ) then
-            flag_file = parse(control, 'file',filename)
-            flag_spec = parse(control, 'name',specname)
-            if(flag_file > 0 .and. trim(filename) /= trim(file_dry)) then
-               dry_files(i) = trim(filename)
-               call interpolator_init( drydep_data(indices(i)), trim(filename), lonb_mod, latb_mod,&
-                                       data_out_of_bounds=(/CONSTANT/), &
-                                       vert_interp=(/INTERP_WEIGHTED_P/))
-            else
-               dry_files(i) = trim(file_dry)
-               drydep_data(indices(i)) = drydep_data_default
-
-            end if
-            if(flag_spec >0) then
-               dry_names(i) = trim(specname)
-            else
-               dry_names(i) = trim(lowercase(tracnam(i)))
-            end if
-         end if
-      end if
-   end do
-
-end subroutine tropchem_drydep_init
-!</SUBROUTINE>
+end function check_if_tracer_initialized
 
 !############################################################################
 end module tropchem_driver_mod

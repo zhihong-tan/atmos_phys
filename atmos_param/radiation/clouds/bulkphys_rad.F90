@@ -20,11 +20,11 @@
 !    shared modules:
 
 use mpp_mod,                only: input_nml_file
-use fms_mod,                only: open_namelist_file, mpp_pe, &
+use fms_mod,                only: mpp_pe, &
                                   fms_init, mpp_root_pe, stdlog,  &
-                                  write_version_number, file_exist, & 
+                                  write_version_number, & 
                                   check_nml_error, error_mesg,   &
-                                  FATAL, close_file
+                                  FATAL
 
 !    individual cloud modules:
 
@@ -219,13 +219,12 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
 !---------------------------------------------------------------------
 !    local variables:
 
-      integer  ::   unit, ierr, io, logunit
+      integer  ::   ierr, io, logunit
       integer  ::   idum
 
 !---------------------------------------------------------------------
 !    local variables:
 !
-!      unit     io unit for reading nml file and writing logfile
 !      ierr     error code
 !      io       error status returned from io operation  
 !      idum     dummy integer argument needed to satisfy 
@@ -249,20 +248,8 @@ type(cloudrad_control_type), intent(in) :: Cldrad_control
 !---------------------------------------------------------------------
 !    read namelist.
 !---------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=bulkphys_rad_nml, iostat=io)
       ierr = check_nml_error(io,'bulkphys_rad_nml')
-#else   
-      if ( file_exist('input.nml')) then
-        unit =  open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=bulkphys_rad_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'bulkphys_rad_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
- 
 !---------------------------------------------------------------------
 !    write namelist to logfile.
 !---------------------------------------------------------------------

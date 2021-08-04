@@ -239,19 +239,14 @@ module AM3_FASTJX_MOD
 !   MATINW (B,A)                                                        
 !                                                                       
 !-----------------------------------------------------------------------
-      use              fms_mod, only : file_exist,              &
-                                       write_version_number,    &
+      use              fms_mod, only : write_version_number,    &
                                        mpp_pe,                  &
                                        mpp_root_pE,             &
-                                       close_file,              &
                                        stdlog,                  &
                                        mpp_clock_begin, mpp_clock_end, &
                                        mpp_clock_id, CLOCK_MODULE, &
                                        check_nml_error, error_mesg, &
-                                       open_namelist_file, FATAL
-      use           mpp_io_mod, only : mpp_open, mpp_close, MPP_RDONLY, &
-                                       MPP_ASCII, MPP_SEQUENTIAL,   &
-                                       MPP_MULTI, MPP_SINGLE 
+                                       FATAL
 
       implicit none
       
@@ -1214,8 +1209,7 @@ module AM3_FASTJX_MOD
 ! Reread the chem_Js.dat file to map photolysis rate to reaction        
 !                     Read in quantum yield jfacta and fastj2 label jlab
       IPR = 0 
-      call mpp_open (NJ1, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+      open(file=trim(NAMFIL), form='formatted',action='read', newunit=NJ1)
    10 read (NJ1,'(A)',err=20)  CLINE 
       if (IPR .eq. JVN_) goto 20 
                                                                         
@@ -1232,7 +1226,7 @@ module AM3_FASTJX_MOD
         JFACTA(IPR) = JFACTA(IPR)/100.d0 
         go to 10 
       endif 
-   20 call mpp_close(NJ1) 
+   20 close(NJ1) 
                                                                         
       NRATJ = IPR 
                                                                         
@@ -2061,9 +2055,8 @@ module AM3_FASTJX_MOD
 !         note NQQQ is not used outside this subroutine!                
                                                                         
 ! >>>> W_ = 12 <<<< means trop-only, discard WL #1-4 and #9-10, some X-s
-                                                                        
-      call mpp_open (NJ1, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+
+      open(file=trim(NAMFIL), form='formatted',action='read', newunit=NJ1)
       read (NJ1,100) TITLE0 
       read (NJ1,101) NJVAL,NQRD, NWWW 
          NW1 = 1 
@@ -2198,7 +2191,7 @@ module AM3_FASTJX_MOD
       TITLEJ(NJVAL-1) = 'Acet-a' 
       TITLEJ(NJVAL)   = 'Acet-b' 
                                                                         
-      call mpp_close (NJ1)
+      close (NJ1)
                                                                         
   100 format(a) 
   101 format(10x,5i5) 
@@ -2243,9 +2236,7 @@ module AM3_FASTJX_MOD
 !   WAA(K,J),QAA(K,J),SAA(K,J),PAA(I,K,J)
 !
 !jul--                                                                        
-      call mpp_open (NJ1, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
-                                                                        
+      open(file=trim(NAMFIL), form='formatted',action='read', newunit=NJ1)
       read (NJ1,'(i2,a78)') NAA,TITLE0 
         if (NAA .gt. A_) then 
           write(*,*) 'ATMOS:fastjx_init: too many scat-data sets:', NAA, A_ 
@@ -2269,7 +2260,7 @@ module AM3_FASTJX_MOD
         enddo 
       enddo 
                                                                         
-      call mpp_close (NJ1)
+      close (NJ1)
       if (mpp_pe() == mpp_root_pe()) then 
         write(*,'(a,9f8.1)') ' ATMOS:fastjx_init: RD_MIE: Aerosol optical: r-eff/rho/Q(@wavel):'     &
                   ,(WAA(K,1),K=1,5)                                    
@@ -2322,8 +2313,7 @@ module AM3_FASTJX_MOD
 !   WAA(K,J),QAA(K,J),SAA(K,J),PAA(I,K,J)
 !
 !jul--                                                                        
-      call mpp_open (NJ1, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+      open(file=trim(NAMFIL), form='formatted',action='read', newunit=NJ1)
                                                                         
       read (NJ1,'(i4,a78)') NAA_AM3, TITLE0_AM3 
       if (NAA_AM3 .gt. A_AM3) then 
@@ -2358,7 +2348,7 @@ module AM3_FASTJX_MOD
         enddo 
       enddo 
                                                                         
-       call mpp_close (NJ1)
+       close (NJ1)
 !      if (mpp_pe() == mpp_root_pe()) then 
 !        write(*,'(a,9f8.1)') ' ATMOS:fastjx_init: RD_MIE: Aerosol optical: r-eff/rho/Q(@wavel):'     &
 !                  ,(WAA_AM3(K,1),K=1,5)                                    
@@ -2399,9 +2389,8 @@ module AM3_FASTJX_MOD
       character(*), intent(in) ::  NAMFIL 
                                                                         
       integer  I, J, K, L, NJ1 
-                                                                        
-      call mpp_open (NJ1, trim(NAMFIL), MPP_RDONLY, MPP_ASCII,  &
-                     MPP_SEQUENTIAL, MPP_MULTI, MPP_SINGLE)
+
+      open(file=trim(NAMFIL), form='formatted',action='read', newunit=NJ1)
                                                                         
       read (NJ1,'(a78)') TITLE0 
 !        write(6,*) 'UMichigan Aerosol optical data' 
@@ -2419,7 +2408,7 @@ module AM3_FASTJX_MOD
         enddo 
       enddo 
                                                                         
-      call mpp_close (NJ1)
+      close (NJ1)
                                                                         
 !        write(6,'(7(i5,1x,a4))') (L,TITLUM(L), L=1,33) 
                                                                         

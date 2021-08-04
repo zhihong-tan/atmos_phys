@@ -1,4 +1,5 @@
 #include "cosp_defs.H"
+! version number = 1.4.3
 #ifdef COSP_GFDL
  
 !---------------------------------------------------------------------
@@ -6,7 +7,6 @@
  
 ! $Id$
 ! $Name$
-! cosp_version = 1.4.1
  
 #endif
 
@@ -68,7 +68,7 @@ MODULE MOD_COSP_RADAR
             t_matrix,rh_matrix
         real*8, dimension(hp%nhclass,nprof,ngate), intent(in) :: hm_matrix
         real*8, dimension(hp%nhclass,nprof,ngate), intent(inout) :: re_matrix
-        real*8, dimension(hp%nhclass,nprof,ngate), intent(inout) :: Np_matrix
+        real*8, dimension(hp%nhclass,nprof,ngate), intent(in) :: Np_matrix
 
         ! ----- OUTPUTS -----
         real*8, dimension(nprof,ngate), intent(out) :: Ze_non,Ze_ray, &

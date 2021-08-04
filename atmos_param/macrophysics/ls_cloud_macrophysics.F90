@@ -17,14 +17,14 @@
 use time_manager_mod,      only: time_type
 use mpp_mod,               only: input_nml_file
 use fms_mod,               only: error_mesg, FATAL, NOTE,        &
-                                 file_exist, check_nml_error,    &
-                                 open_namelist_file, close_file, &
+                                 check_nml_error,    &
                                  write_version_number,           &
                                  mpp_pe, mpp_root_pe, stdlog,    &
                                  mpp_clock_id, mpp_clock_begin,  &
                                  mpp_clock_end, CLOCK_MODULE,    &
                                  CLOCK_MODULE_DRIVER, &
-                                 MPP_CLOCK_SYNC, read_data, write_data
+                                 MPP_CLOCK_SYNC
+use fms2_io_mod,           only: file_exists
 use physics_types_mod,     only: physics_control_type
 
 ! atmos_param modules
@@ -125,7 +125,7 @@ type(exchange_control_type), intent(in)     :: Exch_ctrl
 !------------------------------------------------------------------------
 !  local variables:
 
-      integer :: ierr, unit, io, logunit
+      integer :: ierr, io, logunit
       integer :: tiedtke_init_clock, clubb_init_clock
 
 !-----------------------------------------------------------------------
@@ -135,20 +135,9 @@ type(exchange_control_type), intent(in)     :: Exch_ctrl
 !-----------------------------------------------------------------------
 !   process the ls_cloud_macrophysics_nml.
 !-----------------------------------------------------------------------
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if ( file_exists('input.nml')) then
         read (input_nml_file, nml=ls_cloud_macrophysics_nml, iostat=io)
         ierr = check_nml_error(io,'ls_cloud_macrophysics_nml')
-#else
- 
-        unit = open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-          read  (unit, nml=ls_cloud_macrophysics_nml, iostat=io, end=10)
-          ierr = check_nml_error(io,'ls_cloud_macrophysics_nml')
-        enddo
- 10    call close_file (unit)
-#endif
- 
 !--------- write version and namelist to standard log ------------
 
         call write_version_number ( version, tagname )

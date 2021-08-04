@@ -93,9 +93,8 @@ use      constants_mod, only: grav,vonkarm,cp_air,rdgas,rvgas,hlv,hls, &
                               tfreeze, radian 
 
 use            mpp_mod, only: input_nml_file
-use            fms_mod, only: open_file, file_exist, open_namelist_file, &
-                              error_mesg, FATAL, check_nml_error, &
-                              mpp_pe, mpp_root_pe, close_file,           &
+use            fms_mod, only: error_mesg, FATAL, check_nml_error, &
+                              mpp_pe, mpp_root_pe,            &
                               stdlog, write_version_number
 
 use   diag_manager_mod, only: register_diag_field, send_data
@@ -357,20 +356,8 @@ real                           :: dellat, dellon
 !
 !      namelist functions
 
-#ifdef INTERNAL_FILE_NML
        read (input_nml_file, nml=entrain_nml, iostat=io)
        ierr = check_nml_error(io,"entrain_nml")
-#else
-       If (File_Exist('input.nml')) Then
-            unit = Open_namelist_File ()
-            ierr=1
-            Do While (ierr .ne. 0)
-                 Read  (unit, nml=entrain_nml, iostat=io, End=10)
-                 ierr = check_nml_error (io, 'entrain_nml')
-            EndDo
-  10        Call Close_File (unit)
-       EndIf
-#endif
 
        if ( mpp_pe() == mpp_root_pe() ) then
             call write_version_number(Version, Tagname)
@@ -490,8 +477,7 @@ real                           :: dellat, dellon
 !-----------------------------------------------------------------------
 !    open a unit for the entrain diagnostics output.
 !-----------------------------------------------------------------------
-        dpu = open_file ('entrain.out', action='write', &
-                                 threading='multi', form='formatted')
+       open(file='entrain.out', form='formatted',action='write', newunit=dpu)
        do_print = .true.
        if ( mpp_pe() == mpp_root_pe() ) then
             call write_version_number(Version, Tagname, dpu)

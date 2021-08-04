@@ -93,10 +93,8 @@
 use mpp_mod,                   only : mpp_clock_id, mpp_clock_begin, &
                                       mpp_clock_end, CLOCK_LOOP,  &
                                       input_nml_file
-use fms_mod,                   only : file_exist, open_namelist_file,&
-                                      open_file, error_mesg, FATAL, NOTE, &
-                                      mpp_pe, mpp_root_pe, close_file, &
-                                      open_ieee32_file,  &
+use fms_mod,                   only : error_mesg, FATAL, NOTE, &
+                                      mpp_pe, mpp_root_pe, &
                                       stdlog, mpp_error, check_nml_error, &
                                       write_version_number, stdout
 use constants_mod,             only : RDGAS, RVGAS, HLV, HLS, HLF,  &
@@ -432,7 +430,7 @@ type(physics_control_type),  intent(in)   :: Physics_control
 !------------------------------------------------------------------------
 !---local variables------------------------------------------------------
 
-      integer    :: unit, io, ierr, logunit
+      integer    :: io, ierr, logunit
      
 
 
@@ -444,19 +442,8 @@ type(physics_control_type),  intent(in)   :: Physics_control
 !-----------------------------------------------------------------------
 !    process namelist.
 !-----------------------------------------------------------------------
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=strat_cloud_nml, iostat=io)
       ierr = check_nml_error(io,'strat_cloud_nml')
-#else
-      if ( file_exist('input.nml')) then
-        unit = open_namelist_file ()
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=strat_cloud_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'strat_cloud_nml')
-        enddo
-10      call close_file (unit)
-      endif
-#endif
 
 !-----------------------------------------------------------------------
 !    write version and namelist to stdlog.
@@ -1397,7 +1384,7 @@ subroutine strat_cloud_legacy (       &
         integer                                      :: idim,jdim,kdim
         integer                                      :: id,jd,ns
         integer                                      :: j,ipt,jpt
-        integer                                      :: i,unit,nn        
+        integer                                      :: i,funit,nn
         real                                         :: inv_dtcloud, Si0
         real                                         :: icbp, icbp1, pnorm
         real, dimension(size(T,1),size(T,2),size(T,3)) :: airdens
@@ -4355,14 +4342,14 @@ ENDIF
              strat_pts(2,nn) >= js .and. strat_pts(2,nn) <= je) then
                 ipt=strat_pts(1,nn); jpt=strat_pts(2,nn)
                 i=ipt-is+1; j=jpt-js+1
-                unit = open_ieee32_file ('strat.data', action='append')
-                write (unit) ipt,jpt,     ql(i,j,:)+SL(i,j,:)
-                write (unit) ipt,jpt,     qi(i,j,:)+SI(i,j,:)
-                write (unit) ipt,jpt,     qa(i,j,:)+SA(i,j,:)
-                write (unit) ipt,jpt,      T(i,j,:)+ST(i,j,:) 
-                write (unit) ipt,jpt,     qv(i,j,:)+SQ(i,j,:)
-                write (unit) ipt,jpt,     pfull(i,j,:)
-                call close_file(unit)
+                open(file="strat.data", form='unformatted',action='write', position="append", newunit=funit)
+                write (funit) ipt,jpt,     ql(i,j,:)+SL(i,j,:)
+                write (funit) ipt,jpt,     qi(i,j,:)+SI(i,j,:)
+                write (funit) ipt,jpt,     qa(i,j,:)+SA(i,j,:)
+                write (funit) ipt,jpt,      T(i,j,:)+ST(i,j,:)
+                write (funit) ipt,jpt,     qv(i,j,:)+SQ(i,j,:)
+                write (funit) ipt,jpt,     pfull(i,j,:)
+                close(funit)
           endif
          enddo
         endif

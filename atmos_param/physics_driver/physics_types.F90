@@ -5,6 +5,7 @@ module physics_types_mod
 use block_control_mod,  only: block_control_type
 use field_manager_mod,  only: MODEL_ATMOS
 use tracer_manager_mod, only: get_tracer_index, get_number_tracers
+use mpp_domains_mod,    only: domain2D
 
 !---- public data ----
  public physics_control_type
@@ -16,6 +17,7 @@ use tracer_manager_mod, only: get_tracer_index, get_number_tracers
      logical :: l_host_applies_sfc_fluxes
      logical :: use_tau
      logical, dimension(:), _ALLOCATABLE :: cloud_tracer _NULL
+     type (domain2D) :: domain !< Atmosphere domain
  end type physics_control_type
 
 !--- atmosphere inputs block structure

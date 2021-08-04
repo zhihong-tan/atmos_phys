@@ -4,12 +4,11 @@ Module atmos_carbon_aerosol_mod
 !   Shekar Reddy
 ! </CONTACT>
 use mpp_mod, only: input_nml_file 
-use fms_mod,                    only : file_exist, close_file, &
-                                       write_version_number, &
+use fms_mod,                    only : write_version_number, &
                                        mpp_pe, mpp_root_pE, &
-                                       open_namelist_file,  &
                                        check_nml_error, error_mesg,  &
                                        stdlog, FATAL, NOTE, WARNING
+use fms2_io_mod,                only : file_exists
 use time_manager_mod,           only : time_type, &
                                        days_in_month, days_in_year, &
                                        set_date, set_time, get_date_julian, &
@@ -1082,24 +1081,15 @@ type(time_type), intent(in)                        :: Time
 real,            intent(in),    dimension(:,:,:), optional :: mask
 character(len=7), parameter :: mod_name = 'tracers'
 integer :: n
-integer ::  unit, ierr, io, logunit
+integer ::  ierr, io, logunit
 
 
    if (module_is_initialized) return
 !----------------------------------
 !namelist files
-      if ( file_exist('input.nml')) then
-#ifdef INTERNAL_FILE_NML
+      if ( file_exists('input.nml')) then
         read (input_nml_file, nml=carbon_aerosol_nml, iostat=io)
         ierr = check_nml_error(io,'carbon_aerosol_nml')
-#else
-        unit =  open_namelist_file ( )
-        ierr=1; do while (ierr /= 0)
-        read  (unit, nml=carbon_aerosol_nml, iostat=io, end=10)
-        ierr = check_nml_error(io,'carbon_aerosol_nml')
-        end do
-10      call close_file (unit)
-#endif
       endif
 !---------------------------------------------------------------------
 !    write version number and namelist to logfile.

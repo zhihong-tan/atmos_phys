@@ -41,9 +41,10 @@ use   time_manager_mod, only: time_type, get_time, operator(-)
 use      constants_mod, only: rdgas, rvgas, kappa, grav
  
 use            mpp_mod, only: input_nml_file
+use    mpp_domains_mod, only: domain2D
 use            fms_mod, only: mpp_pe, mpp_root_pe, stdlog, &
-                              error_mesg, open_namelist_file, file_exist, &
-                              check_nml_error, close_file, FATAL, &
+                              error_mesg, &
+                              check_nml_error, FATAL, &
                               write_version_number, & 
                               stdout, mpp_chksum
  
@@ -749,11 +750,12 @@ end subroutine vert_turb_driver
 
 !#######################################################################
 
-subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
+subroutine vert_turb_driver_init (domain, lonb, latb, id, jd, kd, axes, Time, &
                                   Exch_ctrl, Physics_control, &
                                   doing_edt, doing_entrain, do_clubb_in)
 
 !-----------------------------------------------------------------------
+   type(domain2D), target,      intent(in)    :: domain !< Atmosphere domain
    real, dimension(:,:), intent(in) :: lonb, latb
    integer,         intent(in) :: id, jd, kd, axes(4)
    type(exchange_control_type), intent(in) :: Exch_ctrl
@@ -776,19 +778,8 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
 !-----------------------------------------------------------------------
 !--------------- read namelist ------------------
 
-#ifdef INTERNAL_FILE_NML
    read (input_nml_file, nml=vert_turb_driver_nml, iostat=io)
    ierr = check_nml_error(io,'vert_turb_driver_nml')
-#else   
-      if (file_exist('input.nml')) then
-         unit = open_namelist_file (file='input.nml')
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=vert_turb_driver_nml, iostat=io, end=10)
-            ierr = check_nml_error (io, 'vert_turb_driver_nml')
-         enddo
-  10     call close_file (unit)
-      endif
-#endif
 
 !---------- output namelist --------------------------------------------
 
@@ -865,7 +856,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
 
 !----------------------------------------------------------------------
 
-      if (do_mellor_yamada) call my25_turb_init (id, jd, kd)
+      if (do_mellor_yamada) call my25_turb_init (domain, id, jd, kd)
 
       if (do_tke_turb) then
         ntke = get_tracer_index ( MODEL_ATMOS, 'tke' )
@@ -879,7 +870,7 @@ subroutine vert_turb_driver_init (lonb, latb, id, jd, kd, axes, Time, &
 
       if (do_stable_bl)     call stable_bl_turb_init ( axes, Time )
 
-      if (do_edt)           call edt_init (lonb, latb, axes,Time,id,jd,kd)
+      if (do_edt)           call edt_init (domain, lonb, latb, axes,Time,id,jd,kd)
 
       if (do_entrain)       call entrain_init (lonb, latb, axes,Time,id,jd,kd)
       

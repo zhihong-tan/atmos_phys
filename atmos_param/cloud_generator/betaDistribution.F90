@@ -1,7 +1,7 @@
 module beta_dist_mod
   use fms_mod,only: stdlog, write_version_number, &
                     error_mesg, FATAL
-  use fms_mod,only: open_file, close_file, read_distributed
+  use fms_io_mod,only: open_file, close_file, read_distributed
   use mpp_mod,only: get_unit                  
   implicit none
   private 

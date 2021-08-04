@@ -2,14 +2,10 @@
 module betts_miller_mod
 
 !----------------------------------------------------------------------
-!use      utilities_mod, only:  file_exist, error_mesg, open_file,  &
-!                               check_nml_error, get_my_pe, FATAL,  &
-!                               close_file
-
 use            mpp_mod, only:  input_nml_file
-use            fms_mod, only:  file_exist, error_mesg, open_namelist_file, &
+use            fms_mod, only:  error_mesg, &
                                check_nml_error, mpp_pe, mpp_root_pe, &
-                               FATAL, close_file, write_version_number, stdlog
+                               FATAL, write_version_number, stdlog
 
 use sat_vapor_pres_mod, only:  escomp, descomp
 use      constants_mod, only:  HLv,HLs,Cp_air,Grav,rdgas,rvgas, &
@@ -511,9 +507,9 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
       call escomp(t0,es)
       rs = rdgas/rvgas*es/p(kx)
       if (r0.ge.rs) then
-! if you¹re already saturated, set lcl to be the surface value.
+! if you're already saturated, set lcl to be the surface value.
          plcl = p(kx)
-! the first level where you¹re completely saturated.
+! the first level where you're completely saturated.
          klcl = kx
 ! saturate out to get the parcel temp and humidity at this level
 ! first order (in delta T) accurate expression for change in temp
@@ -522,7 +518,7 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
          rp(kx) = rdgas/rvgas*es/p(kx)
       else
 ! if not saturated to begin with, use the analytic expression to calculate the 
-! exact pressure and temperature where you¹re saturated.  
+! exact pressure and temperature where you're saturated.  
          theta0 = tin(kx)*(pstar/p(kx))**kappa
 ! the expression that we utilize is 
 ! log(r/theta**(1/kappa)*pstar*rvgas/rdgas/es00) = log(es/T**(1/kappa))
@@ -599,14 +595,14 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
 !         write (*,*) 'tp, rp klcl:kx, new', tp(klcl:kx), rp(klcl:kx)
 ! CAPE/CIN stuff
          if ((tp(klcl).lt.tin(klcl)).and.nocape) then
-! if you¹re not yet buoyant, then add to the CIN and continue
+! if you're not yet buoyant, then add to the CIN and continue
             cin = cin + rdgas*(tin(klcl) - &
                  tp(klcl))*log(phalf(klcl+1)/phalf(klcl))
          else
-! if you¹re buoyant, then add to cape
+! if you're buoyant, then add to cape
             cape = cape + rdgas*(tp(klcl) - &
                   tin(klcl))*log(phalf(klcl+1)/phalf(klcl))
-! if it¹s the first time buoyant, then set the level of free convection to k
+! if it's the first time buoyant, then set the level of free convection to k
             if (nocape) then
                nocape = .false.
                klfc = klcl
@@ -636,7 +632,7 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
 ! reset CIN to zero.  
             cin = 0.
 ! again, use the analytic expression to calculate the exact pressure and 
-! temperature where you¹re saturated.  
+! temperature where you're saturated.  
 ! the expression that we utilize is 
 ! log(r/theta**(1/kappa)*pstar*rvgas/rdgas/es00)= log(es/T**(1/kappa))
 ! (the division by es00 is necessary because the RHS values are tabulated
@@ -661,7 +657,7 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
                cin = cin + rdgas*(tin(k) - tp(k))*log(phalf(k+1)/phalf(k))
                k = k-1
             end do
-! first level where you¹re saturated at the level
+! first level where you're saturated at the level
             klcl2 = k
             if (klcl2.eq.1) klcl2 = 2
 ! do a saturated ascent to get the parcel temp at the LCL.  
@@ -694,14 +690,14 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
             rp(klcl2) = rdgas/rvgas*es/p(klcl2)
 ! CAPE/CIN stuff
             if ((tp(klcl2).lt.tin(klcl2)).and.nocape) then
-! if you¹re not yet buoyant, then add to the CIN and continue
+! if you're not yet buoyant, then add to the CIN and continue
                cin = cin + rdgas*(tin(klcl2) - &
                     tp(klcl2))*log(phalf(klcl2+1)/phalf(klcl2))
             else
-! if you¹re buoyant, then add to cape
+! if you're buoyant, then add to cape
                cape = cape + rdgas*(tp(klcl) - &
                      tin(klcl))*log(phalf(klcl+1)/phalf(klcl))
-! if it¹s the first time buoyant, then set the level of free convection to k
+! if it's the first time buoyant, then set the level of free convection to k
                if (nocape) then
                   nocape = .false.
                   klfc = klcl2
@@ -740,17 +736,17 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
          call escomp(tp(k),es)
          rp(k) = rdgas/rvgas*es/p(k)
          if ((tp(k).lt.tin(k)).and.nocape) then
-! if you¹re not yet buoyant, then add to the CIN and continue
+! if you're not yet buoyant, then add to the CIN and continue
             cin = cin + rdgas*(tin(k) - tp(k))*log(phalf(k+1)/phalf(k))
          elseif((tp(k).lt.tin(k)).and.(.not.nocape)) then
-! if you have CAPE, and it¹s your first time being negatively buoyant, 
+! if you have CAPE, and it's your first time being negatively buoyant, 
 ! then set the level of zero buoyancy to k+1, and stop the moist ascent
             klzb = k+1
             go to 11
          else
-! if you¹re buoyant, then add to cape
+! if you're buoyant, then add to cape
             cape = cape + rdgas*(tp(k) - tin(k))*log(phalf(k+1)/phalf(k))
-! if it¹s the first time buoyant, then set the level of free convection to k
+! if it's the first time buoyant, then set the level of free convection to k
             if (nocape) then
                nocape = .false.
                klfc = k
@@ -851,23 +847,12 @@ integer  i, j, k, ix, jx, kx, klzb, ktop
 !
 !-----------------------------------------------------------------------
 
-  integer  unit,io,ierr, logunit
+  integer  io,ierr, logunit
 
 !----------- read namelist ---------------------------------------------
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=betts_miller_nml, iostat=io)
       ierr = check_nml_error(io,'betts_miller_nml')
-#else   
-      if (file_exist('input.nml')) then
-         unit = open_namelist_file ( )
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=betts_miller_nml, iostat=io, end=10)
-            ierr = check_nml_error (io,'betts_miller_nml')
-         enddo
-  10     call close_file (unit)
-      endif
-#endif
 
 !---------- output namelist --------------------------------------------
 

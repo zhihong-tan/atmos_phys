@@ -11,9 +11,9 @@ module grey_radiation_mod
 !                                   get_domain_decomp, check_system_clock
 
    use             mpp_mod,   only: input_nml_file
-   use             fms_mod,   only: open_namelist_file, check_nml_error,  &
-                                    mpp_pe, mpp_root_pe, close_file, &
-                                    write_version_number, stdlog, file_exist
+   use             fms_mod,   only: check_nml_error,  &
+                                    mpp_pe, mpp_root_pe, &
+                                    write_version_number, stdlog
 
    use       constants_mod,   only: stefan, cp_air, grav
 
@@ -122,24 +122,12 @@ integer, intent(in), dimension(4) :: axes
 type(time_type), intent(in)       :: Time
 !-------------------------------------------------------------------------------------
 integer, dimension(3) :: half = (/1,2,4/)
-integer :: ierr, io, unit, logunit
+integer :: ierr, io, logunit
 !-----------------------------------------------------------------------------------------
 ! read namelist and copy to logfile
 
-#ifdef INTERNAL_FILE_NML
     read (input_nml_file, nml=grey_radiation_nml, iostat=io)
     ierr = check_nml_error(io,'grey_radiation_nml')
-#else   
-    if ( file_exist('input.nml')) then
-      unit = open_namelist_file ( )
-      ierr=1
-      do while (ierr /= 0)
-        read  (unit, nml=grey_radiation_nml, iostat=io, end=10)
-        ierr = check_nml_error (io, 'grey_radiation_nml')
-      enddo
-10    call close_file (unit)
-    endif
-#endif
 
 call write_version_number ( version, tagname )
 if ( mpp_pe() == mpp_root_pe() ) then
